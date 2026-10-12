@@ -17,6 +17,32 @@ Widget _app(WidgetBuilder builder) => MaterialApp(
 );
 
 void main() {
+  testWidgets('普通制单金额单元格继续保留精确值与必填属性', (tester) async {
+    final row = FinanceGridRow(mode: ItemMode.settle)
+      ..amount.text = '90071992547409.123456';
+    addTearDown(row.dispose);
+    await tester.pumpWidget(
+      _app((context) {
+        final columns = financeGridColumns(
+          ItemMode.settle,
+          context: context,
+          names: _Names(),
+          type: FinanceDocType.payment,
+        );
+        final amount = columns.singleWhere((column) => column.key == 'amount');
+        expect(amount.required, isTrue);
+        expect(amount.numeric, isTrue);
+        return amount.cellBuilder(context, row);
+      }),
+    );
+    await tester.enterText(find.byType(TextField), '90071992547409.123457');
+    await tester.pump();
+    expect(row.amount.text, '90071992547409.123457');
+    await tester.enterText(find.byType(TextField), '90071992547409.123456');
+    await tester.pump();
+    expect(row.amount.text, '90071992547409.123456');
+    expect(tester.takeException(), isNull);
+  });
   for (final expanded in [false, true]) {
     testWidgets(
       'receipt reconciliation=$expanded keeps conversion next to allocation',

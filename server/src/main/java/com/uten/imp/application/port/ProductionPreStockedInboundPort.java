@@ -1,6 +1,8 @@
 package com.uten.imp.application.port;
 
 import java.util.UUID;
+import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /** FQC's proven pre-stocked lane; every physical posting and exact handoff stays immediate. */
@@ -16,8 +18,22 @@ public interface ProductionPreStockedInboundPort {
      */
     void withBatch(Consumer<Batch> work);
 
+    record Confirmation(UUID documentId, String idempotencyKey) {
+        public Confirmation {
+            Objects.requireNonNull(documentId);
+            Objects.requireNonNull(idempotencyKey);
+        }
+    }
+
     @FunctionalInterface
     interface Batch {
         void confirm(UUID documentId, String idempotencyKey);
+
+        /** Submit an immutable ordered set; the production scope acquires its graph locks together. */
+        default void confirmAll(List<Confirmation> confirmations) {
+            for (Confirmation confirmation : List.copyOf(confirmations)) {
+                confirm(confirmation.documentId(), confirmation.idempotencyKey());
+            }
+        }
     }
 }

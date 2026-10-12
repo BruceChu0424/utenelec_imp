@@ -114,9 +114,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // 2026-09-04 修复回归锁：子类徽章与列表加载解耦——计数不依赖选中。
-      // 2026-10-04 起红数来源「采购收货」与状态「全部合格」随自动选中级联：
-      // 全来源计数 1 次 + 每级选中后按口径重拉各 1 次，列表随挂载即加载。
-      expect(gateway.statusCountsCalls, 3);
+      // 来源与作业都默认全部；首次计数与列表加载分别刷新。
+      expect(gateway.statusCountsCalls, 2);
+      expect(gateway.listReceiptTypes, [null]);
 
       final table = tester
           .widget<MasterDataTableView<WarehouseQualityResultTask>>(
@@ -144,7 +144,7 @@ void main() {
         ),
         utenStatusBadgeCellColor(UtenStatusBadgeType.success),
       );
-      expect(find.text('全部合格 · 待入库'), findsWidgets);
+      expect(find.text('采购 · 全部合格 · 待入库'), findsWidgets);
       expect(find.text('等待结果'), findsWidgets);
       expect(
         find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
@@ -154,6 +154,58 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('状态徽章不隐式隐藏其他作业，手动筛选后可回到全部', (tester) async {
+    _viewport(tester, const Size(1500, 900));
+    final gateway =
+        _QualityGateway([
+            WarehouseQualityResultTask.fromJson(
+              _summaryJson(
+                'ALL_PASSED',
+                pendingSliceCount: 1,
+                passedLineCount: 1,
+              ),
+            ),
+            WarehouseQualityResultTask.fromJson(
+              _summaryJson(
+                'RETURN_REQUIRED',
+                receiptId: 'receipt-2',
+                billNo: 'PR-002',
+              ),
+            ),
+          ])
+          ..statusCountsResult = const {
+            WarehouseQualityWorkStatus.waitingInspection: 0,
+            WarehouseQualityWorkStatus.allPassed: 1,
+            WarehouseQualityWorkStatus.partialPassed: 0,
+            WarehouseQualityWorkStatus.returnRequired: 1,
+            WarehouseQualityWorkStatus.completed: 0,
+          };
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      _app(const WarehouseQualityResultsPage(), gateway, preferences),
+    );
+    await tester.pumpAndSettle();
+    MasterDataTableView<WarehouseQualityResultTask> table() =>
+        tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
+    expect(gateway.lastWorkStatus, isNull);
+    expect(table().items.map((row) => row.receiptId), [
+      'receipt-1',
+      'receipt-2',
+    ]);
+    await tester.tap(find.text('不合格退回'));
+    await tester.pumpAndSettle();
+    expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.returnRequired);
+    expect(table().items.map((row) => row.receiptId), ['receipt-2']);
+    await tester.tap(find.text('全部'));
+    await tester.pumpAndSettle();
+    expect(gateway.lastWorkStatus, isNull);
+    expect(table().items.map((row) => row.receiptId), [
+      'receipt-1',
+      'receipt-2',
+    ]);
+    expect(tester.takeException(), isNull);
+  });
 
   // 分段计数三形态(docs/00-项目准则/14-徽章与计数口径.md, ADR-100)：红徽章只给仓库
   // 要动手的状态(全部合格/部分合格/不合格退回 = WarehouseQualityWorkStatus
@@ -230,107 +282,61 @@ void main() {
     },
   );
 
-  // 2026-09-21 修复回归锁：来源大类行此前只挂红徽章，库里那几张「等待检查结果」的
-  // 委外收货单在 hub 卡上是黄色的数字，一进本页就蒸发——用户不知道它们压在哪个来源
-  // 下面，点了采购只看到一张空表。大类行改成并排两枚(黄左红右)后，「卡面黄 = 各来源
-  // 黄之和 = 页内『等待结果』段」这条父子求和铁律才在页面上成立。
   testWidgets(
-    'receipt-type segments pair the in-progress badge left of the actionable one',
+    'receipt type filters the server table without hiding the other source by default',
     (tester) async {
       _viewport(tester, const Size(1200, 900));
-      // 委外：1 张轮到仓库动手 + 2 张还在品质部手上；采购两样都没有。
-      final gateway = _QualityGateway(const [])
-        ..typeCountsResult = const WarehouseQualityTypeCounts(
-          actionable: {
-            WarehouseIqcStockInReceiptType.purchase: 0,
-            WarehouseIqcStockInReceiptType.subcontract: 1,
-          },
-          inProgress: {
-            WarehouseIqcStockInReceiptType.purchase: 0,
-            WarehouseIqcStockInReceiptType.subcontract: 2,
-          },
-        )
-        ..statusCountsResult = const {
-          WarehouseQualityWorkStatus.waitingInspection: 2,
-          WarehouseQualityWorkStatus.allPassed: 1,
-          WarehouseQualityWorkStatus.partialPassed: 0,
-          WarehouseQualityWorkStatus.returnRequired: 0,
-          WarehouseQualityWorkStatus.completed: 0,
-        };
+      final gateway = _QualityGateway([
+        WarehouseQualityResultTask.fromJson(_summaryJson('ALL_PASSED')),
+        WarehouseQualityResultTask.fromJson({
+          ..._summaryJson(
+            'ALL_PASSED',
+            receiptId: 'receipt-2',
+            billNo: 'SC-002',
+          ),
+          'receiptType': 'SUBCONTRACT',
+        }),
+      ]);
       final preferences = await SharedPreferences.getInstance();
       await tester.pumpWidget(
         _app(const WarehouseQualityResultsPage(), gateway, preferences),
       );
       await tester.pumpAndSettle();
-      // 2026-10-04 起红数「委外进仓」来源自动选中（采购两枚皆 0）。
-
-      Finder segment(String label) => find.byWidgetPredicate(
-        (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
-      );
-
-      final subcontract = tester.widget<UtenSegmentBadgeLabel>(segment('委外进仓'));
-      expect(subcontract.count, 1, reason: '红 = 该来源轮到仓库动手的单');
-      expect(subcontract.countForm, UtenSegmentCountForm.actionable);
-      expect(subcontract.inProgressCount, 2, reason: '黄 = 该来源等待检查结果的单');
-      final inProgressBadge = find.descendant(
-        of: segment('委外进仓'),
-        matching: find.byType(UtenInProgressBadge),
-      );
-      final actionableBadge = find.descendant(
-        of: segment('委外进仓'),
-        matching: find.byType(UtenNotificationBadge),
-      );
-      expect(inProgressBadge, findsOneWidget);
-      expect(actionableBadge, findsOneWidget);
-      expect(tester.widget<UtenInProgressBadge>(inProgressBadge).count, 2);
-      // 黄左红右：与 hub 卡右上角同序，两枚并存时顺序是死的。
       expect(
-        tester.getCenter(inProgressBadge).dx,
-        lessThan(tester.getCenter(actionableBadge).dx),
-        reason: '黄色在办徽章必须画在红色待办徽章左边',
-      );
-
-      // 采购两样都是 0：两枚都缩回，也不退化成 `(0)` 占位。
-      expect(
-        find.descendant(
-          of: segment('采购收货'),
-          matching: find.byType(UtenInProgressBadge),
-        ),
+        find.byKey(const Key('warehouse-quality-result-type')),
         findsNothing,
       );
+      expect(gateway.listReceiptTypes, [null]);
+      MasterDataTableView<WarehouseQualityResultTask> table() =>
+          tester.widget<MasterDataTableView<WarehouseQualityResultTask>>(
+            find.byKey(const Key('warehouse-quality-result-table')),
+          );
+      expect(table().items.map((task) => task.receiptType).toSet(), {
+        WarehouseIqcStockInReceiptType.purchase,
+        WarehouseIqcStockInReceiptType.subcontract,
+      });
+      expect(table().facets['receiptType']!.map((bucket) => bucket.value), [
+        'PURCHASE',
+        'SUBCONTRACT',
+      ]);
+      table().onSelectedIdsChanged!({'PURCHASE:receipt-1'});
+      await tester.pumpAndSettle();
+      table().onFilterChanged('receiptType', 'SUBCONTRACT');
+      await tester.pumpAndSettle();
       expect(
-        find.descendant(
-          of: segment('采购收货'),
-          matching: find.byType(UtenNotificationBadge),
-        ),
-        findsNothing,
+        gateway.listReceiptTypes.last,
+        WarehouseIqcStockInReceiptType.subcontract,
       );
+      expect(table().filters['receiptType'], 'SUBCONTRACT');
+      expect(table().selectedIds, isEmpty);
       expect(
-        find.descendant(of: segment('采购收货'), matching: find.text('(0)')),
-        findsNothing,
+        table().items.single.receiptType,
+        WarehouseIqcStockInReceiptType.subcontract,
       );
-
-      // 父子求和：大类那枚黄 = 小类「等待结果」段的黄，同一批活在两行里是同一个数。
-      final waiting = tester.widget<UtenSegmentBadgeLabel>(segment('等待结果'));
-      expect(waiting.countForm, UtenSegmentCountForm.inProgress);
-      expect(waiting.count, subcontract.inProgressCount);
-      expect(
-        tester
-            .widget<UtenInProgressBadge>(
-              find.descendant(
-                of: segment('等待结果'),
-                matching: find.byType(UtenInProgressBadge),
-              ),
-            )
-            .count,
-        2,
-      );
-      // 红那半同理：大类红 = 三个「轮到仓库动手」小类段之和。
-      final actionableSum = [
-        for (final label in ['全部合格', '部分合格', '不合格退回'])
-          tester.widget<UtenSegmentBadgeLabel>(segment(label)).count ?? 0,
-      ].fold<int>(0, (sum, value) => sum + value);
-      expect(actionableSum, subcontract.count);
+      table().onFilterChanged('receiptType', null);
+      await tester.pumpAndSettle();
+      expect(gateway.listReceiptTypes.last, isNull);
+      expect(table().items, hasLength(2));
       expect(tester.takeException(), isNull);
     },
   );
@@ -624,6 +630,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   int batchConfirmCalls = 0;
   bool failNextBatch = false;
   int statusCountsCalls = 0;
+  WarehouseQualityWorkStatus? lastWorkStatus;
+  final List<WarehouseIqcStockInReceiptType?> listReceiptTypes = [];
   WarehouseQualityBatchConfirmCommand? lastBatchCommand;
 
   /// 状态小类计数(后端全量口径, 随选中的来源收窄); 默认形状 = 采购那张
@@ -672,13 +680,24 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? order,
     String? billNo,
     String? scopeWarehouseId,
-  }) async => PagedResult(
-    items: tasks,
-    page: page,
-    size: size,
-    total: tasks.length,
-    totalPages: 1,
-  );
+  }) async {
+    listReceiptTypes.add(receiptType);
+    lastWorkStatus = workStatus;
+    final filtered = tasks
+        .where(
+          (task) =>
+              (receiptType == null || task.receiptType == receiptType) &&
+              (workStatus == null || task.workStatus == workStatus),
+        )
+        .toList();
+    return PagedResult(
+      items: filtered,
+      page: page,
+      size: size,
+      total: filtered.length,
+      totalPages: filtered.isEmpty ? 0 : 1,
+    );
+  }
 
   @override
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({

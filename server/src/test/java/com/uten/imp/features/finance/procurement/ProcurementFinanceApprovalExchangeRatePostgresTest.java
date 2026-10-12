@@ -45,6 +45,42 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
+    void approvedHistoryQueriesUseDecisionRateAndFrozenSupplier() throws Exception {
+        // Real SQL must keep approved snapshots independent from current master-data renames.
+        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("procurement_finance_history")
+                .withUsername("uten").withPassword("uten-test-only")) {
+            postgres.start();
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                    postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+            schema(jdbc);
+            applyV835(jdbc);
+            for (String type : List.of("PURCHASE", "SUBCONTRACT")) {
+                Harness harness = harness(jdbc, type);
+                UUID caseId = submit(jdbc, harness);
+                harness.service.approveBatch(List.of(new ProcurementApprovalContracts.BatchDecisionItem(caseId, 1L)),
+                        null, new BigDecimal("6.85"));
+                jdbc.update("UPDATE procurement_order_approval_cases SET display_snapshot=\n"
+                        + "submission_snapshot || jsonb_build_object('supplierName','冻结供应商') WHERE id=?", caseId);
+                jdbc.update("UPDATE suppliers SET name='当前已改名' WHERE id=?", harness.snapshot.supplierId());
+                var history = harness.service.tasks(1, 20, type, "冻结供应商", null, null, null, "APPROVED");
+                assertThat(history.getTotal()).isEqualTo(1);
+                assertThat(history.getItems()).singleElement().satisfies(task -> {
+                    assertThat(task.status()).isEqualTo("APPROVED");
+                    assertThat(task.supplierName()).isEqualTo("冻结供应商");
+                    assertThat(task.amount()).isEqualByComparingTo("137");
+                    assertThat(task.exchangeRate()).isEqualByComparingTo("6.85");
+                    assertThat(task.expectedDate()).isEqualTo(harness.snapshot.deliverDate());
+                    assertThat(task.allowedActions()).isEmpty();
+                });
+                assertThat(harness.service.taskFacets(type, "冻结供应商", "APPROVED").get("billNo")).hasSize(1);
+                assertThat(harness.service.countTasksByType("APPROVED").get(type)).isEqualTo(1);
+                assertThat(harness.service.tasks(1, 20, type, "冻结供应商").getItems()).isEmpty();
+            }
+        }
+    }
+
+    @Test
     void approveRecordsFinanceRateOnTheCaseWithoutTouchingSubmissionFacts() throws Exception {
         try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
                 .withDatabaseName("procurement_finance_rate")
@@ -247,11 +283,11 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                 supplier = UUID.randomUUID(), currency = UUID.randomUUID(),
                 settlement = UUID.randomUUID();
         jdbc.update("INSERT INTO suppliers VALUES (?, 'S1', '供应商甲')", supplier);
-        jdbc.update("INSERT INTO currencies VALUES (?, '美元')", currency);
+        jdbc.update("INSERT INTO currencies(id,name) VALUES (?, '美元')", currency);
         jdbc.update("INSERT INTO settlement_methods VALUES (?, '电汇')", settlement);
         jdbc.update("INSERT INTO goods VALUES (?, 'G1', '货品甲')", goods);
         jdbc.update("INSERT INTO units VALUES (?, '个')", unit);
-        jdbc.update("INSERT INTO " + prefix + "_orders VALUES (?, ?, NULL, ?, ?, NULL, NULL, NULL)",
+        jdbc.update("INSERT INTO " + prefix + "_orders(id,supplier_id,warehouse_id,currency_id,settlement_method_id,purchaser_id,maker_id,remark) VALUES (?, ?, NULL, ?, ?, NULL, NULL, NULL)",
                 order, supplier, currency, settlement);
         jdbc.update("INSERT INTO " + prefix + "_order_items(id,order_id,line_no,goods_id,unit_id,"
                 + "goods_code_snapshot,goods_name_snapshot,weight,remark)"
@@ -324,7 +360,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                   expected_date date);
                 CREATE TABLE suppliers(id uuid,code text,name text);
                 CREATE TABLE warehouses(id uuid,name text);
-                CREATE TABLE currencies(id uuid,name text);
+                CREATE TABLE currencies(id uuid,name text,is_base_currency boolean DEFAULT FALSE,is_deleted boolean DEFAULT FALSE,status text DEFAULT '使用');
                 CREATE TABLE settlement_methods(id uuid,name text);
                 CREATE TABLE employees(id uuid,full_name text);
                 CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8));
@@ -332,7 +368,9 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                 CREATE TABLE units(id uuid,name text);
                 """);
         for (String prefix : List.of("purchase", "subcontract")) {
-            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date)");
+            jdbc.execute("CREATE TABLE " + prefix + "_receipts(id uuid,status smallint,exchange_rate numeric,is_deleted boolean DEFAULT FALSE)");
+            jdbc.execute("CREATE TABLE " + prefix + "_receipt_items(id uuid,receipt_id uuid,order_item_id uuid,is_deleted boolean DEFAULT FALSE)");
+            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date,status smallint DEFAULT 0,is_deleted boolean DEFAULT FALSE)");
             jdbc.execute("CREATE TABLE " + prefix + "_order_items(id uuid,order_id uuid,line_no int,goods_id uuid,color_id uuid,unit_id uuid,goods_code_snapshot text,goods_name_snapshot text,weight numeric(18,4),remark text,source_doc_no text,is_deleted boolean DEFAULT FALSE)");
         }
     }

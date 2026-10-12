@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/network/latest_request_guard.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -39,6 +42,8 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
   List<ScarceReservation>? _rows;
   bool _loading = false;
   bool _busy = false;
+  String? _loadError;
+  final _loadRequests = LatestRequestGuard();
 
   @override
   void initState() {
@@ -64,18 +69,31 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
   Future<void> _load() async {
     final gid = _goodsId;
     if (gid == null) return;
-    setState(() => _loading = true);
-    final rows = await context.guardLoad(
-      () => ref
-          .read(salesRepositoryProvider(SalesDocType.order))
-          .scarceReservations(gid),
-      errorFallback: '预留查询失败',
-    );
-    if (!mounted) return;
+    final generation = _loadRequests.begin();
     setState(() {
-      _rows = rows ?? const [];
-      _loading = false;
+      _loading = true;
+      _loadError = null;
     });
+    try {
+      final rows = await ref
+          .read(salesRepositoryProvider(SalesDocType.order))
+          .scarceReservations(gid);
+      if (!mounted || !_loadRequests.isCurrent(generation) || gid != _goodsId) {
+        return;
+      }
+      setState(() {
+        _rows = rows;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted || !_loadRequests.isCurrent(generation) || gid != _goodsId) {
+        return;
+      }
+      setState(() {
+        _loadError = error is ApiException ? error.message : '预留查询失败，请重试';
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _yield(ScarceReservation r) async {
@@ -212,6 +230,13 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
       return const Center(child: Text('请先选择货品，查看谁在占用现货预留'));
     }
     if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loadError != null) {
+      return UtenEmpty.error(
+        message: _loadError,
+        actionLabel: '重试',
+        onAction: _load,
+      );
+    }
     final rows = _rows ?? [];
     if (rows.isEmpty) {
       return const Center(child: Text('该货品暂无生效预留占用'));

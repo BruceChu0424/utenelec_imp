@@ -1,6 +1,18 @@
 // 数量显示与解析的公共格式化（无业务语义，纯数字排版）。
 //
 // 供车间内料仓 / 盘点审核等页面共用：最多 N 位小数、去掉末尾 0、-0 归 0。
+import 'exact_decimal.dart';
+
+/// Recorded quantities keep all decimal digits, including values beyond the
+/// range in which a double can preserve the document's four decimal places.
+String formatExactQtyWithUnit(String? value, String? unit) {
+  final exact = financeExactDecimal(value);
+  if (exact == null) return '';
+  final number = financeExactTrimmed(exact)!;
+  final suffix = unit?.trim() ?? '';
+  return suffix.isEmpty ? number : '$number $suffix';
+}
+
 /// 数量显示: 最多 [maxDecimals] 位小数, 去掉末尾的 0。
 String formatQty(num? value, {int maxDecimals = 2}) {
   if (value == null) return '';

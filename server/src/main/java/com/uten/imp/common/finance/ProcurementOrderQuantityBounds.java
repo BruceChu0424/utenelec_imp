@@ -63,6 +63,7 @@ public final class ProcurementOrderQuantityBounds {
                         WHERE rejection.receipt_type=:orderType AND rejection.receipt_id=receipt.id
                           AND rejection.receipt_item_id=ri.id AND rejection.order_item_id=oi.id
                           AND rejection.is_deleted=FALSE AND rejection.return_recorded_at IS NOT NULL
+                          AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                           AND rejection.status IN ('RETURN_RECORDED','CREDIT_CONFIRMED',
                               'CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
                     ) iqc ON TRUE

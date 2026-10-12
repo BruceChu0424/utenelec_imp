@@ -44,6 +44,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_quote_finance_review.dart';
 import '../repositories/sales_quote_finance_review_repository.dart';
+import '../../../shared/drafts/review_task_draft.dart';
 
 /// 核价详情办结(确认/退回)后 bump 的列表刷新键。
 const kQuoteFinanceListRefreshKey = 'finance:quote-review';
@@ -177,6 +178,12 @@ class _FinanceQuoteReviewListPageState
 
   /// 打开核价详情；确认/退回后返回 true → 重拉当前页与徽章。
   Future<void> _open(SalesQuoteFinanceListItem item) async {
+    final drafts = _taskDrafts(item);
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _refresh();
+      return;
+    }
     final changed = await context.push<bool>(
       RoutePath.financeQuoteReview(item.quoteId),
     );
@@ -188,6 +195,7 @@ class _FinanceQuoteReviewListPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     final l10n = AppLocalizations.of(context);
     _hostLocation ??= currentLocationOr(context, RouteName.financeQuoteReview);
     // 详情页办结 bump：本页在栈顶时立即重拉，被盖着时返回再拉(ADR-108)。
@@ -298,6 +306,12 @@ class _FinanceQuoteReviewListPageState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _filters(l10n),
+          const TaskDraftRecoveryNotice(
+            scope: FormDraftCategoryScope(
+              module: BadgeModule.finance,
+              routePrefix: '/finance/quote-review/',
+            ),
+          ),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
             _InlineError(
@@ -326,7 +340,7 @@ class _FinanceQuoteReviewListPageState
         onSelectionCleared: () => setState(() => _activeItem = null),
         rowMenuBuilder: (item) => [
           UtenMenuItem(
-            label: l10n.quoteFinanceOpen,
+            label: _taskDrafts(item).isEmpty ? l10n.quoteFinanceOpen : '继续填写核价',
             icon: Icons.price_check_rounded,
             onTap: () => _open(item),
           ),
@@ -410,6 +424,8 @@ class _FinanceQuoteReviewListPageState
       financeLocalMoneyWithUnitSuffix(item.totalOriginal);
 
   String _statusText(AppLocalizations l10n, SalesQuoteFinanceListItem item) {
+    final drafts = _taskDrafts(item);
+    if (drafts.isNotEmpty) return taskDraftStatus(drafts);
     switch (_state) {
       case SalesQuoteFinanceState.returned:
         return l10n.quoteFinanceStatusReturned(
@@ -439,6 +455,13 @@ class _FinanceQuoteReviewListPageState
   }
 
   /// 状态列档位（ADR-169 锚定，逐段独立）：
+  List<FormDraft> _taskDrafts(SalesQuoteFinanceListItem item) =>
+      reviewTaskDraftsFor(
+        ref.read(formDraftsProvider),
+        FormDraftCatalog.financeQuoteReview,
+        item.quoteId,
+      );
+
   /// - 待核价段：本页就是财务的核价队列——普通待核价=绿（「就绪可动手」，
   ///   轮到我审=绿灯）；有待定价货品或退回后重新提交=橙（未死锁但需注意，
   ///   确认前必须先补定价/核对上次退回原因）。

@@ -138,6 +138,14 @@ public class SalesOrderFinanceConfirmService {
     public PageResponse<SalesOrderFinancePendingDto> pending(
             int page, int size, Boolean rejected, String keyword, Boolean changesOnly,
             String sort, String order, String billNo) {
+        return pending(page, size, rejected, keyword, changesOnly, sort, order, billNo, false);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public PageResponse<SalesOrderFinancePendingDto> pending(
+            int page, int size, Boolean rejected, String keyword, Boolean changesOnly,
+            String sort, String order, String billNo, boolean confirmed) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
         String rejectedFilter = rejected == null ? ""
@@ -163,9 +171,7 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
-                  AND o.finance_confirmed = FALSE
-                """ + rejectedFilter + changesFilter + keywordFilter + billNoFilter);
+                """ + confirmationPoolFilter(confirmed) + rejectedFilter + changesFilter + keywordFilter + billNoFilter);
         if (!normalizedKeyword.isEmpty()) {
             countQuery.setParameter("keyword", normalizedKeyword);
         }
@@ -204,7 +210,8 @@ public class SalesOrderFinanceConfirmService {
                        """ + CLIENT_CREDIT_SQL + """
                        , o.currency_id
                        , source_quote.id, source_quote.bill_no,
-                       COALESCE(quote_confirmer.full_name, ''), source_quote.finance_confirmed_at
+                       COALESCE(quote_confirmer.full_name, ''), source_quote.finance_confirmed_at,
+                       o.finance_confirmed
                 FROM sales_orders o
                 LEFT JOIN sales_quotes source_quote ON source_quote.id = o.source_quote_id
                      AND source_quote.is_deleted = FALSE
@@ -214,9 +221,7 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN employees e ON e.id = o.seller_id
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
-                  AND o.finance_confirmed = FALSE
-                """ + String.join("\n", rejectedFilter, changesFilter,
+                """ + confirmationPoolFilter(confirmed) + String.join("\n", rejectedFilter, changesFilter,
                         keywordFilter, billNoFilter, pendingOrderBy(sort, order),
                         "LIMIT :lim OFFSET :off"));
         if (!normalizedKeyword.isEmpty()) {
@@ -260,7 +265,8 @@ public class SalesOrderFinanceConfirmService {
                                 ((String) r[21]).isBlank() ? null : (String) r[21],
                                 com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[22]),
                                 Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0]))),
-                        r[19] == null ? null : Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0]))))
+                        r[19] == null ? null : Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0])),
+                        Boolean.TRUE.equals(r[23])))
                 .toList();
         return new PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -278,6 +284,15 @@ public class SalesOrderFinanceConfirmService {
                 OR EXISTS(SELECT 1 FROM sales_order_qty_change_logs change_log
                     WHERE change_log.order_id = o.id
                       AND change_log.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0)))
+                """;
+    }
+
+    /** Approved orders remain reachable after closure/stop/requotation; pending work still uses the gate pool. */
+    static String confirmationPoolFilter(boolean confirmed) {
+        return confirmed ? " AND o.finance_confirmed = TRUE\n" : """
+                 AND (o.is_closed = FALSE OR o.finance_review_revision > 0)
+                 AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
+                 AND o.finance_confirmed = FALSE
                 """;
     }
 
@@ -302,6 +317,13 @@ public class SalesOrderFinanceConfirmService {
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> pendingFacets(
             Boolean rejected, String keyword, Boolean changesOnly) {
+        return pendingFacets(rejected, keyword, changesOnly, false);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> pendingFacets(
+            Boolean rejected, String keyword, Boolean changesOnly, boolean confirmed) {
         String rejectedFilter = rejected == null ? ""
                 : rejected ? " AND o.finance_rejected = TRUE" : " AND o.finance_rejected = FALSE";
         String changesFilter = changesOnly == null ? ""
@@ -321,9 +343,7 @@ public class SalesOrderFinanceConfirmService {
                         LEFT JOIN clients c ON c.id = o.client_id
                         LEFT JOIN employees e ON e.id = o.seller_id
                         WHERE o.status = 1 AND o.is_deleted = FALSE
-                          AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
-                          AND o.finance_confirmed = FALSE
-                        """ + rejectedFilter + changesFilter + keywordFilter
+                        """ + confirmationPoolFilter(confirmed) + rejectedFilter + changesFilter + keywordFilter
                         + " GROUP BY 1 ORDER BY 1")
                 .setMaxResults(500);
         if (!normalizedKeyword.isEmpty()) {

@@ -16,6 +16,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../models/warehouse_document_history.dart';
@@ -41,7 +42,7 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
   /// 父页面「返回即刷新」信号。
   final int refreshTick;
 
-  /// true = 嵌在任务中心分段内（状态分段 + 表格，无搜索框）。
+  /// true = 嵌在任务中心历史分段内（状态由表头筛选，无额外状态栏或搜索框）。
   final bool embedded;
 
   /// 宿主（任务中心大类行/小类行/复合分段行）：挂进折叠头随页滚走
@@ -246,11 +247,22 @@ class _WarehouseDocumentHistoryViewState
         items: result.items,
         // 单据号/来源单据表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
         facets: {
+          if (widget.embedded)
+            'status': [
+              for (final option in widget.type.statusFilters)
+                if (option.value != null)
+                  MasterFacetBucket(
+                    value: option.value!,
+                    label: option.label,
+                    count: 0,
+                  ),
+            ],
           'billNo': _columnFilters.bucketOf('billNo'),
           'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
         },
         nullCounts: const {},
         filters: {
+          if (widget.embedded) 'status': _status,
           'billNo': _columnFilters['billNo'],
           'sourceDocNo': _columnFilters['sourceDocNo'],
         },
@@ -259,6 +271,10 @@ class _WarehouseDocumentHistoryViewState
         sortAscending: _columnFilters.sortAscending,
         onSortChange: _onSortChange,
         onFilterChanged: (key, value) {
+          if (key == 'status' && widget.embedded) {
+            _selectStatus(value);
+            return;
+          }
           if (key == 'billNo' || key == 'sourceDocNo') {
             _columnFilters.handleFilterChanged(
               key,
@@ -305,10 +321,11 @@ class _WarehouseDocumentHistoryViewState
           ? null
           : Key('warehouse-history-search-${widget.type.segment}'),
       segments: [
-        for (final option in widget.type.statusFilters)
-          UtenFilterSegment(value: option.value, label: option.label),
+        if (!widget.embedded)
+          for (final option in widget.type.statusFilters)
+            UtenFilterSegment(value: option.value, label: option.label),
       ],
-      selected: _statusSelected ? {_status} : const {},
+      selected: !widget.embedded && _statusSelected ? {_status} : const {},
       onSelectionChanged: _selectStatus,
       searchHint: widget.embedded ? null : '搜索单号 / 来源单号 / 货品 / 仓库 / 往来单位',
       initialSearchValue: widget.embedded ? null : _keyword,

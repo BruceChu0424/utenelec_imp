@@ -1025,7 +1025,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: remoteAccess
-              ? UtenColors.primary.withValues(alpha: 0.5)
+              ? theme.colorScheme.primary.withValues(alpha: 0.5)
               : theme.colorScheme.outlineVariant,
         ),
       ),
@@ -1035,7 +1035,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             remoteAccess ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
             size: 20,
             color: remoteAccess
-                ? UtenColors.primary
+                ? theme.colorScheme.primary
                 : theme.colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 10),

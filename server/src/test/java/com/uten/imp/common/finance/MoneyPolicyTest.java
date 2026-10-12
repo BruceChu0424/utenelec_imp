@@ -121,6 +121,11 @@ class MoneyPolicyTest {
     void quantitiesAndDiscountsBeyondTheirStoredScaleAreRejectedBeforeAnyAmountIsDerived() {
         assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("1.00005"), BigDecimal.TEN, null, BigDecimal.ONE))
                 .isInstanceOf(ApiException.class).hasMessageContaining("数量");
+        assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("1.00005"), null, null, null))
+                .isInstanceOf(ApiException.class).hasMessageContaining("数量");
+        assertThatThrownBy(() -> MoneyPolicy.line(new BigDecimal("100000000000000"), null, null, null))
+                .isInstanceOf(ApiException.class).hasMessageContaining("数量");
+        assertThat(MoneyPolicy.line(new BigDecimal("1.00010"), null, null, null).original()).isNull();
         assertThatThrownBy(() -> MoneyPolicy.exactProduct(BigDecimal.ONE, BigDecimal.TEN, new BigDecimal("0.85001")))
                 .isInstanceOf(ApiException.class).hasMessageContaining("折扣");
         assertThat(MoneyPolicy.line(new BigDecimal("1.0001"), BigDecimal.TEN, null, BigDecimal.ONE).original())

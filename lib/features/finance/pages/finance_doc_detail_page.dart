@@ -1,7 +1,9 @@
+import '../../../shared/documents/document_unapproval_action.dart';
+import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 // 钱流单据详情页（全页路由，按 docType 参数化）：主表头卡 + 只读明细子表 + 状态门控操作。
 //
-// 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。
+// 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅反审；反审(-1)→只读。
 // 审核后端联动：核销 AR/AP（receipt/payment）/ 账户余额变动 / 写流水 / 登记对账。
 // 名称解析：客户/供应商/账户/币种 用 FinanceNameService。
 //
@@ -210,10 +212,10 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
   }
 
   Future<void> _reverse() async => _doAction(
-    '红冲将反向冲销，确认？',
+    documentUnapprovalConfirmation,
     (repo) => repo.reverse(widget.id),
-    '已红冲',
-    busyTitle: '正在红冲，请稍候',
+    '已反审，进入草稿',
+    busyTitle: '正在反审，请稍候',
   );
 
   /// C6 财务确认（仅费用单）：已过账 → 财务确认入账。
@@ -228,7 +230,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
 
   Future<void> _doAction(
     String confirm,
-    Future<void> Function(FinanceRepository) fn,
+    Future<Object?> Function(FinanceRepository) fn,
     String ok, {
     bool reviewerResponsibility = false,
     String reviewerActionLabel = '审核',
@@ -270,10 +272,20 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       _busyTitle = busyTitle ?? '正在处理，请稍候';
     });
     try {
-      await fn(ref.read(financeRepositoryProvider(widget.docType)));
+      final result = await fn(
+        ref.read(financeRepositoryProvider(widget.docType)),
+      );
       if (!mounted || !ownsNative()) return;
-      context.appSuccess(ok);
       bumpListRefresh(ref, _cfg.refreshKey);
+      if (result is FinanceDocDetail && result.id != widget.id) {
+        showDocumentUnapprovalResult(context, result.status);
+        openUnapprovedDraft(
+          context,
+          RoutePath.financeDocDetail(widget.docType.pathSegment, result.id),
+        );
+        return;
+      }
+      context.appSuccess(ok);
       await _load();
     } on ApiException catch (e) {
       if (mounted && ownsNative()) context.appError(e.message);
@@ -487,6 +499,11 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       ),
       // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
       // SelectionArea（准则 §3.4），无需再单独包。
+      documentUnapprovalBannerForRoute(
+        'finance',
+        widget.docType.pathSegment,
+        widget.id,
+      ),
       _headerCard(theme, names),
       if (_cfg.type == FinanceDocType.receipt &&
           !_detail!.legacyImported &&
@@ -990,7 +1007,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       ] else if (_cfg.isAllocate) ...[
         MasterColumnDef(
           key: 'style',
-          label: '项目',
+          label: _cfg.type == FinanceDocType.expense ? '费用项目' : '收入项目',
           width: 160,
           value: (it) =>
               names.styleName(it.expenseStyleId ?? it.incomeStyleId, styleCat),
@@ -1154,12 +1171,14 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       }
       if (_canReverse) {
         addAction(
-          UtenButton(
-            type: UtenButtonType.danger,
-            size: UtenButtonSize.large,
-            icon: Icons.undo_outlined,
+          DocumentUnapprovalAction(
+            family: unapprovalFamilyForRoute(
+              'finance',
+              widget.docType.pathSegment,
+            )!,
+            documentId: widget.id,
+            revision: detail,
             onPressed: _reverse,
-            child: const Text('红冲'),
           ),
         );
       }

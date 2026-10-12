@@ -77,9 +77,9 @@ public class DashboardOverviewService {
             new DepartmentTodo("HR", "hrProfileReview", null,
                     "profile-review", "员工资料变更待审核", "/hr/profile-changes", "PEOPLE"),
             new DepartmentTodo("FINANCE", "expenseFinance", "expense.pendingApprovalCount",
-                    "expense-approval", "报销申请待审批", "/expense/approval", "FINANCE"),
+                    "expense-approval", "报销申请待审批", "/expense/approval?queue=pending", "FINANCE"),
             new DepartmentTodo("FINANCE", "expenseFinance", "expense.pendingPaymentCount",
-                    "expense-payment", "已审批报销待付款", "/expense/approval", "FINANCE"));
+                    "expense-payment", "已审批报销待付款", "/expense/approval?queue=payable", "FINANCE"));
 
     private final SecurityContextCurrentUser currentUser;
     private final JdbcTemplate jdbc;

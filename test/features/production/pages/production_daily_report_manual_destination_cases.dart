@@ -163,7 +163,7 @@ void registerDailyReportManualDestinationTests() {
     final draft =
         jsonDecode(jsonEncode(state.captureFormDraft()))
             as Map<String, dynamic>;
-    expect((draft['rows'] as List).single['allocationManual'], isTrue);
+    expect((draft['rows'] as List).cast<Map<String,dynamic>>().single['allocationManual'], isTrue);
     final restoration = state.restoreFormDraft(draft);
     await tester.pumpAndSettle();
     await restoration;
@@ -206,8 +206,8 @@ void registerDailyReportManualDestinationTests() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
     await tester.pumpAndSettle();
-    expect((saved!['items'] as List).single['qty'], 4);
-    expect((saved!['items'] as List).single['allocations'], [
+    expect((saved!['items'] as List).cast<Map<String,dynamic>>().single['qty'], 4);
+    expect((saved!['items'] as List).cast<Map<String,dynamic>>().single['allocations'], [
       {'directTransferDemandId': 'A', 'qty': 1},
       {'directTransferDemandId': 'B', 'qty': 2},
       {'directTransferDemandId': null, 'qty': 1},

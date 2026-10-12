@@ -25,7 +25,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -117,7 +118,7 @@ class PurchaseOrderSourceMergeSplitTest {
                 sql != null && sql.contains("FROM goods"))))
                 .thenReturn(masterQuery);
         when(masterQuery.setParameter(anyString(), any())).thenReturn(masterQuery);
-        when(masterQuery.getResultList()).thenReturn(List.<Object[]>of());
+        when(masterQuery.getResultList()).thenReturn(List.<Object[]>of(new Object[]{goodsId,goodsId,"G-MASTER","主档货品"}));
 
         // sources INSERT：捕获逐参数写入顺序。
         Query sourceInsert = mock(Query.class);
@@ -208,10 +209,10 @@ class PurchaseOrderSourceMergeSplitTest {
         Wiring wiring = wire(new BigDecimal("30"), new BigDecimal("20"));
         wiring.service.create(request(
                 wiring, new BigDecimal("50"), wiring.sourceA(), wiring.sourceB()));
-        assertEquals(
-                List.of(new BigDecimal("30"), new BigDecimal("20")),
-                wiring.captured().get("allocQty"),
-                "50 应按剩余量 FIFO 拆成 30 + 20");
+        assertThat(wiring.captured().get("allocQty"))
+                .as("50 应按剩余量 FIFO 拆成 30 + 20")
+                .usingComparatorForType(BigDecimal::compareTo,BigDecimal.class)
+                .containsExactly(new BigDecimal("30"),new BigDecimal("20"));
         assertEquals(2, wiring.captured().get("lineNo").size());
     }
 
@@ -220,10 +221,10 @@ class PurchaseOrderSourceMergeSplitTest {
         Wiring wiring = wire(new BigDecimal("30"), new BigDecimal("20"));
         wiring.service.create(request(
                 wiring, new BigDecimal("60"), wiring.sourceA(), wiring.sourceB()));
-        assertEquals(
-                List.of(new BigDecimal("30"), new BigDecimal("30")),
-                wiring.captured().get("allocQty"),
-                "超采 60：首来源吃满剩余 30，末位来源吸收超额 30");
+        assertThat(wiring.captured().get("allocQty"))
+                .as("超采 60：首来源吃满剩余 30，末位来源吸收超额 30")
+                .usingComparatorForType(BigDecimal::compareTo,BigDecimal.class)
+                .containsExactly(new BigDecimal("30"),new BigDecimal("30"));
     }
 
     @Test
@@ -249,14 +250,14 @@ class PurchaseOrderSourceMergeSplitTest {
     }
 
     @Test
-    void missingAnchorStillRejectedBeforeSplit() {
+    void independentDepartmentOrderDoesNotInventARequestAllocation() {
         Wiring wiring = wire(BigDecimal.TEN, BigDecimal.TEN);
         OrderSaveRequest req = request(wiring, BigDecimal.TEN, wiring.sourceA());
         req.getItems().getFirst().setRequestItemId(null);
         req.getItems().getFirst().setRequestItemIds(null);
-        var error = assertThrows(
-                com.uten.imp.common.web.ApiException.class,
-                () -> wiring.service.create(req));
-        assertEquals("第 1 行必须关联采购申请明细", error.getMessage());
+        var document = wiring.service.create(req);
+        assertNull(document.getItems().getFirst().getRequestItemId());
+        assertEquals(BigDecimal.TEN, document.getItems().getFirst().getQty());
+        assertEquals(Map.of(), wiring.captured());
     }
 }

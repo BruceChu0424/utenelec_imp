@@ -22,7 +22,8 @@ import 'package:flutter/material.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
-import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/weight_mass_units.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
@@ -514,9 +515,8 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     }
     if (widget.id != null) {
       try {
-        final d = await ref
-            .read(stockDocRepositoryProvider(widget.docType))
-            .detail(widget.id!);
+        final repository = ref.read(stockDocRepositoryProvider(widget.docType));
+        final d = await repository.detail(widget.id!);
         final writable =
             !d.productionLinked &&
             d.canEdit &&
@@ -600,12 +600,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           if (_isCheck) {
             // 盘点：账面 = items.qty，实盘 = items.countQty；账面重量 = 保存时快照，
             // 实盘重量 = items.countWeight(按称重推算的实盘数量保留黄框)。
-            row.bookQty.text = it.qty?.toString() ?? '';
+            row.bookQty.text = it.qtyText ?? it.qty?.toString() ?? '';
             row.bookWeightKg.value = it.bookWeight;
             _restoreSavedWeight(
               row.countWeight,
               row.checkQty,
-              it.countQty?.toString() ?? '',
+              it.countQtyText ?? it.countQty?.toString() ?? '',
               it.countWeight,
               it.qtyFromWeight,
             );
@@ -613,7 +613,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             _restoreSavedWeight(
               row.weight,
               row.qty,
-              it.qty?.toString() ?? '',
+              it.qtyText ?? it.qty?.toString() ?? '',
               it.weight,
               it.qtyFromWeight,
             );
@@ -621,9 +621,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           rows.add(row);
         }
         _grid.replaceAll(rows);
-      } catch (_) {
-        // 静默降级
-      }
+      } catch (_) {}
     }
     if (_grid.isEmpty) {
       _grid.addRow(StockGridRow(isCheck: _isCheck));
@@ -789,13 +787,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         return;
       }
       // 没有余额行 = 账面 0 个、0 重量。
-      var qty = 0.0;
+      String? qty = '0';
       double? weightKg = 0;
       var estimated = false;
       var found = false;
       for (final balance in result.items) {
         if (balance.colorId == row.colorId) {
-          qty = balance.qty ?? 0;
+          qty = balance.qtyText ?? balance.qty?.toString();
           weightKg = balance.weight;
           estimated = balance.weightEstimated;
           found = true;
@@ -806,11 +804,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       if (!found && row.colorId == null && result.items.length == 1) {
         final balance = result.items.single;
         row.colorId = balance.colorId;
-        qty = balance.qty ?? 0;
+        qty = balance.qtyText ?? balance.qty?.toString();
         weightKg = balance.weight;
         estimated = balance.weightEstimated;
       }
-      row.bookQty.text = _qtyText(qty);
+      row.bookQty.text = financeExactTrimmed(qty) ?? '';
       // 账面重量只作核对展示；保存时服务端按锁定的余额重新快照。
       row.bookWeightEstimated = estimated;
       row.bookWeightKg.value = weightKg;
@@ -841,11 +839,6 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     } finally {
       if (mounted) setState(() => _loadingCheckBooks = false);
     }
-  }
-
-  String _qtyText(double value) {
-    final fixed = value.toStringAsFixed(4);
-    return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
   /// 只有领料单接了 STOCK_DOCUMENT 附件策略的可见入口（详情页「出库凭证/照片」常驻区）；
@@ -962,13 +955,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         if (countQty == 0 && sentKg != null) {
           return context.appError('${r.goods!.name} 的实盘数量为 0，不能再填实盘重量');
         }
-        m['qty'] = bookQty; // 账面写入 items.qty
-        m['countQty'] = countQty;
+        m['qty'] = r.bookQty.text.trim(); // 账面精确原文；服务端仍按锁定余额重验
+        m['countQty'] = r.checkQty.text.trim();
         // 仅作前端预览；后端会按权威账面快照重新计算盈亏。
-        m['surplusQty'] = countQty - bookQty;
+        m['surplusQty'] = r.surplusQtyText;
         if (sentKg != null) m['countWeight'] = sentKg;
       } else {
-        m['qty'] = double.tryParse(r.qty.text) ?? 0;
+        m['qty'] = r.qty.text.trim();
         if (sentKg != null) m['weight'] = sentKg;
       }
       // 回收料按 0 成本进仓：显式单价 0、金额 0 (不留空，留空是「成本未定」)。
@@ -1407,15 +1400,17 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           density: true,
           rowCount: rows.length,
           entries: [
-            utenQuantityTotalEntry(
-              rows.map(
-                (row) => MeasuredAmount(
-                  value: double.tryParse(row.activeQty.text.trim()) ?? 0,
-                  unitId: row.unitId,
-                  unitName: row.unitName,
+            UtenTotalEntry(
+              _isCheck ? '实盘' : '数量',
+              exactMeasurementTotalsText(
+                rows.map(
+                  (row) => ExactMeasuredAmount(
+                    value: row.activeQty.text,
+                    unitId: row.unitId,
+                    unitName: row.unitName,
+                  ),
                 ),
               ),
-              label: _isCheck ? '实盘' : '数量',
             ),
             ...weightTotalEntries(
               warehouseWeightTotals<StockGridRow>(

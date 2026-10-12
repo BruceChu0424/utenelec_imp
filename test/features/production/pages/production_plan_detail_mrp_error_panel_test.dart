@@ -11,6 +11,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 import '../../../support/document_scope_capability_overrides.dart';
+import '../../../support/native_detail_reader_overrides.dart';
 
 void main() {
   testWidgets(
@@ -24,7 +25,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             productionWriteAllDocumentScope(),
+            apiClientProvider.overrideWithValue(api),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -110,7 +113,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             productionWriteAllDocumentScope(),
+            apiClientProvider.overrideWithValue(api),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -146,7 +151,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             productionWriteAllDocumentScope(),
+            apiClientProvider.overrideWithValue(api),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -191,7 +198,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...nativeDetailReaderOverrides(),
           productionWriteAllDocumentScope(),
+          apiClientProvider.overrideWithValue(api),
           productionPlanRepositoryProvider.overrideWithValue(
             ProductionPlanRepository(api),
           ),
@@ -221,7 +230,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...nativeDetailReaderOverrides(),
           productionWriteAllDocumentScope(),
+          apiClientProvider.overrideWithValue(api),
           productionPlanRepositoryProvider.overrideWithValue(
             ProductionPlanRepository(api),
           ),
@@ -252,7 +263,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             productionWriteAllDocumentScope(),
+            apiClientProvider.overrideWithValue(api),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -277,7 +290,7 @@ void main() {
 
       final printPlan = find.byKey(const Key('production-print-plan'));
       expect(printPlan, findsOneWidget);
-      expect(find.text('红冲'), findsOneWidget);
+      expect(find.text('反审'), findsOneWidget);
       await tester.ensureVisible(printPlan);
       expect(tester.takeException(), isNull);
       await tester.tap(printPlan);
@@ -302,7 +315,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...nativeDetailReaderOverrides(),
           productionWriteAllDocumentScope(),
+          apiClientProvider.overrideWithValue(api),
           productionPlanRepositoryProvider.overrideWithValue(
             ProductionPlanRepository(api),
           ),
@@ -332,7 +347,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             productionWriteAllDocumentScope(),
+            apiClientProvider.overrideWithValue(api),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -349,7 +366,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('红冲'), findsOneWidget);
+      expect(find.text('反审'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -364,7 +381,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             productionWriteAllDocumentScope(),
+            apiClientProvider.overrideWithValue(api),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -404,7 +423,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...nativeDetailReaderOverrides(),
             productionWriteAllDocumentScope(),
+            apiClientProvider.overrideWithValue(api),
             productionPlanRepositoryProvider.overrideWithValue(
               ProductionPlanRepository(api),
             ),
@@ -452,6 +473,16 @@ ApiClient _directMakeApprovedPlanDetailApi(
       onRequest: (request, handler) {
         requests.add(request);
         final Object data = switch (request.path) {
+          '/documents/productionPlan/plan-1/unapproval-capability' =>
+            <String, dynamic>{
+              'supported': true,
+              'permitted': true,
+              'eligible': true,
+              'nextAction': 'UNAPPROVE_TO_DRAFT',
+              'factsSnapshot': 'a' * 64,
+              'reasons': <Object>[],
+            },
+
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
             'makerId': 'maker-1',
@@ -515,6 +546,16 @@ ApiClient _planDetailApi() {
     InterceptorsWrapper(
       onRequest: (request, handler) {
         final Object data = switch (request.path) {
+          '/documents/productionPlan/plan-1/unapproval-capability' =>
+            <String, dynamic>{
+              'supported': true,
+              'permitted': true,
+              'eligible': true,
+              'nextAction': 'UNAPPROVE_TO_DRAFT',
+              'factsSnapshot': 'a' * 64,
+              'reasons': <Object>[],
+            },
+
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
             'makerId': 'maker-1',
@@ -552,6 +593,16 @@ ApiClient _plainDraftPlanDetailApi() {
     InterceptorsWrapper(
       onRequest: (request, handler) {
         final Object data = switch (request.path) {
+          '/documents/productionPlan/plan-1/unapproval-capability' =>
+            <String, dynamic>{
+              'supported': true,
+              'permitted': true,
+              'eligible': true,
+              'nextAction': 'UNAPPROVE_TO_DRAFT',
+              'factsSnapshot': 'a' * 64,
+              'reasons': <Object>[],
+            },
+
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
             'makerId': 'maker-1',
@@ -587,6 +638,16 @@ ApiClient _approvedPlanDetailApi({
     InterceptorsWrapper(
       onRequest: (request, handler) {
         final Object data = switch (request.path) {
+          '/documents/productionPlan/plan-1/unapproval-capability' =>
+            <String, dynamic>{
+              'supported': true,
+              'permitted': true,
+              'eligible': true,
+              'nextAction': 'UNAPPROVE_TO_DRAFT',
+              'factsSnapshot': 'a' * 64,
+              'reasons': <Object>[],
+            },
+
           '/production/plans/plan-1' => <String, dynamic>{
             'id': 'plan-1',
             'makerId': 'maker-1',

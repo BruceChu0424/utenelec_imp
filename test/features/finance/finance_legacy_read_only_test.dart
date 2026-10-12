@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
@@ -55,6 +56,38 @@ void main() {
   );
 
   for (final type in FinanceDocType.values) {
+    testWidgets(
+      'current receipt uses server refusal to disable unapproval and explain its actual reason',
+      (tester) async {
+        final api = _HistoryApi(
+          status: 1,
+          imported: false,
+          kind: 'AR_SETTLEMENT',
+          unapprovalBlocked: true,
+        );
+        await _pump(tester, api);
+        final action = find.widgetWithText(UtenButton, '反审');
+        expect(action, findsOneWidget);
+        expect(tester.widget<UtenButton>(action).onPressed, isNull);
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        final dialog = find.byType(AlertDialog);
+        expect(dialog, findsOneWidget);
+        expect(
+          find.descendant(of: dialog, matching: find.text('暂不能反审')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: dialog,
+            matching: find.text('这笔收款已用于订单预收核销，请先撤回核销'),
+          ),
+          findsOneWidget,
+        );
+        expect(api.writes, isEmpty);
+      },
+    );
+
     for (final status in [0, 1]) {
       testWidgets(
         'legacy ${type.name} status $status stays read-only even with every action permission',
@@ -62,7 +95,7 @@ void main() {
           final api = _HistoryApi(status: status);
           await _pump(tester, api, type: type);
           expect(find.text(financeLegacyReadOnlyMessage), findsOneWidget);
-          for (final action in ['编辑', '删除', '审核', '红冲', '财务确认']) {
+          for (final action in ['编辑', '删除', '审核', '反审', '财务确认']) {
             expect(find.text(action), findsNothing);
           }
           if (type == FinanceDocType.receipt) {
@@ -124,7 +157,7 @@ void main() {
       table.onFilterChanged(
         'status',
         financeDocumentStatusFacets
-            .singleWhere((facet) => facet.label == '红冲')
+            .singleWhere((facet) => facet.label == '已反审')
             .value,
       );
       await tester.pumpAndSettle();
@@ -223,7 +256,7 @@ void main() {
           expect(find.text('删除'), findsOneWidget);
           expect(find.text('审核'), findsOneWidget);
         } else {
-          expect(find.text('红冲'), findsOneWidget);
+          expect(find.text('反审'), findsOneWidget);
         }
       },
     );
@@ -290,11 +323,13 @@ class _HistoryApi extends ApiClient {
     this.imported = true,
     this.kind = 'LEGACY_UNCLASSIFIED',
     this.withLines = false,
+    this.unapprovalBlocked = false,
   }) : super(Dio());
   final int status;
   final bool imported;
   final String? kind;
   final bool withLines;
+  final bool unapprovalBlocked;
   final writes = <String>[];
   final listQueries = <Map<String, dynamic>>[];
 
@@ -303,6 +338,22 @@ class _HistoryApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/documents/financeReceipt/history/unapproval-capability') {
+      return {
+        'supported': true,
+        'permitted': true,
+        'eligible': !unapprovalBlocked,
+        'nextAction': unapprovalBlocked ? 'BLOCKED' : 'UNAPPROVE_TO_DRAFT',
+        'factsSnapshot': List.filled(64, 'a').join(),
+        'reasons': <Map<String, String>>[
+          if (unapprovalBlocked)
+            {
+              'code': 'ACTIVE_PREPAYMENT_OFFSET',
+              'message': '这笔收款已用于订单预收核销，请先撤回核销',
+            },
+        ],
+      };
+    }
     if (path.contains('scope')) {
       return {
         'scope': 'finance',

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/layout/uten_form_grid.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
@@ -159,8 +160,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text('结算方式'), findsOneWidget);
-    expect(find.text('月结(NET30)'), findsOneWidget);
+    final headerFields = find.ancestor(
+      of: find.text('单据号'),
+      matching: find.byType(UtenFormGrid),
+    );
+    expect(headerFields, findsOneWidget);
+    expect(
+      find.descendant(of: headerFields, matching: find.text('结算方式')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: headerFields, matching: find.text('月结(NET30)')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('375px 编辑加载已有结算方式且提交 settlementMethodId', (tester) async {

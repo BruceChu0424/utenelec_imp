@@ -80,6 +80,7 @@ public final class ReconcilePlanViews {
             int rowNo,
             String kind,
             EmployeeRef employee,
+            int employeeVersion,
             String reason,
             ClaimView claim,
             List<NoticeView> notices,
@@ -157,6 +158,9 @@ public final class ReconcilePlanViews {
             ApplyCounts counts,
             List<ApplyRowResult> rows,
             String summary) {
+    }
+    /** Read-only outcome for the original request; contains no proposed identity values. */
+    public record ApplyReceipt(String status, ApplyResult result) {
     }
 
     public record ApplyCounts(int applied, int skipped, int failed) {

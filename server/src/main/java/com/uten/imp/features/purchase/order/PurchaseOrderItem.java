@@ -25,6 +25,12 @@ import java.util.UUID;
 @Entity
 @Table(name = "purchase_order_items")
 public class PurchaseOrderItem extends com.uten.imp.common.columns.ExtraColumnEntity {
+    @jakarta.persistence.Column(name="quantity_semantics")
+    private String quantitySemantics = "LEGACY_RECORDED";
+    @jakarta.persistence.Column(name="gift_received_qty")
+    private BigDecimal giftReceivedQty = BigDecimal.ZERO;
+    @jakarta.persistence.Column(name="gift_returned_qty")
+    private BigDecimal giftReturnedQty = BigDecimal.ZERO;
 
     private Integer legacyId;
 

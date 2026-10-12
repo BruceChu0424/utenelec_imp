@@ -1,3 +1,4 @@
+import '../../../shared/models/procurement_quantity.dart';
 import 'package:flutter/foundation.dart' show mapEquals;
 
 import '../../../components/data_display/uten_status_badge.dart';
@@ -5,6 +6,7 @@ import 'warehouse_iqc_stock_in.dart'
     show
         WarehouseInboundAllocation,
         WarehouseIqcStockInConfirmItem,
+        WarehouseIqcStockInConfirmCommand,
         WarehouseIqcStockInReceiptType;
 import 'warehouse_pre_stocked_location.dart';
 
@@ -377,6 +379,7 @@ class WarehouseQualityInspectionLine {
     required this.pendingStockBaseQty,
     required this.lineStatus,
     this.goodsCode,
+    this.quantityTranche,
     this.goodsName,
     this.colorName,
     this.unitId,
@@ -390,6 +393,8 @@ class WarehouseQualityInspectionLine {
   final String inspectionItemId;
   final String goodsId;
   final String? goodsCode;
+  final String? quantityTranche;
+  String get quantityTrancheLabel => procurementTrancheLabel(quantityTranche);
   final String? goodsName;
   final String? colorName;
   final String? unitId;
@@ -417,6 +422,7 @@ class WarehouseQualityInspectionLine {
       failedBaseQty <= 0;
 
   String get goodsLabel => [
+    if (quantityTranche != null) quantityTrancheLabel,
     goodsCode,
     goodsName,
     if (colorName?.isNotEmpty == true) colorName,
@@ -451,6 +457,7 @@ class WarehouseQualityInspectionLine {
         ),
         goodsId: _requiredText(json['goodsId'], '检查明细行缺少 goodsId'),
         goodsCode: _text(json['goodsCode']),
+        quantityTranche: _text(json['quantityTranche']),
         goodsName: _text(json['goodsName']),
         colorName: _text(json['colorName']),
         unitId: _text(json['unitId']),
@@ -481,6 +488,7 @@ class WarehouseQualityReleasedSlice {
     required this.stockedForReleaseBaseQty,
     required this.remainingBaseQty,
     this.goodsCode,
+    this.quantityTranche,
     this.goodsName,
     this.colorName,
     this.unitId,
@@ -500,6 +508,8 @@ class WarehouseQualityReleasedSlice {
   final String inspectionItemId;
   final String goodsId;
   final String? goodsCode;
+  final String? quantityTranche;
+  String get quantityTrancheLabel => procurementTrancheLabel(quantityTranche);
   final String? goodsName;
   final String? colorName;
   final String? unitId;
@@ -523,6 +533,7 @@ class WarehouseQualityReleasedSlice {
   final List<WarehouseInboundAllocation> expectedAllocations;
 
   String get goodsLabel => [
+    if (quantityTranche != null) quantityTrancheLabel,
     goodsCode,
     goodsName,
     if (colorName?.isNotEmpty == true) colorName,
@@ -537,6 +548,7 @@ class WarehouseQualityReleasedSlice {
         ),
         goodsId: _requiredText(json['goodsId'], '待入库切片缺少 goodsId'),
         goodsCode: _text(json['goodsCode']),
+        quantityTranche: _text(json['quantityTranche']),
         goodsName: _text(json['goodsName']),
         colorName: _text(json['colorName']),
         unitId: _text(json['unitId']),
@@ -569,6 +581,7 @@ class WarehouseQualityStockInHistoryItem {
     required this.baseQty,
     required this.place,
     this.goodsCode,
+    this.quantityTranche,
     this.goodsName,
     this.colorName,
     this.unitName,
@@ -586,6 +599,8 @@ class WarehouseQualityStockInHistoryItem {
   final String passEventId;
   final String goodsId;
   final String? goodsCode;
+  final String? quantityTranche;
+  String get quantityTrancheLabel => procurementTrancheLabel(quantityTranche);
   final String? goodsName;
   final String? colorName;
   final String? unitName;
@@ -609,6 +624,7 @@ class WarehouseQualityStockInHistoryItem {
   String get originLabel => isAutoFromPreStock ? '先入库后检 · 合格自动转正' : '仓库确认入库';
 
   String get goodsLabel => [
+    if (quantityTranche != null) quantityTrancheLabel,
     goodsCode,
     goodsName,
     if (colorName?.isNotEmpty == true) colorName,
@@ -723,9 +739,33 @@ class WarehouseQualityBatchConfirmCommand {
 
   final List<WarehouseQualityBatchConfirmEntry> batches;
 
+  factory WarehouseQualityBatchConfirmCommand.fromDraft(
+    Map<String, dynamic> data,
+  ) => WarehouseQualityBatchConfirmCommand(
+    batches: [
+      for (final batch in _requiredDraftBatches(data['batches']))
+        WarehouseQualityBatchConfirmEntry(
+          receiptType: batch['receiptType'] as String,
+          receiptId: batch['receiptId'] as String,
+          idempotencyKey: batch['idempotencyKey'] as String,
+          items: WarehouseIqcStockInConfirmCommand.fromDraft({
+            'idempotencyKey': batch['idempotencyKey'],
+            'items': batch['items'],
+          }).items,
+        ),
+    ],
+  );
+
   Map<String, dynamic> toJson() => {
     'batches': [for (final entry in batches) entry.toJson()],
   };
+}
+
+List<Map<Object?, Object?>> _requiredDraftBatches(Object? raw) {
+  if (raw is! List || raw.isEmpty || raw.any((batch) => batch is! Map)) {
+    throw const FormatException('原批量提交缺少来源明细，请保留本机记录并核对');
+  }
+  return raw.cast<Map<Object?, Object?>>();
 }
 
 class WarehouseQualityBatchConfirmEntry {

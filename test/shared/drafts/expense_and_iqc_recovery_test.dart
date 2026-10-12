@@ -31,6 +31,60 @@ import 'memory_form_draft_storage.dart';
 const _iqcPath = '${RouteName.warehouseInspections}/PURCHASE/receipt-1';
 
 void main() {
+  testWidgets(
+    'charged and gift inspections sharing one business row remain distinct through lost-response replay',
+    (tester) async {
+      final storage = MemoryFormDraftStorage();
+      final iqc = _Iqc()..giftTranches = true;
+      var env = await _open(tester, storage, _iqcPath, iqc: iqc);
+      expect(find.text('收费'), findsOneWidget);
+      expect(find.text('赠品'), findsOneWidget);
+      final table = tester
+          .widget<MasterDataTableView<ProcurementInspectionItem>>(
+            find.byKey(const ValueKey('iqc-item-table-receipt-1')),
+          );
+      expect(table.items.map((row) => row.id).toSet(), {
+        'item-1',
+        'gift-item-1',
+      });
+      expect(table.items.map((row) => row.receiptItemId).toSet(), {
+        'same-business-row',
+      });
+      table.onSelectedIdsChanged!({'item-1', 'gift-item-1'});
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('iqc-submit-report')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('inspection-report-confirm-submit')),
+      );
+      await tester.pumpAndSettle();
+      final frozen = iqc.sent.single;
+      final receipts = (frozen['receipts'] as List)
+          .cast<Map<String, dynamic>>();
+      final items = (receipts.single['items'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(items.map((row) => row['inspectionItemId']).toSet(), {
+        'item-1',
+        'gift-item-1',
+      });
+      expect(items.map((row) => row['passBaseQty']).toList(), [10.0, 1.0]);
+      expect(items.map((row) => row['idempotencyKey']).toSet(), hasLength(2));
+      final editor =
+          tester.state(find.byType(ProcurementInspectionDetailPage))
+              as FormDraftMixin<ProcurementInspectionDetailPage>;
+      await editor.saveFormDraftNow();
+      final draft = env.container.read(formDraftsProvider).single;
+      await _dispose(tester, env);
+      env = await _open(tester, storage, draft.resumeLocation, iqc: iqc);
+      await tester.tap(find.text('核对原报告'));
+      await tester.pumpAndSettle();
+      expect(iqc.sent.last, frozen);
+      expect(iqc.sent, hasLength(2));
+      expect(env.container.read(formDraftsProvider), isEmpty);
+      await _dispose(tester, env);
+    },
+  );
+
   for (final code in ['SESSION_CHANGED', 'SESSION_STATE_UNAVAILABLE']) {
     testWidgets(
       'IQC $code 409 retains uncertain report and its original keys',
@@ -459,6 +513,7 @@ class _Api extends ApiClient {
 class _Iqc extends DioProcurementInspectionRepository {
   _Iqc() : super(_Api());
   bool resolved = false;
+  bool giftTranches = false;
   bool rejectConflict = false;
   String? boundaryFailure;
   final sent = <Map<String, dynamic>>[];
@@ -480,6 +535,31 @@ class _Iqc extends DioProcurementInspectionRepository {
     String receiptId,
   ) async => resolved
       ? []
+      : giftTranches
+      ? const [
+          ProcurementInspectionItem(
+            id: 'item-1',
+            receiptItemId: 'same-business-row',
+            quantityTranche: 'CHARGED',
+            goodsName: '材料',
+            goodsCode: 'G1',
+            remainingBaseQty: 10,
+            baseUnitName: '个',
+            unitRate: 1,
+            status: 'PENDING',
+          ),
+          ProcurementInspectionItem(
+            id: 'gift-item-1',
+            receiptItemId: 'same-business-row',
+            quantityTranche: 'GIFT',
+            goodsName: '材料',
+            goodsCode: 'G1',
+            remainingBaseQty: 1,
+            baseUnitName: '个',
+            unitRate: 1,
+            status: 'PENDING',
+          ),
+        ]
       : [
           const ProcurementInspectionItem(
             id: 'item-1',

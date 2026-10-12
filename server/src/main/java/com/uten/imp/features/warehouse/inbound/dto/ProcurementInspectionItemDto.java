@@ -28,5 +28,13 @@ public record ProcurementInspectionItemDto(
         String baseUnitName,
         String sourceUnitName,
         /** 先入库后检(V596)：实物已上架的仓/库位，品质部到该位置检验；null=按原流程在待检区。 */
-        PreStockedLocation preStocked) {
+        PreStockedLocation preStocked, String quantityTranche) {
+    public ProcurementInspectionItemDto(UUID id, UUID receiptItemId, UUID goodsId, UUID colorId, UUID unitId,
+            BigDecimal unitRate, BigDecimal receivedBaseQty, BigDecimal passedBaseQty, BigDecimal failedBaseQty,
+            BigDecimal remainingBaseQty, String status, String goodsCode, String goodsName, String colorName,
+            UUID warehouseId, String sourceOrderNo, BigDecimal receivedWeight, UUID baseUnitId,
+            String baseUnitName, String sourceUnitName, PreStockedLocation preStocked) {
+        this(id,receiptItemId,goodsId,colorId,unitId,unitRate,receivedBaseQty,passedBaseQty,failedBaseQty,remainingBaseQty,
+            status,goodsCode,goodsName,colorName,warehouseId,sourceOrderNo,receivedWeight,baseUnitId,baseUnitName,sourceUnitName,preStocked,"LEGACY");
+    }
 }

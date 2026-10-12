@@ -4,7 +4,7 @@
 // 生产路线——列内直接下拉（齐套 / 持续 / 分批），**选中即提交**，没有草稿、
 // 没有确认按钮、没有任何弹窗或两步流程。未确认的行显示「选择生产路线」占位，
 // 不预填假默认值（ADR-093：路线必须是车间明确确认的事实）。「生产中」分类
-// 不显示「下一步」列（报工走勾选 + 右下角悬浮按钮，路线以只读徽章展示）。
+// 不显示「下一步」列（批量报工走勾选 + 右下角按钮，单任务报工可从详情办理）。
 // 2026-09-21 追加口径「我明明多选了，选中一个，为什么批量设路线还要重新选」：被改的
 // 行已勾选且勾选集里还有别的可设路线行时，一次下拉 = 对全部勾选行提交(与
 // 「批量设路线」菜单同一套筛选：不支持该路线或已是该路线的行自动跳过)；
@@ -31,6 +31,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -61,6 +64,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../providers/production_execution_refresh.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -68,6 +72,7 @@ import '../models/production_daily_report.dart';
 import '../models/production_execution_workbench.dart';
 import '../models/production_flow_stage.dart';
 import '../models/production_material_usage_source.dart';
+import '../models/workshop_task_drafts.dart';
 import '../providers/production_department_provider.dart';
 import '../providers/production_workshop_task_count_provider.dart';
 import '../repositories/production_execution_workbench_repository.dart';
@@ -79,11 +84,11 @@ import '../repositories/production_material_increment_repository.dart';
 import '../widgets/production_overproduction_rate_request_dialog.dart';
 import '../repositories/production_material_repository.dart';
 import '../widgets/production_flow_stage_cell.dart';
-import '../widgets/workshop_draft_segment.dart';
 import '../widgets/production_material_settlement_sheet.dart';
 import '../widgets/segment_material_change_dialog.dart';
 import '../widgets/start_confirmation_sheet.dart';
 import '../widgets/workshop_task_material_table.dart';
+import '../widgets/workshop_task_detail_dialog.dart';
 import '../widgets/workshop_task_material_bin_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -107,6 +112,7 @@ class _ProductionWorkshopTasksPageState
   List<ProductionExecutionWorkbenchSegment> _items = const [];
   final _tableRows =
       MasterDataTableRowsController<ProductionExecutionWorkbenchSegment>();
+  final _taskDetailRevision = ValueNotifier<int>(0);
   final Set<String> _selected = {};
 
   /// 跑批遮罩的唯一通道(2026-09-21 用户口径「批量开工/批量领料/批量设路线
@@ -210,6 +216,13 @@ class _ProductionWorkshopTasksPageState
     ProductionExecutionWorkbenchSegment task,
   ) async {
     if (_navigating || !_canRequestMaterialIncrementTask(task)) return;
+    if (await _resumeLocalOperation(
+      [task],
+      {'/production/material-increment-requests/new'},
+    )) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _navigating = true);
     try {
       await context.push(
@@ -262,6 +275,13 @@ class _ProductionWorkshopTasksPageState
     ProductionExecutionWorkbenchSegment task,
   ) async {
     if (_rateLoadingSegment != null || !_canOpenRateRequest) return;
+    if (await _resumeLocalOperation(
+      [task],
+      {'/production/overproduction-rate-requests/new'},
+    )) {
+      return;
+    }
+    if (!mounted) return;
     setState(() => _rateLoadingSegment = task.segmentId);
     try {
       final source = await ref
@@ -324,18 +344,11 @@ class _ProductionWorkshopTasksPageState
   /// 草稿占住的额度不扣会引导重复报工）。key=segmentId；删除草稿后重拉即恢复。
   Map<String, double> _draftReportQty = const {};
 
-  /// 我的服务端报工草稿（GET /daily-reports?status=0，≤10×100 页拉全）：
-  /// 「草稿」分段的业务行与「生产中」扣减共用同一次读取，任何失败都不扣、
-  /// 「草稿」段退回只显示本地草稿（fail-open，与旧显示一致）。
-  List<ProductionDailyReportListItem> _serverReportDrafts = const [];
-  int _serverReportDraftTotal = 0;
-  bool _serverReportDraftsLoading = false;
+  /// 未审核报工按真实执行段关联原任务行；草稿不改变任务分类。
+  Map<String, List<ProductionDailyReportListItem>> _reportDraftsBySegment =
+      const {};
   String? _serverReportDraftsError;
 
-  /// 待报被草稿全量承接的任务数（对全部「生产中」任务扫描得出，与当前页/筛选
-  /// 无关）——「生产中」分段计数扣减用它（2026-09-26 用户口径「保存了应该
-  /// 进行中不显示」：正文与计数一起离段，行从「草稿」段看）。
-  int _draftFullyClaimedCount = 0;
   int _page = 1;
   int _totalPages = 0;
   bool _loading = false;
@@ -602,6 +615,13 @@ class _ProductionWorkshopTasksPageState
   ) {
     final busy = _navigating || _loading;
     return [
+      if (_hasTaskDraft(task))
+        UtenMenuItem(
+          label: '继续草稿',
+          icon: Icons.drafts_outlined,
+          enabled: !busy,
+          onTap: () => _resumeTaskDraft(task),
+        ),
       if (_canStart &&
           task.materialDiscoveryStatus == 'PENDING' &&
           task.materialDiscoveryRequestId != null)
@@ -746,7 +766,7 @@ class _ProductionWorkshopTasksPageState
               '不能更改生产路线；$description',
         _ =>
           '生产路线已冻结：本工单已有报工记录，更改路线不能改写已发生的生产事实。'
-              '如确需更改，请先红冲相关报工；$description',
+              '如确需更改，请先反审相关报工；$description',
       },
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1112,6 +1132,12 @@ class _ProductionWorkshopTasksPageState
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  @override
+  void dispose() {
+    _taskDetailRevision.dispose();
+    super.dispose();
+  }
+
   /// 写操作之后(本页提交、子页面办完返回)的整页重拉: 列表与顶部分类徽章一起刷新。
   ///
   /// 2026-09-24 用户口径「点批量领料、批量开工，左上角分类应该刷新；现在徽章要手动
@@ -1142,9 +1168,7 @@ class _ProductionWorkshopTasksPageState
     // 分类默认不选（ADR-066 同范式）：未选分类不请求列表、不显示数据，
     // 只刷新顶部分类徽章计数；点了分类才加载对应内容。历史任务段同理：
     // 未选时间段/全部不发请求（时间门控占位）。
-    if (_status == null ||
-        _status == 'DRAFT' ||
-        (_isHistory && _historyTime.isNone)) {
+    if (_status == null || (_isHistory && _historyTime.isNone)) {
       setState(() {
         _items = const [];
         _page = 1;
@@ -1155,8 +1179,8 @@ class _ProductionWorkshopTasksPageState
         _draftReportQty = const {};
         _resetServerDraftState();
       });
-      // 服务端报工草稿与列表加载无关（「草稿」分段正文、分段计数、生产中扣减
-      // 都用它），分类未选/草稿段同样要拉；失败 fail-open。
+      // 未审核报工仍显示在原任务，保存草稿不让工单离开生产阶段。
+      _taskDetailRevision.value++;
       unawaited(_loadDraftReportState(generation));
       return;
     }
@@ -1220,6 +1244,7 @@ class _ProductionWorkshopTasksPageState
         _draftReportQty = const {};
         _resetServerDraftState();
       });
+      _taskDetailRevision.value++;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || generation != _loadGeneration) return;
         final available = _tableRows.items
@@ -1232,8 +1257,7 @@ class _ProductionWorkshopTasksPageState
           );
         }
       });
-      // 服务端报工草稿任何分类下都拉：正文扣减只在「生产中」生效，但「草稿」
-      // 分段行与两处分段计数（草稿=本地+服务端、生产中=扣全量承接）都要它。
+      // 报工草稿保留原任务行与计数，只扣减已经承接的可报额度。
       unawaited(_loadDraftReportState(generation));
     } catch (_) {
       if (mounted && generation == _loadGeneration) {
@@ -1247,29 +1271,21 @@ class _ProductionWorkshopTasksPageState
   }
 
   void _resetServerDraftState() {
-    _serverReportDrafts = const [];
-    _serverReportDraftTotal = 0;
-    _serverReportDraftsLoading = true;
+    _reportDraftsBySegment = const {};
     _serverReportDraftsError = null;
-    _draftFullyClaimedCount = 0;
   }
 
-  /// 拉取我的服务端报工草稿（status=0）并按执行段累计承接量，落到
-  /// [_draftReportQty] / [_serverReportDrafts] / [_draftFullyClaimedCount]。
+  /// 按报工明细的执行段身份关联原任务行，并累计已经承接的数量。
   ///
   /// 草稿是待审的暂态（审核通过即转入已报），正常很少；先列草稿再逐张读明细，
   /// 按「非实际超产」行的完工量累计到执行段——与报工读侧的额度口径一致（实际
   /// 超产不占计划额度）。任何失败都保持不扣：宁可显示还能报，也不能把没报的说成
   /// 已报完；删除草稿后下一次重拉自然恢复待报。
   ///
-  /// 有草稿承接时再扫一遍全部「生产中」任务（无筛选、与当前页无关），数出
-  /// 「待报被草稿全量承接」的任务数供「生产中」分段计数扣减；扫描失败同样
-  /// 不扣（计数回到服务端口径）。服务端分页上限 100/页；防御性封顶 10 页——
-  /// 草稿/任务积压成百上千属于审核流程已经停摆，宁可少扣也不再无限翻页。
+  /// 无须扫描全部任务或扣减任务计数；保存草稿没有让任务离开生产阶段。
   Future<void> _loadDraftReportState(int generation) async {
-    final drafts = <ProductionDailyReportListItem>[];
+    final bySegment = <String, List<ProductionDailyReportListItem>>{};
     final claims = <String, double>{};
-    var total = 0;
     try {
       final repo = ref.read(productionDailyReportRepositoryProvider);
       var page = 1;
@@ -1279,13 +1295,16 @@ class _ProductionWorkshopTasksPageState
           size: 100,
           filter: const ProductionDailyReportFilter(status: 0),
         );
-        total = result.total;
-        drafts.addAll(result.items);
         for (final draft in result.items) {
           final detail = await repo.detail(draft.id);
+          if (detail.status != 0) continue;
+          final linkedSegments = <String>{};
           for (final item in detail.items) {
             final segmentId = item.executionSegmentId;
             final qty = item.qty;
+            if (segmentId != null && segmentId.isNotEmpty) {
+              linkedSegments.add(segmentId);
+            }
             if (segmentId == null ||
                 qty == null ||
                 !qty.isFinite ||
@@ -1293,6 +1312,9 @@ class _ProductionWorkshopTasksPageState
               continue;
             }
             claims[segmentId] = (claims[segmentId] ?? 0) + qty;
+          }
+          for (final segmentId in linkedSegments) {
+            bySegment.putIfAbsent(segmentId, () => []).add(draft);
           }
         }
         if (page >= result.totalPages || page >= 10) break;
@@ -1302,47 +1324,17 @@ class _ProductionWorkshopTasksPageState
       // 草稿读不回来就不扣、不并（与未上线本口径时的显示一致）。
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _serverReportDrafts = const [];
-        _serverReportDraftTotal = 0;
-        _serverReportDraftsLoading = false;
-        _serverReportDraftsError = '报工草稿读取失败，当前只显示本地草稿';
+        _reportDraftsBySegment = const {};
+        _serverReportDraftsError = '报工草稿读取失败，请刷新后核对已保存的报工';
       });
+      _taskDetailRevision.value++;
       return;
-    }
-    var fullyClaimed = 0;
-    if (claims.isNotEmpty) {
-      try {
-        final repo = ref.read(productionExecutionWorkbenchRepositoryProvider);
-        var page = 1;
-        while (true) {
-          final tasks = await repo.workshopTasks(
-            page: page,
-            size: 100,
-            status: 'IN_PROGRESS',
-          );
-          fullyClaimed += tasks.items
-              .where(
-                (task) => _fullyClaimedValues(
-                  task.remainingReportQty,
-                  claims[task.segmentId] ?? 0,
-                ),
-              )
-              .length;
-          if (page >= tasks.totalPages || page >= 10) break;
-          page++;
-        }
-      } catch (_) {
-        fullyClaimed = 0; // 计数扫描失败：分段计数回到服务端口径。
-      }
     }
     if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _draftReportQty = claims;
-      _serverReportDrafts = drafts;
-      _serverReportDraftTotal = total;
-      _serverReportDraftsLoading = false;
+      _reportDraftsBySegment = bySegment;
       _serverReportDraftsError = null;
-      _draftFullyClaimedCount = fullyClaimed;
       // 扣减可能让个别行失去报工资格：勾选集同步收敛，与 _load 收口同一谓词。
       final available = _tableRows.items
           .where(_selectableTask)
@@ -1350,6 +1342,7 @@ class _ProductionWorkshopTasksPageState
           .toSet();
       _selected.removeWhere((id) => !available.contains(id));
     });
+    _taskDetailRevision.value++;
   }
 
   /// 本任务被未审核报工草稿承接的数量。
@@ -1363,49 +1356,156 @@ class _ProductionWorkshopTasksPageState
     return (task.remainingReportQty - claimed).clamp(0.0, double.infinity);
   }
 
-  /// 草稿把待报全部承接：待办从「生产中」离段（审核或删除草稿后恢复）。只认
-  /// 「草稿造成的耗尽」——已审核报满（remainingReportQty 本来就为 0）的行保持
-  /// 原有勾选口径。
+  /// 草稿已承接全部额度：原任务仍展示，但禁止重复创建报工。
   bool _draftFullyClaimed(ProductionExecutionWorkbenchSegment task) =>
       _fullyClaimedValues(task.remainingReportQty, _draftClaimedQty(task));
 
-  /// 「待报被草稿全量承接」的纯量谓词（列表行与全量计数扫描共用同一口径）。
+  /// 草稿额度是否已承接全部剩余待报数量。
   static bool _fullyClaimedValues(double remainingReportQty, double claimed) =>
       remainingReportQty > 0.000001 && remainingReportQty - claimed <= 0.000001;
 
-  /// 「草稿」分段的本地草稿范围（与分段计数旧口径同一 scope）。
+  /// 原任务行的本地填写恢复范围。
   static const _draftScope = FormDraftCategoryScope(
     module: BadgeModule.workshop,
   );
 
-  /// 「草稿」分段计数 = 本地 workshop 表单草稿 + 我的服务端报工草稿，按
-  /// 「本地草稿已是某张服务端草稿的补附件存档（createdReportId 命中）」去重。
-  /// 服务端读取中/失败（fail-open）时只有本地数，与正文一致。
-  int _draftSegmentCount(WidgetRef ref) {
-    final local = ref.watch(formDraftCategoryProvider(_draftScope));
-    final serverIds = {for (final draft in _serverReportDrafts) draft.id};
-    final overlapped = local
-        .where((draft) => formDraftConfirmedIds(draft).any(serverIds.contains))
-        .length;
-    return local.length + _serverReportDraftTotal - overlapped;
+  List<FormDraft> _localDraftsOf(ProductionExecutionWorkbenchSegment task) =>
+      taskDraftsFor(
+        ref.read(formDraftCategoryProvider(_draftScope)),
+        matches: (draft) => workshopTaskDraftMatches(draft, task.segmentId),
+      );
+
+  bool _hasTaskDraft(ProductionExecutionWorkbenchSegment task) =>
+      _localDraftsOf(task).isNotEmpty ||
+      (_reportDraftsBySegment[task.segmentId]?.isNotEmpty ?? false);
+
+  String _taskStatus(ProductionExecutionWorkbenchSegment task) {
+    final local = _localDraftsOf(task);
+    return local.isNotEmpty
+        ? taskDraftStatus(local)
+        : _hasTaskDraft(task)
+        ? '草稿'
+        : _flowStageOf(task).displayLabel;
   }
 
-  /// 「生产中」正文行：被草稿全量承接的任务离段（从「草稿」段看）；部分承接
-  /// 的行保留并显示扣减后的待报（分批报工不受影响）。草稿读取失败（fail-open）
-  /// 不扣，回旧显示。其余分类原样返回。
-  List<ProductionExecutionWorkbenchSegment> get _draftFilteredItems =>
-      _status == 'IN_PROGRESS'
-      ? _items
-            .where((task) => !_draftFullyClaimed(task))
-            .toList(growable: false)
-      : _items;
+  Future<bool> _resumeLocalOperation(
+    List<ProductionExecutionWorkbenchSegment> tasks,
+    Set<String> paths,
+  ) async {
+    final drafts = taskDraftsFor(
+      ref.read(formDraftCategoryProvider(_draftScope)),
+      matches: (draft) => paths.contains(Uri.parse(draft.route).path) &&
+          tasks.any((task) => workshopTaskDraftMatches(draft, task.segmentId)),
+    );
+    if (drafts.isEmpty) return false;
+    setState(() => _navigating = true);
+    try {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _reloadAfterChange();
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+    return true;
+  }
 
-  /// 表格正文行：在 [_draftFilteredItems] 之上叠加「等待物料」的默认就绪度排序
+  Future<void> _resumeTaskDraft(ProductionExecutionWorkbenchSegment task) async {
+    if (_navigating || _loading) return;
+    final owner = ref.read(authenticatedScopeProvider);
+    final local = _localDraftsOf(task);
+    final reports = _reportDraftsBySegment[task.segmentId] ?? const [];
+    final localReportIds = {
+      for (final draft in local) ...formDraftConfirmedIds(draft),
+    };
+    final formal = reports
+        .where((report) => !localReportIds.contains(report.id))
+        .toList(growable: false);
+    if (local.isEmpty && formal.isEmpty) return;
+    String? selected;
+    if (formal.isNotEmpty) {
+      selected = local.isEmpty && formal.length == 1
+          ? 'report:${formal.single.id}'
+          : await showDialog<String>(
+              context: context,
+              builder: (dialogContext) => AlertDialog(
+                title: const Text('继续填写'),
+                content: SizedBox(
+                  width: 460,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final draft in local)
+                          ListTile(
+                            leading: const Icon(Icons.drafts_outlined),
+                            title: Text(draft.title),
+                            subtitle: Text(taskDraftStatus([draft])),
+                            onTap: () => Navigator.pop(
+                              dialogContext, 'local:${draft.id}',
+                            ),
+                          ),
+                        for (final report in formal)
+                          ListTile(
+                            leading: const Icon(Icons.fact_check_outlined),
+                            title: Text(report.billNo ?? '报工草稿'),
+                            subtitle: const Text('报工草稿 · 待审核'),
+                            onTap: () => Navigator.pop(
+                              dialogContext, 'report:${report.id}',
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('取消'),
+                  ),
+                ],
+              ),
+            );
+      if (!mounted ||
+          selected == null ||
+          owner != ref.read(authenticatedScopeProvider)) {
+        return;
+      }
+    }
+    setState(() => _navigating = true);
+    try {
+      if (selected?.startsWith('report:') ?? false) {
+        final reportId = selected!.substring('report:'.length);
+        if (!locationAllowedFor(
+          ref.read(currentPermissionsProvider),
+          ref.read(isSuperAdminProvider),
+          '/production/daily-reports/$reportId',
+        )) {
+          return;
+        }
+        await context.push<void>(
+          '/production/daily-reports/${Uri.encodeComponent(reportId)}'
+          '?from=workshop-tasks',
+        );
+      } else {
+        await resumeTaskFormDraft(
+          context,
+          ref,
+          selected == null
+              ? local
+              : local.where((draft) => 'local:${draft.id}' == selected).toList(),
+        );
+      }
+      if (mounted) await _reloadAfterChange();
+    } finally {
+      if (mounted) setState(() => _navigating = false);
+    }
+  }
+
+  /// 表格正文行：叠加「等待物料」的默认就绪度排序
   /// （2026-09-26 用户口径「越接近可开工越靠上」，见 [workshopPreparingReadinessRank]）。
   /// 用户点了表头排序（sourcePlan/order/segment）时不覆盖服务端排序；同档内按
   /// 工单号稳定次序（再叠 segmentId 兜底，排序结果可复现）。
   List<ProductionExecutionWorkbenchSegment> get _displayItems {
-    final items = _draftFilteredItems;
+    final items = _items;
     if (!_isPreparing || _sortColumn != null) return items;
     final sorted = List<ProductionExecutionWorkbenchSegment>.of(items);
     sorted.sort((a, b) {
@@ -1474,6 +1574,13 @@ class _ProductionWorkshopTasksPageState
     List<ProductionExecutionWorkbenchSegment> tasks,
   ) async {
     if (!_canStart || _navigating || tasks.isEmpty) return;
+    if (await _resumeLocalOperation(tasks, {
+      RouteName.productionDrawRequest,
+      ProductionMaterialDiscoveryRequestPage.route,
+    })) {
+      return;
+    }
+    if (!mounted) return;
     // 双保险：调用方按 _selectedDrawTasks 过滤，这里再挡一次路线未放行的行。
     tasks = tasks
         .where(
@@ -1853,23 +1960,51 @@ class _ProductionWorkshopTasksPageState
         '${china.day.toString().padLeft(2, '0')} $hm';
   }
 
-  /// 报工入口唯一：勾选后右下角悬浮「批量报工(N)」进入汇总报工页，
-  /// 一次提交（服务端口径：一次报工=同一车间；跨车间选择在这里给明确提示）。
+  bool _canReportTask(ProductionExecutionWorkbenchSegment task) =>
+      _canCreateReport &&
+      task.segmentStatus == 'IN_PROGRESS' &&
+      task.canReport &&
+      !_draftFullyClaimed(task);
+
+  /// 批量与详情报工共用同一入口；详情只传当前任务，不改用全页勾选集。
   Future<void> _reportSelected() async {
     if (!_canCreateReport || _selected.isEmpty || _navigating) return;
-    final requested = _selected.toList(growable: false);
-    if (requested.length > 1 &&
-        _tableRows.items.any(
-          (task) => requested.contains(task.segmentId) && !task.canBatchReport,
-        )) {
+    await _reportTasks(
+      _tableRows.items
+          .where((task) => _selected.contains(task.segmentId))
+          .toList(),
+    );
+  }
+
+  Future<void> _reportTasks(
+    List<ProductionExecutionWorkbenchSegment> tasks,
+  ) async {
+    if (!_canCreateReport || tasks.isEmpty || _navigating) return;
+    if (await _resumeLocalOperation(tasks, {'/production/daily-reports/new'})) {
+      return;
+    }
+    if (!mounted) return;
+    // 弹窗打开期间，列表、草稿额度和权限仍可能变化。执行时再认当前任务事实。
+    final currentById = {
+      for (final task in _tableRows.items) task.segmentId: task,
+    };
+    final current = [for (final task in tasks) currentById[task.segmentId]];
+    if (current.any((task) => task == null || !_canReportTask(task))) {
+      context.appWarning('任务或报工草稿已更新，请刷新后再报工');
+      return;
+    }
+    tasks = current.cast<ProductionExecutionWorkbenchSegment>();
+    final requested = tasks
+        .map((task) => task.segmentId)
+        .toList(growable: false);
+    if (requested.length > 1 && tasks.any((task) => !task.canBatchReport)) {
       context.appWarning(
         '所选任务含需确认报工来源的工单，请单独勾选该任务，再选择本次对应的订单或公共备货来源',
         force: true,
       );
       return;
     }
-    final workshops = _tableRows.items
-        .where((task) => requested.contains(task.segmentId))
+    final workshops = tasks
         .map((task) => task.workshopDepartmentId ?? task.workshopName ?? '')
         .where((value) => value.isNotEmpty)
         .toSet();
@@ -1931,122 +2066,160 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  /// 要先过开工确认表的行在详情里的说明(点「开工」即弹确认表)。
-  String _startConfirmationHint(ProductionExecutionWorkbenchSegment task) {
-    final needs = [
-      if (task.needsMaterialChoice) '选用车间内料仓里的哪种料',
-      if (task.startRoute == null) '选生产路线',
-    ];
-    return needs.isEmpty
-        ? '开工前要在开工确认表里核对一次，点「开工」即可。'
-        : '开工前要先${needs.join('、')}：点「开工」在开工确认表里一次办完，'
-              '以后同一产品自动带出。';
+  Widget _detailMaterialSummary(
+    BuildContext context,
+    ProductionExecutionWorkbenchSegment task,
+  ) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    return Wrap(
+      spacing: UtenSpacing.s16,
+      runSpacing: UtenSpacing.s4,
+      children: [
+        for (final part in _materialSummaryParts(task))
+          Text(
+            part.$1,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: switch (part.$2) {
+                _MaterialSummaryTone.short => theme.colorScheme.error,
+                _MaterialSummaryTone.drawable =>
+                  dark ? UtenColors.infoOnDark : UtenColors.statusInfo,
+                _MaterialSummaryTone.planning =>
+                  dark ? UtenColors.fuchsiaOnDark : UtenColors.statusFuchsia,
+                _MaterialSummaryTone.muted =>
+                  theme.colorScheme.onSurfaceVariant,
+                _MaterialSummaryTone.plain => null,
+              },
+            ),
+          ),
+      ],
+    );
   }
 
   Future<void> _openTaskDetail(ProductionExecutionWorkbenchSegment task) async {
     if (_navigating || _loading) return;
+    final segmentId = task.segmentId;
     final action = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        key: ValueKey('workshop-task-detail-${task.segmentId}'),
-        title: const Text('车间任务详情'),
-        content: SizedBox(
-          width: 760,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('${task.segmentCode} · ${task.productName ?? '—'}'),
-                const SizedBox(height: UtenSpacing.s12),
-                Text('生产计划：${task.planNo}'),
-                Text('车间：${task.workshopName ?? '—'}'),
-                Text('负责人：${task.responsibleEmployeeName ?? '—'}'),
-                Row(
-                  children: [
-                    Text(
-                      '生产路线：',
-                      style: Theme.of(dialogContext).textTheme.bodyMedium,
-                    ),
-                    if (task.startRoute == null)
-                      Text(
-                        '待确认（先确认路线再开工）',
-                        style: Theme.of(dialogContext).textTheme.bodyMedium
-                            ?.copyWith(
-                              color: Theme.of(
-                                dialogContext,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
-                      )
-                    else
-                      UtenStatusBadge(
-                        label: task.startRouteLabel,
-                        type: _routeBadgeType(task.startRoute),
-                        icon: _routeIcons[task.startRoute],
-                      ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                Text(
-                  '计划数量：${_taskQuantity(task.plannedQty)} ${task.productUnitName ?? ''}',
-                ),
-                Text(
-                  '实际报工：${_taskQuantity(task.reportedQty)}；'
-                  '其中超产 ${_taskQuantity(task.actualSurplusReportedQty)}',
-                ),
-                Text(
-                  '计划合格实收：${_taskQuantity(task.plannedInboundQty)}；'
-                  '公共超产实收：${_taskQuantity(task.actualSurplusInboundQty)}',
-                ),
-                if (task.overLimitPendingQty > 0)
+      builder: (dialogContext) => ValueListenableBuilder<int>(
+        valueListenable: _taskDetailRevision,
+        builder: (dialogContext, revision, child) => Consumer(
+          builder: (dialogContext, dialogRef, _) {
+            dialogRef.watch(currentPermissionsProvider);
+            dialogRef.watch(isSuperAdminProvider);
+            dialogRef.watch(formDraftCategoryProvider(_draftScope));
+            final task = {
+              for (final row in _items) row.segmentId: row,
+            }[segmentId];
+            if (task == null) {
+              return AlertDialog(
+                title: const Text('车间任务详情'),
+                content: const Text('任务已更新，请关闭后重新打开'),
+                actions: [
                   TextButton(
-                    onPressed: task.overLimitDispositionId == null
-                        ? null
-                        : () {
-                            Navigator.of(dialogContext).pop();
-                            context.push(
-                              RoutePath.productionOverLimitDisposition(
-                                task.overLimitDispositionId!,
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('关闭'),
+                  ),
+                ],
+              );
+            }
+            final preparing = const {
+              'WAITING',
+              'READY',
+              'DISPATCHED',
+            }.contains(task.segmentStatus);
+            final canStart = _canStart && preparing && _canEnterStart(task);
+            final canReport = _canReportTask(task);
+            final canDraw =
+                _canStart &&
+                (preparing || task.segmentStatus == 'IN_PROGRESS') &&
+                _canRequestDrawTask(task);
+            final canBatch =
+                _canStart && preparing && _canRequestBatchDrawTask(task);
+            void select(String action) =>
+                Navigator.of(dialogContext).pop(action);
+            final drawButton = canDraw
+                ? (canStart || canReport
+                      ? OutlinedButton.icon(
+                          key: ValueKey(
+                            'workshop-detail-draw-${task.segmentId}',
+                          ),
+                          onPressed: () => select('draw'),
+                          icon: const Icon(Icons.move_to_inbox_outlined),
+                          label: Text(
+                            task.segmentStatus == 'IN_PROGRESS' ? '继续领料' : '领料',
+                          ),
+                        )
+                      : FilledButton.icon(
+                          key: ValueKey(
+                            'workshop-detail-draw-${task.segmentId}',
+                          ),
+                          onPressed: () => select('draw'),
+                          icon: const Icon(Icons.move_to_inbox_outlined),
+                          label: Text(
+                            task.segmentStatus == 'IN_PROGRESS' ? '继续领料' : '领料',
+                          ),
+                        ))
+                : null;
+            return WorkshopTaskDetailDialog(
+              task: task,
+              stage: _flowStageOf(task),
+              remainingReportQty: _remainingReportOf(task),
+              draftReportedQty: _draftClaimedQty(task),
+              routeBadge: UtenStatusBadge(
+                label: task.startRoute == null ? '路线待确认' : task.startRouteLabel,
+                type: _routeBadgeType(task.startRoute),
+                icon: _routeIcons[task.startRoute],
+              ),
+              materialSummary: _detailMaterialSummary(dialogContext, task),
+              notices: [
+                if (_showMaterialBinSetupHint(task))
+                  const Text(_materialBinSetupHint),
+                if (task.overLimitPendingQty > 0)
+                  Container(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(dialogContext).colorScheme.errorContainer,
+                      borderRadius: UtenRadius.mdAll,
+                    ),
+                    child: Wrap(
+                      spacing: UtenSpacing.s12,
+                      runSpacing: UtenSpacing.s4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          '超限待处理 ${task.overLimitPendingQtyText}（未计入可用库存）',
+                          style: Theme.of(dialogContext).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(
+                                  dialogContext,
+                                ).colorScheme.onErrorContainer,
+                                fontWeight: FontWeight.w700,
                               ),
-                            );
-                          },
-                    child: Text(
-                      '超限待处理 ${task.overLimitPendingQtyText}（未计入可用库存） · 查看最近一笔',
+                        ),
+                        if (task.overLimitDispositionId != null)
+                          TextButton(
+                            onPressed: () => select('over-limit'),
+                            child: const Text('查看最近一笔'),
+                          ),
+                      ],
                     ),
                   ),
-                Text(
-                  '待报数量（含品质恢复）：${_taskQuantity(_remainingReportOf(task))}'
-                  '${_draftClaimedQty(task) > 0.000001 ? '；报工草稿待审核 ${_taskQuantity(_draftClaimedQty(task))}' : ''}',
-                ),
-                if (task.startRoute == 'CONTINUOUS')
-                  const Text('按实际完工量与实际用料报工，需求份和公共份由系统分别核定。'),
-                const SizedBox(height: UtenSpacing.s12),
-                Text(_flowStageOf(task).label),
-                const SizedBox(height: UtenSpacing.s8),
-                if (task.waitingForPlanning) ...[
+                if (task.waitingForPlanning)
                   _planningGapBlock(
                     dialogContext,
                     task,
-                    onUrge: () => Navigator.of(dialogContext).pop('urge'),
+                    onUrge: () => select('urge'),
                   ),
-                  const SizedBox(height: UtenSpacing.s8),
-                ],
-                // 逐种物料(ADR-095/096)：自制子件只有交到本任务后才算已领(直送或经仓库)；
-                // 齐套生产到齐前不预留，「仓库已到」按齐套口径显示实物。
-                Text(
-                  '物料：${_materialSummaryText(task)}'
-                  '${task.zeroMaterial || task.materialKindCount == 0 ? '' : '；已投料可产 ${_taskQuantity(task.materialSupportedOutputQty)} ${task.productUnitName ?? ''}'}',
-                  style: Theme.of(
-                    dialogContext,
-                  ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                if (!task.zeroMaterial && task.materialKindCount > 0) ...[
-                  const SizedBox(height: UtenSpacing.s8),
+              ],
+              materials: [
+                if (!task.zeroMaterial && task.materialKindCount > 0)
                   WorkshopTaskMaterialTable(
                     key: ValueKey('workshop-task-materials-${task.segmentId}'),
                     segmentId: task.segmentId,
+                    compact: true,
                   ),
-                ],
                 if (task.binMaterialState ==
                         ProductionExecutionWorkbenchSegment.binStateKnown &&
                     const {
@@ -2055,92 +2228,84 @@ class _ProductionWorkshopTasksPageState
                       'IN_PROGRESS',
                     }.contains(task.segmentStatus) &&
                     _canOpenMaterialBin())
-                  WorkshopTaskMaterialBinPanel(segmentId: task.segmentId),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  task.needsMaterialBin && _isPreparing
-                      ? _materialBinMissingText(task)
-                      : _canStart &&
-                            _canEnterStart(task) &&
-                            task.needsStartConfirmation
-                      ? _startConfirmationHint(task)
-                      : task.needsMaterialChoice && _isPreparing
-                      ? _blockedReasonOf(task)
-                      : task.startRoute == null
-                      ? '请先确认路线。齐套或持续生产共用原工单；只有各批独立管理时才选择分批。'
-                      : _showMaterialBinSetupHint(task)
-                      ? _materialBinSetupHint
-                      : _usesOnlyMaterialBin(task)
-                      ? '原料由车间内料仓供给，不用按工单领料；正常开工、报工，'
-                            '生产中可按实际需要提前整批补料。'
-                      : task.startRoute == 'CONTINUOUS'
-                      ? '每种必需物料共同支持部分产量后即可开工；仓库料分次领取，直送料按实际交接投入，后续均在本任务继续。'
-                      : _canRequestBatchDrawTask(task)
-                      ? '现有合格物料能配齐多少，就可以先安排多少。点击“分批领料”核对本次数量；剩余任务继续等待补料。'
-                      : _canRequestDrawTask(task)
-                      ? '可以选择本次物料并填写领料数量。确认提交后由仓库发料，实际领齐本批后再开工。'
-                      : _canStartTask(task)
-                      ? '本任务已领齐或无需领料，可以确认开工；开工后支持分次报工。'
-                      : task.segmentStatus == 'IN_PROGRESS'
-                      ? '可按实际完成数量分次报工，实际用料和余料继续从本任务登记。'
-                      : _blockedReasonOf(task),
-                ),
+                  WorkshopTaskMaterialBinPanel(
+                    segmentId: task.segmentId,
+                    compact: true,
+                  ),
               ],
-            ),
-          ),
+              actions: [
+                if (_hasTaskDraft(task))
+                  FilledButton.icon(
+                    key: ValueKey('workshop-detail-resume-${task.segmentId}'),
+                    onPressed: () => select('resume-draft'),
+                    icon: const Icon(Icons.drafts_outlined),
+                    label: const Text('继续草稿'),
+                  ),
+                if (_canViewPlan && task.planId.isNotEmpty)
+                  TextButton(
+                    onPressed: () => select('plan'),
+                    child: const Text('查看生产计划'),
+                  ),
+                if (task.hasMaterialActivity || task.hasSharedMaterialActivity)
+                  TextButton(
+                    onPressed: () => select('material'),
+                    child: Text(_materialUsageLabel(task)),
+                  ),
+                if ((task.needsMaterialBin ||
+                        _showMaterialBinSetupHint(task)) &&
+                    _canOpenMaterialBin())
+                  TextButton.icon(
+                    key: ValueKey(
+                      'workshop-detail-material-bin-${task.segmentId}',
+                    ),
+                    onPressed: () => select('material-bin'),
+                    icon: const Icon(Icons.inventory_2_outlined),
+                    label: const Text('车间内料仓'),
+                  ),
+                ?drawButton,
+                if (canBatch)
+                  FilledButton.icon(
+                    key: ValueKey('workshop-detail-batch-${task.segmentId}'),
+                    onPressed: () => select('batch'),
+                    icon: const Icon(Icons.call_split_rounded),
+                    label: const Text('分批领料'),
+                  ),
+                if (canStart)
+                  FilledButton.icon(
+                    key: ValueKey('workshop-detail-start-${task.segmentId}'),
+                    onPressed: () => select('start'),
+                    icon: const Icon(Icons.play_circle_outline),
+                    label: const Text('开工'),
+                  ),
+                if (canReport)
+                  FilledButton.icon(
+                    key: ValueKey('workshop-detail-report-${task.segmentId}'),
+                    onPressed: () => select('report'),
+                    icon: const Icon(Icons.edit_note_rounded),
+                    label: const Text('报工'),
+                  ),
+              ],
+            );
+          },
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('关闭'),
-          ),
-          if (_canViewPlan && task.planId.isNotEmpty)
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop('plan'),
-              child: const Text('查看生产计划'),
-            ),
-          if (task.hasMaterialActivity || task.hasSharedMaterialActivity)
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop('material'),
-              child: Text(_materialUsageLabel(task)),
-            ),
-          if ((task.needsMaterialBin || _showMaterialBinSetupHint(task)) &&
-              _canOpenMaterialBin())
-            TextButton.icon(
-              key: ValueKey('workshop-detail-material-bin-${task.segmentId}'),
-              onPressed: () => Navigator.of(dialogContext).pop('material-bin'),
-              icon: const Icon(Icons.inventory_2_outlined),
-              label: const Text('车间内料仓'),
-            ),
-          if (_canStart && _isPreparing && _canEnterStart(task))
-            FilledButton.icon(
-              key: ValueKey('workshop-detail-start-${task.segmentId}'),
-              onPressed: () => Navigator.of(dialogContext).pop('start'),
-              icon: const Icon(Icons.play_circle_outline),
-              label: const Text('开工'),
-            ),
-          if (_canStart && _canRequestDrawTask(task))
-            FilledButton.icon(
-              key: ValueKey('workshop-detail-draw-${task.segmentId}'),
-              onPressed: () => Navigator.of(dialogContext).pop('draw'),
-              icon: const Icon(Icons.move_to_inbox_outlined),
-              label: Text(task.segmentStatus == 'IN_PROGRESS' ? '继续领料' : '去领料'),
-            ),
-          if (_canStart && _isPreparing && _canRequestBatchDrawTask(task))
-            FilledButton.icon(
-              key: ValueKey('workshop-detail-batch-${task.segmentId}'),
-              onPressed: () => Navigator.of(dialogContext).pop('batch'),
-              icon: const Icon(Icons.call_split_rounded),
-              label: const Text('分批领料'),
-            ),
-        ],
       ),
     );
     if (!mounted || action == null) return;
+    final current = {
+      for (final row in _tableRows.items) row.segmentId: row,
+    }[task.segmentId];
+    if (current == null) {
+      context.appWarning('任务已更新，请刷新后重新打开');
+      return;
+    }
+    task = current;
     switch (action) {
+      case 'resume-draft':
+        await _resumeTaskDraft(task);
       case 'material-bin':
-        await _openMaterialBin(workshopId: task.workshopDepartmentId);
-        break;
+        if (_canOpenMaterialBin()) {
+          await _openMaterialBin(workshopId: task.workshopDepartmentId);
+        }
       case 'draw':
         await _requestDraw([task]);
       case 'batch':
@@ -2151,8 +2316,18 @@ class _ProductionWorkshopTasksPageState
         await _openMaterialUsage(task);
       case 'start':
         await _startTasks([task]);
+      case 'report':
+        await _reportTasks([task]);
       case 'urge':
         await _urgePlanning(task);
+      case 'over-limit':
+        final dispositionId = task.overLimitDispositionId;
+        if (dispositionId != null) {
+          await context.push(
+            RoutePath.productionOverLimitDisposition(dispositionId),
+          );
+          if (mounted) await _reloadAfterChange();
+        }
     }
   }
 
@@ -2187,15 +2362,14 @@ class _ProductionWorkshopTasksPageState
             task.materialPlanningGapSummary!,
             style: theme.textTheme.bodyMedium,
           ),
-        Text(
-          task.planningUrgeCount > 0 && urgedAt != null
-              ? '已催 ${task.planningUrgeCount} 次 · 最近 ${_clock(urgedAt)}'
-                    '${task.planningUrgedByName == null ? '' : '（${task.planningUrgedByName}）'}'
-              : '料没订就到不了，点按钮提醒计划员去下单',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+        if (task.planningUrgeCount > 0 && urgedAt != null)
+          Text(
+            '已催 ${task.planningUrgeCount} 次 · 最近 ${_clock(urgedAt)}'
+            '${task.planningUrgedByName == null ? '' : '（${task.planningUrgedByName}）'}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
       ],
     );
     // 浅色：深品红底白字；深色：亮品红底深字——两种主题下按钮字都看得清(对比度 ≥ 4.5)。
@@ -2635,16 +2809,12 @@ class _ProductionWorkshopTasksPageState
     // gates. Watch both providers so a live grant/revoke updates actions now.
     ref.watch(currentPermissionsProvider);
     ref.watch(isSuperAdminProvider);
+    ref.watch(formDraftCategoryProvider(_draftScope));
     // 顶部分类徽章：与列表/服务端分段计数同源（互斥口径，加总=总数）；
     // 「历史任务」是终态，按全站口径不挂徽章。
     final counts = ref.watch(productionWorkshopTaskCountProvider);
     final workshops =
         ref.watch(productionWorkshopTreeProvider).valueOrNull ?? const [];
-    // 「生产中」计数扣掉「待报被草稿全量承接」的任务（正文一起离段，2026-09-26
-    // 用户口径「保存了应该进行中不显示」）；计数扫描失败（fail-open）回到服务端
-    // 口径（_draftFullyClaimedCount=0 即不扣），且不出现负数。
-    final inProgressDeducted = counts.inProgress - _draftFullyClaimedCount;
-    final inProgressCount = inProgressDeducted < 0 ? 0 : inProgressDeducted;
     // 顶栏「车间内料仓」与路由守卫同一份契约(不在页面里拼权限码)。
     final canOpenMaterialBin = locationAllowedFor(
       ref.watch(currentPermissionsProvider),
@@ -2658,6 +2828,7 @@ class _ProductionWorkshopTasksPageState
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
+          const FormDraftsAppBarButton(categoryId: 'workshop-new', label: '新建草稿'),
           if (canOpenMaterialBin)
             TextButton.icon(
               key: const Key('workshop-material-bin-entry'),
@@ -2697,6 +2868,7 @@ class _ProductionWorkshopTasksPageState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const TaskDraftRecoveryNotice(scope: FormDraftCategoryScope(module: BadgeModule.workshop)),
                 // 开工准备汇总认料、等料、领料和可开工；数量不是必须领料的工单数。
                 // 与搜索：全站标准工具条。车间筛选在表格「生产车间」列表头。
                 // 「开工准备」红徽章：等待认料、领料、确认开工等下一步办理；
@@ -2706,15 +2878,6 @@ class _ProductionWorkshopTasksPageState
                 UtenFilterToolbar<String>(
                   segments: [
                     UtenFilterSegment(
-                      value: 'DRAFT',
-                      label: '草稿',
-                      // 计数=本地草稿 + 我的服务端报工草稿（去重：本地草稿若已是
-                      // 某张服务端草稿的「补附件」存档，只数一次）。读取中/失败
-                      // fail-open 只数本地（与正文一致）。
-                      count: _draftSegmentCount(ref),
-                      countForm: UtenSegmentCountForm.actionable,
-                    ),
-                    UtenFilterSegment(
                       value: 'PREPARING',
                       label: '开工准备',
                       count: counts.preparing,
@@ -2723,7 +2886,7 @@ class _ProductionWorkshopTasksPageState
                     UtenFilterSegment(
                       value: 'IN_PROGRESS',
                       label: '生产中',
-                      count: inProgressCount,
+                      count: counts.inProgress,
                       countForm: UtenSegmentCountForm.inProgress,
                     ),
                     // 2026-10-10 用户口径「报工送检」：生产中报完(remaining=0)未完工的
@@ -2780,6 +2943,12 @@ class _ProductionWorkshopTasksPageState
                   ),
                 ],
                 const SizedBox(height: UtenSpacing.s8),
+                if (_serverReportDraftsError != null && _status != null)
+                  Padding(
+                    key: const Key('workshop-server-draft-error'),
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                    child: Text(_serverReportDraftsError!),
+                  ),
                 Expanded(
                   // 分类默认不选：引导占位不发请求（与调度台大类行同范式）。
                   child: _status == null
@@ -2787,26 +2956,15 @@ class _ProductionWorkshopTasksPageState
                           message: '在上方选择分类后查看任务',
                           description: '开工准备包含待认料、等待物料和可开工任务；生产中可报工',
                         )
-                      : _status == 'DRAFT'
-                      ? WorkshopDraftSegment(
-                          scope: _draftScope,
-                          serverDrafts: _serverReportDrafts,
-                          loading: _serverReportDraftsLoading,
-                          error: _serverReportDraftsError,
-                          search: _keyword,
-                        )
                       : _isHistory && _historyTime.isNone
                       ? const UtenHistoryTimePlaceholder(
-                          description: '按计划完工日期加载已完工 / 已取消 / 已红冲工单',
+                          description: '按计划完工日期加载已完工 / 已取消 / 已撤回工单',
                         )
                       : MasterDataTableView<
                           ProductionExecutionWorkbenchSegment
                         >(
                           rowsController: _tableRows,
                           paginationRevision: _items,
-                          rowVisible: (task) =>
-                              _status != 'IN_PROGRESS' ||
-                              !_draftFullyClaimed(task),
                           tableKey:
                               'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.1',
                           columns: _columnsFor(_status!),
@@ -3055,15 +3213,10 @@ class _ProductionWorkshopTasksPageState
                           emptyMessage: _isPreparing
                               ? '当前车间没有待开工的工单'
                               : _status == 'IN_PROGRESS'
-                              ? (_items.isEmpty
-                                    ? '当前车间没有生产中的工单'
-                                    // 正文被草稿全量承接清空：指路「草稿」段，不说
-                                    // 成「没有生产中的工单」（那是不真实的事实）。
-                                    : '生产中工单的待报都已由报工草稿承接；'
-                                          '去「草稿」分类处理或删除草稿后恢复')
+                              ? '当前车间没有生产中的工单'
                               : _status == 'REPORT_INSPECTION'
                               ? '当前车间没有已报工待检验的工单'
-                              : '该时间段内没有已完工 / 已取消 / 已红冲的工单',
+                              : '该时间段内没有已完工 / 已取消 / 已撤回的工单',
                         ),
                 ),
                 // 跑批期间的全屏加载遮罩(组件自己推 root Overlay, 挂载位置随意;
@@ -3117,7 +3270,7 @@ class _ProductionWorkshopTasksPageState
       key: 'status',
       label: '状态',
       width: 72,
-      value: (task) => _flowStageOf(task).displayLabel,
+      value: _taskStatus,
       // 2026-09-26 用户口径「不同就绪度颜色差别大点、整格背景变色」＋2026-10-08
       // ADR-169 档位锚定：等待物料段整格铺实底（绿=可开工 / 紫=部分已投可开工 /
       // 蓝=去领料 / 琥珀=部分可领 / 青绿=待仓库发料 / 红=缺料等待不能开工 /
@@ -3128,7 +3281,9 @@ class _ProductionWorkshopTasksPageState
       // cellColor 双向对比度约定（黑/白自适应 + 正文字号），选中行统一青绿
       // 高亮也不再被胶囊底盖住。历史段红冲按单据事实取红（词表把已取消/已红冲
       // 同归 pending 灰，页面级显式覆盖：红冲是负向财务事件，取消才是中性终态）。
-      cellColor: (context, task) => _isPreparing
+      cellColor: (context, task) => _hasTaskDraft(task)
+          ? utenStatusBadgeCellColor(UtenStatusBadgeType.neutral)
+          : _isPreparing
           ? productionReadinessCellColor(_flowStageOf(task).tone)
           : utenStatusBadgeCellColor(
               task.segmentStatus == 'REVERSED'
@@ -3140,6 +3295,25 @@ class _ProductionWorkshopTasksPageState
       legendOf: (task) =>
           _isPreparing ? _readinessMeaning(_flowStageOf(task).tone) : null,
       cellBuilder: (_, task) {
+        if (_hasTaskDraft(task)) {
+          return Tooltip(
+            message: '继续此任务的已保存填写；${_flowStageOf(task).displayLabel}',
+            child: InkWell(
+              key: ValueKey('workshop-task-draft-${task.segmentId}'),
+              onTap: _navigating || _loading
+                  ? null
+                  : () => _resumeTaskDraft(task),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.drafts_outlined, size: 16),
+                  const SizedBox(width: 4),
+                  Flexible(child: Text(_taskStatus(task))),
+                ],
+              ),
+            ),
+          );
+        }
         final stage = _flowStageOf(task);
         final badge = Row(
           mainAxisSize: MainAxisSize.min,

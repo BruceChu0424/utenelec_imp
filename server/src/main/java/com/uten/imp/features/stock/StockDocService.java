@@ -90,6 +90,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockDocService implements ProductionPreStockedInboundPort {
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.InventoryValuationPort reversalValues;
+
     private static final String BALANCE_ADJUSTMENT_PERMISSION = "stock:balance:adjust";
 
     private static final short STATUS_DRAFT = 0;
@@ -293,7 +296,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
 
     // ===== 详情 =====
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,noRollbackFor=ApiException.class)
     public StockDocDetail detail(UUID id) {
         StockDocument d = requireDoc(id);
         requireDetailReadable(d);
@@ -578,6 +581,20 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         return toDetail(d, items);
     }
 
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('stock_doc:edit')")
+    public void lockDraftInputsForPlatform(UUID id,StockDocSaveRequest request) {
+        if(id==null)return;StockDocument document=requireDocForUpdate(id);
+        access.requireWritable(document.getMakerId(),"只能操作本人负责的仓库单据");
+    }
+
+    @Transactional(readOnly=true)
+    public boolean canEditPlatformFields(UUID id) {
+        StockDocument document=requireDoc(id);return access.canWrite(document.getMakerId())
+            && document.getStatus()!=null && document.getStatus()==STATUS_DRAFT
+            && !isProductionLinked(id) && !isAuthorizedBalanceAdjustment(document);
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:delete')")
     public void delete(UUID id) {
@@ -772,22 +789,55 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         var owner = org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus();
         PreStockedInboundBatchScope.run(context.postedDocumentIds, context.validatedWarehouseIds,
                 (id, key) -> confirmPreStockedFinishedInbound(id, key, context),
+                confirmations -> confirmPreStockedFinishedInboundBatch(confirmations, context),
                 productionCompletionReverse::afterFinishedInboundBatchApproved, owner::setRollbackOnly, work);
     }
 
     private void confirmPreStockedFinishedInbound(UUID id, String idempotencyKey,
             FinishedInboundBatchContext batchContext) {
-        List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        confirmPreStockedFinishedInboundBatch(
+                List.of(new ProductionPreStockedInboundPort.Confirmation(id, idempotencyKey)), batchContext);
+    }
+
+    /** One graph lock for the frozen set; posting and source allocation still follow the caller's order. */
+    private void confirmPreStockedFinishedInboundBatch(
+            List<ProductionPreStockedInboundPort.Confirmation> confirmations,
+            FinishedInboundBatchContext batchContext) {
+        List<ProductionPreStockedInboundPort.Confirmation> frozen = List.copyOf(confirmations);
+        if (frozen.isEmpty()) return;
+        var guard = lockProductionDocuments(frozen.stream()
+                .map(ProductionPreStockedInboundPort.Confirmation::documentId).toList());
+        for (var confirmation : frozen) {
+            UUID id = confirmation.documentId();
+            // Read after the complete row locks. Replays may return before the prefix's
+            // first-write verification; the shared Guard verifies once before any new posting.
+            var locked = new LockedFinishedInbound(id, requireDocForUpdate(id),
+                    itemRepo.findByDocIdOrderByLineNoAsc(id), guard);
+            confirmPreStockedFinishedInbound(locked, confirmation.idempotencyKey(), batchContext);
+        }
+    }
+
+    private void confirmPreStockedFinishedInbound(LockedFinishedInbound locked, String idempotencyKey,
+            FinishedInboundBatchContext batchContext) {
+        List<StockDocumentItem> items = locked.items();
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "先入库后质检的成品入库任务没有明细");
         }
         FinishedInboundConfirmRequest request = keyOnlyConfirmRequest(idempotencyKey);
         Map<UUID, BigDecimal> accepted = fullAcceptance(items);
-        String requestHash = finishedInboundConfirmationHash(id, accepted, null);
+        String requestHash = finishedInboundConfirmationHash(locked.id(), accepted, null);
         confirmFinishedInboundAfterPrelock(
-                id, request, accepted, null, requestHash,
-                lockProductionDocuments(List.of(id)), batchContext,
-                FinishedInLane.PRE_STOCKED_AUTO);
+                locked.id(), request, accepted, null, requestHash,
+                locked.guard(), batchContext, FinishedInLane.PRE_STOCKED_AUTO, locked);
+    }
+
+    /** Private synchronous evidence, created only after the complete document graph has been locked. */
+    private record LockedFinishedInbound(UUID id, StockDocument document, List<StockDocumentItem> items,
+            FulfillmentMutationLocks.Guard guard) {
+        private LockedFinishedInbound {
+            if (!id.equals(document.getId())) throw new IllegalArgumentException("入库单锁定身份不一致");
+            items = List.copyOf(items);
+        }
     }
 
     /**
@@ -828,9 +878,20 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             FulfillmentMutationLocks.Guard mutationGuard,
             FinishedInboundBatchContext batchContext,
             FinishedInLane lane) {
+        return confirmFinishedInboundAfterPrelock(id, request, accepted, varianceReason, requestHash,
+                mutationGuard, batchContext, lane, null);
+    }
+
+    private StockDocument confirmFinishedInboundAfterPrelock(
+            UUID id, FinishedInboundConfirmRequest request, Map<UUID, BigDecimal> accepted,
+            String varianceReason, String requestHash, FulfillmentMutationLocks.Guard mutationGuard,
+            FinishedInboundBatchContext batchContext, FinishedInLane lane, LockedFinishedInbound locked) {
+        if (locked != null && (!id.equals(locked.id()) || mutationGuard != locked.guard())) {
+            throw new IllegalStateException("已锁定入库上下文不属于本次确认");
+        }
         taskClaim.requireNoActiveClaimByOther(
                 "FULFILLMENT_TASK_APPROVE", id.toString());
-        StockDocument document = requireDocForUpdate(id);
+        StockDocument document = locked == null ? requireDocForUpdate(id) : locked.document();
         switch (lane) {
             case WORKSHOP_DIRECT_TRANSFER -> requireWorkshopDirectTransferDocument(document);
             case PRE_STOCKED_AUTO -> requirePreStockedFinishedInDocument(document);
@@ -882,7 +943,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         UUID planId = requireApprovedLinkedProductionPlan(document);
         List<StockDocumentItem> items =
-                itemRepo.findByDocIdOrderByLineNoAsc(id);
+                locked == null ? itemRepo.findByDocIdOrderByLineNoAsc(id) : locked.items();
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "成品入库明细为空");
         }
@@ -1025,7 +1086,17 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         // 确认实收与审核是同一个动作的两半，授权口径必须一起走：车间直送的确认
         // 已经按「这张单确实由一条有效直送行派生」判过，后半段不能再要仓库的码。
         return approveDocumentAfterPrelock(
-                id, true, false, batchContext, lane);
+                id, true, false, batchContext, lane,
+                new ConfirmedFinishedInbound(document, items.stream().filter(item -> !item.isDeleted()).toList(), planId, lane));
+    }
+
+    /** Confirmation and approval are one uninterrupted command under the same locks, never a reusable cache. */
+    private record ConfirmedFinishedInbound(StockDocument document, List<StockDocumentItem> items,
+            UUID planId, FinishedInLane lane) {
+        private ConfirmedFinishedInbound {
+            Objects.requireNonNull(planId);
+            items = List.copyOf(items);
+        }
     }
 
     /** ADR-146 当前用户能办理的不良品专门通道(转不良品仓 / 不良复判转回)。 */
@@ -1407,9 +1478,22 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             boolean allowProductionDrawApproveAndIssue,
             FinishedInboundBatchContext batchContext,
             FinishedInLane lane) {
+        return approveDocumentAfterPrelock(id, warehouseQuantityConfirmed, allowProductionDrawApproveAndIssue,
+                batchContext, lane, null);
+    }
+
+    private StockDocument approveDocumentAfterPrelock(
+            UUID id, boolean warehouseQuantityConfirmed, boolean allowProductionDrawApproveAndIssue,
+            FinishedInboundBatchContext batchContext, FinishedInLane lane, ConfirmedFinishedInbound confirmed) {
         tx.bind();
+        if (confirmed != null && (!warehouseQuantityConfirmed || !id.equals(confirmed.document().getId())
+                || lane != confirmed.lane() || !"FINISHED_IN".equals(confirmed.document().getDocType()))) {
+            throw new IllegalStateException("已确认入库上下文不属于本次审核");
+        }
+        // Task claims use their own lifecycle and are not protected by this
+        // document's row lock. Recheck that dynamic permission before posting.
         taskClaim.requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", id.toString());
-        StockDocument d = requireDocForUpdate(id);
+        StockDocument d = confirmed == null ? requireDocForUpdate(id) : confirmed.document();
         if ("DRAW".equals(d.getDocType())
                 && !allowProductionDrawApproveAndIssue
                 && isProductionLinked(id)) {
@@ -1419,7 +1503,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         }
         // 内料仓通道下为登记的种类(ISSUE / RETURN / OTHER_ISSUE)，其余通道为空。
         String workshopMaterialKind = null;
-        switch (lane) {
+        if (confirmed == null) switch (lane) {
             case WORKSHOP_DIRECT_TRANSFER -> requireWorkshopDirectTransferDocument(d);
             case PRE_STOCKED_AUTO -> requirePreStockedFinishedInDocument(d);
             case WORKSHOP_MATERIAL_BIN -> workshopMaterialKind = requireWorkshopMaterialDocument(d);
@@ -1481,11 +1565,12 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             throw new ApiException(ErrorCode.CONFLICT,
                     "生产领料或成品入库必须指定目标仓库，禁止无库存流水推进业务链");
         }
-        if ("DRAW".equals(d.getDocType()) || "FINISHED_IN".equals(d.getDocType())) {
+        if (confirmed == null && ("DRAW".equals(d.getDocType()) || "FINISHED_IN".equals(d.getDocType()))) {
             requireApprovedLinkedProductionPlan(d);
         }
-        List<StockDocumentItem> items = itemRepo.findByDocIdOrderByLineNoAsc(id);
+        List<StockDocumentItem> items = confirmed == null ? itemRepo.findByDocIdOrderByLineNoAsc(id) : confirmed.items();
         if (items.isEmpty()) throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
+        validatePersistedQuantityInputs(d,items);
         validatePositiveStockItems(d, items, "审核");
         // 行级仓库复核（V787）：保存后行仓可能被停用/改线边，审核前重验；
         // 出库类还要守住「不能从车间直送料位置普通出库」的运营红线。
@@ -1529,7 +1614,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             // 内料仓单据: 内料仓一侧的调出流水带登记来源引用, 由库存内核逐笔核验。
             applyStockEffect(d, items, +1, workshopMaterialOutboundKind(workshopMaterialKind));
         } else if (!"DRAW".equals(d.getDocType())) {
-            applyStockEffect(d, items, +1);
+            applyStockEffect(d, items, +1, null, confirmed);
         }
         if ("OTHER_IN".equals(d.getDocType()) && d.getWarehouseId() != null) {
             // V606 / ADR-091 批注：其它入库提交后，本仓等待中的齐套段尽力而为补跑提升
@@ -1559,7 +1644,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             }
         }
         if ("FINISHED_IN".equals(d.getDocType())) {
-            applyFinishedInChain(d, items, +1); // 业务链：完工入库补预留 + 回写 iqty/produced_qty
+            applyFinishedInChain(d, items, +1, confirmed == null ? null : confirmed.planId());
         }
         // V787 库位记忆：其它入库/产成品进仓审核成功后按 仓×货品×颜色 学习本次库位，
         // 供下次登记/制单的建议库位带出（红冲不撤销——偏好只是未来默认）。
@@ -1574,7 +1659,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             // reconciliation trigger. Recompute the plan only afterwards: the
             // database close guard keeps it open while a segment is IN_PROGRESS.
             em.flush();
-            recomputeFinishedInboundPlanClosed(d.getId());
+            if (confirmed == null) recomputeFinishedInboundPlanClosed(d.getId());
+            else recomputePlanClosed(confirmed.planId());
             if (batchContext == null) {
                 productionCompletionReverse.afterFinishedInboundApproved(d.getId(), d.getWarehouseId());
             } else {
@@ -1591,6 +1677,87 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     }
 
     /** 红冲：1→-1，反向冲销库存。DRAW 有已出库量时须先取消全部出库。 */
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('stock_doc:view') and hasAuthority('stock_doc:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        var view=detail(id);StockDocument document=requireDoc(id);
+        String facts=com.uten.imp.common.review.StockDocumentReversalFacts.read(em,id);
+        if("WDRAW".equals(document.getDocType()))return com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility.blocked("UNSUPPORTED_WORKFLOW","余料退库必须由车间提交真实来源并由仓库确认，不能通用反审生成手工草稿",com.uten.imp.common.util.CanonicalFingerprint.sha256(List.of("stockDocument",facts)));
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("stockDocument",facts,()->{
+            if(view.isProductionLinked()||view.isProductionMaterialReturn()||"CHECK".equals(view.getDocType())||!"NORMAL".equals(view.getTransferKind()))
+                throw new ApiException(ErrorCode.CONFLICT,"生产领退料、成品点收、盘点及不良品专用单据需通过对应工作台处理");
+            if(Set.of("TRANSFER","OTHER_OUT").contains(document.getDocType()))rejectWorkshopMaterialDocumentReverse(id);
+            if(approvedCountDocument(id))throw new ApiException(ErrorCode.CONFLICT,"该库存变化来自已批准盘点，请重新盘点并提交对应部门审核");
+            requireOperationWritable(document,"stock_doc:reverse","无权反审此仓库单据");requireBalanceAdjustmentPermission(document);
+            if(document.getStatus()==null||document.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            var items=itemRepo.findByDocIdOrderByLineNoAsc(id);
+            if("DRAW".equals(document.getDocType())) {
+                if(items.stream().anyMatch(i->i.getIssuedQty()!=null&&i.getIssuedQty().signum()>0))throw new ApiException(ErrorCode.CONFLICT,"领料单已有出库记录，请先取消全部出库");
+                return;
+            }
+            if("TRANSFER".equals(document.getDocType())) {
+                if(reversalValues==null)throw new ApiException(ErrorCode.CONFLICT,"当前无法核对原调拨成本");
+                requireTransferReversalAvailable(document,items);
+                return;
+            }
+            if(reversalValues==null)throw new ApiException(ErrorCode.CONFLICT,"当前无法核对原库存成本");
+            boolean incoming=Set.of("OTHER_IN","FINISHED_IN").contains(document.getDocType());
+            boolean outgoing=Set.of("OTHER_OUT","FINISHED_OUT","WASTE").contains(document.getDocType());
+            if(!incoming&&!outgoing)throw new ApiException(ErrorCode.CONFLICT,"该仓库单据没有通用反审入口");
+            List<StockDocumentItem> ordered=incoming?items.reversed():items;
+            var receives=new ArrayList<com.uten.imp.application.port.InventoryValuationPort.ReceiveWithdrawalSource>();
+            var issues=new ArrayList<com.uten.imp.application.port.InventoryValuationPort.IssueReturnSource>();
+            var movements=new ArrayList<StockService.MovementRequest>();
+            for(var item:ordered) {
+                short type=switch(document.getDocType()){case "OTHER_IN"->T_OTHER_IN;case "FINISHED_IN"->T_FINISHED_IN;case "FINISHED_OUT"->T_FINISHED_OUT;default->T_OTHER_OUT;};
+                short direction=incoming?DIR_IN:DIR_OUT;UUID warehouse=lineWarehouse(document,item);
+                List<Object[]> original=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id,qty,goods_id,color_id,warehouse_id FROM stock_movements
+                    WHERE source_doc_type='STOCK_DOC' AND source_doc_id=:doc AND source_item_id=:item
+                      AND movement_type=:type AND direction=:direction
+                    """).setParameter("doc",id).setParameter("item",item.getId()).setParameter("type",type).setParameter("direction",direction));
+                if(original.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"每行反审必须引用唯一原出入库流水，不能猜测成本来源");
+                Object[] movement=original.getFirst();BigDecimal qty=(BigDecimal)movement[1];
+                if(!Objects.equals(movement[2],item.getGoodsId())||!Objects.equals(movement[3],item.getColorId())||!Objects.equals(movement[4],warehouse)
+                    ||qty.compareTo(baseQty(item))!=0)throw new ApiException(ErrorCode.CONFLICT,"原库存流水与当前单据维度或基本数量不一致");
+                var pool=new com.uten.imp.application.port.InventoryValuationPort.PoolKey(warehouse,item.getGoodsId(),item.getColorId());
+                if(incoming) {
+                    receives.add(new com.uten.imp.application.port.InventoryValuationPort.ReceiveWithdrawalSource(pool,(UUID)movement[0]));
+                    movements.add(new StockService.MovementRequest(null,type,SRC_STOCK_DOC,id,item.getId(),item.getGoodsId(),item.getColorId(),warehouse,DIR_OUT,qty,item.getUnitId(),item.getUnitRate(),null,null,null));
+                } else issues.add(new com.uten.imp.application.port.InventoryValuationPort.IssueReturnSource(pool,(UUID)movement[0],qty));
+            }
+            if(incoming){stockService.requireOrdinaryInboundReversalQuantity(movements);reversalValues.requireReceivesReversible(receives);}
+            else reversalValues.requireIssueReturnsAvailable(issues);
+        });
+    }
+
+    private void requireTransferReversalAvailable(StockDocument document,List<StockDocumentItem> items) {
+        var sources=new ArrayList<com.uten.imp.application.port.InventoryValuationPort.TransferWithdrawalSource>();
+        var outbound=new ArrayList<StockService.MovementRequest>();
+        for(var item:items.reversed()) {
+            List<Object[]> original=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,qty,goods_id,color_id,warehouse_id,movement_type,direction FROM stock_movements
+                WHERE source_doc_type='STOCK_DOC' AND source_doc_id=:doc AND source_item_id=:item
+                  AND (movement_type=7 AND direction=1 OR movement_type=8 AND direction=-1)
+                """).setParameter("doc",document.getId()).setParameter("item",item.getId()));
+            if(original.size()!=2)throw new ApiException(ErrorCode.CONFLICT,"调拨反审须有两条唯一原出入库流水");
+            Object[] incoming=original.stream().filter(row->((Number)row[5]).shortValue()==7).findFirst().orElseThrow(()->new ApiException(ErrorCode.CONFLICT,"原调拨入仓来源不存在"));
+            Object[] issued=original.stream().filter(row->((Number)row[5]).shortValue()==8).findFirst().orElseThrow(()->new ApiException(ErrorCode.CONFLICT,"原调拨出仓来源不存在"));
+            BigDecimal qty=(BigDecimal)incoming[1];
+            if(qty.compareTo((BigDecimal)issued[1])!=0||qty.compareTo(baseQty(item))!=0
+                ||!Objects.equals(incoming[2],item.getGoodsId())||!Objects.equals(issued[2],item.getGoodsId())
+                ||!Objects.equals(incoming[3],item.getColorId())||!Objects.equals(issued[3],item.getColorId())
+                ||!Objects.equals(incoming[4],document.getToWarehouseId())||!Objects.equals(issued[4],document.getWarehouseId()))
+                throw new ApiException(ErrorCode.CONFLICT,"原调拨两仓、货色或基本数量不一致，不能猜测恢复");
+            var target=new com.uten.imp.application.port.InventoryValuationPort.PoolKey(document.getToWarehouseId(),item.getGoodsId(),item.getColorId());
+            var source=new com.uten.imp.application.port.InventoryValuationPort.PoolKey(document.getWarehouseId(),item.getGoodsId(),item.getColorId());
+            sources.add(new com.uten.imp.application.port.InventoryValuationPort.TransferWithdrawalSource(target,(UUID)incoming[0],source,(UUID)issued[0]));
+            outbound.add(new StockService.MovementRequest(null,(short)7,SRC_STOCK_DOC,document.getId(),item.getId(),item.getGoodsId(),item.getColorId(),document.getToWarehouseId(),DIR_OUT,qty,item.getUnitId(),item.getUnitRate(),null,null,null));
+        }
+        stockService.requireOrdinaryInboundReversalQuantity(outbound);
+        reversalValues.requireTransfersReversible(sources);
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('stock_doc:reverse')")
     public StockDocDetail reverse(UUID id) {
@@ -2406,7 +2573,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             StockDocument draw = requireDocForUpdate(drawId);
             // 生产领料单是草稿，出库前必须先审核 —— 与仓库那条「审核并出库」一段式端点
             // 同一条路径，只是授权走直送这条窄路。
-            // 守卫必须一动作一取。审核修改状态/主档快照，但不释放本调用已取得的
+            // 守卫必须一动作一取。审核会更新状态/主档快照，但不释放本调用已取得的
             // 计划、执行段、单据与明细行锁；和 issueFullBatch 一样只复用物理锁，
             // 出库仍重新取得嵌套守卫，并重读当前状态、申请/预留余量与库存事实。
             boolean graphLockedForApproval = false;
@@ -3696,8 +3863,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 source.getAmountLocal(), residualQty, proposed));
         residual.setWeight(proportional(
                 source.getWeight(), residualQty, proposed));
-        residual.setGiftQty(proportional(
-                source.getGiftQty(), residualQty, proposed));
+        residual.setGiftQty(source.getGiftQty()==null?null:source.getGiftQty().subtract(
+                acceptedGiftQuantity(source.getGiftQty(),proposed.subtract(residualQty),proposed)));
         residual.setPlace(source.getPlace());
         residual.setWarehouseId(source.getWarehouseId());
         residual.setUpstreamItemId(source.getUpstreamItemId());
@@ -3723,8 +3890,16 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 item.getAmountLocal(), acceptedQty, proposedQty));
         item.setWeight(proportional(
                 item.getWeight(), acceptedQty, proposedQty));
-        item.setGiftQty(proportional(
+        item.setGiftQty(acceptedGiftQuantity(
                 item.getGiftQty(), acceptedQty, proposedQty));
+    }
+
+    private static BigDecimal acceptedGiftQuantity(BigDecimal gift,BigDecimal accepted,BigDecimal proposed) {
+        if(gift==null) return null;
+        BigDecimal original=com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(gift,"来源赠品数量");
+        if(proposed==null || proposed.signum()<=0 || accepted==null || accepted.signum()<0 || accepted.compareTo(proposed)>0)
+            throw new ApiException(ErrorCode.CONFLICT,"成品点收数量不在来源范围内，本次未拆分赠品");
+        return original.multiply(accepted).divide(proposed,4,RoundingMode.DOWN);
     }
 
     private static BigDecimal proportional(
@@ -3907,7 +4082,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         if (issueQty == null || issueQty.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "本次领料数量必须大于 0");
         }
-        BigDecimal baseQty = issueQty.multiply(rate);
+        BigDecimal baseQty = com.uten.imp.common.finance.MoneyPolicy.quantity(issueQty.multiply(rate));
 
         if (lineWarehouse(d, it) == null
                 || it.getGoodsId() == null
@@ -3965,6 +4140,20 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         items.forEach(item -> requirePositiveStockItem(item, action));
     }
 
+    /** Older drafts are revalidated at posting; an API guard added later cannot sanitize stored facts. */
+    private static void validatePersistedQuantityInputs(StockDocument doc,List<StockDocumentItem> items){
+        boolean count="CHECK".equals(doc.getDocType());
+        for(StockDocumentItem item:items){
+            BigDecimal qty=com.uten.imp.common.util.FinancialExactAmount.quantity(item.getQty(),"已存第"+item.getLineNo()+"行数量");
+            if(qty.signum()<0)throw new ApiException(ErrorCode.VALIDATION_FAILED,"已存数量不能为负，请先修正草稿");
+            com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(item.getGiftQty(),"已存赠品数量");
+            if(count){
+                com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(item.getCountQty(),"已存实盘数量");
+                if(item.getSurplusQty()!=null)com.uten.imp.common.util.FinancialExactAmount.quantity(item.getSurplusQty(),"已存盘盈亏数量");
+            }
+        }
+    }
+
     /** 派生 issue_status：全部出完=2 / 有出库=1 / 未出库=0；全出完 is_closed=true，否则复位。 */
     private void recomputeIssueStatus(StockDocument d, List<StockDocumentItem> items) {
         boolean anyIssued = false, allIssued = true;
@@ -4003,11 +4192,15 @@ public class StockDocService implements ProductionPreStockedInboundPort {
      * <b>红冲（-1）</b>——先释放本单补的预留（已发货则拒绝，库存不动），再对称回退各累计量。
      */
     private void applyFinishedInChain(StockDocument d, List<StockDocumentItem> items, int sign) {
-        List<UUID> planIds = NativeQueryResults.typedRows(em.createNativeQuery("""
+        applyFinishedInChain(d, items, sign, null);
+    }
+
+    private void applyFinishedInChain(StockDocument d, List<StockDocumentItem> items, int sign, UUID confirmedPlanId) {
+        List<UUID> planIds = confirmedPlanId == null ? NativeQueryResults.typedRows(em.createNativeQuery("""
                 SELECT DISTINCT l.plan_id FROM plan_draw_links l
                 WHERE l.draw_id = :did AND l.is_deleted = false
                 ORDER BY l.plan_id
-                """).setParameter("did", d.getId()), UUID.class);
+                """).setParameter("did", d.getId()), UUID.class) : List.of(confirmedPlanId);
         if (planIds.size() > 1) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "成品入库单关联多张生产计划，禁止猜测业务链归属");
@@ -4577,7 +4770,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 }
             }
         }
-        recomputePlanClosed(planId);
+        // Forward posting closes the plan once, after the document's approved
+        // status has flushed and the execution completion trigger has run.
+        // Reversal keeps its existing immediate reopening order.
+        if (sign < 0) recomputePlanClosed(planId);
     }
 
     private static void requireFullyAllocated(BigDecimal unallocated, String message) {
@@ -4638,6 +4834,12 @@ public class StockDocService implements ProductionPreStockedInboundPort {
      */
     private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign,
             InventoryMovementCostReference.WorkshopMaterialBinKind workshopMaterialOut) {
+        return applyStockEffect(d, items, sign, workshopMaterialOut, null);
+    }
+
+    private Map<UUID,UUID> applyStockEffect(StockDocument d, List<StockDocumentItem> items, int sign,
+            InventoryMovementCostReference.WorkshopMaterialBinKind workshopMaterialOut,
+            ConfirmedFinishedInbound confirmed) {
         Map<UUID,UUID> materialMovements=new LinkedHashMap<>();
         OffsetDateTime ts = d.getBillDate() == null ? OffsetDateTime.now()
                 : d.getBillDate().atStartOfDay(BusinessTime.ZONE).toOffsetDateTime();
@@ -4649,14 +4851,15 @@ public class StockDocService implements ProductionPreStockedInboundPort {
         boolean weighedLines = observedKind != null
                 && items.stream().anyMatch(it -> WeightMath.positive(it.getWeight()));
         // ADR-135: 生产成品入库的行重量来自产成品登记的累计切片; 其余手工单的行重量是仓库实称。
-        boolean productionLinked = ((sign > 0 && finishedIn) || weighedLines) && isProductionLinked(d.getId());
+        boolean productionLinked = confirmed != null
+                || ((sign > 0 && finishedIn) || weighedLines) && isProductionLinked(d.getId());
         boolean finishedFromProduction = sign > 0 && finishedIn && productionLinked;
         SourceKind learnKind = weighedLines && !productionLinked ? observedKind : null;
         UUID observedSupplier = sign > 0 && learnKind == SourceKind.OTHER_IN ? existingSupplier(d.getSupplierId()) : null;
         CountContext count = "CHECK".equals(d.getDocType()) ? countContext(d, items, sign) : null;
         // ADR-148：一张成品入库单可有同一实物交接的多行(需求份 / 计划公共 / 实际超产)，常落在同一个库存
         // 成本池里；红冲要按后进先出逐行撤回(最后入的那行先撤)，否则前一行会被「未撤回的后续入库」挡住。
-        List<StockDocumentItem> lines = sign < 0 && finishedIn ? items.reversed() : items;
+        List<StockDocumentItem> lines = sign < 0 && (finishedIn || "OTHER_IN".equals(d.getDocType()) || "TRANSFER".equals(d.getDocType())) ? items.reversed() : items;
         for (StockDocumentItem it : lines) {
             if (it.getGoodsId() == null) continue;
             BigDecimal baseQty = baseQty(it);
@@ -4667,7 +4870,10 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             switch (d.getDocType()) {
                 // 行级仓库（V787）：单仓语义类型按行走（空沿用表头）；TRANSFER 两腿与
                 // CHECK 账面保持表头口径不变。
-                case "OTHER_IN" -> weighed = move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, lineWarehouse(d, it), ts, sign);
+                case "OTHER_IN" -> {
+                    weighed = move(d, it, T_OTHER_IN, DIR_IN, baseQty, actualWeight, lineWarehouse(d, it), ts, sign);
+                    if(sign<0 && lines.size()>1)settleFinishedReceiptReversal();
+                }
                 case "OTHER_OUT", "WASTE" -> weighed = move(d, it, T_OTHER_OUT, DIR_OUT, baseQty, actualWeight, lineWarehouse(d, it), ts, sign, outbound);
                 case "DRAW" -> move(d, it, T_DRAW, DIR_OUT, baseQty, actualWeight, lineWarehouse(d, it), ts, sign);
                 case "WDRAW" -> materialMovements.put(it.getId(),movementIdOf(move(d, it, T_WDRAW, DIR_IN, baseQty, actualWeight, lineWarehouse(d, it), ts, sign)));
@@ -4677,11 +4883,16 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 }
                 case "FINISHED_OUT" -> weighed = move(d, it, T_FINISHED_OUT, DIR_OUT, baseQty, actualWeight, lineWarehouse(d, it), ts, sign);
                 case "TRANSFER" -> {
-                    if (d.getWarehouseId() != null)
-                        weighed = move(d, it, T_TRANSFER_OUT, DIR_OUT, baseQty, actualWeight, d.getWarehouseId(), ts, sign, outbound);
-                    // 调入不另带重量: 库存账沿用本行调出流水的重量与来历(COUNTERPART)。
-                    if (d.getToWarehouseId() != null)
-                        move(d, it, T_TRANSFER_IN, DIR_IN, baseQty, null, d.getToWarehouseId(), ts, sign);
+                    if(sign<0){
+                        UUID original=transferMovement(d,it,T_TRANSFER_IN,DIR_IN,d.getToWarehouseId(),baseQty);
+                        var removed=move(d,it,T_TRANSFER_IN,DIR_IN,baseQty,null,d.getToWarehouseId(),ts,sign,new InventoryMovementCostReference.OriginalTransferInMovement(original));
+                        UUID issue=movementIdOf(removed);if(issue==null)throw new ApiException(ErrorCode.CONFLICT,"调拨反向缺少原成本调出流水");
+                        move(d,it,T_TRANSFER_OUT,DIR_OUT,baseQty,actualWeight,d.getWarehouseId(),ts,sign,new InventoryMovementCostReference.OriginalIssueMovement(issue));
+                        if(lines.size()>1)settleFinishedReceiptReversal();
+                    }else{
+                        if (d.getWarehouseId() != null)weighed=move(d,it,T_TRANSFER_OUT,DIR_OUT,baseQty,actualWeight,d.getWarehouseId(),ts,sign,outbound);
+                        if (d.getToWarehouseId() != null)move(d,it,T_TRANSFER_IN,DIR_IN,baseQty,null,d.getToWarehouseId(),ts,sign);
+                    }
                 }
                 case "CHECK" -> applyCheckLine(d, it, ts, sign, count, observedAt);
                 default -> { /* 未识别类型不动库存 */ }
@@ -4883,7 +5094,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     private BigDecimal baseQty(StockDocumentItem it) {
         BigDecimal qty = it.getQty() == null ? BigDecimal.ZERO : it.getQty();
         BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        return qty.multiply(rate);
+        return com.uten.imp.common.finance.MoneyPolicy.quantity(qty.multiply(rate));
     }
 
     /** 本行重量证据(千克): 生产成品入库 = 登记重量的累计切片(0 也算), 其余 = 仓库实称(没称为空)。 */
@@ -4909,11 +5120,35 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                       InventoryMovementCostReference costReference) {
         if (warehouseId == null || qty == null || qty.signum() == 0) return null;
         short dir = (short) (naturalDir * sign);
+        if(sign<0 && costReference==null && Set.of("OTHER_IN","OTHER_OUT","WASTE","FINISHED_OUT","FINISHED_IN").contains(d.getDocType())
+                && !isProductionLinked(d.getId())) {
+            @SuppressWarnings("unchecked") List<UUID> originals=em.createNativeQuery("""
+                SELECT id FROM stock_movements WHERE source_doc_type='STOCK_DOC' AND source_doc_id=:doc
+                    AND source_item_id=:item AND movement_type=:type AND direction=:direction
+                    AND warehouse_id=:warehouse AND goods_id=:goods AND color_id IS NOT DISTINCT FROM :color
+                    AND qty=:qty
+                """,UUID.class).setParameter("doc",d.getId()).setParameter("item",it.getId()).setParameter("type",type)
+                .setParameter("direction",naturalDir).setParameter("warehouse",warehouseId).setParameter("goods",it.getGoodsId())
+                .setParameter("color",it.getColorId()).setParameter("qty",qty).getResultList();
+            if(originals.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"库存反审缺少唯一原实物流水，不能猜测数量或成本");
+            costReference=naturalDir==DIR_IN?new InventoryMovementCostReference.OriginalReceiveMovement(originals.getFirst())
+                :new InventoryMovementCostReference.OriginalIssueMovement(originals.getFirst());
+        }
         return stockService.recordMovement(new StockService.MovementRequest(
                 ts, type, SRC_STOCK_DOC, d.getId(), it.getId(),
                 it.getGoodsId(), it.getColorId(), warehouseId, dir, qty,
                 it.getUnitId(), it.getUnitRate(), it.getAmountLocal(), it.getRemark(),
                 sign > 0 ? weight : null, costReference));
+    }
+
+    private UUID transferMovement(StockDocument doc,StockDocumentItem item,short type,short direction,UUID warehouse,BigDecimal qty){
+        @SuppressWarnings("unchecked") List<UUID> rows=em.createNativeQuery("""
+                SELECT id FROM stock_movements WHERE source_doc_type='STOCK_DOC' AND source_doc_id=:doc AND source_item_id=:item
+                    AND movement_type=:type AND direction=:direction AND warehouse_id=:warehouse AND goods_id=:goods
+                    AND color_id IS NOT DISTINCT FROM :color AND qty=:qty
+                """,UUID.class).setParameter("doc",doc.getId()).setParameter("item",item.getId()).setParameter("type",type).setParameter("direction",direction)
+                .setParameter("warehouse",warehouse).setParameter("goods",item.getGoodsId()).setParameter("color",item.getColorId()).setParameter("qty",qty).getResultList();
+        if(rows.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"调拨反向必须关联唯一原同仓、同货色、同数量实物流水");return rows.getFirst();
     }
 
     /** 没有写流水的行(无仓库/零数量)没有流水 id。 */
@@ -5113,7 +5348,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                     com.uten.imp.common.util.FinancialExactAmount.book(l.getAmountLocal(),"仓库来源本币金额"));
             it.setWeight(l.getWeight());
             it.setQtyFromWeight(Boolean.TRUE.equals(l.getQtyFromWeight()));
-            it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
+            it.setGiftQty(com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(l.getGiftQty(),"库存单赠品数量"));
             it.setSurplusQty(l.getSurplusQty());
             it.setCountQty(l.getCountQty());
             it.setCountWeight(l.getCountWeight());
@@ -5397,6 +5632,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "第 " + lineNo + " 行数量必须大于 0");
         }
+        if (!"CHECK".equals(document.getDocType())) {
+            line.setQty(com.uten.imp.common.util.FinancialExactAmount.quantity(line.getQty(), "第 " + lineNo + " 行数量"));
+        }
         // 行级仓库（V787，2026-10-01「仓库放表格里」）：单仓语义的手工单据可逐行
         // 指定；TRANSFER 两腿与 CHECK 账面按表头，传了视为客户端口径错误。
         if (line.getWarehouseId() != null) {
@@ -5414,7 +5652,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
     private BigDecimal baseQtyOf(StockDocItemLine l) {
         BigDecimal qty = l.getQty() == null ? BigDecimal.ZERO : l.getQty();
         BigDecimal rate = l.getUnitRate() == null ? BigDecimal.ONE : l.getUnitRate();
-        return qty.multiply(rate);
+        return com.uten.imp.common.finance.MoneyPolicy.quantity(qty.multiply(rate));
     }
 
     private void applyTotals(StockDocument d, List<StockDocItemDto> items) {

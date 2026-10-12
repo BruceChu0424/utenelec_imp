@@ -83,13 +83,18 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
      * 或挂着草稿收货单（待继续送检）、或有未结到货异常（待财务定案）。
      * CLOSED 任务不再因等待品质而回流（原 PENDING_INSPECTION_EXISTS 口径已下线）。
      */
+    /** Read-only gift capacity; paid planning quantities remain their own source facts. */
+    private static String currentReceivableGiftQty(String itemAlias) {
+        return "COALESCE(fn_purchase_order_gift_remaining_qty("+itemAlias+".order_item_id),0)";
+    }
+
     private static String warehouseWorkRemaining() {
         return """
                 (expectation.status = 'OPEN' AND (
                     EXISTS (
                         SELECT 1 FROM inbound_expectation_items cap_item
                         WHERE cap_item.expectation_id = expectation.id
-                          AND (%s) > 0
+                          AND ((%s) > 0 OR (%s) > 0)
                     )
                     OR EXISTS (
                         SELECT 1 FROM inbound_expectation_items draft_item
@@ -117,7 +122,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                           AND exc.status NOT IN ('CLOSED','CANCELED')
                     )
                 ))
-                """.formatted(currentReceivableQty("cap_item"));
+                """.formatted(currentReceivableQty("cap_item"),currentReceivableGiftQty("cap_item"));
     }
 
     /**
@@ -626,6 +631,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                                      SELECT SUM(rejection.failed_qty)
                                      FROM procurement_iqc_rejection_cases rejection
                                      WHERE rejection.receipt_type=expectation.order_type
+                                       AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift
+                                           WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                                        AND rejection.order_item_id=order_item.id
                                        AND rejection.is_deleted=FALSE
                                        AND rejection.return_recorded_at IS NOT NULL
@@ -658,7 +665,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   )
                 """.formatted(SUBCONTRACT.equals(orderType)
                                 ? SubcontractLossSettlementSql.expectationRemainingQty("item", "expectation.order_type") + " > 0"
-                                : "item.accepted_qty < item.ordered_qty", placeholders),
+                                : "(item.accepted_qty < item.ordered_qty OR fn_purchase_order_gift_remaining_qty(item.order_item_id)>0)", placeholders),
                 prepend(orderType, orderItemIds));
         if (SUBCONTRACT.equals(orderType) && chainNotice != null) {
             List<UUID> closedOrders = jdbc.queryForList("""
@@ -785,16 +792,36 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public PageResponse<ArrivalExceptionTask> financeTasks(int page, int size) {
+        return financeTasks(page, size, PENDING_FINANCE);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    public PageResponse<ArrivalExceptionTask> financeTasks(int page, int size, String status) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
-        long total = countFinanceTasks();
+        String predicate = financeTaskPredicate(status);
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM procurement_arrival_exceptions exception WHERE " + predicate,
+                Long.class);
+        long total = count == null ? 0 : count;
         List<ArrivalExceptionTask> items = queryExceptions(
-                "exception.status = 'PENDING_FINANCE'",
+                predicate,
                 ActionScope.FINANCE,
                 "LIMIT ? OFFSET ?",
                 safeSize,
                 (safePage - 1) * safeSize);
         return page(items, safePage, safeSize, total);
+    }
+
+    static String financeTaskPredicate(String status) {
+        if (status == null || status.isBlank() || PENDING_FINANCE.equals(status)) {
+            return "exception.status = 'PENDING_FINANCE'";
+        }
+        if ("PROCESSED".equals(status)) {
+            return "exception.status <> 'PENDING_FINANCE'";
+        }
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货审批状态筛选无效");
     }
 
     @Transactional(readOnly = true)
@@ -1880,6 +1907,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 ? "purchase_receipts" : "subcontract_receipts";
         String receiptItemTable = PURCHASE.equals(header.orderType())
                 ? "purchase_receipt_items" : "subcontract_receipt_items";
+        String giftDraftSum = PURCHASE.equals(header.orderType())
+                ? "SUM(CASE WHEN receipt_item.quantity_semantics='CHARGED_PLUS_GIFT_V1' THEN COALESCE(receipt_item.gift_qty,0) ELSE 0 END)" : "0";
         List<InboundExpectationItem> baseItems = jdbc.query(("""
                 SELECT item.id, item.order_item_id, item.line_no,
                        item.goods_id, goods.code AS goods_code,
@@ -1896,6 +1925,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        -- 收货审核时服务端按订货明细权威回填金额。
                        NULL AS unit_price,
                        item.ordered_qty, item.accepted_qty,
+                       COALESCE(purchase_item.quantity_semantics,'LEGACY_RECORDED') AS quantity_semantics,
+                """ + currentReceivableGiftQty("item") + """
+                       AS remaining_gift_qty,
+                       COALESCE(inflight.registered_gift_qty,0) AS registered_gift_qty,
                        CASE WHEN expectation.order_type = 'SUBCONTRACT'
                             THEN (
                 """ + currentReceivableQty("item") + """
@@ -1919,6 +1952,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                                        SELECT SUM(rejection.failed_qty)
                                        FROM procurement_iqc_rejection_cases rejection
                                        WHERE rejection.receipt_type = 'PURCHASE'
+                                         AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift
+                                             WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                                          AND rejection.order_item_id = purchase_item.id
                                          AND rejection.is_deleted = FALSE
                                          AND rejection.return_recorded_at IS NOT NULL
@@ -1956,11 +1991,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                  AND place_default.color_id IS NOT DISTINCT FROM item.color_id
                 LEFT JOIN (
                     SELECT receipt_item.order_item_id,
-                           SUM(receipt_item.qty) AS registered_qty
+                           SUM(receipt_item.qty) AS registered_qty, %s AS registered_gift_qty
                     FROM %s receipt_item
                     JOIN %s receipt ON receipt.id = receipt_item.receipt_id
                     WHERE receipt.status = 0 AND receipt.legacy_id IS NULL AND receipt.is_deleted = FALSE
-                      AND receipt_item.order_item_id IS NOT NULL
+                      AND receipt_item.order_item_id IS NOT NULL AND NOT receipt_item.is_deleted
                     GROUP BY receipt_item.order_item_id
                 ) inflight ON inflight.order_item_id = item.order_item_id
                 WHERE item.expectation_id = ?
@@ -1969,7 +2004,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 """ + subcontractItemVisible("item") + """
                        ))
                 ORDER BY item.line_no NULLS LAST, item.id
-                """).formatted(receiptItemTable, receiptTable),
+                """).formatted(giftDraftSum,receiptItemTable, receiptTable),
                 (rs, rowNum) -> new InboundExpectationItem(
                         rs.getObject("id", UUID.class),
                         rs.getObject("order_item_id", UUID.class),
@@ -1996,7 +2031,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         rs.getObject("last_receipt_warehouse_id", UUID.class),
                         rs.getString("last_receipt_warehouse_name"),
                         rs.getBigDecimal("allowed_over_receipt_pct"),
-                        rs.getBigDecimal("max_receivable_qty")),
+                        rs.getBigDecimal("max_receivable_qty"),rs.getString("quantity_semantics"),
+                        rs.getBigDecimal("remaining_gift_qty"),rs.getBigDecimal("registered_gift_qty")),
                 suggestedWarehouseId == null ? header.warehouseId() : suggestedWarehouseId,
                 suggestedWarehouseId == null ? header.warehouseId() : suggestedWarehouseId,
                 header.id());
@@ -2027,13 +2063,14 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                         item.lastReceiptWarehouseId(),
                         item.lastReceiptWarehouseName(),
                         item.allowedOverReceiptPct(),
-                        item.maxReceivableQty())).toList();
+                        item.maxReceivableQty(),item.quantitySemantics(),item.remainingGiftQty(),item.registeredGiftQty())).toList();
         BigDecimal registeredQty = items.stream()
                 .map(InboundExpectationItem::registeredQty)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal remainingQty = nonNegative(header.remainingQty());
         boolean canCreateReceipt = "OPEN".equals(header.status())
-                && remainingQty.compareTo(registeredQty) > 0
+                && items.stream().anyMatch(item -> item.remainingQty().compareTo(item.registeredQty()) > 0
+                    || item.remainingGiftQty().compareTo(item.registeredGiftQty()) > 0)
                 && currentUser.get().map(user -> user.isSuperAdmin()
                         || user.getAuthorities().stream().anyMatch(authority ->
                         "warehouse_inbound:stock_in".equals(authority.getAuthority())))
@@ -2638,8 +2675,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     private BigDecimal returnedIqcFailureQty(String orderType,UUID orderItemId) {
         return zero(jdbc.queryForObject("""
                 SELECT COALESCE(SUM(failed_qty),0)
-                FROM procurement_iqc_rejection_cases
+                FROM procurement_iqc_rejection_cases rejection
                 WHERE receipt_type=? AND order_item_id=? AND is_deleted=FALSE
+                  AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift
+                      WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                   AND return_recorded_at IS NOT NULL
                   AND status IN(
                       'RETURN_RECORDED','CREDIT_CONFIRMED',
@@ -2668,6 +2707,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 FROM procurement_iqc_replacement_allocations allocation
                 JOIN procurement_iqc_rejection_cases rejection ON rejection.id=allocation.case_id
                 WHERE rejection.receipt_type=? AND rejection.order_item_id=? AND allocation.status='ACTIVE'
+                  AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift
+                      WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                   AND allocation.replacement_receipt_id<>?
                 """,BigDecimal.class,orderType,row.orderItemId(),row.receiptId()));
         // 欠交 owed(原口径, 不含允许超收量): 财务批准量 + 已退货 + 其它收货单的补回分配 − 已收。
@@ -2933,6 +2974,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                                      SELECT SUM(rejection.failed_qty)
                                      FROM procurement_iqc_rejection_cases rejection
                                      WHERE rejection.receipt_type=expectation.order_type
+                                       AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift
+                                           WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                                        AND rejection.order_item_id=order_item.id
                                        AND rejection.is_deleted=FALSE
                                        AND rejection.return_recorded_at IS NOT NULL
@@ -2969,7 +3012,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   )
                 """.formatted(SUBCONTRACT.equals(orderType)
                                 ? SubcontractLossSettlementSql.expectationRemainingQty("item", "expectation.order_type") + " > 0"
-                                : "item.accepted_qty < item.ordered_qty", receiptItemTable), orderType, receiptId);
+                                : "(item.accepted_qty < item.ordered_qty OR fn_purchase_order_gift_remaining_qty(item.order_item_id)>0)", receiptItemTable), orderType, receiptId);
         // 弹卡办结：expectation 已 CLOSED（全部登记完）时撤回「预计到货」
         // 行动卡；订单红冲路径置 CANCELED 时同样撤回（见 cancelForOrderReversal
         // 另有直写）。仍在 OPEN（部分登记）不撤。通知为 null（单测直构）时跳过。

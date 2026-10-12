@@ -39,6 +39,7 @@ import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/business_columns/business_columns_table.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
@@ -48,6 +49,7 @@ import '../../sales/providers/master_name_provider.dart';
 import '../../sales/repositories/sales_repository.dart';
 import '../../sales/widgets/shipment_finance_change_summary.dart';
 import '../widgets/finance_party_snapshot_card.dart';
+import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 class FinanceSalesShipmentAuditReviewPage extends ConsumerStatefulWidget {
@@ -61,7 +63,10 @@ class FinanceSalesShipmentAuditReviewPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceSalesShipmentAuditReviewPageState
-    extends ConsumerState<FinanceSalesShipmentAuditReviewPage> {
+    extends ConsumerState<FinanceSalesShipmentAuditReviewPage>
+    with
+        FormDraftMixin<FinanceSalesShipmentAuditReviewPage>,
+        ReviewTaskDraftMixin<FinanceSalesShipmentAuditReviewPage> {
   SalesDocDetail? _detail;
   ShipmentFinanceAuditInfo? _info;
   bool _loading = true;
@@ -74,6 +79,98 @@ class _FinanceSalesShipmentAuditReviewPageState
   /// V632：放行时确认的记账汇率(本位币/1 原币)。预填服务端建议值(已冻结的 > 本位币 1 >
   /// 币种主档参考汇率)，财务可按放行当日汇率修改；放行即冻结到本单，仓库确认出库按它立应收。
   final _rateController = TextEditingController();
+  final _rejectReason = TextEditingController();
+  @override
+  bool get formDraftBusy => _busy;
+  @override
+  FormDraftDescriptor get reviewDraftDescriptor =>
+      FormDraftCatalog.financeShipmentReview;
+  @override
+  String get reviewDraftRoute =>
+      '/finance/sales-shipment-audits/${Uri.encodeComponent(widget.id)}';
+  @override
+  Map<String, dynamic> get reviewDraftSource => {
+    'subjectId': widget.id,
+    'version': _info?.reviewRevision,
+    'contentHash': _info?.contentHash,
+    'lineIds':
+        (_detail?.items.map((line) => line.id).whereType<String>().toList() ??
+              <String>[])
+          ..sort(),
+  };
+  @override
+  bool get reviewDraftEditable => _decisionReady && _canDecide;
+  @override
+  bool canDispatchReviewCommand(String action) =>
+      _decisionReady &&
+      _claim?.isReady == true &&
+      _info?.allows(action == 'reject' ? 'REJECT' : 'APPROVE') == true &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(
+                action == 'reject'
+                    ? Perm.salesShipmentFinanceReject
+                    : Perm.salesShipmentFinanceApprove,
+              ));
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _rateController,
+    _rejectReason,
+  ];
+  @override
+  Map<String, dynamic> captureReviewInputs() => {
+    'rate': _rateController.text,
+    'rejectReason': _rejectReason.text,
+  };
+  @override
+  void restoreReviewInputs(Map<String, dynamic> inputs) {
+    _rateController.text = inputs['rate'] as String? ?? '';
+    _rejectReason.text = inputs['rejectReason'] as String? ?? '';
+  }
+
+  @override
+  Future<void> reloadReviewSource() async {
+    await _load();
+    if (_error != null || _detail == null || _info == null) {
+      throw StateError(_error ?? '出货审核结果尚未读取');
+    }
+  }
+
+  @override
+  Future<bool> recoverReviewCommand(Map<String, dynamic> command) async {
+    final source = command['source'];
+    if (source is! Map || source['subjectId'] != widget.id) return false;
+    final repo = ref.read(salesRepositoryProvider(SalesDocType.shipment));
+    final current = await repo.detail(widget.id);
+    if (current.id != widget.id) return false;
+    final review = await repo.financeAuditInfo(widget.id);
+    if (review.shipmentId != widget.id ||
+        review.reviewRevision != source['version'] ||
+        review.contentHash != source['contentHash']) {
+      return false;
+    }
+    return switch (command['action']) {
+      'approve' =>
+        current.financeAudit == 1 &&
+            ((command['request'] as Map?)?['exchangeRate'] == null
+                ? review.shipmentExchangeRate == null
+                : financeRateUnits(review.shipmentExchangeRate) != null &&
+                      financeRateUnits(review.shipmentExchangeRate) ==
+                          financeRateUnits(
+                            (command['request'] as Map?)?['exchangeRate']
+                                as String?,
+                          )),
+      'reject' =>
+        current.shipmentWorkflow.financeRejected &&
+            current.shipmentWorkflow.financeRejectionReason ==
+                (command['request'] as Map?)?['reason'],
+      _ => false,
+    };
+  }
+
+  @override
+  void closeRecoveredReview() => _closeAfterDecision();
   String? _rateError;
   final Map<String, String> _settlementNames = {};
 
@@ -130,10 +227,15 @@ class _FinanceSalesShipmentAuditReviewPageState
 
   /// 按当前汇率框折合本币的参考值(仅预览，权威值由服务端在出库立账时计算)。
   String? _localAmountPreview() {
-    final total = _detail?.totalOriginal;
-    final rate = double.tryParse(_rateController.text.trim());
-    if (total == null || rate == null || rate <= 0) return null;
-    return (total * rate).toStringAsFixed(2);
+    final detail = _detail;
+    if (detail == null) return null;
+    final rate = financeRateUnits(_rateController.text);
+    if (rate == null || rate <= BigInt.zero) return null;
+    final exact = financeExactMultiplyTexts([
+      detail.exactDecimals['totalOriginal'] ?? detail.totalOriginal?.toString(),
+      _rateController.text.trim(),
+    ]);
+    return exact == null ? null : financeMoneyText(exact);
   }
 
   /// 决策可用：待审 + 已销售确认 + 未退回 + 快照完整 + 认领就绪。
@@ -151,6 +253,7 @@ class _FinanceSalesShipmentAuditReviewPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -160,6 +263,7 @@ class _FinanceSalesShipmentAuditReviewPageState
     _claim?.removeListener(_claimChanged);
     _claim?.releaseAll().ignore();
     _rateController.dispose();
+    _rejectReason.dispose();
     super.dispose();
   }
 
@@ -168,6 +272,8 @@ class _FinanceSalesShipmentAuditReviewPageState
   }
 
   Future<void> _load() async {
+    await prepareReviewReload();
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final generation = ++_loadGeneration;
     final container = ProviderScope.containerOf(context, listen: false);
     setState(() {
@@ -258,7 +364,9 @@ class _FinanceSalesShipmentAuditReviewPageState
         // 预填记账汇率：已冻结的 > 本位币 1 > 主档参考汇率 > 空(主档没维护，要财务填)。
         _rateController.text = info.suggestedExchangeRate ?? '';
         _rateError = null;
+        _rejectReason.clear();
       });
+      await bindReviewDraft();
     } on ApiException catch (e) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
@@ -275,6 +383,7 @@ class _FinanceSalesShipmentAuditReviewPageState
   }
 
   Future<void> _leave() async {
+    if (!await confirmFormDraftExit() || !mounted) return;
     await _claim?.releaseAll();
     if (!mounted) return;
     popOrBackTo(context, defaultPath: RouteName.financeSalesShipmentAudit);
@@ -376,19 +485,25 @@ class _FinanceSalesShipmentAuditReviewPageState
         }
         return;
       }
-      await ref
-          .read(salesRepositoryProvider(SalesDocType.shipment))
-          .financeAudit(
-            widget.id,
-            expectedRevision: info.reviewRevision!,
-            expectedContentHash: info.contentHash!,
-            expectedClaimId: claim.claimIdFor(
-              'SALES_SHIPMENT_FINANCE_AUDIT',
+      await submitReviewCommand(
+        'approve',
+        () => ref
+            .read(salesRepositoryProvider(SalesDocType.shipment))
+            .financeAudit(
               widget.id,
-            )!,
-            exchangeRate: exchangeRate,
-          );
+              expectedRevision: info.reviewRevision!,
+              expectedContentHash: info.contentHash!,
+              expectedClaimId: claim.claimIdFor(
+                'SALES_SHIPMENT_FINANCE_AUDIT',
+                widget.id,
+              )!,
+              exchangeRate: exchangeRate,
+            ),
+        request: {'exchangeRate': exchangeRate},
+      );
       if (!mounted) return;
+      await finishReviewDraft();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess('财务已确认，仓库可以出库');
       _closeAfterDecision();
     } on ApiException catch (e) {
@@ -412,7 +527,7 @@ class _FinanceSalesShipmentAuditReviewPageState
       return;
     }
     final generation = _loadGeneration;
-    final controller = TextEditingController();
+    final controller = _rejectReason;
     String? errorText;
     final reason = await showDialog<String>(
       context: context,
@@ -479,7 +594,6 @@ class _FinanceSalesShipmentAuditReviewPageState
       ),
     );
     // 弹窗退场动画仍在用 controller（~150ms）：延迟释放，避免 used-after-dispose。
-    Future<void>.delayed(const Duration(milliseconds: 300), controller.dispose);
     if (reason == null || reason.isEmpty || !mounted) return;
     setState(() => _busy = true);
     try {
@@ -492,19 +606,25 @@ class _FinanceSalesShipmentAuditReviewPageState
         }
         return;
       }
-      await ref
-          .read(salesRepositoryProvider(SalesDocType.shipment))
-          .rejectShipmentFinance(
-            widget.id,
-            expectedRevision: info.reviewRevision!,
-            expectedContentHash: info.contentHash!,
-            expectedClaimId: claim.claimIdFor(
-              'SALES_SHIPMENT_FINANCE_AUDIT',
+      await submitReviewCommand(
+        'reject',
+        () => ref
+            .read(salesRepositoryProvider(SalesDocType.shipment))
+            .rejectShipmentFinance(
               widget.id,
-            )!,
-            reason: reason,
-          );
+              expectedRevision: info.reviewRevision!,
+              expectedContentHash: info.contentHash!,
+              expectedClaimId: claim.claimIdFor(
+                'SALES_SHIPMENT_FINANCE_AUDIT',
+                widget.id,
+              )!,
+              reason: reason,
+            ),
+        request: {'reason': reason.trim()},
+      );
       if (!mounted) return;
+      await finishReviewDraft();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess('已退回销售修改');
       _closeAfterDecision();
     } on ApiException catch (e) {
@@ -588,132 +708,134 @@ class _FinanceSalesShipmentAuditReviewPageState
       }
     });
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '出货财务审核',
-        leading: UtenBackButton(onPressed: _leave),
-        actions: [
-          IconButton(
-            tooltip: '刷新',
-            onPressed: _loading || _busy ? null : _load,
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
-            : _error != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _error!,
-                        style: TextStyle(color: theme.colorScheme.error),
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      UtenButton(
-                        type: UtenButtonType.secondary,
-                        icon: Icons.refresh_rounded,
-                        onPressed: _load,
-                        child: const Text('重试'),
-                      ),
-                    ],
+    return withFormDraft(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '出货财务审核',
+          leading: UtenBackButton(onPressed: _leave),
+          actions: [
+            IconButton(
+              tooltip: '刷新',
+              onPressed: _loading || _busy ? null : _load,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2.5))
+              : _error != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _error!,
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
+                        const SizedBox(height: UtenSpacing.s12),
+                        UtenButton(
+                          type: UtenButtonType.secondary,
+                          icon: Icons.refresh_rounded,
+                          onPressed: _load,
+                          child: const Text('重试'),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              )
-            : _detail == null || _info == null
-            ? const SizedBox.shrink()
-            : Stack(
-                children: [
-                  AbsorbPointer(
-                    absorbing: _busy,
-                    // 默认容器不设固定最大宽度，正文随导航收起和窗口加宽扩展；
-                    // 滚动仍为折叠头+表内滚：上滑先收卡片区，明细标题吸顶后在表格内部滚。
-                    child: UtenContentContainer(
-                      child: UtenCollapsingHeaderScrollView(
-                        collapsingHeader: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            UtenSpacing.s12,
-                            UtenSpacing.s12,
-                            UtenSpacing.s12,
-                            UtenSpacing.s12,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              if (_canDecide &&
-                                  _decisionReady &&
-                                  _claim?.isReady != true) ...[
-                                FinanceReviewClaimNotice(
-                                  claim: _claim,
-                                  onRetry: _busy ? null : _load,
-                                ),
-                                const SizedBox(height: UtenSpacing.s12),
-                              ],
-                              _statusStrip(theme, _detail!, _info!),
-                              const SizedBox(height: UtenSpacing.s12),
-                              _clientFinanceCard(theme, _info!),
-                              const SizedBox(height: UtenSpacing.s12),
-                              _shipmentCard(theme, _detail!),
-                              const SizedBox(height: UtenSpacing.s12),
-                              ShipmentFinanceChangeSummary(
-                                previous: _info!.previousCommercialSnapshot,
-                                current: _info!.commercialSnapshot,
-                                describe: _describeSnapshotValue,
-                              ),
-                              const SizedBox(height: UtenSpacing.s12),
-                              _attachments(theme, _detail!),
-                              if (_detail!
-                                  .shipmentWorkflow
-                                  .financeRejected) ...[
-                                const SizedBox(height: UtenSpacing.s12),
-                                _rejectRecordCard(theme, _detail!),
-                              ],
-                              // 2026-09-25 用户口径：纯计数标题「出货明细(N)」退役；
-                              // 修订对比态标题保留（表体看不出这是对比视图）。
-                              if (_itemsTitle(_detail!)
-                                  case final itemsTitle?) ...[
-                                const SizedBox(height: UtenSpacing.s12),
-                                Text(
-                                  itemsTitle,
-                                  style: theme.textTheme.titleSmall?.copyWith(
-                                    fontWeight: FontWeight.w600,
+                )
+              : _detail == null || _info == null
+              ? const SizedBox.shrink()
+              : Stack(
+                  children: [
+                    AbsorbPointer(
+                      absorbing: _busy,
+                      // 默认容器不设固定最大宽度，正文随导航收起和窗口加宽扩展；
+                      // 滚动仍为折叠头+表内滚：上滑先收卡片区，明细标题吸顶后在表格内部滚。
+                      child: UtenContentContainer(
+                        child: UtenCollapsingHeaderScrollView(
+                          collapsingHeader: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s12,
+                              UtenSpacing.s12,
+                              UtenSpacing.s12,
+                              UtenSpacing.s12,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (_canDecide &&
+                                    _decisionReady &&
+                                    _claim?.isReady != true) ...[
+                                  FinanceReviewClaimNotice(
+                                    claim: _claim,
+                                    onRetry: _busy ? null : _load,
                                   ),
+                                  const SizedBox(height: UtenSpacing.s12),
+                                ],
+                                _statusStrip(theme, _detail!, _info!),
+                                const SizedBox(height: UtenSpacing.s12),
+                                _clientFinanceCard(theme, _info!),
+                                const SizedBox(height: UtenSpacing.s12),
+                                _shipmentCard(theme, _detail!),
+                                const SizedBox(height: UtenSpacing.s12),
+                                ShipmentFinanceChangeSummary(
+                                  previous: _info!.previousCommercialSnapshot,
+                                  current: _info!.commercialSnapshot,
+                                  describe: _describeSnapshotValue,
                                 ),
+                                const SizedBox(height: UtenSpacing.s12),
+                                _attachments(theme, _detail!),
+                                if (_detail!
+                                    .shipmentWorkflow
+                                    .financeRejected) ...[
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  _rejectRecordCard(theme, _detail!),
+                                ],
+                                // 2026-09-25 用户口径：纯计数标题「出货明细(N)」退役；
+                                // 修订对比态标题保留（表体看不出这是对比视图）。
+                                if (_itemsTitle(_detail!)
+                                    case final itemsTitle?) ...[
+                                  const SizedBox(height: UtenSpacing.s12),
+                                  Text(
+                                    itemsTitle,
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
-                        ),
-                        body: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            UtenSpacing.s12,
-                            UtenSpacing.s12,
-                            UtenSpacing.s12,
-                            UtenFloatingActionGroup.controlHeight +
-                                UtenSpacing.s32,
+                          body: Padding(
+                            padding: const EdgeInsets.fromLTRB(
+                              UtenSpacing.s12,
+                              UtenSpacing.s12,
+                              UtenSpacing.s12,
+                              UtenFloatingActionGroup.controlHeight +
+                                  UtenSpacing.s32,
+                            ),
+                            child: _itemsCard(theme, _detail!),
                           ),
-                          child: _itemsCard(theme, _detail!),
                         ),
                       ),
                     ),
-                  ),
-                  // 2026-09-12 口径：点按钮等一段必须屏幕中央加载动画（跟随网络段）。
-                  if (_busy)
-                    const Positioned.fill(
-                      child: UtenBusyOverlay(title: '正在提交审核决定'),
-                    ),
-                ],
-              ),
+                    // 2026-09-12 口径：点按钮等一段必须屏幕中央加载动画（跟随网络段）。
+                    if (_busy)
+                      const Positioned.fill(
+                        child: UtenBusyOverlay(title: '正在提交审核决定'),
+                      ),
+                  ],
+                ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: _detail == null || _info == null
+            ? null
+            : _floatingActions(theme),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _detail == null || _info == null
-          ? null
-          : _floatingActions(theme),
     );
   }
 
@@ -1163,6 +1285,12 @@ class _FinanceSalesShipmentAuditReviewPageState
                 width: 200,
                 value: (it) => salesGoodsNameLabel(it, names.goods(it.goodsId)),
               ),
+              MasterColumnDef<SalesDocItem>(
+                key: 'nameEn',
+                label: '英文名称',
+                width: 180,
+                value: (item) => item.goodsNameEn,
+              ),
               MasterColumnDef(
                 key: 'goodsCode',
                 label: '编号',
@@ -1199,7 +1327,10 @@ class _FinanceSalesShipmentAuditReviewPageState
                 label: '数量',
                 width: 125,
                 type: 'number',
-                value: (it) => formatQtyWithUnit(it.qty, names.unit(it.unitId)),
+                value: (it) => formatExactQtyWithUnit(
+                  it.exactDecimals['qty'] ?? it.qty?.toString(),
+                  names.unit(it.unitId),
+                ),
               ),
               // 金额自动带订单币种后缀（2026-10-10 口径）；价格脱敏时金额打码。
               MasterColumnDef(
@@ -1210,19 +1341,20 @@ class _FinanceSalesShipmentAuditReviewPageState
                 value: (it) => masked
                     ? '***'
                     : financeMoneyWithUnitSuffix(
-                        it.price?.toStringAsFixed(2),
+                        it.exactDecimals['price'] ?? it.price?.toString(),
                         currencyName: names.currency(d.currencyId),
                       ),
               ),
               MasterColumnDef(
                 key: 'amount',
-                label: '金额',
+                label: '总金额',
                 width: 140,
                 type: 'money',
                 value: (it) => masked
                     ? '***'
                     : financeMoneyWithUnitSuffix(
-                        ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+                        it.exactDecimals['amountOriginal'] ??
+                            it.amountOriginal?.toString(),
                         currencyName: names.currency(d.currencyId),
                       ),
               ),
@@ -1232,6 +1364,10 @@ class _FinanceSalesShipmentAuditReviewPageState
                 width: 160,
                 value: (it) =>
                     (it.remark?.isNotEmpty ?? false) ? it.remark : null,
+              ),
+              ...businessReadOnlyColumns<SalesDocItem>(
+                items,
+                columnsOf: (item) => item.extraColumns,
               ),
             ],
             items: items,

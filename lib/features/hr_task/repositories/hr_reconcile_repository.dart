@@ -35,6 +35,13 @@ class HrReconcileRepository {
     return HrReconcilePlan.fromJson(json);
   }
 
+  Future<HrReconcileApplyReceipt> getApplyReceipt(
+    String planId,
+    String requestId,
+  ) async => HrReconcileApplyReceipt.fromJson(
+        await _api.get('$_base/plans/$planId/applies/${Uri.encodeComponent(requestId)}'),
+  );
+
   /// 核对记录首页（顶栏「核对记录」弹层）。
   Future<HrReconcilePlanSummaryPage> listPlans({
     int page = 1,

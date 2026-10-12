@@ -14,6 +14,8 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_task_center_page.dar
 import 'package:uten_imp/features/warehouse/pages/warehouse_draw_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category.dart';
@@ -26,11 +28,16 @@ import '../../helpers/badge_summary_fixture.dart';
 class _FakeApi extends ApiClient {
   _FakeApi() : super(Dio());
 
+  Map<String, dynamic>? lastStockListQuery;
+
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/stock/docs') {
+      lastStockListQuery = Map<String, dynamic>.from(query ?? const {});
+    }
     // 列表端点回空页；其余端点回空对象（页面各自 catch 后显示空态/降级）。
     if (path == '/stock/docs' ||
         path == '/warehouse/sales-outbound' ||
@@ -85,11 +92,12 @@ void main() {
     Set<String> permissions, {
     bool withDrafts = false,
     int subcontractOutboundCount = 2,
+    ApiClient? api,
   }) {
     return ProviderScope(
       overrides: [
         if (withDrafts) formDraftsProvider.overrideWith(_Drafts.new),
-        apiClientProvider.overrideWithValue(_FakeApi()),
+        apiClientProvider.overrideWithValue(api ?? _FakeApi()),
         sharedPreferencesProvider.overrideWithValue(_preferences),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
@@ -273,8 +281,16 @@ void main() {
       await tester.tap(find.text('品质检查结果'));
       await tester.pump();
       await tester.pump();
-      // 嵌入的品质结果页保留自己的来源行（进页面不选来源）。
-      expect(find.text('在上方选择来源和状态后开始办理'), findsOneWidget);
+      // 来源共表且作业默认全部，不由徽章隐式限定来源或作业状态。
+      expect(
+        find.byKey(const Key('warehouse-quality-result-table')),
+        findsOneWidget,
+      );
+      expect(find.text('在上方选择作业阶段后开始办理'), findsNothing);
+      expect(
+        find.byKey(const Key('warehouse-quality-result-type')),
+        findsNothing,
+      );
       await tester.pump(const Duration(seconds: 61));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
@@ -486,5 +502,41 @@ void main() {
     );
     await tester.pump();
     expect(find.text('暂无库存单据查看权限，请联系仓库主管开通。'), findsOneWidget);
+  });
+
+  testWidgets('draw document progress filters through its table header', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      app(const WarehouseDrawTaskCenterPage(), const {
+        Perm.stockDocView,
+      }, api: api),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('领料单'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('已审'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('stock-doc-segment-issue-DRAW')), findsNothing);
+    MasterDataTableView<StockDocListItem> table() =>
+        tester.widget(find.byKey(const Key('stock-doc-segment-table-DRAW')));
+    expect(table().facets['issueStatus']?.map((bucket) => bucket.value), [
+      '0',
+      '1',
+      '2',
+    ]);
+    table().onFilterChanged('issueStatus', '1');
+    await tester.pumpAndSettle();
+    expect(api.lastStockListQuery?['status'], 1);
+    expect(api.lastStockListQuery?['issueStatus'], 1);
+    expect(api.lastStockListQuery?['page'], 1);
+    expect(table().filters['issueStatus'], '1');
+    table().onFilterChanged('issueStatus', null);
+    await tester.pumpAndSettle();
+    expect(api.lastStockListQuery?.containsKey('issueStatus'), isFalse);
+    expect(tester.takeException(), isNull);
   });
 }

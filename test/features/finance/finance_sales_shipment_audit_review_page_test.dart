@@ -5,16 +5,56 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_review_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
+  testWidgets('财审使用记录总金额与精确数量单价，缺额不回乘或造零', (tester) async {
+    await _pumpReviewPage(
+      tester,
+      detail: const {
+        'id': 'shipment-amount',
+        'billNo': 'XS-AMOUNT',
+        'status': 0,
+        'financeAudit': 0,
+        'salesConfirmed': true,
+        'warehouseWorkStatus': 'PENDING_PICK',
+        'items': [
+          {
+            'id': 'recorded',
+            'qty': 0.0001,
+            'price': 0.0000000001,
+            'priceExact': '0.0000000001',
+            'qtyExact': '0.0001',
+            'amountOriginal': 150.1234,
+          },
+          {'id': 'unknown', 'qty': 2, 'price': 100},
+        ],
+      },
+      claimSucceeds: true,
+    );
+    final table = tester.widget<MasterDataTableView<SalesDocItem>>(
+      find.byType(MasterDataTableView<SalesDocItem>),
+    );
+    final amount = table.columns.singleWhere(
+      (column) => column.key == 'amount',
+    );
+    final price = table.columns.singleWhere((column) => column.key == 'price');
+    final qty = table.columns.singleWhere((column) => column.key == 'qty');
+    expect(amount.value(table.items.first), contains('150.1234'));
+    expect(amount.value(table.items.last), '—');
+    expect(price.value(table.items.first), contains('0.0000000001'));
+    expect(qty.value(table.items.first), contains('0.0001'));
+  });
   testWidgets(
     'a shipment resubmission identifies the modification above its bill number',
     (tester) async {
@@ -747,6 +787,7 @@ Future<_ReviewApi> _pumpReviewPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),

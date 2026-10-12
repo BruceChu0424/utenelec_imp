@@ -564,16 +564,23 @@ class OperationsWorkbenchData {
     ...metrics.map((metric) => metric.statusFilter).whereType<String>(),
   ], operationsWorkbenchStatusLabel);
 
-  List<OperationsWorkbenchFilterOption> get exceptionOptions => _options(
-    <String>[
-      ...summary.exceptionCounts.keys,
-      ...metrics.map((metric) => metric.exceptionFilter).whereType<String>(),
-    ],
-    operationsWorkbenchExceptionLabel,
-  ).where((option) => option.value != 'OVERDUE_ANY').toList();
+  List<OperationsWorkbenchFilterOption> get exceptionOptions =>
+      _options(<String>[
+            ...summary.exceptionCounts.keys,
+            ...metrics
+                .map((metric) => metric.exceptionFilter)
+                .whereType<String>(),
+          ], operationsWorkbenchExceptionLabel)
+          .where(
+            (option) =>
+                option.value != 'OVERDUE_ANY' &&
+                option.value != 'FINANCE_REJECTED',
+          )
+          .toList();
   // OVERDUE_ANY（全部逾期）2026-09-03 起不显示：它是旧指标卡的聚合筛选，
   // 与具体异常段（已逾期/逾期缺料等）重复，且聚合段无法回退到"无异常"
   //（SegmentedButton 单选点已选段不回调）；具体异常段之间切换即可。
+  // 财务退回是进行中表格的状态，筛选复用状态列，不再重复成异常子分类。
 
   factory OperationsWorkbenchData.fromJson(
     Map<String, dynamic> json,
@@ -649,6 +656,8 @@ String operationsWorkbenchStatusLabel(String code) =>
       'WAITING_ORDER' => '计划申请已下达 / 待分解',
       'FINANCE_APPROVED' => '财务已通过',
       'FINANCE_REJECTED' => '财务驳回',
+      'FINANCE_REVIEW_PENDING' => '改量待财务复核',
+      'FINANCE_REVIEW_REJECTED' => '改量财务退回',
       'ORDER_PENDING_APPROVAL' => '订单等待财务审核',
       'WAITING_RETURN' => '委外中 / 待回厂',
       'RECEIPT_PENDING_APPROVAL' => '回厂单待审核',

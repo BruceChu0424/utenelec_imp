@@ -120,7 +120,8 @@ public final class ProcurementApprovalContracts {
              *  submission_snapshot)——委外 allowedLossPct 只在展示快照里。 */
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal toleranceMin,
             @JsonSerialize(using = ExactDecimalText.class) BigDecimal toleranceMax,
-            List<String> allowedActions) {
+            List<String> allowedActions,
+            String status) {
     }
 
     /**

@@ -10,6 +10,7 @@ import com.uten.imp.features.auth.StepUpService;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyCounts;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyResult;
+import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyReceipt;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.ImpersonationWriteGuardFilter;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -116,6 +117,18 @@ class EmployeeReconcileControllerSecurityTest {
     private void login(AuthUser actor) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(actor, null, actor.getAuthorities()));
+    }
+
+    @Test
+    void originalReceiptReadRequiresViewButDoesNotConsumeStepUpOrExecute() throws Exception {
+        login(staff(Set.of("employee:view")));
+        when(applies.receipt(any(), eq(planId), eq("original-request")))
+                .thenReturn(new ApplyReceipt("RUNNING", null));
+        mvc.perform(get("/api/org/employee-reconcile/plans/" + planId + "/applies/original-request"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("RUNNING"));
+        verify(applies).receipt(any(), eq(planId), eq("original-request"));
+        verifyNoInteractions(sessions, plans);
     }
 
     @Test

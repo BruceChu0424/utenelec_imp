@@ -15,6 +15,7 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,
@@ -25,6 +26,7 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   });
 
   Future<int> pendingCount({bool? changesOnly});
@@ -70,6 +72,7 @@ class DioSalesOrderFinanceConfirmationRepository
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,
@@ -82,6 +85,7 @@ class DioSalesOrderFinanceConfirmationRepository
         'size': size,
         'rejected': ?rejected,
         'changesOnly': ?changesOnly,
+        if (confirmed) 'confirmed': true,
         if (normalizedKeyword != null && normalizedKeyword.isNotEmpty)
           'keyword': normalizedKeyword,
         // 2026-09-25 单号列统一：表头排序 + 销售单号表头值筛选。
@@ -98,6 +102,7 @@ class DioSalesOrderFinanceConfirmationRepository
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -105,6 +110,7 @@ class DioSalesOrderFinanceConfirmationRepository
       query: <String, dynamic>{
         'rejected': ?rejected,
         'changesOnly': ?changesOnly,
+        if (confirmed) 'confirmed': true,
         if (normalizedKeyword != null && normalizedKeyword.isNotEmpty)
           'keyword': normalizedKeyword,
       },

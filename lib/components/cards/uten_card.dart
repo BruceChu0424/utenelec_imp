@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/performance/performance_tier.dart';
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/brand_theme.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../shared/providers/performance_provider.dart';
 
@@ -65,9 +66,10 @@ class UtenCard extends ConsumerWidget {
         ? switch (effectiveVariant) {
             UtenCardVariant.solid =>
               isDark ? UtenColors.darkBorder : UtenColors.border,
-            UtenCardVariant.glass =>
-              (isDark ? UtenColors.teal400 : theme.colorScheme.primary)
-                  .withValues(alpha: 0.3),
+            UtenCardVariant.glass => brandAccent(
+              theme,
+              isDark ? UtenColors.teal400 : theme.colorScheme.primary,
+            ).withValues(alpha: 0.3),
             UtenCardVariant.outlined =>
               isDark ? UtenColors.darkBorderStrong : UtenColors.borderStrong,
           }

@@ -34,6 +34,11 @@ public class RemoteAccessGuardFilter extends OncePerRequestFilter {
     private final RemoteAccessPolicy remoteAccessPolicy;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return PublicPlatformBrandingRequest.matches(request);
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();

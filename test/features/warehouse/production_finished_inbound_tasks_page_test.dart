@@ -7,6 +7,7 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_batch_stock_in_page.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/production_finished_inbound_task.dart';
@@ -46,6 +47,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiBaseUrlProvider.overrideWithValue('https://finished-task-test.example/api'),
           apiClientProvider.overrideWithValue(api),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.stockDocView,
@@ -172,6 +174,7 @@ void main() {
       ProviderScope(
         overrides: [
           apiClientProvider.overrideWithValue(_FinishedInboundApi()),
+          apiBaseUrlProvider.overrideWithValue('https://finished-task-test.example/api'),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.stockDocView,
           }),

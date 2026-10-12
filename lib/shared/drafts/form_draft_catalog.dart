@@ -88,9 +88,41 @@ class FormDraftDescriptor {
   }
 }
 
-/// Draft policy uses the same create/approve authority as its domain command.
-/// Accounting policy creation is an approval operation, unlike asset entry.
+/// New-document drafts use their create/approve authority. Existing-task
+/// drafts may use the task's view authority when that GET already exposes the
+/// same values, so an owner can inspect an unresolved result after losing an
+/// action grant. Restoring local input never grants a business write: pages
+/// still require current action permissions, live claims and server capabilities.
+/// Accounting policy creation remains an approval operation.
 abstract final class FormDraftCatalog {
+  static const financeSalesOrderReview = FormDraftDescriptor(
+    title: '销售订单财务审核',
+    module: BadgeModule.finance,
+    route: '/finance/sales-order-confirmations/:id',
+    permission: Perm.salesOrderFinanceView,
+    draftKind: 'finance_sales_order_review',
+  );
+  static const financeProcurementReview = FormDraftDescriptor(
+    title: '订货财务审批',
+    module: BadgeModule.finance,
+    route: '/finance/procurement-approvals/:caseId',
+    permission: Perm.financeOrderApprovalView,
+    draftKind: 'finance_procurement_review',
+  );
+  static const financeQuoteReview = FormDraftDescriptor(
+    title: '报价财务核价',
+    module: BadgeModule.finance,
+    route: '/finance/quote-review/:id',
+    permission: Perm.salesQuoteFinanceView,
+    draftKind: 'finance_quote_review',
+  );
+  static const financeShipmentReview = FormDraftDescriptor(
+    title: '出货财务审核',
+    module: BadgeModule.finance,
+    route: '/finance/sales-shipment-audits/:id',
+    permission: Perm.salesShipmentFinanceView,
+    draftKind: 'finance_shipment_review',
+  );
   static const goodsCost = FormDraftDescriptor(
     title: '货品成本',
     module: BadgeModule.finance,
@@ -252,6 +284,13 @@ abstract final class FormDraftCatalog {
     route: '/employee/:id/offboarding',
     permission: 'employee:offboard',
   );
+  static const employeeReconcile = FormDraftDescriptor(
+    title: '员工证件核对',
+    module: BadgeModule.people,
+    route: RouteName.hrReconcile,
+    permission: Perm.employeePiiEdit,
+    draftKind: 'employee_reconcile',
+  );
 
   static const expense = FormDraftDescriptor(
     title: '新建报销',
@@ -376,6 +415,59 @@ abstract final class FormDraftCatalog {
     permission: Perm.subcontractMaterialIssueEdit,
   );
 
+  static const warehouseSalesOutbound = FormDraftDescriptor(
+    title: '销售出库核对',
+    module: BadgeModule.warehouse,
+    route: '/warehouse/sales-outbound/:id',
+    permission: Perm.warehouseSalesOutboundExecute,
+  );
+
+  static const subcontractOutboundBatch = FormDraftDescriptor(
+    title: '批量委外领料拣货出仓填写',
+    module: BadgeModule.warehouse,
+    route: '/warehouse/subcontract-outbound/batch',
+    permission: Perm.subcontractMaterialIssueEdit,
+  );
+
+  static const warehouseSalesOutboundBatch = FormDraftDescriptor(
+    title: '批量销售出库核对',
+    module: BadgeModule.warehouse,
+    route: '/warehouse/sales-outbound/batch',
+    permission: Perm.warehouseSalesOutboundExecute,
+  );
+
+  static const warehouseQualityStockIn = FormDraftDescriptor(
+    title: '合格来料入库填写',
+    module: BadgeModule.warehouse,
+    route: '${RouteName.warehouseQualityResults}/:receiptType/:receiptId',
+    permission: Perm.warehouseIqcStockInConfirm,
+  );
+  static const warehouseQualityBatchStockIn = FormDraftDescriptor(
+    title: '批量合格来料入库填写',
+    module: BadgeModule.warehouse,
+    route: RouteName.warehouseQualityBatchStockIn,
+    permission: Perm.warehouseIqcStockInConfirm,
+  );
+  static const warehouseQualityPreStockIn = FormDraftDescriptor(
+    title: '待检来料上架填写',
+    module: BadgeModule.warehouse,
+    route:
+        '${RouteName.warehouseQualityPreStockInBase}/:receiptType/:receiptId',
+    permission: Perm.warehouseIqcStockInBeforeInspection,
+  );
+  static const productionFinishedBatchStockIn = FormDraftDescriptor(
+    title: '批量产成品点收填写',
+    module: BadgeModule.warehouse,
+    route: RouteName.warehouseProductionFinishedBatchStockIn,
+    permission: Perm.stockDocApprove,
+  );
+  static const materialReturnBatchReceive = FormDraftDescriptor(
+    title: '批量生产退料收仓填写',
+    module: BadgeModule.warehouse,
+    route: '/warehouse/material-returns/batch-receive',
+    permission: Perm.stockDocApprove,
+  );
+
   static const suggestion = FormDraftDescriptor(
     title: '新建建议',
     module: BadgeModule.people,
@@ -411,6 +503,10 @@ abstract final class FormDraftCatalog {
 
   /// Completeness index for the single reviewed descriptor catalog.
   static const all = <String, FormDraftDescriptor>{
+    'financeSalesOrderReview': financeSalesOrderReview,
+    'financeProcurementReview': financeProcurementReview,
+    'financeQuoteReview': financeQuoteReview,
+    'financeShipmentReview': financeShipmentReview,
     'goodsCost': goodsCost,
     'client': client,
     'supplier': supplier,
@@ -434,6 +530,7 @@ abstract final class FormDraftCatalog {
     'goods': goods,
     'employeeOnboarding': employeeOnboarding,
     'employeeOffboarding': employeeOffboarding,
+    'employeeReconcile': employeeReconcile,
     'expense': expense,
     'asset': asset,
     'dailyReport': dailyReport,
@@ -451,6 +548,14 @@ abstract final class FormDraftCatalog {
     'stockCount': stockCount,
     'arrival': arrival,
     'subcontractOutbound': subcontractOutbound,
+    'warehouseSalesOutbound': warehouseSalesOutbound,
+    'warehouseSalesOutboundBatch': warehouseSalesOutboundBatch,
+    'subcontractOutboundBatch': subcontractOutboundBatch,
+    'warehouseQualityStockIn': warehouseQualityStockIn,
+    'warehouseQualityBatchStockIn': warehouseQualityBatchStockIn,
+    'warehouseQualityPreStockIn': warehouseQualityPreStockIn,
+    'productionFinishedBatchStockIn': productionFinishedBatchStockIn,
+    'materialReturnBatchReceive': materialReturnBatchReceive,
     'suggestion': suggestion,
     'notice': notice,
     'payroll': payroll,

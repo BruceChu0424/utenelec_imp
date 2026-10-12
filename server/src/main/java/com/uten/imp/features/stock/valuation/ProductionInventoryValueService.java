@@ -182,6 +182,24 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
             }
         };
     }
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public String requireConsumptionReversalAvailable(UUID originalPosting,BigDecimal qty) {
+        var originals=db.queryForList("""
+            SELECT event.result_node_id,posting.issue_posting_id,posting.settlement_type,demand.execution_segment_id
+            FROM production_material_settlement_postings posting
+            JOIN production_material_demands demand ON demand.id=posting.demand_id
+            LEFT JOIN stock_value_events event ON event.source_event_id=posting.id AND event.source_doc_type='PRODUCTION_CONSUMED_VALUE'
+            WHERE posting.id=:id
+            """,Map.of("id",originalPosting));
+        if(originals.size()!=1)throw conflict("实际用料缺少唯一原成本事实");
+        var source=originals.getFirst();
+        if(source.get("execution_segment_id")==null)throw conflict("旧物料清账尚无明确执行段，不能猜测成品成本");
+        if("LEGAL_WIP".equals(source.get("settlement_type")))return originalPosting.toString();
+        if(source.get("result_node_id")==null||source.get("issue_posting_id")==null)throw conflict("实际用料缺少原领料成本切片");
+        var position=positions.position((UUID)source.get("result_node_id"));
+        return positions.requireReturnConsumedAvailable(position.pool(),position.rootId(),qty,Owner.WIP,(UUID)source.get("issue_posting_id"));
+    }
+
     public void settled(UUID event,UUID actor){
         var postings=db.queryForList("""
                 SELECT p.*,d.execution_segment_id FROM production_material_settlement_postings p

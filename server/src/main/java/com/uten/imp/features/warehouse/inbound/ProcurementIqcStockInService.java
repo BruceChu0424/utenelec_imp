@@ -885,7 +885,7 @@ public class ProcurementIqcStockInService {
                                COALESCE(purchase_order.bill_no,
                                         subcontract_order.bill_no),
                                COALESCE(goods.unit_id, inspection.unit_id),
-                               event.actor_employee_id,source_warehouse.name
+                               event.actor_employee_id,source_warehouse.name,inspection.quantity_tranche
                         FROM procurement_inspection_events event
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = event.inspection_item_id
@@ -939,7 +939,7 @@ public class ProcurementIqcStockInService {
                 NativeValueConverters.toBigDecimal(row[15]), NativeValueConverters.toBigDecimal(row[16]), str(row[17]),
                 NativeValueConverters.toOffsetDateTime(row[18]), str(row[19]), str(row[20]), str(row[21]),
                 str(row[22]), str(row[23]), str(row[24]), str(row[25]),
-                NativeValueConverters.uuid(row[26]), NativeValueConverters.uuid(row[27]),str(row[28])))
+                NativeValueConverters.uuid(row[26]), NativeValueConverters.uuid(row[27]),str(row[28]),str(row[29])))
                 .toList();
     }
 
@@ -956,7 +956,7 @@ public class ProcurementIqcStockInService {
                 slice.stockedForReleaseBaseQty(), slice.remainingBaseQty(),
                 allocation.weight(),
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
-                slice.releasedAt(), inboundAllocations(expectedAllocations),slice.warehouseId(),slice.warehouseName());
+                slice.releasedAt(), inboundAllocations(expectedAllocations),slice.warehouseId(),slice.warehouseName(),slice.quantityTranche());
     }
 
     private Allocation allocation(PassSlice slice) {
@@ -1017,7 +1017,7 @@ public class ProcurementIqcStockInService {
                     NativeValueConverters.toBigDecimal(row[8]), nullableDecimal(row[9]),
                     str(row[10]), str(row[11]), NativeValueConverters.toOffsetDateTime(row[12]),
                     actualByItem.getOrDefault(stockInItemId, List.of()),NativeValueConverters.uuid(row[13]),str(row[14]),
-                    str(row[15]));
+                    str(row[15]),str(row[16]));
         }).toList();
     }
 
@@ -1311,6 +1311,7 @@ public class ProcurementIqcStockInService {
             String sourceOrderNo,
             UUID displayUnitId,
             UUID releasedByEmployeeId,
-            String warehouseName) {
+            String warehouseName,
+            String quantityTranche) {
     }
 }

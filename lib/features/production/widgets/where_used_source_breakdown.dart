@@ -92,7 +92,7 @@ class WhereUsedSourceBreakdown extends StatelessWidget {
             title: '新生产履约需求',
             subtitle: executionCount > 0
                 ? '按执行段冻结到具体产成品，是新系统可归属的有效生产需求'
-                : '仅有已释放、红冲、中止、取消或未审核证据，不计入有效需求汇总',
+                : '仅有已释放、反审、中止、取消或未审核证据，不计入有效需求汇总',
             metrics: [
               _Metric('全部归属段证据', _display(executionEvidenceCount)),
               _Metric('执行段数', _display(executionCount)),
@@ -125,7 +125,7 @@ class WhereUsedSourceBreakdown extends StatelessWidget {
             title: '旧生产排产快照',
             subtitle: legacyPlanCount > 0
                 ? '冻结的 BOM 展开与领退字段；不是当前 BOM，也不是实际消耗量'
-                : '仅有未审核、红冲、中止、取消或孤立快照证据，不计入有效数量汇总',
+                : '仅有未审核、反审、中止、取消或孤立快照证据，不计入有效数量汇总',
             metrics: [
               _Metric('全部快照证据', _display(legacyEvidenceCount)),
               _Metric('计划单数', _display(legacyPlanCount)),
@@ -173,7 +173,7 @@ class WhereUsedSourceBreakdown extends StatelessWidget {
                     subcontractIssueCount > 0 ||
                     _asNum(row['__executionSubcontractSegments']) > 0
                 ? '需求段、成本快照与发料痕迹分开；旧发料数量仅供追溯'
-                : '仅有未审核、红冲或取消证据，不计入有效数量汇总',
+                : '仅有未审核、反审或取消证据，不计入有效数量汇总',
             metrics: [
               _Metric('委外需求段证据', _display(executionSubcontractEvidenceCount)),
               _Metric('委外成本证据', _display(subcontractOrderEvidenceCount)),

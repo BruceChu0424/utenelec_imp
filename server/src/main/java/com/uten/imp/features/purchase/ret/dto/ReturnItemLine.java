@@ -17,6 +17,9 @@ public class ReturnItemLine extends com.uten.imp.common.platformcolumns.Platform
     private BigDecimal unitRate;
     @NotNull private BigDecimal qty;
     private BigDecimal price;
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
+    private BigDecimal giftQty;
     /** 关联收货明细（有则回写 receipt_items.returned_qty）。 */
     private UUID receiptItemId;
     /** 关联订货明细（有则回写 order_items.returned_qty + 结案重算）。 */

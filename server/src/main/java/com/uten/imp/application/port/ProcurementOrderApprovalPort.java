@@ -10,6 +10,8 @@ import java.util.UUID;
  *
  * <p>The finance feature owns approval cases but never imports procurement feature classes.
  * Implementations lock and validate their aggregate before returning a canonical snapshot.
+ * Submitted commercial inputs are read-only in finance review; corrections use the business
+ * draft after rejection. Approval changes lifecycle state and keeps the submitted inputs intact.
  */
 public interface ProcurementOrderApprovalPort {
 
@@ -72,12 +74,21 @@ public interface ProcurementOrderApprovalPort {
             LocalDate deliverDate,
             BigDecimal totalAmountInput,
             /** 采购允许超收百分比(ADR-144); 委外与未填为空, 空时不进入审批快照哈希。 */
-            BigDecimal allowedOverReceiptPct) {
+            BigDecimal allowedOverReceiptPct,
+            BigDecimal giftQty, String quantitySemantics) {
+        /** Legacy constructor keeps old approval hashes stable. */
+        public ItemSnapshot(UUID itemId, Integer lineNo, UUID sourceItemId, UUID goodsId,
+                UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal qty, BigDecimal price,
+                BigDecimal amountOriginal, BigDecimal amountLocal, LocalDate deliverDate,
+                BigDecimal totalAmountInput, BigDecimal allowedOverReceiptPct) {
+            this(itemId,lineNo,sourceItemId,goodsId,colorId,unitId,unitRate,qty,price,
+                    amountOriginal,amountLocal,deliverDate,totalAmountInput,allowedOverReceiptPct,null,null);
+        }
         public ItemSnapshot(UUID itemId, Integer lineNo, UUID sourceItemId, UUID goodsId,
                 UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal qty, BigDecimal price,
                 BigDecimal amountOriginal, BigDecimal amountLocal, LocalDate deliverDate) {
             this(itemId, lineNo, sourceItemId, goodsId, colorId, unitId, unitRate, qty, price,
-                    amountOriginal, amountLocal, deliverDate, null, null);
+                    amountOriginal, amountLocal, deliverDate, null, null, null, null);
         }
 
         /** 委外订货没有允许超收比例(ADR-144 §四)。 */
@@ -86,7 +97,7 @@ public interface ProcurementOrderApprovalPort {
                 BigDecimal amountOriginal, BigDecimal amountLocal, LocalDate deliverDate,
                 BigDecimal totalAmountInput) {
             this(itemId, lineNo, sourceItemId, goodsId, colorId, unitId, unitRate, qty, price,
-                    amountOriginal, amountLocal, deliverDate, totalAmountInput, null);
+                    amountOriginal, amountLocal, deliverDate, totalAmountInput, null, null, null);
         }
     }
 }

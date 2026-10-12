@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 生产模块仓库（生产管理 / production）。
 //
 // 2 个仓库 + 2 个 Provider（底部）：
@@ -325,7 +326,7 @@ class ProductionPlanRepository {
   }
 
   Future<ProductionPlanDetail> reverse(String id) async {
-    final json = await api.post('/production/plans/$id/reverse'); // ENDPOINT
+    final json = await unapproveDocument(api, 'productionPlan', id);
     return ProductionPlanDetail.fromJson(json);
   }
 
@@ -2231,9 +2232,7 @@ class ProductionDailyReportRepository {
   }
 
   Future<ProductionDailyReportDetail> reverse(String id) async {
-    final json = await api.post(
-      '/production/daily-reports/$id/reverse',
-    ); // ENDPOINT
+    final json = await unapproveDocument(api, 'productionDailyReport', id);
     return ProductionDailyReportDetail.fromJson(json);
   }
 }

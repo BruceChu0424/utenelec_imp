@@ -46,7 +46,7 @@ import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
 import '../../../shared/badges/badge_registry.dart';
 
-enum ApprovalTab { pending, approved, rejected }
+enum ApprovalTab { pending, approved, rejected, checkedIn, cancelled }
 
 /// 单次批量上限：逐单循环单审 API，超过则提示分批（无后端批量端点）。
 const int kVisitorBatchLimit = 50;
@@ -83,6 +83,8 @@ class _VisitorApprovalListPageState
     ApprovalTab.pending => null,
     ApprovalTab.approved => 'approved',
     ApprovalTab.rejected => 'rejected',
+    ApprovalTab.checkedIn => 'checkedIn',
+    ApprovalTab.cancelled => 'cancelled',
   };
 
   VisitorApprovalQuery get _query => (
@@ -116,6 +118,12 @@ class _VisitorApprovalListPageState
               _statusFilter = null;
             case 'rejected':
               _tab = ApprovalTab.rejected;
+              _statusFilter = null;
+            case 'checkedIn':
+              _tab = ApprovalTab.checkedIn;
+              _statusFilter = null;
+            case 'cancelled':
+              _tab = ApprovalTab.cancelled;
               _statusFilter = null;
             case null:
               _statusFilter = null;
@@ -367,8 +375,8 @@ class _VisitorApprovalListPageState
           // 但不用 HR 动手 -> 黄(ADR-100); 已拒绝是终态 -> 不挂数。
           //
           // 注意黄数字的口径: 取的是「已批准且还没来核验」的在办数(与工作台访客卡
-          // 同源同数), 列表本身仍列出全部已批准记录(含已经来过的), 所以徽章数会
-          // 小于行数 —— 这是刻意的, 黄色回答的是「还有几拨人没来」。
+          // 同源同数), 列表查询当前 approved 状态；签到后归「已签到」，取消归
+          // 「已取消」。黄数字只回答「还有几拨人没来」，不累计终态历史。
           child: UtenFilterToolbar<ApprovalTab>(
             segmentsKey: const Key('visitor-approval-segments'),
             selected: {_tab},
@@ -393,6 +401,20 @@ class _VisitorApprovalListPageState
               UtenFilterSegment(
                 value: ApprovalTab.rejected,
                 label: l10n.visitorFilterRejected,
+              ),
+              UtenFilterSegment(
+                value: ApprovalTab.checkedIn,
+                label: visitorStatusLabel(
+                  VisitorApplicationStatus.checkedIn,
+                  l10n,
+                ),
+              ),
+              UtenFilterSegment(
+                value: ApprovalTab.cancelled,
+                label: visitorStatusLabel(
+                  VisitorApplicationStatus.cancelled,
+                  l10n,
+                ),
               ),
             ],
           ),

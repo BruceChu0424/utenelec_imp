@@ -38,7 +38,6 @@ final class IntakeHeaderRules {
     static final int BANK_BLOCK_MAX_LINES = 6;
     /** 发给 AI 时代替我司名称的占位符前缀(⟨SELLER_1⟩), 服务端再换回。 */
     static final String SELLER_PLACEHOLDER = "SELLER";
-    static final Pattern SELLER_NAME = Pattern.compile("(?i)(?<![A-Z])UTEN(?![A-Z])|优腾|ZHONGSHAN\\s+SHI\\s+UTEN");
     private static final Pattern SELLER_LABEL = Pattern.compile(
             "(?i)^\\s*(seller|supplier|vendor|exporter|shipper|beneficiary|卖方|供应商|供方|出口商)\\s*[:：]?\\s*$");
     private static final Pattern SELLER_LABEL_INLINE = Pattern.compile(
@@ -111,6 +110,10 @@ final class IntakeHeaderRules {
 
     /** 卖方(我司)单元格坐标集合「行:列」(行列从 0 开始)。 */
     static Set<String> sellerCells(Sheet sheet, int headerRow0) {
+        return sellerCells(sheet, headerRow0, IntakeSellerIdentity.DEFAULT);
+    }
+
+    static Set<String> sellerCells(Sheet sheet, int headerRow0, IntakeSellerIdentity seller) {
         Set<String> out = new HashSet<>();
         for (Row row : sheet.rows()) {
             if (row.index0() >= headerRow0) {
@@ -118,7 +121,7 @@ final class IntakeHeaderRules {
             }
             for (Cell cell : row.cells()) {
                 String text = cell.text();
-                if (SELLER_NAME.matcher(IntakeTextNormalizer.nfkc(text)).find()) {
+                if (seller.containsName(text)) {
                     out.add(key(row.index0(), cell.col0()));
                     // 我司名称下方同列的抬头行(地址、电话), 直到空行或下一个标签。
                     for (int r = row.index0() + 1; r < Math.min(headerRow0, row.index0() + 5); r++) {
@@ -178,8 +181,12 @@ final class IntakeHeaderRules {
      * @param headerRow0 明细表表头行(买方信息只在它上方找)
      */
     static IntakeHeader extract(Sheet sheet, int headerRow0) {
+        return extract(sheet, headerRow0, IntakeSellerIdentity.DEFAULT);
+    }
+
+    static IntakeHeader extract(Sheet sheet, int headerRow0, IntakeSellerIdentity identity) {
         IntakeHeader h = new IntakeHeader();
-        Set<String> seller = sellerCells(sheet, headerRow0);
+        Set<String> seller = sellerCells(sheet, headerRow0, identity);
         StringBuilder buyerContext = new StringBuilder();
         boolean taxFromTaxLabel = false;
         for (Row row : sheet.rows()) {
@@ -229,7 +236,7 @@ final class IntakeHeaderRules {
                     Matcher email = EMAIL.matcher(text);
                     while (email.find()) {
                         String e = email.group();
-                        if (!SELLER_NAME.matcher(e).find()) {
+                        if (!identity.containsName(e)) {
                             h.addEmail(e);
                         }
                     }
@@ -256,6 +263,7 @@ final class IntakeHeaderRules {
             country = IntakeCountries.detect(aboveTableBuyerText(sheet, headerRow0, seller));
         }
         h.country = country;
+        if (identity.isSellerBuyer(h.buyerName)) h.buyerName = null;
         return h;
     }
 
@@ -471,7 +479,11 @@ final class IntakeHeaderRules {
      * 数字单元格(可能是金额)一律不发。
      */
     static MinimizedHeader minimize(Sheet sheet, int headerRow0, int maxChars) {
-        Set<String> seller = sellerCells(sheet, headerRow0);
+        return minimize(sheet, headerRow0, maxChars, IntakeSellerIdentity.DEFAULT);
+    }
+
+    static MinimizedHeader minimize(Sheet sheet, int headerRow0, int maxChars, IntakeSellerIdentity identity) {
+        Set<String> seller = sellerCells(sheet, headerRow0, identity);
         Map<String, String> placeholders = new LinkedHashMap<>();
         List<Row> kept = new ArrayList<>();
         BankBlock bank = new BankBlock();
@@ -596,24 +608,39 @@ final class IntakeHeaderRules {
      * 表头之后的单价、数量等数字保留(认列需要看到数据的样子)。
      */
     static Sheet sanitizeForColumnPrompt(Sheet sheet, int fromRow0, int toRow0) {
+        return sanitizeForColumnPrompt(sheet, fromRow0, toRow0, IntakeSellerIdentity.DEFAULT);
+    }
+
+    static Sheet sanitizeForColumnPrompt(Sheet sheet, int fromRow0, int toRow0, IntakeSellerIdentity identity) {
         Map<String, String> placeholders = new LinkedHashMap<>();
         List<Row> kept = new ArrayList<>();
         BankBlock bank = new BankBlock();
         boolean letterhead = true;
+        int sellerBlockRemaining = 0;
         for (Row row : sheet.rows()) {
             if (row.index0() < fromRow0 || row.index0() > toRow0) {
                 continue;
             }
             String joined = IntakeTextNormalizer.nfkc(row.joinedText());
-            boolean goods = goodsLikeRow(row);
+            boolean goods = goodsLikeRow(row)
+                    && !(letterhead && sellerBlockRemaining > 0 && isContactDetailLine(joined));
             if (goods || tableHeaderText(joined)) {
                 letterhead = false;
             }
             if (bank.drop(joined, row.index0(), goods)) {
                 continue;
             }
-            boolean seller = SELLER_NAME.matcher(joined).find();
+            if (sellerBlockRemaining > 0) {
+                if (joined.isBlank() || isLabel(firstLine(joined)) || !letterhead) {
+                    sellerBlockRemaining = 0;
+                } else {
+                    sellerBlockRemaining--;
+                    continue;
+                }
+            }
+            boolean seller = identity.containsName(joined);
             if (seller && letterhead) {
+                sellerBlockRemaining = 4;
                 continue;
             }
             List<Cell> cells = new ArrayList<>();
@@ -626,7 +653,7 @@ final class IntakeHeaderRules {
                 if (labelKind != null && (labelKind.equals("TAXID") || digitCount(c.text()) >= 7)) {
                     cells.add(Cell.text(c.col0(), placeholder(labelKind, c.text().strip(), placeholders)));
                 } else if (c.kind() == CellKind.TEXT) {
-                    String text = seller ? maskSeller(c.text(), placeholders) : c.text();
+                    String text = seller ? maskSeller(c.text(), placeholders, identity) : c.text();
                     String masked = maskPii(text, placeholders, letterhead);
                     if (!masked.isBlank()) {
                         cells.add(Cell.text(c.col0(), masked));
@@ -671,6 +698,10 @@ final class IntakeHeaderRules {
         return minimizeText(lines, Set.of(0), placeholders);
     }
 
+    static String minimizeText(List<String> lines, Map<String, String> placeholders, IntakeSellerIdentity identity) {
+        return minimizeText(lines, Set.of(0), placeholders, identity);
+    }
+
     /**
      * PDF 文字最小化: 去掉银行信息(银行关键字行, 以及紧跟其后、不像货品行也不是新段落的几行, 如银行名称、地址、账号);
      * 我司名称出现在每页第一行货品/表头之前(抬头区)时整行去掉, 之后(货品描述里的「UTEN logo」、页脚)只把我司名称换成
@@ -679,29 +710,46 @@ final class IntakeHeaderRules {
      * @param pageStarts 新一页第一行在 {@code lines} 里的下标(每页重新判断抬头区; 从页中间接着的一段不含 0)
      */
     static String minimizeText(List<String> lines, Set<Integer> pageStarts, Map<String, String> placeholders) {
+        return minimizeText(lines, pageStarts, placeholders, IntakeSellerIdentity.DEFAULT);
+    }
+
+    static String minimizeText(List<String> lines, Set<Integer> pageStarts, Map<String, String> placeholders,
+                               IntakeSellerIdentity identity) {
         StringBuilder sb = new StringBuilder();
         BankBlock bank = new BankBlock();
         boolean letterhead = false;
+        int sellerBlockRemaining = 0;
         for (int i = 0; i < lines.size(); i++) {
             if (pageStarts.contains(i)) {
                 letterhead = true;
                 bank = new BankBlock();
+                sellerBlockRemaining = 0;
             }
             String line = lines.get(i);
             String normalized = IntakeTextNormalizer.nfkc(line);
-            boolean goods = goodsLikeText(normalized);
+            boolean goods = goodsLikeText(normalized)
+                    && !(letterhead && sellerBlockRemaining > 0 && isContactDetailLine(normalized));
             if (goods || tableHeaderText(normalized)) {
                 letterhead = false;
             }
             if (bank.drop(normalized, i, goods)) {
                 continue;
             }
-            String text = line;
-            if (SELLER_NAME.matcher(normalized).find()) {
-                if (letterhead) {
+            if (sellerBlockRemaining > 0) {
+                if (normalized.isBlank() || isLabel(firstLine(normalized)) || !letterhead) {
+                    sellerBlockRemaining = 0;
+                } else {
+                    sellerBlockRemaining--;
                     continue;
                 }
-                text = maskSeller(normalized, placeholders);
+            }
+            String text = line;
+            if (identity.containsName(normalized)) {
+                if (letterhead) {
+                    sellerBlockRemaining = 4;
+                    continue;
+                }
+                text = maskSeller(normalized, placeholders, identity);
             }
             // 抬头区(买方、联系人一带)从严: 7 位以上数字串都当电话; 货品区只换带标签或明显格式的号码。
             sb.append(maskPii(text, placeholders, letterhead)).append('\n');
@@ -711,8 +759,12 @@ final class IntakeHeaderRules {
 
     /** 我司名称(UTEN/优腾/ZHONGSHAN SHI UTEN)换成 ⟨SELLER_n⟩。 */
     static String maskSeller(String text, Map<String, String> placeholders) {
+        return maskSeller(text, placeholders, IntakeSellerIdentity.DEFAULT);
+    }
+
+    static String maskSeller(String text, Map<String, String> placeholders, IntakeSellerIdentity identity) {
         String normalized = IntakeTextNormalizer.nfkc(text);
-        Matcher m = SELLER_NAME.matcher(normalized);
+        Matcher m = identity.matcher(normalized);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
             m.appendReplacement(sb, Matcher.quoteReplacement(placeholder(SELLER_PLACEHOLDER, m.group(), placeholders)));
@@ -777,8 +829,26 @@ final class IntakeHeaderRules {
 
     /** PDF 文字里的买方邮箱/电话(规则, 排除我司与银行行)。 */
     static void contactsFromText(List<String> lines, IntakeHeader h) {
+        contactsFromText(lines, h, IntakeSellerIdentity.DEFAULT);
+    }
+
+    static void contactsFromText(List<String> lines, IntakeHeader h, IntakeSellerIdentity identity) {
+        int sellerBlockRemaining = 0;
         for (String line : lines) {
-            if (BANK_ROW.matcher(line).find() || SELLER_NAME.matcher(IntakeTextNormalizer.nfkc(line)).find()) {
+            if (identity.containsName(line)) {
+                sellerBlockRemaining = goodsLikeText(line) || tableHeaderText(line) ? 0 : 4;
+                continue;
+            }
+            if (sellerBlockRemaining > 0) {
+                if (line.isBlank() || isLabel(firstLine(line)) || tableHeaderText(line)
+                        || (goodsLikeText(line) && !isContactDetailLine(line))) {
+                    sellerBlockRemaining = 0;
+                } else {
+                    sellerBlockRemaining--;
+                    continue;
+                }
+            }
+            if (BANK_ROW.matcher(line).find()) {
                 continue;
             }
             Matcher email = EMAIL.matcher(line);
@@ -787,5 +857,12 @@ final class IntakeHeaderRules {
             }
             extractPhones(line, h);
         }
+    }
+
+    /** Telephone groups contain several numbers too; they must not terminate a known seller contact block as goods. */
+    private static boolean isContactDetailLine(String text) {
+        String line = firstLine(IntakeTextNormalizer.nfkc(text));
+        return PHONE_LABEL.matcher(line).lookingAt() || ADDRESS.matcher(line).find()
+                || TAX.matcher(line).find() || REGISTRATION.matcher(line).find() || EMAIL.matcher(line).find();
     }
 }

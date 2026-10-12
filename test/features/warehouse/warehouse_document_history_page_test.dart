@@ -8,6 +8,7 @@ import 'package:uten_imp/features/warehouse/models/warehouse_document_history.da
 import 'package:uten_imp/features/warehouse/pages/warehouse_document_history_detail_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_document_history_list_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_document_history_repository.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_document_history_view.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
@@ -79,6 +80,47 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('embedded history uses the status header and preserves the date range', (tester) async {
+    _setViewport(tester, const Size(1200, 1500));
+    final gateway = _Gateway();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          warehouseDocumentHistoryRepositoryProvider(
+            WarehouseDocumentHistoryType.purchaseReceipt,
+          ).overrideWithValue(gateway),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: WarehouseDocumentHistoryView(
+              type: WarehouseDocumentHistoryType.purchaseReceipt,
+              embedded: true,
+              dateFrom: '2026-10-01',
+              dateTo: '2026-10-11',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('warehouse-history-status-purchase-receipts')), findsNothing);
+    MasterDataTableView<WarehouseDocumentHistorySummary> table() => tester.widget(
+      find.byKey(const Key('warehouse-history-table-purchase-receipts')),
+    );
+    expect(table().facets['status']?.map((bucket) => bucket.value), ['0', '1', '-1']);
+    table().onFilterChanged('status', '1');
+    await tester.pumpAndSettle();
+    expect(gateway.statuses.last, '1');
+    expect(gateway.lastRange, ('2026-10-01', '2026-10-11'));
+    expect(gateway.lastPage, 1);
+    expect(table().filters['status'], '1');
+    table().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(gateway.statuses.last, isNull);
+    expect(gateway.lastRange, ('2026-10-01', '2026-10-11'));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('detail at 375px renders physical facts and no commercial leak', (
     tester,
@@ -167,6 +209,8 @@ class _Gateway implements WarehouseDocumentHistoryGateway {
     String? dateTo,
   }) async => const {'billNo': [], 'sourceDocNo': []}; // 2026-09-25 单号列统一：静默降级。
   final List<String?> statuses = <String?>[];
+  (String?, String?)? lastRange;
+  int? lastPage;
 
   @override
   Future<PagedResult<WarehouseDocumentHistorySummary>> list({
@@ -182,6 +226,8 @@ class _Gateway implements WarehouseDocumentHistoryGateway {
     String? sourceDocNo,
   }) async {
     statuses.add(status);
+    lastRange = (dateFrom, dateTo);
+    lastPage = page;
     return PagedResult<WarehouseDocumentHistorySummary>(
       items: <WarehouseDocumentHistorySummary>[_detail.header],
       page: page,

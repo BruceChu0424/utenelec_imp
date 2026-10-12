@@ -171,7 +171,17 @@ Future<void> _choose(WidgetTester tester, String id, String label) async {
   await tester.ensureVisible(_dropdown(id));
   await tester.tap(_dropdown(id));
   await tester.pump(const Duration(milliseconds: 300));
-  await tester.tap(find.text(label).last);
+  final field = tester.widget<UtenDropdownField>(_dropdown(id));
+  final value = field.items.singleWhere((item) => item.label == label).value;
+  final option = find.byKey(
+    ValueKey<(String, Key?, String?)>((
+      'uten-dropdown-option',
+      field.key,
+      value,
+    )),
+  );
+  expect(option, findsOneWidget);
+  await tester.tap(option);
   await tester.pump(const Duration(milliseconds: 300));
 }
 

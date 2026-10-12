@@ -1,3 +1,4 @@
+import '../../../shared/models/procurement_source_terms.dart';
 // 委外单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
 // 2026-09 行级商业条款改造起不再服务委外订货单（走专属页 subcontract_order_edit_page.dart：
@@ -122,6 +123,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   String? _supplierId;
   String? _warehouseId;
   String? _currencyId;
+  ProcurementSourceTerms? _sourceTerms;
 
   // 人员字段
   String? _purchaserId;
@@ -184,6 +186,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     'supplierId': _supplierId,
     'warehouseId': _warehouseId,
     'currencyId': _currencyId,
+    'sourceTerms': _sourceTerms?.toJson(),
     'purchaserId': _purchaserId,
     'senderId': _senderId,
     'workerId': _workerId,
@@ -203,6 +206,11 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     _supplierId = data['supplierId'] as String?;
     _warehouseId = data['warehouseId'] as String?;
     _currencyId = data['currencyId'] as String?;
+    _sourceTerms = data['sourceTerms'] is Map
+        ? ProcurementSourceTerms.fromJson(
+            (data['sourceTerms'] as Map).cast<String, dynamic>(),
+          )
+        : null;
     _purchaserId = data['purchaserId'] as String?;
     _senderId = data['senderId'] as String?;
     _workerId = data['workerId'] as String?;
@@ -236,7 +244,10 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   }
 
   Future<void> _init() async {
-    setState(() => _loading = true);
+    bool accepts() => mounted;
+    setState(() {
+      _loading = true;
+    });
     await ref.read(mn.masterNameServiceProvider).ensureLoaded();
     if (widget.id == null) {
       // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
@@ -268,9 +279,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     }
     if (widget.id != null) {
       try {
-        final d = await ref
-            .read(subcontractRepositoryProvider(widget.docType))
-            .detail(widget.id!);
+        final repo = ref.read(subcontractRepositoryProvider(widget.docType));
+        final d = await repo.detail(widget.id!);
+        if (!accepts()) return;
         if (widget.docType == SubcontractDocType.receipt && d.legacyImported) {
           if (!mounted) return;
           context.appWarning(historicalReceiptReadOnlyMessage, force: true);
@@ -315,9 +326,20 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         _supplierId = d.supplierId;
         _warehouseId = d.warehouseId;
         _currencyId = d.currencyId;
-        _rate.text = financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
-        if (d.taxRate != null) {
-          _taxRate.text = financeExactTrimmed(d.taxRate.toString()) ?? '';
+        final usesSourceTerms =
+            widget.docType == SubcontractDocType.receipt ||
+            widget.docType == SubcontractDocType.returnDoc;
+        final recordedRate = usesSourceTerms && d.priceMasked
+            ? null
+            : d.exchangeRateText ?? d.exchangeRate?.toString();
+        _rate.text =
+            financeExactTrimmed(recordedRate) ?? (usesSourceTerms ? '' : '1');
+        if (usesSourceTerms) {
+          _sourceTerms = d.sourceCommercialTerms(orderSource: false);
+        }
+        if (usesSourceTerms || d.taxRateText != null || d.taxRate != null) {
+          _taxRate.text =
+              financeExactTrimmed(d.taxRateText ?? d.taxRate?.toString()) ?? '';
         }
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
         if (d.totalWeight != null) {
@@ -344,6 +366,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
               it.orderItemId ??
               it.applicationItemId;
           final row = SubcontractGridRow(sourceLocked: upstreamItemId != null)
+            ..documentItemId = it.id
             ..platformFields.sourceRecordId = it.id
             // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
             ..goods = ref
@@ -376,18 +399,19 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         if (_cfg.itemHasStockPlace) {
           await _fillStockPlaces(rows);
         }
+        if (!accepts()) return;
         _grid.replaceAll(rows);
       } on ApiException catch (e) {
-        if (mounted) context.appError(e.message);
-      } catch (_) {
-        // 静默降级
-      }
+        if (mounted && accepts()) {
+          context.appError(e.message);
+        }
+      } catch (_) {}
     }
     if (_grid.isEmpty) {
       _grid.addRow(SubcontractGridRow());
     }
     if (mounted && widget.id == null) await initializeFormDraft();
-    if (mounted) setState(() => _loading = false);
+    if (accepts()) setState(() => _loading = false);
   }
 
   DateTime? _parseDate(String? s) =>
@@ -430,7 +454,8 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   }
 
   bool get _commercialTermsInheritedFromSource =>
-      widget.docType == SubcontractDocType.returnDoc &&
+      (widget.docType == SubcontractDocType.receipt ||
+          widget.docType == SubcontractDocType.returnDoc) &&
       _grid.rows.any((row) => row.upstreamItemId != null);
 
   /// 委外商确定后预填结算方式：上游单据带结算方式时优先（进仓/退货沿用来源
@@ -581,6 +606,21 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       context.appError('上游单据委外商与表头委外商不一致，已阻止引入');
       return;
     }
+    final importedTerms = result.sourceTerms;
+    final importsCommercialSource =
+        widget.docType == SubcontractDocType.receipt ||
+        widget.docType == SubcontractDocType.returnDoc;
+    if (importsCommercialSource && importedTerms == null) {
+      context.appError('来源商业信息缺失，请重新引入来源单据');
+      return;
+    }
+    if (importsCommercialSource &&
+        _commercialTermsInheritedFromSource &&
+        _sourceTerms != null &&
+        !_sourceTerms!.compatibleWith(importedTerms!)) {
+      context.appError('来源币种、财审汇率、税率或结算方式不同，请分别开单');
+      return;
+    }
     final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
@@ -611,6 +651,16 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           r.pricing.totalAmount.text.trim().isEmpty,
     );
     _grid.addRows(rows);
+    if (importsCommercialSource) {
+      setState(() {
+        _sourceTerms = importedTerms;
+        _currencyId = importedTerms!.currencyId;
+        _rate.text = financeExactTrimmed(importedTerms.exchangeRate) ?? '';
+        _taxRate.text = financeExactTrimmed(importedTerms.taxRate) ?? '';
+        _settlementMethodId = importedTerms.settlementMethodId;
+        _settlementError = null;
+      });
+    }
     // 表头未选委外商 → 以上游单据委外商回填；结算方式未选时按上游单据结算方式
     // （进仓/退货引入订货）或供应商默认（V452）预填。
     final sid = result.supplierId;
@@ -764,7 +814,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           _currencyId != null)
         'currencyId': _currencyId,
       if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
-        'exchangeRate': double.tryParse(_rate.text) ?? 1,
+        'exchangeRate': _rate.text.trim(),
       if (_cfg.hasTaxRate && !_commercialTermsInheritedFromSource)
         'taxRate': parsedTaxRate,
       if (_cfg.hasPurchaser && _purchaserId != null)
@@ -785,6 +835,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         'settlementMethodId': _settlementMethodId,
       'items': itemsBody,
     };
+    bool owns() => mounted;
     setState(() => _saving = true);
     try {
       if (widget.id == null) await saveFormDraftNow();
@@ -832,7 +883,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
       }
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && owns()) context.appError(e.message);
     } catch (error, stack) {
       // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
       debugPrint('保存委外单据失败: $error\n$stack');
@@ -840,7 +891,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (owns()) setState(() => _saving = false);
     }
   }
 
@@ -874,7 +925,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   }
 
   @override
-  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+  Widget build(BuildContext context) {
+    return withFormDraft(_buildDraftPage(context));
+  }
 
   Widget _buildDraftPage(BuildContext context) {
     final theme = Theme.of(context);
@@ -1198,7 +1251,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     ),
                     onChanged: (v) => setState(() => _warehouseId = v),
                   ),
-                if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
+                if (_cfg.hasCurrency)
                   _dropdown(
                     '币种',
                     _currencyId,
@@ -1210,12 +1263,13 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     required: widget.docType == SubcontractDocType.order,
                     allowClear: widget.docType != SubcontractDocType.order,
                     errorMessage: _currencyError,
+                    enabled: !_commercialTermsInheritedFromSource,
                     info: widget.docType == SubcontractDocType.order
                         ? '财务批准后冻结为委外订单币种快照'
                         : null,
                   ),
                 // 结算方式紧跟币种（与采购订货单表头次序一致）。
-                if (_cfg.hasSettlement && !_commercialTermsInheritedFromSource)
+                if (_cfg.hasSettlement)
                   _dropdown(
                     '结算方式',
                     _settlementMethodId,
@@ -1227,11 +1281,13 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     required: _cfg.settlementRequired,
                     allowClear: !_cfg.settlementRequired,
                     errorMessage: _settlementError,
+                    enabled: !_commercialTermsInheritedFromSource,
                     info: _cfg.settlementRequired ? '财务批准后冻结为委外订单结算快照' : null,
                   ),
-                if (_cfg.hasTaxRate && !_commercialTermsInheritedFromSource)
+                if (_cfg.hasTaxRate)
                   TextField(
                     controller: _taxRate,
+                    readOnly: _commercialTermsInheritedFromSource,
                     onChanged: (_) {
                       if (_taxRateError != null) {
                         setState(() => _taxRateError = null);
@@ -1257,7 +1313,11 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     ),
                   ),
                 if (_commercialTermsInheritedFromSource)
-                  const Text('币种、税率与结算方式继承来源订货/回厂快照，本页只读且不重复提交。'),
+                  TextField(
+                    controller: _rate,
+                    readOnly: true,
+                    decoration: const InputDecoration(labelText: '汇率'),
+                  ),
                 // 人员字段（按 config 显隐）
                 if (_cfg.hasPurchaser)
                   _employeePicker(

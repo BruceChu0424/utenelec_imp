@@ -2710,6 +2710,7 @@ public class SalesShipmentService {
                     ErrorCode.CONFLICT,
                     "来源订单的数量或金额不正确，或本次出货超过订单未出数量，不能生成出货应收，请刷新后重试");
         }
+        com.uten.imp.common.util.FinancialExactAmount.quantity(shipmentQty, "出货数量");
         return MoneyPolicy.prorate(sourceAmount, priorNetQty.add(shipmentQty), sourceQty, priorNetAmount);
     }
 
@@ -3372,6 +3373,7 @@ public class SalesShipmentService {
                     ErrorCode.VALIDATION_FAILED,
                     "出货数量必须大于 0，实际总重量与价格不得为负数");
         }
+        com.uten.imp.common.util.FinancialExactAmount.quantity(line.getQty(), "出货数量");
     }
 
     private static void requireNonNegativeStoredCommercial(

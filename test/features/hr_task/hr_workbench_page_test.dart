@@ -33,7 +33,7 @@ class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
   Future<HrTaskSummary> summary() async => value;
 }
 
-HrTaskItem _item(String id, String note, {bool claimedByMe = false}) =>
+HrTaskItem _item(String id, String note, {bool claimedByMe = false, bool blessed = false}) =>
     HrTaskItem(
       employeeId: id,
       code: 'UT-$id',
@@ -44,6 +44,7 @@ HrTaskItem _item(String id, String note, {bool claimedByMe = false}) =>
       note: note,
       claimedByName: claimedByMe ? '我' : null,
       claimedByMe: claimedByMe,
+      blessed: blessed,
     );
 
 HrTaskSummary _summary(List<HrTaskItem> identityReview) => HrTaskSummary(
@@ -121,6 +122,13 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets('档案查看和编辑岗位可从工作台查看核对记录而不取得证件更正权限', (tester) async {
+    await _pump(tester, _summary(const []), permissions: const {Perm.employeeView, Perm.employeeEdit});
+    expect(find.byKey(_identityEntry), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('hr-workbench-reconcile-records')));
+    await tester.pumpAndSettle();
+    expect(find.text('task-list:reconcile'), findsOneWidget);
+  });
   testWidgets('有待核对员工时入口卡显示红色通知徽章，点卡片进证件核对页', (tester) async {
     await _pump(
       tester,
@@ -152,9 +160,9 @@ void main() {
       confirmUpcoming: List.generate(3, (i) => _item('u$i', '')),
       confirmOverdue: [_item('o1', '已过预计转正日，待办理或核实')],
       unconfirmedLegacyCount: 0,
-      birthdayToday: [_item('b1', '今日生日')],
+      birthdayToday: [_item('b1', '今日生日'), _item('b2', '已送祝福', blessed: true)],
       birthdayUpcoming: List.generate(12, (i) => _item('p$i', '')),
-      anniversaryToday: [_item('a1', '入职满 5 年')],
+      anniversaryToday: [_item('a1', '入职满 5 年'), _item('a2', '已送祝福', blessed: true)],
       newHires: [_item('n1', ''), _item('n2', '')],
       identityReview: const [],
       badgeCount: 4,
@@ -173,12 +181,12 @@ void main() {
     // 红数 = 今天要办的事：转正=逾期1+今日1(临近3不计)、生日=今日1(30天内12不计)、
     // 周年=今日1、新入职=近30天全量(无「临近」概念，维持原样)。
     expect(badgeCount('confirm'), 2, reason: '临近转正不进红数');
-    expect(badgeCount('birthday'), 1, reason: '30天内生日不进红数');
-    expect(badgeCount('anniversary'), 1);
+    expect(badgeCount('birthday'), 1, reason: '30天内生日与今日已送祝福者不进红数');
+    expect(badgeCount('anniversary'), 1, reason: '今日已送周年祝福者不进红数');
     expect(badgeCount('newhire'), 2);
     // 临近/30 天内的量不丢：仍在卡片口径说明行里以文字体现。
     expect(find.text('逾期 1 · 今日 1 · 临近 3'), findsOneWidget);
-    expect(find.text('今日 1 · 30 天内 12'), findsOneWidget);
+    expect(find.text('今日 2 · 30 天内 12'), findsOneWidget);
   });
 
   testWidgets('没有 pii:edit 不显示证件核对入口；无人待核对时徽章位显示灰 0', (tester) async {

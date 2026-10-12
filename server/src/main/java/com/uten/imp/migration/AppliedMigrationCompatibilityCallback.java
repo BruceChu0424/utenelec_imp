@@ -33,6 +33,7 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
     private static final Set<String> GUARDED_MIGRATIONS = Set.of("260", "263", "273");
     private static final Set<String> LABEL_MIGRATIONS = Set.of("719", "720");
     private static final String USAGE_OWNER_MIGRATION = "815";
+    private static final Set<String> AUDIT_OVERLOAD_MIGRATIONS = Set.of("846", "851");
 
     @Override
     public boolean supports(Event event, Context context) {
@@ -45,7 +46,8 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
                 && (USAGE_OWNER_MIGRATION.equals(migration.getVersion().getVersion())
                     || LABEL_MIGRATIONS.contains(migration.getVersion().getVersion())
                     || event == Event.BEFORE_EACH_MIGRATE
-                        && GUARDED_MIGRATIONS.contains(migration.getVersion().getVersion()));
+                        && (GUARDED_MIGRATIONS.contains(migration.getVersion().getVersion())
+                            || AUDIT_OVERLOAD_MIGRATIONS.contains(migration.getVersion().getVersion())));
     }
 
     @Override
@@ -56,8 +58,23 @@ public final class AppliedMigrationCompatibilityCallback implements Callback {
     @Override
     public void handle(Event event, Context context) {
         try (Statement statement = context.getConnection().createStatement()) {
-            statement.execute("SET CONSTRAINTS ALL IMMEDIATE");
             String version = context.getMigrationInfo().getVersion().getVersion();
+            if (event == Event.BEFORE_EACH_MIGRATE && AUDIT_OVERLOAD_MIGRATIONS.contains(version)) {
+                // Older installations can retain V670's defaulted six-argument overload
+                // beside V830's current seven-argument entry. Immutable V846/V851 use
+                // four arguments. Retire only the obsolete exact signature, on this
+                // migration connection/transaction; do not alter audit registrations.
+                statement.execute("""
+                        DO $audit_overload_compat$
+                        BEGIN
+                            IF to_regprocedure('public.fn_audit_track_table(text,text,text,boolean,text[],boolean,text)') IS NOT NULL THEN
+                                DROP FUNCTION IF EXISTS public.fn_audit_track_table(text,text,text,boolean,text[],boolean);
+                            END IF;
+                        END $audit_overload_compat$
+                        """);
+                return;
+            }
+            statement.execute("SET CONSTRAINTS ALL IMMEDIATE");
             if (USAGE_OWNER_MIGRATION.equals(version)) {
                 if (event == Event.BEFORE_EACH_MIGRATE) {
                     // V815's immutable interim table requires a user, while the

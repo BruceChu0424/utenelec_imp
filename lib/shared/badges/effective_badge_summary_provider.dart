@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../drafts/form_draft_store.dart';
 import '../drafts/form_draft_category.dart';
+import '../drafts/task_form_drafts.dart';
 import 'badge_registry.dart';
 
 /// 已保存的业务草稿由服务端统计；尚未形成单据的填写草稿在此补入一次。
@@ -14,7 +15,9 @@ final effectiveBadgeSummaryProvider = Provider<BadgeSummary>((ref) {
 
 final formDraftModuleCountProvider = Provider.family<int, BadgeModule>(
   (ref, module) => ref.watch(
-    formDraftCategoryCountProvider(FormDraftCategoryScope(module: module)),
+    formDraftCategoryCountProvider(
+      FormDraftCategoryScope(module: module, excludeTaskDrafts: true),
+    ),
   ),
 );
 
@@ -40,7 +43,7 @@ BadgeSummary includeFormDraftBadges(
     for (final draft in drafts)
       if (!formDraftHasFormalDraftCounter(draft) ||
           formDraftConfirmedIds(draft).isEmpty)
-        draft.id: draft,
+        if (!isTaskFormDraft(draft)) draft.id: draft,
   }.values;
   if (unique.isEmpty) return server;
   final entries = Map<String, BadgeCounts>.of(server.entries);

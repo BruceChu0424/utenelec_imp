@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/finance_procurement_workflow.dart';
 
@@ -14,16 +15,18 @@ abstract interface class FinanceProcurementWorkflowRepository {
     String? sort,
     String? order,
     String? billNo,
+    String status = 'PENDING',
   });
 
   /// 待审任务订货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String status = 'PENDING',
   });
 
   /// 待审任务按订货类型计数（全部/采购/委外筛选卡的全量口径）：{PURCHASE: n, ...}。
-  Future<Map<String, int>> approvalTypeCounts();
+  Future<Map<String, int>> approvalTypeCounts({String status = 'PENDING'});
 
   /// 审核详情（财务专用视图）：订单头 + 供应商应付快照 + 明细 + 审批历史。
   Future<FinanceProcurementApprovalReview> review(String caseId);
@@ -44,11 +47,77 @@ abstract interface class FinanceProcurementWorkflowRepository {
   );
 }
 
+abstract interface class FinanceProcurementExactApprovalRepository {
+  Future<void> approveOrdersAtExactRate(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+    String? exchangeRate,
+  });
+}
+
+extension ProcurementExactRateAccess on FinanceProcurementWorkflowRepository {
+  Future<void> approveOrdersWithExactRate(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+    String? exchangeRate,
+  }) {
+    final repository = this;
+    if (repository is FinanceProcurementExactApprovalRepository) {
+      return (repository as FinanceProcurementExactApprovalRepository)
+          .approveOrdersAtExactRate(
+            items,
+            remark: remark,
+            exchangeRate: exchangeRate,
+          );
+    }
+    // Older adapters remain compatible only when their numeric API can carry
+    // the exact decimal. Never silently degrade an unsupported exact input.
+    final number = exchangeRate == null ? null : double.tryParse(exchangeRate);
+    if (exchangeRate != null &&
+        (number == null ||
+            financeExactTrimmed(number.toString()) !=
+                financeExactTrimmed(exchangeRate))) {
+      throw UnsupportedError('当前连接不能无损提交此汇率，请重新连接后重试');
+    }
+    return repository.approveOrdersBatch(
+      items,
+      remark: remark,
+      exchangeRate: number,
+    );
+  }
+}
+
 class DioFinanceProcurementWorkflowRepository
-    implements FinanceProcurementWorkflowRepository {
+    implements
+        FinanceProcurementWorkflowRepository,
+        FinanceProcurementExactApprovalRepository {
   const DioFinanceProcurementWorkflowRepository(this.api);
 
   final ApiClient api;
+
+  @override
+  Future<void> approveOrdersAtExactRate(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+    String? exchangeRate,
+  }) async {
+    final exactRate = financeExactTrimmed(exchangeRate);
+    final units = financeRateUnits(exactRate);
+    if (exchangeRate != null &&
+        (units == null ||
+            units <= BigInt.zero ||
+            units >= BigInt.from(10).pow(18))) {
+      throw const FormatException('汇率须大于 0，整数最多 12 位，小数最多 6 位');
+    }
+    await api.post(
+      ApiEndpoints.financeProcurementApprovalBatchApprove,
+      body: {
+        'items': [for (final item in items) item.toJson()],
+        if (remark?.trim().isNotEmpty == true) 'remark': remark!.trim(),
+        'exchangeRate': ?exactRate,
+      },
+    );
+  }
 
   @override
   Future<FinanceProcurementApprovalPage> approvalTasks({
@@ -59,12 +128,16 @@ class DioFinanceProcurementWorkflowRepository
     String? sort,
     String? order,
     String? billNo,
+    String status = 'PENDING',
   }) async {
     final json = await api.get(
-      ApiEndpoints.financeProcurementApprovalTasks,
+      status == 'PENDING'
+          ? ApiEndpoints.financeProcurementApprovalTasks
+          : '/finance/procurement-approvals/history',
       query: <String, dynamic>{
         'page': page,
         'size': size,
+        if (status != 'PENDING') 'status': status,
         if (orderType != null &&
             orderType != FinanceProcurementOrderType.unknown)
           'orderType': orderType.name.toUpperCase(),
@@ -82,10 +155,12 @@ class DioFinanceProcurementWorkflowRepository
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String status = 'PENDING',
   }) async {
     final json = await api.get(
       ApiEndpoints.financeProcurementApprovalFacets,
       query: <String, dynamic>{
+        if (status != 'PENDING') 'status': status,
         if (orderType != null &&
             orderType != FinanceProcurementOrderType.unknown)
           'orderType': orderType.name.toUpperCase(),
@@ -96,9 +171,12 @@ class DioFinanceProcurementWorkflowRepository
   }
 
   @override
-  Future<Map<String, int>> approvalTypeCounts() async {
+  Future<Map<String, int>> approvalTypeCounts({
+    String status = 'PENDING',
+  }) async {
     final json = await api.get(
       ApiEndpoints.financeProcurementApprovalTypeCounts,
+      query: {if (status != 'PENDING') 'status': status},
     );
     return {
       for (final entry in (json as Map).entries)

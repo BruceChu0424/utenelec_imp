@@ -15,6 +15,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -146,7 +147,10 @@ class UtenDropdownField extends StatefulWidget {
 }
 
 class _UtenDropdownFieldState extends State<UtenDropdownField> {
-  final OverlayPortalController _overlayController = OverlayPortalController();
+  OverlayEntry? _overlay;
+  OverlayState? _targetOverlay;
+  ScrollNotificationObserverState? _scrollObserver;
+  final Set<ScrollPosition> _scrollPositions = {};
   TextEditingController? _searchCtl;
   FocusNode? _searchFocus;
   Object? _menuWidthSignature;
@@ -165,12 +169,29 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final observer = ScrollNotificationObserver.maybeOf(context);
+    if (_scrollObserver != observer) {
+      _scrollObserver?.removeListener(_onScrollNotification);
+      _scrollObserver = observer;
+      _scrollObserver?.addListener(_onScrollNotification);
+    }
+    _observeAncestorScrollPositions();
+    final route = ModalRoute.of(context);
+    if (_overlay != null &&
+        (route != null && !route.isCurrent ||
+            _targetOverlay != Overlay.maybeOf(context, rootOverlay: true))) {
+      _close();
+    }
+    _markOverlayNeedsBuild();
     _aiAttach();
   }
 
   @override
   void didUpdateWidget(covariant UtenDropdownField oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!widget.enabled) _close();
+    _observeAncestorScrollPositions();
+    _markOverlayNeedsBuild();
     _aiAttach();
   }
 
@@ -272,36 +293,152 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
       widget.value == null ? '' : widget.selectedLabel ?? _display;
 
   void _open() {
-    if (_overlayController.isShowing || !widget.enabled) return;
+    if (_overlay != null || !widget.enabled) return;
+    _observeAncestorScrollPositions();
     _searchCtl = TextEditingController();
     _searchFocus = FocusNode();
-    _overlayController.show();
+    _targetOverlay = Overlay.of(context, rootOverlay: true);
+    _overlay = OverlayEntry(
+      builder: (overlayContext) {
+        if (!mounted) return const SizedBox.shrink();
+        return InheritedTheme.captureAll(
+          context,
+          LayoutBuilder(
+            builder: (overlayContext, constraints) {
+              final field = context.findRenderObject();
+              final overlay = _targetOverlay?.context.findRenderObject();
+              if (!mounted ||
+                  field is! RenderBox ||
+                  overlay is! RenderBox ||
+                  !field.attached ||
+                  !field.hasSize ||
+                  !overlay.attached) {
+                return const SizedBox.shrink();
+              }
+              final transform = field.getTransformTo(overlay);
+              final anchor = MatrixUtils.transformRect(
+                transform,
+                Offset.zero & field.size,
+              );
+              var visible = Offset.zero & constraints.biggest;
+              context.visitAncestorElements((element) {
+                if (element is StatefulElement &&
+                    element.state is ScrollableState) {
+                  final viewport = element.findRenderObject();
+                  if (viewport is RenderBox &&
+                      viewport.attached &&
+                      viewport.hasSize) {
+                    visible = visible.intersect(
+                      MatrixUtils.transformRect(
+                        viewport.getTransformTo(overlay),
+                        Offset.zero & viewport.size,
+                      ),
+                    );
+                  }
+                }
+                return true;
+              });
+              if (!visible.overlaps(anchor)) {
+                final entry = _overlay;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted && identical(entry, _overlay)) _close();
+                });
+                return const SizedBox.shrink();
+              }
+              // Resolve real layout coordinates, rather than a paint-only follower.
+              // Nested Tooltip overlays can position from the laid-out menu items.
+              return _buildOverlay(
+                overlayContext,
+                _UtenDropdownOverlayLayout(
+                  childPaintTransform: transform,
+                  childSize: field.size,
+                  overlaySize: constraints.biggest,
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+    _targetOverlay!.insert(_overlay!);
+  }
+
+  void _observeAncestorScrollPositions() {
+    final next = <ScrollPosition>{};
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is ScrollableState) {
+        next.add((element.state as ScrollableState).position);
+      }
+      return true;
+    });
+    for (final position in _scrollPositions.difference(next)) {
+      position.removeListener(_markOverlayNeedsBuild);
+    }
+    for (final position in next.difference(_scrollPositions)) {
+      position.addListener(_markOverlayNeedsBuild);
+    }
+    _scrollPositions
+      ..clear()
+      ..addAll(next);
+  }
+
+  void _stopObservingScrollPositions() {
+    for (final position in _scrollPositions) {
+      position.removeListener(_markOverlayNeedsBuild);
+    }
+    _scrollPositions.clear();
+  }
+
+  void _onScrollNotification(ScrollNotification notification) =>
+      _markOverlayNeedsBuild();
+
+  void _markOverlayNeedsBuild() {
+    final entry = _overlay;
+    if (entry == null) return;
+    if (WidgetsBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && identical(entry, _overlay)) entry.markNeedsBuild();
+      });
+    } else {
+      entry.markNeedsBuild();
+    }
   }
 
   void _close() {
-    if (_overlayController.isShowing) _overlayController.hide();
+    _overlay?.remove();
+    _overlay?.dispose();
+    _overlay = null;
+    _targetOverlay = null;
     _searchCtl?.dispose();
     _searchCtl = null;
     _searchFocus?.dispose();
     _searchFocus = null;
   }
 
-  Widget _withOverlay({required Widget child}) =>
-      OverlayPortal.overlayChildLayoutBuilder(
-        controller: _overlayController,
-        overlayLocation: OverlayChildLocation.rootOverlay,
-        overlayChildBuilder: _buildOverlay,
-        child: child,
-      );
-
   void _select(String? v) {
+    if (!mounted || !widget.enabled) {
+      _close();
+      return;
+    }
     _aiFilled = false;
-    widget.onChanged(v);
+    final onChanged = widget.onChanged;
     _close();
+    onChanged(v);
+  }
+
+  @override
+  void deactivate() {
+    _close();
+    _stopObservingScrollPositions();
+    super.deactivate();
   }
 
   @override
   void dispose() {
+    _stopObservingScrollPositions();
+    _scrollObserver?.removeListener(_onScrollNotification);
+    _scrollObserver = null;
     _aiSlot.detach();
     _close();
     super.dispose();
@@ -325,84 +462,79 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     if (widget.flat) {
       return _buildFlat(theme, hasValue, requiredEmpty, autofillHint);
     }
-    return _withOverlay(
-      child: InkWell(
-        onTap: _open,
-        child: InputDecorator(
-          decoration: applyRequiredEmpty(
-            applyAutofillHint(
-              UtenInputDecoration(
-                InputDecoration(
-                  // 紧凑形态（2026-09-18 用户口径：表格内下拉太高）——isDense +
-                  // 共享紧凑内边距（2026-10-08 起与实盘格/编辑表同源，见
-                  // UtenEditableGridCellSpec），收起时与同行文本格等高；非 dense
-                  // 走主题默认。
-                  isDense: widget.dense,
-                  contentPadding: widget.dense
-                      ? UtenEditableGridCellSpec.contentPadding
-                      : null,
-                  // 箭头图标自带约束（2026-10-06）：InputDecorator 对无约束的
-                  // suffixIcon 默认给最小 48×48 触控槽，直接把格子撑高；预填
-                  // 黄标时 UtenInputDecoration 的提示包装也按本约束收敛。
-                  suffixIconConstraints: widget.dense
-                      ? const BoxConstraints(minWidth: 20, minHeight: 20)
-                      : null,
-                  label: widget.label == null
-                      ? null
-                      : fieldLabel(
-                          widget.label!,
-                          theme,
-                          required: widget.required,
-                          info: widget.info,
-                          base: theme.inputDecorationTheme.labelStyle,
-                        ),
-                  hintText: widget.hintText,
-                  // 同格内值单行口径：内部 hint 超宽折行同样会撑高字段。
-                  hintMaxLines: 1,
-                  helper: autofillHint
-                      ? UtenFieldMessage.autofill(
-                          (_aiFilledNow
-                                  ? aiPageL10n(context).fieldAiFilledReview
-                                  : null) ??
-                              widget.warningMessage ??
-                              '已按上次记录预填，请核对',
-                        )
-                      : null,
-                  error: widget.errorMessage == null
-                      ? null
-                      : UtenFieldMessage.error(widget.errorMessage!),
-                  suffixIcon: const Icon(
-                    Icons.arrow_drop_down_rounded,
-                    size: 20,
-                  ),
-                ),
-                info: widget.info,
+    return InkWell(
+      onTap: _open,
+      child: InputDecorator(
+        decoration: applyRequiredEmpty(
+          applyAutofillHint(
+            UtenInputDecoration(
+              InputDecoration(
+                // 紧凑形态（2026-09-18 用户口径：表格内下拉太高）——isDense +
+                // 共享紧凑内边距（2026-10-08 起与实盘格/编辑表同源，见
+                // UtenEditableGridCellSpec），收起时与同行文本格等高；非 dense
+                // 走主题默认。
+                isDense: widget.dense,
+                contentPadding: widget.dense
+                    ? UtenEditableGridCellSpec.contentPadding
+                    : null,
+                // 箭头图标自带约束（2026-10-06）：InputDecorator 对无约束的
+                // suffixIcon 默认给最小 48×48 触控槽，直接把格子撑高；预填
+                // 黄标时 UtenInputDecoration 的提示包装也按本约束收敛。
+                suffixIconConstraints: widget.dense
+                    ? const BoxConstraints(minWidth: 20, minHeight: 20)
+                    : null,
+                label: widget.label == null
+                    ? null
+                    : fieldLabel(
+                        widget.label!,
+                        theme,
+                        required: widget.required,
+                        info: widget.info,
+                        base: theme.inputDecorationTheme.labelStyle,
+                      ),
+                hintText: widget.hintText,
+                // 同格内值单行口径：内部 hint 超宽折行同样会撑高字段。
+                hintMaxLines: 1,
+                helper: autofillHint
+                    ? UtenFieldMessage.autofill(
+                        (_aiFilledNow
+                                ? aiPageL10n(context).fieldAiFilledReview
+                                : null) ??
+                            widget.warningMessage ??
+                            '已按上次记录预填，请核对',
+                      )
+                    : null,
+                error: widget.errorMessage == null
+                    ? null
+                    : UtenFieldMessage.error(widget.errorMessage!),
+                suffixIcon: const Icon(Icons.arrow_drop_down_rounded, size: 20),
               ),
-              theme,
-              autofilled: autofillHint,
+              info: widget.info,
             ),
             theme,
-            requiredEmpty: requiredEmpty,
+            autofilled: autofillHint,
           ),
-          child: Text(
-            hasValue ? _selectedDisplay : (widget.hintText ?? '请选择'),
-            // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
-            // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
-            // 由网格列 textOf 自动加宽兜底，表单里就省略号。
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            // 紧凑形态字号对齐同行 TextField 输入文本（bodyLarge）：表格里
-            // 下拉值与数量/单价同一字号同一行高，整行等高（2026-10-06）。
-            style:
-                (widget.dense
-                        ? theme.textTheme.bodyLarge
-                        : theme.textTheme.bodyMedium)
-                    ?.copyWith(
-                      color: hasValue
-                          ? theme.colorScheme.onSurface
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-          ),
+          theme,
+          requiredEmpty: requiredEmpty,
+        ),
+        child: Text(
+          hasValue ? _selectedDisplay : (widget.hintText ?? '请选择'),
+          // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
+          // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
+          // 由网格列 textOf 自动加宽兜底，表单里就省略号。
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          // 紧凑形态字号对齐同行 TextField 输入文本（bodyLarge）：表格里
+          // 下拉值与数量/单价同一字号同一行高，整行等高（2026-10-06）。
+          style:
+              (widget.dense
+                      ? theme.textTheme.bodyLarge
+                      : theme.textTheme.bodyMedium)
+                  ?.copyWith(
+                    color: hasValue
+                        ? theme.colorScheme.onSurface
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
         ),
       ),
     );
@@ -420,42 +552,40 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
   ) {
     final display = hasValue ? _selectedDisplay : (widget.hintText ?? '请选择');
     final message = widget.errorMessage ?? widget.warningMessage;
-    return _withOverlay(
-      child: Tooltip(
-        message: message ?? (hasValue ? _display : display),
-        child: InkWell(
-          onTap: _open,
-          borderRadius: BorderRadius.circular(4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  display,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: !widget.enabled
-                        ? theme.colorScheme.onSurfaceVariant
-                        : widget.errorMessage != null || requiredEmpty
-                        ? theme.colorScheme.error
-                        : !hasValue
-                        ? theme.colorScheme.onSurfaceVariant
-                        : autofillHint
-                        ? UtenColors.warning
-                        : null,
-                  ),
+    return Tooltip(
+      message: message ?? (hasValue ? _display : display),
+      child: InkWell(
+        onTap: _open,
+        borderRadius: BorderRadius.circular(4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                display,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: !widget.enabled
+                      ? theme.colorScheme.onSurfaceVariant
+                      : widget.errorMessage != null || requiredEmpty
+                      ? theme.colorScheme.error
+                      : !hasValue
+                      ? theme.colorScheme.onSurfaceVariant
+                      : autofillHint
+                      ? UtenColors.warning
+                      : null,
                 ),
               ),
-              Icon(
-                Icons.arrow_drop_down_rounded,
-                size: 16,
-                color: widget.enabled
-                    ? theme.colorScheme.onSurfaceVariant
-                    : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-            ],
-          ),
+            ),
+            Icon(
+              Icons.arrow_drop_down_rounded,
+              size: 16,
+              color: widget.enabled
+                  ? theme.colorScheme.onSurfaceVariant
+                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+            ),
+          ],
         ),
       ),
     );
@@ -463,7 +593,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
 
   /// 弹层：锚定字段下方、限高 320、竖向滚动；点外部关闭。样式对齐 _FilterCell。
   /// 选项较多（或 searchable:true）时顶部带搜索框，输入实时过滤，回车选中第一项。
-  Widget _buildOverlay(BuildContext ctx, OverlayChildLayoutInfo layout) {
+  Widget _buildOverlay(BuildContext ctx, _UtenDropdownOverlayLayout layout) {
     final theme = Theme.of(ctx);
     final searchable = widget.searchable ?? widget.items.length >= 4;
     // Resolve the anchor during layout. A paint-only follower prevents nested
@@ -844,4 +974,15 @@ class _UtenDropdownFieldState extends State<UtenDropdownField> {
     _measuredMenuWidth = width.ceilToDouble() + 2;
     return _measuredMenuWidth;
   }
+}
+
+class _UtenDropdownOverlayLayout {
+  const _UtenDropdownOverlayLayout({
+    required this.childPaintTransform,
+    required this.childSize,
+    required this.overlaySize,
+  });
+  final Matrix4 childPaintTransform;
+  final Size childSize;
+  final Size overlaySize;
 }

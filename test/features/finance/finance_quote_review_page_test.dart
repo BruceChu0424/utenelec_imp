@@ -18,9 +18,11 @@ import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/finance/models/quote_finance_pricing.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/models/sales_quote_finance_review.dart';
 import 'package:uten_imp/features/finance/pages/finance_quote_review_page.dart';
 import 'package:uten_imp/features/finance/repositories/sales_quote_finance_review_repository.dart';
+import 'package:uten_imp/shared/drafts/review_task_draft.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -377,6 +379,35 @@ Future<void> _save(WidgetTester tester) async {
 
 void main() {
   testWidgets(
+    'retired local business amendments cannot be restored into quote pricing',
+    (tester) async {
+      final (repo, _) = await _pump(tester, _review());
+      final state =
+          tester.state(find.byType(FinanceQuoteReviewPage))
+              as ReviewTaskDraftMixin<FinanceQuoteReviewPage>;
+      for (final retired in <Map<String, dynamic>>[
+        {'qty': '8'},
+        {'removed': true},
+        {'price': '80', 'directPricing': true},
+      ]) {
+        final inputs = state.captureReviewInputs();
+        final lines = Map<String, dynamic>.from(inputs['lines'] as Map);
+        lines['a'] = {
+          ...Map<String, dynamic>.from(lines['a'] as Map),
+          ...retired,
+        };
+        expect(
+          () => state.restoreReviewInputs({...inputs, 'lines': lines}),
+          throwsFormatException,
+        );
+      }
+      expect(repo.saves, isEmpty);
+      expect(find.byKey(const ValueKey('quote-finance-qty-a')), findsNothing);
+      expect(find.byKey(const ValueKey('quote-finance-price-a')), findsNothing);
+    },
+  );
+
+  testWidgets(
     'scope refresh closes the old confirmation dialog even when permissions are unchanged',
     (tester) async {
       final (repo, _) = await _pump(tester, _review());
@@ -396,26 +427,19 @@ void main() {
     },
   );
 
-  testWidgets(
-    'return to sales cannot discard unsaved quantity or deletion edits',
-    (tester) async {
-      final (repo, _) = await _pump(tester, _review());
-      await tester.enterText(
-        find.byKey(const ValueKey('quote-finance-qty-a')),
-        '8',
-      );
-      await tester.pump();
-      await tester.tap(find.byKey(const Key('quote-finance-return')));
-      await tester.pumpAndSettle();
-      expect(repo.returns, isEmpty);
-      expect(find.byType(AlertDialog), findsNothing);
-      expect(_notices(tester).any((text) => text.contains('保存')), isTrue);
-      expect(
-        _text(tester, find.byKey(const ValueKey('quote-finance-qty-a'))),
-        '8',
-      );
-    },
-  );
+  testWidgets('return to sales cannot discard unsaved original pricing edits', (
+    tester,
+  ) async {
+    final (repo, _) = await _pump(tester, _review());
+    await tester.enterText(_discount('a'), '0.8');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('quote-finance-return')));
+    await tester.pumpAndSettle();
+    expect(repo.returns, isEmpty);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(_notices(tester).any((text) => text.contains('保存')), isTrue);
+    expect(_text(tester, _discount('a')), '0.8');
+  });
 
   testWidgets(
     'a late save response cannot restore the previous reader quotation',
@@ -469,19 +493,27 @@ void main() {
   );
 
   testWidgets(
-    'finance edits independent base price, discount and quantity with the claimed revision',
+    'original finance pricing stays available while quotation fields are read-only',
     (tester) async {
       final (repo, claims) = await _pump(tester, _review());
-      await tester.enterText(
-        find.byKey(const ValueKey('quote-finance-price-a')),
-        '80.25',
+      expect(find.byKey(const ValueKey('quote-finance-price-a')), findsNothing);
+      expect(find.byKey(const ValueKey('quote-finance-qty-a')), findsNothing);
+      final table = tester.widget<MasterDataTableView<SalesQuoteFinanceLine>>(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<SalesQuoteFinanceLine>,
+        ),
       );
-      await tester.pump();
-      await tester.enterText(
-        find.byKey(const ValueKey('quote-finance-qty-a')),
-        '4',
+      expect(
+        table.columns.singleWhere((column) => column.key == 'qty').cellBuilder,
+        isNull,
       );
-      await tester.pump();
+      expect(
+        table.columns
+            .singleWhere((column) => column.key == 'price')
+            .cellBuilder,
+        isNull,
+      );
+      expect(table.items, hasLength(2));
       await tester.enterText(_discount('a'), '0.9');
       await tester.pump();
       await _save(tester);
@@ -491,7 +523,7 @@ void main() {
         claims.leases['quote-1']!.claimId,
       );
       expect(repo.saves.single['lines'], [
-        {'itemId': 'a', 'qty': '4', 'price': '80.25', 'discount': '0.9000'},
+        {'itemId': 'a', 'discount': '0.9000'},
       ]);
     },
   );
@@ -508,6 +540,10 @@ void main() {
     await tester.enterText(_deal('a'), '95');
     await tester.pump();
     expect(_text(tester, _discount('a')), '0.95');
+    final originalPrice = tester.widget<Text>(
+      find.byKey(const ValueKey('quote-finance-before-deal-a')),
+    );
+    expect(originalPrice.style!.decoration, TextDecoration.lineThrough);
 
     await tester.enterText(_discount('b'), '0.9');
     await tester.pump();

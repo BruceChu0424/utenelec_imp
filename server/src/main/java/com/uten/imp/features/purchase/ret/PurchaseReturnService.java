@@ -65,6 +65,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class PurchaseReturnService {
+
+
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
@@ -73,6 +75,11 @@ public class PurchaseReturnService {
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.InventoryPositionPort unapprovalPositions;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.InventoryValuationPort unapprovalValues;
 
     private final PurchaseReturnRepository returnRepo;
     private final PurchaseReturnItemRepository itemRepo;
@@ -160,7 +167,7 @@ public class PurchaseReturnService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
     public ReturnDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -181,6 +188,7 @@ public class PurchaseReturnService {
         tx.bind();
         lockReturnRequest(null,req).verifyUnchanged();
         PurchaseReturn r = new PurchaseReturn();
+        r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         applyHeader(req, r, returnHeader(req));
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
@@ -210,6 +218,7 @@ public class PurchaseReturnService {
         access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         mutationGuard.verifyUnchanged();
+        if(req.isConfirmGiftSemantics())r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         applyHeader(req, r, returnHeader(req));
         itemRepo.deleteByReturnId(id);
         itemRepo.flush();
@@ -308,7 +317,7 @@ public class PurchaseReturnService {
                 ? BigDecimal.ZERO : r.getTotalOriginal().negate();
         LocalDate dueDate = paymentTerms.resolveDueDate(
                 r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
-        arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+        if(returnOriginal.signum()!=0||returnLocal.signum()!=0)arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
                 "AP", StockService.SRC_PURCHASE_RETURN, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
                 returnLocal, (short) 17, null, returnOriginal, dueDate,
@@ -323,6 +332,68 @@ public class PurchaseReturnService {
      *
      * <p>顺序遵循 28-Java后端契约 §五：先 {@code reverseArAp}（核销校验），再反向库存/回写。
      */
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('purchase_return:view')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id){
+        detail(id);var r=requireReturn(id);
+        return com.uten.imp.common.finance.ProcurementUnapprovalPreflight.evaluate(em,"purchaseReturn","purchase_returns",id,"purchase_return:reverse",()->unapprovalDependencyFacts(id),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOCUMENT_REVERSE_BLOCKED",()->requireUnapprovalHeader(r)),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("SUPPLIER_PERIOD_CLOSED",()->periodIdentityGuard.requireOpenTodayReadOnly(periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RETURN,id),"采购退货反审")),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOWNSTREAM_OR_COST_BLOCKED",()->requireReversibleBusiness(r)));
+    }
+    private void requireUnapprovalHeader(PurchaseReturn r){
+        access.requireWritable(r.getMakerId(),"只能操作本人负责的采购退货单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
+        if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+    }
+    private void requireReversibleBusiness(PurchaseReturn r){UUID id=r.getId();
+        var items=itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        requireNonNegativeStoredCommercial(r,items);
+        if(r.getTotalOriginal().signum()!=0||r.getTotalLocal().signum()!=0)requireReversibleArAp(id,StockService.SRC_PURCHASE_RETURN);
+        arApService.requireReturnCostProjectionReversible(id,StockService.SRC_PURCHASE_RETURN,r.getBillNo(),r.getBillDate());
+        List<com.uten.imp.application.port.InventoryValuationPort.IssueReturnSource> sources=new java.util.ArrayList<>();
+        for(var item:items){
+            var original=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,warehouse_id,goods_id,color_id,qty FROM stock_movements
+                WHERE source_doc_type=:type AND source_doc_id=:doc AND source_item_id=:item AND movement_type=:movement AND direction=-1 ORDER BY ledger_seq
+                """).setParameter("type",StockService.SRC_PURCHASE_RETURN).setParameter("doc",id).setParameter("item",item.getId()).setParameter("movement",StockService.TYPE_PURCHASE_RETURN));
+            if(original.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"原退货实物出库来源缺失或重复，请专项核对");
+            var row=original.getFirst();sources.add(new com.uten.imp.application.port.InventoryValuationPort.IssueReturnSource(new com.uten.imp.application.port.InventoryValuationPort.PoolKey((UUID)row[1],(UUID)row[2],(UUID)row[3]),(UUID)row[0],(BigDecimal)row[4]));
+        }
+        unapprovalValues.requireIssueReturnsAvailable(sources);
+        requireReturnCounterBalances(id);
+    }
+    private void requireReversibleArAp(UUID id,String type){
+        try{arApService.requireReversibleSource(id,type);}
+        catch(IllegalStateException denied){throw new ApiException(ErrorCode.CONFLICT,denied.getMessage());}
+    }
+    private void requireReturnCounterBalances(UUID id){
+        var receipt=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT SUM(line.qty),COALESCE(original.returned_qty,0),SUM(CASE WHEN line.quantity_semantics='CHARGED_PLUS_GIFT_V1' THEN line.gift_qty ELSE 0 END),original.gift_returned_qty
+            FROM purchase_return_items line JOIN purchase_receipt_items original ON original.id=line.receipt_item_id
+            WHERE line.return_id=:id GROUP BY original.id ORDER BY original.id
+            """).setParameter("id",id));
+        for(Object[] row:receipt)if(((BigDecimal)row[0]).compareTo((BigDecimal)row[1])>0||((BigDecimal)row[2]).compareTo((BigDecimal)row[3])>0)throw new ApiException(ErrorCode.CONFLICT,"原来源累计已退数量不足以完整反审");
+        var order=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT SUM(line.qty),COALESCE(original.returned_qty,0),SUM(CASE WHEN line.quantity_semantics='CHARGED_PLUS_GIFT_V1' THEN line.gift_qty ELSE 0 END),original.gift_returned_qty
+            FROM purchase_return_items line JOIN purchase_order_items original ON original.id=line.order_item_id
+            WHERE line.return_id=:id GROUP BY original.id ORDER BY original.id
+            """).setParameter("id",id));
+        for(Object[] row:order)if(((BigDecimal)row[0]).compareTo((BigDecimal)row[1])>0||((BigDecimal)row[2]).compareTo((BigDecimal)row[3])>0)throw new ApiException(ErrorCode.CONFLICT,"原来源累计已退数量不足以完整反审");
+    }
+
+    private String unapprovalDependencyFacts(UUID id){return String.valueOf(em.createNativeQuery("""
+        SELECT jsonb_build_object(
+            'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM purchase_return_items line WHERE line.return_id=:id),
+            'arAp',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger WHERE ledger.source_doc_id=:id),
+            'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
+            'supplierPeriods',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM supplier_settlement_batches batch JOIN purchase_returns doc ON doc.supplier_id=batch.supplier_id AND doc.currency_id=batch.currency_id WHERE doc.id=:id),
+            'movements',(SELECT jsonb_agg(to_jsonb(movement) ORDER BY movement.id) FROM stock_movements movement WHERE movement.source_doc_id=:id),
+            'inspection',(SELECT jsonb_agg(to_jsonb(inspection) ORDER BY inspection.id) FROM procurement_inspection_items inspection WHERE inspection.receipt_type='PURCHASE' AND inspection.receipt_id=:id),
+            'cases',(SELECT jsonb_agg(to_jsonb(rejection) ORDER BY rejection.id) FROM procurement_iqc_rejection_cases rejection WHERE rejection.receipt_type='PURCHASE' AND rejection.receipt_id=:id),
+            'poolHeads',(SELECT jsonb_agg(to_jsonb(pool) ORDER BY pool.id) FROM stock_value_pools pool WHERE (pool.goods_id,pool.color_id) IN(SELECT goods_id,color_id FROM purchase_return_items WHERE return_id=:id)))::text
+        """).setParameter("id",id).getSingleResult());}
+
     @Transactional
     @PreAuthorize("hasAuthority('purchase_return:reverse')")
     public ReturnDetail reverse(UUID id) {
@@ -336,19 +407,19 @@ public class PurchaseReturnService {
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的采购退货单");
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED)
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        requireUnapprovalHeader(r);
         List<PurchaseReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         requireNonNegativeStoredCommercial(r, items);
         // KS-P1-2：先取库存 advisory 锁，再 reverseArAp 锁 AP 行——与 approve（先 lockInventory 后 postArAp）锁序一致。
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
-        arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
+        arApService.reverseReturnCostProjection(r.getId(),StockService.SRC_PURCHASE_RETURN,r.getBillNo(),r.getBillDate());
+        if(r.getTotalOriginal().signum()!=0||r.getTotalLocal().signum()!=0)
+            arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
         for (PurchaseReturnItem it : items) {
-            applyMovement(r, it, StockService.DIR_IN, now, null);
+            reverseOriginalMovement(r,it,now);
             writeback(it, -1);
         }
         r.setStatus(STATUS_REVERSED);
@@ -358,9 +429,27 @@ public class PurchaseReturnService {
         return detail(id);
     }
 
+    private void reverseOriginalMovement(PurchaseReturn document,PurchaseReturnItem item,OffsetDateTime now){
+        var rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT movement.id,movement.goods_id,movement.color_id,movement.warehouse_id,movement.qty,movement.unit_id,movement.unit_rate
+            FROM stock_movements movement WHERE source_doc_type=:kind AND source_doc_id=:doc AND source_item_id=:item
+                AND movement_type=:type AND direction=-1 ORDER BY ledger_seq FOR UPDATE
+            """).setParameter("kind",StockService.SRC_PURCHASE_RETURN).setParameter("doc",document.getId())
+                .setParameter("item",item.getId()).setParameter("type",StockService.TYPE_PURCHASE_RETURN));
+        if(rows.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"原采购退货出库数量或成本来源缺失/重复，请专项核对后撤销");
+        Object[] original=rows.getFirst();
+        stockService.recordMovement(new StockService.MovementRequest(now,StockService.TYPE_PURCHASE_RETURN,StockService.SRC_PURCHASE_RETURN,
+            document.getId(),item.getId(),(UUID)original[1],(UUID)original[2],(UUID)original[3],StockService.DIR_IN,
+            (BigDecimal)original[4],(UUID)original[5],(BigDecimal)original[6],null,"采购退货反审镜像原出库",null,
+            new com.uten.imp.application.port.InventoryMovementCostReference.OriginalIssueMovement((UUID)original[0])));
+    }
+
     private void applyMovement(PurchaseReturn r, PurchaseReturnItem it, short direction, OffsetDateTime ts, BigDecimal overrideAmount) {
         BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        BigDecimal baseQty = it.getQty().multiply(rate);
+        var q=com.uten.imp.common.finance.ProcurementQuantities.of(it.getQuantitySemantics(),it.getQty(),it.getGiftQty(),rate);
+        BigDecimal baseQty = com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(it.getQuantitySemantics())
+                && it.getChargedBaseQty()!=null && it.getGiftBaseQty()!=null
+                ? it.getChargedBaseQty().add(it.getGiftBaseQty()) : q.physicalBase();
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
         stockService.recordMovement(new StockService.MovementRequest(
                 ts, StockService.TYPE_PURCHASE_RETURN, StockService.SRC_PURCHASE_RETURN,
@@ -375,13 +464,16 @@ public class PurchaseReturnService {
         for (PurchaseReturnItem it : items) {
             if (it.getReceiptItemId() == null) continue;
             Object[] row = (Object[]) em.createNativeQuery("""
-                            SELECT COALESCE(qty, 0), COALESCE(returned_qty, 0)
+                            SELECT COALESCE(qty, 0), COALESCE(returned_qty, 0),quantity_semantics,gift_qty,gift_returned_qty
                             FROM purchase_receipt_items
                             WHERE id = :id
                             """)
                     .setParameter("id", it.getReceiptItemId())
                     .getSingleResult();
             BigDecimal capacity = ((BigDecimal) row[0]).subtract((BigDecimal) row[1]);
+            if(com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(it.getQuantitySemantics()) && it.getGiftQty().signum()>0
+                    && (!com.uten.imp.common.finance.ProcurementQuantities.isExtraGift((String)row[2]) || it.getGiftQty().compareTo(((BigDecimal)row[3]).subtract((BigDecimal)row[4]))>0))
+                throw new ApiException(ErrorCode.CONFLICT,"赠品退货超过来源实物未退数量");
             if (it.getQty() != null && it.getQty().compareTo(capacity) > 0) {
                 throw new ApiException(ErrorCode.CONFLICT,
                         "第 " + it.getLineNo() + " 行退货数量超过来源收货明细可退余量(已收 − 已退 = "
@@ -393,14 +485,14 @@ public class PurchaseReturnService {
     private void writeback(PurchaseReturnItem it, int sign) {
         if (it.getReceiptItemId() != null) {
             em.createNativeQuery(
-                    "UPDATE purchase_receipt_items SET returned_qty = COALESCE(returned_qty,0) + (:q * :s) WHERE id = :id")
-                    .setParameter("q", it.getQty()).setParameter("s", sign)
+                    "UPDATE purchase_receipt_items SET returned_qty=COALESCE(returned_qty,0)+(:q*:s),gift_returned_qty=gift_returned_qty+(:gift*:s) WHERE id=:id")
+                    .setParameter("q", it.getQty()).setParameter("s", sign).setParameter("gift", com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(it.getQuantitySemantics())?it.getGiftQty():BigDecimal.ZERO)
                     .setParameter("id", it.getReceiptItemId()).executeUpdate();
         }
         if (it.getOrderItemId() != null) {
             em.createNativeQuery(
-                    "UPDATE purchase_order_items SET returned_qty = COALESCE(returned_qty,0) + (:q * :s) WHERE id = :id")
-                    .setParameter("q", it.getQty()).setParameter("s", sign)
+                    "UPDATE purchase_order_items SET returned_qty=COALESCE(returned_qty,0)+(:q*:s),gift_returned_qty=gift_returned_qty+(:gift*:s) WHERE id=:id")
+                    .setParameter("q", it.getQty()).setParameter("s", sign).setParameter("gift", com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(it.getQuantitySemantics())?it.getGiftQty():BigDecimal.ZERO)
                     .setParameter("id", it.getOrderItemId()).executeUpdate();
             recalcOrderClosed(it.getOrderItemId());
         }
@@ -464,8 +556,7 @@ public class PurchaseReturnService {
                         PurchaseGoodsSnapshot.MASTER_AT_SAVE);
         int auto = 1;
         for (ReturnItemLine l : lines) {
-            NonNegativeCommercialSignGuard.requireRequestLine(
-                    "采购退货", l.getQty(), l.getPrice());
+            if(l.getPrice()!=null&&l.getPrice().signum()<0)throw new ApiException(ErrorCode.VALIDATION_FAILED,"采购退货单价不能为负数");
             int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
@@ -489,10 +580,13 @@ public class PurchaseReturnService {
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
-            it.setQty(l.getQty());
+            var q=com.uten.imp.common.finance.ProcurementQuantities.of(r.getQuantitySemantics(),l.getQty(),l.getGiftQty(),resolvedUnit.unitRate());
+            it.setQuantitySemantics(r.getQuantitySemantics());it.setQty(q.charged());
+            it.setGiftQty(com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(l.getGiftQty(),"采购退货赠品数量"));
+            it.setChargedBaseQty(q.chargedBase());it.setGiftBaseQty(q.giftBase());
             it.setPrice(l.getPrice());
             // 金额只由服务端派生(ADR-112): 数量 × 单价 × 表头汇率; 单价空则金额空, 汇率空则本币空。
-            MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, r.getExchangeRate());
+            MoneyPolicy.LineAmounts amounts = q.charged().signum()==0?new MoneyPolicy.LineAmounts(BigDecimal.ZERO,BigDecimal.ZERO):MoneyPolicy.line(l.getQty(), it.getPrice(), null, r.getExchangeRate());
             it.setAmountOriginal(amounts.original());
             it.setAmountLocal(amounts.local());
             it.setReceiptItemId(l.getReceiptItemId());
@@ -595,9 +689,9 @@ public class PurchaseReturnService {
         NonNegativeCommercialSignGuard.requireStoredTotals(
                 "采购退货", purchaseReturn.getTotalOriginal(), purchaseReturn.getTotalLocal());
         for (PurchaseReturnItem item : items) {
-            NonNegativeCommercialSignGuard.requireStoredLine(
-                    "采购退货", item.getQty(), item.getPrice(),
-                    item.getAmountOriginal(), item.getAmountLocal());
+            com.uten.imp.common.finance.ProcurementQuantities.of(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
+            if(item.getPrice()!=null&&item.getPrice().signum()<0 || item.getAmountOriginal()!=null&&item.getAmountOriginal().signum()<0 || item.getAmountLocal()!=null&&item.getAmountLocal().signum()<0)
+                throw new ApiException(ErrorCode.CONFLICT,"采购退货金额异常");
         }
     }
 
@@ -618,12 +712,13 @@ public class PurchaseReturnService {
     }
 
     private ReturnItemDto toItemDto(PurchaseReturnItem it) {
-        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        ReturnItemDto dto=new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
                 it.getAmountLocal(), it.getReceiptItemId(), it.getOrderItemId(), it.getWeight(),
                 it.getSourceDocNo(), it.getRemark());
+        dto.setQuantitySemantics(it.getQuantitySemantics());dto.setGiftQty(it.getGiftQty());return dto;
     }
 
     private ReturnDetail toDetail(PurchaseReturn r, List<ReturnItemDto> items) {
@@ -649,11 +744,12 @@ public class PurchaseReturnService {
     }
 
     private static ReturnItemDto maskItemPrices(ReturnItemDto it) {
-        return new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        ReturnItemDto dto=new ReturnItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(), it.getUnitId(), it.getUnitRate(),
                 it.getQty(), null, null, null, it.getReceiptItemId(), it.getOrderItemId(),
                 it.getWeight(), it.getSourceDocNo(), it.getRemark());
+        dto.setQuantitySemantics(it.getQuantitySemantics());dto.setGiftQty(it.getGiftQty());return dto;
     }
 
 

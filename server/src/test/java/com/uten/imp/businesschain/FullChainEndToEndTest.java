@@ -122,13 +122,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "spring.profiles.active=dev",
                 "uten.audit.retention.enabled=false",
                 "uten.reporting.materialized-view-refresh.enabled=false",
-                // 把存货计价的后台轮询推到整个套件跑完之后（本类 ~6 分钟，这里给 1 小时）。
-                // 它在 dev 档默认 10s 后启动、每 2s 排一批（InventoryValueWorkScheduler），
-                // 而本类的成本用例**全部自己显式 runBatch 到收敛**，多一个后台排程只带来竞态：
-                // 2026-09-12 CI 就是被它咬了——finalReportTargetChangeReprices… 刚批准完报工、
-                // 还没断言，后台先把 business_refresh_pending 抽干，断言读到 false。
-                // 调度器本身由 InventoryValueWorkSchedulerTest 单独覆盖，这里关掉不丢覆盖面。
-                "uten.inventory.value-work-initial-delay-ms=3600000",
+                // Test-only config disables inventory polling. Cost cases explicitly drain the real
+                // worker; InventoryValueWorkSchedulerTest owns polling and context-close behavior.
                 "uten.features.goods-owner-scope-enabled=false",
                 "uten.storage.uploads-enabled=true",
                 "uten.storage.malware-scan.provider=test-only",
@@ -232,6 +227,7 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.production.analysis.MaterialStockReallocationService
             materialStockReallocationService;
     @Autowired private com.uten.imp.features.finance.receipt.FinanceReceiptService receiptService;
+    @Autowired private com.uten.imp.features.documents.DocumentUnapprovalService documentUnapprovals;
     @Autowired private com.uten.imp.features.finance.receivables.CustomerPrepaymentQueryService salesMoneyQuery;
     @Autowired private com.uten.imp.features.finance.receivables.CustomerPrepaymentOffsetService customerAdvanceOffsets;
     @Autowired private com.uten.imp.features.sales.ret.SalesReturnService customerReturnService;
@@ -8484,6 +8480,22 @@ class FullChainEndToEndTest {
         // USD account (same currency as 到账) accumulates the 原币 actually received, not the local
         assertEquals(0, bigDecimalFor("select balance_current from accounts where id=?", accountId)
                 .compareTo(new BigDecimal("600")), "美元账户按原币累加 $600(非本币4320)");
+
+        // The same frozen actual-bank allocations must also form a valid editable draft. The new
+        // generation keeps cash/book/FX input facts and clears only terminal settlement balances.
+        loginAs(w.superAdminUserId());
+        var successor=(com.uten.imp.features.finance.receipt.dto.FinanceReceiptDetail)documentUnapprovals.unapprove(
+                "financeReceipt",receiptId,new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest(
+                        "unapprove-fx-"+UUID.randomUUID(),"核对外币收款后重新审核"));
+        assertEquals((short)0,successor.getStatus());
+        assertEquals(0,bigDecimalFor("select balance_current from accounts where id=?",accountId).compareTo(BigDecimal.ZERO));
+        assertEquals(0,bigDecimalFor("select amount_balance_original from ar_ap_ledger where id=?",arId).compareTo(new BigDecimal("1000")));
+        loginAs(approver);
+        receiptService.approve(successor.getId());
+        assertEquals(0,bigDecimalFor("select balance_current from accounts where id=?",accountId).compareTo(new BigDecimal("600")));
+        assertEquals(0,bigDecimalFor("select amount_received_local from ar_ap_ledger where id=?",arId).compareTo(new BigDecimal("4320")));
+        assertEquals(0,bigDecimalFor("select amount_settled from ar_ap_ledger where id=?",arId).compareTo(new BigDecimal("4200")));
+        assertEquals(0,bigDecimalFor("select exchange_diff from finance_receipt_lines where receipt_id=?",successor.getId()).compareTo(new BigDecimal("120")));
     }
 
     /** Build a single-line sales-receipt save request referencing one AR. */
@@ -8727,6 +8739,37 @@ class FullChainEndToEndTest {
         for (UUID receiptId:List.of(advanceReceipt,firstReceipt,finalReceipt)) assertNonemptySourceVoucher("RECEIPT_REV",receiptId);
         assertEquals(0,bigDecimalFor("SELECT amount_original FROM finance_receipts WHERE id=?",advanceReceipt).compareTo(new BigDecimal("400")),
                 "红冲保留原预收金额快照");
+    }
+
+    @Test
+    void unapprovalOfAnOrderWithApprovedBoundPrepaymentFailsBeforeAnyDraftOrFinancialMutation() {
+        World w=seedWorld("unapprove-bound-advance");loginAs(w.superAdminUserId());seedChartOfAccounts();
+        UUID order=createApprovedOrder(w,w.goodsD(),"5","100");
+        String suffix=UUID.randomUUID().toString().substring(0,8);
+        UUID style=UUID.randomUUID(),account=UUID.randomUUID();
+        jdbc.update("INSERT INTO payment_styles(id,code,name,category,level,status) VALUES(?,?,?,'ACCOUNT',0,'使用')",
+                style,"UP-STYLE-"+suffix,"反审预收测试账户科目");
+        jdbc.update("INSERT INTO accounts(id,code,name,account_type,currency_id,status,style_id) VALUES(?,?,?,'BANK',?,'使用',?)",
+                account,"UP-BANK-"+suffix,"反审预收测试账户",w.currencyId(),style);
+        UUID reviewer=createUserWithPerms(w,"unapprove-bound-reviewer","finance_receipt:view","finance_receipt:approve",
+                "customer_prepayment:view","finance:view:all");
+        grantDataScope(reviewer,"finance",w.employeeId());
+        var request=receiptRequest(w,null,account,null,"100","100","0","0",BigDecimal.ONE,BusinessTime.today());
+        request.setReceiptKind("CUSTOMER_PREPAYMENT");request.setSalesOrderId(order);
+        request.setCurrencyId(w.currencyId());request.setExchangeRate(BigDecimal.ONE);
+        request.setAmountOriginal(new BigDecimal("100"));request.setItems(List.of());
+        UUID receipt=receiptService.create(request).getId();loginAs(reviewer);receiptService.approve(receipt);
+        var bankBefore=jdbc.queryForMap("SELECT balance_current,receipts_total,payments_total FROM accounts WHERE id=?",account);
+        var stockBefore=bigDecimalFor("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsD());
+        loginAs(w.superAdminUserId());
+        ApiException blocked=assertThrows(ApiException.class,()->documentUnapprovals.unapprove("salesOrder",order,
+                new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest("bound-advance-"+UUID.randomUUID(),"核对销售单")));
+        assertEquals(ErrorCode.CONFLICT,blocked.getCode());assertEquals(409,blocked.getCode().getHttpStatus());
+        assertEquals((short)1,jdbc.queryForObject("SELECT status FROM sales_orders WHERE id=?",Short.class,order));
+        assertEquals((short)1,jdbc.queryForObject("SELECT status FROM finance_receipts WHERE id=?",Short.class,receipt));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM document_unapprovals WHERE original_id=?",Integer.class,order));
+        assertEquals(bankBefore,jdbc.queryForMap("SELECT balance_current,receipts_total,payments_total FROM accounts WHERE id=?",account));
+        assertEquals(0,stockBefore.compareTo(bigDecimalFor("SELECT COALESCE(sum(qty),0) FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsD())));
     }
 
     @Test

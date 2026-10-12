@@ -102,6 +102,24 @@ class WarehouseQualitySliceDraft {
     placeRequiresReview: _placeRequiresReview,
   );
 
+  Map<String, dynamic> captureInput() => {
+    'selected': selected,
+    'quantity': quantity.text,
+    'place': place.text,
+    'warehouseId': warehouseId,
+    'warehouseName': warehouseName,
+    'placeRequiresReview': _placeRequiresReview,
+  };
+
+  void restoreInput(Map<String, dynamic> input) {
+    selected = canConfirm && input['selected'] == true;
+    quantity.text = input['quantity'] as String? ?? '';
+    place.text = input['place'] as String? ?? '';
+    _warehouseId = input['warehouseId'] as String?;
+    _warehouseName = input['warehouseName'] as String?;
+    _placeRequiresReview = input['placeRequiresReview'] == true;
+  }
+
   String? get quantityError {
     final value = double.tryParse(quantity.text.trim());
     if (value == null || !value.isFinite || value < 0.0001) {
@@ -149,6 +167,28 @@ class WarehouseQualitySliceDraft {
   void dispose() {
     quantity.dispose();
     place.dispose();
+  }
+}
+
+Map<String, dynamic> captureQualitySliceInputs(
+  Iterable<WarehouseQualitySliceDraft> drafts,
+) => {for (final draft in drafts) draft.snapshotKey: draft.captureInput()};
+
+void restoreQualitySliceInputs(
+  Iterable<WarehouseQualitySliceDraft> drafts,
+  Object? inputs, {
+  bool hasPendingCommand = false,
+}) {
+  if (inputs is! Map) throw const FormatException('入库草稿缺少放行明细');
+  final byKey = {for (final draft in drafts) draft.snapshotKey: draft};
+  if (!hasPendingCommand && inputs.keys.any((key) => !byKey.containsKey(key))) {
+    throw const FormatException('原放行明细已变化，请保留草稿并重新核对任务');
+  }
+  for (final entry in byKey.entries) {
+    final input = inputs[entry.key];
+    if (input is Map) {
+      entry.value.restoreInput(Map<String, dynamic>.from(input));
+    }
   }
 }
 

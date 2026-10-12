@@ -1,5 +1,8 @@
 // 员工资料核对更正页(ADR-160)：生成计划/逐行确认(建议·候选·手输)/提交体语义/
 // 执行结果渲染/409 冲突自动重取/他人认领锁/空态/打码/窄屏卡片。
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/data_display/uten_revision_cell.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/layout/uten_paged_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -17,6 +21,15 @@ import 'package:uten_imp/features/hr_task/models/hr_reconcile_plan.dart';
 import 'package:uten_imp/features/hr_task/pages/hr_reconcile_page.dart';
 import 'package:uten_imp/features/hr_task/repositories/hr_reconcile_repository.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/drafts/form_draft_storage_api.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 // 与后端 IdCardUtil 校验一致的真实合法号码（手输用例必须过校验）。
 const _kValidId = '11010519491231002X';
@@ -25,12 +38,19 @@ const _kBrokenId = '450303199001012646';
 class _FakeRepo extends Fake implements HrReconcileRepository {
   /// createIdRepairPlan 的返回，也作为 getPlan 的默认返回。
   HrReconcilePlan plan;
+  HrReconcilePlan? createdPlan;
 
   /// apply 成功后 getPlan 改回这份（结果列渲染）。
   HrReconcilePlan? planAfterApply;
   bool _applied = false;
   HrReconcileApplyResult? applyResult;
   Object? applyError;
+  Object? receiptError;
+  HrReconcileApplyReceipt receipt = const HrReconcileApplyReceipt(
+    status: 'RUNNING',
+  );
+  Completer<HrReconcileApplyReceipt>? delayedReceipt;
+  final List<({String planId, String requestId})> receiptReads = [];
   HrReconcilePlanSummaryPage plansPage = const HrReconcilePlanSummaryPage(
     items: [],
     page: 1,
@@ -43,6 +63,10 @@ class _FakeRepo extends Fake implements HrReconcileRepository {
   final List<List<String>> created = [];
   int getPlanCalls = 0;
   int listCalls = 0;
+  final List<int> recordPagesRequested = [];
+  final Map<int, HrReconcilePlanSummaryPage> recordPages = {};
+  final Map<int, Object> recordPageErrors = {};
+  final List<Future<HrReconcilePlanSummaryPage>> delayedRecordResponses = [];
   final List<
     ({
       String planId,
@@ -58,14 +82,26 @@ class _FakeRepo extends Fake implements HrReconcileRepository {
   @override
   Future<HrReconcilePlan> createIdRepairPlan(List<String> employeeIds) async {
     created.add(List<String>.of(employeeIds));
-    return plan;
+    return createdPlan ?? plan;
   }
 
   @override
   Future<HrReconcilePlan> getPlan(String id) async {
     getPlanCalls++;
     fetched.add(id);
+    if (createdPlan?.id == id) return createdPlan!;
     return _applied ? (planAfterApply ?? plan) : plan;
+  }
+
+  @override
+  Future<HrReconcileApplyReceipt> getApplyReceipt(
+    String planId,
+    String requestId,
+  ) async {
+    receiptReads.add((planId: planId, requestId: requestId));
+    if (delayedReceipt != null) return delayedReceipt!.future;
+    if (receiptError != null) throw receiptError!;
+    return receipt;
   }
 
   @override
@@ -74,7 +110,12 @@ class _FakeRepo extends Fake implements HrReconcileRepository {
     int size = 50,
   }) async {
     listCalls++;
-    return plansPage;
+    recordPagesRequested.add(page);
+    if (delayedRecordResponses.isNotEmpty) {
+      return delayedRecordResponses.removeAt(0);
+    }
+    if (recordPageErrors[page] != null) throw recordPageErrors[page]!;
+    return recordPages[page] ?? plansPage;
   }
 
   @override
@@ -145,6 +186,7 @@ Map<String, dynamic> _itemJson({
 
 Map<String, dynamic> _rowJson({
   int rowNo = 1,
+  int employeeVersion = 4,
   String kind = 'UPDATE',
   String employeeId = 'emp-1',
   String name = '王五',
@@ -157,6 +199,7 @@ Map<String, dynamic> _rowJson({
   ],
 }) => {
   'rowNo': rowNo,
+  'employeeVersion': employeeVersion,
   'kind': kind,
   'employee': {
     'id': employeeId,
@@ -212,6 +255,57 @@ Map<String, dynamic> _planJson({
   };
 }
 
+HrReconcileApplyResult _finishedResult({int version = 2, int rowNo = 1}) =>
+    HrReconcileApplyResult(
+      planVersion: version,
+      round: 1,
+      counts: const HrReconcileApplyCounts(applied: 1, skipped: 0, failed: 0),
+      rows: [
+        HrReconcileApplyRowResult(
+          rowNo: rowNo,
+          result: HrReconcileRowResultStatus.applied,
+          items: const [
+            HrReconcileApplyItemResult(
+              itemNo: 1,
+              status: HrReconcileOutcomeStatus.applied,
+            ),
+          ],
+        ),
+      ],
+      summary: '原更正已完成',
+    );
+
+HrReconcilePlanSummaryPage _recordsPage(
+  int page,
+  List<String> ids, {
+  int totalPages = 1,
+}) => HrReconcilePlanSummaryPage.fromJson({
+  'items': [
+    for (final id in ids)
+      {
+        'id': id,
+        'createdAt': '2026-10-05T09:00:00+08:00',
+        'actorName': '张三',
+        'status': 'CLOSED',
+        'closedReason': 'EXPIRED',
+        'counts': {
+          'rows': 1,
+          'update': 1,
+          'updateItems': 1,
+          'info': 0,
+          'same': 0,
+          'applied': 1,
+          'skipped': 0,
+          'failed': 0,
+        },
+      },
+  ],
+  'page': page,
+  'size': 50,
+  'total': totalPages == 1 ? ids.length : 51,
+  'totalPages': totalPages,
+});
+
 // ── 页面夹具：GoRouter + 假仓库 + 中文 locale ──────────────────────────────
 
 class _Home extends StatelessWidget {
@@ -233,6 +327,14 @@ Future<GoRouter> _pump(
   String? pushUri,
   void Function(bool?)? onResult,
   List<String>? routeUris,
+  Set<String> permissions = const {
+    Perm.employeeView,
+    Perm.employeeEdit,
+    Perm.employeePiiEdit,
+  },
+  StateProvider<Set<String>>? permissionState,
+  StateProvider<String>? recordSessionState,
+  FormDraftStorage? draftStorage,
 }) async {
   bool? pushed;
   final router = GoRouter(
@@ -269,6 +371,22 @@ Future<GoRouter> _pump(
       overrides: [
         hrReconcileRepositoryProvider.overrideWithValue(repo),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        currentPermissionsProvider.overrideWith(
+          (ref) => permissionState == null
+              ? permissions
+              : ref.watch(permissionState),
+        ),
+        isSuperAdminProvider.overrideWithValue(false),
+        if (draftStorage != null) ...[
+          formDraftStorageProvider.overrideWithValue(draftStorage),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'hr-editor'),
+          ),
+        ],
+        if (recordSessionState != null)
+          masterDataSessionKeyProvider.overrideWith(
+            (ref) => ref.watch(recordSessionState),
+          ),
       ],
       child: MaterialApp.router(
         routerConfig: router,
@@ -296,7 +414,899 @@ List<String> _noticeMessages(WidgetTester tester) => ProviderScope.containerOf(
   listen: false,
 ).read(appNotificationProvider).map((n) => n.message).toList();
 
+Future<FormDraft> _seedUnknown(
+  WidgetTester tester,
+  _FakeRepo repo,
+  MemoryFormDraftStorage storage,
+) async {
+  await _pump(
+    tester,
+    repo: repo,
+    draftStorage: storage,
+    pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+  );
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(HrReconcilePage)),
+  );
+  final editor =
+      tester.state(find.byType(HrReconcilePage))
+          as FormDraftMixin<HrReconcilePage>;
+  final spec = editor.formDraftSpec;
+  final snapshot = editor.captureFormDraft();
+  final rows = snapshot['rows'] as List;
+  final saved = await container
+      .read(formDraftsProvider.notifier)
+      .save(
+        FormDraft(
+          id: 'unknown-input',
+          title: spec.title,
+          module: spec.module,
+          route: spec.route,
+          permission: spec.permission,
+          draftKind: spec.draftKind,
+          updatedAt: DateTime.utc(2026, 10, 11),
+          data: {
+            ...snapshot,
+            'rows': [
+              for (var i = 0; i < rows.length; i++)
+                {
+                  ...Map<String, dynamic>.from(rows[i] as Map),
+                  'manual': i == 0 ? _kValidId : '1101051949',
+                  'selected': i == 0,
+                },
+            ],
+            'submission': {
+              'planId': 'plan-1',
+              'planVersion': 1,
+              'requestId': 'original-command',
+              'rows': [
+                {
+                  'rowNo': 1,
+                  'items': [
+                    {'itemNo': 1, 'value': _kValidId},
+                  ],
+                },
+              ],
+            },
+            '_formDraftHasUnknownSubmission': true,
+          },
+        ),
+      );
+  await tester.pumpWidget(const SizedBox());
+  await tester.pumpAndSettle();
+  return saved;
+}
+
 void main() {
+  testWidgets(
+    'interrupted receipt shows real outcomes and explicitly rebuilds without old input',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final storage = MemoryFormDraftStorage();
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(
+          _planJson(
+            rows: [
+              _rowJson(item: _itemJson(tier: 'MANUAL')),
+              _rowJson(
+                rowNo: 2,
+                employeeId: 'emp-2',
+                item: _itemJson(tier: 'MANUAL'),
+              ),
+            ],
+          ),
+        ),
+      );
+      final saved = await _seedUnknown(tester, repo, storage);
+      repo.plan = HrReconcilePlan.fromJson(
+        _planJson(
+          version: 2,
+          status: 'CLOSED',
+          closedReason: 'EXPIRED',
+          canApply: false,
+          rows: [
+            _rowJson(
+              employeeVersion: 5,
+              item: _itemJson(
+                newValue: _kValidId,
+                outcome: {'status': 'APPLIED'},
+              ),
+              result: {'status': 'APPLIED'},
+            ),
+            _rowJson(
+              rowNo: 2,
+              employeeId: 'emp-2',
+              item: _itemJson(oldValue: null, tier: 'MANUAL'),
+            ),
+          ],
+        ),
+      );
+      repo.receipt = const HrReconcileApplyReceipt(status: 'INTERRUPTED');
+      repo.createdPlan = HrReconcilePlan.fromJson(
+        _planJson(
+          id: 'fresh-plan',
+          rows: [
+            _rowJson(kind: 'SAME', employeeVersion: 5),
+            _rowJson(
+              rowNo: 2,
+              employeeId: 'emp-2',
+              item: _itemJson(tier: 'MANUAL'),
+            ),
+          ],
+        ),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: saved.resumeLocation,
+      );
+      await tester.tap(
+        find.byKey(const Key('hr-reconcile-check-original-receipt')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('已更正'), findsWidgets);
+      expect(_table(tester).selectable, isFalse);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      final known = container.read(formDraftsProvider).single;
+      expect(known.hasUnknownSubmission, isFalse);
+      expect(
+        (known.data['knownInterruptedReceipt'] as Map)['sourcePlanVersion'],
+        1,
+      );
+      expect(
+        (known.data['knownInterruptedReceipt'] as Map)['status'],
+        'INTERRUPTED',
+      );
+      expect(repo.created, isEmpty);
+      await tester.tap(
+        find.byKey(const Key('hr-reconcile-rebuild-interrupted')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('重新核对'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.created.single, ['emp-1', 'emp-2']);
+      expect(repo.applies, isEmpty);
+      final current =
+          tester.state(find.byType(HrReconcilePage))
+              as FormDraftMixin<HrReconcilePage>;
+      final snapshot = current.captureFormDraft();
+      expect(snapshot['planId'], 'fresh-plan');
+      expect(
+        (snapshot['rows'] as List).cast<Map<String, dynamic>>().every(
+          (row) => (row['manual'] ?? '') == '',
+        ),
+        isTrue,
+      );
+      expect(
+        storage.records.values
+            .map((value) => jsonDecode(value) as Map<String, dynamic>)
+            .any(
+              (record) =>
+                  record['completed'] == true &&
+                  record['data'] is Map &&
+                  ((record['data'] as Map)['knownInterruptedReceipt']
+                          as Map?)?['status'] ==
+                      'INTERRUPTED',
+            ),
+        isTrue,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'late receipt cannot complete a draft after the route changes plans',
+    (tester) async {
+      final storage = MemoryFormDraftStorage();
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(
+          _planJson(
+            rows: [
+              _rowJson(item: _itemJson(newValue: _kValidId, preselected: true)),
+            ],
+          ),
+        ),
+      );
+      final saved = await _seedUnknown(tester, repo, storage);
+      final delayed = Completer<HrReconcileApplyReceipt>();
+      repo.delayedReceipt = delayed;
+      final router = await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: saved.resumeLocation,
+      );
+      await tester.tap(
+        find.byKey(const Key('hr-reconcile-check-original-receipt')),
+      );
+      await tester.pump();
+      repo.plan = HrReconcilePlan.fromJson(
+        _planJson(
+          id: 'other-plan',
+          rows: [_rowJson(item: _itemJson(tier: 'MANUAL'))],
+        ),
+      );
+      router.go('${RouteName.hrReconcile}?planId=other-plan');
+      await tester.pump();
+      delayed.complete(
+        HrReconcileApplyReceipt(status: 'FINISHED', result: _finishedResult()),
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      expect(container.read(formDraftsProvider).single.id, saved.id);
+      expect(
+        container.read(formDraftsProvider).single.hasUnknownSubmission,
+        isTrue,
+      );
+      expect(repo.applies, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  for (final status in [
+    'RUNNING',
+    'INTERRUPTED',
+    'FINISHED_WITHOUT_RESULT',
+    'FINISHED_WRONG_VERSION',
+    'FINISHED_OTHER_ROW',
+    'NOT_FOUND',
+  ]) {
+    testWidgets(
+      'receipt $status keeps the frozen request and never sends another apply',
+      (tester) async {
+        final storage = MemoryFormDraftStorage();
+        final repo = _FakeRepo(
+          HrReconcilePlan.fromJson(
+            _planJson(
+              rows: [
+                _rowJson(
+                  item: _itemJson(newValue: _kValidId, preselected: true),
+                ),
+              ],
+            ),
+          ),
+        );
+        await _pump(
+          tester,
+          repo: repo,
+          draftStorage: storage,
+          pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+        );
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(HrReconcilePage)),
+        );
+        final editor =
+            tester.state(find.byType(HrReconcilePage))
+                as FormDraftMixin<HrReconcilePage>;
+        final spec = editor.formDraftSpec;
+        final submission = {
+          'planId': 'plan-1',
+          'planVersion': 1,
+          'requestId': 'original-command',
+          'rows': [
+            {
+              'rowNo': 1,
+              'items': [
+                {'itemNo': 1},
+              ],
+            },
+          ],
+        };
+        final saved = await container
+            .read(formDraftsProvider.notifier)
+            .save(
+              FormDraft(
+                id: 'unknown-input',
+                title: spec.title,
+                module: spec.module,
+                route: spec.route,
+                permission: spec.permission,
+                draftKind: spec.draftKind,
+                updatedAt: DateTime.utc(2026, 10, 11),
+                data: {
+                  ...editor.captureFormDraft(),
+                  'submission': submission,
+                  '_formDraftHasUnknownSubmission': true,
+                },
+              ),
+            );
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+        if (status == 'NOT_FOUND') {
+          repo.receiptError = ApiException(
+            'NOT_FOUND',
+            'no receipt',
+            httpStatus: 404,
+          );
+        } else {
+          repo.receipt = HrReconcileApplyReceipt(
+            status: status.startsWith('FINISHED') ? 'FINISHED' : status,
+            result: status == 'FINISHED_WRONG_VERSION'
+                ? _finishedResult(version: 3)
+                : status == 'FINISHED_OTHER_ROW'
+                ? _finishedResult(rowNo: 99)
+                : null,
+          );
+        }
+        await _pump(
+          tester,
+          repo: repo,
+          draftStorage: storage,
+          pushUri: saved.resumeLocation,
+        );
+        await tester.tap(
+          find.byKey(const Key('hr-reconcile-check-original-receipt')),
+        );
+        await tester.pumpAndSettle();
+        expect(repo.applies, isEmpty);
+        expect(repo.receiptReads.single.requestId, 'original-command');
+        final resumed = ProviderScope.containerOf(
+          tester.element(find.byType(HrReconcilePage)),
+        );
+        expect(
+          resumed.read(formDraftsProvider).single.hasUnknownSubmission,
+          status == 'INTERRUPTED' ? isFalse : isTrue,
+        );
+        expect(repo.created, isEmpty, reason: '读到中断也必须由用户显式重建');
+        expect(
+          resumed.read(formDraftsProvider).single.data['submission'],
+          submission,
+        );
+        expect(find.byKey(const Key('hr-reconcile-apply')), findsNothing);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  testWidgets(
+    'CAS conflict prevents apply and keeps the newer editor snapshot intact',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final storage = MemoryFormDraftStorage();
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(
+          _planJson(
+            rows: [_rowJson(item: _itemJson(tier: 'MANUAL'))],
+          ),
+        ),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('hr-reconcile-manual-1')),
+        _kValidId,
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      final original = container.read(formDraftsProvider).single;
+      final next = await container
+          .read(formDraftsProvider.notifier)
+          .save(
+            FormDraft(
+              id: original.id,
+              title: original.title,
+              module: original.module,
+              route: original.route,
+              permission: original.permission,
+              draftKind: original.draftKind,
+              updatedAt: DateTime.utc(2026, 10, 12),
+              data: {
+                ...original.data,
+                'rows': [
+                  {
+                    ...(original.data['rows'] as List).single
+                        as Map<String, dynamic>,
+                    'manual': 'newer-input',
+                  },
+                ],
+              },
+            ),
+            expectedRevision: original.revision,
+          );
+      _table(tester).onSelectedIdsChanged!({'emp-1'});
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hr-reconcile-apply')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认更正'));
+      await tester.pumpAndSettle();
+      expect(repo.applies, isEmpty);
+      expect(container.read(formDraftsProvider).single.revision, next.revision);
+      expect(
+        container.read(formDraftsProvider).single.data['rows'],
+        next.data['rows'],
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'manual raw input autosaves and resumes by employee identity after line reorder',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final storage = MemoryFormDraftStorage();
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(
+          _planJson(
+            rows: [
+              _rowJson(item: _itemJson(tier: 'MANUAL')),
+              _rowJson(
+                rowNo: 2,
+                employeeId: 'emp-2',
+                item: _itemJson(tier: 'MANUAL'),
+              ),
+            ],
+          ),
+        ),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('hr-reconcile-manual-1')),
+        '1101051949',
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      final saved = container.read(formDraftsProvider).single;
+      final rows = saved.data['rows'] as List;
+      expect((rows.first as Map)['manual'], '1101051949');
+      expect((rows.first as Map)['employeeId'], 'emp-1');
+      expect((rows.first as Map)['sourceVersion'], 4);
+      expect(saved.data.keys, isNot(contains('password')));
+      expect(saved.data.keys, isNot(contains('stepUpToken')));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      repo.plan = HrReconcilePlan.fromJson(
+        _planJson(
+          rows: [
+            _rowJson(
+              employeeId: 'emp-2',
+              item: _itemJson(tier: 'MANUAL'),
+            ),
+            _rowJson(rowNo: 2, item: _itemJson(tier: 'MANUAL')),
+          ],
+        ),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: saved.resumeLocation,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('hr-reconcile-manual-2')),
+            )
+            .controller!
+            .text,
+        '1101051949',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('hr-reconcile-manual-1')),
+            )
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(repo.applies, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'changed source version blocks restoration and retains original input',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final storage = MemoryFormDraftStorage();
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(
+          _planJson(
+            rows: [_rowJson(item: _itemJson(tier: 'MANUAL'))],
+          ),
+        ),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('hr-reconcile-manual-1')),
+        '1101051949',
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      final saved = container.read(formDraftsProvider).single;
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      repo.plan = HrReconcilePlan.fromJson(
+        _planJson(
+          rows: [_rowJson(employeeVersion: 5, item: _itemJson(tier: 'MANUAL'))],
+        ),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: saved.resumeLocation,
+      );
+      expect(find.text('这份草稿暂时无法恢复，原草稿已保留。'), findsOneWidget);
+      final resumed = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      expect(
+        resumed.read(formDraftsProvider).single.data['rows'],
+        saved.data['rows'],
+      );
+      expect(_table(tester).selectable, isFalse);
+      expect(repo.applies, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'lost apply response is resolved by GET receipt even after plan expiration',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final storage = MemoryFormDraftStorage();
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(
+          _planJson(
+            rows: [
+              _rowJson(item: _itemJson(newValue: _kValidId, preselected: true)),
+            ],
+          ),
+        ),
+      )..applyError = StateError('lost response');
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+      );
+      _table(tester).onSelectedIdsChanged!({'emp-1'});
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hr-reconcile-apply')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认更正'));
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      final saved = container.read(formDraftsProvider).single;
+      expect(saved.hasUnknownSubmission, isTrue);
+      final original = repo.applies.single;
+      expect(
+        (saved.data['submission'] as Map)['requestId'],
+        original.requestId,
+      );
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      repo.plan = HrReconcilePlan.fromJson(
+        _planJson(
+          version: 2,
+          status: 'CLOSED',
+          closedReason: 'EXPIRED',
+          canApply: false,
+          rows: [
+            _rowJson(
+              employeeVersion: 5,
+              item: _itemJson(
+                newValue: _kValidId,
+                outcome: {'status': 'APPLIED'},
+              ),
+              result: {'status': 'APPLIED'},
+            ),
+          ],
+        ),
+      );
+      repo.receipt = HrReconcileApplyReceipt(
+        status: 'FINISHED',
+        result: _finishedResult(),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: saved.resumeLocation,
+      );
+      await tester.tap(
+        find.byKey(const Key('hr-reconcile-check-original-receipt')),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.receiptReads.single, (
+        planId: 'plan-1',
+        requestId: original.requestId,
+      ));
+      expect(repo.applies, hasLength(1), reason: '回执核对不得再次发送更正请求');
+      final resumed = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      expect(resumed.read(formDraftsProvider), isEmpty);
+      expect(find.text('已更正'), findsWidgets);
+      expect(_table(tester).selectable, isFalse);
+      expect(find.byKey(const Key('hr-reconcile-apply')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  for (final reason in ['EXPIRED', 'DISCARDED']) {
+    testWidgets(
+      'closed $reason keeps completed results readable and forbids execution',
+      (tester) async {
+        tester.view.physicalSize = const Size(1600, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final repo = _FakeRepo(
+          HrReconcilePlan.fromJson(
+            _planJson(
+              status: 'CLOSED',
+              closedReason: reason,
+              // An obsolete capability cannot reopen a closed record in the UI.
+              rows: [
+                _rowJson(
+                  item: _itemJson(
+                    newValue: _kValidId,
+                    outcome: {'status': 'APPLIED'},
+                  ),
+                  result: {'status': 'APPLIED'},
+                ),
+              ],
+            ),
+          ),
+        );
+        await _pump(
+          tester,
+          repo: repo,
+          pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+        );
+        final table = _table(tester);
+        expect(table.selectable, isFalse);
+        expect(table.batchActionsBuilder, isNull);
+        expect(find.byKey(const Key('hr-reconcile-apply')), findsNothing);
+        expect(find.byKey(const Key('hr-reconcile-select-high')), findsNothing);
+        expect(find.text('已更正'), findsWidgets);
+        final cell = tester.widget<UtenRevisionCell>(
+          find.byType(UtenRevisionCell),
+        );
+        expect(cell.before, _kBrokenId);
+        expect(cell.after, _kValidId);
+        expect(repo.applies, isEmpty);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
+  testWidgets(
+    'records paginate to older completed plans and open read-only details',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo =
+          _FakeRepo(
+              HrReconcilePlan.fromJson(
+                _planJson(
+                  id: 'older-plan',
+                  status: 'CLOSED',
+                  closedReason: 'EXPIRED',
+                  canApply: false,
+                  rows: [
+                    _rowJson(
+                      item: _itemJson(
+                        newValue: _kValidId,
+                        outcome: {'status': 'APPLIED'},
+                      ),
+                      result: {'status': 'APPLIED'},
+                    ),
+                  ],
+                ),
+              ),
+            )
+            ..recordPages[1] = _recordsPage(1, ['newer-plan'], totalPages: 2)
+            ..recordPages[2] = _recordsPage(2, ['older-plan'], totalPages: 2);
+      await _pump(tester, repo: repo);
+      await tester.tap(find.byKey(const Key('hr-reconcile-records')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('hr-reconcile-record-newer-plan')),
+        findsOneWidget,
+      );
+      var pager = tester.widget<UtenGridPager>(
+        find.byKey(const Key('hr-reconcile-records-pager')),
+      );
+      expect(pager.onPrev, isNull);
+      pager.onNext!();
+      await tester.pumpAndSettle();
+      expect(repo.recordPagesRequested, [1, 2]);
+      expect(
+        find.byKey(const ValueKey('hr-reconcile-record-newer-plan')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('hr-reconcile-record-older-plan')),
+        findsOneWidget,
+      );
+      pager = tester.widget<UtenGridPager>(
+        find.byKey(const Key('hr-reconcile-records-pager')),
+      );
+      expect(pager.currentPage, 2);
+      expect(pager.onNext, isNull);
+      expect(pager.onPrev, isNotNull);
+      await tester.tap(
+        find.byKey(const ValueKey('hr-reconcile-record-older-plan')),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.fetched.last, 'older-plan');
+      expect(_table(tester).selectable, isFalse);
+      expect(find.text('已更正'), findsWidgets);
+      expect(repo.created, isEmpty);
+      expect(repo.applies, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('records page failure can retry the same page', (tester) async {
+    final repo = _FakeRepo(HrReconcilePlan.fromJson(_planJson(rows: const [])))
+      ..recordPages[1] = _recordsPage(1, ['newer-plan'], totalPages: 2)
+      ..recordPages[2] = _recordsPage(2, ['older-plan'], totalPages: 2)
+      ..recordPageErrors[2] = StateError('failed page');
+    await _pump(tester, repo: repo);
+    await tester.tap(find.byKey(const Key('hr-reconcile-records')));
+    await tester.pumpAndSettle();
+    tester
+        .widget<UtenGridPager>(
+          find.byKey(const Key('hr-reconcile-records-pager')),
+        )
+        .onNext!();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('hr-reconcile-record-newer-plan')),
+      findsNothing,
+    );
+    repo.recordPageErrors.remove(2);
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+    expect(repo.recordPagesRequested, [1, 2, 2]);
+    expect(
+      find.byKey(const ValueKey('hr-reconcile-record-older-plan')),
+      findsOneWidget,
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'pii edit alone cannot list global records from the reconcile page',
+    (tester) async {
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(_planJson(rows: const [])),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        permissions: {Perm.employeeView, Perm.employeePiiEdit},
+      );
+      expect(find.byKey(const Key('hr-reconcile-records')), findsNothing);
+      expect(find.text('核对记录'), findsNothing);
+      expect(repo.listCalls, 0);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'records stop showing rows when the listing permission is revoked',
+    (tester) async {
+      final permissions = StateProvider<Set<String>>(
+        (_) => {Perm.employeeView, Perm.employeeEdit},
+      );
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(_planJson(rows: const [])),
+      )..plansPage = _recordsPage(1, ['private-plan']);
+      await _pump(tester, repo: repo, permissionState: permissions);
+      await tester.tap(find.byKey(const Key('hr-reconcile-records')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('hr-reconcile-record-private-plan')),
+        findsOneWidget,
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      container.read(permissions.notifier).state = {
+        Perm.employeeView,
+        Perm.employeePiiEdit,
+      };
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('hr-reconcile-record-private-plan')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('hr-reconcile-records-pager')), findsNothing);
+      expect(find.text('当前账号没有查看核对记录的权限'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'records discard a late page response after the account changes',
+    (tester) async {
+      final oldResponse = Completer<HrReconcilePlanSummaryPage>();
+      final session = StateProvider<String>((_) => 'session-old');
+      final repo =
+          _FakeRepo(HrReconcilePlan.fromJson(_planJson(rows: const [])))
+            ..delayedRecordResponses.add(oldResponse.future)
+            ..plansPage = _recordsPage(1, ['current-plan']);
+      await _pump(tester, repo: repo, recordSessionState: session);
+      await tester.tap(find.byKey(const Key('hr-reconcile-records')));
+      await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrReconcilePage)),
+      );
+      container.read(session.notifier).state = 'session-current';
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('hr-reconcile-record-current-plan')),
+        findsOneWidget,
+      );
+      oldResponse.complete(_recordsPage(1, ['previous-account-plan']));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('hr-reconcile-record-current-plan')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('hr-reconcile-record-previous-account-plan')),
+        findsNothing,
+      );
+      expect(repo.recordPagesRequested, [1, 1]);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('生成流程：employeeIds → POST → pushReplacement 带上 planId → 渲染行', (
     tester,
   ) async {

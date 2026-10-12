@@ -13,12 +13,15 @@ import 'package:uten_imp/features/quality/pages/production_fqc_handling_page.dar
 import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 // 合并版待检处置页（IQC 收货单 + FQC 自制产成品统一队列）的widget 测试：
-// - 四分段（全部待检单/采购收货/委外回厂/自制产成品）与红色圆数字徽章；
+// - 混合队列首屏显示所有授权来源，来源/状态筛选由表头承担；
 // - 权限分别门控：无 IQC view 不拉收货单、无 FQC view 不请求 FQC 接口；
 // - FQC 行详情 → 登记决定；勾选后「批量审批」进汇总页一次提交报告（2026-09-05）。
 
@@ -32,6 +35,8 @@ Future<void> _pumpPage(
   required _FqcApi api,
   required _FakeIqcRepository iqc,
   required Set<String> permissions,
+  List<FormDraft>? drafts,
+  ValueChanged<QualityBatchApprovalSelection>? onBatchSelection,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1280, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -40,6 +45,8 @@ Future<void> _pumpPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (drafts != null)
+          formDraftsProvider.overrideWith(() => _Drafts(drafts)),
         apiClientProvider.overrideWithValue(api),
         procurementInspectionRepositoryProvider.overrideWithValue(iqc),
         currentPermissionsProvider.overrideWithValue(permissions),
@@ -59,11 +66,16 @@ Future<void> _pumpPage(
             ),
             GoRoute(
               path: RouteName.warehouseInspectionBatchApproval,
-              builder: (_, state) => QualityBatchApprovalPage(
-                selection: state.extra is QualityBatchApprovalSelection
+              builder: (_, state) {
+                final selection = state.extra is QualityBatchApprovalSelection
                     ? state.extra! as QualityBatchApprovalSelection
-                    : const QualityBatchApprovalSelection(),
-              ),
+                    : const QualityBatchApprovalSelection();
+                if (onBatchSelection != null) {
+                  onBatchSelection(selection);
+                  return const Scaffold(body: Text('已进入批量审批'));
+                }
+                return QualityBatchApprovalPage(selection: selection);
+              },
             ),
             // 2026-09-12 弹窗改页：FQC 检查单/单任务办理页。
             GoRoute(
@@ -86,13 +98,6 @@ Future<void> _pumpPage(
     ),
   );
   await tester.pumpAndSettle();
-  // 2026-10-04 起工具条进页面自动选中第一个红徽章段（采购收货）；本组测试
-  // 默认断言混合队列，统一切回「全部待检单」段。
-  final allSegment = _segmentText('全部待检单');
-  if (tester.any(allSegment)) {
-    await tester.tap(allSegment);
-    await tester.pumpAndSettle();
-  }
 }
 
 Future<void> _doubleTapRow(WidgetTester tester, String text) async {
@@ -109,79 +114,128 @@ Set<String> get _bothViewPerms => {
   Perm.productionQualityInspectionApprove,
 };
 
-Finder _segmentText(String text) => find.descendant(
-  of: find.byType(UtenSegmentRow<String>),
-  matching: find.text(text),
+MasterDataTableView<dynamic> _queueTable(WidgetTester tester) =>
+    tester.widget(find.byKey(const Key('iqc-receipt-table')));
+
+Finder _queueSearchField() => find.descendant(
+  of: find.byKey(const Key('iqc-search')),
+  matching: find.byType(TextField),
 );
 
-Finder _segmentBadge(String text) => _segmentText(text);
+Future<void> _selectQueueFilter(
+  WidgetTester tester,
+  String key,
+  String? value,
+) async {
+  _queueTable(tester).onFilterChanged(key, value);
+  await tester.pumpAndSettle();
+}
 
 void main() {
-  testWidgets('merged queue mixes IQC receipts and FQC tasks with badges', (
-    tester,
-  ) async {
-    final api = _FqcApi();
-    final iqc = _FakeIqcRepository();
-    await _pumpPage(tester, api: api, iqc: iqc, permissions: _bothViewPerms);
-
-    // 统一队列表同时出现两类行。
-    expect(find.byKey(const Key('iqc-receipt-table')), findsOneWidget);
-    expect(find.text('CJ20260822000001'), findsOneWidget);
-    expect(find.text('WT20260823000002'), findsOneWidget);
-    expect(find.text(_reportNo), findsOneWidget);
-    expect(_segmentText('自制产成品'), findsOneWidget);
-
-    // 2026-10-08 根治：IQC 收货单行的「货品名称/待检数量」显示服务端货品摘要
-    // 与按单位分组的数量文本，不再整列「—」。
-    expect(find.text('PVC粒料 (WL001 · 蓝色)'), findsOneWidget);
-    expect(find.text('5 个'), findsOneWidget);
-    expect(find.text('支架 (WL002)'), findsOneWidget);
-
-    // 分段红色圆数字徽章只挂可办的类型分段（各 1）；「全部待检单」不挂徽章。
-    expect(_segmentBadge('1'), findsNWidgets(3));
-    expect(_segmentBadge('3'), findsNothing);
-
-    // 「自制产成品」分段只留 FQC 行。
-    await tester.tap(_segmentText('自制产成品'));
-    await tester.pumpAndSettle();
-    expect(find.text('CJ20260822000001'), findsNothing);
-    expect(find.text('WT20260823000002'), findsNothing);
-    expect(find.text(_reportNo), findsOneWidget);
-    expect(find.text('暂无自制产成品待检任务'), findsNothing);
-
-    // 回到全部。
-    await tester.tap(_segmentText('全部待检单'));
-    await tester.pumpAndSettle();
-    expect(find.text('CJ20260822000001'), findsOneWidget);
-    expect(find.text(_reportNo), findsOneWidget);
-
-    // 搜索跨域：按报工单号收窄到 FQC 行。
-    await tester.enterText(find.byType(TextField), _reportNo);
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(find.text('CJ20260822000001'), findsNothing);
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('iqc-receipt-table')),
-        matching: find.text(_reportNo),
-      ),
-      findsOneWidget,
+  testWidgets('检验填写草稿仍在原待检分类原行，双击恢复原检查单', (tester) async {
+    final spec = FormDraftCatalog.fqcSheet.spec(
+      route: RouteName.productionFqcSheetHandling(_sheetId),
     );
-
-    // 搜索也认货品摘要（2026-10-08 起收货单行带 goodsSummary）：按来料名称
-    // 收窄到 IQC 行。
-    await tester.enterText(find.byType(TextField), 'PVC粒料');
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-    expect(
-      find.descendant(
-        of: find.byKey(const Key('iqc-receipt-table')),
-        matching: find.text('CJ20260822000001'),
-      ),
-      findsOneWidget,
+    final draft = FormDraft(
+      id: 'quality-input',
+      title: '原检查单填写',
+      module: spec.module,
+      route: spec.route,
+      permission: spec.permission,
+      data: const {},
+      updatedAt: DateTime.utc(2026, 10, 11),
     );
-    expect(find.text(_reportNo), findsNothing);
+    await _pumpPage(
+      tester,
+      api: _FqcApi(withSheet: true),
+      iqc: _FakeIqcRepository(),
+      permissions: _bothViewPerms,
+      drafts: [draft],
+    );
+    expect(find.text('成品草稿'), findsOneWidget);
+    expect(find.text(_sheetNo), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsOneWidget);
+    await _selectQueueFilter(tester, 'status', '成品草稿');
+    expect(find.text(_sheetNo), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsNothing);
+    await _selectQueueFilter(tester, 'status', null);
+    expect(find.text(_sheetNo), findsOneWidget);
+    expect(find.text('CJ20260822000001'), findsOneWidget);
+    await _doubleTapRow(tester, _sheetNo);
+    final opened = GoRouterState.of(
+      tester.element(find.byType(ProductionFqcSheetHandlingPage)),
+    ).uri;
+    expect(opened.path, RouteName.productionFqcSheetHandling(_sheetId));
+    expect(opened.queryParameters['draftId'], 'quality-input');
+    expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'mixed queue keeps all sources visible and filters from headers',
+    (tester) async {
+      final api = _FqcApi();
+      final iqc = _FakeIqcRepository();
+      await _pumpPage(tester, api: api, iqc: iqc, permissions: _bothViewPerms);
+
+      // 统一队列表同时出现两类行。
+      expect(find.byKey(const Key('iqc-receipt-table')), findsOneWidget);
+      expect(find.text('CJ20260822000001'), findsOneWidget);
+      expect(find.text('WT20260823000002'), findsOneWidget);
+      expect(find.text(_reportNo), findsOneWidget);
+      expect(find.byType(UtenSegmentRow<String>), findsNothing);
+      expect(find.text('采购待检'), findsOneWidget);
+      expect(find.text('委外待检'), findsOneWidget);
+      expect(find.text('成品待检'), findsOneWidget);
+      expect(
+        _queueTable(tester).facets['docType']?.map((bucket) => bucket.value),
+        containsAll(['PURCHASE', 'SUBCONTRACT', 'FQC']),
+      );
+
+      // 2026-10-08 根治：IQC 收货单行的「货品名称/待检数量」显示服务端货品摘要
+      // 与按单位分组的数量文本，不再整列「—」。
+      expect(find.text('PVC粒料 (WL001 · 蓝色)'), findsOneWidget);
+      expect(find.text('5 个'), findsOneWidget);
+      expect(find.text('支架 (WL002)'), findsOneWidget);
+
+      // 类型表头筛选只留 FQC；无需在表格上方找重复来源分段。
+      await _selectQueueFilter(tester, 'docType', 'FQC');
+      expect(find.text('CJ20260822000001'), findsNothing);
+      expect(find.text('WT20260823000002'), findsNothing);
+      expect(find.text(_reportNo), findsOneWidget);
+      expect(find.text('暂无自制产成品待检任务'), findsNothing);
+
+      // 清除表头来源筛选回到完整队列。
+      await _selectQueueFilter(tester, 'docType', null);
+      expect(find.text('CJ20260822000001'), findsOneWidget);
+      expect(find.text(_reportNo), findsOneWidget);
+
+      // 搜索跨域：按报工单号收窄到 FQC 行。
+      await tester.enterText(_queueSearchField(), _reportNo);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.text('CJ20260822000001'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('iqc-receipt-table')),
+          matching: find.text(_reportNo),
+        ),
+        findsOneWidget,
+      );
+
+      // 搜索也认货品摘要（2026-10-08 起收货单行带 goodsSummary）：按来料名称
+      // 收窄到 IQC 行。
+      await tester.enterText(_queueSearchField(), 'PVC粒料');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('iqc-receipt-table')),
+          matching: find.text('CJ20260822000001'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text(_reportNo), findsNothing);
+    },
+  );
 
   testWidgets('FQC row detail leads to decision and local removal', (
     tester,
@@ -217,6 +271,197 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(_reportNo), findsNothing);
     expect(find.text('CJ20260822000001'), findsOneWidget);
+  });
+
+  testWidgets('来源和状态表头筛选覆盖全队列，清空后保留分页', (tester) async {
+    final api = _FqcApi();
+    final iqc = _FakeIqcRepository(
+      additionalReceipts: [
+        for (var index = 0; index < 10; index++)
+          PendingInspectionReceipt(
+            receiptType: 'PURCHASE',
+            receiptId: 'extra-receipt-$index',
+            billNo: 'CJ-EXTRA-$index',
+            itemCount: 1,
+          ),
+      ],
+    );
+    await _pumpPage(tester, api: api, iqc: iqc, permissions: _bothViewPerms);
+    expect(_queueTable(tester).currentPage, 1);
+    expect(_queueTable(tester).totalPages, 2);
+    expect(find.text(_reportNo), findsNothing);
+    expect(
+      _queueTable(
+        tester,
+      ).facets['status']?.singleWhere((bucket) => bucket.value == '成品待检').count,
+      1,
+    );
+
+    // FQC 在初始第二页，筛选仍必须找到它并回第一页。
+    await _selectQueueFilter(tester, 'status', '成品待检');
+    expect(find.text(_reportNo), findsOneWidget);
+    expect(_queueTable(tester).currentPage, 1);
+    expect(_queueTable(tester).totalPages, 1);
+    await _selectQueueFilter(tester, 'status', null);
+    await _selectQueueFilter(tester, 'docType', 'FQC');
+    expect(find.text(_reportNo), findsOneWidget);
+    await _selectQueueFilter(tester, 'docType', null);
+    expect(_queueTable(tester).totalPages, 2);
+    _queueTable(tester).onPageChange!(2);
+    await tester.pumpAndSettle();
+    expect(find.text(_reportNo), findsOneWidget);
+    expect(_queueTable(tester).currentPage, 2);
+    expect(iqc.pendingReceiptsCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('同 UUID 的采购、委外、检查单和 FQC 行不串身份或批量来源', (tester) async {
+    QualityBatchApprovalSelection? submittedSelection;
+    await _pumpPage(
+      tester,
+      api: _MixedIdentityFqcApi(),
+      iqc: _FakeIqcRepository(
+        receiptsOverride: const [
+          PendingInspectionReceipt(
+            receiptType: 'PURCHASE',
+            receiptId: _inspectionId,
+            billNo: 'PURCHASE-SAME-ID',
+            itemCount: 1,
+          ),
+          PendingInspectionReceipt(
+            receiptType: 'SUBCONTRACT',
+            receiptId: _inspectionId,
+            billNo: 'SUBCONTRACT-SAME-ID',
+            itemCount: 1,
+          ),
+        ],
+      ),
+      permissions: {..._bothViewPerms, Perm.procurementInspectionHandle},
+      onBatchSelection: (selection) => submittedSelection = selection,
+    );
+    final dynamic table = _queueTable(tester);
+    const purchaseId = 'iqc:PURCHASE:$_inspectionId';
+    const subcontractId = 'iqc:SUBCONTRACT:$_inspectionId';
+    const sheetId = 'sheet:$_inspectionId';
+    const fqcId = 'fqc:$_inspectionId';
+    final rows = _queueTable(tester).items;
+    final rowKeys = rows.map((row) {
+      // The private row type requires invocation without widening its callback.
+      // ignore: avoid_dynamic_calls
+      return table.rowKeyOf(row) as String;
+    }).toSet();
+    expect(rowKeys, {purchaseId, subcontractId, sheetId, fqcId});
+    expect(find.text('PURCHASE-SAME-ID'), findsOneWidget);
+    expect(find.text('SUBCONTRACT-SAME-ID'), findsOneWidget);
+    expect(find.text(_sheetNo), findsOneWidget);
+    expect(find.text(_reportNo), findsOneWidget);
+
+    // 同原 UUID 只能勾中本来源行，不能把另一张单据连带选中。
+    _queueTable(tester).onSelectedIdsChanged!({purchaseId});
+    await tester.pumpAndSettle();
+    expect(_queueTable(tester).selectedIds, {purchaseId});
+    expect(find.text('批量审批(1)'), findsOneWidget);
+    _queueTable(tester).onSelectedIdsChanged!({
+      purchaseId,
+      subcontractId,
+      sheetId,
+      fqcId,
+    });
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('刷新'));
+    await tester.pumpAndSettle();
+    expect(_queueTable(tester).selectedIds, {
+      purchaseId,
+      subcontractId,
+      sheetId,
+      fqcId,
+    });
+    await tester.tap(find.byKey(const Key('quality-batch-approval')));
+    await tester.pumpAndSettle();
+    expect(
+      submittedSelection?.receipts.map(
+        (receipt) => '${receipt.receiptType}:${receipt.receiptId}',
+      ),
+      ['PURCHASE:$_inspectionId', 'SUBCONTRACT:$_inspectionId'],
+    );
+    expect(submittedSelection?.sheets.single.id, _inspectionId);
+    expect(submittedSelection?.inspections.single.id, _inspectionId);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('FQC 请求 500 被服务端归一为 100 后继续读取两域次页', (tester) async {
+    final api = _PagedFqcApi(sheetCount: 105, looseCount: 102);
+    await _pumpPage(
+      tester,
+      api: api,
+      iqc: _FakeIqcRepository(),
+      permissions: _bothViewPerms,
+    );
+    expect(api.sheetPages, [1, 2]);
+    expect(api.loosePages, [1, 2]);
+    expect(api.sheetRequestedSizes, [500, 100]);
+    expect(api.looseRequestedSizes, [500, 100]);
+    expect(find.textContaining('表头筛选仅覆盖已加载任务'), findsNothing);
+
+    // 两个来源的第 101 行均不在各自服务端首批 100 条里。
+    await tester.enterText(_queueSearchField(), 'FQC-PAGE-101');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('iqc-receipt-table')),
+        matching: find.text('FQC-PAGE-101'),
+      ),
+      findsOneWidget,
+    );
+    await tester.enterText(_queueSearchField(), 'REPORT-PAGE-101');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('iqc-receipt-table')),
+        matching: find.text('REPORT-PAGE-101'),
+      ),
+      findsOneWidget,
+    );
+    expect(_queueTable(tester).currentPage, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('FQC 各域仍只加载 500，截断提示区分总数和已加载范围', (tester) async {
+    final api = _PagedFqcApi(sheetCount: 601, looseCount: 602);
+    await _pumpPage(
+      tester,
+      api: api,
+      iqc: _FakeIqcRepository(),
+      permissions: _bothViewPerms,
+    );
+    expect(api.sheetPages, [1, 2, 3, 4, 5]);
+    expect(api.loosePages, [1, 2, 3, 4, 5]);
+    expect(find.textContaining('待检任务共 1203 条，当前已加载 1000 条'), findsOneWidget);
+    expect(find.textContaining('各最多加载 500 条'), findsOneWidget);
+    expect(find.textContaining('表头筛选仅覆盖已加载任务'), findsOneWidget);
+    await tester.enterText(_queueSearchField(), 'FQC-PAGE-500');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('iqc-receipt-table')),
+        matching: find.text('FQC-PAGE-500'),
+      ),
+      findsOneWidget,
+    );
+    await tester.enterText(_queueSearchField(), 'FQC-PAGE-501');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('iqc-receipt-table')),
+        matching: find.text('FQC-PAGE-501'),
+      ),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('勾选 FQC 任务 → 批量审批汇总页一次提交（原子 pass-all）', (tester) async {
@@ -265,11 +510,11 @@ void main() {
       permissions: _bothViewPerms,
     );
 
-    // 队列显示检查单号而不是逐条报工任务；徽章按单计数。
+    // 队列显示检查单号而不是逐条报工任务，状态保留来源。
     expect(find.text(_sheetNo), findsOneWidget);
     expect(find.text(_reportNo), findsNothing);
     expect(find.text('10 件'), findsOneWidget);
-    expect(_segmentBadge('1'), findsNWidgets(3));
+    expect(find.text('成品待检'), findsOneWidget);
 
     await _doubleTapRow(tester, _sheetNo);
     // 2026-09-12 弹窗改页：进入检查单办理页（对齐采购 IQC 处置页范式）。
@@ -323,7 +568,9 @@ void main() {
     expect(find.text('已入库 · 成品仓 / CP-A-01'), findsOneWidget);
   });
 
-  testWidgets('FQC-only account skips IQC fetch and segments', (tester) async {
+  testWidgets('FQC-only account skips IQC fetch and source facets', (
+    tester,
+  ) async {
     final api = _FqcApi();
     final iqc = _FakeIqcRepository();
     await _pumpPage(
@@ -336,9 +583,11 @@ void main() {
     expect(iqc.pendingReceiptsCalls, 0);
     expect(find.text('采购收货'), findsNothing);
     expect(find.text('委外回厂'), findsNothing);
-    expect(_segmentText('自制产成品'), findsOneWidget);
-    // 「全部待检单」不挂徽章；自制产成品徽章 1。
-    expect(_segmentBadge('1'), findsOneWidget);
+    expect(find.text('成品待检'), findsOneWidget);
+    expect(
+      _queueTable(tester).facets['docType']?.map((bucket) => bucket.value),
+      ['FQC'],
+    );
     expect(find.text(_reportNo), findsOneWidget);
     // 无审批权限 → 不可选、无批量动作。
     expect(find.byKey(const Key('quality-batch-approval')), findsNothing);
@@ -361,7 +610,7 @@ void main() {
   });
 
   testWidgets(
-    'segment bar matches the stadium search height and shows no check',
+    'status header can narrow and clear a mixed queue without source segments',
     (tester) async {
       await _pumpPage(
         tester,
@@ -370,28 +619,39 @@ void main() {
         permissions: _bothViewPerms,
       );
 
-      // 分类框高度对齐搜索框（同一工具条并排视觉一致）。
-      final segmentHeight = tester
-          .getSize(find.byType(UtenSegmentRow<String>))
-          .height;
-      final searchHeight = tester.getSize(find.byType(TextField)).height;
-      expect(segmentHeight, closeTo(searchHeight, 0.5));
-
-      // 选中分段只变背景色，不出现 ✓ 图标。
-      await tester.tap(_segmentText('自制产成品'));
-      await tester.pumpAndSettle();
+      expect(find.byType(UtenSegmentRow<String>), findsNothing);
       expect(
-        find.descendant(
-          of: find.byType(UtenSegmentRow<String>),
-          matching: find.byIcon(Icons.check),
-        ),
-        findsNothing,
+        _queueTable(tester).facets['status']?.map((bucket) => bucket.value),
+        containsAll(['采购待检', '委外待检', '成品待检']),
       );
+      await _selectQueueFilter(tester, 'status', '委外待检');
+      expect(find.text('WT20260823000002'), findsOneWidget);
+      expect(find.text('CJ20260822000001'), findsNothing);
+      expect(find.text(_reportNo), findsNothing);
+      await _selectQueueFilter(tester, 'status', null);
+      expect(find.text('CJ20260822000001'), findsOneWidget);
+      expect(find.text('WT20260823000002'), findsOneWidget);
+      expect(find.text(_reportNo), findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 }
 
+class _Drafts extends FormDraftsNotifier {
+  _Drafts(this.values);
+  final List<FormDraft> values;
+  @override
+  List<FormDraft> build() => values;
+}
+
 class _FakeIqcRepository implements ProcurementInspectionRepository {
+  _FakeIqcRepository({
+    this.additionalReceipts = const [],
+    this.receiptsOverride,
+  });
+
+  final List<PendingInspectionReceipt> additionalReceipts;
+  final List<PendingInspectionReceipt>? receiptsOverride;
   final List<PendingInspectionReceipt> receipts = const [
     PendingInspectionReceipt(
       receiptType: 'PURCHASE',
@@ -420,7 +680,7 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
   @override
   Future<List<PendingInspectionReceipt>> pendingReceipts() async {
     pendingReceiptsCalls++;
-    return receipts;
+    return [...(receiptsOverride ?? receipts), ...additionalReceipts];
   }
 
   @override
@@ -461,6 +721,79 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
     required List<ProcurementInspectionReportReceipt> receipts,
     String? reason,
   }) async {}
+}
+
+class _MixedIdentityFqcApi extends _FqcApi {
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == ApiEndpoints.productionQualityInspectionSheets) {
+      return {
+        'items': [
+          {..._sheet, 'id': _inspectionId},
+        ],
+        'page': 1,
+        'size': 100,
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
+    return super.get(path, query: query);
+  }
+}
+
+class _PagedFqcApi extends _FqcApi {
+  _PagedFqcApi({required this.sheetCount, required this.looseCount});
+
+  final int sheetCount;
+  final int looseCount;
+  final List<int> sheetPages = [];
+  final List<int> loosePages = [];
+  final List<int> sheetRequestedSizes = [];
+  final List<int> looseRequestedSizes = [];
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final isSheet = path == ApiEndpoints.productionQualityInspectionSheets;
+    if (!isSheet && path != ApiEndpoints.productionQualityInspections) {
+      return super.get(path, query: query);
+    }
+    final page = query?['page'] as int? ?? 1;
+    final requestedSize = query?['size'] as int? ?? 40;
+    final size = requestedSize.clamp(1, 100).toInt();
+    final count = isSheet ? sheetCount : looseCount;
+    (isSheet ? sheetPages : loosePages).add(page);
+    (isSheet ? sheetRequestedSizes : looseRequestedSizes).add(requestedSize);
+    if (!isSheet) expect(query?['sheet'], 'NONE');
+    final start = (page - 1) * size;
+    final end = (start + size).clamp(0, count).toInt();
+    return {
+      'items': [
+        for (var index = start; index < end; index++)
+          if (isSheet)
+            {
+              ..._sheet,
+              'id': 'sheet-page-${index + 1}',
+              'sheetNo': 'FQC-PAGE-${index + 1}',
+            }
+          else
+            {
+              ..._inspection,
+              'id': 'loose-page-${index + 1}',
+              'reportNo': 'REPORT-PAGE-${index + 1}',
+            },
+      ],
+      'page': page,
+      'size': size,
+      'total': count,
+      'totalPages': (count + size - 1) ~/ size,
+    };
+  }
 }
 
 class _FqcApi extends ApiClient {

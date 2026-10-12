@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "spring.profiles.active=dev","uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000"})
+})
 @Import(ProductionFqcBatchViewEndToEndTest.ViewCounter.class)
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @TestExecutionListeners(listeners=ProductionFqcBatchViewEndToEndTest.Cleanup.class,

@@ -36,6 +36,34 @@ import static org.mockito.Mockito.when;
 class SalesOrderFinanceConfirmServiceTest {
 
     @Test
+    void approvedHistoryListCountAndFacetsKeepStoppedAndClosedOrdersReachable() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.setMaxResults(500)).thenReturn(query);
+        when(query.getSingleResult()).thenReturn(0L);
+        when(query.getResultList()).thenReturn(List.of());
+        var service = new SalesOrderFinanceConfirmService(em, mock(SalesOrderRepository.class),
+                mock(SecurityContextCurrentUser.class), mock(TxSessionVars.class), mock(ChainNoticeService.class),
+                mock(SalesOrderFinanceConfirmerEligibility.class),
+                mock(com.uten.imp.application.port.TaskClaimMutationGuardPort.class),
+                mock(SalesOrderRevisionService.class), mock(com.uten.imp.application.port.PartyOpenBalancePort.class));
+        service.pending(1, 20, false, " acme ", null, null, null, null, true);
+        service.pendingFacets(false, " acme ", null, true);
+        var sql = ArgumentCaptor.forClass(String.class);
+        verify(em, times(3)).createNativeQuery(sql.capture());
+        for (String statement : sql.getAllValues()) {
+            assertTrue(statement.contains("o.finance_confirmed = TRUE"));
+            assertFalse(statement.contains("o.finance_confirmed = FALSE"));
+            assertFalse(statement.contains("o.is_closed = FALSE"));
+            assertFalse(statement.contains("o.is_stopped = FALSE"));
+            assertTrue(statement.contains("POSITION(:keyword"));
+        }
+        verify(query, times(3)).setParameter("keyword", "acme");
+    }
+
+    @Test
     void modifiedOrderRejectsMissingOrStaleReviewVersionBeforeDecision() {
         SalesOrder order = approvedOrder();
         order.setFinanceReviewRevision(2);
@@ -365,7 +393,7 @@ class SalesOrderFinanceConfirmServiceTest {
                 UUID.randomUUID(), "XD20260927000001", null, "客户", "销售", null, 1L,
                 new java.math.BigDecimal("158400"), "USD", "美金", "ALLOW_PARTIAL",
                 clientId, false, null, null, 0L, 0L, credit, currencyId,
-                null, null, null, null};
+                null, null, null, null, false};
     }
 
     private static SalesOrder approvedOrder() {

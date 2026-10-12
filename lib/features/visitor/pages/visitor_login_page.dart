@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/brand/uten_wordmark_logo.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -22,6 +23,8 @@ import '../../../core/router/route_names.dart';
 import '../../../core/security/input_validators.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/theme/brand_theme.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../providers/visitor_session_provider.dart';
 
 class VisitorLoginPage extends ConsumerStatefulWidget {
@@ -131,12 +134,17 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
     final theme = Theme.of(context);
     final isCompact = context.breakpoint.isCompact;
     final isDark = theme.brightness == Brightness.dark;
+    final branding = ref.watch(platformBrandingSnapshotProvider);
 
     return Scaffold(
       // medium+ 铺一层极淡 teal 调底，让白色登录卡自然浮起；compact 保持页面底色
       backgroundColor: isCompact
           ? theme.scaffoldBackgroundColor
-          : (isDark ? UtenColors.darkBackground : UtenColors.teal50),
+          : (isDark
+                ? UtenColors.darkBackground
+                : branding.usesDefaultColors
+                ? UtenColors.teal50
+                : theme.colorScheme.primary.withValues(alpha: 0.04)),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, c) {
@@ -180,6 +188,8 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const Center(child: UtenWordmarkLogo(width: 220)),
+        const SizedBox(height: UtenSpacing.s16),
         Row(
           children: [
             IconButton(
@@ -250,7 +260,9 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
           Container(
             padding: const EdgeInsets.all(UtenSpacing.s12),
             decoration: BoxDecoration(
-              color: isDark
+              color: theme.extension<PlatformBrandTheme>() != null
+                  ? theme.colorScheme.primaryContainer
+                  : isDark
                   ? UtenColors.teal500.withValues(alpha: 0.18)
                   : UtenColors.tealSurface,
               borderRadius: UtenRadius.mdAll,
@@ -258,7 +270,11 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
             child: Text(
               l10n.visitorCodeSentDev(_devCode!),
               style: theme.textTheme.bodySmall?.copyWith(
-                color: isDark ? UtenColors.teal300 : UtenColors.teal700,
+                color: theme.extension<PlatformBrandTheme>() != null
+                    ? theme.colorScheme.onPrimaryContainer
+                    : isDark
+                    ? UtenColors.teal300
+                    : UtenColors.teal700,
               ),
             ),
           ),

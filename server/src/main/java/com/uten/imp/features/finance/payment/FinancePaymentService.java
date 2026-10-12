@@ -158,7 +158,7 @@ public class FinancePaymentService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=com.uten.imp.common.web.ApiException.class)
     public FinancePaymentDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -319,12 +319,7 @@ public class FinancePaymentService {
         requirePeriodIdentityUnchanged(
                 p,guardedSupplierId,guardedCurrencyId,guardedBillDate);
         requireActiveAfterLock(p);
-        access.requireScopedOperationWritable(p.getMakerId(), "只能操作本人负责或已交接的采购付款单",
-                "finance_payment:reverse");
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
-        if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
+        requireUnapprovalHeader(p);
         requireAuthoritativeAmounts(p, "红冲");
         assertCompletePosting(p.getId(), 1L); // M19：红冲前确认流水完整（付款每单恰 1 行）
         OffsetDateTime reversedAt=OffsetDateTime.now();
@@ -337,6 +332,53 @@ public class FinancePaymentService {
         p.setReversedAt(reversedAt);
         paymentRepo.save(p);
         return detail(id);
+    }
+
+    private void requireUnapprovalHeader(FinancePayment p) {
+        access.requireScopedOperationWritable(p.getMakerId(), "只能操作本人负责或已交接的采购付款单",
+                "finance_payment:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
+        if (p.getStatus() == null || p.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        }
+    }
+
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('finance_payment:view')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);FinancePayment p=require(id);
+        return com.uten.imp.features.finance.FinanceUnapprovalPreflight.evaluate(em,"financePayment","finance_payments",id,"finance_payment:reverse",()->unapprovalDependencyFacts(id),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("DOCUMENT_REVERSE_BLOCKED",()->requireUnapprovalHeader(p)),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("SETTLEMENT_REVERSE_BLOCKED",()->requireReversibleSettlement(p)),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("GL_PROJECTION_BLOCKED",()->requireReversibleGl(p)));
+    }
+    private void requireReversibleSettlement(FinancePayment p) { UUID id=p.getId();
+        closedPeriodGuard.requireOpenReadOnly(p.getSupplierId(),p.getCurrencyId(),BusinessTime.today(),"供应商付款反审");
+        requireAuthoritativeAmounts(p,"反审");assertCompletePosting(id,1L);
+        accountFlowLedger.requireReversible(RECON_SOURCE,id);
+        var lines=lineRepo.findByPaymentIdOrderByLineNoAsc(id);
+        if(lines.isEmpty())throw new ApiException(ErrorCode.CONFLICT,"供应商预付链尚未完成，不能自动反审这笔历史付款");
+        var ledgers=readAppliedLedgers(lines);var floors=LegacyOpeningReversalFloor.load(em,ledgers.values(),"AP");
+        for(var line:lines){var ledger=ledgers.get(line.getAppliedLedgerId());calculateReversal(p,line,ledger,floors.getOrDefault(ledger.getId(),LegacyOpeningReversalFloor.ZERO));}
+    }
+    private void requireReversibleGl(FinancePayment p) { UUID id=p.getId();
+        if(p.getAmountAuthorityVersion()==BANK_AUTHORITY_VERSION)glPostingService.requireActualBankPaymentReversalPossible(id);
+        else glPostingService.requireRemovableAutoProjection("PAYMENT","PAYMENT",id,p.getBillNo(),p.getBillDate());
+    }
+    private String unapprovalDependencyFacts(UUID id) {
+        return String.valueOf(em.createNativeQuery("""
+            SELECT jsonb_build_object(
+                'bank',(SELECT jsonb_agg(to_jsonb(flow) ORDER BY flow.id) FROM finance_reconciliations flow WHERE flow.source_doc_id=:id),
+                'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM finance_payment_lines line WHERE line.payment_id=:id),
+                'ledgers',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger
+                    WHERE ledger.id IN(SELECT applied_ledger_id FROM finance_payment_lines WHERE payment_id=:id)),
+                'supplierPeriods',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM supplier_settlement_batches batch
+                    JOIN finance_payments payment ON batch.supplier_id=payment.supplier_id AND batch.currency_id=payment.currency_id
+                    WHERE payment.id=:id),
+                'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
+                'offsets',(SELECT jsonb_agg(to_jsonb(offset_row) ORDER BY offset_row.id) FROM customer_open_item_offsets offset_row
+                    WHERE source_ledger_id IN(SELECT id FROM ar_ap_ledger WHERE source_doc_id=:id)))::text
+            """).setParameter("id",id).getSingleResult());
     }
 
     // ===================== 核销逻辑 =====================
@@ -432,8 +474,26 @@ public class FinancePaymentService {
             Map<UUID, ArApLedger> lockedLedgers) {
         var floors=LegacyOpeningReversalFloor.load(em,lockedLedgers.values(),"AP");
         for (FinancePaymentLine line : lines) {
-            ArApLedger ledger = lockedLedgers.get(line.getAppliedLedgerId());
+            ArApLedger ledger=lockedLedgers.get(line.getAppliedLedgerId());
             var floor=floors.getOrDefault(ledger.getId(),LegacyOpeningReversalFloor.ZERO);
+            var calculated=calculateReversal(payment,line,ledger,floor);
+            ledger.setAmountReceivedOriginal(calculated.receivedOriginal());
+            ledger.setAmountReceivedLocal(calculated.receivedLocal());
+            ledger.setAmountBalanceOriginal(money(nz(ledger.getAmountOriginal())
+                    .subtract(calculated.receivedOriginal())
+                    .subtract(ledger.getAmountWriteOffOriginal())
+                    .subtract(nz(ledger.getAmountOffsetOriginal()))));
+            ledger.setAmountSettled(calculated.settledLocal());
+            ledger.setAmountBalance(money(nz(ledger.getAmountOriginalLocal())
+                    .subtract(calculated.settledLocal())
+                    .subtract(nz(ledger.getAmountOffsetLocal()))));
+            refreshSettlement(ledger, payment.getBillDate());
+            ledgerRepo.save(ledger);
+        }
+    }
+
+    private record ReversalBalances(BigDecimal receivedOriginal,BigDecimal receivedLocal,BigDecimal settledLocal){}
+    private ReversalBalances calculateReversal(FinancePayment payment,FinancePaymentLine line,ArApLedger ledger,LegacyOpeningReversalFloor floor) {
             validateAppliedLedger(payment, line.getSupplierId(), ledger, false);
             BigDecimal cashOriginal = positiveMoney(line.getAmountOriginal(), "本次付款金额");
             if(line.getAmountLocal()==null)throw new ApiException(ErrorCode.CONFLICT,"付款行缺少实际本币金额记录，不能红冲");
@@ -460,19 +520,7 @@ public class FinancePaymentService {
             }
             BigDecimal newReceivedOriginal = money(receivedOriginal.subtract(cashOriginal));
             BigDecimal newReceivedLocal = money(receivedLocal.subtract(cashLocal));
-            ledger.setAmountReceivedOriginal(newReceivedOriginal);
-            ledger.setAmountReceivedLocal(newReceivedLocal);
-            ledger.setAmountBalanceOriginal(money(nz(ledger.getAmountOriginal())
-                    .subtract(newReceivedOriginal)
-                    .subtract(ledger.getAmountWriteOffOriginal())
-                    .subtract(nz(ledger.getAmountOffsetOriginal()))));
-            ledger.setAmountSettled(newSettled);
-            ledger.setAmountBalance(money(nz(ledger.getAmountOriginalLocal())
-                    .subtract(newSettled)
-                    .subtract(nz(ledger.getAmountOffsetLocal()))));
-            refreshSettlement(ledger, payment.getBillDate());
-            ledgerRepo.save(ledger);
-        }
+        return new ReversalBalances(newReceivedOriginal,newReceivedLocal,newSettled);
     }
 
     /**
@@ -505,6 +553,29 @@ public class FinancePaymentService {
             throw new ApiException(ErrorCode.BUSINESS, "核销的应付记录不存在或已删除");
         }
         if(enforceIqcHold)payableHoldGuard.requireUnheld(ids, "采购付款");
+        Map<UUID, ArApLedger> byId = new HashMap<>();
+        for (ArApLedger ledger : locked) {
+            byId.put(ledger.getId(), ledger);
+        }
+        return byId;
+    }
+
+    private Map<UUID, ArApLedger> readAppliedLedgers(
+            List<FinancePaymentLine> lines) {
+        List<UUID> ids = lines.stream()
+                .map(FinancePaymentLine::getAppliedLedgerId)
+                .toList();
+        if (ids.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "付款核销明细必须关联应付台账");
+        }
+        if (new HashSet<>(ids).size() != ids.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一应付台账不能在一张付款单中重复核销");
+        }
+        List<ArApLedger> locked = ledgerRepo.findAllById(ids.stream().sorted().toList()).stream().filter(ledger -> !ledger.isDeleted()).toList();
+        if (locked.size() != ids.size()) {
+            throw new ApiException(ErrorCode.BUSINESS, "核销的应付记录不存在或已删除");
+        }
+
         Map<UUID, ArApLedger> byId = new HashMap<>();
         for (ArApLedger ledger : locked) {
             byId.put(ledger.getId(), ledger);

@@ -106,7 +106,8 @@ class _Api extends ApiClient {
   Map<String, dynamic> apply(String id, Map<String, dynamic> body) {
     final row = rows.singleWhere((row) => row['id'] == id);
     expect(body['expectedVersion'], row['rowVersion']);
-    row['qty'] = body['qty'];
+    row['qty'] = num.parse(body['qty'].toString());
+    row['qtyExact'] = body['qty'].toString();
     row['rowVersion'] = (row['rowVersion'] as int) + 1;
     return detail();
   }
@@ -185,6 +186,79 @@ Future<void> _adoptVersion(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'legal 14+4 quantity initializes and submits every decimal digit',
+    (tester) async {
+      final api = _Api();
+      api.rows.single.addAll({
+        'qty': 99999999999999.0,
+        'qtyExact': '99999999999999.0001',
+      });
+      await _pump(tester, api);
+      expect(_controller(tester).text, '99999999999999.0001');
+      await _enter(tester, '99999999999999.0002');
+      await tester.tap(_save);
+      await tester.pumpAndSettle();
+      expect(api.puts.single.body, {
+        'qty': '99999999999999.0002',
+        'expectedVersion': 7,
+      });
+      expect(_controller(tester).text, '99999999999999.0002');
+      expect(_save, findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'rounded binary-equal acknowledgement cannot confirm a different exact quantity',
+    (tester) async {
+      final api = _Api();
+      api.rows.single.addAll({
+        'qty': 99999999999999.0,
+        'qtyExact': '99999999999999.0001',
+      });
+      await _pump(tester, api);
+      await _enter(tester, '99999999999999.0002');
+      api.replies.add((id, body) async {
+        final response = api.detail();
+        final row = (response['items'] as List<Map<String, dynamic>>).single;
+        row.addAll({
+          'qty': 99999999999999.0,
+          'qtyExact': '99999999999999.0003',
+          'rowVersion': 8,
+        });
+        return response;
+      });
+      await tester.tap(_save);
+      await tester.pumpAndSettle();
+      expect(api.puts, hasLength(1));
+      expect(_controller(tester).text, '99999999999999.0002');
+      expect(tester.widget<TextField>(_field()).enabled, isFalse);
+      expect(find.text('数量已修正'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'exact source change is detected even when its binary quantity is unchanged',
+    (tester) async {
+      final api = _Api();
+      api.rows.single.addAll({
+        'qty': 99999999999999.0,
+        'qtyExact': '99999999999999.0001',
+      });
+      final container = await _pump(tester, api);
+      final staleSave = await _enter(tester, '99999999999999.0002');
+      api.rows.single['qtyExact'] = '99999999999999.0003';
+      await _recheck(tester, container);
+      expect(_controller(tester).text, '99999999999999.0002');
+      expect(tester.widget<TextField>(_field()).enabled, isFalse);
+      staleSave();
+      await tester.pumpAndSettle();
+      expect(api.puts, isEmpty);
+    },
+  );
+
   test(
     'row version remains the original integer and missing never becomes zero',
     () {
@@ -218,14 +292,14 @@ void main() {
           .adjustRequestItemQty(
             requestId: 'request-1',
             itemId: 'line-1',
-            qty: 37,
+            qty: '37',
             expectedVersion: 7,
           );
       expect(
         api.puts.single.path,
         '/purchase/requests/request-1/items/line-1/qty',
       );
-      expect(api.puts.single.body, {'qty': 37.0, 'expectedVersion': 7});
+      expect(api.puts.single.body, {'qty': '37', 'expectedVersion': 7});
       expect(detail.items.single.rowVersion, 8);
     },
   );
@@ -246,7 +320,7 @@ void main() {
       await _enter(tester, '37');
       await tester.tap(_save);
       await tester.pumpAndSettle();
-      expect(api.puts.single.body, {'qty': 37.0, 'expectedVersion': 0});
+      expect(api.puts.single.body, {'qty': '37', 'expectedVersion': 0});
     },
   );
 
@@ -263,7 +337,7 @@ void main() {
         });
         await tester.tap(_save);
         await tester.pumpAndSettle();
-        expect(api.puts.single.body, {'qty': 37.0, 'expectedVersion': 7});
+        expect(api.puts.single.body, {'qty': '37', 'expectedVersion': 7});
         expect(api.reads, 2);
         expect(_controller(tester).text, '37');
         expect(tester.widget<TextField>(_field()).enabled, isFalse);
@@ -280,7 +354,7 @@ void main() {
         await tester.tap(_save);
         await tester.pumpAndSettle();
         expect(api.puts.last.body, {
-          'qty': 37.0,
+          'qty': '37',
           'expectedVersion': status == 409 ? 9 : 7,
         });
         expect(tester.takeException(), isNull);
@@ -367,7 +441,7 @@ void main() {
       await _adoptVersion(tester);
       await tester.tap(_save);
       await tester.pumpAndSettle();
-      expect(api.puts.single.body, {'qty': 37.0, 'expectedVersion': 8});
+      expect(api.puts.single.body, {'qty': '37', 'expectedVersion': 8});
     },
   );
 
@@ -391,8 +465,8 @@ void main() {
       await tester.tap(_save);
       await tester.pumpAndSettle();
       expect(api.puts.map((call) => call.body).toList(), [
-        {'qty': 37.0, 'expectedVersion': 7},
-        {'qty': 42.0, 'expectedVersion': 4},
+        {'qty': '37', 'expectedVersion': 7},
+        {'qty': '42', 'expectedVersion': 4},
       ]);
       expect(_controller(tester).text, '37');
       expect(_controller(tester, 'line-2').text, '42');
@@ -401,7 +475,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.puts, hasLength(3));
       expect(api.puts.last.path, endsWith('/line-2/qty'));
-      expect(api.puts.last.body, {'qty': 42.0, 'expectedVersion': 4});
+      expect(api.puts.last.body, {'qty': '42', 'expectedVersion': 4});
     },
   );
 

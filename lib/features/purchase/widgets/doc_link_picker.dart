@@ -1,3 +1,5 @@
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/models/procurement_source_terms.dart';
 // 上游单据明细引入面板（采购编辑页"从上游引入"用）。
 //
 // 结构（2026-08-16 收敛）：面板状态机与外壳在共享组件
@@ -29,21 +31,31 @@ class LinkedItem {
     required this.goodsId,
     required this.qty,
     this.maxQty,
+    this.maxGiftQtyText,
+    this.giftQtyText,
+    this.maxQtyText,
+    this.qtyText,
     this.price,
     this.upstreamItemId,
     this.colorId,
     this.unitId,
     this.unitRate,
+    this.unitRateText,
   });
 
   final String goodsId;
   final double qty;
   final double? maxQty;
+  final String? maxGiftQtyText;
+  final String? giftQtyText;
+  final String? maxQtyText;
+  final String? qtyText;
   final double? price;
   final String? upstreamItemId;
   final String? colorId;
   final String? unitId;
   final double? unitRate;
+  final String? unitRateText;
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据供应商 id（编辑页表头未选供应商时回填用）
@@ -56,6 +68,7 @@ class PurchaseLinkPickResult {
     this.sourceDocId,
     this.sourceDocNo,
     this.settlementMethodId,
+    this.sourceTerms,
   });
 
   final List<LinkedItem> items;
@@ -63,6 +76,7 @@ class PurchaseLinkPickResult {
   final String? sourceDocId;
   final String? sourceDocNo;
   final String? settlementMethodId;
+  final ProcurementSourceTerms? sourceTerms;
 }
 
 /// 从 cfg 推断上游单据类型。退货同时可链收货/订货时优先收货。
@@ -91,6 +105,47 @@ String _upTypeLabel(PurchaseDocType t) {
 ///   预计到货在收满订货量时已关闭，供应商再送来允许超收以内的货由采购员在这里
 ///   引入订货行手工登记（审核走同一闸门，超出最多可收的部分仍转财务）；
 /// 退货←收货/订货 = 原单数 − 已退；订货←申请 = 申请数 − 已订；其它 = 全额。
+String? _remainQtyText(
+  PurchaseDocConfig cfg,
+  PurchaseDocType upstream,
+  PurchaseDocItem item,
+) {
+  final qty = item.qtyText ?? item.qty?.toString();
+  String? negative(String? text) => financeExactMultiplyTexts(['-1', text]);
+  if (cfg.type == PurchaseDocType.returnDoc) {
+    return financeExactTrimmed(
+      financeExactSumTexts([
+        qty,
+        negative(item.returnedQtyText ?? item.returnedQty?.toString() ?? '0'),
+      ]),
+    );
+  }
+  if (upstream == PurchaseDocType.request) {
+    return item.remainingQtyText ??
+        financeExactTrimmed(
+          financeExactSumTexts([
+            qty,
+            negative(item.orderedQtyText ?? item.orderedQty?.toString() ?? '0'),
+          ]),
+        );
+  }
+  if (upstream == PurchaseDocType.order &&
+      cfg.type == PurchaseDocType.receipt) {
+    final owed = financeExactSumTexts([
+      qty,
+      negative(item.receivedQtyText ?? item.receivedQty?.toString() ?? '0'),
+      item.returnedQtyText ?? item.returnedQty?.toString() ?? '0',
+    ]);
+    if ((financeExactDecimalUnits(owed) ?? BigInt.zero) > BigInt.zero) {
+      return financeExactTrimmed(owed);
+    }
+    return financeExactTrimmed(
+      financeExactSumTexts([owed, item.allowedOverReceiptQty.toString()]),
+    );
+  }
+  return qty;
+}
+
 double _remainQty(
   PurchaseDocConfig cfg,
   PurchaseDocType upType,
@@ -136,6 +191,9 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
         partyNoun: '供应商',
         allPartiesLabel: '全部供应商', // TODO(l10n): 补 arb
         allowOverRemaining: allowOverRemaining,
+        allowGiftOverRemaining:
+            cfg.type == PurchaseDocType.order &&
+            upstream == PurchaseDocType.request,
         docIdOf: (d) => d.id,
         partyIdOf: (d) => d.supplierId,
         watchNames: (ref) => ref.watch(masterNameServiceProvider),
@@ -173,6 +231,13 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
             docId: docId,
             docNo: detail.billNo,
             settlementMethodId: detail.settlementMethodId,
+            sourceTerms:
+                upstream == PurchaseDocType.order ||
+                    upstream == PurchaseDocType.receipt
+                ? detail.sourceCommercialTerms(
+                    orderSource: upstream == PurchaseDocType.order,
+                  )
+                : null,
           );
         },
         itemFields: UtenDocLinkItemFields<PurchaseDocItem>(
@@ -182,6 +247,7 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
           price: (it) => it.price,
           upstreamItemId: (it) => it.id,
           unitRate: (it) => it.unitRate,
+          unitRateText: (it) => it.unitRateText,
         ),
         docColumns: (names) => _docColumns(names),
         goodsName: (names, goodsId) => names.goods(goodsId),
@@ -191,6 +257,12 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
         unitName: (names, unitId) => names.unit(unitId),
         middleItemColumns: (names) => _middleItemColumns(upstream),
         remainQty: (it) => _remainQty(cfg, upstream, it),
+        remainQtyText: (it) => _remainQtyText(cfg, upstream, it),
+        remainGiftQtyText: (it) => !it.hasExtraGift
+            ? '0'
+            : cfg.type == PurchaseDocType.returnDoc
+            ? it.returnableGiftQtyText
+            : it.remainingGiftQtyText,
         createBlankRow: () => UtenDocLinkItemRow<PurchaseDocItem>(
           const PurchaseDocItem(id: null),
         ),
@@ -208,17 +280,23 @@ Future<PurchaseLinkPickResult?> showDocLinkPicker(
     sourceDocId: raw.sourceDocId,
     sourceDocNo: raw.sourceDocNo,
     settlementMethodId: raw.settlementMethodId,
+    sourceTerms: raw.sourceTerms,
     items: raw.items
         .map(
           (d) => LinkedItem(
             goodsId: d.goodsId,
             qty: d.qty,
+            qtyText: d.qtyText,
+            maxQtyText: d.maxQtyText,
+            giftQtyText: d.giftQtyText,
+            maxGiftQtyText: d.maxGiftQtyText,
             maxQty: d.maxQty,
             price: d.price,
             upstreamItemId: d.upstreamItemId,
             colorId: d.colorId,
             unitId: d.unitId,
             unitRate: d.unitRate,
+            unitRateText: d.unitRateText,
           ),
         )
         .toList(),
@@ -269,32 +347,82 @@ List<MasterColumnDef<PurchaseDocListItem>> _docColumns(
 List<EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>>
 _middleItemColumns(PurchaseDocType upstream) => [
   EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(
+    key: 'giftQty',
+    label: '本次赠品',
+    width: 120,
+    numeric: true,
+    cellBuilder: (_, row) => TextField(
+      controller: row.giftQty,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: const InputDecoration(isDense: true, hintText: '0'),
+    ),
+  ),
+  EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(
     key: 'price',
     label: '单价',
     width: 90,
     numeric: true,
-    cellBuilder: (context, row) =>
-        Text((row.item.price ?? 0).toStringAsFixed(2)),
+    cellBuilder: (context, row) => Text(
+      financeExactTrimmed(row.item.priceText ?? row.item.price?.toString()) ??
+          '—',
+    ),
   ),
   EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(
     key: 'qty',
     label: '${_upTypeLabel(upstream)}数',
     width: 90,
     numeric: true,
-    cellBuilder: (context, row) => Text((row.item.qty ?? 0).toStringAsFixed(1)),
+    cellBuilder: (context, row) => Text(
+      financeExactTrimmed(row.item.qtyText ?? row.item.qty?.toString()) ?? '—',
+    ),
   ),
   EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(
     key: 'doneQty',
-    label: upstream == PurchaseDocType.order ? '已收' : '已退',
+    label: upstream == PurchaseDocType.order
+        ? '已收'
+        : upstream == PurchaseDocType.request
+        ? '已订(收费)'
+        : '已退',
     width: 90,
     numeric: true,
     cellBuilder: (context, row) => Text(
-      (upstream == PurchaseDocType.order
-              ? (row.item.receivedQty ?? 0)
-              : (row.item.returnedQty ?? 0))
-          .toStringAsFixed(1),
+      financeExactTrimmed(
+            upstream == PurchaseDocType.order
+                ? row.item.receivedQtyText ?? row.item.receivedQty?.toString()
+                : upstream == PurchaseDocType.request
+                ? row.item.orderedQtyText ?? row.item.orderedQty?.toString()
+                : row.item.returnedQtyText ?? row.item.returnedQty?.toString(),
+          ) ??
+          '—',
     ),
   ),
+  if (upstream == PurchaseDocType.request) ...[
+    EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(
+      key: 'remainingGiftQty',
+      label: '待补赠品',
+      width: 115,
+      numeric: true,
+      cellBuilder: (_, row) => Text(
+        financeExactTrimmed(
+              row.item.hasExtraGift ? row.item.remainingGiftQtyText : '0',
+            ) ??
+            '—',
+      ),
+    ),
+    EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(
+      key: 'physicalRemainingQty',
+      label: '待补实物',
+      width: 115,
+      numeric: true,
+      cellBuilder: (_, row) => Text(
+        financeExactTrimmed(
+              row.item.physicalRemainingQtyText ??
+                  (!row.item.hasExtraGift ? row.item.remainingQtyText : null),
+            ) ??
+            '未核定',
+      ),
+    ),
+  ],
   // ADR-144：订货行允许超收%（收满订货量后剩余量即按它给出的超收余量）。
   if (upstream == PurchaseDocType.order)
     EditableGridColumn<UtenDocLinkItemRow<PurchaseDocItem>>(

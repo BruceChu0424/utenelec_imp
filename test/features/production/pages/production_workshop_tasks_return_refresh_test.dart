@@ -23,17 +23,93 @@ import 'package:uten_imp/features/production/pages/production_workshop_tasks_pag
 import 'package:uten_imp/features/production/repositories/production_execution_workbench_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
+import 'package:uten_imp/shared/drafts/form_draft.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
 import '../../../support/filter_segment_tap.dart';
 
 late SharedPreferences _preferences;
 
+class _TaskDrafts extends FormDraftsNotifier {
+  _TaskDrafts(this.drafts);
+  final List<FormDraft> drafts;
+  @override
+  List<FormDraft> build() => drafts;
+}
+
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  for (final unknown in [false, true]) {
+    testWidgets('local batch report remains on source row and resumes whole snapshot (unknown $unknown)', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final draft = FormDraft(
+        id: 'local-batch',
+        title: '两个工单报工填写',
+        module: BadgeModule.workshop,
+        route: '/production/daily-reports/new?executionSegmentIds=segment-a,segment-b&from=workshop-tasks',
+        permission: Perm.productionDailyReportCreate,
+        draftKind: 'productionDailyReport',
+        updatedAt: DateTime(2026, 10, 11),
+        data: {
+          if (unknown) formDraftUnknownSubmissionKey: true,
+          'rows': [
+            {'executionSegmentId': 'segment-a', 'qty': '3.1250'},
+            {'executionSegmentId': 'segment-b', 'qty': '6.8750'},
+          ],
+        },
+      );
+      final container = ProviderContainer(overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
+        apiClientProvider.overrideWithValue(_draftClaimingApi(claimedQty: () => 0)),
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.productionExecutionView,
+          Perm.productionDailyReportView,
+          Perm.productionDailyReportCreate,
+        }),
+        formDraftsProvider.overrideWith(() => _TaskDrafts([draft])),
+        fixedBadgeSummaryOverride(badgeSummaryFixture()),
+      ]);
+      addTearDown(container.dispose);
+      Uri? resumed;
+      final router = GoRouter(initialLocation: RouteName.productionWorkshopTasks, routes: [
+        GoRoute(path: RouteName.productionWorkshopTasks, builder: (_, _) => const ProductionWorkshopTasksPage()),
+        GoRoute(path: '/production/daily-reports/new', builder: (_, state) {
+          resumed = state.uri;
+          return const Scaffold(body: Text('原报工填写'));
+        }),
+        GoRoute(path: '/production/daily-reports/create-recovery', builder: (_, state) {
+          resumed = state.uri;
+          return const Scaffold(body: Text('原报工填写'));
+        }),
+      ]);
+      addTearDown(router.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(container: container, child: MaterialApp.router(routerConfig: router)));
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '生产中');
+      await tester.pumpAndSettle();
+      expect(find.text('产品 A'), findsOneWidget);
+      expect(find.text(unknown ? '提交待核对' : '草稿'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('workshop-task-draft-segment-a')));
+      await tester.pumpAndSettle();
+      expect(find.text('原报工填写'), findsOneWidget);
+      expect(resumed!.queryParameters['draftId'], 'local-batch');
+      if (unknown) {
+        expect(resumed!.path, '/production/daily-reports/create-recovery');
+      } else {
+        expect(resumed!.queryParameters['executionSegmentIds'], 'segment-a,segment-b');
+      }
+      expect(container.read(formDraftsProvider).single.data['rows'], draft.data['rows']);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets(
     'saved draft opens review and completes both route futures on return',
     (tester) async {
@@ -356,10 +432,7 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     container.dispose();
   });
-  // 2026-09-26 用户口径：未审核报工草稿（SR status=0）承接的数量要从「生产中」的
-  // 待报里扣除——全部承接时待办**离段**（正文行与分段计数一起消失，行改从「草稿」
-  // 段看）；部分承接保留分批报工（显示扣减后的待报）；「草稿」段合并我的服务端
-  // 报工草稿（行可跳日报详情）；删除草稿后重拉即恢复。
+  // 草稿保留原任务行与生产中计数，数量仍扣减以免重复报工。
   for (final (initialClaim, expectedRemaining) in [
     (8000.0, '0'),
     (3000.0, '5000'),
@@ -383,7 +456,7 @@ void main() {
               Perm.productionDailyReportView,
               Perm.productionDailyReportCreate,
             }),
-            // 「生产中」黄徽章计数（服务端口径 3）：全量承接时显示 3-1=2。
+            // 保存草稿不改变任务所属分类与生产中任务数。
             fixedBadgeSummaryOverride(
               badgeSummaryFixture(facts: {BadgeFact.workshopInProgress: 3}),
             ),
@@ -419,35 +492,25 @@ void main() {
         final selectAll = find.byWidgetPredicate(
           (w) => w is Checkbox && w.tristate,
         );
-        if (claim >= 8000) {
-          // 全量承接：正文行与「报工草稿待审核」徽章一起离段，指路「草稿」段；
-          // 分段计数 3-1=2（不是 3，也不再出现 1 行的旧行为）。
-          expect(find.text('报工草稿待审核'), findsNothing);
-          expect(find.text('产品 A'), findsNothing);
-          expect(find.textContaining('待报都已由报工草稿承接'), findsOneWidget);
-          expect(find.text('2'), findsOneWidget);
-        } else {
-          expect(find.textContaining('生产中 · 可报工'), findsOneWidget);
-          expect(find.text('3'), findsOneWidget, reason: '部分承接不减计数');
+        expect(find.text('产品 A'), findsOneWidget);
+        expect(find.text('3'), findsOneWidget, reason: '草稿不改变生产中计数');
+        expect(
+          find.byKey(const ValueKey('workshop-task-draft-segment-a')),
+          findsOneWidget,
+        );
+        if (claim < 8000) {
           await tester.tap(selectAll);
           await tester.pumpAndSettle();
           expect(find.text('批量报工(1)'), findsOneWidget, reason: '部分承接保留分批报工');
         }
 
-        // 「草稿」段：我的服务端报工草稿与本地草稿共用一张表，行可跳日报详情。
-        await selectFilterSegment(tester, '草稿');
-        await tester.pumpAndSettle();
-        expect(find.text('SR-DRAFT-1'), findsOneWidget);
-        expect(find.text('草稿'), findsAtLeastNWidgets(1));
-        await tester.tap(find.text('SR-DRAFT-1'));
-        await tester.pump(const Duration(milliseconds: 50));
-        await tester.tap(find.text('SR-DRAFT-1'));
+        // 原任务状态格进入对应的服务端日报，不另设草稿分类。
+        await tester.tap(
+          find.byKey(const ValueKey('workshop-task-draft-segment-a')),
+        );
         await tester.pumpAndSettle();
         expect(find.text('日报详情 draft-1'), findsOneWidget);
         tester.state<NavigatorState>(find.byType(Navigator).first).pop();
-        await tester.pumpAndSettle();
-
-        await selectFilterSegment(tester, '生产中');
         await tester.pumpAndSettle();
 
         // 列表行是「单击选中、双击打开」：双击产品名称打开任务详情。
@@ -458,25 +521,36 @@ void main() {
           await tester.pumpAndSettle();
         }
 
-        if (claim < 8000) {
+        {
           await openTaskDetail();
+          final remaining = find.byKey(
+            const ValueKey('workshop-detail-quantity-remaining'),
+          );
           expect(
-            find.textContaining('待报数量（含品质恢复）：$expectedRemaining'),
+            find.descendant(of: remaining, matching: find.text('待报工')),
             findsOneWidget,
           );
           expect(
-            find.textContaining('报工草稿待审核 ${claim.toStringAsFixed(0)}'),
+            find.descendant(
+              of: remaining,
+              matching: find.text('$expectedRemaining 件'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text('草稿待审核 ${claim.toStringAsFixed(0)} 件'),
             findsOneWidget,
           );
           await tester.tap(find.text('关闭'));
           await tester.pumpAndSettle();
           // 部分承接变体此刻勾着行：先清掉，让「恢复」阶段从空勾选开始。
-          await tester.tap(selectAll);
-          await tester.pumpAndSettle();
+          if (claim < 8000) {
+            await tester.tap(selectAll);
+            await tester.pumpAndSettle();
+          }
         }
 
-        // 删除草稿后待办恢复：草稿清空 → 刷新 → 待报回到 8000、可再次勾选报工，
-        // 计数回到服务端口径 3，「草稿」段不再显示服务端行。
+        // 删除草稿后原行恢复业务状态与原待报额度，任务数始终保持 3。
         claim = 0;
         await tester.tap(find.byTooltip('刷新'));
         await tester.pumpAndSettle();
@@ -486,19 +560,27 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('批量报工(1)'), findsOneWidget, reason: '草稿删除后待办必须恢复');
         await openTaskDetail();
-        expect(find.textContaining('待报数量（含品质恢复）：8000'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey('workshop-detail-quantity-remaining'),
+            ),
+            matching: find.text('8000 件'),
+          ),
+          findsOneWidget,
+        );
         await tester.tap(find.text('关闭'));
         await tester.pumpAndSettle();
-        await selectFilterSegment(tester, '草稿');
-        await tester.pumpAndSettle();
-        expect(find.text('SR-DRAFT-1'), findsNothing);
+        expect(
+          find.byKey(const ValueKey('workshop-task-draft-segment-a')),
+          findsNothing,
+        );
         expect(tester.takeException(), isNull);
       },
     );
   }
 
-  // 2026-09-26 用户口径（fail-open）：报工草稿读取失败时不扣「生产中」、不并
-  // 「草稿」段——与未上线本口径时的显示一致，绝不把没报的说成已报完。
+  // 草稿读取失败保留原任务行，提示用户在当前分类刷新核对。
   testWidgets('draft read failure keeps the old display (fail-open)', (
     tester,
   ) async {
@@ -548,9 +630,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('批量报工(1)'), findsOneWidget);
-    await selectFilterSegment(tester, '草稿');
-    await tester.pumpAndSettle();
-    // 「草稿」段退回只显示本地草稿，并说明读取失败。
+    // 在原业务分类显示读取失败，恢复入口不移到另一个分类。
     expect(
       find.byKey(const Key('workshop-server-draft-error')),
       findsOneWidget,

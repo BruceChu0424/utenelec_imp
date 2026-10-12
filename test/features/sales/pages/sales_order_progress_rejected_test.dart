@@ -8,7 +8,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
 import 'package:uten_imp/features/sales/pages/sales_order_progress_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -56,9 +59,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 分类分段范式(ADR-066) + 两层分类(ADR-100)：2026-10-04 起红数「草稿」段
-      // 进页面自动选中(stage=DRAFT)；点大类「进行中」按组加载，小类行随大类
-      // 解锁出现，红数的「财务驳回」再被自动选中(stage=REJECTED)。
+      // 主阶段加载整组；财务驳回作为同表的状态筛选下推服务端。
       await tester.tap(find.text('进行中'));
       await tester.pumpAndSettle();
       expect(
@@ -66,14 +67,11 @@ void main() {
         contains('IN_PROGRESS'),
         reason: '大类直接按组拉，不该退化成前端多拼几次单阶段请求',
       );
-      expect(api.progressQueries.last['stage'], 'REJECTED');
-
-      // 再点已选中的「财务驳回」不重复发请求（单选点已选段不回调）。
-      await tester.tap(
-        find.byWidgetPredicate(
-          (w) => w is UtenSegmentBadgeLabel && w.label == '财务驳回',
-        ),
+      expect(api.progressQueries.last['stage'], 'IN_PROGRESS');
+      final table = tester.widget<MasterDataTableView<SalesOrderProgressRow>>(
+        find.byType(MasterDataTableView<SalesOrderProgressRow>),
       );
+      table.onFilterChanged('stage', 'REJECTED');
       await tester.pumpAndSettle();
       expect(api.progressQueries.last['stage'], 'REJECTED');
 
@@ -99,7 +97,7 @@ void main() {
   // 其余四档黄(球在生产/财务/仓库手上)。
   // 黄徽章与红徽章同规矩：归零整枚不渲染，不留 `(0)` 占位。
   testWidgets(
-    'top row is draft plus three groups with paired badges; sub-row splits red and yellow',
+    'main groups retain badges; state header queries all pages within the selected group',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -178,62 +176,52 @@ void main() {
         findsNothing,
       );
 
-      // 点开大类后小类行出现，红黄按「轮到谁动手」分。
+      // 点开大类后不再多一条子阶段；固定状态桶可查询其他页的阶段。
       await tester.tap(find.text('进行中'));
       await tester.pumpAndSettle();
+      expect(segment('财务驳回'), findsNothing);
+      expect(segment('生产中'), findsNothing);
+      expect(find.text('SO-PRODUCING'), findsNothing);
+      MasterDataTableView<SalesOrderProgressRow> table() => tester.widget(
+        find.byType(MasterDataTableView<SalesOrderProgressRow>),
+      );
+      expect(table().facets['stage']!.map((bucket) => bucket.value), [
+        'REJECTED',
+        'PENDING',
+        'PRODUCING',
+      ]);
+      table().onFilterChanged('stage', 'PRODUCING');
+      await tester.pumpAndSettle();
+      expect(api.progressQueries.last['stage'], 'PRODUCING');
+      expect(api.progressQueries.last['page'], 1);
+      expect(find.text('SO-PRODUCING'), findsOneWidget);
 
+      table().onFilterChanged('stage', null);
+      await tester.pumpAndSettle();
+      expect(api.progressQueries.last['stage'], 'IN_PROGRESS');
+      final queryCount = api.progressQueries.length;
+      table().onFilterChanged('stage', 'WAREHOUSE_PENDING');
+      await tester.pumpAndSettle();
       expect(
-        tester.widget<UtenSegmentBadgeLabel>(segment('财务驳回')).countForm,
-        UtenSegmentCountForm.actionable,
-      );
-      for (final label in ['待排产', '生产中']) {
-        expect(
-          tester.widget<UtenSegmentBadgeLabel>(segment(label)).countForm,
-          UtenSegmentCountForm.inProgress,
-          reason: label,
-        );
-        expect(
-          find.descendant(
-            of: segment(label),
-            matching: find.byType(UtenNotificationBadge),
-          ),
-          findsNothing,
-          reason: label,
-        );
-      }
-      // 有数的在途小类亮黄徽章并带数字；归零的那档整枚缩回。
-      expect(
-        find.descendant(of: segment('生产中'), matching: find.text('3')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: segment('待排产'),
-          matching: find.byType(UtenInProgressBadge),
-        ),
-        findsNothing,
-      );
-      expect(
-        find.descendant(of: segment('待排产'), matching: find.text('(0)')),
-        findsNothing,
+        api.progressQueries.length,
+        queryCount,
+        reason: '状态过滤不能把记录带出当前主工作阶段',
       );
 
-      // 切到另一个大类时，小类行换成那一类的三档。
+      table().onFilterChanged('stage', 'REJECTED');
+      await tester.pumpAndSettle();
+      // 主工作阶段切换清除旧状态，新的状态桶仍包含当前页以外的档位。
       await tester.tap(find.text('可发货'));
       await tester.pumpAndSettle();
-      expect(segment('可分批发货'), findsOneWidget);
+      expect(api.progressQueries.last['stage'], 'READY_TO_SHIP');
+      expect(table().filters['stage'], isNull);
+      expect(table().facets['stage']!.map((bucket) => bucket.value), [
+        'SHIPPABLE',
+        'SHIPMENT_PENDING',
+        'WAREHOUSE_PENDING',
+      ]);
+      expect(segment('可分批发货'), findsNothing);
       expect(segment('财务驳回'), findsNothing);
-      expect(
-        tester.widget<UtenSegmentBadgeLabel>(segment('可分批发货')).countForm,
-        UtenSegmentCountForm.actionable,
-      );
-      for (final label in ['出货待财审', '等仓库出货']) {
-        expect(
-          tester.widget<UtenSegmentBadgeLabel>(segment(label)).countForm,
-          UtenSegmentCountForm.inProgress,
-          reason: label,
-        );
-      }
       expect(tester.takeException(), isNull);
     },
   );
@@ -286,6 +274,29 @@ void main() {
       expect(find.text('SO-CLOSED'), findsOneWidget);
       expect(find.text('已结案'), findsOneWidget);
       expect(find.text('等待财务审核'), findsNothing);
+
+      tester
+          .widget<UtenHistoryTimeFilter>(find.byType(UtenHistoryTimeFilter))
+          .onChanged(
+            UtenHistoryTimeValue.range(
+              DateTimeRange(
+                start: DateTime(2026, 8),
+                end: DateTime(2026, 8, 31),
+              ),
+            ),
+          );
+      await tester.pumpAndSettle();
+      MasterDataTableView<SalesOrderProgressRow> table() => tester.widget(
+        find.byType(MasterDataTableView<SalesOrderProgressRow>),
+      );
+      table().onFilterChanged('stage', 'REJECTED');
+      await tester.pumpAndSettle();
+      expect(api.progressQueries.last['stage'], 'REJECTED');
+      table().onFilterChanged('stage', null);
+      await tester.pumpAndSettle();
+      expect(api.progressQueries.last.containsKey('stage'), isFalse);
+      expect(api.progressQueries.last['dateFrom'], '2026-08-01');
+      expect(api.progressQueries.last['dateTo'], '2026-08-31');
     },
   );
 
@@ -424,6 +435,7 @@ class _ProgressApi extends ApiClient {
           stopped: true,
         ),
         _row('order-closed', 'SO-CLOSED', stage: 'CLOSED', closed: true),
+        _row('order-producing', 'SO-PRODUCING', stage: 'PRODUCING'),
       ];
       // 草稿单只在 stage='DRAFT' 可见（与后端 :stage='DRAFT' 门控同口径）：
       // 历史记录与其余阶段都不含草稿。草稿 finance_confirmed=false——若阶段列
@@ -455,11 +467,12 @@ class _ProgressApi extends ApiClient {
                 )
                 .toList();
       return {
-        'items': rows,
+        // 进行中整组首屏只给驳回；生产中在另一页，表头须下推服务端才找得到。
+        'items': stage == 'IN_PROGRESS' ? rows.take(1).toList() : rows,
         'page': 1,
         'size': 50,
         'total': rows.length,
-        'totalPages': 1,
+        'totalPages': stage == 'IN_PROGRESS' ? 2 : 1,
       };
     }
     if (path == '/sales/orders/progress/stage-counts') {

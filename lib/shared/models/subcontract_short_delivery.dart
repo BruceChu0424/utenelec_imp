@@ -400,6 +400,8 @@ String subcontractProgressStatusLabel(String code) =>
     switch (code.toUpperCase()) {
       'ORDER_PENDING_APPROVAL' => '等待财务审核',
       'FINANCE_REJECTED' => '财务已退回',
+      'FINANCE_REVIEW_PENDING' => '改量待财务复核',
+      'FINANCE_REVIEW_REJECTED' => '改量财务退回',
       'FINANCE_APPROVED' => '财务已通过',
       'SHORT_DELIVERY' => '回厂短交待判定',
       'WAITING_MORE_BATCH' => '分批等待中',

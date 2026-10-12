@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/models/procurement_iqc_rejection.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
@@ -81,7 +83,7 @@ void main() {
     // 未掩码行 25.00——服务端金额掩码在卡片形态同样生效（ADR-128 本币口径）。
     expect(find.textContaining('***', findRichText: true), findsOneWidget);
     expect(find.textContaining('25.00', findRichText: true), findsOneWidget);
-    expect(find.text('财务投影异常'), findsWidgets);
+    expect(find.textContaining('财务投影异常'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -121,25 +123,47 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final gateway = _Gateway(items: [_case()]);
+      final requests = <RequestOptions>[];
+      final gateway = _filterRepository(requests);
       await tester.pumpWidget(_app(gateway));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('iqc-rejection-task-table')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('iqc-rejection-type-filter')));
+      MasterDataTableView<ProcurementIqcRejectionCase> table() =>
+          tester.widget(find.byKey(const Key('iqc-rejection-task-table')));
+      expect(find.byKey(const Key('iqc-rejection-type-filter')), findsNothing);
+      expect(
+        find.byKey(const Key('iqc-rejection-status-filter')),
+        findsNothing,
+      );
+      table().onFilterChanged('receiptType', 'SUBCONTRACT');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('委外').last);
+      table().onFilterChanged('status', 'FINANCE_EXCEPTION');
+      await tester.pumpAndSettle();
+      final lists = requests
+          .where((request) => request.path == '/procurement/iqc-rejections')
+          .toList();
+      expect(lists, hasLength(3));
+      expect(lists.last.method, 'GET');
+      expect(lists.last.uri.queryParameters, {
+        'receiptType': 'SUBCONTRACT',
+        'status': 'FINANCE_EXCEPTION',
+        'page': '1',
+        'size': '50',
+      });
+      expect(find.textContaining('G-001'), findsWidgets);
+      table().onFilterChanged('receiptType', null);
       await tester.pumpAndSettle();
       expect(
-        gateway.filters.last.receiptType,
-        ProcurementIqcReceiptType.subcontract,
+        requests
+            .lastWhere(
+              (request) => request.path == '/procurement/iqc-rejections',
+            )
+            .uri
+            .queryParameters['receiptType'],
+        isNull,
       );
-
-      await tester.tap(find.byKey(const Key('iqc-rejection-status-filter')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('财务投影异常').last);
-      await tester.pumpAndSettle();
-      expect(gateway.filters.last.status, 'FINANCE_EXCEPTION');
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -318,3 +342,55 @@ ProcurementIqcRejectionCase _case({
   priceMasked: masked,
   financeExceptionMessage: '财务投影需要修复',
 );
+
+ProcurementIqcRejectionRepository _filterRepository(
+  List<RequestOptions> requests,
+) {
+  final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (request, handler) {
+        requests.add(request);
+        expect(request.method, 'GET');
+        expect(
+          request.path,
+          anyOf(
+            '/procurement/iqc-rejections',
+            '/procurement/iqc-rejections/counts',
+          ),
+        );
+        final data = request.path.endsWith('/counts')
+            ? <String, dynamic>{'total': 1, 'financeException': 1}
+            : <String, dynamic>{
+                'items': [
+                  <String, dynamic>{
+                    'id': 'case-1',
+                    'receiptType': 'PURCHASE',
+                    'receiptBillNo': 'PR-001',
+                    'orderBillNo': 'PO-001',
+                    'goodsCode': 'G-001',
+                    'goodsName': '轴套',
+                    'failedQty': '5',
+                    'status': 'FINANCE_EXCEPTION',
+                    'version': 3,
+                    'allowedActions': <String>[],
+                    'priceMasked': false,
+                  },
+                ],
+                'page': 1,
+                'size': 50,
+                'total': 1,
+                'totalPages': 1,
+              };
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: request,
+            statusCode: 200,
+            data: data,
+          ),
+        );
+      },
+    ),
+  );
+  return ProcurementIqcRejectionRepository(ApiClient(dio));
+}

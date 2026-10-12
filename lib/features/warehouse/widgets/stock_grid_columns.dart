@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
-import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
@@ -109,6 +109,13 @@ class StockGridRow extends EditableGridRow with AmountRowMixin {
     if (value == null) return null;
     return isCheck ? value : value * (unitRate > 0 ? unitRate : 1);
   }
+
+  String? get surplusQtyText => financeExactTrimmed(
+    financeExactSumTexts([
+      checkQty.text,
+      financeExactMultiplyTexts(['-1', bookQty.text]),
+    ]),
+  );
 
   void _recalc() => recalcAmount(
     () =>
@@ -489,9 +496,11 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
         label: '盘盈亏',
         width: 145,
         numeric: true,
-        cellBuilder: (context, row) => ValueListenableBuilder<double>(
-          valueListenable: row.amountNotifier,
-          builder: (_, v, _) => Text(formatQtyWithUnit(v, row.unitName)),
+        cellBuilder: (context, row) => ListenableBuilder(
+          listenable: Listenable.merge([row.bookQty, row.checkQty]),
+          builder: (_, _) => Text(
+            '${row.surplusQtyText ?? '数量未留存'}${row.unitName == null ? '' : ' ${row.unitName}'}',
+          ),
         ),
       ),
     ] else ...[

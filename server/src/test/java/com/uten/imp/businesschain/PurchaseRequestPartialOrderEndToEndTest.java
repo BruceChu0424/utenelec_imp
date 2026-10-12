@@ -46,6 +46,11 @@ class PurchaseRequestPartialOrderEndToEndTest {
     @Autowired PurchaseOrderService orders;
     @Autowired ProcurementFinanceApprovalService finance;
     @Autowired TaskClaimService claims;
+    @Autowired com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService workbench;
+    @Autowired com.uten.imp.features.subcontract.application.SubcontractApplicationService subcontractApplications;
+    @Autowired com.uten.imp.features.subcontract.order.SubcontractOrderService subcontractOrders;
+    @Autowired com.uten.imp.features.documents.DocumentStatusCountQueryService documentCounts;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     private FullChainEndToEndTest harness;
     @BeforeEach void prepare() { harness=new FullChainEndToEndTest();beans.autowireBean(harness); }
     @AfterEach void clearSecurity() { SecurityContextHolder.clearContext(); }
@@ -86,16 +91,16 @@ class PurchaseRequestPartialOrderEndToEndTest {
     }
 
     @Test
-    void rejectionResubmissionAndOrderReversalRestoreOnlyTheirOwnCommittedQuantity() {
+    void rejectionResubmissionRetainTheOriginalCommitmentWhileReversalRestoresOnlyItsOwnQuantity() {
         Fixture f=fixture("partial-restore");
         reject(f,f.pendingOrder(),"本批先暂停采购");
-        assertBalances(f,f.first(),"2","0","8");
+        assertBalances(f,f.first(),"2","3","5");
         assertBalances(f,f.second(),"0","0","4");
         harness.loginAs(f.world().superAdminUserId());
         orders.reverse(f.approvedOrder());
-        assertBalances(f,f.first(),"0","0","10");
+        assertBalances(f,f.first(),"0","3","7");
         assertThatThrownBy(()->orders.reverse(f.approvedOrder())).isInstanceOf(ApiException.class);
-        assertBalances(f,f.first(),"0","0","10");
+        assertBalances(f,f.first(),"0","3","7");
 
         FinanceApproval secondAttempt=submit(f,f.pendingOrder());
         assertThat(secondAttempt.attempt()).isEqualTo(2);
@@ -120,7 +125,8 @@ class PurchaseRequestPartialOrderEndToEndTest {
         long before=orderCount(f);
         for(String invalid:List.of("0","-1")) {
             assertThatThrownBy(()->createOrder(f,List.of(orderLine(f,f.second(),"1"),orderLine(f,f.first(),invalid))))
-                    .isInstanceOf(ApiException.class).hasMessageContaining("数量必须大于 0");
+                    .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode())
+                            .isEqualTo(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED));
             assertThat(orderCount(f)).isEqualTo(before);
             assertBalances(f,f.first(),"2","3","5");
             assertBalances(f,f.second(),"0","0","4");
@@ -135,9 +141,229 @@ class PurchaseRequestPartialOrderEndToEndTest {
         assertThat(db.queryForObject("SELECT alloc_qty FROM purchase_order_item_sources WHERE order_item_id=?",BigDecimal.class,
                 overbuy.getItems().getFirst().getId())).isEqualByComparingTo("6");
         reject(f,f.pendingOrder(),"取消未批准批次");
+        assertBalances(f,f.first(),"8","3","0");
+        orders.cancel(f.pendingOrder());
         assertBalances(f,f.first(),"8","0","2");
         orders.reverse(overbuy.getId());
         assertBalances(f,f.first(),"2","0","8");
+    }
+
+    @Test
+    void returnedMultiMaterialBatchStaysOneCorrectionTaskAndEditingReleasesOnlyTheReducedShares() {
+        Fixture f=fixture("returned-multi");
+        OrderDetail returned=createOrder(f,List.of(orderLine(f,f.first(),"5"),orderLine(f,f.second(),"4")));
+        submit(f,returned.getId());
+        reject(f,returned.getId(),"请核对本批条款");
+        assertBalances(f,f.first(),"2","8","0");
+        assertBalances(f,f.second(),"0","4","0");
+        assertRequestOpen(f,"0");
+        var running=workbench.query("PURCHASE","IN_PROGRESS",returned.getBillNo(),"",null,null,1,20);
+        assertThat(running.total()).isEqualTo(1);
+        assertThat(running.items()).hasSize(1);
+        assertThat(running.items().getFirst().taskStatus()).isEqualTo("FINANCE_REJECTED");
+        assertThat(running.items().getFirst().goodsCount()).isEqualTo(2);
+        assertThat(running.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(1);
+        var allRunning=workbench.query("PURCHASE","IN_PROGRESS","","",null,null,1,100);
+        assertThat(workbench.countInProgress("PURCHASE")).isEqualTo(allRunning.total());
+        assertThat(allRunning.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(allRunning.total());
+        assertThat(workbench.countPending("PURCHASE")).isEqualTo(db.queryForObject("""
+                SELECT COUNT(DISTINCT action_doc_id) FROM v_procurement_decomposition_tasks
+                WHERE department='PURCHASE' AND open_qty>0 AND task_status IN ('WAITING_ORDER','FINANCE_REJECTED')
+                """,Long.class));
+
+        // Revising the original order must see its own old shares as released inside the transaction.
+        orders.update(returned.getId(),orderRequest(f,List.of(orderLine(f,f.first(),"2"),orderLine(f,f.second(),"1"))));
+        assertBalances(f,f.first(),"2","5","3");
+        assertBalances(f,f.second(),"0","1","3");
+        assertRequestOpen(f,"6");
+        FinanceApproval next=submit(f,returned.getId());
+        assertThat(next.attempt()).isEqualTo(2);
+        assertBalances(f,f.first(),"2","5","3");
+        assertThatThrownBy(()->finance.submit("PURCHASE",returned.getId())).isInstanceOf(ApiException.class);
+        assertBalances(f,f.first(),"2","5","3");
+        reject(f,returned.getId(),"再次核对");
+        assertBalances(f,f.first(),"2","5","3");
+        assertBalances(f,f.second(),"0","1","3"); // two rejected attempts never double count
+        assertThat(workbench.query("PURCHASE","IN_PROGRESS",returned.getBillNo(),"",null,null,1,20).total()).isEqualTo(1);
+        orders.cancel(returned.getId());
+        assertBalances(f,f.first(),"2","3","5");
+        assertBalances(f,f.second(),"0","0","4");
+        assertThat(workbench.query("PURCHASE","IN_PROGRESS",returned.getBillNo(),"",null,null,1,20).total()).isZero();
+    }
+
+    @Test
+    void deletingAReturnedOrderAndCancelingAPendingOrderReleaseTheirSharesWithoutLosingTheRequest() {
+        Fixture f=fixture("returned-delete");
+        OrderDetail returned=createOrder(f,List.of(orderLine(f,f.second(),"4")));
+        submit(f,returned.getId());reject(f,returned.getId(),"本单不再订购");
+        assertBalances(f,f.second(),"0","4","0");
+        orders.delete(returned.getId());
+        assertBalances(f,f.second(),"0","0","4");
+        assertThat(workbench.query("PURCHASE","IN_PROGRESS",returned.getBillNo(),"",null,null,1,20).total()).isZero();
+        orders.cancel(f.pendingOrder());
+        assertBalances(f,f.first(),"2","0","8");
+        assertRequestOpen(f,"12");
+        assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE order_id=? ORDER BY attempt DESC LIMIT 1",String.class,f.pendingOrder())).isEqualTo("CANCELED");
+    }
+
+    @Test
+    void returnedPaidAndGiftSharesRetainPhysicalDemandAndCancelSymmetrically() {
+        Fixture f=fixture("returned-gift");
+        var line=orderLine(f,f.first(),"4");line.setGiftQty(BigDecimal.ONE);
+        OrderDetail returned=createOrder(f,List.of(line));
+        submit(f,returned.getId());reject(f,returned.getId(),"核对赠品条款");
+        var item=requests.detail(f.request()).getItems().stream().filter(row->row.getId().equals(f.first())).findFirst().orElseThrow();
+        assertThat(item.getPendingQty()).isEqualByComparingTo("7");
+        assertThat(item.getPendingGiftQty()).isEqualByComparingTo("1");
+        assertThat(item.getPhysicalRemainingQty()).isZero();
+        assertRequestOpen(f,"4");
+        submit(f,returned.getId());
+        reject(f,returned.getId(),"再次核对赠品");
+        assertThat(requests.detail(f.request()).getItems().getFirst().getPendingGiftQty()).isEqualByComparingTo("1");
+        orders.cancel(returned.getId());
+        assertBalances(f,f.first(),"2","3","5");
+        assertThat(requests.detail(f.request()).getItems().getFirst().getPendingGiftQty()).isZero();
+    }
+
+    @Test
+    void subcontractReturnedSharesUseTheSameBalanceInPreviewWorkbenchAndKitAvailability() {
+        var world=harness.seedWorld("returned-subcontract");harness.loginAs(world.superAdminUserId());
+        UUID material=harness.ensureSubcontractDirectMaterial(world,world.goodsE());
+        harness.receiveSubcontractMaterial(world,material,"20");
+        var applicationRequest=new com.uten.imp.features.subcontract.application.dto.ApplicationSaveRequest();
+        applicationRequest.setBillDate(BusinessTime.today());applicationRequest.setWarehouseId(world.warehouseId());
+        applicationRequest.setSupplierId(world.supplierId());applicationRequest.setApplicantId(world.employeeId());
+        var source=new com.uten.imp.features.subcontract.application.dto.ApplicationItemLine();
+        source.setGoodsId(world.goodsE());source.setUnitId(world.unitId());source.setUnitRate(BigDecimal.ONE);source.setQty(BigDecimal.TEN);
+        applicationRequest.setItems(List.of(source));
+        var application=subcontractApplications.create(applicationRequest);
+        // A standalone previously issued application is the fixture's upstream boundary.
+        db.update("UPDATE subcontract_applications SET status=1 WHERE id=?",application.getId());
+        UUID sourceId=application.getItems().getFirst().getId();
+        UUID reviewer=harness.createUserWithPerms(world,"REV-returned-subcontract","finance_order_approval:view","finance_order_approval:approve","finance_order_approval:reject");
+        harness.loginAs(world.superAdminUserId());
+        var request=subcontractOrderRequest(world,sourceId,"6");
+        var order=subcontractOrders.create(request);
+        assertSubcontractOpen(sourceId,"10"); // ordinary unsubmitted draft keeps its prior contract
+        var first=finance.submit("SUBCONTRACT",order.getId());
+        assertSubcontractOpen(sourceId,"4");
+        rejectSubcontract(world,reviewer,first);
+        assertSubcontractOpen(sourceId,"4");
+        assertThat(subcontractApplications.decompositionPreview(List.of(sourceId)).getFirst().pendingQty()).isEqualByComparingTo("6");
+        assertThat(workbench.query("SUBCONTRACT","IN_PROGRESS",order.getBillNo(),"",null,null,1,20).items())
+                .extracting(com.uten.imp.features.operations.workbench.FulfillmentTaskRow::taskStatus).containsExactly("FINANCE_REJECTED");
+        subcontractOrders.update(order.getId(),subcontractOrderRequest(world,sourceId,"3"));
+        assertSubcontractOpen(sourceId,"7");
+        var next=finance.submit("SUBCONTRACT",order.getId());assertThat(next.attempt()).isEqualTo(2);
+        assertSubcontractOpen(sourceId,"7");
+        rejectSubcontract(world,reviewer,next);
+        assertSubcontractOpen(sourceId,"7");
+        assertThat(subcontractApplications.decompositionPreview(List.of(sourceId)).getFirst().pendingQty()).isEqualByComparingTo("3");
+        subcontractOrders.delete(order.getId());
+        assertSubcontractOpen(sourceId,"10");
+        assertThat(workbench.query("SUBCONTRACT","IN_PROGRESS",order.getBillNo(),"",null,null,1,20).total()).isZero();
+    }
+
+    @Test
+    void approvedQuantityReviewShowsTheLatestFinanceTaskWithoutChangingApprovedSupplyOrDuplicatingRows() {
+        Fixture f=fixture("approved-review-display");
+        UUID order=f.approvedOrder();
+        UUID item=orders.detail(order).getItems().getFirst().getId();
+        long expectations=db.queryForObject("SELECT COUNT(*) FROM inbound_expectations WHERE order_type='PURCHASE' AND order_id=?",Long.class,order);
+        orders.changeQty(order,new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest(
+                List.of(new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem(item,BigDecimal.ONE))));
+        assertBalances(f,f.first(),"1","3","6");
+        assertApprovedReviewStage(order,"ORDER_PENDING_APPROVAL","FINANCE_REVIEW_PENDING");
+        long pendingBefore=workbench.countPending("PURCHASE");
+        reject(f,order,"改量需要再次核对");
+        assertApprovedReviewStage(order,"FINANCE_REJECTED","FINANCE_REVIEW_REJECTED");
+        assertBalances(f,f.first(),"1","3","6");
+        assertThat(orders.detail(order).getStatus()).isEqualTo((short)1);
+        assertThat(workbench.countPending("PURCHASE")).isEqualTo(pendingBefore+1);
+
+        // Resubmission of an effective amendment uses its existing controlled quantity path.
+        orders.changeQty(order,new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest(
+                List.of(new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem(item,new BigDecimal("2")))));
+        assertApprovedReviewStage(order,"ORDER_PENDING_APPROVAL","FINANCE_REVIEW_PENDING");
+        assertThat(workbench.countPending("PURCHASE")).isEqualTo(pendingBefore);
+        approve(f,order);
+        assertApprovedReviewStage(order,"FINANCE_APPROVED","FINANCE_APPROVED");
+        assertBalances(f,f.first(),"2","3","5");
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM inbound_expectations WHERE order_type='PURCHASE' AND order_id=?",Long.class,order)).isEqualTo(expectations);
+    }
+
+    @Test
+    void physicalClosureDoesNotHideOrAgeOutAnUnfinishedFinancialQuantityReview() {
+        Fixture f=fixture("closed-review-display");UUID order=f.approvedOrder();
+        UUID item=orders.detail(order).getItems().getFirst().getId();
+        UUID receipt=org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"receiveIntoQuarantine",
+                f.world(),f.world().goodsD(),item,"1","NORMAL");
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"passAndStockPurchase",f.world(),receipt,"1");
+        assertThat(orders.detail(order).isClosed()).isFalse();
+        orders.changeQty(order,new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest(
+                List.of(new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem(item,BigDecimal.ONE))));
+        assertThat(orders.detail(order).isClosed()).isTrue();
+        assertApprovedReviewStage(order,"ORDER_PENDING_APPROVAL","FINANCE_REVIEW_PENDING");
+        assertBalances(f,f.first(),"1","3","6");
+        // Age only header metadata in this isolated fixture; source, quantity and closure facts stay exact.
+        new org.springframework.transaction.support.TransactionTemplate(transactions).execute(status->{
+            db.execute("SET LOCAL session_replication_role=replica");
+            db.update("UPDATE purchase_orders SET created_at=CURRENT_DATE-INTERVAL '90 days',updated_at=CURRENT_DATE-INTERVAL '90 days' WHERE id=?",order);
+            return null;
+        });
+        assertApprovedReviewStage(order,"ORDER_PENDING_APPROVAL","FINANCE_REVIEW_PENDING");
+        long pendingBefore=workbench.countPending("PURCHASE");
+        long rejectedBefore=documentCounts.financeRejectedCounts().get("purchaseOrder");
+        reject(f,order,"实物已结案仍须核对改量");
+        assertApprovedReviewStage(order,"FINANCE_REJECTED","FINANCE_REVIEW_REJECTED");
+        assertThat(workbench.countPending("PURCHASE")).isEqualTo(pendingBefore+1);
+        assertThat(documentCounts.financeRejectedCounts().get("purchaseOrder")).isEqualTo(rejectedBefore+1);
+        assertThat(orders.detail(order).isClosed()).isTrue();
+        assertBalances(f,f.first(),"1","3","6");
+        assertThat(orders.list(new com.uten.imp.features.purchase.order.dto.OrderQueryFilter(null,null,null,null,null,null,"REJECTED",orders.detail(order).getBillNo()),1,20,null,null).getTotal()).isEqualTo(1);
+
+        // The quantity amendment is effective; finish its physical receipt while finance still reviews it.
+        orders.changeQty(order,new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest(
+                List.of(new com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeItem(item,new BigDecimal("2")))));
+        assertApprovedReviewStage(order,"ORDER_PENDING_APPROVAL","FINANCE_REVIEW_PENDING");
+        UUID finalReceipt=org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"receiveIntoQuarantine",
+                f.world(),f.world().goodsD(),item,"1","NORMAL");
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"passAndStockPurchase",f.world(),finalReceipt,"1");
+        assertThat(orders.detail(order).isClosed()).isTrue();
+        assertApprovedReviewStage(order,"ORDER_PENDING_APPROVAL","FINANCE_REVIEW_PENDING");
+        approve(f,order);
+        assertThat(orders.detail(order).isClosed()).isTrue();
+        assertThat(workbench.query("PURCHASE","IN_PROGRESS",orders.detail(order).getBillNo(),"",null,null,1,20).total()).isZero();
+        assertThat(workbench.query("PURCHASE","COMPLETED",orders.detail(order).getBillNo(),"",null,null,1,20).items())
+                .extracting(com.uten.imp.features.operations.workbench.FulfillmentTaskRow::taskStatus).containsExactly("COMPLETED");
+        assertThat(documentCounts.financeRejectedCounts().get("purchaseOrder")).isEqualTo(rejectedBefore);
+        assertBalances(f,f.first(),"2","3","5");
+    }
+
+    private void assertApprovedReviewStage(UUID order,String task,String display) {
+        var page=workbench.query("PURCHASE","IN_PROGRESS",orders.detail(order).getBillNo(),"",null,null,1,20);
+        assertThat(page.total()).isEqualTo(1);assertThat(page.items()).hasSize(1);
+        assertThat(page.items().getFirst().taskStatus()).isEqualTo(task);
+        assertThat(page.items().getFirst().displayStage()).isEqualTo(display);
+        assertThat(page.items().getFirst().actionDocStatus()).isEqualTo("1");
+    }
+
+    private com.uten.imp.features.subcontract.order.dto.OrderSaveRequest subcontractOrderRequest(FullChainEndToEndTest.World world,UUID source,String quantity) {
+        var request=new com.uten.imp.features.subcontract.order.dto.OrderSaveRequest();
+        request.setBillDate(BusinessTime.today());request.setSupplierId(world.supplierId());request.setWarehouseId(world.warehouseId());
+        request.setCurrencyId(world.currencyId());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);
+        request.setSettlementMethodId(db.queryForObject("SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted ORDER BY code LIMIT 1",UUID.class));
+        var line=new com.uten.imp.features.subcontract.order.dto.OrderItemLine();line.setGoodsId(world.goodsE());
+        line.setApplicationItemId(source);line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);
+        line.setQty(new BigDecimal(quantity));line.setPrice(BigDecimal.TEN);request.setItems(List.of(line));return request;
+    }
+    private void rejectSubcontract(FullChainEndToEndTest.World world,UUID reviewer,FinanceApproval approval) {
+        harness.loginAs(reviewer);finance.rejectBatch(List.of(decision(approval)),"核对原单后重提");harness.loginAs(world.superAdminUserId());
+    }
+    private void assertSubcontractOpen(UUID source,String expected) {
+        assertThat(db.queryForObject("SELECT fn_subcontract_application_open_qty(?)",BigDecimal.class,source)).isEqualByComparingTo(expected);
+        assertThat(db.queryForObject("SELECT open_qty FROM v_procurement_decomposition_tasks WHERE action_doc_type='SUBCONTRACT_APPLICATION' AND action_item_id=?",BigDecimal.class,source)).isEqualByComparingTo(expected);
+        assertThat(subcontractApplications.decompositionPreview(List.of(source)).getFirst().remainingQty()).isEqualByComparingTo(expected);
     }
 
     private Fixture fixture(String tag) {
@@ -170,10 +396,13 @@ class PurchaseRequestPartialOrderEndToEndTest {
     }
     private OrderDetail createOrder(Fixture f,List<OrderItemLine> lines) {
         harness.loginAs(f.world().superAdminUserId());
+        var result=orders.createBatch(orderRequest(f,lines));assertThat(result).hasSize(1);return result.getFirst();
+    }
+    private OrderSaveRequest orderRequest(Fixture f,List<OrderItemLine> lines) {
         var request=new OrderSaveRequest();request.setBillDate(BusinessTime.today());request.setSupplierId(f.world().supplierId());
         request.setWarehouseId(f.world().warehouseId());request.setCurrencyId(f.world().currencyId());request.setExchangeRate(BigDecimal.ONE);request.setTaxRate(BigDecimal.ZERO);
         request.setSettlementMethodId(db.queryForObject("SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted ORDER BY code LIMIT 1",UUID.class));
-        request.setItems(lines);var result=orders.createBatch(request);assertThat(result).hasSize(1);return result.getFirst();
+        request.setItems(lines);return request;
     }
     private FinanceApproval submit(Fixture f,UUID order) {harness.loginAs(f.world().superAdminUserId());return finance.submit("PURCHASE",order);}
     private void approve(Fixture f,UUID order) {harness.loginAs(f.reviewer());harness.approvePendingFinance("PURCHASE",order);harness.loginAs(f.world().superAdminUserId());}
@@ -199,5 +428,10 @@ class PurchaseRequestPartialOrderEndToEndTest {
         } else assertThatThrownBy(()->requests.decompositionPreview(List.of(source))).isInstanceOf(ApiException.class).hasMessageContaining("无可分解数量");
     }
     private long orderCount(Fixture f) {return db.queryForObject("SELECT count(*) FROM purchase_orders WHERE supplier_id=?",Long.class,f.world().supplierId());}
+    private void assertRequestOpen(Fixture f,String remaining) {
+        assertThat(db.queryForObject("SELECT COALESCE(SUM(open_qty),0) FROM v_procurement_decomposition_tasks WHERE action_doc_type='PURCHASE_REQUEST' AND action_doc_id=?",BigDecimal.class,f.request())).isEqualByComparingTo(remaining);
+        var page=workbench.query("PURCHASE","WAITING_ORDER",requests.detail(f.request()).getBillNo(),"",null,null,1,20);
+        assertThat(page.total()).isEqualTo(new BigDecimal(remaining).signum()>0?1:0);
+    }
     private record Fixture(FullChainEndToEndTest.World world,UUID applicant,UUID reviewer,UUID request,UUID first,UUID second,UUID approvedOrder,UUID pendingOrder) {}
 }

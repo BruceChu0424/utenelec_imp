@@ -91,6 +91,44 @@ class ReconcileApplyServiceTest {
 
     private PlanRow plan;
 
+    @Test
+    void readReceiptDoesNotExecuteOrReauthenticateEvenAfterPlanExpires() throws Exception {
+        var expired = new PlanRow(planId, "ID_REPAIR", "PAGE", actorId, actorEmployeeId,
+                "{}", "CLOSED", "EXPIRED", 4, null,
+                OffsetDateTime.now().minusDays(2), OffsetDateTime.now().minusDays(1), null, null);
+        when(store.findPlan(planId)).thenReturn(Optional.of(expired));
+        var result = new ApplyResult(4, 1, new ApplyCounts(1, 0, 0), List.of(), "原更正已完成");
+        when(store.findApplyByRequestId(planId, "req-1")).thenReturn(Optional.of(new ApplyRec(
+                applyId, 1, "req-1", "FINISHED", "{}", json.writeValueAsString(result),
+                OffsetDateTime.now().minusDays(2), OffsetDateTime.now().minusDays(2))));
+        var receipt = service.receipt(actor, planId, "req-1");
+        assertThat(receipt.status()).isEqualTo("FINISHED");
+        assertThat(receipt.result()).isEqualTo(result);
+        verifyNoInteractions(employeeCommands, transactions);
+        verify(store, never()).lockPlan(any());
+    }
+
+    @Test
+    void receiptOwnerFenceHidesOtherActorsResultBeforeReadingRequest() {
+        var other = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "other",
+                Set.of("employee:view"), false, true, false);
+        assertThatThrownBy(() -> service.receipt(other, planId, "req-1"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(error -> assertThat(((ApiException) error).getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+        verify(store, never()).findApplyByRequestId(any(), any());
+        verifyNoInteractions(employeeCommands);
+    }
+
+    @Test
+    void unfinishedReceiptIsNotACompletedOutcomeAndNeverStartsAnotherApply() {
+        when(store.findApplyByRequestId(planId, "req-1")).thenReturn(Optional.of(new ApplyRec(
+                applyId, 1, "req-1", "RUNNING", null, null, OffsetDateTime.now(), null)));
+        var receipt = service.receipt(actor, planId, "req-1");
+        assertThat(receipt.status()).isEqualTo("RUNNING");
+        assertThat(receipt.result()).isNull();
+        verifyNoInteractions(employeeCommands, transactions);
+    }
+
     @BeforeEach
     void setUp() {
         when(transactions.getTransaction(any())).thenReturn(new SimpleTransactionStatus());

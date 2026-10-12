@@ -27,7 +27,7 @@ final class StockCountPolicy {
                     ErrorCode.VALIDATION_FAILED,
                     "第 " + lineNo + " 行实盘数量不能小于 0");
         }
-        return countQty;
+        return com.uten.imp.common.util.FinancialExactAmount.quantity(countQty, "第 " + lineNo + " 行实盘数量");
     }
 
     static BigDecimal adjustment(BigDecimal bookQty, BigDecimal countQty) {

@@ -25,6 +25,11 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
+import '../models/warehouse_task_form_drafts.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -312,6 +317,12 @@ class _WarehouseDrawTaskSegmentState
   }
 
   Future<void> _openTask(WarehouseDrawTask task) async {
+    final drafts = drawTaskDrafts(ref.read(formDraftsProvider), task);
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load(_result?.page ?? 1);
+      return;
+    }
     // 聚合行（同批次同货品多张单）：进批量出库页一起核对；单成员行回落到底层单
     // 的既有入口（单张详情 / 填写材料）。
     if (task.isBatchMerged) {
@@ -392,6 +403,7 @@ class _WarehouseDrawTaskSegmentState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     // 展示粒度=「批次 × 货品」（2026-09-27 用户口径）：同批次同货品合并数量、
     // 多货品单拆开一行一个货品；勾选/出库按底层单展开。
     final tasks = _result == null
@@ -410,6 +422,16 @@ class _WarehouseDrawTaskSegmentState
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (widget.externalHeader == null)
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(
+                module: BadgeModule.warehouse,
+                routePrefixes: {
+                  RouteName.warehouseProductionDrawBatchIssue,
+                  '/warehouse/material-discovery/',
+                },
+              ),
+            ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
@@ -549,20 +571,27 @@ class _WarehouseDrawTaskSegmentState
       sortable: true,
       label: '状态',
       width: 72,
-      value: (task) => task.statusLabel,
+      value: (task) {
+        final drafts = drawTaskDrafts(ref.read(formDraftsProvider), task);
+        return drafts.isEmpty ? task.statusLabel : taskDraftStatus(drafts);
+      },
       // ADR-169 逐页显式映射（待领任务=履约备料队列，以仓库动作为准）：
       // 待备料/待领取、待完成、待核对领料/需要填写=绿（轮到仓库动手出库或补录，
       // 同一动作家族）/ 部分领取=紫（部分就绪：部分已出库、仍有余量）/
       // 已阻塞=红（硬阻断）/ 已完成=灰（办结，不再是本队列动作对象）。
-      cellColor: (context, task) => switch (task.taskStatus.toUpperCase()) {
-        'READY_TO_PICK' || 'OPEN_ANY' || 'MATERIALS_TO_DEFINE' =>
-          utenStatusBadgeCellColor(UtenStatusBadgeType.success),
-        'PARTIAL' => utenStatusBadgeCellColor(UtenStatusBadgeType.violet),
-        'BLOCKED' => utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
-        'DONE' ||
-        'COMPLETED' => utenStatusBadgeCellColor(UtenStatusBadgeType.neutral),
-        _ => null,
-      },
+      cellColor: (context, task) =>
+          drawTaskDrafts(ref.read(formDraftsProvider), task).isNotEmpty
+          ? utenStatusBadgeCellColor(UtenStatusBadgeType.neutral)
+          : switch (task.taskStatus.toUpperCase()) {
+              'READY_TO_PICK' || 'OPEN_ANY' || 'MATERIALS_TO_DEFINE' =>
+                utenStatusBadgeCellColor(UtenStatusBadgeType.success),
+              'PARTIAL' => utenStatusBadgeCellColor(UtenStatusBadgeType.violet),
+              'BLOCKED' => utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
+              'DONE' || 'COMPLETED' => utenStatusBadgeCellColor(
+                UtenStatusBadgeType.neutral,
+              ),
+              _ => null,
+            },
     ),
     MasterColumnDef(
       key: 'drawBillNo',

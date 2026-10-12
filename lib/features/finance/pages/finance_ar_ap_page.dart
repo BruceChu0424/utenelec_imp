@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -60,15 +62,13 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
   String? _error;
   final _loadRequests = LatestRequestGuard();
   String _keyword = '';
-  // 分类层级：方向=大类（上）、清结状态=小类（下，方向选中后解锁）。
-  // 进页面两行都不选（null=不过滤）。
+  // 方向决定应收/应付用语与往来方字典；清结状态只在表头筛选。
   String? _direction; // null=全部 / AR / AP
   bool _directionSelected = false;
   String? _sourceDocType;
   String? _partyId;
   String? _currencyId; // 币别表头筛选（currencies/dict 桶 value=字典 id）
   bool? _settled; // null=全部 / false=未清 / true=已清
-  bool _settledSelected = false;
   // 列排序 + 2026-09-25 单号列统一（单据号/来源单号/关联销售单号表头值筛选 +
   // 服务端桶 + 防串台代数）：共享状态见 MasterServerColumnFilters；
   // 排序 null = 不排序（走后端默认 billDate DESC）。
@@ -92,6 +92,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
     currencyId: _currencyId,
     settled: _settled,
     billNo: withDocNoFilters ? _columnFilters['billNo'] : null,
+    sourceDocNo: withDocNoFilters ? _columnFilters['sourceDocNo'] : null,
     salesOrderNos: withDocNoFilters ? _columnFilters['salesOrderNos'] : null,
   );
 
@@ -339,9 +340,21 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
       ),
       MasterColumnDef(
         key: 'settled',
-        label: '已结',
-        width: 80,
-        value: (it) => it.settled ? '是' : '否',
+        label: '状态',
+        width: 120,
+        value: (it) {
+          final direction = it.direction == 'AR'
+              ? '应收'
+              : it.direction == 'AP'
+              ? '应付'
+              : '往来';
+          return '$direction${it.settled ? '已清' : '未清'}';
+        },
+        cellColor: (context, it) => utenStatusBadgeCellColor(
+          it.settled
+              ? UtenStatusBadgeType.success
+              : UtenStatusBadgeType.warning,
+        ),
       ),
       MasterColumnDef(
         key: 'remark',
@@ -367,6 +380,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
       switch (key) {
         case 'direction':
           _direction = value;
+          _directionSelected = true;
           _partyId = null;
           break;
         case 'sourceDocType':
@@ -446,7 +460,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                   ],
                 ),
               ),
-              // 桌面：左筛选侧栏（搜索 + 方向/状态 Chip）+ 右表格；手机：垂直堆叠
+              // 方向保留为主业务视图，清结状态由彩色状态列与表头承接。
               body: UtenListTwoPane(
                 filterPane: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -469,7 +483,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                       const SizedBox(height: UtenSpacing.s16),
                       _filterLabel('方向'),
                       // 全平台统一筛选工具条：方向分段（大类，纯分类无搜索）。
-                      // 进页面不预选；选中后下方状态行解锁。
+                      // 进页面不预选。
                       UtenFilterToolbar<String?>(
                         segments: const [
                           UtenFilterSegment<String?>(value: null, label: '全部'),
@@ -482,26 +496,6 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
                             _direction = v;
                             _directionSelected = true;
                             _partyId = null;
-                          });
-                          _load(1);
-                        },
-                      ),
-                      const SizedBox(height: UtenSpacing.s12),
-                      _filterLabel('状态'),
-                      // 全平台统一筛选工具条：清结状态分段（小类，方向未选时置灰）。
-                      UtenFilterToolbar<bool?>(
-                        enabled: _directionSelected,
-                        segments: const [
-                          UtenFilterSegment<bool?>(value: null, label: '全部'),
-                          UtenFilterSegment<bool?>(value: false, label: '未清'),
-                          UtenFilterSegment<bool?>(value: true, label: '已清'),
-                        ],
-                        selected: _settledSelected ? {_settled} : const {},
-                        onSelectionChanged: (v) {
-                          if (!_directionSelected) return;
-                          setState(() {
-                            _settled = v;
-                            _settledSelected = true;
                           });
                           _load(1);
                         },

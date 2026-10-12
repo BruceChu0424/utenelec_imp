@@ -42,6 +42,7 @@ public class BusinessDataResetSqlContractTest {
             Map.entry("sales_order_qty_change_logs", 484),
             Map.entry("procurement_order_qty_change_logs", 486),
             Map.entry("sales_order_revision_logs", 492),
+            Map.entry("purchase_request_qty_revisions", 846),
             Map.entry("preplan_subcontract_make_batch_reversals", 496),
             Map.entry("stock_value_pools", 504),
             Map.entry("stock_value_events", 504),
@@ -192,13 +193,15 @@ public class BusinessDataResetSqlContractTest {
             // V803 (ADR-148): 品质整批决定命令是业务事实, 随业务数据清空。
             Map.entry("production_fqc_lot_decision_commands", 803),
             // V805 AI 助手确认卡一次性提案(ADR-150)：随 AI 任务一起清空。
-            Map.entry("ai_chat_action_proposals", 805));
+            Map.entry("ai_chat_action_proposals", 805),
+            Map.entry("document_unapprovals", 851));
 
     /**
      * V579 起 PRESERVE 语义的运行时扩展(基础资料子表随主档保留)。
      * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("platform_branding", 839),
             Map.entry("ai_user_limits", 815),
             Map.entry("legacy_subcontract_order_import_sources", 624),
             Map.entry("legacy_finance_import_sources", 626),

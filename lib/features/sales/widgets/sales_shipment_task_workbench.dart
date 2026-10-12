@@ -40,6 +40,7 @@ import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import 'shipment_finance_change_summary.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 
 enum SalesShipmentTaskWorkbenchMode { financeAudit, warehouseOutbound }
@@ -190,11 +191,15 @@ class _SalesShipmentTaskWorkbenchState
             filter: SalesDocFilter(
               keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
               // 两个专页都是“当前人工任务”，历史已出库/红冲仍从销售历史页查。
-              status: kSalesStatusDraft,
+              status: _isFinance && _financeAudit != 0
+                  ? null
+                  : kSalesStatusDraft,
               financeAudit: _financeAudit,
               financeRejected: _financeRejected ? true : null,
               warehouseWorkStatus: _isFinance
-                  ? SalesWarehouseWorkStatus.pendingPick
+                  ? (_financeAudit == 0
+                        ? SalesWarehouseWorkStatus.pendingPick
+                        : null)
                   : _warehouseWorkStatus,
               // 2026-09-25 单号列统一：出货单号表头值筛选（服务端精确匹配）。
               billNo: _columnFilters['billNo'],
@@ -238,11 +243,15 @@ class _SalesShipmentTaskWorkbenchState
             .billNoFacets(
               filter: SalesDocFilter(
                 keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-                status: kSalesStatusDraft,
+                status: _isFinance && _financeAudit != 0
+                    ? null
+                    : kSalesStatusDraft,
                 financeAudit: _financeAudit,
                 financeRejected: _financeRejected ? true : null,
                 warehouseWorkStatus: _isFinance
-                    ? SalesWarehouseWorkStatus.pendingPick
+                    ? (_financeAudit == 0
+                          ? SalesWarehouseWorkStatus.pendingPick
+                          : null)
                     : _warehouseWorkStatus,
               ),
             ),
@@ -265,6 +274,15 @@ class _SalesShipmentTaskWorkbenchState
   /// 财务：双击/行菜单 → 财务专用审核详情页（右下角放行/退回，不必回本列表即可决策）；
   /// 决策完成 pop(true) → 回列表刷新并清空勾选。仓库：共享出货详情做仓库作业。
   Future<void> _open(SalesDocListItem item) async {
+    final drafts = _taskDrafts(item);
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) {
+        _clearSelection();
+        await _load();
+      }
+      return;
+    }
     if (_isFinance) {
       final decided = await context.push<bool>(
         '${RouteName.financeSalesShipmentAudit}/${Uri.encodeComponent(item.id)}',
@@ -292,8 +310,17 @@ class _SalesShipmentTaskWorkbenchState
   /// 行可选条件：待财审 + 销售已确认提交（financeReviewPending）。
   bool _canSelectItem(SalesDocListItem item) =>
       _isFinance &&
+      _taskDrafts(item).isEmpty &&
       item.financeAudit == 0 &&
       item.shipmentWorkflow.financeReviewPending;
+
+  List<FormDraft> _taskDrafts(SalesDocListItem item) => !_isFinance
+      ? []
+      : reviewTaskDraftsFor(
+          ref.read(formDraftsProvider),
+          FormDraftCatalog.financeShipmentReview,
+          item.id,
+        );
 
   void _clearSelection() {
     _selectedIds.clear();
@@ -593,6 +620,7 @@ class _SalesShipmentTaskWorkbenchState
 
   @override
   Widget build(BuildContext context) {
+    if (_isFinance) ref.watch(formDraftsProvider);
     ref.onPageResume(_route, () => _load());
     final permissions = ref.watch(currentPermissionsProvider);
     final allowed =
@@ -722,6 +750,13 @@ class _SalesShipmentTaskWorkbenchState
         ],
         // 2026-10-02 用户口径：「共 N 笔」说明卡退役（与全站提示卡口径一致）。
         _filters(),
+        if (_isFinance && !widget.embedded)
+          const TaskDraftRecoveryNotice(
+            scope: FormDraftCategoryScope(
+              module: BadgeModule.finance,
+              routePrefix: '/finance/sales-shipment-audits/',
+            ),
+          ),
         if (_error != null) ...[
           const SizedBox(height: UtenSpacing.s8),
           _InlineTaskError(message: _error!, onRetry: _load),
@@ -776,7 +811,7 @@ class _SalesShipmentTaskWorkbenchState
         rowMenuBuilder: _isFinance
             ? (item) => [
                 UtenMenuItem(
-                  label: '打开审核详情',
+                  label: _taskDrafts(item).isEmpty ? '打开审核详情' : '继续填写财审',
                   icon: Icons.fact_check_outlined,
                   onTap: () => _open(item),
                 ),
@@ -952,7 +987,9 @@ class _SalesShipmentTaskWorkbenchState
       key: 'financeAudit',
       label: '财务审核',
       width: 120,
-      value: (item) => item.shipmentWorkflow.financeRejected
+      value: (item) => _taskDrafts(item).isNotEmpty
+          ? taskDraftStatus(_taskDrafts(item))
+          : item.shipmentWorkflow.financeRejected
           ? '已退回销售'
           : salesShipmentFinanceAuditLabel(item.financeAudit),
       // 退回格底色走 danger 档（ADR-169 状态列口径），与销售列表同款实底。

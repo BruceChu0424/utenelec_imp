@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 仓库单据仓库（8 类统一，端点 /api/stock/docs，docType 区分）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -184,7 +185,12 @@ class StockDocRepository {
       },
     ),
   );
-  Future<StockDocDetail> reverse(String id) async =>
+  Future<StockDocDetail> reverse(String id) async => StockDocDetail.fromJson(
+    await unapproveDocument(api, 'stockDocument', id),
+  );
+
+  /// Production return receipts retain the source-specific, symmetrical physical reversal.
+  Future<StockDocDetail> reverseMaterialReturn(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocReverse(id)));
 
   /// 已点收生产成品入库专用红冲：服务端重建原 accepted slice 待点收草稿。

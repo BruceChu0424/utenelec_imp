@@ -1,3 +1,6 @@
+import '../../../shared/models/procurement_quantity.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
+import '../../../shared/models/procurement_source_terms.dart';
 // 采购单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
 // 2026-09 行级商业条款改造起只服务 申请(只读)/收货/退货 三类；采购订货单走专属页
@@ -48,7 +51,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/currency_display.dart';
-import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../department/models/department_node.dart';
 import '../../department/repositories/department_repository.dart';
@@ -125,6 +127,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   String? _warehouseId;
   String? _departmentId;
   String? _currencyId;
+  ProcurementSourceTerms? _sourceTerms;
   String? _settlementMethodId;
   String? _settlementError;
 
@@ -145,6 +148,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
+  bool _confirmGiftSemantics = false;
   bool _existingEditable = false;
   bool _loading = false;
   // 制单信息（服务端权威，只读展示）
@@ -184,12 +188,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
 
   @override
   Map<String, dynamic> captureFormDraft() => {
+    'confirmGiftSemantics': _confirmGiftSemantics,
     'text': draftTextValues(_draftHeaderText),
     'billDate': _billDate.toIso8601String(),
     'supplierId': _supplierId,
     'warehouseId': _warehouseId,
     'departmentId': _departmentId,
     'currencyId': _currencyId,
+    'sourceTerms': _sourceTerms?.toJson(),
     'settlementMethodId': _settlementMethodId,
     'applicantId': _applicantId,
     'purchaserId': _purchaserId,
@@ -204,6 +210,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
 
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _confirmGiftSemantics = data['confirmGiftSemantics'] == true;
     restoreDraftTextValues(_draftHeaderText, draftMap(data['text']));
     _billDate =
         DateTime.tryParse(data['billDate'] as String? ?? '') ?? _billDate;
@@ -211,6 +218,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     _warehouseId = data['warehouseId'] as String?;
     _departmentId = data['departmentId'] as String?;
     _currencyId = data['currencyId'] as String?;
+    _sourceTerms = data['sourceTerms'] is Map
+        ? ProcurementSourceTerms.fromJson(
+            (data['sourceTerms'] as Map).cast<String, dynamic>(),
+          )
+        : null;
     _settlementMethodId = data['settlementMethodId'] as String?;
     _applicantId = data['applicantId'] as String?;
     _purchaserId = data['purchaserId'] as String?;
@@ -222,6 +234,24 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     restoreDraftGrid(_grid, data['rows'], PurchaseGridRow.fromDraft);
     _draftCreatedId = data['createdDocId'] as String?;
   }
+
+  Widget get _giftSemanticsConfirmation =>
+      _grid.rows.any(
+        (row) => row.quantitySemantics == procurementLegacyQuantity,
+      )
+      ? CheckboxListTile(
+          key: const Key('purchase-confirm-gift-semantics'),
+          value: _confirmGiftSemantics,
+          title: const Text('重新确认本草稿：收费数量＋额外赠品＝实物数量'),
+          subtitle: const Text('旧记录的赠品标记不会增加原实物数量。勾选后请逐行核对收费量和免费量，再保存新口径。'),
+          onChanged: (value) => setState(() {
+            _confirmGiftSemantics = value == true;
+            for (final row in _grid.rows) {
+              row.giftSemanticsConfirmed.value = _confirmGiftSemantics;
+            }
+          }),
+        )
+      : const SizedBox.shrink();
 
   String? _draftCreatedId;
 
@@ -244,7 +274,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   }
 
   Future<void> _init() async {
-    setState(() => _loading = true);
+    bool accepts() => mounted;
+    setState(() {
+      _loading = true;
+    });
     await ref.read(masterNameServiceProvider).ensureLoaded();
     if (widget.id == null) {
       // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
@@ -278,9 +311,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     }
     if (widget.id != null) {
       try {
-        final d = await ref
-            .read(purchaseRepositoryProvider(widget.docType))
-            .detail(widget.id!);
+        final repo = ref.read(purchaseRepositoryProvider(widget.docType));
+        final d = await repo.detail(widget.id!);
+        if (!accepts()) return;
         if (widget.docType == PurchaseDocType.receipt && d.legacyImported) {
           if (!mounted) return;
           context.appWarning(historicalReceiptReadOnlyMessage, force: true);
@@ -332,9 +365,20 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         _departmentId = d.departmentId;
         _currencyId = d.currencyId;
         _settlementMethodId = d.settlementMethodId;
-        _rate.text = financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
-        if (d.taxRate != null) {
-          _taxRate.text = financeExactTrimmed(d.taxRate.toString()) ?? '';
+        final usesSourceTerms =
+            widget.docType == PurchaseDocType.receipt ||
+            widget.docType == PurchaseDocType.returnDoc;
+        final recordedRate = usesSourceTerms && d.priceMasked
+            ? null
+            : d.exchangeRateText ?? d.exchangeRate?.toString();
+        _rate.text =
+            financeExactTrimmed(recordedRate) ?? (usesSourceTerms ? '' : '1');
+        if (usesSourceTerms) {
+          _sourceTerms = d.sourceCommercialTerms(orderSource: false);
+        }
+        if (usesSourceTerms || d.taxRateText != null || d.taxRate != null) {
+          _taxRate.text =
+              financeExactTrimmed(d.taxRateText ?? d.taxRate?.toString()) ?? '';
         }
         _applicantId = d.applicantId;
         _purchaserId = d.purchaserId;
@@ -349,6 +393,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
           final upstreamItemId =
               it.receiptItemId ?? it.orderItemId ?? it.requestItemId;
           final row = PurchaseGridRow(sourceLocked: upstreamItemId != null)
+            ..documentItemId = it.id
             ..platformFields.sourceRecordId = it.id
             // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
             ..goods = ref
@@ -358,9 +403,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
             ..upstreamItemId = upstreamItemId
             ..colorId = it.colorId
             ..unitId = it.unitId
-            ..unitRate = it.unitRate;
+            ..unitRate = it.unitRate
+            ..unitRateText = it.unitRateText;
           row.qty.text =
               financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '';
+          row.giftQty.text = it.giftQtyText ?? it.giftQty?.toString() ?? '0';
+          row.quantitySemantics =
+              it.quantitySemantics ?? procurementLegacyQuantity;
+          row.replacementIntent = it.replacementIntent;
+          row.giftReplacementIntent = it.giftReplacementIntent;
           row.weight.text = financeExactTrimmed(it.weight?.toString()) ?? '';
           row.price.text =
               financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? '';
@@ -372,16 +423,17 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
             widget.docType == PurchaseDocType.returnDoc) {
           await _fillStockPlaces(rows);
         }
+        if (!accepts()) return;
         _grid.replaceAll(rows);
       } on ApiException catch (e) {
-        if (mounted) context.appError(e.message);
-      } catch (_) {
-        // 静默降级
-      }
+        if (mounted && accepts()) {
+          context.appError(e.message);
+        }
+      } catch (_) {}
     }
     if (_grid.isEmpty) _grid.addRow(PurchaseGridRow());
     if (mounted && widget.id == null) await initializeFormDraft();
-    if (mounted) setState(() => _loading = false);
+    if (accepts()) setState(() => _loading = false);
   }
 
   DateTime? _parseDate(String? s) =>
@@ -436,6 +488,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         ..colorId = goods.colorId
         ..unitId = goods.unitId
         ..unitRate = 1
+        ..unitRateText = '1'
         ..stockPlaceNotifier.value = goods.stockPlace;
     }
 
@@ -536,6 +589,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     }
   }
 
+  bool get _commercialTermsInheritedFromSource =>
+      (widget.docType == PurchaseDocType.receipt ||
+          widget.docType == PurchaseDocType.returnDoc) &&
+      _grid.rows.any((row) => row.upstreamItemId != null);
+
   /// 「从上游引入」：弹选择器，把所选 LinkedItem 映射成行追加。
   /// 表头已选供应商 → 面板锁定该供应商；表头未选 → 引入后以上游单据供应商回填。
   Future<void> _importFromUpstream() async {
@@ -556,6 +614,21 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         _supplierId != null &&
         result.supplierId != _supplierId) {
       context.appError('来源单据的供应商与表头选的供应商不是同一家，不能引入');
+      return;
+    }
+    final importedTerms = result.sourceTerms;
+    final importsCommercialSource =
+        widget.docType == PurchaseDocType.receipt ||
+        widget.docType == PurchaseDocType.returnDoc;
+    if (importsCommercialSource && importedTerms == null) {
+      context.appError('来源商业信息缺失，请重新引入来源单据');
+      return;
+    }
+    if (importsCommercialSource &&
+        _commercialTermsInheritedFromSource &&
+        _sourceTerms != null &&
+        !_sourceTerms!.compatibleWith(importedTerms!)) {
+      context.appError('来源币种、财审汇率、税率或结算方式不同，请分别开单');
       return;
     }
     final goodsIds = result.items
@@ -589,6 +662,16 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
           r.pricing.totalAmount.text.trim().isEmpty,
     );
     _grid.addRows(rows);
+    if (importsCommercialSource) {
+      setState(() {
+        _sourceTerms = importedTerms;
+        _currencyId = importedTerms!.currencyId;
+        _rate.text = financeExactTrimmed(importedTerms.exchangeRate) ?? '';
+        _taxRate.text = financeExactTrimmed(importedTerms.taxRate) ?? '';
+        _settlementMethodId = importedTerms.settlementMethodId;
+        _settlementError = null;
+      });
+    }
     // 表头未选供应商 → 以上游单据供应商回填；结账方式未选时按上游单据结账方式
     // （收货/退货引入订货）或供应商默认（V452）预填。
     final sid = result.supplierId;
@@ -625,14 +708,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       context.appError('请选择仓库');
       return;
     }
-    if (_cfg.settlementRequired && _settlementMethodId == null) {
+    if (_cfg.settlementRequired &&
+        !_commercialTermsInheritedFromSource &&
+        _settlementMethodId == null) {
       setState(() => _settlementError = '请选择结账方式');
       context.appError('请选择结账方式');
       return;
     }
-    double exchangeRate = 1;
     double taxRate = 0;
-    if (_cfg.hasCurrency) {
+    if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource) {
       if (_currencyId == null) {
         context.appError('请选择币种');
         return;
@@ -647,7 +731,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         context.appError('税率必须填写 0 至 100 之间的百分比');
         return;
       }
-      exchangeRate = parsedRate;
       taxRate = parsedTax;
     }
     // 判定条件不变，只改暴露方式：逐行 return 时一批几十行只暴露第一处违规，
@@ -664,7 +747,12 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       if (r.goods == null) continue;
       var rowOk = true;
       final qty = double.tryParse(r.qty.text) ?? 0;
-      if (qty <= 0) {
+      if (procurementQuantityError(
+            r.qty.text,
+            r.giftQty.text,
+            extraGift: r.hasExtraGift,
+          ) !=
+          null) {
         badQty.add(labelOf(i, r));
         rowOk = false;
       }
@@ -678,6 +766,12 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         );
         rowOk = false;
       }
+      if (r.maxGiftQtyText != null &&
+          (financeExactDecimalUnits(r.giftQty.text) ?? BigInt.zero) >
+              (financeExactDecimalUnits(r.maxGiftQtyText) ?? BigInt.zero)) {
+        badQty.add(labelOf(i, r));
+        rowOk = false;
+      }
       final price = double.tryParse(r.price.text);
       if (r.upstreamItemId == null &&
           (r.price.text.trim().isNotEmpty ||
@@ -689,6 +783,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         }
       }
       final weightText = r.weight.text.trim();
+      if (!r.unitRateInputValid) {
+        badQty.add(labelOf(i, r));
+        rowOk = false;
+      }
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
         badWeight.add(labelOf(i, r));
@@ -698,8 +796,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       final remarkText = r.remark.text.trim();
       itemsBody.add({
         ...platformRowPayload(r),
+        if (widget.docType == PurchaseDocType.receipt) ...{
+          if (r.replacementIntent != null)
+            'replacementIntent': r.replacementIntent,
+          if (r.giftReplacementIntent != null)
+            'giftReplacementIntent': r.giftReplacementIntent,
+        },
         'goodsId': r.goods!.id,
         'qty': r.qty.text.trim(),
+        'giftQty': r.giftQty.text.trim().isEmpty ? '0' : r.giftQty.text.trim(),
         // 金额由服务端按 数量 × 单价 × 汇率 精确派生(ADR-112), 请求不带金额。
         if (price != null) 'price': r.price.text.trim(),
         if (r.upstreamItemId != null) ..._linkItemKey(r.upstreamItemId!),
@@ -707,14 +812,14 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.recordedUnitRateText != null) 'unitRate': r.recordedUnitRateText,
         'weight': ?weight,
         if (remarkText.isNotEmpty) 'remark': remarkText,
       });
     }
     final rowIssues = <String>[
       if (badQty.isNotEmpty)
-        _rowIssueMessage(badQty, '的数量不是大于 0 的数字', action: '请改正后再提交'),
+        _rowIssueMessage(badQty, '的收费量、赠品量或实物合计不符合数量要求', action: '请改正后再提交'),
       if (overQty.isNotEmpty)
         _rowIssueMessage(overQty, '的数量超过来源单据的剩余量', action: '请改小后再提交'),
       if (badWeight.isNotEmpty)
@@ -727,16 +832,24 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
     final body = <String, dynamic>{
+      if (_confirmGiftSemantics) 'confirmGiftSemantics': true,
       'billDate': _fmt(_billDate),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       if (_cfg.hasSupplier && _supplierId != null) 'supplierId': _supplierId,
       if (_cfg.hasWarehouse && _warehouseId != null)
         'warehouseId': _warehouseId,
       if (_cfg.hasDepartment) 'departmentId': _departmentId,
-      if (_cfg.hasCurrency && _currencyId != null) 'currencyId': _currencyId,
-      if (_cfg.hasCurrency) 'exchangeRate': exchangeRate,
-      if (_cfg.hasCurrency) 'taxRate': taxRate,
-      if (_cfg.hasSettlement && _settlementMethodId != null)
+      if (_cfg.hasCurrency &&
+          !_commercialTermsInheritedFromSource &&
+          _currencyId != null)
+        'currencyId': _currencyId,
+      if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
+        'exchangeRate': _rate.text.trim(),
+      if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
+        'taxRate': taxRate,
+      if (_cfg.hasSettlement &&
+          !_commercialTermsInheritedFromSource &&
+          _settlementMethodId != null)
         'settlementMethodId': _settlementMethodId,
       if (_cfg.hasApplicant && _applicantId != null)
         'applicantId': _applicantId,
@@ -748,6 +861,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         'deliverDate': _fmt(_deliverDate!),
       'items': itemsBody,
     };
+    bool owns() => mounted;
     setState(() => _saving = true);
     try {
       if (widget.id == null) await saveFormDraftNow();
@@ -755,7 +869,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       final d = widget.id == null
           ? await runFormDraftSubmission(() => repo.create(body))
           : await repo.update(widget.id!, body);
-      if (!mounted) return;
+      if (!mounted || !owns()) return;
       if (widget.id == null) {
         setState(() => _draftCreatedId = d.id);
         await checkpointFormDraftAfterCreation();
@@ -789,7 +903,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         );
       }
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && owns()) context.appError(e.message);
     } catch (error, stack) {
       // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
       debugPrint('保存采购单据失败: $error\n$stack');
@@ -797,7 +911,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (owns()) setState(() => _saving = false);
     }
   }
 
@@ -826,7 +940,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   }
 
   @override
-  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+  Widget build(BuildContext context) {
+    return withFormDraft(_buildDraftPage(context));
+  }
 
   Widget _buildDraftPage(BuildContext context) {
     final names = ref.watch(masterNameServiceProvider);
@@ -985,9 +1101,13 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                           (v) =>
                                               setState(() => _currencyId = v),
                                           required: true,
+                                          enabled:
+                                              !_commercialTermsInheritedFromSource,
                                         ),
                                         TextField(
                                           controller: _rate,
+                                          readOnly:
+                                              _commercialTermsInheritedFromSource,
                                           keyboardType:
                                               const TextInputType.numberWithOptions(
                                                 decimal: true,
@@ -998,6 +1118,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                         ),
                                         TextField(
                                           controller: _taxRate,
+                                          readOnly:
+                                              _commercialTermsInheritedFromSource,
                                           keyboardType:
                                               const TextInputType.numberWithOptions(
                                                 decimal: true,
@@ -1019,6 +1141,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                           required: _cfg.settlementRequired,
                                           allowClear: !_cfg.settlementRequired,
                                           errorMessage: _settlementError,
+                                          enabled:
+                                              !_commercialTermsInheritedFromSource,
                                         ),
                                       // 人员字段（按 config 显隐）
                                       if (_cfg.hasApplicant)
@@ -1092,6 +1216,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                             ],
                           ),
                           // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
+                          _giftSemanticsConfirmation,
                           Builder(
                             builder: (_) {
                               final columnPrefs = ref.watch(
@@ -1143,23 +1268,58 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                 footer: EditableGridTotalsBar<PurchaseGridRow>(
                                   key: const Key('purchase-edit-totals'),
                                   controller: _grid,
-                                  watchOf: (row) => [row.qty],
+                                  watchOf: (row) => [row.qty, row.giftQty],
                                   entriesBuilder: (rows) => [
-                                    utenQuantityTotalEntry(
-                                      rows
-                                          .where((row) => row.goods != null)
-                                          .map(
-                                            (row) => MeasuredAmount(
-                                              value:
-                                                  double.tryParse(
-                                                    row.qty.text.trim(),
-                                                  ) ??
-                                                  0,
-                                              unitId: row.unitId,
-                                              unitName:
-                                                  names.unitEntries[row.unitId],
+                                    UtenTotalEntry(
+                                      '收费量',
+                                      exactMeasurementTotalsText(
+                                        rows
+                                            .where((row) => row.goods != null)
+                                            .map(
+                                              (row) => ExactMeasuredAmount(
+                                                value: row.qty.text,
+                                                unitId: row.unitId,
+                                                unitName: names
+                                                    .unitEntries[row.unitId],
+                                              ),
                                             ),
-                                          ),
+                                      ),
+                                    ),
+                                    UtenTotalEntry(
+                                      '赠品量',
+                                      exactMeasurementTotalsText(
+                                        rows
+                                            .where((row) => row.goods != null)
+                                            .map(
+                                              (row) => ExactMeasuredAmount(
+                                                value: row.hasExtraGift
+                                                    ? (row.giftQty.text
+                                                              .trim()
+                                                              .isEmpty
+                                                          ? '0'
+                                                          : row.giftQty.text)
+                                                    : '0',
+                                                unitId: row.unitId,
+                                                unitName: names
+                                                    .unitEntries[row.unitId],
+                                              ),
+                                            ),
+                                      ),
+                                    ),
+                                    UtenTotalEntry(
+                                      '实物量',
+                                      exactMeasurementTotalsText(
+                                        rows
+                                            .where((row) => row.goods != null)
+                                            .map(
+                                              (row) => ExactMeasuredAmount(
+                                                value: row.physicalQtyText,
+                                                unitId: row.unitId,
+                                                unitName: names
+                                                    .unitEntries[row.unitId],
+                                              ),
+                                            ),
+                                      ),
                                     ),
                                     UtenTotalEntry(
                                       utenAmountTotalLabel(

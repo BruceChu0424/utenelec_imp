@@ -87,6 +87,8 @@ class AccountPostingReversalPostgresTest {
     @Autowired private FinancePaymentService payments;
     @Autowired private FinanceReceiptService receipts;
     @Autowired private AccountBalanceAdjustmentService adjustments;
+    @Autowired private com.uten.imp.features.documents.DocumentUnapprovalService unapprovals;
+    @Autowired private List<com.uten.imp.application.port.DocumentUnapprovalPort> unapprovalFamilies;
 
     @AfterEach
     void clearSecurityContext() {
@@ -185,6 +187,190 @@ class AccountPostingReversalPostgresTest {
                 SELECT count(*) FROM v_account_balance_integrity
                 WHERE account_id = ANY(?) AND balance_difference <> 0
                 """, Long.class, (Object) new UUID[]{first, second})).isZero();
+    }
+
+    @ParameterizedTest(name = "反审后可重新审核: {0}")
+    @ValueSource(strings = {"EXPENSE", "OTHER_INCOME", "BANK_TRANSFER", "PAYMENT",
+            "RECEIPT", "RECEIPT_FEE_PAID_SEPARATELY"})
+    void unapprovalReturnsAnOwnedDraftAndReapprovalPostsExactlyOneNewGeneration(String kind) {
+        seedCoreStyles();
+        login("unapproval-maker-"+kind);
+        UUID maker=currentEmployee();
+        Scenario original=switch(kind) {
+            case "EXPENSE" -> expense(); case "OTHER_INCOME" -> otherIncome();
+            case "BANK_TRANSFER" -> bankTransfer(); case "PAYMENT" -> payment();
+            case "RECEIPT" -> receipt(false); case "RECEIPT_FEE_PAID_SEPARATELY" -> receipt(true);
+            default -> throw new IllegalArgumentException(kind);
+        };
+        var initial=balances(original.accounts());
+        login("unapproval-initial-approver-"+kind);
+        original.approve().run();
+        var approved=balances(original.accounts());
+        login("unapproval-reviewer-"+kind);
+        String family=moneyFamily(kind);
+        String table=moneyTable(kind);
+        var request=new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest(
+                "unapprove-"+UUID.randomUUID(),"修订后重新核对");
+        unapprovals.unapprove(family,original.documentId(),request);
+        UUID successor=jdbc.queryForObject("SELECT draft_id FROM document_unapprovals WHERE family=? AND original_id=?",
+                UUID.class,family,original.documentId());
+        assertThat(successor).isNotEqualTo(original.documentId());
+        assertThat(jdbc.queryForObject("SELECT status FROM "+table+" WHERE id=?",Short.class,original.documentId())).isEqualTo((short)-1);
+        assertThat(jdbc.queryForObject("SELECT status FROM "+table+" WHERE id=?",Short.class,successor)).isZero();
+        assertThat(jdbc.queryForObject("SELECT maker_id FROM "+table+" WHERE id=?",UUID.class,successor)).isEqualTo(maker);
+        assertThat(jdbc.queryForObject("SELECT approver_id FROM "+table+" WHERE id=?",UUID.class,successor)).isNull();
+        assertBalancesEqual(balances(original.accounts()),initial);
+        // Both same-key transport replay and a fresh-key double click return the existing successor.
+        unapprovals.unapprove(family,original.documentId(),request);
+        unapprovals.unapprove(family,original.documentId(),new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest(
+                "unapprove-"+UUID.randomUUID(),"重复点击"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM document_unapprovals WHERE family=? AND original_id=?",
+                Long.class,family,original.documentId())).isEqualTo(1L);
+        assertBalancesEqual(balances(original.accounts()),initial);
+        approveMoney(kind,successor);
+        assertBalancesEqual(balances(original.accounts()),approved);
+        assertThat(flowCount(new Scenario(original.accounts(),original.sourceTypes(),successor,()->{},()->{}),"POSTING"))
+                .isEqualTo(original.accounts().size());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM v_account_balance_integrity WHERE account_id=ANY(?) AND balance_difference<>0",
+                Long.class,(Object)original.accounts().toArray(UUID[]::new))).isZero();
+    }
+
+    @Test
+    void reusedCommandForAnotherDocumentRollsBackItsReversalAndDraftTogether() {
+        seedCoreStyles(); login("unapproval-atomic-maker");
+        Scenario first=expense(); Scenario second=expense();
+        login("unapproval-atomic-reviewer");
+        first.approve().run(); second.approve().run();
+        var before=balances(second.accounts());
+        String key="unapproval-atomic-"+UUID.randomUUID();
+        var request=new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest(key,"核对修改");
+        unapprovals.unapprove("financeExpense",first.documentId(),request);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->unapprovals.unapprove("financeExpense",second.documentId(),request))
+                .isInstanceOf(RuntimeException.class);
+        assertThat(jdbc.queryForObject("SELECT status FROM finance_expenses WHERE id=?",Short.class,second.documentId())).isEqualTo((short)1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM document_unapprovals WHERE original_id=?",Long.class,second.documentId())).isZero();
+        assertThat(flowCount(second,"REVERSAL")).isZero();
+        assertBalancesEqual(balances(second.accounts()),before);
+    }
+
+    private static String moneyFamily(String kind) {
+        return switch(kind) {
+            case "EXPENSE" -> "financeExpense"; case "OTHER_INCOME" -> "financeOtherIncome";
+            case "BANK_TRANSFER" -> "financeBankTransfer"; case "PAYMENT" -> "financePayment";
+            default -> "financeReceipt";
+        };
+    }
+    private static String moneyTable(String kind) {
+        return switch(kind) {
+            case "EXPENSE" -> "finance_expenses"; case "OTHER_INCOME" -> "finance_other_incomes";
+            case "BANK_TRANSFER" -> "finance_bank_transfers"; case "PAYMENT" -> "finance_payments";
+            default -> "finance_receipts";
+        };
+    }
+    private void approveMoney(String kind,UUID id) {
+        switch(kind) {
+            case "EXPENSE" -> expenses.approve(id); case "OTHER_INCOME" -> incomes.approve(id);
+            case "BANK_TRANSFER" -> transfers.approve(id); case "PAYMENT" -> payments.approve(id);
+            default -> receipts.approve(id);
+        }
+    }
+    private static void assertBalancesEqual(Map<UUID,List<BigDecimal>> actual,Map<UUID,List<BigDecimal>> expected) {
+        for(var entry:expected.entrySet()) for(int column=0;column<entry.getValue().size();column++)
+            assertThat(actual.get(entry.getKey()).get(column)).isEqualByComparingTo(entry.getValue().get(column));
+    }
+
+    @Test
+    void everyFamilySnapshotExistsInTheFullyMigratedSchemaAndOmittedRequiredFieldsHaveDraftDefaults() {
+        assertThat(unapprovalFamilies).hasSize(21);
+        var identities=new java.util.HashSet<String>();
+        for(var family:unapprovalFamilies) {
+            assertThat(identities.add(family.family())).isTrue();
+            var header=new java.util.HashSet<>(family.header().inputs());
+            header.addAll(List.of("id","bill_no","status","created_at","updated_at","created_by","updated_by"));
+            if(header.contains("create_request_hash")) header.add("create_idempotency_key");
+            assertSnapshotColumns(family.family(),family.header().table(),header);
+            var lines=new java.util.HashSet<>(family.lines().inputs());
+            lines.addAll(List.of("id",family.lines().parentColumn(),"created_at","updated_at","created_by","updated_by"));
+            lines.addAll(family.generatedLineInputs().keySet());
+            if(family.lines().lineBillNumber()) lines.add("bill_no");
+            assertSnapshotColumns(family.family(),family.lines().table(),lines);
+            assertThat(family.header().inputs()).doesNotContain("approver_id","approved_at","reversed_at","reversed_by",
+                    "ar_posted","ap_posted","deduct_posted","is_closed","gl_voucher_id","gl_status","legacy_id");
+            assertThat(family.lines().inputs()).doesNotContain("received_qty","returned_qty","issued_qty","reserved_qty",
+                    "planned_qty","produced_qty","at_supplier_qty","consumed_qty","legacy_id");
+            assertThat(family.lines().inputs()).doesNotContain("goods_snapshot_locked_at","parent_goods_snapshot_locked_at");
+            for(var source:family.sources()) {
+                var fields=new java.util.HashSet<>(source.inputs());
+                fields.addAll(List.of(source.lineColumn(),"created_by"));
+                assertSnapshotColumns(family.family(),source.table(),fields);
+            }
+        }
+    }
+
+    private void assertSnapshotColumns(String family,String table,Set<String> fields) {
+        jdbc.queryForList("SELECT "+String.join(",",fields)+" FROM "+table+" WHERE false");
+        var required=jdbc.queryForList("""
+                SELECT attribute.attname FROM pg_attribute attribute
+                WHERE attribute.attrelid=CAST(? AS regclass) AND attribute.attnum>0 AND NOT attribute.attisdropped
+                  AND attribute.attnotnull AND NOT attribute.atthasdef AND attribute.attgenerated='' AND attribute.attidentity=''
+                """,String.class,table);
+        assertThat(fields).as("%s snapshot for %s has every required input without a DB default",family,table).containsAll(required);
+    }
+
+    @Test
+    void missingReverseAuthorityAndForeignOwnershipCannotUndoAnApprovedDocument() {
+        seedCoreStyles();login("unapproval-permission-maker");
+        Scenario original=expense();
+        login("unapproval-permission-approver");original.approve().run();
+        var before=balances(original.accounts());
+        AuthUser actor=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var permissions=new java.util.HashSet<>(actor.getPermissions());permissions.add("finance_expense:view");permissions.remove("finance_expense:reverse");
+        AuthUser restricted=new AuthUser(actor.getId(),actor.getEmployeeId(),actor.getLoginAccount(),permissions,false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(restricted,null,restricted.getAuthorities()));
+        var request=new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest("permission-"+UUID.randomUUID(),"无权操作测试");
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->unapprovals.unapprove("financeExpense",original.documentId(),request))
+                .isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN));
+        AuthUser foreign=new AuthUser(actor.getId(),actor.getEmployeeId(),actor.getLoginAccount(),
+                Set.of("finance_expense:view","finance_expense:edit","finance_expense:reverse"),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(foreign,null,foreign.getAuthorities()));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->unapprovals.unapprove("financeExpense",original.documentId(),request))
+                .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        assertThat(jdbc.queryForObject("SELECT status FROM finance_expenses WHERE id=?",Short.class,original.documentId())).isEqualTo((short)1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM document_unapprovals WHERE original_id=?",Long.class,original.documentId())).isZero();
+        assertBalancesEqual(balances(original.accounts()),before);
+    }
+
+    @Test
+    void reviewerWithoutEditCanUnapproveButCannotEditTheOriginalMakersSuccessor() {
+        seedCoreStyles();login("unapproval-authority-maker");UUID maker=currentEmployee();Scenario original=expense();
+        login("unapproval-authority-reviewer");original.approve().run();
+        AuthUser actor=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        AuthUser reviewer=new AuthUser(actor.getId(),actor.getEmployeeId(),actor.getLoginAccount(),
+                Set.of("finance_expense:view","finance_expense:reverse","finance:view:all"),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(reviewer,null,reviewer.getAuthorities()));
+        var successor=(com.uten.imp.features.finance.expense.dto.FinanceExpenseDetail)unapprovals.unapprove("financeExpense",original.documentId(),
+                new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest("authority-"+UUID.randomUUID(),"撤回审核交原制单人修订"));
+        assertThat(successor.getStatus()).isZero();assertThat(successor.getMakerId()).isEqualTo(maker);
+        assertThat(successor.getMakerId()).isNotEqualTo(actor.getEmployeeId());
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->expenses.update(successor.getId(),
+                new com.uten.imp.features.finance.expense.dto.FinanceExpenseSaveRequest()))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(jdbc.queryForObject("SELECT status FROM finance_expenses WHERE id=?",Short.class,successor.getId())).isZero();
+        assertThat(jdbc.queryForObject("SELECT maker_id FROM finance_expenses WHERE id=?",UUID.class,successor.getId())).isEqualTo(maker);
+    }
+
+    @Test
+    void legacyIdentityCannotBeForgedAndInvalidIntentCannotStartUnapproval() {
+        seedCoreStyles();login("unapproval-legacy-reader");Scenario original=expense();
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->jdbc.update("UPDATE finance_expenses SET legacy_id=? WHERE id=?",
+                10000000+SEQUENCE.incrementAndGet(),original.documentId()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class)
+                .hasMessageContaining("finance legacy provenance");
+        assertThat(jdbc.queryForObject("SELECT legacy_id FROM finance_expenses WHERE id=?",Integer.class,original.documentId())).isNull();
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->unapprovals.unapprove("financeExpense",original.documentId(),null))
+                .isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED));
+        assertThat(jdbc.queryForObject("SELECT status FROM finance_expenses WHERE id=?",Short.class,original.documentId())).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM document_unapprovals WHERE original_id=?",Long.class,original.documentId())).isZero();
     }
 
     // ------------------------------------------------------------------ scenarios

@@ -133,6 +133,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.serverStatusView];
   }
   if (location == RouteName.adminSystemSettings ||
+      location == RouteName.adminPlatformSettings ||
       location.startsWith('/admin/')) {
     return const [Perm.authorizationManage];
   }
@@ -324,6 +325,9 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (routePath == RouteName.warehouseSalesOutbound ||
       routePath.startsWith('${RouteName.warehouseSalesOutbound}/')) {
     return const [Perm.warehouseSalesOutboundView];
+  }
+  if (routePath == '/warehouse/material-returns/batch-receive') {
+    return const [Perm.stockDocView];
   }
   // 待检处置任务中心 + 单据处置页：IQC 或 FQC 任一查看权限即可进入
   //（2026-09-01 FQC 并入待检处置；处置/决定动作仍由页面内各自动作权限把关）。

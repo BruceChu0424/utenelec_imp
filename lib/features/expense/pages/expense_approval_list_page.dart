@@ -44,7 +44,8 @@ import '../../../shared/badges/badge_registry.dart';
 const int kExpenseBatchLimit = 50;
 
 class ExpenseApprovalListPage extends ConsumerStatefulWidget {
-  const ExpenseApprovalListPage({super.key});
+  const ExpenseApprovalListPage({super.key, this.initialQueue});
+  final ApprovalQueue? initialQueue;
 
   @override
   ConsumerState<ExpenseApprovalListPage> createState() =>
@@ -61,9 +62,58 @@ class _ExpenseApprovalListPageState
 
   /// 批量审批进行中（防并发 + 按钮加载态）。
   bool _batchBusy = false;
+  bool _queueReady = true;
+  int _queueGeneration = 0;
+  bool _queueListenerBound = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareInitialQueue();
+  }
+
+  @override
+  void didUpdateWidget(covariant ExpenseApprovalListPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialQueue != widget.initialQueue) _prepareInitialQueue();
+  }
+
+  void _prepareInitialQueue() {
+    final generation = ++_queueGeneration;
+    final requested = widget.initialQueue;
+    if (requested == null) {
+      _queueReady = true;
+      return;
+    }
+    _queueReady = false;
+    // Retain the auto-disposed queue until the first business-list build watches
+    // it; otherwise the post-frame route selection could reset to the default.
+    if (!_queueListenerBound) {
+      ref.listenManual(approvalQueueProvider, (_, _) {});
+      _queueListenerBound = true;
+    }
+    _selectedIds.clear();
+    _selectedVersions.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _queueGeneration) return;
+      ref
+          .read(approvalQueueProvider.notifier)
+          .state = expenseApprovalInitialQueue(
+        ref.read(currentPermissionsProvider),
+        requested,
+      );
+      setState(() => _queueReady = true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (!_queueReady) {
+      return const Scaffold(
+        appBar: UtenAppBar(title: '报销审批'),
+        body: UtenSkeletonList(),
+      );
+    }
     final queue = ref.watch(approvalQueueProvider);
     final rawList = ref.watch(expenseApprovalListProvider);
     final facets = ref.watch(expenseApprovalFacetsProvider(queue));

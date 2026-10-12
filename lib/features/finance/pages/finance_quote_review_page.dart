@@ -32,7 +32,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
-import '../../../components/data_display/uten_revision_table.dart';
+import '../../../components/data_display/uten_review_input_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -66,6 +66,7 @@ import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../sales/models/sales_doc.dart';
@@ -88,8 +89,10 @@ class FinanceQuoteReviewPage extends ConsumerStatefulWidget {
       _FinanceQuoteReviewPageState();
 }
 
-class _FinanceQuoteReviewPageState
-    extends ConsumerState<FinanceQuoteReviewPage> {
+class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
+    with
+        FormDraftMixin<FinanceQuoteReviewPage>,
+        ReviewTaskDraftMixin<FinanceQuoteReviewPage> {
   SalesQuoteFinanceReview? _review;
   bool _loading = true;
   bool _busy = false;
@@ -106,11 +109,149 @@ class _FinanceQuoteReviewPageState
   DateTime? _validUntil;
   String? _settlementId;
   final _financeRemark = TextEditingController();
+  final _returnReason = TextEditingController();
+  @override
+  bool get formDraftBusy => _busy;
+  @override
+  FormDraftDescriptor get reviewDraftDescriptor =>
+      FormDraftCatalog.financeQuoteReview;
+  @override
+  String get reviewDraftRoute =>
+      '/finance/quote-review/${Uri.encodeComponent(widget.id)}';
+  @override
+  Map<String, dynamic> get reviewDraftSource => {
+    'subjectId': widget.id,
+    'version': _review?.reviewRevision,
+    'lineIds': _drafts.keys.toList()..sort(),
+    'masterPrices': {
+      for (final entry in _drafts.entries)
+        entry.key: entry.value.line.currentMasterPrice,
+    },
+  };
+  @override
+  bool get reviewDraftEditable =>
+      _review?.needsClaim == true &&
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.salesQuoteFinanceConfirm);
+  @override
+  bool canDispatchReviewCommand(String action) =>
+      _claimReady &&
+      _allows(switch (action) {
+        'save' => SalesQuoteFinanceAction.edit,
+        'return' => SalesQuoteFinanceAction.returnToSales,
+        _ => SalesQuoteFinanceAction.confirm,
+      });
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _financeRemark,
+    _returnReason,
+    for (final line in _drafts.values) ...[line.deal, line.discount],
+  ];
+  @override
+  Map<String, dynamic> captureReviewInputs() => {
+    'lines': {
+      for (final entry in _drafts.entries)
+        entry.key: {
+          'deal': entry.value.deal.text,
+          'discount': entry.value.discount.text,
+          'source': entry.value.source,
+          'directPricing': entry.value.directPricing,
+          'refreshing': entry.value.refreshing,
+        },
+    },
+    'validUntil': _dateText(_validUntil),
+    'settlementId': _settlementId,
+    'financeRemark': _financeRemark.text,
+    'returnReason': _returnReason.text,
+  };
+  @override
+  void restoreReviewInputs(Map<String, dynamic> inputs) {
+    final lines = inputs['lines'];
+    if (lines is! Map ||
+        lines.length != _drafts.length ||
+        _drafts.keys.any((id) => lines[id] is! Map)) {
+      throw const FormatException('核价草稿明细不属于当前报价版本');
+    }
+    for (final entry in _drafts.entries) {
+      final saved = lines[entry.key] as Map;
+      final line = entry.value.line;
+      if ((saved['qty'] is String &&
+              !sameDecimal(saved['qty'] as String, line.qty)) ||
+          saved['removed'] == true ||
+          (saved['directPricing'] == true &&
+              saved['price'] is String &&
+              !sameDecimal(saved['price'] as String, line.storedPrice))) {
+        throw const FormatException('此草稿含已停用的改单内容，请重新核对报价后核价');
+      }
+      if ([
+        'deal',
+        'discount',
+        'source',
+      ].any((field) => saved[field] is! String)) {
+        throw const FormatException('核价草稿价格输入不完整');
+      }
+    }
+    for (final entry in _drafts.entries) {
+      final saved = lines[entry.key] as Map;
+      entry.value.deal.text = saved['deal'] as String;
+      entry.value.discount.text = saved['discount'] as String;
+      entry.value.source = saved['source'] as String;
+      entry.value.directPricing = saved['directPricing'] == true;
+      entry.value.refreshing = saved['refreshing'] == true;
+    }
+    _validUntil = DateTime.tryParse(inputs['validUntil'] as String? ?? '');
+    _settlementId = inputs['settlementId'] as String?;
+    _financeRemark.text = inputs['financeRemark'] as String? ?? '';
+    _returnReason.text = inputs['returnReason'] as String? ?? '';
+  }
+
+  @override
+  Future<void> reloadReviewSource() async {
+    await _load();
+    if (_error != null || _review == null) {
+      throw StateError(_error ?? '报价审核结果尚未读取');
+    }
+  }
+
+  @override
+  Future<bool> recoverReviewCommand(Map<String, dynamic> command) async {
+    final source = command['source'];
+    if (source is! Map ||
+        source['subjectId'] != widget.id ||
+        source['version'] is! int) {
+      return false;
+    }
+    final current = await _repo.review(widget.id);
+    if (current.quoteId != widget.id) return false;
+    final revision = (source['version'] as int) + 1;
+    if (current.reviewRevision != revision) return false;
+    final expectedAction = command['action'] == 'confirm'
+        ? 'CONFIRM'
+        : command['action'] == 'return'
+        ? 'RETURN'
+        : null;
+    if (expectedAction == null ||
+        !current.revisions.any(
+          (entry) =>
+              entry.revision == revision && entry.action == expectedAction,
+        )) {
+      return false;
+    }
+    return expectedAction == 'CONFIRM'
+        ? current.financeConfirmedAt != null
+        : current.financeReturnReason ==
+              (command['request'] as Map?)?['reason'];
+  }
+
+  @override
+  void closeRecoveredReview() => _close(true);
   List<UtenDropdownItem> _settlementItems = const [];
 
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     ref.listenManual(sessionProvider, (before, after) {
       // 只有真实换身份才隐藏内容（换号/登出/模拟切换/业务重置）；token 静默
       // 刷新不换身份。权限增减由下方 currentPermissionsProvider 单独守卫。
@@ -147,6 +288,7 @@ class _FinanceQuoteReviewPageState
     _claim?.releaseAll().ignore();
     _disposeDrafts();
     _financeRemark.dispose();
+    _returnReason.dispose();
     super.dispose();
   }
 
@@ -187,6 +329,7 @@ class _FinanceQuoteReviewPageState
   }
 
   void _invalidateAccess() {
+    protectReviewInputs();
     ++_loadGeneration;
     _claim?.removeListener(_claimChanged);
     _claim?.releaseAll().ignore();
@@ -236,6 +379,8 @@ class _FinanceQuoteReviewPageState
   // ---------------------------------------------------------------- load
 
   Future<void> _load() async {
+    await prepareReviewReload();
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final generation = ++_loadGeneration;
     final isCurrent = _captureContext();
     final container = ProviderScope.containerOf(context, listen: false);
@@ -281,6 +426,7 @@ class _FinanceQuoteReviewPageState
       if (!container.read(sessionProvider).isSameIdentity(identity)) return;
       _applyReview(review);
       setState(() => _loading = false);
+      await bindReviewDraft();
       unawaited(_loadSettlementMethods(generation));
     } on ApiException catch (e) {
       if (!mounted || !isCurrent()) return;
@@ -317,11 +463,14 @@ class _FinanceQuoteReviewPageState
   /// 从货品资料页回来后重读(标价可能刚维护过)：没改的行按最新内容重建，
   /// 改过的行与表头保留页面上的修改，不悄悄丢掉；版本变了(别人动过)才整页重建。
   Future<void> _reloadKeepingEdits() async {
+    await prepareReviewReload();
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final isCurrent = _captureContext();
     final SalesQuoteFinanceReview latest;
     try {
       latest = await _repo.review(widget.id);
     } catch (_) {
+      cancelReviewReload();
       return; // 重读失败保持原样，页面仍可保存/确认(服务端再按最新状态核对)。
     }
     if (!mounted || !isCurrent()) return;
@@ -351,6 +500,7 @@ class _FinanceQuoteReviewPageState
       if (!_headerDirty) _applyHeader(latest);
       _review = latest;
     });
+    await bindReviewDraft();
   }
 
   Future<void> _loadSettlementMethods(int generation) async {
@@ -412,11 +562,6 @@ class _FinanceQuoteReviewPageState
     if (review == null || _busy || !_editable) return;
     final isCurrent = _captureContext();
     final repository = _repo;
-    if (_drafts.values.isNotEmpty &&
-        _drafts.values.every((line) => line.removed)) {
-      context.appWarning('报价至少保留一条明细；无法成交请退回销售取消报价');
-      return;
-    }
     // 填错的行(dirty 含 error)先挡住：保存别的行时不能悄悄丢掉它。
     final invalid = _drafts.values.where((d) => d.dirty && !d.valid).length;
     if (invalid > 0) {
@@ -431,20 +576,25 @@ class _FinanceQuoteReviewPageState
     _setBusy(true, l10n.quoteFinanceSaving);
     try {
       if (!await _ensureClaim(l10n) || !isCurrent() || !_editable) return;
-      final updated = await repository.saveEdits(
-        widget.id,
-        expectedRevision: review.reviewRevision,
-        expectedClaimId: _claimId()!,
-        // 表头是整体状态：总是带上页面当前值(空 = 清空)，只改行时也不会冲掉有效期/结账方式/备注。
-        header: SalesQuoteFinanceHeader(
-          validUntil: _dateText(_validUntil),
-          settlementMethodId: _settlementId,
-          financeRemark: _financeRemark.text,
+      final updated = await submitReviewCommand(
+        'save',
+        () => repository.saveEdits(
+          widget.id,
+          expectedRevision: review.reviewRevision,
+          expectedClaimId: _claimId()!,
+          // 表头是整体状态：总是带上页面当前值(空 = 清空)，只改行时也不会冲掉有效期/结账方式/备注。
+          header: SalesQuoteFinanceHeader(
+            validUntil: _dateText(_validUntil),
+            settlementMethodId: _settlementId,
+            financeRemark: _financeRemark.text,
+          ),
+          lines: lines,
         ),
-        lines: lines,
       );
       if (!mounted || !isCurrent()) return;
       setState(() => _applyReview(updated));
+      await finishReviewDraft(keepEditing: true);
+      if (!mounted || !isCurrent()) return;
       context.appSuccess(l10n.quoteFinanceSaved);
     } on ApiException catch (e) {
       if (mounted && isCurrent()) context.appApiError(e);
@@ -541,6 +691,7 @@ class _FinanceQuoteReviewPageState
         expectedRevision: review.reviewRevision,
         expectedClaimId: claimId,
       ),
+      action: 'confirm',
     );
   }
 
@@ -567,6 +718,7 @@ class _FinanceQuoteReviewPageState
       billNo: review.billNo,
       claim: claim,
       decorate: _trackDialog,
+      reasonController: _returnReason,
     );
     if (reason == null ||
         !isCurrent() ||
@@ -582,6 +734,8 @@ class _FinanceQuoteReviewPageState
         expectedClaimId: claimId,
         reason: reason,
       ),
+      action: 'return',
+      request: {'reason': reason},
     );
   }
 
@@ -590,13 +744,21 @@ class _FinanceQuoteReviewPageState
     AppLocalizations l10n, {
     required String success,
     required Future<void> Function(String claimId) call,
+    required String action,
+    Map<String, dynamic>? request,
   }) async {
     if (_busy) return;
     final isCurrent = _captureContext();
     _setBusy(true, l10n.quoteFinanceBusy);
     try {
       if (!await _ensureClaim(l10n) || !isCurrent()) return;
-      await call(_claimId()!);
+      await submitReviewCommand(
+        action,
+        () => call(_claimId()!),
+        request: request,
+      );
+      if (!mounted || !isCurrent()) return;
+      await finishReviewDraft();
       if (!mounted || !isCurrent()) return;
       context.appSuccess(success);
       refreshBadges(ref);
@@ -663,18 +825,7 @@ class _FinanceQuoteReviewPageState
   }
 
   Future<void> _leave() async {
-    final l10n = AppLocalizations.of(context);
-    if (_dirty) {
-      final ok = await UtenDialog.show(
-        context,
-        title: l10n.quoteFinanceUnsavedTitle,
-        content: Text(l10n.quoteFinanceUnsavedBody),
-        confirmLabel: l10n.quoteFinanceLeave,
-        cancelLabel: l10n.quoteFinanceStay,
-        danger: true,
-      );
-      if (ok != true || !mounted) return;
-    }
+    if (!await confirmFormDraftExit() || !mounted) return;
     await _claim?.releaseAll();
     if (!mounted) return;
     _close(false);
@@ -694,7 +845,6 @@ class _FinanceQuoteReviewPageState
   void _onDealChanged(QuoteFinanceLineDraft draft, String text) {
     setState(() {
       draft.onDealChanged(text);
-      if (draft.error == null) draft.price.text = draft.effectivePrice ?? '';
     });
   }
 
@@ -760,12 +910,8 @@ class _FinanceQuoteReviewPageState
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final review = _review;
-    return PopScope(
-      canPop: !_dirty && !_busy,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && !_busy) _leave();
-      },
-      child: Scaffold(
+    return withFormDraft(
+      Scaffold(
         appBar: UtenAppBar(
           title: l10n.quoteFinanceReviewTitle,
           leading: UtenBackButton(onPressed: _busy ? null : _leave),
@@ -1164,7 +1310,7 @@ class _FinanceQuoteReviewPageState
           factValuesOf: (line) {
             final draft = _drafts[line.itemId];
             return {
-              'qty': draft?.removed == true ? '0' : draft?.qty.text ?? line.qty,
+              'qty': line.qty,
               'price': draft == null ? line.storedPrice : draft.effectivePrice,
               'discount': draft == null
                   ? line.discount
@@ -1176,7 +1322,7 @@ class _FinanceQuoteReviewPageState
             final draft = _drafts[line.itemId];
             return draft == null
                 ? const <Listenable>[]
-                : [draft.deal, draft.discount, draft.qty, draft.price];
+                : [draft.deal, draft.discount];
           },
         );
 
@@ -1218,10 +1364,6 @@ class _FinanceQuoteReviewPageState
             ]
           : null,
       rowColor: (line) => _rowColor(theme, line),
-      rowDecorationBuilder: (context, line, child) =>
-          _drafts[line.itemId]?.removed == true
-          ? UtenRevisionStrike(color: theme.colorScheme.error, child: child)
-          : child,
       rowMenuBuilder: editable || review.canMaintainGoodsPrice
           ? (line) => _rowMenu(l10n, review, line, editable)
           : null,
@@ -1257,33 +1399,22 @@ class _FinanceQuoteReviewPageState
           cellBuilder: (_, line) => UtenGoodsAttributeCell(line.colorName),
         ),
         // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），独立
-        // 「单位」列退役；可编辑时单位进输入框后缀（见 _commercialCell）。
+        // 「单位」列退役；数量保持提交时的事实，只读显示。
         MasterColumnDef(
           key: 'qty',
           label: l10n.quoteFinanceColQty,
           width: 125,
           type: 'number',
-          value: (line) => formatQtyWithUnit(
-            double.tryParse(_drafts[line.itemId]?.qty.text ?? line.qty ?? ''),
-            line.unitName,
-          ),
-          cellBuilderHandlesSemantics: true,
-          cellBuilder: (_, line) =>
-              _commercialCell(line, quantity: true, editable: editable),
+          value: (line) => formatExactQtyWithUnit(line.qty, line.unitName),
         ),
         MasterColumnDef(
           key: 'price',
           label: '报价单价',
           width: 160,
           type: 'money',
-          info: '仅修改本次报价单价，不更新货品资料。折扣另行填写。',
+          info: '提交的报价单价只读，财务通过成交单价和折扣核价。',
           // 报价域恒本币：金额带「元」后缀（2026-10-10 口径）。
-          value: (line) => financeLocalMoneyWithUnitSuffix(
-            _drafts[line.itemId]?.price.text ?? line.storedPrice,
-          ),
-          cellBuilderHandlesSemantics: true,
-          cellBuilder: (_, line) =>
-              _commercialCell(line, quantity: false, editable: editable),
+          value: (line) => financeLocalMoneyWithUnitSuffix(line.storedPrice),
         ),
         MasterColumnDef(
           key: 'listPrice',
@@ -1366,6 +1497,16 @@ class _FinanceQuoteReviewPageState
             final draft = _drafts[line.itemId];
             final amount = draft == null ? line.amount : draft.amountPreview;
             return financeLocalMoneyWithUnitSuffix(amount);
+          },
+          cellBuilder: (_, line) {
+            final draft = _drafts[line.itemId];
+            final amount = draft == null ? line.amount : draft.amountPreview;
+            return UtenReviewInputCell(
+              before: line.amount,
+              after: amount,
+              beforeLabel: financeLocalMoneyWithUnitSuffix(line.amount),
+              child: Text(financeLocalMoneyWithUnitSuffix(amount)),
+            );
           },
         ),
         if (hasFile)
@@ -1463,11 +1604,6 @@ class _FinanceQuoteReviewPageState
     final draft = _drafts[line.itemId];
     return [
       if (editable && draft != null) ...[
-        UtenMenuItem(
-          label: draft.removed ? '恢复此行' : '删除此行',
-          icon: draft.removed ? Icons.undo_rounded : Icons.delete_outline,
-          onTap: () => setState(() => draft.removed = !draft.removed),
-        ),
         if (draft.priceEditable && draft.hasListPrice && !draft.isMaster)
           UtenMenuItem(
             label: l10n.quoteFinanceMenuMasterMode,
@@ -1510,57 +1646,12 @@ class _FinanceQuoteReviewPageState
         QuoteFinanceLineError.discount => l10n.quoteFinanceErrorDiscount,
         QuoteFinanceLineError.needPrice => l10n.quoteFinanceErrorNeedPrice,
         QuoteFinanceLineError.extraAmount => l10n.businessColumnInvalid,
-        QuoteFinanceLineError.quantity => '数量须大于 0',
         null => null,
       };
 
   static final _decimalInput = FilteringTextInputFormatter.allow(
     RegExp(r'^\d*\.?\d*$'),
   );
-
-  Widget _commercialCell(
-    SalesQuoteFinanceLine line, {
-    required bool quantity,
-    required bool editable,
-  }) {
-    final draft = _drafts[line.itemId];
-    if (draft == null) return const Text('—');
-    final controller = quantity ? draft.qty : draft.price;
-    // 「数量+单位」内联口径（2026-10-10）：数量列单位随数字展示/进输入框后缀；
-    // 单价列同样带本币「元」后缀（报价域恒本币）。
-    final unit = quantity ? line.unitName : null;
-    if (!editable || draft.removed || (!quantity && !draft.priceEditable)) {
-      return Text(
-        quantity
-            ? formatQtyWithUnit(double.tryParse(controller.text), unit)
-            : financeLocalMoneyWithUnitSuffix(controller.text),
-      );
-    }
-    return TextField(
-      key: ValueKey(
-        'quote-finance-${quantity ? 'qty' : 'price'}-${line.itemId}',
-      ),
-      controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [_decimalInput],
-      onChanged: (text) => setState(() {
-        if (!quantity) draft.onPriceChanged(text);
-      }),
-      decoration: UtenInputDecoration(
-        InputDecoration(
-          isDense: true,
-          suffixText: quantity ? unit : '元',
-          error: quantity && draft.error == QuoteFinanceLineError.quantity
-              ? const UtenFieldMessage.error('数量须大于 0')
-              : !quantity &&
-                    draft.directPricing &&
-                    !isValidFinancePrice(controller.text)
-              ? const UtenFieldMessage.error('单价不能是负数')
-              : null,
-        ),
-      ),
-    );
-  }
 
   Widget _dealCell(
     BuildContext context,
@@ -1619,7 +1710,14 @@ class _FinanceQuoteReviewPageState
           '${l10n.quoteFinanceColDealPrice}',
       child: Row(
         children: [
-          Expanded(child: field),
+          Expanded(
+            child: UtenReviewInputCell(
+              before: line.dealPrice,
+              after: draft.deal.text,
+              beforeKey: ValueKey('quote-finance-before-deal-${line.itemId}'),
+              child: field,
+            ),
+          ),
           if (chip != null) ...[
             const SizedBox(width: UtenSpacing.s4),
             Tooltip(
@@ -1677,12 +1775,16 @@ class _FinanceQuoteReviewPageState
       label:
           '${line.goodsName ?? line.goodsCode ?? ''} '
           '${l10n.quoteFinanceColDiscount}',
-      child: batchCount > 0
-          ? Tooltip(
-              message: l10n.quoteFinanceCheckedEditHint(batchCount),
-              child: field,
-            )
-          : field,
+      child: UtenReviewInputCell(
+        before: line.discount,
+        after: draft.discount.text,
+        child: batchCount > 0
+            ? Tooltip(
+                message: l10n.quoteFinanceCheckedEditHint(batchCount),
+                child: field,
+              )
+            : field,
+      ),
     );
   }
 
@@ -1706,12 +1808,7 @@ class _FinanceQuoteReviewPageState
           measurementTotalsText(
             review.lines.map(
               (line) => MeasuredAmount(
-                value: _drafts[line.itemId]?.removed == true
-                    ? 0
-                    : double.tryParse(
-                            _drafts[line.itemId]?.qty.text ?? line.qty ?? '',
-                          ) ??
-                          0,
+                value: double.tryParse(line.qty ?? '') ?? 0,
                 unitId: line.unitKey,
                 unitName: line.unitName,
               ),

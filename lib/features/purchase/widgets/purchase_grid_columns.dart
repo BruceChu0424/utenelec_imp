@@ -1,3 +1,4 @@
+import '../../../shared/models/procurement_quantity.dart';
 // 采购单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
 // PurchaseGridRow：货品(选择)/数量/单位/单价→金额自动（AmountRowMixin）；
@@ -20,6 +21,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/procurement_commercial_grid.dart';
+import '../../../shared/widgets/procurement_document_layout.dart';
 import '../../../shared/widgets/procurement_supplier_cell.dart';
 import '../models/purchase_doc.dart' show PurchaseSourceRequestRef;
 import 'doc_link_picker.dart';
@@ -66,6 +68,7 @@ class PurchaseGridRow extends EditableGridRow
     // 下次保存重新判定。
     goodsNotifier.addListener(_clearFlagged);
     qty.addListener(_clearFlagged);
+    giftQty.addListener(_clearFlagged);
     price.addListener(_clearFlagged);
     supplierIdNotifier.addListener(_clearFlagged);
     remark.addListener(_clearFlagged);
@@ -87,6 +90,22 @@ class PurchaseGridRow extends EditableGridRow
   set goods(GoodsOption? v) => goodsNotifier.value = v;
 
   final TextEditingController qty = TextEditingController();
+  final TextEditingController giftQty = TextEditingController(text: '0');
+  String quantitySemantics = procurementChargedPlusGiftQuantity;
+  String? replacementIntent;
+  String? giftReplacementIntent;
+  String? maxGiftQtyText;
+  final ValueNotifier<bool> giftSemanticsConfirmed = ValueNotifier(false);
+  bool get hasExtraGift =>
+      quantitySemantics == procurementChargedPlusGiftQuantity ||
+      giftSemanticsConfirmed.value;
+  String? get physicalQtyText => procurementPhysicalQuantityText(
+    quantitySemantics: hasExtraGift
+        ? procurementChargedPlusGiftQuantity
+        : quantitySemantics,
+    chargedQty: qty.text,
+    giftQty: giftQty.text.trim().isEmpty ? '0' : giftQty.text,
+  );
   final TextEditingController weight = TextEditingController();
   final TextEditingController price = TextEditingController();
 
@@ -175,6 +194,17 @@ class PurchaseGridRow extends EditableGridRow
   String? colorId;
   String? unitId;
   double? unitRate;
+  String? unitRateText;
+  String? get recordedUnitRateText =>
+      financeExactTrimmed(unitRateText ?? unitRate?.toString());
+  bool get unitRateInputValid {
+    final text = recordedUnitRateText;
+    if (text == null) return !sourceLocked;
+    final units = financeRateUnits(text);
+    return units != null &&
+        units > BigInt.zero &&
+        units < BigInt.from(10).pow(18);
+  }
 
   /// 明细级供应商（订货单可逐行选不同供应商，保存时按供应商自动拆单；为空回落表头）。
   /// ValueNotifier：多选统一设供应商/记忆预填后单元格与必填红框即时刷新。
@@ -200,12 +230,15 @@ class PurchaseGridRow extends EditableGridRow
           ..maxQty = li.maxQty
           ..colorId = li.colorId
           ..unitId = li.unitId
-          ..unitRate = li.unitRate;
+          ..unitRate = li.unitRate
+          ..unitRateText = li.unitRateText;
     r.upstreamItemIds = [
       if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
         li.upstreamItemId!,
     ];
-    r.qty.text = financeExactTrimmed(li.qty.toString()) ?? '';
+    r.qty.text = financeExactTrimmed(li.qtyText ?? li.qty.toString()) ?? '';
+    r.giftQty.text = li.giftQtyText ?? '0';
+    r.maxGiftQtyText = li.maxGiftQtyText;
     if (li.price != null) {
       r.price.text = financeExactTrimmed(li.price.toString()) ?? '';
     }
@@ -253,6 +286,7 @@ class PurchaseGridRow extends EditableGridRow
 
   Map<String, TextEditingController> get _draftTextControllers => {
     'qty': qty,
+    'giftQty': giftQty,
     'weight': weight,
     'price': price,
     'allowedOverReceiptPct': allowedOverReceiptPct,
@@ -261,6 +295,7 @@ class PurchaseGridRow extends EditableGridRow
 
   Iterable<Listenable> get draftListenables => [
     pricing,
+    giftSemanticsConfirmed,
     ..._draftTextControllers.values,
     ...extraColumnListenables,
     goodsNotifier,
@@ -274,6 +309,11 @@ class PurchaseGridRow extends EditableGridRow
   ];
 
   Map<String, dynamic> exportDraft() => {
+    'quantitySemantics': quantitySemantics,
+    'replacementIntent': replacementIntent,
+    'giftReplacementIntent': giftReplacementIntent,
+    'maxGiftQtyText': maxGiftQtyText,
+    'giftSemanticsConfirmed': giftSemanticsConfirmed.value,
     'sourceAmount': _sourceAmount,
     'sourceQty': _sourceQty,
     'sourcePrice': _sourcePrice,
@@ -286,6 +326,7 @@ class PurchaseGridRow extends EditableGridRow
     'goods': draftGoods(goods),
     'stockPlace': stockPlaceNotifier.value,
     'unitRate': unitRate,
+    'unitRateText': unitRateText,
     'upstreamItemId': upstreamItemId,
     'sourceDocNo': sourceDocNo,
     'sourceRequestNo': sourceRequestNo,
@@ -318,10 +359,18 @@ class PurchaseGridRow extends EditableGridRow
             supportsTotalInput:
                 supportsTotalInput || data['supportsTotalInput'] == true,
           )
+          ..quantitySemantics =
+              data['quantitySemantics'] as String? ?? procurementLegacyQuantity
+          ..replacementIntent = data['replacementIntent'] as String?
+          ..giftReplacementIntent = data['giftReplacementIntent'] as String?
+          ..maxGiftQtyText = data['maxGiftQtyText'] as String?
+          ..giftSemanticsConfirmed.value =
+              data['giftSemanticsConfirmed'] == true
           ..documentItemId = data['documentItemId'] as String?
           ..goods = restoreDraftGoods(data['goods'])
           ..stockPlaceNotifier.value = data['stockPlace'] as String?
           ..unitRate = (data['unitRate'] as num?)?.toDouble()
+          ..unitRateText = data['unitRateText'] as String?
           ..upstreamItemId = data['upstreamItemId'] as String?
           ..sourceDocNo = data['sourceDocNo'] as String?
           ..sourceRequestNo = data['sourceRequestNo'] as String?
@@ -368,9 +417,11 @@ class PurchaseGridRow extends EditableGridRow
       ..colorId = colorId
       ..unitId = unitId
       ..unitRate = unitRate
+      ..unitRateText = unitRateText
       ..supplierId = supplierId;
     copyExtraColumnsTo(c);
     c.qty.text = qty.text;
+    c.giftQty.text = hasExtraGift ? giftQty.text : '0';
     c.weight.text = weight.text;
     c.price.text = price.text;
     c.allowedOverReceiptPct.text = allowedOverReceiptPct.text;
@@ -396,6 +447,8 @@ class PurchaseGridRow extends EditableGridRow
     goodsNotifier.dispose();
     amountExactNotifier.dispose();
     qty.dispose();
+    giftQty.dispose();
+    giftSemanticsConfirmed.dispose();
     weight.dispose();
     price.dispose();
     allowedOverReceiptPct.dispose();
@@ -442,7 +495,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   bool showRemark = false,
   bool showAllowedOverReceipt = false,
 }) {
-  final showSupplier = supplierEntries.isNotEmpty;
+  final showSupplier = supplierRequired || supplierEntries.isNotEmpty;
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
   // 货品身份列的颜色名（2026-09-14 口径）：行模型只透传 colorId，这里按需解析。
@@ -473,7 +526,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
     return suffix == null ? r.qty.text : '${r.qty.text} $suffix';
   }
 
-  return [
+  final columns = <EditableGridColumn<PurchaseGridRow>>[
     EditableGridColumn<PurchaseGridRow>(
       key: 'goods',
       label: '货品名称',
@@ -655,7 +708,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       ),
     EditableGridColumn<PurchaseGridRow>(
       key: 'qty',
-      label: '数量',
+      label: '收费数量',
       // 加宽一档装下 suffix 单位（2026-10-10 T9 内联口径）。
       width: 150,
       numeric: true,
@@ -663,8 +716,18 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       headerInfo: l10n.workflowQuantityHint,
       frozenTextOf: qtySnapshotOf,
       cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.qty,
-        isEmpty: () => (double.tryParse(row.qty.text.trim()) ?? 0) <= 0,
+        listenable: Listenable.merge([
+          row.qty,
+          row.giftQty,
+          row.giftSemanticsConfirmed,
+        ]),
+        isEmpty: () =>
+            procurementQuantityError(
+              row.qty.text,
+              row.giftQty.text,
+              extraGift: row.hasExtraGift,
+            ) !=
+            null,
         child: TextField(
           controller: row.qty,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -675,6 +738,45 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
               suffixText: unitSuffixOf(row),
             ),
           ),
+        ),
+      ),
+    ),
+    EditableGridColumn<PurchaseGridRow>(
+      key: 'giftQty',
+      label: '赠品数量',
+      width: 150,
+      numeric: true,
+      exactValueOf: (row) => row.giftQty.text,
+      exactListenableOf: (row) => row.giftQty,
+      cellBuilder: (context, row) => ValueListenableBuilder<bool>(
+        valueListenable: row.giftSemanticsConfirmed,
+        builder: (_, _, _) => TextField(
+          controller: row.giftQty,
+          readOnly: !row.hasExtraGift,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              hintText: '0',
+              suffixText: unitSuffixOf(row),
+            ),
+          ),
+        ),
+      ),
+    ),
+    EditableGridColumn<PurchaseGridRow>(
+      key: 'physicalQty',
+      label: '实物数量',
+      width: 150,
+      numeric: true,
+      cellBuilder: (context, row) => ListenableBuilder(
+        listenable: Listenable.merge([
+          row.qty,
+          row.giftQty,
+          row.giftSemanticsConfirmed,
+        ]),
+        builder: (_, _) => Text(
+          '${row.physicalQtyText ?? '数量未留存'}${unitSuffixOf(row) == null ? '' : ' ${unitSuffixOf(row)}'}',
         ),
       ),
     ),
@@ -778,4 +880,5 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       amountHint: l10n.businessColumnAmountHint,
     ),
   ];
+  return canonicalProcurementColumns(columns, keyOf: (column) => column.key);
 }

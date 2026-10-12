@@ -74,6 +74,7 @@ public class ProductionPurchaseRequestFacade {
         }
 
         PurchaseRequest request = new PurchaseRequest();
+        request.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         request.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
         request.setBillDate(BusinessTime.today());
         request.setNeedDate(needDate);
@@ -104,6 +105,7 @@ public class ProductionPurchaseRequestFacade {
         for (DraftLine line : lines) {
             lineNo++;
             PurchaseRequestItem item = new PurchaseRequestItem();
+            item.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
             item.setRequestId(request.getId());
             item.setBillNo(request.getBillNo());
             item.setBillDate(request.getBillDate());
@@ -260,13 +262,16 @@ public class ProductionPurchaseRequestFacade {
         }
         List<Object[]> items = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
-                                SELECT id, COALESCE(ordered_qty, 0)
-                                FROM purchase_request_items
-                                WHERE request_id = :requestId
-                                  AND is_deleted = FALSE
-                                ORDER BY id
-                                FOR UPDATE
-                                """)
+                                SELECT i.id,%s+COALESCE(pending.pending_physical_qty,0)
+                                FROM purchase_request_items i
+                                %s
+                                WHERE i.request_id = :requestId
+                                  AND i.is_deleted = FALSE
+                                ORDER BY i.id
+                                FOR UPDATE OF i
+                                """.formatted(
+                                        com.uten.imp.features.purchase.common.PurchaseRequestQuantities.orderedSql("i"),
+                                        com.uten.imp.features.purchase.common.PurchaseRequestQuantities.pendingJoin("i")))
                         .setParameter("requestId", requestId));
         if (items.stream().anyMatch(row -> decimal(row[1]).signum() > 0)) {
             throw new ApiException(

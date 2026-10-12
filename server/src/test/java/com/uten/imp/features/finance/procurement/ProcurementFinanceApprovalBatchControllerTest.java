@@ -9,6 +9,8 @@ import com.uten.imp.features.purchase.order.PurchaseOrderController;
 import com.uten.imp.features.subcontract.order.SubcontractOrderController;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.List;
 import java.util.UUID;
@@ -18,8 +20,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class ProcurementFinanceApprovalBatchControllerTest {
+
+    @Test
+    void removedAmendmentEndpointCannotExecuteEvenWithAValidCaseAndAmountPayload() throws Exception {
+        ProcurementFinanceApprovalService service = mock(ProcurementFinanceApprovalService.class);
+        var mvc = MockMvcBuilders.standaloneSetup(new ProcurementFinanceApprovalController(service)).build();
+
+        mvc.perform(post("/api/finance/procurement-approvals/tasks/{caseId}/amend", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"expectedVersion":1,"expectedClaimId":"00000000-0000-0000-0000-000000000001",
+                                 "lines":[{"itemId":"00000000-0000-0000-0000-000000000002","price":"0"}]}
+                                """))
+                .andExpect(status().isNotFound());
+        verifyNoInteractions(service);
+    }
 
     @Test
     void forwardsKeywordAndTypeToThePagedTaskQuery() {

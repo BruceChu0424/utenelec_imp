@@ -54,6 +54,7 @@ class _RecordingApi extends ApiClient {
 
   final List<({String path, Object? body})> posts = [];
   String approvalStatus = 'APPROVED';
+  String? qtyExact;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -62,6 +63,12 @@ class _RecordingApi extends ApiClient {
   }) async {
     if (path.contains('/purchase/orders/order-1')) {
       final detail = _orderDetail();
+      if (qtyExact != null) {
+        final line =
+            (detail['items'] as List<Object?>).first as Map<String, dynamic>;
+        line['qtyExact'] = qtyExact;
+        line['qty'] = double.parse(qtyExact!);
+      }
       (detail['financeApproval'] as Map<String, dynamic>)['status'] =
           approvalStatus;
       return detail;
@@ -132,6 +139,25 @@ Future<void> _pump(
 }
 
 void main() {
+  testWidgets(
+    'opening and confirming without edits preserves all four decimal places',
+    (tester) async {
+      final api = _RecordingApi()..qtyExact = '10.1256';
+      await _pump(tester, api);
+      await tester.tap(find.byKey(const Key('purchase-order-change-qty')));
+      await tester.pumpAndSettle();
+      final input = tester.widget<TextField>(
+        find.byKey(const Key('purchase-order-change-qty-i1')),
+      );
+      expect(input.controller!.text, '10.1256');
+      await tester.tap(
+        find.byKey(const Key('purchase-order-change-qty-submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(api.posts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('approved order with permission can change qty', (tester) async {
     final api = _RecordingApi();
     await _pump(tester, api);
@@ -147,8 +173,8 @@ void main() {
     );
     expect(find.text('订单改量'), findsOneWidget);
     expect(find.textContaining('批准后改量立即生效'), findsOneWidget);
-    expect(find.textContaining('现 10.00'), findsOneWidget);
-    expect(find.textContaining('现 6.00'), findsOneWidget);
+    expect(find.textContaining('现 10'), findsOneWidget);
+    expect(find.textContaining('现 6'), findsOneWidget);
     expect(
       find.byKey(const Key('purchase-order-change-qty-i1')),
       findsOneWidget,
@@ -165,7 +191,7 @@ void main() {
     expect(api.posts.single.path, '/purchase/orders/order-1/change-qty');
     expect(api.posts.single.body, {
       'items': [
-        {'orderItemId': 'i1', 'newQty': 12.5},
+        {'orderItemId': 'i1', 'newQty': '12.5'},
       ],
     });
     // 成功后提示已重回财务复核并刷新详情。

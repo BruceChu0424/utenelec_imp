@@ -41,17 +41,24 @@ public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;
-    @NotNull private BigDecimal qty;
+    @NotNull
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
+    private BigDecimal qty;
     private BigDecimal price;
     /** Agreed original-currency total before extra-column adjustments; null means unit-price pricing. */
     private BigDecimal totalAmountInput;
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
     private BigDecimal giftQty;
     /** 关联申请明细（单来源行；审核时回写 ordered_qty）。 */
-    @NotNull private UUID requestItemId;
+    private UUID requestItemId;
     /**
      * 多来源申请明细（V463/ADR-069 同货品合并行）：非空时本行数量按各申请行
      * 剩余量 FIFO 拆分落 purchase_order_item_sources，末位来源吸收超额（超采）；
-     * {@link #requestItemId} 仍为必填且作为首来源（主锚点，兼容历史消费方）。
+     * {@link #requestItemId} 为可选主锚点；未填写任何来源时是部门独立下单。
      * 与 requestItemId 合并去重后按「需求日期升序、id 升序」稳定排序。
      */
     private List<UUID> requestItemIds;

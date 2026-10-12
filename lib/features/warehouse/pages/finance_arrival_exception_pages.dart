@@ -18,6 +18,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -62,6 +63,7 @@ class _FinanceArrivalExceptionTasksPageState
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
+  String _status = 'PENDING_FINANCE';
 
   /// 「返回即刷新」登记用的本页路径（独立路由形态，build 首次捕获）。
   String? _myLocation;
@@ -89,7 +91,7 @@ class _FinanceArrivalExceptionTasksPageState
     try {
       final result = await ref
           .read(procurementInboundRepositoryProvider)
-          .financeTasks(page: page);
+          .financeTasks(page: page, status: _status);
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
@@ -162,11 +164,35 @@ class _FinanceArrivalExceptionTasksPageState
   Widget _pinHostHeader(Widget child) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      _classificationHeader,
+      const SizedBox(height: UtenSpacing.s12),
+      Expanded(child: child),
+    ],
+  );
+
+  Widget get _classificationHeader => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
       if (widget.externalHeader != null) ...[
         widget.externalHeader!,
         const SizedBox(height: UtenSpacing.s12),
       ],
-      Expanded(child: child),
+      UtenFilterToolbar<String>(
+        segmentsKey: const Key('finance-arrival-task-status'),
+        segments: const [
+          UtenFilterSegment(value: 'PENDING_FINANCE', label: '待审批'),
+          UtenFilterSegment(value: 'PROCESSED', label: '已处理'),
+        ],
+        selected: {_status},
+        onSelectionChanged: (value) {
+          if (_status == value) return;
+          setState(() {
+            _status = value;
+            _result = null;
+          });
+          _load(1);
+        },
+      ),
     ],
   );
 
@@ -201,10 +227,8 @@ class _FinanceArrivalExceptionTasksPageState
               ),
         children: [
           // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
-          if (widget.externalHeader != null) ...[
-            widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
-          ],
+          _classificationHeader,
+          const SizedBox(height: UtenSpacing.s12),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
             Text(
@@ -214,11 +238,13 @@ class _FinanceArrivalExceptionTasksPageState
           ],
           const SizedBox(height: UtenSpacing.s16),
           if (result.items.isEmpty)
-            const SizedBox(
+            SizedBox(
               height: 380,
               child: UtenEmpty(
                 icon: Icons.task_alt_rounded,
-                message: '目前没有待审批的超量到货',
+                message: _status == 'PENDING_FINANCE'
+                    ? '目前没有待审批的超量到货'
+                    : '目前没有已处理的超量到货',
                 description: '财务部门持权人员及被点名授权的员工均可在此处理到货超量审批。',
               ),
             )
@@ -227,9 +253,12 @@ class _FinanceArrivalExceptionTasksPageState
               _FinanceTaskCard(
                 key: Key('finance-arrival-task-${result.items[i].id}'),
                 task: result.items[i],
-                onOpen: () => context.push(
-                  RoutePath.financeArrivalException(result.items[i].id),
-                ),
+                onOpen: () async {
+                  await context.push(
+                    RoutePath.financeArrivalException(result.items[i].id),
+                  );
+                  if (mounted) await _load(_result?.page ?? 1);
+                },
               ),
               if (i != result.items.length - 1)
                 const SizedBox(height: UtenSpacing.s12),
@@ -304,6 +333,13 @@ class _FinanceTaskCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: UtenSpacing.s12),
+                UtenStatusBadge(
+                  label: task.statusLabel,
+                  type: task.status == 'PENDING_FINANCE'
+                      ? UtenStatusBadgeType.warning
+                      : UtenStatusBadgeType.neutral,
+                ),
+                const SizedBox(height: UtenSpacing.s8),
                 Text('${task.goodsCode} ${task.goodsName}'.trim()),
                 const SizedBox(height: UtenSpacing.s4),
                 // ADR-144：采购按「订 Q，允许超收 p%(最多 Q+T)，此前已收 R，本次实到 D，

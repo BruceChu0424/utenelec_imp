@@ -19,6 +19,7 @@ import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -35,6 +36,8 @@ import '../../../shared/widgets/uten_location_field.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/payment_style_repository.dart';
 import '../widgets/uten_category_tree_view.dart';
+import '../widgets/posting_style_role_panel.dart';
+import '../repositories/posting_style_role_repository.dart';
 
 const _protectedRootCodes = <String>{
   '031',
@@ -577,6 +580,17 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           onPressed: () => backTo(context, defaultPath: RouteName.basicinfo),
         ),
         actions: [
+          if (ref.watch(postingStyleRoleVisibilityProvider).asData?.value ==
+              true)
+            IconButton(
+              tooltip: '系统科目用途',
+              icon: const Icon(Icons.rule_outlined),
+              onPressed: () => showUtenAdaptivePanel<void>(
+                context: context,
+                drawerWidth: 520,
+                builder: (_) => const PostingStyleRolePanel(),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新',

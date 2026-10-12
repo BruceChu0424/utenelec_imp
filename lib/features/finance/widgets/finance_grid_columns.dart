@@ -213,9 +213,9 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
   bool showReceiptReconciliation = true,
   TextEditingController? bankReferenceController,
 }) {
-  switch (mode) {
-    case ItemMode.settle:
-      return type == FinanceDocType.receipt
+  return switch (mode) {
+    ItemMode.settle =>
+      type == FinanceDocType.receipt
           ? _receiptSettleColumns(
               context,
               names,
@@ -223,12 +223,10 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
               showReconciliation: showReceiptReconciliation,
               bankReferenceController: bankReferenceController,
             )
-          : _settleColumns();
-    case ItemMode.allocate:
-      return _allocateColumns(context, names, type);
-    case ItemMode.transfer:
-      return _transferColumns(names);
-  }
+          : _settleColumns(),
+    ItemMode.allocate => _allocateColumns(context, names, type),
+    ItemMode.transfer => _transferColumns(names),
+  };
 }
 
 // ===== settle：核销单据号（只读）+ 本次金额（录入）=====
@@ -471,7 +469,7 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
   return [
     EditableGridColumn<FinanceGridRow>(
       key: 'appliedBillNo',
-      label: '核销单据号',
+      label: '应付单号',
       width: 260,
       textOf: (r) => r.appliedBillNo ?? '',
       cellBuilder: (context, row) => Text(
@@ -485,7 +483,7 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
-      label: '本次金额',
+      label: '本次付款(原币)',
       width: 140,
       numeric: true,
       required: true,

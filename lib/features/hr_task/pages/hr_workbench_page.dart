@@ -37,6 +37,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
+import '../../../shared/drafts/form_draft_category.dart';
 import '../models/hr_task_summary.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../widgets/hr_task_widgets.dart';
@@ -87,6 +89,9 @@ class HrWorkbenchPage extends ConsumerWidget {
                 : math.max(32, UtenCapsuleNavScope.occlusionOf(context)),
           ),
           children: [
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(module: BadgeModule.people),
+            ),
             _myClaims(context, s),
             _entries(context, s, canFixIdentity: canFixIdentity),
             if (canPublish) _quickNotice(context, l10n),
@@ -102,6 +107,13 @@ class HrWorkbenchPage extends ConsumerWidget {
         title: 'HR 工作台',
         showBackButton: true,
         actions: [
+          if (isSuperAdmin || (perms.contains(Perm.employeeView) && perms.contains(Perm.employeeEdit)))
+            IconButton(
+              key: const ValueKey('hr-workbench-reconcile-records'),
+              tooltip: '核对记录',
+              icon: const Icon(Icons.history_rounded),
+              onPressed: () => context.push(RouteName.hrReconcile),
+            ),
           IconButton(
             tooltip: '刷新',
             onPressed: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
@@ -295,13 +307,13 @@ class HrWorkbenchPage extends ConsumerWidget {
       ),
       (
         HrTaskType.birthday,
-        s.birthdayToday.length,
+        s.birthdayToday.where((person) => !person.blessed).length,
         '今日 ${s.birthdayToday.length} · 30 天内 ${s.birthdayUpcoming.length}',
         UtenColors.catPink,
       ),
       (
         HrTaskType.anniversary,
-        s.anniversaryToday.length,
+        s.anniversaryToday.where((person) => !person.blessed).length,
         '入职满年纪念，及时送上祝福',
         UtenColors.catAmber,
       ),

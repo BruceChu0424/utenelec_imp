@@ -22,6 +22,7 @@ import com.uten.imp.features.org.employee.reconcile.dto.ReconcileApplyRequest.Ro
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyCounts;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyItemResult;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyResult;
+import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyReceipt;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyRowResult;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.CandidateView;
 import com.uten.imp.features.org.hrtask.HrTaskClaimService;
@@ -34,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -95,6 +97,21 @@ public class ReconcileApplyService {
         this.newTx = new TransactionTemplate(transactions);
         this.newTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.newTx.setTimeout(30);
+    }
+
+    @Transactional(readOnly = true)
+    public ApplyReceipt receipt(AuthUser actor, UUID planId, String requestId) {
+        PlanRow plan = store.findPlan(planId).orElseThrow(ReconcilePlanQueryService::notFound);
+        if (!actor.getId().equals(plan.actorUserId())) {
+            throw ReconcilePlanQueryService.notFound();
+        }
+        if (requestId == null || requestId.isBlank() || requestId.length() > 128) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "原核对请求标识无效");
+        }
+        ApplyRec receipt = store.findApplyByRequestId(planId, requestId)
+                .orElseThrow(ReconcilePlanQueryService::notFound);
+        return new ApplyReceipt(receipt.status(),
+                "FINISHED".equals(receipt.status()) ? readResult(receipt.resultJson()) : null);
     }
 
     public ApplyResult apply(AuthUser actor, UUID planId, ReconcileApplyRequest request) {

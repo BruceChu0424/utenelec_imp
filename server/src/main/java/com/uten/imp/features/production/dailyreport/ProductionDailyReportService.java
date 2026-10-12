@@ -186,7 +186,7 @@ public class ProductionDailyReportService {
         return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_daily_reports", p.getContent()) : result;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public DailyReportDetail detail(UUID id) {
         ProductionDailyReport r = requireReport(id);
         return detailView(r, false);
@@ -511,6 +511,7 @@ public class ProductionDailyReportService {
         }
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
         requireSamePeriodFacts(periodFacts, r, items);
+        requireReportDownstreamReversible(id);
         if (items.isEmpty())
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         if (items.stream().anyMatch(item ->
@@ -739,6 +740,130 @@ public class ProductionDailyReportService {
     }
 
     /** 红冲（status 1→-1）：对称回退（见类注释）。 */
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('production_daily_report:view') and hasAuthority('production_daily_report:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);
+        ProductionDailyReport report=requireReport(id);
+        List<ProductionDailyReportItem> items=itemRepo.findByReportIdOrderByLineNoAsc(id);
+        String facts=com.uten.imp.common.review.DailyReportReversalFacts.read(em,id);
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("productionDailyReport",facts,()->{
+            access.requireWritable(report.getMakerId(),"无权反审此生产日报","production_daily_report:reverse");
+            if(report.getStatus()==null||report.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            com.uten.imp.common.review.DailyReportApprovalReturnDependencies.requireResolved(em,id);
+            var periods=reportPeriodFacts(id);
+            if(reportGuard!=null)reportGuard.requireReversibleReadOnly(id,periods.billDate(),periods.segmentIds());
+            requireReportDownstreamReversible(id);
+            Set<UUID> reopened=new java.util.HashSet<>();
+            for(UUID planId:NativeQueryResults.typedRows(em.createNativeQuery("SELECT DISTINCT plan_id FROM production_daily_report_material_usages WHERE report_id=:id ORDER BY 1")
+                    .setParameter("id",id),UUID.class))reopened.addAll(materialConsumption.requireDailyReportReversible(planId,id));
+            executionSegments.requireReversalReadOnly(items,reopened);
+            Map<UUID,List<PlanOrderItemLink>> links=readPlanLinkGraph(items.stream().map(ProductionDailyReportItem::getPlanItemId).filter(Objects::nonNull).toList());
+            Map<UUID,BigDecimal> finished=new HashMap<>(),produced=new HashMap<>();
+            for(var item:items) {
+                if(item.getPlanItemId()==null)continue;
+                Object[] plan=planItemRow(item.getPlanItemId(),false,false);
+                requireMatchingPlanDimension(item,plan);
+                BigDecimal declared=item.getQty()==null?BigDecimal.ZERO:item.getQty();
+                if(declared.signum()<=0)throw new ApiException(ErrorCode.CONFLICT,"历史报工明细数量不正确，不能自动反审");
+                BigDecimal contribution=fqcRecovery.effectiveContribution(item.getId(),declared);
+                if(contribution.signum()<0)throw new ApiException(ErrorCode.CONFLICT,"FQC有效贡献为负，禁止自动反审");
+                BigDecimal after=finished.getOrDefault(item.getPlanItemId(),bd(plan[3])).subtract(contribution);
+                if(after.compareTo(bd(plan[11]))<0)throw new ApiException(ErrorCode.CONFLICT,"撤回后已报工量将低于已入库量，请先撤回相关成品点收");
+                finished.put(item.getPlanItemId(),after);
+                var planLinks=links.getOrDefault(item.getPlanItemId(),List.of());
+                if(contribution.signum()>0&&!isInternalExecutionReport(item))requireProducedContributionReversible(item,contribution,planLinks,produced);
+                if(item.isFinal())requireCapRestorable(id,item.getPlanItemId(),planLinks);
+            }
+            requireContinuousMaterialRemainderRestorable(id,items);
+            fqcRecovery.requireReportEffectsReversible(id);
+        });
+    }
+
+    private void requireReportDownstreamReversible(UUID reportId) {
+        for(Object[] row:docsBySource("FINISHED_IN",reportId)) {
+            StockDocument value=em.find(StockDocument.class,(UUID)row[0]);
+            if(value==null||value.isDeleted())continue;
+            if(value.getStatus()==null||value.getStatus()==STATUS_APPROVED)
+                throw new ApiException(ErrorCode.CONFLICT,"报工产出已有已审核成品点收，请先撤回相应仓库流程");
+            if(value.getStatus()!=STATUS_DRAFT&&value.getStatus()!=STATUS_REVERSED)
+                throw new ApiException(ErrorCode.CONFLICT,"报工生成的成品点收状态异常，请先核对");
+        }
+        for(Object[] row:remakePlansOf(reportId)) {
+            ProductionPlan value=em.find(ProductionPlan.class,(UUID)row[0]);
+            if(value==null||value.isDeleted())continue;
+            if(value.getStatus()==null||value.getStatus()==STATUS_APPROVED)
+                throw new ApiException(ErrorCode.CONFLICT,"报工补产计划已审核，请先撤回相应补产计划");
+            if(value.getStatus()!=STATUS_DRAFT&&value.getStatus()!=STATUS_REVERSED)
+                throw new ApiException(ErrorCode.CONFLICT,"报工生成的补产计划状态异常，请先核对");
+        }
+    }
+
+    private Map<UUID,List<PlanOrderItemLink>> readPlanLinkGraph(java.util.Collection<UUID> planIds) {
+        var ids=planIds.stream().distinct().toList();if(ids.isEmpty())return Map.of();
+        List<PlanOrderItemLink> rows=linkRepo.findActiveByPlanItemIds(ids);
+        Map<UUID,List<PlanOrderItemLink>> result=new HashMap<>();
+        for(var link:rows) {
+            requirePlanLinkReversalFacts(link,Set.copyOf(ids));
+            Number source=(Number)em.createNativeQuery("SELECT COUNT(*) FROM sales_order_items i JOIN sales_orders h ON h.id=i.order_id WHERE i.id=:id")
+                .setParameter("id",link.getOrderItemId()).getSingleResult();
+            if(source.longValue()!=1)throw new ApiException(ErrorCode.CONFLICT,"报工关联的销售订单行或订单不存在");
+            result.computeIfAbsent(link.getPlanItemId(),ignored->new ArrayList<>()).add(link);
+        }
+        return result;
+    }
+
+    private void requirePlanLinkReversalFacts(PlanOrderItemLink link,Set<UUID> planIds) {
+        BigDecimal allocated=link.getAllocatedQty(),produced=link.getProducedQty(),inbound=link.getInboundQty(),capped=link.getCappedQty();
+        if(link.isDeleted()||!planIds.contains(link.getPlanItemId())||link.getOrderItemId()==null
+            ||allocated==null||allocated.signum()<0||produced==null||produced.signum()<0||produced.compareTo(allocated)>0
+            ||inbound==null||inbound.signum()<0||inbound.compareTo(produced)>0||(capped!=null&&capped.signum()<0))
+            throw new ApiException(ErrorCode.CONFLICT,"报工关联的排产分摊状态或数量异常，禁止继续写入");
+    }
+
+    private void requireProducedContributionReversible(ProductionDailyReportItem item,BigDecimal qty,
+            List<PlanOrderItemLink> links,Map<UUID,BigDecimal> remainingProduced) {
+        if(links.isEmpty()) {
+            if(item.getSalesOrderItemId()==null)return;
+            throw new ApiException(ErrorCode.CONFLICT,"报工指定了销售订单行，但生产计划行没有有效联动");
+        }
+        if(links.size()>1&&item.getSalesOrderItemId()==null)throw new ApiException(ErrorCode.CONFLICT,"合并计划的历史报工未绑定明确销售分摊，不能猜测反向归属");
+        List<PlanOrderItemLink> targets=new ArrayList<>(links);
+        if(item.getExecutionSegmentSalesAllocationId()!=null) {
+            List<Object[]> exact=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT a.plan_order_item_link_id,a.sales_order_item_id FROM execution_segment_sales_allocations a
+                JOIN production_execution_segments segment ON segment.id=a.execution_segment_id
+                WHERE a.id=:id AND segment.source_plan_item_id=:plan
+                """).setParameter("id",item.getExecutionSegmentSalesAllocationId()).setParameter("plan",item.getPlanItemId()));
+            if(exact.size()!=1||!Objects.equals(item.getSalesOrderItemId(),exact.getFirst()[1]))
+                throw new ApiException(ErrorCode.CONFLICT,"报工的销售分摊与计划行或订单行不一致");
+            UUID linkId=(UUID)exact.getFirst()[0];targets=targets.stream().filter(l->linkId.equals(l.getId())).toList();
+            if(targets.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"报工销售分摊关联已失效");
+        } else if(item.getSalesOrderItemId()!=null)targets=targets.stream().filter(l->item.getSalesOrderItemId().equals(l.getOrderItemId())).toList();
+        BigDecimal left=qty;
+        for(var link:targets) {
+            BigDecimal before=remainingProduced.getOrDefault(link.getId(),link.getProducedQty());BigDecimal part=before.min(left);
+            if(before.subtract(part).compareTo(link.getInboundQty())<0)throw new ApiException(ErrorCode.CONFLICT,"该销售分摊已有成品入库，请先撤回仓库流程");
+            remainingProduced.put(link.getId(),before.subtract(part));left=left.subtract(part);
+        }
+        if(left.signum()>0)throw new ApiException(ErrorCode.CONFLICT,"原销售分摊已报工数量不足，不能吞并其他来源数量");
+    }
+
+    private void requireCapRestorable(UUID reportId,UUID planItemId,List<PlanOrderItemLink> links) {
+        Number ambiguous=(Number)em.createNativeQuery("""
+            SELECT COUNT(*) FROM production_plan_items item WHERE item.id=:item AND COALESCE(item.capped_qty,0)>0
+              AND NOT EXISTS(SELECT 1 FROM production_daily_report_target_events cap WHERE cap.plan_item_id=item.id)
+            """).setParameter("item",planItemId).getSingleResult();
+        if(ambiguous.longValue()>0)throw new ApiException(ErrorCode.CONFLICT,"历史完结封顶缺少原日报数量事实，不能猜测恢复");
+        Number owned=(Number)em.createNativeQuery("SELECT COUNT(*) FROM production_daily_report_target_events cap WHERE cap.report_id=:report AND cap.plan_item_id=:item AND cap.event_type='CAP' AND NOT EXISTS(SELECT 1 FROM production_daily_report_target_events back WHERE back.source_event_id=cap.id)")
+            .setParameter("report",reportId).setParameter("item",planItemId).getSingleResult();
+        if(owned.longValue()>0) {
+            Map<UUID,Long> counts=links.isEmpty()?Map.of():countLinkAllocationSegments(links);
+            for(var link:links)if(link.getCappedQty()!=null&&link.getCappedQty().signum()>0&&counts.containsKey(link.getId())&&counts.get(link.getId())!=1)
+                throw new ApiException(ErrorCode.CONFLICT,"封顶分摊跨多个执行段，须先核对原数量归属后再反审");
+        }
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('production_daily_report:reverse')")
     public DailyReportDetail reverse(UUID id) {
@@ -757,6 +882,7 @@ public class ProductionDailyReportService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         List<ProductionDailyReportItem> items = itemRepo.findByReportIdOrderByLineNoAsc(id);
         requireSamePeriodFacts(periodFacts, r, items);
+        requireReportDownstreamReversible(id);
         executionSegments.prelockForReverse(items);
         lockPlanItems(items.stream()
                 .map(ProductionDailyReportItem::getPlanItemId)
@@ -908,6 +1034,9 @@ public class ProductionDailyReportService {
 
     /** 计划行快照：正向报工拒绝终态计划；红冲仍允许读取终态并逆向清理。 */
     private Object[] planItemRow(UUID planItemId, boolean positiveWrite) {
+        return planItemRow(planItemId,positiveWrite,true);
+    }
+    private Object[] planItemRow(UUID planItemId, boolean positiveWrite,boolean lock) {
         String terminalGate = positiveWrite
                 ? " AND p.status = 1 AND p.is_stopped = false AND p.is_canceled = false AND p.is_closed = false"
                 : "";
@@ -917,7 +1046,7 @@ public class ProductionDailyReportService {
                        COALESCE(i.iqty,0)
                 FROM production_plan_items i JOIN production_plans p ON p.id = i.plan_id
                 WHERE i.id = :id AND i.is_deleted = false AND p.is_deleted = false
-                """ + terminalGate + " FOR UPDATE OF i, p")
+                """ + terminalGate + (lock?" FOR UPDATE OF i, p":""))
                 .setParameter("id", planItemId));
         if (rows.size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT,
@@ -1157,22 +1286,7 @@ public class ProductionDailyReportService {
                 throw new ApiException(ErrorCode.CONFLICT, "报工关联的排产分摊不存在");
             }
             em.refresh(link, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-            BigDecimal allocated = link.getAllocatedQty();
-            BigDecimal produced = link.getProducedQty();
-            BigDecimal inbound = link.getInboundQty();
-            BigDecimal capped = link.getCappedQty();
-            if (link.isDeleted()
-                    || !planItemIds.contains(link.getPlanItemId())
-                    || link.getOrderItemId() == null
-                    || allocated == null || allocated.signum() < 0
-                    || produced == null || produced.signum() < 0
-                    || produced.compareTo(allocated) > 0
-                    || inbound == null || inbound.signum() < 0
-                    || inbound.compareTo(produced) > 0
-                    || (capped != null && capped.signum() < 0)) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "报工关联的排产分摊状态或数量异常，禁止继续写入");
-            }
+            requirePlanLinkReversalFacts(link,planItemIds);
             result.computeIfAbsent(link.getPlanItemId(), ignored -> new ArrayList<>())
                     .add(link);
         }
@@ -1444,6 +1558,7 @@ public class ProductionDailyReportService {
      * 并重算 production_execution_segments.planned_qty，保持总量等式。
      */
     private void restoreCap(UUID reportId,UUID planItemId, List<PlanOrderItemLink> lockedLinks) {
+        requireCapRestorable(reportId,planItemId,lockedLinks);
         List<Object[]> caps = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT cap.id,cap.before_qty,cap.after_qty
                 FROM production_daily_report_target_events cap
@@ -2704,7 +2819,7 @@ public class ProductionDailyReportService {
         if (!released.isEmpty()) fulfillmentLedger.refreshDemandStatuses(released);
     }
 
-    private void restoreContinuousMaterialRemainder(UUID reportId, List<ProductionDailyReportItem> items) {
+    private void requireContinuousMaterialRemainderRestorable(UUID reportId,List<ProductionDailyReportItem> items) {
         List<UUID> segmentIds=items.stream().filter(ProductionDailyReportItem::isFinal)
                 .filter(item -> item.getFqcRecoveryAuthorizationId()==null)
                 .map(ProductionDailyReportItem::getExecutionSegmentId)
@@ -2720,6 +2835,13 @@ public class ProductionDailyReportService {
                 """).setParameter("segments",segmentIds).getSingleResult();
         if(ambiguous.longValue()>0)throw new ApiException(ErrorCode.CONFLICT,
                 "历史完结释放缺少原日报物料事实，请先核对释放来源，不能按当前余额猜测恢复");
+    }
+
+    private void restoreContinuousMaterialRemainder(UUID reportId, List<ProductionDailyReportItem> items) {
+        requireContinuousMaterialRemainderRestorable(reportId,items);
+        List<UUID> segmentIds=items.stream().filter(ProductionDailyReportItem::isFinal).filter(item->item.getFqcRecoveryAuthorizationId()==null)
+            .map(ProductionDailyReportItem::getExecutionSegmentId).filter(Objects::nonNull).distinct().toList();
+        if(segmentIds.isEmpty()||fulfillmentLedger==null)return;
         List<UUID> restored=NativeQueryResults.typedRows(em.createNativeQuery("""
                 INSERT INTO production_daily_report_material_release_events(
                     report_id,demand_id,event_type,qty_base,source_event_id,created_by)

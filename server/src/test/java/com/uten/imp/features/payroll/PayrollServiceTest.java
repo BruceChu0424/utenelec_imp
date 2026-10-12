@@ -71,7 +71,7 @@ class PayrollServiceTest {
                 employeeQuery,
                 currentUser,
                 tx,
-                new PayrollPdfService(),
+                new PayrollPdfService(() -> new com.uten.imp.application.port.CompanyBrandingReadPort.Identity(0, "测试公司", List.of())),
                 mock(HrNoticeService.class),
                 mock(EmployeeNameLookupPort.class));
     }

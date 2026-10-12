@@ -47,6 +47,19 @@ public interface InventoryValuationPort {
     record ReturnIssue(EventContext context, UUID movementId, PoolKey pool,
                        BigDecimal qtyBase, BigDecimal expectedQtyBefore,
                        UUID originalIssueNodeId) {}
+    /** Pure read probes use the same original-event guards as the final locked write. */
+    record IssueReturnSource(PoolKey pool, UUID originalMovementId, BigDecimal qtyBase) {}
+    record ReceiveWithdrawalSource(PoolKey pool, UUID originalMovementId) {}
+    String requireIssueReturnsAvailable(List<IssueReturnSource> sources);
+    String requireReceivesReversible(List<ReceiveWithdrawalSource> sources);
+
+    record ReverseReceive(EventContext context,UUID movementId,PoolKey pool,
+                          BigDecimal expectedQtyBefore,UUID originalMovementId) {}
+
+    record TransferWithdrawalSource(PoolKey targetPool,UUID originalInMovementId,PoolKey sourcePool,UUID originalOutMovementId) {}
+    record ReverseTransferIn(EventContext context,UUID movementId,PoolKey pool,BigDecimal expectedQtyBefore,UUID originalMovementId) {}
+    MovementValue reverseTransferIn(ReverseTransferIn command);
+    String requireTransfersReversible(List<TransferWithdrawalSource> sources);
 
     record SourceAdjustment(EventContext context, UUID sourceCostNodeId,
                             BigDecimal deltaLocal, boolean markFinal) {}
@@ -69,6 +82,7 @@ public interface InventoryValuationPort {
                      BigDecimal knownValueLocal, State state, boolean propagationPending) {}
 
     MovementValue receive(Receive command);
+    MovementValue reverseReceive(ReverseReceive command);
     MovementValue issue(Issue command);
     MovementValue returnIssue(ReturnIssue command);
     AdjustmentValue adjustSource(SourceAdjustment command);

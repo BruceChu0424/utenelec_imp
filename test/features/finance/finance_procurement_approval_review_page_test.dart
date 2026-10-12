@@ -7,6 +7,7 @@
 //  - 驳回：原因必填，空原因内联报错；
 //  - 非 PENDING / 无动作 case 不渲染底栏（服务端 allowedActions 为准）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
@@ -32,6 +33,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String status = 'PENDING',
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeWorkflowRepo(this.reviewResult);
 
@@ -57,6 +59,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     String? sort,
     String? order,
     String? billNo,
+    String status = 'PENDING',
   }) async => const FinanceProcurementApprovalPage(
     items: [],
     page: 1,
@@ -66,7 +69,9 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   );
 
   @override
-  Future<Map<String, int>> approvalTypeCounts() async => {'PURCHASE': 1};
+  Future<Map<String, int>> approvalTypeCounts({
+    String status = 'PENDING',
+  }) async => {'PURCHASE': 1};
 
   @override
   Future<FinanceProcurementApprovalReview> review(String caseId) async {
@@ -101,6 +106,20 @@ class _FinanceReviewerSessionNotifier extends SessionNotifier {
   SessionState build() => const SessionState(
     user: AppUser(id: 'finance-reviewer', code: 'FIN001', name: '财务李四'),
   );
+}
+
+class _ExactWorkflowRepo extends _FakeWorkflowRepo
+    implements FinanceProcurementExactApprovalRepository {
+  _ExactWorkflowRepo(super.reviewResult);
+  final List<String?> exactRates = [];
+  @override
+  Future<void> approveOrdersAtExactRate(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+    String? exchangeRate,
+  }) async {
+    exactRates.add(exchangeRate);
+  }
 }
 
 Map<String, dynamic> _pendingReviewJson({
@@ -222,6 +241,7 @@ Future<GoRouter> _pumpReviewPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.financeOrderApprovalView,
@@ -254,6 +274,75 @@ Future<GoRouter> _pumpReviewPage(
 }
 
 void main() {
+  testWidgets('巨大合法汇率从审核输入到提交保持全部12+6位原文', (tester) async {
+    final repository = _ExactWorkflowRepo(_pendingReview());
+    await _pumpReviewPage(tester, repository);
+    final field = find.byKey(const Key('finance-order-review-rate-field'));
+    await tester.ensureVisible(field);
+    await tester.enterText(field, '999999999999.123456');
+    await tester.pump();
+    final table = tester
+        .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
+          find.byType(UtenRevisionTable<FinanceProcurementReviewLine>),
+        );
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'amountLocal')
+          .value(table.rows.single.value),
+      '9999999999991234.56 元',
+    );
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('finance-order-review-approve-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.exactRates, ['999999999999.123456']);
+  });
+  for (final type in ['PURCHASE', 'SUBCONTRACT']) {
+    for (final totalPricing in [false, true]) {
+      testWidgets('$type 财审金额只读，旧 EDIT 动作不能开启修改，审批仍绑定原版本', (tester) async {
+        final json = _pendingReviewJson(
+          allowedActions: {'APPROVE', 'REJECT', 'EDIT'},
+        );
+        json['orderType'] = type;
+        if (totalPricing) {
+          ((json['items'] as List).single as Map)['totalAmountInput'] = '10000';
+        }
+        final repository = _FakeWorkflowRepo(
+          FinanceProcurementApprovalReview.fromJson(json),
+        );
+        await _pumpReviewPage(tester, repository);
+        expect(
+          find.byKey(const ValueKey('finance-order-review-price-order-item-1')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('finance-order-review-total-order-item-1')),
+          findsNothing,
+        );
+        expect(find.text('保存审核修改'), findsNothing);
+        final table = tester
+            .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
+              find.byType(UtenRevisionTable<FinanceProcurementReviewLine>),
+            );
+        expect(table.cellBuilders?.containsKey('price'), isFalse);
+        expect(table.cellBuilders?.containsKey('amountOriginal'), isFalse);
+        await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('finance-order-review-approve-submit')),
+        );
+        await tester.pumpAndSettle();
+        expect(repository.approved.single.items.single.caseId, 'case-1');
+        expect(repository.approved.single.items.single.expectedVersion, 3);
+        expect(
+          repository.approved.single.items.single.expectedClaimId,
+          isNotNull,
+        );
+      });
+    }
+  }
   for (final type in ['PURCHASE', 'SUBCONTRACT']) {
     testWidgets('$type 总金额计价在财审中标记参考单价并保持金额原文', (tester) async {
       final json = _pendingReviewJson();
@@ -641,7 +730,7 @@ void main() {
     expect(find.text('已通过 · 订货已生效'), findsOneWidget);
     expect(find.byKey(const Key('finance-order-review-approve')), findsNothing);
     expect(find.byKey(const Key('finance-order-review-reject')), findsNothing);
-    expect(find.byKey(const Key('finance-order-review-back')), findsNothing);
+    expect(find.byKey(const Key('finance-order-review-back')), findsOneWidget);
   });
 
   testWidgets('pending case without server actions stays read-only', (
@@ -741,20 +830,24 @@ void main() {
     // 会把本页新键甩到列尾）。
     expect(table.tableKey, 'finance.procurement.review.purchase.items');
     expect(table.columns.map((column) => column.key).toList(), [
-      'sourceDocNo',
-      'sourceApplicationNos',
-      'lineNo',
       'goods',
       'goodsCode',
       'colorName',
+      'sourceApplicationNos',
+      'supplier',
       'qty',
       'allowedOverReceiptPct',
       'price',
       'amountOriginal',
+      'currency',
+      'taxRate',
+      'settlement',
+      'remark',
+      'sourceDocNo',
+      'lineNo',
       'exchangeRate',
       'amountLocal',
       'deliverDate',
-      'remark',
     ]);
     final row = table.rows.single.value;
     // 数量 + 单位内联（formatQtyWithUnit 口径），单位不再单独占列。
@@ -912,7 +1005,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.approved, isEmpty);
     // 2026-10-10 字段消息契约：错误文案收进格内 ⓘ（Tooltip），不再有裸 errorText。
-    expect(find.byTooltip('汇率必须是大于 0 的数字'), findsOneWidget);
+    expect(find.byTooltip('汇率须大于 0，整数最多 12 位，小数最多 6 位'), findsOneWidget);
 
     await tester.enterText(field, '');
     await tester.pump();
@@ -945,7 +1038,7 @@ void main() {
     final title = tester.widget<Text>(find.text('供应商财务快照 · 供应商A(S-001)'));
     expect(title.style?.color, theme.colorScheme.error);
     expect(title.style?.fontWeight, FontWeight.w800);
-    final supplier = tester.widget<Text>(find.text('供应商A'));
+    final supplier = tester.widget<Text>(find.text('供应商A').first);
     expect(supplier.style?.color, theme.colorScheme.error);
     expect(supplier.style?.fontWeight, FontWeight.w700);
   });

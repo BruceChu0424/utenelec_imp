@@ -103,7 +103,12 @@ public final class WarehouseQualityResultContracts {
             /** 先入库后检(V596)：该行已上架的实际仓/库位；null=未上架(原流程)。 */
             PreStockedLocation preStocked,
             /** 建议库位(仓库×货品×颜色学习偏好，回落货品主档)；先入库上架页预填用。 */
-            String placeHint) {
+            String placeHint,
+            String quantityTranche) {
+        public InspectionLineItem(UUID inspectionItemId, UUID goodsId, String goodsCode, String goodsName, String colorName, UUID unitId, String unitName, String lineStatus, BigDecimal receivedBaseQty, BigDecimal passedBaseQty, BigDecimal failedBaseQty, BigDecimal warehouseStockedBaseQty, BigDecimal pendingStockBaseQty, UUID warehouseId, String warehouseName, PreStockedLocation preStocked, String placeHint) {
+            this(inspectionItemId, goodsId, goodsCode, goodsName, colorName, unitId, unitName, lineStatus, receivedBaseQty, passedBaseQty, failedBaseQty, warehouseStockedBaseQty, pendingStockBaseQty, warehouseId, warehouseName, preStocked, placeHint, "LEGACY");
+        }
+
 
         /** 仍等结论且未上架的行可被「先入库上架」。 */
         public boolean preStockable() {

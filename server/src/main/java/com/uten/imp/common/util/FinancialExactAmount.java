@@ -43,6 +43,14 @@ public final class FinancialExactAmount {
         return boundedInput(value,label,4,14);
     }
 
+    /** Optional stored quantity annotations obey the same no-rounding fact contract. */
+    public static BigDecimal optionalNonNegativeQuantity(BigDecimal value,String label) {
+        if(value==null) return BigDecimal.ZERO;
+        BigDecimal exact=quantity(value,label);
+        if(exact.signum()<0) throw invalid(label,"不能为负数");
+        return exact;
+    }
+
     public static BigDecimal rate(BigDecimal value,String label) {
         return boundedInput(value,label,6,12);
     }

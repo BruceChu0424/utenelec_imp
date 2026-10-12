@@ -4,8 +4,7 @@
 // UtenFilterToolbar 状态分段（草稿/已审/红冲，无「全部」段）+ 末尾「历史单据」段——
 // - 默认不选：进页面不预选、不发请求，内容区显示引导占位（UtenFilterPlaceholder）；
 // - 徽章只挂「草稿」段（待审待发），计数取后端 list(size:1) 全量口径；
-// - DRAW 选中「已审」后出现小类行：出库进度（未出库/部分出库/已出完，无「全部」，
-//   默认不选=不附加过滤）；
+// - DRAW 已审单的出库进度由表格「出库进度」表头筛选（未出库/部分出库/已出完）；
 // - 历史单据段：内容区顶部渲染 UtenHistoryTimeFilter（时间段/全部），未选时间
 //   不发请求显示引导占位；选中后按 dateFrom/dateTo 加载（不限状态）。
 // 其余（折叠头+表格吸顶内滚、列表刷新 tick、返回即刷新、PagedListController
@@ -90,7 +89,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _StockDocSeg? _seg;
 
-  /// DRAW「已审」下的出库进度小类；null = 未选择（不附加过滤）。
+  /// DRAW「已审」下的出库进度表头筛选；null = 不附加过滤。
   int? _issueStatus;
 
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
@@ -110,8 +109,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
 
   bool get _isDraw => widget.docType == StockDocType.draw;
 
-  /// DRAW 选中「已审」后才出现出库进度小类行（草稿/红冲/历史无出库进度语义）。
-  bool get _showIssueRow =>
+  /// 出库进度只筛选已审领料单，保持原办理范围。
+  bool get _canFilterIssueStatus =>
       _isDraw && _seg != null && _seg!.status == 1 && !_seg!.history;
 
   bool get _shouldLoad {
@@ -198,7 +197,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                 ? _toWarehouseIdFilter
                 : null,
             status: seg.history ? null : seg.status,
-            issueStatus: _showIssueRow ? _issueStatus : null,
+            issueStatus: _canFilterIssueStatus ? _issueStatus : null,
             dateFrom: range == null
                 ? null
                 : ChinaDateTime.formatDate(range.start),
@@ -228,7 +227,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                     ? _toWarehouseIdFilter
                     : null,
                 status: seg.history ? null : seg.status,
-                issueStatus: _showIssueRow ? _issueStatus : null,
+                issueStatus: _canFilterIssueStatus ? _issueStatus : null,
                 dateFrom: range == null
                     ? null
                     : ChinaDateTime.formatDate(range.start),
@@ -300,6 +299,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         _departmentIdFilter = value;
       } else if (key == 'toWarehouse') {
         _toWarehouseIdFilter = value;
+      } else if (key == 'issueStatus' && _canFilterIssueStatus) {
+        _issueStatus = int.tryParse(value ?? '');
       }
     });
     _reload(1);
@@ -490,7 +491,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                           ),
                           UtenFilterSegment(
                             value: const _StockDocSeg.stage(-1),
-                            label: '红冲',
+                            label: '已撤回',
                             count: statusCounts?[DocumentStatusBucket.reversed],
                           ),
                           const UtenFilterSegment(
@@ -508,29 +509,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                           _reload(1);
                         },
                       ),
-                      if (_showIssueRow) ...[
-                        const SizedBox(height: UtenSpacing.s8),
-                        // DRAW 出库进度小类：已审领料单的细化筛选，
-                        // 默认不选 = 不附加过滤（无「全部」段）。
-                        UtenFilterToolbar<int>(
-                          segmentsKey: Key(
-                            'stock-doc-issue-${widget.docType.code}',
-                          ),
-                          segments: const [
-                            UtenFilterSegment(value: 0, label: '未出库'),
-                            UtenFilterSegment(value: 1, label: '部分出库'),
-                            UtenFilterSegment(value: 2, label: '已出完'),
-                          ],
-                          selected: _issueStatus == null
-                              ? const <int>{}
-                              : {_issueStatus!},
-                          onSelectionChanged: (value) {
-                            clearDraftSelection();
-                            setState(() => _issueStatus = value);
-                            _reload(1);
-                          },
-                        ),
-                      ],
                       // 页面头：Icon + 标题 + 计数 + 新建（2026-09-24 移入滚走区）。
                       Padding(
                         padding: const EdgeInsets.only(
@@ -630,6 +608,24 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                             columns: _columns(),
                             items: _list.page?.items ?? const [],
                             facets: {
+                              if (_canFilterIssueStatus)
+                                'issueStatus': const [
+                                  MasterFacetBucket(
+                                    value: '0',
+                                    count: 0,
+                                    label: '未出库',
+                                  ),
+                                  MasterFacetBucket(
+                                    value: '1',
+                                    count: 0,
+                                    label: '部分出库',
+                                  ),
+                                  MasterFacetBucket(
+                                    value: '2',
+                                    count: 0,
+                                    label: '已出完',
+                                  ),
+                                ],
                               'billNo': _columnFilters.bucketOf('billNo'),
                               'warehouse': masterDictionaryFacets(
                                 names.warehouseEntries,
@@ -645,6 +641,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                             },
                             nullCounts: const {},
                             filters: {
+                              if (_canFilterIssueStatus)
+                                'issueStatus': _issueStatus?.toString(),
                               'billNo': _columnFilters['billNo'],
                               'warehouse': _warehouseIdFilter,
                               if (_isDraw) 'department': _departmentIdFilter,

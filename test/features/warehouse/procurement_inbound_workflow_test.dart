@@ -137,6 +137,33 @@ void main() {
     },
   );
 
+  test(
+    'finance processed task queries retain the finance read surface',
+    () async {
+      late RequestOptions captured;
+      final repository = DioProcurementInboundRepository(
+        _api((request) {
+          captured = request;
+          return {
+            'items': <Map<String, dynamic>>[],
+            'page': 2,
+            'size': 20,
+            'total': 0,
+            'totalPages': 0,
+          };
+        }),
+      );
+      await repository.financeTasks(page: 2, status: 'PROCESSED');
+      expect(captured.method, 'GET');
+      expect(captured.path, '/finance/procurement-arrival-exceptions/tasks');
+      expect(captured.queryParameters, {
+        'page': 2,
+        'size': 20,
+        'status': 'PROCESSED',
+      });
+    },
+  );
+
   test('finance decision omits optional values for reject excess', () async {
     late RequestOptions captured;
     final repository = DioProcurementInboundRepository(

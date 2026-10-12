@@ -88,6 +88,7 @@ class WorkshopMaterialCountPostgresTest {
     @Autowired WorkshopMaterialCountService counts;
     @Autowired com.uten.imp.features.warehouse.materialbin.WorkshopMaterialCountController countController;
     @Autowired WorkshopMachineService machines;
+    @Autowired com.uten.imp.features.stock.count.StockCountRequestController stockCountRequests;
     @Autowired WorkshopMaterialNoticePort notices;
     @Autowired WorkshopMaterialStatePort state;
     @Autowired WorkshopMaterialReportGuardPort reportGuard;
@@ -102,6 +103,26 @@ class WorkshopMaterialCountPostgresTest {
 
     private record Shop(FullChainEndToEndTest.World world, UUID admin, UUID workshop, UUID worker, UUID kg,
                         UUID leaf, UUID warehouseUser, UUID counterA, UUID counterB, UUID bin, UUID firstPeriod) {}
+
+    @Test
+    void firstOpeningIsInTheRequiredCountAndEqualPhysicalQuantityConsumesNothing() {
+        Shop shop = shop("opening-count-coverage", BusinessTime.today(), true);
+        UUID material = db.queryForObject("SELECT goods_id FROM v_workshop_material_bin_ledger WHERE period_id=? AND source_kind='OPENING'", UUID.class, shop.firstPeriod());
+        money("1000", db.queryForObject("SELECT signed_qty FROM v_workshop_material_bin_ledger WHERE period_id=? AND source_kind='OPENING'", BigDecimal.class, shop.firstPeriod()));
+        fixture.loginAs(shop.counterA());
+        var started = periods.startCount(shop.firstPeriod(), new StartCountRequest(0L, null, key("opening-start")));
+        assertEquals(1, started.count().missingMaterialCount());
+        assertEquals(1, started.count().materials().size());
+        UUID count = started.count().id();
+        weighed(count, "OPENING-REAL", material, "1000");
+        assertEquals(0, counts.detail(count).missingMaterialCount());
+        fixture.loginAs(shop.counterB());
+        counts.submit(count, new VersionRequest(counts.detail(count).rowVersion(), key("opening-submit")));
+        Map<String, Object> values = db.queryForMap("SELECT opening_qty,closing_qty,actual_qty FROM workshop_material_period_lines WHERE period_id=? AND goods_id=?",shop.firstPeriod(),material);
+        money("1000", (BigDecimal) values.get("opening_qty"));money("1000", (BigDecimal) values.get("closing_qty"));money("0", (BigDecimal) values.get("actual_qty"));
+        money("1000", db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE warehouse_id=? AND goods_id=?", BigDecimal.class, shop.bin(),material));
+        money("0", db.queryForObject("SELECT COUNT(*) FROM workshop_material_count_postings posting JOIN workshop_material_period_lines line ON line.id=posting.period_line_id WHERE line.period_id=? AND posting.movement_id IS NOT NULL", BigDecimal.class,shop.firstPeriod()));
+    }
 
     // =============================================================================================
     // 开始盘点、撤回盘点
@@ -511,7 +532,9 @@ class WorkshopMaterialCountPostgresTest {
     // 夹具
     // =============================================================================================
 
-    private Shop shop(String tag, LocalDate goLive) {
+    private Shop shop(String tag, LocalDate goLive) { return shop(tag, goLive, false); }
+
+    private Shop shop(String tag, LocalDate goLive, boolean seedOpening) {
         fixture = new FullChainEndToEndTest();
         beans.autowireBean(fixture);
         String unique = tag + "-" + UUID.randomUUID().toString().substring(0, 8);
@@ -537,9 +560,25 @@ class WorkshopMaterialCountPostgresTest {
             db.update("UPDATE employees SET department_id = ? WHERE id = (SELECT employee_id FROM users WHERE id = ?)",
                     workshop, counter);
         }
+        UUID openingMaterial = null;
+        if (seedOpening) {
+            Shop preliminary = new Shop(world, world.superAdminUserId(), workshop, worker, kg,
+                    world.warehouseId(), warehouseUser, counterA, counterB, null, null);
+            openingMaterial = granule(preliminary, "首次开账必须实盘的物料");
+        }
         fixture.loginAs(warehouseUser);
         var view = settings.update(workshop, new SettingsRequest(null, 0L, true, world.warehouseId(), null, true, goLive, List.of(),
                 key("enable")));
+        if (openingMaterial != null) {
+            fixture.loginAs(world.superAdminUserId());
+            long version = ((Number) stockCountRequests.candidates(view.binWarehouseId(), "", List.of(openingMaterial), 1, 50)
+                    .getItems().getFirst().get("goodsVersion")).longValue();
+            var line = new com.uten.imp.features.stock.count.StockCountDtos.LineInput(openingMaterial, null, kg,
+                    BigDecimal.ZERO, null, false, new BigDecimal("1000"), new BigDecimal("1000"), true, null, version);
+            var proposal = stockCountRequests.submit(new com.uten.imp.features.stock.count.StockCountDtos.Submit(
+                    view.binWarehouseId(), "真实首次开账盘点", key("opening-count"), List.of(line)));
+            stockCountRequests.approve((UUID) proposal.get("id"), new com.uten.imp.features.stock.count.StockCountDtos.Decision(0L, key("opening-approve"), null));
+        }
         return new Shop(world, world.superAdminUserId(), workshop, worker, kg, world.warehouseId(), warehouseUser,
                 counterA, counterB, view.binWarehouseId(), view.currentPeriod().id());
     }

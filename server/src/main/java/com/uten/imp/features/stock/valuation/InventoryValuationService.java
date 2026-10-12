@@ -83,6 +83,38 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         return new MovementValue(event,movement,archived.id(),next.id(),ZERO,state(source),false);
     }
 
+    /** Withdraw the same unused SOURCE contribution; never reprice it from today's pool. */
+    @Override @Transactional(propagation=Propagation.MANDATORY)
+    public MovementValue reverseReceive(ReverseReceive command){
+        transaction();EventContext c=context(command.context());PoolKey key=key(command.pool());requireHeld(key);
+        required(command.movementId(),"反向流水UUID");required(command.originalMovementId(),"原入库流水UUID");
+        BigDecimal before=decimal(command.expectedQtyBefore(),"原库存基本量",false);
+        Request request=request("POSITION_STORE_REVERSE",c,args("pool",keyText(key),"originalMovement",command.originalMovementId()));
+        Event replay=replay("POSITION_STORE_REVERSE",c,request);if(replay!=null)return replay.movement(true);
+        Pool pool=lockPool(key);Node current=requireBefore(pool,before);
+        ReceiveWithdrawal plan=prepareReceiveWithdrawal(pool,current,before,command.originalMovementId(),c,true);
+        var original=plan.original();Node source=plan.source(),previous=plan.previous();
+        BigDecimal qty=plan.qty(),left=plan.left(),cost=plan.cost();
+        UUID event=UUID.randomUUID();
+        Node archived=createDerivedNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,event,List.of(whole(current)));
+        Node next=createDerivedNode(pool,"POOL",null,null,null,null,left,ZERO,left,value(previous),pending(previous),true,true,event,
+            List.of(previous==null?fraction(current,ZERO,ZERO,current.qty()):whole(previous)));
+        deactivate(current);head(pool,next.id(),pool.headId());
+        db.update("""
+            INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
+              actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,
+              qty_base,qty_before,known_value_local,result_node_id,result_head_id,result_state,source_node_id,result_source_revision,position_store_reversal_of)
+            VALUES(:id,'POSITION_STORE_REVERSE',:sourceEvent,:docType,:doc,:item,:version,:user,:employee,:at,:key,:hash,CAST(:payload AS jsonb),
+              :pool,:movement,:qty,:before,:cost,:result,:head,:state,:source,:revision,:original)
+            """,args("id",event,"sourceEvent",c.sourceEventId(),"docType",c.sourceDocType(),"doc",c.sourceDocId(),"item",c.sourceItemId(),"version",c.sourceVersion(),
+              "user",c.actorUserId(),"employee",c.actorEmployeeId(),"at",c.occurredAt(),"key",c.idempotencyKey(),"hash",request.hash(),"payload",request.json(),
+              "pool",pool.id(),"movement",command.movementId(),"qty",qty,"before",before,"cost",cost,"result",archived.id(),"head",next.id(),"state",state(source).name(),
+              "source",source.id(),"revision",source.revision(),"original",original.get("id")));
+        posting(event,null,current.id(),"INVENTORY",pool.id(),cost.negate());
+        posting(event,null,source.id(),"SOURCE",(UUID)original.get("source_event_id"),cost);
+        return new MovementValue(event,command.movementId(),archived.id(),next.id(),cost,state(source),false);
+    }
+
     @Override @Transactional(propagation = Propagation.MANDATORY)
     public MovementValue receive(Receive command) {
         transaction();
@@ -161,14 +193,8 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         Pool pool = lockPool(target);
         prior = replay("RETURN_ISSUE", c, request); if (prior != null) return prior.movement(true);
         Node inventory = requireBefore(pool, before);
-        Node root = node(command.originalIssueNodeId(), false);
-        if (!"ISSUE_POSITION".equals(root.kind()) || !root.id().equals(root.rootIssueId())
-                || root.movementId() == null || root.returnHeadId() == null
-                || !sameGoods(root.key(), target)) throw conflict("退回必须引用同货品、同颜色的原出库价值切片");
-        root = node(root.id(), true);
-        Node remaining = node(root.returnHeadId(), true);
-        if (!remaining.active() || qty.compareTo(remaining.to().subtract(remaining.from())) > 0)
-            throw conflict("退回数量超过原出库尚可退回数量");
+        IssueRemainder original=prepareIssueReturn(target,command.originalIssueNodeId(),qty,true);
+        Node root=original.root(),remaining=original.remaining();
         BigDecimal through = remaining.from().add(qty);
         BigDecimal cost = interval(remaining.value(), remaining.from(), through, remaining.qty());
         UUID eventId = UUID.randomUUID();
@@ -192,6 +218,191 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         posting(eventId, null, remaining.id(), remaining.ownerKind(), remaining.ownerId(), cost.negate());
         posting(eventId, null, next.id(), "INVENTORY", pool.id(), cost);
         return new MovementValue(eventId, command.movementId(), returned.id(), next.id(), cost, state, false);
+    }
+
+    private record IssueRemainder(Node root,Node remaining) {}
+    private IssueRemainder prepareIssueReturn(PoolKey target,UUID rootId,BigDecimal qty,boolean lock){
+        Node root=node(rootId,lock);
+        if(!"ISSUE_POSITION".equals(root.kind()) || !root.id().equals(root.rootIssueId())
+                || root.movementId()==null || root.returnHeadId()==null || !sameGoods(root.key(),target))
+            throw conflict("退回必须引用同货品、同颜色的原出库价值切片");
+        Node remaining=node(root.returnHeadId(),lock);
+        if(!remaining.active() || !Objects.equals(remaining.rootIssueId(),root.id())
+                || !"ISSUE_POSITION".equals(remaining.kind())
+                || qty.compareTo(remaining.to().subtract(remaining.from()))>0)
+            throw conflict("退回数量超过原出库尚可退回数量");
+        return new IssueRemainder(root,remaining);
+    }
+
+    private record ReceiveWithdrawal(Map<String,Object> original,Node source,Node previous,
+                                     BigDecimal qty,BigDecimal left,BigDecimal cost) {}
+    private ReceiveWithdrawal prepareReceiveWithdrawal(Pool pool,Node current,BigDecimal before,
+                                                        UUID movement,EventContext context,boolean lock){
+        var originals=db.queryForList("SELECT * FROM stock_value_events WHERE movement_id=:movement AND operation='RECEIVE'",args("movement",movement));
+        if(originals.size()!=1 || current==null)throw conflict("原入库没有唯一已核定成本来源，不能猜测撤回");
+        var original=originals.getFirst();
+        if(!pool.id().equals(original.get("pool_id")) || context!=null &&
+                (!Objects.equals(context.sourceDocType(),original.get("source_doc_type"))
+                    || !Objects.equals(context.sourceDocId(),original.get("source_doc_id"))
+                    || !Objects.equals(context.sourceItemId(),original.get("source_item_id"))))
+            throw conflict("反向库存与原入库来源不一致");
+        if(!Boolean.TRUE.equals(db.queryForObject("SELECT fn_stock_value_unused_receipt_head(:current,:original)",
+                args("current",current.id(),"original",original.get("result_head_id")),Boolean.class)))
+            throw conflict("原入库之后已有出库、使用或未撤回的后续入库，请先处理下游原成本");
+        Node source=node((UUID)original.get("result_node_id"),lock),originalHead=node((UUID)original.get("result_head_id"),false);
+        if(!"SOURCE".equals(source.kind()) || Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_production_cost_outputs WHERE source_node_id=:source)",args("source",source.id()),Boolean.class)))
+            throw conflict("此入库成本属于专用生产来源，不能通过通用库存反审");
+        if(Boolean.TRUE.equals(db.queryForObject("""
+                WITH RECURSIVE descendants(id) AS (
+                    SELECT CAST(:source AS UUID) UNION
+                    SELECT edge.child_node_id FROM stock_value_edges edge JOIN descendants parent ON parent.id=edge.parent_node_id
+                    WHERE edge.interval_to>edge.interval_from)
+                SELECT EXISTS(SELECT 1 FROM descendants child JOIN stock_value_nodes node ON node.id=child.id
+                    WHERE node.kind='ISSUE_POSITION')
+                """,args("source",source.id()),Boolean.class)))
+            throw conflict("原入库已承接出库成本历史，即使数量已退回也不能直接抹去原取得来源");
+        var predecessors=db.queryForList("SELECT parent.id FROM stock_value_edges edge JOIN stock_value_nodes parent ON parent.id=edge.parent_node_id WHERE edge.child_node_id=:head AND parent.kind='POOL'",
+                args("head",originalHead.id()),UUID.class);
+        if(predecessors.size()>1)throw conflict("原入库前置库存来源不唯一");
+        Node previous=predecessors.isEmpty()?null:node(predecessors.getFirst(),false);
+        BigDecimal qty=(BigDecimal)original.get("qty_base"),left=previous==null?ZERO:previous.qty(),cost=source.value();
+        if(before.compareTo(originalHead.qty())!=0 || before.subtract(qty).compareTo(left)!=0
+                || current.value().compareTo(value(previous).add(cost))!=0)
+            throw conflict("原实物、成本传播与前置库存不守恒，请核对后撤回");
+        return new ReceiveWithdrawal(original,source,previous,qty,left,cost);
+    }
+
+    private Pool readActivePool(PoolKey key){
+        Pool pool=findPool(key,false);
+        if(pool==null && balance(key).empty())return new Pool(null,key,"ACTIVE",null);
+        if(pool==null || !"ACTIVE".equals(pool.state()))throw conflict("库存缺少已核定成本池，请核对历史期初");
+        return pool;
+    }
+
+    @Override @Transactional(readOnly=true,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public String requireIssueReturnsAvailable(List<IssueReturnSource> sources){
+        if(sources==null || sources.size()>1000)throw invalid("原出库退回核对范围无效");
+        Map<UUID,BigDecimal> cumulative=new HashMap<>();List<String> facts=new ArrayList<>();
+        for(IssueReturnSource source:sources){
+            if(source==null)throw invalid("原出库流水不能为空");
+            PoolKey key=key(source.pool());required(source.originalMovementId(),"原出库流水UUID");
+            BigDecimal qty=positive(source.qtyBase(),"本次退回基本数量");Pool pool=readActivePool(key);
+            Node inventory=requireBefore(pool,balance(key).qty(),false);
+            var roots=db.queryForList("SELECT event.result_node_id FROM stock_value_events event JOIN stock_value_nodes node ON node.id=event.result_node_id WHERE event.movement_id=:movement AND node.kind='ISSUE_POSITION' AND node.root_issue_id=node.id AND (event.operation='ISSUE' OR event.operation='POSITION_STORE_REVERSE' AND EXISTS(SELECT 1 FROM stock_value_events original WHERE original.id=event.position_store_reversal_of AND original.operation='RETURN_ISSUE'))",args("movement",source.originalMovementId()),UUID.class);
+            if(roots.size()!=1)throw conflict("原出库没有唯一实际成本切片，不能猜测退回");
+            BigDecimal total=cumulative.merge(roots.getFirst(),qty,BigDecimal::add);
+            IssueRemainder original=prepareIssueReturn(key,roots.getFirst(),total,false);
+            facts.add(keyText(key));facts.add(String.valueOf(inventory));facts.add(source.toString());facts.add(original.toString());
+        }
+        return com.uten.imp.common.util.CanonicalFingerprint.sha256(facts);
+    }
+
+    @Override @Transactional(readOnly=true,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public String requireReceivesReversible(List<ReceiveWithdrawalSource> sources){
+        if(sources==null || sources.size()>1000)throw invalid("原入库撤回核对范围无效");
+        Map<PoolKey,Node> cursors=new HashMap<>();Set<PoolKey> initialized=new HashSet<>();
+        Set<UUID> seen=new HashSet<>();List<String> facts=new ArrayList<>();
+        for(ReceiveWithdrawalSource source:sources){
+            if(source==null)throw invalid("原入库流水不能为空");
+            PoolKey key=key(source.pool());required(source.originalMovementId(),"原入库流水UUID");
+            if(!seen.add(source.originalMovementId()))throw invalid("原入库流水不能重复");
+            Pool pool=readActivePool(key);Node current;
+            if(initialized.add(key)){current=requireBefore(pool,balance(key).qty(),false);cursors.put(key,current);}
+            else current=cursors.get(key);
+            ReceiveWithdrawal plan=prepareReceiveWithdrawal(pool,current,current==null?ZERO:current.qty(),source.originalMovementId(),null,false);
+            facts.add(keyText(key));facts.add(String.valueOf(current));facts.add(source.toString());
+            facts.add(plan.source().toString());facts.add(String.valueOf(plan.previous()));
+            cursors.put(key,plan.previous());
+        }
+        return com.uten.imp.common.util.CanonicalFingerprint.sha256(facts);
+    }
+
+    private record TransferWithdrawal(Map<String,Object> original,Node source,Node previous,Node originalIssue,
+                                      BigDecimal qty,BigDecimal left,BigDecimal cost) {}
+    private TransferWithdrawal prepareTransferWithdrawal(Pool pool,Node current,BigDecimal before,UUID movement,EventContext context,boolean lock){
+        var rows=db.queryForList("SELECT * FROM stock_value_events WHERE movement_id=:movement AND operation='RETURN_ISSUE'",args("movement",movement));
+        if(rows.size()!=1 || current==null)throw conflict("调入缺少唯一原实际成本来源，不能猜测撤回");
+        var original=rows.getFirst();
+        if(!pool.id().equals(original.get("pool_id")) || !"STOCK_DOC".equals(original.get("source_doc_type"))
+                || context!=null && (!Objects.equals(context.sourceDocId(),original.get("source_doc_id")) || !Objects.equals(context.sourceItemId(),original.get("source_item_id"))))
+            throw conflict("调拨反向必须引用原同仓、同单、同明细的调入来源");
+        if(!Boolean.TRUE.equals(db.queryForObject("SELECT fn_stock_value_unused_receipt_head(:current,:original)",args("current",current.id(),"original",original.get("result_head_id")),Boolean.class)))
+            throw conflict("调入之后已有出库或未撤回的后续入库，请按来源先处理下游");
+        Node source=node((UUID)original.get("result_node_id"),lock),originalHead=node((UUID)original.get("result_head_id"),false);
+        Node issue=node((UUID)original.get("source_node_id"),lock);
+        if(!"RETURN_SOURCE".equals(source.kind()) || !"ISSUE_POSITION".equals(issue.kind()) || !issue.id().equals(issue.rootIssueId())
+                || !Objects.equals(source.rootIssueId(),issue.id()) || !sameGoods(source.key(),issue.key()) || !sameGoods(source.key(),pool.key()))
+            throw conflict("调入与原调出实际成本切片归属不一致");
+        if(!Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM stock_documents doc JOIN stock_document_items item ON item.doc_id=doc.id
+                    JOIN stock_movements incoming ON incoming.id=:movement JOIN stock_movements outgoing ON outgoing.id=:outgoing
+                    WHERE doc.id=:doc AND item.id=:item AND doc.doc_type='TRANSFER' AND NOT fn_is_production_linked_stock_document(doc.id)
+                        AND incoming.source_doc_id=doc.id AND outgoing.source_doc_id=doc.id AND incoming.source_item_id=item.id AND outgoing.source_item_id=item.id
+                        AND incoming.movement_type=7 AND incoming.direction=1 AND outgoing.movement_type=8 AND outgoing.direction=-1
+                        AND incoming.warehouse_id=doc.to_warehouse_id AND outgoing.warehouse_id=doc.warehouse_id
+                        AND incoming.qty=outgoing.qty AND incoming.goods_id=outgoing.goods_id AND incoming.color_id IS NOT DISTINCT FROM outgoing.color_id)
+                """,args("movement",movement,"outgoing",issue.movementId(),"doc",original.get("source_doc_id"),"item",original.get("source_item_id")),Boolean.class)))
+            throw conflict("调拨两仓的原实物流水、数量或来源不匹配");
+        if(Boolean.TRUE.equals(db.queryForObject("""
+                WITH RECURSIVE descendants(id) AS (SELECT CAST(:source AS UUID) UNION
+                    SELECT edge.child_node_id FROM stock_value_edges edge JOIN descendants parent ON parent.id=edge.parent_node_id WHERE edge.interval_to>edge.interval_from)
+                SELECT EXISTS(SELECT 1 FROM descendants child JOIN stock_value_nodes node ON node.id=child.id WHERE node.kind='ISSUE_POSITION')
+                """,args("source",source.id()),Boolean.class)))throw conflict("原调入已承接出库成本历史，不能借其它库存撤回调拨");
+        var predecessors=db.queryForList("SELECT parent.id FROM stock_value_edges edge JOIN stock_value_nodes parent ON parent.id=edge.parent_node_id WHERE edge.child_node_id=:head AND parent.kind='POOL'",args("head",originalHead.id()),UUID.class);
+        if(predecessors.size()>1)throw conflict("原调入前置库存来源不唯一");
+        Node previous=predecessors.isEmpty()?null:node(predecessors.getFirst(),false);
+        BigDecimal qty=(BigDecimal)original.get("qty_base"),left=previous==null?ZERO:previous.qty(),cost=source.value();
+        if(before.compareTo(originalHead.qty())!=0 || before.subtract(qty).compareTo(left)!=0 || current.value().compareTo(value(previous).add(cost))!=0)
+            throw conflict("原调入的数量、成本与前置库存不守恒，请核对后撤回");
+        return new TransferWithdrawal(original,source,previous,issue,qty,left,cost);
+    }
+
+    @Override @Transactional(readOnly=true,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public String requireTransfersReversible(List<TransferWithdrawalSource> sources){
+        if(sources==null || sources.size()>1000)throw invalid("调拨反向核对范围无效");
+        Map<PoolKey,Node> cursors=new HashMap<>();Set<PoolKey> initialized=new HashSet<>();Set<UUID> seen=new HashSet<>();List<String> facts=new ArrayList<>();
+        for(TransferWithdrawalSource source:sources){
+            if(source==null)throw invalid("原调拨两腿流水不能为空");required(source.originalInMovementId(),"原调入流水UUID");required(source.originalOutMovementId(),"原调出流水UUID");
+            if(!seen.add(source.originalInMovementId()))throw invalid("原调入流水不能重复");
+            PoolKey key=key(source.targetPool()),origin=key(source.sourcePool());Pool pool=readActivePool(key),sourcePool=readActivePool(origin);
+            Node sourceHead=requireBefore(sourcePool,balance(origin).qty(),false),current;
+            if(initialized.add(key)){current=requireBefore(pool,balance(key).qty(),false);cursors.put(key,current);}else current=cursors.get(key);
+            TransferWithdrawal plan=prepareTransferWithdrawal(pool,current,current==null?ZERO:current.qty(),source.originalInMovementId(),null,false);
+            if(!plan.originalIssue().key().equals(origin) || !Objects.equals(plan.originalIssue().movementId(),source.originalOutMovementId()))throw conflict("原调出仓库或流水不属于同一调拨");
+            facts.add(source.toString());facts.add(String.valueOf(current));facts.add(String.valueOf(sourceHead));facts.add(plan.source().toString());facts.add(String.valueOf(plan.previous()));
+            cursors.put(key,plan.previous());
+        }
+        return com.uten.imp.common.util.CanonicalFingerprint.sha256(facts);
+    }
+
+    /** Withdraw this unused transferred contribution into its own IN_TRANSIT issue; the source warehouse then returns exactly that issue. */
+    @Override @Transactional(propagation=Propagation.MANDATORY)
+    public MovementValue reverseTransferIn(ReverseTransferIn command){
+        transaction();EventContext context=context(command.context());PoolKey key=key(command.pool());requireHeld(key);
+        required(command.movementId(),"反向调入流水UUID");required(command.originalMovementId(),"原调入流水UUID");
+        BigDecimal before=decimal(command.expectedQtyBefore(),"调入仓前置数量",false);
+        Request request=request("POSITION_STORE_REVERSE",context,args("pool",keyText(key),"originalTransferIn",command.originalMovementId()));
+        Event prior=replay("POSITION_STORE_REVERSE",context,request);if(prior!=null)return prior.movement(true);
+        Pool pool=lockPool(key);Node current=requireBefore(pool,before);TransferWithdrawal plan=prepareTransferWithdrawal(pool,current,before,command.originalMovementId(),context,true);
+        UUID event=UUID.randomUUID(),issueId=UUID.randomUUID();Node retained=retainValueReference(plan.source(),event);
+        createDerivedNode(pool,"REVERSED_POOL_CURSOR",null,null,null,null,current.qty(),ZERO,current.qty(),current.value(),pending(current),true,true,event,List.of(whole(current)));
+        Node issue=createDerivedNode(issueId,pool,"ISSUE_POSITION","IN_TRANSIT",context.sourceItemId(),command.movementId(),issueId,
+                plan.qty(),ZERO,plan.qty(),plan.cost(),pending(retained),true,true,event,List.of(whole(retained)));
+        Node next=createDerivedNode(pool,"POOL",null,null,null,null,plan.left(),ZERO,plan.left(),value(plan.previous()),pending(plan.previous()),true,true,event,
+                List.of(plan.previous()==null?fraction(current,ZERO,ZERO,current.qty()):whole(plan.previous())));
+        deactivate(current);head(pool,next.id(),pool.headId());
+        db.update("""
+                INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
+                    actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,
+                    qty_base,qty_before,known_value_local,result_node_id,result_head_id,result_state,source_node_id,result_source_revision,position_store_reversal_of)
+                VALUES(:id,'POSITION_STORE_REVERSE',:sourceEvent,:type,:doc,:item,:version,:user,:employee,:at,:key,:hash,CAST(:payload AS jsonb),
+                    :pool,:movement,:qty,:before,:value,:result,:head,:state,:source,:revision,:original)
+                """,args("id",event,"sourceEvent",context.sourceEventId(),"type",context.sourceDocType(),"doc",context.sourceDocId(),"item",context.sourceItemId(),"version",context.sourceVersion(),
+                    "user",context.actorUserId(),"employee",context.actorEmployeeId(),"at",context.occurredAt(),"key",context.idempotencyKey(),"hash",request.hash(),"payload",request.json(),
+                    "pool",pool.id(),"movement",command.movementId(),"qty",plan.qty(),"before",before,"value",plan.cost(),"result",issue.id(),"head",next.id(),"state",state(issue).name(),
+                    "source",plan.source().id(),"revision",plan.source().revision(),"original",plan.original().get("id")));
+        posting(event,null,current.id(),"INVENTORY",pool.id(),plan.cost().negate());posting(event,null,issue.id(),"IN_TRANSIT",context.sourceItemId(),plan.cost());
+        return new MovementValue(event,command.movementId(),issue.id(),next.id(),plan.cost(),state(issue),false);
     }
 
     @Override @Transactional(propagation = Propagation.MANDATORY)

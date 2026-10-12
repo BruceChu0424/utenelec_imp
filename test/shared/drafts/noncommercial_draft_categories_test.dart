@@ -256,7 +256,7 @@ void main() {
   );
 
   testWidgets(
-    'inbound task input appears in directional draft category and never mixes outbound or manual docs',
+    'inbound task input stays in business queues and manual document drafts retain their category',
     (tester) async {
       await _pump(
         tester,
@@ -282,24 +282,33 @@ void main() {
           ),
         ],
       );
-      // 2026-10-04 起红数「草稿」段进页面自动选中：方向性草稿分类随挂载即渲染
-      // （选中后内容区还有第二条工具条，取顶部分类栏）。
-      expect(find.byType(FormDraftCategoryList), findsOneWidget);
+      expect(find.byType(FormDraftCategoryList), findsNothing);
       final toolbar = tester.widget<UtenFilterToolbar<String>>(
         find.byType(UtenFilterToolbar<String>).first,
       );
       expect(
-        toolbar.segments
-            .singleWhere((segment) => segment.value == 'drafts')
-            .count,
-        1,
+        toolbar.segments.any((segment) => segment.value == 'drafts'),
+        isFalse,
       );
-      toolbar.onSelectionChanged!('drafts');
+      toolbar.onSelectionChanged!('otherIn');
       await tester.pumpAndSettle();
-      expect(find.byType(WarehouseFormDraftCategory), findsOneWidget);
-      expect(find.textContaining('arrival-local'), findsWidgets);
+      // The manual stock document keeps its own server/local draft workspace.
+      expect(find.text('草稿'), findsWidgets);
+      await tester.tap(find.text('草稿').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(WarehouseFormDraftCategory), findsNothing);
+      expect(find.textContaining('arrival-local'), findsNothing);
       expect(find.textContaining('outbound-local'), findsNothing);
-      expect(find.textContaining('stock-local'), findsNothing);
+      final table = tester
+          .widget<MasterDataTableView<FormDraftCategoryRow<StockDocListItem>>>(
+            find.byType(
+              MasterDataTableView<FormDraftCategoryRow<StockDocListItem>>,
+            ),
+          );
+      expect(
+        [...table.unpagedItems, ...table.items].single.draft!.id,
+        'stock-local',
+      );
       expect(tester.takeException(), isNull);
     },
   );

@@ -199,7 +199,7 @@ public class SubcontractApplicationService {
         return finishHistory(toDetail(r, items), r, historyRead);
     }
 
-    /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 已进待财务审核的订货单数量；ADR-038 后订货不携带仓库，跨仓申请行可同批分解。 */
+    /** 分解预览（只读）：可下达量 = 申请数量 − 已下单 − 在审或退回待修订订货占用；ADR-038 后订货不携带仓库，跨仓申请行可同批分解。 */
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('subcontract_application:view') and hasAuthority('subcontract_order:decompose')")
     public List<DecompositionPreviewItem> decompositionPreview(List<UUID> requestedItemIds) {
@@ -220,15 +220,11 @@ public class SubcontractApplicationService {
                                     FROM subcontract_order_item_sources src
                                     JOIN subcontract_order_items oi ON oi.id = src.order_item_id
                                     JOIN subcontract_orders o ON o.id = oi.order_id
-                                    JOIN (
-                                        SELECT DISTINCT order_id
-                                        FROM procurement_order_approval_cases
-                                        WHERE order_type = 'SUBCONTRACT'
-                                          AND status = 'PENDING'
-                                    ) pending_case ON pending_case.order_id = o.id
                                     WHERE oi.is_deleted = FALSE
                                       AND o.status = 0
                                       AND o.is_deleted = FALSE
+                                      AND fn_procurement_order_latest_approval_status('SUBCONTRACT', o.id)
+                                            IN ('PENDING', 'REJECTED')
                                     GROUP BY src.application_item_id
                                 ) pending ON pending.application_item_id = i.id
                                 WHERE i.id IN (:itemIds)
@@ -356,6 +352,10 @@ public class SubcontractApplicationService {
                         SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (ApplicationItemLine l : lines) {
+            BigDecimal quantity = com.uten.imp.common.util.FinancialExactAmount.quantity(l.getQty(), "委外申请数量");
+            if (quantity.signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外申请数量必须大于 0");
+            }
             SubcontractApplicationItem it = new SubcontractApplicationItem();
             it.setApplicationId(r.getId());
             it.setBillNo(r.getBillNo());
@@ -370,7 +370,7 @@ public class SubcontractApplicationService {
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
-            it.setQty(l.getQty());
+            it.setQty(quantity);
             it.setPrice(l.getPrice());
             // 金额只由服务端派生(ADR-112): 数量 × 单价; 本单据无币种, 按本位币计(汇率 1)。单价空则金额空。
             MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, BigDecimal.ONE);

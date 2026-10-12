@@ -64,18 +64,33 @@ const formDraftsPageCategories = <String, FormDraftsPageCategory>{
   'hr': FormDraftsPageCategory(
     id: 'hr',
     hubTitle: 'HR 工作台',
-    scope: FormDraftCategoryScope(module: BadgeModule.people),
+    scope: FormDraftCategoryScope(
+      module: BadgeModule.people,
+      excludeTaskDrafts: true,
+    ),
+  ),
+  'workshop-new': FormDraftsPageCategory(
+    id: 'workshop-new',
+    hubTitle: '车间新建单据',
+    scope: FormDraftCategoryScope(
+      module: BadgeModule.workshop,
+      excludeTaskDrafts: true,
+    ),
   ),
   'quality': FormDraftsPageCategory(
     id: 'quality',
     hubTitle: '品质任务中心',
-    scope: FormDraftCategoryScope(module: BadgeModule.quality),
+    scope: FormDraftCategoryScope(
+      module: BadgeModule.quality,
+      excludeTaskDrafts: true,
+    ),
   ),
   'finance': FormDraftsPageCategory(
     id: 'finance',
     hubTitle: '钱流管理',
     scope: FormDraftCategoryScope(
       module: BadgeModule.finance,
+      excludeTaskDrafts: true,
       excludeRoutes: {'/finance/assets/new', '/finance/assets'},
     ),
     kinds: [
@@ -89,7 +104,10 @@ const formDraftsPageCategories = <String, FormDraftsPageCategory>{
   'sales': FormDraftsPageCategory(
     id: 'sales',
     hubTitle: '销售任务中心',
-    scope: FormDraftCategoryScope(module: BadgeModule.sales),
+    scope: FormDraftCategoryScope(
+      module: BadgeModule.sales,
+      excludeTaskDrafts: true,
+    ),
     kinds: [
       DraftDocKind.salesOrder,
       DraftDocKind.salesShipment,

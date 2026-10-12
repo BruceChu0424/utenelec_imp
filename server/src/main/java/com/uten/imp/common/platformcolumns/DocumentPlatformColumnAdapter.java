@@ -107,6 +107,10 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
         return this;
     }
 
+    private boolean writableDocument(UUID documentId, JsonNode header) {
+        return canWrite() && writable.test(documentId, header);
+    }
+
     /** Fixed domain registration; request types and lock plans never come from client-supplied metadata. */
     public <R> DocumentPlatformColumnAdapter documentSaveLocks(Class<R> requestType,BiConsumer<UUID,R> locks) {
         Objects.requireNonNull(requestType);Objects.requireNonNull(locks);
@@ -153,7 +157,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
 
     @Override public void requireDocumentFieldWrite(UUID documentId) {
         requireDocumentSaveAccess(false);
-        if (!writable.test(documentId, lockedDocument(documentId)))
+        if (!writableDocument(documentId, lockedDocument(documentId)))
             throw new ApiException(ErrorCode.CONFLICT, "当前单据不允许修改扩展字段");
     }
 
@@ -214,7 +218,7 @@ public final class DocumentPlatformColumnAdapter implements PlatformColumnResour
             // authorized business command in this transaction. A create-only
             // user's detail DTO may correctly advertise canEdit=false.
             boolean allowed = created ? draft(header) && !header.hasNonNull("legacyId")
-                    : canWrite() && writable.test(parent, header);
+                    : writableDocument(parent, header);
             if (write && !allowed) throw new ApiException(ErrorCode.CONFLICT, "已提交或无编辑范围的记录不能修改扩展信息");
             JsonNode row = parentLookup == null ? header : findItem(header, id);
             if (row == null) throw missing();

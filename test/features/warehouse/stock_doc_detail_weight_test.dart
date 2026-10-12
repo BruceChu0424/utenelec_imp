@@ -20,6 +20,9 @@ import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_detail_page.dart';
 import 'package:uten_imp/features/warehouse/repositories/stock_doc_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/production_draw_detail_table.dart';
+import 'package:uten_imp/features/warehouse/widgets/stock_grid_columns.dart';
+import 'package:uten_imp/shared/measurement/weight_unit.dart';
+import 'package:uten_imp/shared/measurement/weight_params.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -170,6 +173,52 @@ Future<_Api> _pump(
 const _issuer = {Perm.stockDocView, Perm.stockDocIssue};
 
 void main() {
+  testWidgets('stock entry and actual detail use the same goods code header', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      type: StockDocType.otherIn,
+      document: {
+        'id': 'header-stock-1',
+        'billNo': 'HEADER-1',
+        'status': 1,
+        'warehouseId': 'normal',
+        'allowedActions': ['VIEW'],
+        'items': [
+          {
+            'id': 'line-1',
+            'goodsId': 'screw',
+            'unitId': 'pcs',
+            'qty': 12.1256,
+            'qtyExact': '12.1256',
+            'unitRate': 1,
+          },
+        ],
+      },
+      permissions: {Perm.stockDocView},
+    );
+    final table = tester.widget<MasterDataTableView<StockDocItem>>(
+      find.byType(MasterDataTableView<StockDocItem>),
+    );
+    final changes = ChangeNotifier();
+    addTearDown(changes.dispose);
+    final entry = stockGridColumns(
+      (_) async {},
+      weight: StockGridWeightWiring(
+        entryUnit: WeightUnit.kg,
+        mode: WeightCaptureMode.inbound,
+        paramsOf: (_) => null,
+        paramsListenable: changes,
+      ),
+    );
+    expect(entry.singleWhere((column) => column.key == 'code').label, '编号');
+    expect(
+      table.columns.singleWhere((column) => column.key == 'goodsCode').label,
+      '编号',
+    );
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'draw issue sends the weighed kg with the line, lists deviations and re-keys when weight changes',
     (tester) async {

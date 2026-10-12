@@ -1,3 +1,5 @@
+import '../../../shared/models/historical_receipt_facts.dart';
+
 // 库存查询模型 (余额行 + 即时库存行), 对应后端 BalanceRow / InstantInventoryRow。
 // 名称 (仓库/货品/颜色) 余额行由前端按 id 解析。日期: OffsetDateTime → ISO 字符串。
 // 重量一律千克 (ADR-135): null = 没称/未知, 绝不当 0; weightEstimated = 含估算 (显示「≈」)。
@@ -10,6 +12,7 @@ class BalanceRow {
     this.goodsId,
     this.colorId,
     this.qty,
+    this.qtyText,
     this.amountLocal,
     this.costMasked = false,
     this.weight,
@@ -22,6 +25,7 @@ class BalanceRow {
   final String? goodsId;
   final String? colorId;
   final double? qty;
+  final String? qtyText;
   final double? amountLocal;
   final bool costMasked;
 
@@ -38,6 +42,7 @@ class BalanceRow {
     goodsId: json['goodsId'] as String?,
     colorId: json['colorId'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
+    qtyText: receiptRecordedDecimal(json, 'qty'),
     amountLocal: json['costMasked'] == true
         ? null
         : (json['amountLocal'] as num?)?.toDouble(),

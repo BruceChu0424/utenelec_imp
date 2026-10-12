@@ -86,6 +86,11 @@ public interface ProductionMaterialConsumptionWritePort {
             String idempotencyKey,
             String reason);
 
+    /** Pure source/permission/cost check and exact segments that the same reversal will reopen. */
+    default java.util.Set<UUID> requireDailyReportReversible(UUID planId,UUID reportId) {
+        throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对日报实际用料的反审条件");
+    }
+
     /** 一条需求的本次实际用料(基本量，与需求 unit_id 同口径)。 */
     record ConsumptionLine(UUID demandId, BigDecimal qtyBase) {
     }

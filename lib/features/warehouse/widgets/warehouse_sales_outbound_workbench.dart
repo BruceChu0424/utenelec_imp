@@ -20,6 +20,11 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
+import '../models/warehouse_task_form_drafts.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -344,6 +349,15 @@ class _WarehouseSalesOutboundWorkbenchState
   }
 
   Future<void> _openDetail(WarehouseSalesOutboundSummary item) async {
+    final drafts = salesOutboundTaskDrafts(
+      ref.read(formDraftsProvider),
+      item.id,
+    );
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load(_result?.page ?? 1);
+      return;
+    }
     if (_loading || _searchPending || _error != null) return;
     await context.push(
       '/warehouse/sales-outbound/${Uri.encodeComponent(item.id)}',
@@ -377,6 +391,7 @@ class _WarehouseSalesOutboundWorkbenchState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     final result =
         _result ??
         const PagedResult<WarehouseSalesOutboundSummary>(
@@ -392,6 +407,13 @@ class _WarehouseSalesOutboundWorkbenchState
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!widget.embedded)
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(
+                module: BadgeModule.warehouse,
+                routePrefix: '/warehouse/sales-outbound/',
+              ),
+            ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
@@ -563,18 +585,29 @@ class _WarehouseSalesOutboundWorkbenchState
       key: 'warehouseWorkStatus',
       label: '仓库作业',
       width: 72,
-      value: (item) => item.statusLabel,
+      value: (item) {
+        final drafts = salesOutboundTaskDrafts(
+          ref.read(formDraftsProvider),
+          item.id,
+        );
+        return drafts.isEmpty ? item.statusLabel : taskDraftStatus(drafts);
+      },
       // ADR-169 逐页显式映射：待出库=绿（财务已放行，轮到仓库核对确认出库的
       // 绿灯）/ 已出库=灰（办结历史，本段即历史）/ 退役旧码不伪装，保持无色。
       cellColor: (context, item) =>
-          switch (item.warehouseWorkStatus?.trim().toUpperCase()) {
-            WarehouseSalesOutboundStatus.pendingPick =>
-              utenStatusBadgeCellColor(UtenStatusBadgeType.success),
-            WarehouseSalesOutboundStatus.shipped => utenStatusBadgeCellColor(
-              UtenStatusBadgeType.neutral,
-            ),
-            _ => null,
-          },
+          salesOutboundTaskDrafts(
+            ref.read(formDraftsProvider),
+            item.id,
+          ).isNotEmpty
+          ? utenStatusBadgeCellColor(UtenStatusBadgeType.neutral)
+          : switch (item.warehouseWorkStatus?.trim().toUpperCase()) {
+              WarehouseSalesOutboundStatus.pendingPick =>
+                utenStatusBadgeCellColor(UtenStatusBadgeType.success),
+              WarehouseSalesOutboundStatus.shipped => utenStatusBadgeCellColor(
+                UtenStatusBadgeType.neutral,
+              ),
+              _ => null,
+            },
     ),
     MasterColumnDef(
       // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。

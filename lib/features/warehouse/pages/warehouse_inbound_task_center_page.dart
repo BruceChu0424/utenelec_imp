@@ -13,8 +13,6 @@
 // 「历史单据」段一律时间门控（WarehouseHistoryGate：时间段/全部，
 // 未选时间显示引导占位不加载）。
 import 'package:flutter/material.dart';
-import '../../../shared/drafts/form_draft_category.dart';
-import '../widgets/warehouse_form_draft_categories.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_segment_badge_label.dart';
@@ -90,19 +88,6 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
     );
 
     final segments = <WarehouseTaskSegmentSpec>[
-      if (canInbound ||
-          canPurchaseHistory ||
-          canSubcontractHistory ||
-          canStockDocs)
-        WarehouseTaskSegmentSpec(
-          value: 'drafts',
-          label: '草稿',
-          count: ref.watch(
-            formDraftCategoryVisibleCountProvider(
-              warehouseInboundFormDraftScope,
-            ),
-          ),
-        ),
       if (canInbound || canPurchaseHistory)
         WarehouseTaskSegmentSpec(
           value: 'purchase',
@@ -139,11 +124,6 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick, headerPrefix) =>
           switch (segment) {
-            'drafts' => WarehouseFormDraftCategory(
-              scope: warehouseInboundFormDraftScope,
-              header: headerPrefix,
-              search: keyword,
-            ),
             'purchase' => _PurchaseInboundSegment(
               keyword: keyword,
               refreshTick: refreshTick,

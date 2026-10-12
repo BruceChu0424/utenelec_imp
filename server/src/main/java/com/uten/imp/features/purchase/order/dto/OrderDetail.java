@@ -12,6 +12,10 @@ import java.util.UUID;
 @Getter
 @AllArgsConstructor
 public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+    public String getQuantitySemantics() {
+        return items == null || items.isEmpty() ? com.uten.imp.common.finance.ProcurementQuantities.LEGACY
+                : items.getFirst().getQuantitySemantics();
+    }
     private UUID id;
     private Integer legacyId;
     private String billNo;
@@ -49,6 +53,9 @@ public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMeta
     private String sourceRequestNo;
     /** 当前用户无采购商业金额权限时为 true，币种/结算/单价/金额字段同时置 null。 */
     private boolean priceMasked;
+    /** Effective financial decision for downstream receipts; contract exchangeRate remains frozen. */
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=com.uten.imp.common.finance.ExactDecimalText.class)
+    private java.math.BigDecimal effectiveFinanceExchangeRate;
 
     @Override public void disableHistoryActions() {
         if(financeApproval!=null)financeApproval=financeApproval.readOnly();

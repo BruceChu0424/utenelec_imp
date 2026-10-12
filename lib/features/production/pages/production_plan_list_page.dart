@@ -493,7 +493,7 @@ class _ProductionPlanListPageState
                           ),
                           UtenFilterSegment(
                             value: kProductionStatusReversed,
-                            label: '红冲',
+                            label: '已反审',
                             count: statusCounts?[DocumentStatusBucket.reversed],
                           ),
                         ],
@@ -535,7 +535,7 @@ class _ProductionPlanListPageState
                             MasterFacetBucket(
                               value: '$kProductionStatusReversed',
                               count: 0,
-                              label: '红冲',
+                              label: '已反审',
                             ),
                           ],
                         },

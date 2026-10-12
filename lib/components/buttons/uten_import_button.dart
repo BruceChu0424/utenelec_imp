@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/brand_theme.dart';
 import '../../core/theme/uten_tokens.dart';
 
 class UtenImportButton extends StatelessWidget {
@@ -38,8 +39,10 @@ class UtenImportButton extends StatelessWidget {
       icon: Icon(icon, size: 20),
       label: Text(label),
       style: FilledButton.styleFrom(
-        backgroundColor: UtenColors.teal800, // 品牌深绿
-        foregroundColor: Colors.white,
+        backgroundColor: brandAccent(theme, UtenColors.teal800),
+        foregroundColor: theme.extension<PlatformBrandTheme>() == null
+            ? Colors.white
+            : theme.colorScheme.onPrimary,
         disabledBackgroundColor: UtenColors.slate300,
         disabledForegroundColor: Colors.white70,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

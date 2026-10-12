@@ -27,4 +27,14 @@ public interface ProductionInspectionStockInPort {
      * including unstocked FAIL/fallback lines. New batches keep their original allocation identity.
      */
     void afterQualityReceiptResolved(String receiptType, UUID receiptId, List<ReceiptStockIn> batches);
+
+    /** Same transaction, immediate source advancement, one final analysis refresh for the report. */
+    void withQualityReport(java.util.function.Consumer<QualityReport> work);
+
+    record ResolvedReceipt(String receiptType, UUID receiptId) {}
+
+    interface QualityReport {
+        void afterQualityReceiptResolved(String receiptType, UUID receiptId, List<ReceiptStockIn> batches);
+        void afterInspectionStockInConfirmed(List<ReceiptStockIn> batches);
+    }
 }

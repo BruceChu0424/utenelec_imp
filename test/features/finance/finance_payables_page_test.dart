@@ -166,6 +166,7 @@ void main() {
     final columns = {for (final column in table.columns) column.key: column};
     final item = table.items.single;
     expect(columns['businessType']?.value(item), '委外');
+    expect(columns['status']?.value(item), '委外 · ${item.statusLabel}');
     expect(columns['sourceDocType']?.value(item), '委外进仓');
     expect(columns['openItemKind']?.value(item), '正应付');
     expect(columns['currencyCode']?.value(item), '人民币');
@@ -294,16 +295,26 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('筛选应付记录'), findsOneWidget);
-    expect(find.text('业务类型'), findsWidgets);
-    expect(find.text('结算状态'), findsWidgets);
-
-    await tester.tap(find.text('采购'));
-    await tester.pumpAndSettle();
-    expect(api.lastQuery?['businessType'], 'PURCHASE');
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.text('立账日期'), findsOneWidget);
+    expect(find.text('到期日期'), findsOneWidget);
 
     await tester.tap(find.byTooltip('关闭'));
     await tester.pumpAndSettle();
+    MasterDataTableView<FinancePayableItem> table() =>
+        tester.widget(find.byType(MasterDataTableView<FinancePayableItem>));
+    table().onFilterChanged('businessType', 'PURCHASE');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['businessType'], 'PURCHASE');
     expect(find.text('筛选(1)'), findsOneWidget);
+    table().onFilterChanged('status', 'OPEN');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['businessType'], 'PURCHASE');
+    expect(api.lastQuery?['status'], 'OPEN');
+    table().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['businessType'], 'PURCHASE');
+    expect(api.lastQuery?['status'], isNull);
     expect(tester.takeException(), isNull);
   });
 

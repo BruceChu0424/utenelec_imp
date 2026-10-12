@@ -59,9 +59,9 @@ import '../repositories/purchase_repository.dart';
 /// 状态分段值：真实单据状态（status 非空）或历史记录哨兵。
 ///
 /// 订货单在财务通过前 status 保持 0，「草稿」与「等待财务审核」两段同为
-/// status=0，靠 [financeApproval] 切片区分（NONE=未提交 / PENDING=在审）。
+/// 草稿 status=0；财审切片覆盖活动原单与已审改量复核（status=0/1）。
 class _PurchaseDocSeg {
-  const _PurchaseDocSeg.stage(int this.status, [this.financeApproval])
+  const _PurchaseDocSeg.stage(this.status, [this.financeApproval])
     : history = false;
   const _PurchaseDocSeg.history()
     : status = null,
@@ -613,7 +613,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                             if (widget.docType == PurchaseDocType.order) ...[
                               UtenFilterSegment(
                                 value: const _PurchaseDocSeg.stage(
-                                  kPurchaseStatusDraft,
+                                  null,
                                   'PENDING',
                                 ),
                                 label: '等待财务审核',
@@ -624,7 +624,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                               ),
                               UtenFilterSegment(
                                 value: const _PurchaseDocSeg.stage(
-                                  kPurchaseStatusDraft,
+                                  null,
                                   'REJECTED',
                                 ),
                                 label: '财务已退回',
@@ -650,7 +650,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                               value: const _PurchaseDocSeg.stage(
                                 kPurchaseStatusReversed,
                               ),
-                              label: '红冲',
+                              label: '已反审',
                               count:
                                   statusCounts?[DocumentStatusBucket.reversed],
                             ),

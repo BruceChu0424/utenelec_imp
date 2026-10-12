@@ -44,7 +44,7 @@ void main() {
       '3',
       '4',
     ]);
-    expect(rows[1].changedKeys, {'数量'});
+    expect(rows[1].changedKeys, {'qty'});
     expect(rows.last.changedKeys, isEmpty);
   });
 

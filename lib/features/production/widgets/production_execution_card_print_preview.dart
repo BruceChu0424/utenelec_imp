@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -10,6 +11,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/print/pdf_printer.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/platform_branding/platform_branding.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_work_card.dart';
 
@@ -55,7 +58,7 @@ Future<void> showProductionExecutionCardBatchPrintPreview(
   );
 }
 
-class _ProductionExecutionCardPrintDialog extends StatefulWidget {
+class _ProductionExecutionCardPrintDialog extends ConsumerStatefulWidget {
   const _ProductionExecutionCardPrintDialog({
     required this.loader,
     required this.printer,
@@ -65,12 +68,12 @@ class _ProductionExecutionCardPrintDialog extends StatefulWidget {
   final ProductionPdfPrinter printer;
 
   @override
-  State<_ProductionExecutionCardPrintDialog> createState() =>
+  ConsumerState<_ProductionExecutionCardPrintDialog> createState() =>
       _ProductionExecutionCardPrintDialogState();
 }
 
 class _ProductionExecutionCardPrintDialogState
-    extends State<_ProductionExecutionCardPrintDialog> {
+    extends ConsumerState<_ProductionExecutionCardPrintDialog> {
   List<ProductionWorkCardView> _views = const [];
   String? _error;
   bool _loading = true;
@@ -163,11 +166,15 @@ class _ProductionExecutionCardPrintDialogState
 
   Future<void> _printAll() async {
     if (_printing) return;
+    final companyName = ref.read(platformBrandingSnapshotProvider).companyName;
     setState(() => _printingTarget = 'all');
     try {
       final latest = _validateViews(await widget.loader());
       if (mounted) setState(() => _views = latest);
-      final bytes = await buildProductionExecutionCardBatchPdf(latest);
+      final bytes = await buildProductionExecutionCardBatchPdf(
+        latest,
+        companyName: companyName,
+      );
       final filename = latest.length == 1
           ? '生产计划单_${_safeFilename(latest.single.planBillNo ?? latest.single.planId)}_执行工卡.pdf'
           : '生产计划单_批量${latest.length}张计划_'
@@ -192,6 +199,7 @@ class _ProductionExecutionCardPrintDialogState
     ProductionWorkCard selectedCard,
   ) async {
     if (_printing) return;
+    final companyName = ref.read(platformBrandingSnapshotProvider).companyName;
     final target =
         '${selectedView.planId}|${selectedView.packageId}|${selectedCard.segmentId}';
     setState(() => _printingTarget = target);
@@ -209,6 +217,7 @@ class _ProductionExecutionCardPrintDialogState
       final bytes = await buildProductionExecutionCardPdf(
         latestView,
         segmentIds: {latestCard.segmentId},
+        companyName: companyName,
       );
       final completed = await widget.printer(
         bytes,
@@ -674,6 +683,7 @@ class _ProductionExecutionCardPrintDialogState
 Future<Uint8List> buildProductionExecutionCardPdf(
   ProductionWorkCardView view, {
   Set<String>? segmentIds,
+  String? companyName,
 }) async {
   if (!view.isPrintable) {
     throw StateError('Only a confirmed V1 package can produce work cards');
@@ -698,9 +708,11 @@ Future<Uint8List> buildProductionExecutionCardPdf(
   if (cards.any((card) => !_isExecutionCardPrintableStatus(card.status))) {
     throw StateError('Cancelled or reversed execution cards cannot be printed');
   }
-  return _buildProductionExecutionCardPdf([
-    for (final card in cards) (view: view, card: card),
-  ], title: '生产计划单_${view.planBillNo ?? view.planId}_执行工卡');
+  return _buildProductionExecutionCardPdf(
+    [for (final card in cards) (view: view, card: card)],
+    title: '生产计划单_${view.planBillNo ?? view.planId}_执行工卡',
+    companyName: companyName ?? PlatformBranding.defaults.companyName,
+  );
 }
 
 /// Generates one PDF containing every card from multiple confirmed plans.
@@ -708,8 +720,9 @@ Future<Uint8List> buildProductionExecutionCardPdf(
 /// The operation is all-or-nothing: an empty, duplicate, or invalid package
 /// rejects the whole batch rather than printing a misleading partial subset.
 Future<Uint8List> buildProductionExecutionCardBatchPdf(
-  List<ProductionWorkCardView> views,
-) async {
+  List<ProductionWorkCardView> views, {
+  String? companyName,
+}) async {
   if (views.isEmpty || views.any((view) => !view.isPrintable)) {
     throw StateError('Every batch item must be a confirmed V1 work-card view');
   }
@@ -756,18 +769,20 @@ Future<Uint8List> buildProductionExecutionCardBatchPdf(
   return _buildProductionExecutionCardPdf(
     entries,
     title: '生产计划单_批量${views.length}张计划_${entries.length}张工卡',
+    companyName: companyName ?? PlatformBranding.defaults.companyName,
   );
 }
 
 Future<Uint8List> _buildProductionExecutionCardPdf(
   List<({ProductionWorkCardView view, ProductionWorkCard card})> entries, {
   required String title,
+  required String companyName,
 }) async {
   final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
   final font = pw.Font.ttf(fontData);
   final document = pw.Document(
     title: title,
-    author: 'Uten IMP',
+    author: companyName,
     creator: 'Uten IMP production planning',
     subject: 'Confirmed production execution package work cards',
     theme: pw.ThemeData.withFont(base: font, bold: font),
@@ -778,7 +793,7 @@ Future<Uint8List> _buildProductionExecutionCardPdf(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.fromLTRB(24, 22, 24, 22),
-        header: (_) => _pdfHeader(entry.view, entry.card),
+        header: (_) => _pdfHeader(entry.view, entry.card, companyName),
         footer: (context) => _pdfFooter(context, entry.view, entry.card),
         build: (_) => [
           _pdfMetadata(entry.view, entry.card),
@@ -801,7 +816,11 @@ Future<Uint8List> _buildProductionExecutionCardPdf(
   return document.save();
 }
 
-pw.Widget _pdfHeader(ProductionWorkCardView view, ProductionWorkCard card) {
+pw.Widget _pdfHeader(
+  ProductionWorkCardView view,
+  ProductionWorkCard card,
+  String companyName,
+) {
   final product = [
     card.productNo,
     card.productCode,
@@ -828,7 +847,7 @@ pw.Widget _pdfHeader(ProductionWorkCardView view, ProductionWorkCard card) {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                '中山市优腾电器有限公司',
+                companyName,
                 style: const pw.TextStyle(
                   fontSize: 10,
                   fontWeight: pw.FontWeight.bold,

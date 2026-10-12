@@ -13,6 +13,8 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
 import 'package:uten_imp/features/production/pages/production_plan_summary_sheet_page.dart';
 import 'package:uten_imp/features/production/production_routes.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 
 void main() {
   testWidgets(
@@ -24,6 +26,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            platformBrandingSnapshotProvider.overrideWithValue(
+              const PlatformBranding(companyName: '星辰制造有限公司'),
+            ),
             masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
             apiClientProvider.overrideWithValue(_workshopApi()),
           ],
@@ -38,7 +43,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 公司头与单据信息（头部事实行是 RichText，按 TextSpan 内容断言）
-      expect(find.text('中山市优腾电器有限公司'), findsOneWidget);
+      expect(find.text('星辰制造有限公司'), findsOneWidget);
       expect(find.text('生产备料计划汇总单'), findsOneWidget);
       final headFacts = tester
           .widgetList<RichText>(find.byType(RichText))
@@ -101,6 +106,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
           masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
           apiClientProvider.overrideWithValue(_workshopApi(coverAll: true)),
         ],
@@ -131,6 +139,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            platformBrandingSnapshotProvider.overrideWithValue(
+              PlatformBranding.defaults,
+            ),
             masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
             apiClientProvider.overrideWithValue(api),
           ],
@@ -197,6 +208,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            platformBrandingSnapshotProvider.overrideWithValue(
+              PlatformBranding.defaults,
+            ),
             masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
             apiClientProvider.overrideWithValue(api),
           ],
@@ -230,6 +244,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
           masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
           apiClientProvider.overrideWithValue(api),
         ],
@@ -263,6 +280,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
           masterNameServiceProvider.overrideWithValue(_PlanningMainNames()),
           apiClientProvider.overrideWithValue(api),
         ],

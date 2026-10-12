@@ -102,6 +102,8 @@ class ProcurementFinanceReconfirmationDecisionTest {
         when(row.getLong("version")).thenReturn(1L);
         when(row.getString("snapshot_hash")).thenReturn(mismatched ? "old-hash" : HashUtil.sha256(json));
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        when(jdbc.query(org.mockito.ArgumentMatchers.contains("SELECT is_base_currency"),ArgumentMatchers.<RowMapper<Boolean>>any(),eq(snapshot.currencyId())))
+                .thenReturn(List.of(false));
         when(jdbc.query(anyString(), ArgumentMatchers.<RowMapper<?>>notNull(), eq("PURCHASE"), eq(orderId)))
                 .thenAnswer(invocation -> List.of(((RowMapper<?>) invocation.getArgument(1)).mapRow(row, 0)));
         when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);

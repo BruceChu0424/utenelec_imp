@@ -4,6 +4,20 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/repositories/sales_order_finance_confirmation_repository.dart';
 
 void main() {
+  test('approved list and bill number facets use one confirmed pool without modification filter', () async {
+    final requests = <RequestOptions>[];
+    final repository = DioSalesOrderFinanceConfirmationRepository(_api((request) {
+      requests.add(request);
+      return {'items': <Object>[], 'total': 0, 'billNo': <Object>[]};
+    }));
+    await repository.pending(confirmed: true, keyword: ' 客户 ');
+    await repository.billNoFacets(confirmed: true, keyword: ' 客户 ');
+    for (final request in requests) {
+      expect(request.queryParameters['confirmed'], isTrue);
+      expect(request.queryParameters['keyword'], '客户');
+      expect(request.queryParameters.containsKey('changesOnly'), isFalse);
+    }
+  });
   test(
     'single and batch finance decisions retain reviewed version and lease UUID together',
     () async {

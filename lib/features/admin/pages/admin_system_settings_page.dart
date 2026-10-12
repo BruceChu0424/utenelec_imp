@@ -37,6 +37,7 @@ import '../models/system_setting_entry.dart';
 import '../models/system_updater_status.dart';
 import '../repositories/system_setting_repository.dart';
 import '../widgets/ai_settings_entry_card.dart';
+import '../widgets/platform_settings_entry_card.dart';
 import '../widgets/system_updater_status_card.dart';
 
 class AdminSystemSettingsPage extends ConsumerStatefulWidget {
@@ -248,7 +249,7 @@ class _AdminSystemSettingsPageState
     }
   }
 
-  /// AI 服务入口不依赖系统设置项: 加载中、出错或没有设置项时也放在顶部, 位置与列表里一致。
+  /// 平台与 AI 服务入口不依赖系统设置项: 加载中、出错或为空时仍可进入。
   static Widget _withAiEntry(Widget child) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
@@ -259,7 +260,10 @@ class _AdminSystemSettingsPageState
           UtenSpacing.s16,
           0,
         ),
-        child: AiSettingsEntryCard(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [PlatformSettingsEntryCard(), AiSettingsEntryCard()],
+        ),
       ),
       Expanded(child: child),
     ],
@@ -290,6 +294,7 @@ class _AdminSystemSettingsPageState
                       child: ListView(
                         padding: const EdgeInsets.all(UtenSpacing.s16),
                         children: [
+                          const PlatformSettingsEntryCard(),
                           _warningBanner(theme),
                           // 分组卡片自适应瀑布流(UtenResponsiveGrid): 按容器宽度
                           // <500 一列 / 500-800 两列 / 800-1100 三列 / ≥1100 四列

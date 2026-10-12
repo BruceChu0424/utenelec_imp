@@ -13,6 +13,8 @@ public class DocumentHistoryMetadata {
     private String deletedByName;
     private String deletedReason;
     private boolean historyReadOnly;
+    /** Command response proof only: the server-bound original of an unapproval successor. */
+    private java.util.UUID unapprovalOriginalId;
 
     public void setHistoryReadOnly(boolean value) {
         historyReadOnly = value;

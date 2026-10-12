@@ -18,10 +18,14 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
-import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
+import '../models/warehouse_task_form_drafts.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -85,11 +89,9 @@ class _WarehouseInboundExpectationsViewState
   String? _error;
   int _requestVersion = 0;
 
-  /// 类型筛选（表头筛选与类型分段按钮共用这一个口径）：null = 全部待到货。
-  /// 进页面不预选（不选=不过滤），点分段后才算选中；任务中心嵌入时由
+  /// 类型表头筛选：null = 全部待到货；任务中心嵌入时由
   /// [WarehouseInboundExpectationsView.fixedOrderType] 固定。
   ProcurementInboundOrderType? _orderType;
-  bool _typeSelected = false;
 
   /// 按类型计数（后端全量口径）；null = 尚未返回，分段按钮显示 '—'。
 
@@ -119,7 +121,6 @@ class _WarehouseInboundExpectationsViewState
   void initState() {
     super.initState();
     _orderType = widget.fixedOrderType;
-    _typeSelected = widget.fixedOrderType != null;
     _keyword = widget.keyword;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // dict 装载完成后补一次 setState：内部缓存变化不触发 provider 通知。
@@ -140,7 +141,6 @@ class _WarehouseInboundExpectationsViewState
       _keyword = widget.keyword;
       if (oldWidget.fixedOrderType != widget.fixedOrderType) {
         _orderType = widget.fixedOrderType;
-        _typeSelected = widget.fixedOrderType != null;
         _selectedIds.clear();
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -150,10 +150,9 @@ class _WarehouseInboundExpectationsViewState
   }
 
   void _selectType(ProcurementInboundOrderType? type) {
-    if (_orderType == type && _typeSelected) return;
+    if (_orderType == type) return;
     setState(() {
       _orderType = type;
-      _typeSelected = true;
       _selectedIds = <String>{};
     });
     _load(1);
@@ -520,6 +519,15 @@ class _WarehouseInboundExpectationsViewState
   /// 已登记待送检→继续送检确认；超量→到货异常任务中心；已送检→品质部
   /// 检查结果页；返回后任务中心就地刷新。
   Future<void> _openTask(InboundExpectation expectation) async {
+    final drafts = arrivalTaskDrafts(
+      ref.read(formDraftsProvider),
+      expectation.id,
+    );
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load(_result?.page ?? 1);
+      return;
+    }
     switch (expectation.arrivalStep) {
       case InboundArrivalStep.readyToRegister:
         await _createReceipt(expectation);
@@ -627,6 +635,7 @@ class _WarehouseInboundExpectationsViewState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     final result = _result;
     // 骨架/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
     // 整条分类栏不得消失），数据到位后照常走联动折叠容器。
@@ -645,6 +654,13 @@ class _WarehouseInboundExpectationsViewState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (!widget.embedded)
+          const TaskDraftRecoveryNotice(
+            scope: FormDraftCategoryScope(
+              module: BadgeModule.warehouse,
+              routePath: RouteName.warehouseArrivalRegistration,
+            ),
+          ),
         if (widget.externalHeader != null) ...[
           widget.externalHeader!,
           const SizedBox(height: UtenSpacing.s12),
@@ -670,6 +686,13 @@ class _WarehouseInboundExpectationsViewState
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!widget.embedded)
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(
+                module: BadgeModule.warehouse,
+                routePath: RouteName.warehouseArrivalRegistration,
+              ),
+            ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
@@ -813,41 +836,11 @@ class _WarehouseInboundExpectationsViewState
       Semantics(
         header: true,
         label: '共有 ${result.total} 张待到货订货单',
-        // 全平台统一筛选工具条：分段 + 胶囊搜索框，计数取后端全量口径。
-        // 计数形态：两个来源段都是「等我收货」的队列 → 红徽章；
-        // 「全部待到货」不传 count（没有总量段与之重复红一次）。
+        // 采购/委外在同一表里按行办理；来源由已有类型表头筛选，避免重复一栏。
         child: UtenFilterToolbar<String>(
-          segmentsKey: const Key('inbound-expectation-type-segments'),
           searchKey: const Key('inbound-expectation-search'),
-          segments: [
-            const UtenFilterSegment(value: 'all', label: '全部待到货'),
-            UtenFilterSegment(
-              value: 'purchase',
-              label: '采购订货',
-              count: _typeCount(ProcurementInboundOrderType.purchase),
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-            UtenFilterSegment(
-              value: 'subcontract',
-              label: '委外订货',
-              count: _typeCount(ProcurementInboundOrderType.subcontract),
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-          ],
-          selected: _typeSelected
-              ? {
-                  _orderType == null
-                      ? 'all'
-                      : _orderType == ProcurementInboundOrderType.purchase
-                      ? 'purchase'
-                      : 'subcontract',
-                }
-              : const {},
-          onSelectionChanged: (value) => _selectType(switch (value) {
-            'purchase' => ProcurementInboundOrderType.purchase,
-            'subcontract' => ProcurementInboundOrderType.subcontract,
-            _ => null,
-          }),
+          segments: const [],
+          selected: const {},
           searchHint: '搜索订货单号 / 供应商 / 货品',
           initialSearchValue: _keyword,
           onSearchInputChanged: (_) => _requestVersion++,
@@ -900,29 +893,42 @@ class _WarehouseInboundExpectationsViewState
     MasterColumnDef(
       key: 'step',
       label: '到货步骤',
-      width: 170,
-      value: (expectation) => _stepColumnLabel(expectation),
+      width: 225,
+      value: (expectation) {
+        final drafts = arrivalTaskDrafts(
+          ref.read(formDraftsProvider),
+          expectation.id,
+        );
+        final source = expectation.orderType.label;
+        return drafts.isEmpty
+            ? '$source · ${_stepColumnLabel(expectation)}'
+            : '$source · ${taskDraftStatus(drafts)}';
+      },
       // 到货步骤 → 档位（ADR-169 逐页显式，替换原「已送检」一档浅底裸色）：
       // 待登记=绿（轮到仓库动手登记）/ 已登记·待送检=蓝（断点续办，草稿已提交
       // 未流转）/ 超量待财务=橙（超量异常待判定，风险中间态）/ 已送检=黄
       // （等品质部结论，等别人且无异常）/ 暂不能登记=红（数据或授权不完整，阻断）。
-      cellColor: (context, expectation) => switch (expectation.arrivalStep) {
-        InboundArrivalStep.readyToRegister => utenStatusBadgeCellColor(
-          UtenStatusBadgeType.success,
-        ),
-        InboundArrivalStep.draftPendingInspection => utenStatusBadgeCellColor(
-          UtenStatusBadgeType.info,
-        ),
-        InboundArrivalStep.excessPendingFinance => utenStatusBadgeCellColor(
-          UtenStatusBadgeType.orange,
-        ),
-        InboundArrivalStep.awaitingQuality => utenStatusBadgeCellColor(
-          UtenStatusBadgeType.warning,
-        ),
-        InboundArrivalStep.blocked => utenStatusBadgeCellColor(
-          UtenStatusBadgeType.danger,
-        ),
-      },
+      cellColor: (context, expectation) =>
+          arrivalTaskDrafts(
+            ref.read(formDraftsProvider),
+            expectation.id,
+          ).isNotEmpty
+          ? utenStatusBadgeCellColor(UtenStatusBadgeType.neutral)
+          : switch (expectation.arrivalStep) {
+              InboundArrivalStep.readyToRegister => utenStatusBadgeCellColor(
+                UtenStatusBadgeType.success,
+              ),
+              InboundArrivalStep.draftPendingInspection =>
+                utenStatusBadgeCellColor(UtenStatusBadgeType.info),
+              InboundArrivalStep.excessPendingFinance =>
+                utenStatusBadgeCellColor(UtenStatusBadgeType.orange),
+              InboundArrivalStep.awaitingQuality => utenStatusBadgeCellColor(
+                UtenStatusBadgeType.warning,
+              ),
+              InboundArrivalStep.blocked => utenStatusBadgeCellColor(
+                UtenStatusBadgeType.danger,
+              ),
+            },
     ),
     MasterColumnDef(
       key: 'ownerEmployeeName',

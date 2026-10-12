@@ -227,6 +227,8 @@ class SalesIntakeLayoutLearnerOrderingTest {
                     () -> mock(com.uten.imp.application.port.MasterIntakeLookupPort.class));
             ctx.registerBean(com.uten.imp.application.port.AiCompletionPort.class,
                     () -> mock(com.uten.imp.application.port.AiCompletionPort.class));
+            ctx.registerBean(com.uten.imp.application.port.CompanyBrandingReadPort.class,
+                    () -> mock(com.uten.imp.application.port.CompanyBrandingReadPort.class));
             ctx.registerBean(AiJobUsagePort.class, () -> mock(AiJobUsagePort.class));
             ctx.registerBean(com.uten.imp.security.SecurityContextCurrentUser.class);
             ctx.scan("com.uten.imp.features.sales.intake");

@@ -17,7 +17,7 @@
 //   - 来源单号=销售订单选择器（showSalesOrderPicker，回填单号字符串；头表来源单号是冗余文本）。
 //   - 明细行：productNo 可显式填写，留空由后端按计划号分配；goodsId/qty 必填。
 //
-// 仅草稿可编辑（后端校验，前端不再重复判断；已审单据走详情页红冲）。
+// 仅草稿可编辑（后端校验，前端不再重复判断；已审单据走详情页反审）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -56,7 +56,7 @@ import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
-import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
@@ -159,13 +159,17 @@ class _ProductionPlanEditPageState
 
   Future<void> _init() async {
     if (!mounted) return;
+    bool isCurrent() => mounted;
+    if (!isCurrent()) return;
     setState(() {
       _loading = true;
       _initializationError = null;
     });
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
+      if (!isCurrent()) return;
       await _resolveDeptIds();
+      if (!isCurrent()) return;
       if (widget.id == null) {
         // 跟单员默认当前登录人（生产工是车间侧人员，不预填）。
         final meId = ref.read(sessionProvider).user?.employeeId;
@@ -175,9 +179,9 @@ class _ProductionPlanEditPageState
         }
       }
       if (widget.id != null) {
-        final d = await ref
-            .read(productionPlanRepositoryProvider)
-            .detail(widget.id!);
+        final repo = ref.read(productionPlanRepositoryProvider);
+        final d = await repo.detail(widget.id!);
+        if (!isCurrent()) return;
         final writable =
             d.allowedActions.contains('EDIT') &&
             await loadDocumentOwnerCanWrite(
@@ -185,7 +189,7 @@ class _ProductionPlanEditPageState
               DocumentDataScope.productionPlan,
               d.makerId,
             );
-        if (!mounted) return;
+        if (!mounted || !isCurrent()) return;
         if (!writable) {
           context.appWarning(documentScopeReadOnlyMessage, force: true);
           context.replace(RoutePath.productionPlanDetail(widget.id!));
@@ -199,7 +203,7 @@ class _ProductionPlanEditPageState
             .read(masterNameServiceProvider)
             .loadGoodsNamesWithCodes(goodsIds);
         await _preloadEmployees([d.sellerId, d.workerId]);
-        if (!mounted) return;
+        if (!mounted || !isCurrent()) return;
         _billNo.text = d.billNo ?? '';
         _remark.text = d.remark ?? '';
         if (d.billDate != null) {
@@ -223,12 +227,13 @@ class _ProductionPlanEditPageState
             ..salesOrderItemId = it.salesOrderItemId
             ..clientName = it.clientName
             ..unitRate = it.unitRate
+            ..unitRateExact = it.unitRateText
             ..orderDate = it.orderDate
             ..outboundDate = it.outboundDate
             ..goods = ref
                 .read(masterNameServiceProvider)
                 .goodsOptionOf(it.goodsId);
-          row.qty.text = it.qty?.toString() ?? '';
+          row.qty.text = it.qtyText ?? it.qty?.toString() ?? '';
           row.sourceItemId = it.id;
           row.platformFields.sourceRecordId = it.id;
           final rate = it.allowedOverproductionRate;
@@ -240,7 +245,7 @@ class _ProductionPlanEditPageState
             row.overproductionPercent.text =
                 productionOverproductionPercentText(rate);
           }
-          row.oqty.text = it.oqty?.toString() ?? '';
+          row.oqty.text = it.oqtyText ?? it.oqty?.toString() ?? '';
           rows.add(row);
         }
         for (final r in rows) {
@@ -254,11 +259,13 @@ class _ProductionPlanEditPageState
         _grid.addRow(blank);
       }
     } on ApiException catch (e) {
-      _initializationError = e.message;
+      if (isCurrent()) _initializationError = e.message;
     } catch (_) {
-      _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+      if (isCurrent()) {
+        _initializationError = '无法读取完整单据数据，请检查网络或权限后重试';
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && isCurrent()) setState(() => _loading = false);
     }
   }
 
@@ -560,19 +567,19 @@ class _ProductionPlanEditPageState
         if (r.productNo.text.trim().isNotEmpty)
           'productNo': r.productNo.text.trim(),
         'goodsId': r.goods!.id,
-        'qty': double.tryParse(r.qty.text) ?? 0,
+        'qty': r.qty.text.trim(),
         'allowedOverproductionRate': ?_prefilledRates.submitted(
           r.overproductionPercent,
         ),
         'sourceItemId': ?r.sourceItemId,
-        if (double.tryParse(r.oqty.text) != null)
-          'oqty': double.tryParse(r.oqty.text),
+        if (double.tryParse(r.oqty.text) != null) 'oqty': r.oqty.text.trim(),
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.salesOrderItemId != null) 'salesOrderItemId': r.salesOrderItemId,
         if (r.clientName != null && r.clientName!.isNotEmpty)
           'clientName': r.clientName,
-        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.unitRateExact != null || r.unitRate != null)
+          'unitRate': r.unitRateExact ?? r.unitRate?.toString(),
         if (r.outboundDate != null && r.outboundDate!.isNotEmpty)
           'outboundDate': r.outboundDate,
         if (r.salesOrderNo.text.trim().isNotEmpty)
@@ -980,22 +987,20 @@ class _ProductionPlanEditPageState
                               controller: _grid,
                               watchOf: (row) => [row.qty],
                               entriesBuilder: (rows) => [
-                                utenQuantityTotalEntry(
-                                  rows
-                                      .where((row) => row.goods != null)
-                                      .map(
-                                        (row) => MeasuredAmount(
-                                          value:
-                                              double.tryParse(
-                                                row.qty.text.trim(),
-                                              ) ??
-                                              0,
-                                          unitId: row.unitId,
-                                          unitName:
-                                              names.unitEntries[row.unitId],
+                                UtenTotalEntry(
+                                  '排产量合计',
+                                  exactMeasurementTotalsText(
+                                    rows
+                                        .where((row) => row.goods != null)
+                                        .map(
+                                          (row) => ExactMeasuredAmount(
+                                            value: row.qty.text,
+                                            unitId: row.unitId,
+                                            unitName:
+                                                names.unitEntries[row.unitId],
+                                          ),
                                         ),
-                                      ),
-                                  label: '排产量合计',
+                                  ),
                                 ),
                               ],
                             ),

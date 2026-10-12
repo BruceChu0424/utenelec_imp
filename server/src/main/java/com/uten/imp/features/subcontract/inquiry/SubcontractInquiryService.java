@@ -128,7 +128,7 @@ public class SubcontractInquiryService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public InquiryDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -211,17 +211,33 @@ public class SubcontractInquiryService {
         return detail(id);
     }
 
+    @Transactional(readOnly = true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('subcontract_inquiry:view') and hasAuthority('subcontract_inquiry:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        SubcontractInquiry inquiry=requireInquiry(id);
+        access.requireReadable(inquiry.getMakerId(),"委外询价单不存在");
+        String facts=String.valueOf(em.createNativeQuery("""
+                SELECT jsonb_build_object('header',to_jsonb(h),'items',COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id)
+                    FROM subcontract_inquiry_items i WHERE i.inquiry_id=h.id),'[]'::jsonb))::text
+                FROM subcontract_inquiries h WHERE h.id=:id
+                """).setParameter("id",id).getSingleResult());
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("subcontractInquiry",facts,()->requireInquiryReversible(inquiry));
+    }
+
+    private void requireInquiryReversible(SubcontractInquiry inquiry) {
+        access.requireWritable(inquiry.getMakerId(),"只能操作本人负责的委外询价单");
+        if(inquiry.getStatus()==null || inquiry.getStatus()!=STATUS_APPROVED)
+            throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+    }
+
     /** 红冲：1→-1（仅状态变更；询价无 ArAp 无库存，无需反向冲销）。 */
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_inquiry:reverse')")
     public InquiryDetail reverse(UUID id) {
         tx.bind();
         SubcontractInquiry r = requireInquiry(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外询价单");
-        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行并重读最新状态，防陈旧快照绕过状态守卫（TOCTOU，对齐 M28）
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
+        em.refresh(r, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // Same row lock and refreshed state as the original reversal.
+        requireInquiryReversible(r);
         r.setStatus(STATUS_REVERSED);
         inquiryRepo.save(r);
         return detail(id);

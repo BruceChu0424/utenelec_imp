@@ -979,7 +979,7 @@ void main() {
     expect(items, hasLength(1));
     final item = items!.first as Map;
     expect(item['orderType'], 'SUBCONTRACT');
-    expect(item['qty'], 5);
+    expect(item['qty'], '5');
     // 弹窗选定的「先补退货」随重试原样提交(source 已并入行，不再有列 UI)。
     expect(item['replacementIntent'], 'RETURN_REPLACEMENT');
     expect(item.containsKey('price'), isFalse);

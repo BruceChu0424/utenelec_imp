@@ -34,7 +34,10 @@ class PurchaseDraftTaskCategory extends ConsumerWidget {
               permissions.contains(PurchaseDocConfig.by(type).listPerm))
             PurchaseDocConfig.by(type).draftKind!,
       ],
-      localScope: const FormDraftCategoryScope(module: BadgeModule.purchase),
+      localScope: const FormDraftCategoryScope(
+        module: BadgeModule.purchase,
+        excludeTaskDrafts: true,
+      ),
       search: search,
       showSearch: externalHeader == null,
       externalHeader: externalHeader,

@@ -9023,7 +9023,17 @@ Future<void> _chooseMaterialRoute(
   await tester.ensureVisible(dropdown);
   await tester.tap(dropdown);
   await tester.pumpAndSettle();
-  await tester.tap(find.text(label).last);
+  final field = tester.widget<UtenDropdownField>(dropdown);
+  final value = field.items.singleWhere((item) => item.label == label).value;
+  final option = find.byKey(
+    ValueKey<(String, Key?, String?)>((
+      'uten-dropdown-option',
+      field.key,
+      value,
+    )),
+  );
+  expect(option, findsOneWidget);
+  await tester.tap(option);
   await tester.pumpAndSettle();
   // 2026-09-25 确认路线退役：「确认并换桶」弹窗退役，选好即存。
 }

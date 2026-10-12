@@ -45,7 +45,7 @@ import static org.mockito.Mockito.*;
         "uten.production.readiness-reconcile.enabled=false", "uten.workshop-material.auto-close.enabled=false",
         "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000",
+
         "uten.concurrency.verify-nested-footprint=${uten.fqc.batch.verifyNestedFootprint:true}"})
 @Import({ProductionJdbcMeasurement.Configuration.class, ProductionFqcPreStockBatchEndToEndTest.DeadlineProbeConfiguration.class})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -166,6 +166,7 @@ class ProductionFqcPreStockBatchEndToEndTest {
                 Measured measured = measure(scenario, "pass", () -> quality.passAll(request));
                 assertFalse(measured.result().replay());
                 assertEquals(size, measured.result().items().size());
+                assertFreshLotStatementBudget(measured);
                 assertEquals(1, measured.sql().commits, "所有决定、自动点收、权益及刷新只提交一次");
                 assertFacts(scenario);
                 if (scenario.preStocked() == 0) {
@@ -296,6 +297,12 @@ class ProductionFqcPreStockBatchEndToEndTest {
             Measured measured = measure(scenarios, "four-handoffs-pass-" + repetition, () -> quality.passAll(request));
             assertEquals(1, measured.sql().commits, "Four quality reports and all physical receipts remain one atomic FQC command");
             assertEquals(4, measured.result().items().size());
+            assertFreshLotStatementBudget(measured);
+            assertEquals(1,statementCount(measured,"stock.confirm_graph"),"All four document graphs lock together before the first physical posting");
+            assertEquals(4,statementCount(measured,"stock.prestock_proof"),"Each document proves its own recorded pre-stocked position once");
+            assertEquals(4,statementCount(measured,"stock.plan_approval_proof"),"Each document checks its approved plan once in the shared lock window");
+            assertEquals(4,statementCount(measured,"stock.plan_close"),"Plan closeout uses the final posted state once per document");
+            assertEquals(4,statementCount(measured,"stock.document_items"),"Confirmation and approval reuse each document's exact locked items");
             assertEquals(1, measured.analysisRefreshes(), "The real shared observer analysis refreshes once after all four receipts");
             assertFourHandoffFacts(scenarios);
             Measured replay = measure(scenarios, "four-handoffs-replay-" + repetition, () -> quality.passAll(request));
@@ -333,6 +340,30 @@ class ProductionFqcPreStockBatchEndToEndTest {
                   AND goods_id=? AND NOT is_deleted AND status=0 AND qty>consumed_qty+released_qty
                 """, Integer.class, first.watcherAnalysis(), first.world().goodsA()),
                 "The observer must not acquire another order's private output");
+    }
+
+    private void assertFreshLotStatementBudget(Measured measured) {
+        var sql=measured.sql();
+        long replayQueries=sql.fingerprints.entrySet().stream()
+                .filter(entry -> "fqc.decision_replay".equals(sql.labelsByFingerprint.get(entry.getKey())))
+                .mapToLong(Map.Entry::getValue).sum();
+        long itemInserts=sql.fingerprints.entrySet().stream()
+                .filter(entry -> "fqc.batch_item_insert".equals(sql.labelsByFingerprint.get(entry.getKey())))
+                .mapToLong(Map.Entry::getValue).sum();
+        assertEquals(0,replayQueries,"Fresh lot command children have no historical replay to read");
+        assertEquals(1,itemInserts,"All batch associations use one statement with their original item order");
+        List<UUID> expected=measured.result().items().stream().map(item -> item.inspectionId()).toList();
+        assertEquals(expected,db.queryForList("SELECT inspection_id FROM production_fqc_pass_all_batch_items WHERE batch_id=? ORDER BY line_no",
+                UUID.class,measured.result().batchId()));
+        assertEquals(java.util.stream.IntStream.rangeClosed(1,expected.size()).boxed().toList(),
+                db.queryForList("SELECT line_no FROM production_fqc_pass_all_batch_items WHERE batch_id=? ORDER BY line_no",
+                        Integer.class,measured.result().batchId()));
+    }
+
+    private static long statementCount(Measured measured,String label) {
+        return measured.sql().fingerprints.entrySet().stream()
+                .filter(entry -> label.equals(measured.sql().labelsByFingerprint.get(entry.getKey())))
+                .mapToLong(Map.Entry::getValue).sum();
     }
 
     private Scenario prepare(int size, String mode) {

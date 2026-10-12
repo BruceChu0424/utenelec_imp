@@ -55,10 +55,14 @@ abstract class InventoryValueLedger {
     }
 
     protected Node requireBefore(Pool pool, BigDecimal expected) {
+        return requireBefore(pool, expected, true);
+    }
+
+    protected Node requireBefore(Pool pool, BigDecimal expected, boolean lock) {
         Balance actual=balance(pool.key());
         if(actual.rows()>1 || actual.qty().compareTo(expected)!=0)throw conflict("库存数量已变化，请按锁内最新数量重新提交");
         if(pool.headId()==null){if(!actual.empty())throw conflict("非空库存缺少已核定价值基准");return null;}
-        Node head=node(pool.headId(),true);
+        Node head=node(pool.headId(),lock);
         if(!head.active() || !"POOL".equals(head.kind()) || head.qty().compareTo(expected)!=0
                 || actual.amount()==null || head.value().compareTo(actual.amount())!=0)
             throw conflict("库存数量/已记录金额与价值池不一致，必须先核对");
@@ -371,6 +375,27 @@ abstract class InventoryValueLedger {
     }
     protected State state(Node n){return (effectivePending(n)||propagationPending()
             ||(authority.installed&&nodeBound(n)==null))?State.PENDING:State.FINAL;}
+    /** A reversal mirrors one original source. Unrelated publication work cannot change its recorded finality. */
+    protected State reversalSourceState(Node source){
+        String relatedWork="""
+            WITH RECURSIVE ancestors(id) AS (
+                SELECT CAST(:source AS uuid)
+                UNION
+                SELECT edge.parent_node_id FROM stock_value_edges edge JOIN ancestors child ON child.id=edge.child_node_id
+                WHERE edge.interval_to>edge.interval_from
+            )
+            SELECT EXISTS(SELECT 1 FROM stock_value_jobs job JOIN ancestors source ON source.id=job.source_node_id WHERE job.status='PENDING')
+            """+(productionCostInstalled?"""
+             OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks task JOIN ancestors source ON source.id=task.output_source_node_id WHERE task.status='PENDING')
+             OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty dirty
+                JOIN stock_value_production_cost_outputs output ON output.execution_segment_id=dirty.execution_segment_id
+                JOIN ancestors source ON source.id=output.source_node_id WHERE dirty.observed_revision>dirty.cleared_revision)
+            """:"");
+        if(Boolean.TRUE.equals(db.queryForObject(relatedWork,args("source",source.id()),Boolean.class)))
+            throw conflict("原入库的关联成本来源仍在传播，请完成同源成本核对后再反审");
+        return !source.sourceFinal()||effectivePending(source)||(authority.installed&&nodeBound(source)==null)?State.PENDING:State.FINAL;
+    }
+
     private ValueBounds nodeBound(Node node){
         if(!authority.installed)return null;
         // This is an explicit value returned by the current operation, not a

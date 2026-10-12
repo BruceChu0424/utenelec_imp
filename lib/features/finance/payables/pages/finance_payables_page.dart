@@ -389,8 +389,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 72,
-      value: (item) => item.statusLabel,
+      width: 150,
+      value: (item) => '${item.businessTypeLabel} · ${item.statusLabel}',
       // 2026-09-27 用户口径「表格状态列整格底色」；档位按 ADR-169 锚定：
       // 未付=琥珀（等待付款无异常）/ 部分付款=橙（风险中间态：付了一部分、
       // 余额仍悬）/ 已结清=绿 / 已逾期=红 / 预付款=品牌青（分类档，预付余额
@@ -1193,49 +1193,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
             ),
           ],
           const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('业务类型'),
-          Wrap(
-            spacing: UtenSpacing.s4,
-            runSpacing: UtenSpacing.s4,
-            children: [
-              _choice('全部', _businessType == null, () {
-                applyFilter(() => _businessType = null);
-              }),
-              _choice('采购', _businessType == 'PURCHASE', () {
-                applyFilter(() => _businessType = 'PURCHASE');
-              }),
-              _choice('委外', _businessType == 'SUBCONTRACT', () {
-                applyFilter(() => _businessType = 'SUBCONTRACT');
-              }),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('结算状态'),
-          Wrap(
-            spacing: UtenSpacing.s4,
-            runSpacing: UtenSpacing.s4,
-            children: [
-              _choice('全部', _status == null, () {
-                applyFilter(() => _status = null);
-              }),
-              _choice('未付', _status == 'OPEN', () {
-                applyFilter(() => _status = 'OPEN');
-              }),
-              _choice('部分', _status == 'PARTIAL', () {
-                applyFilter(() => _status = 'PARTIAL');
-              }),
-              _choice('已结清', _status == 'SETTLED', () {
-                applyFilter(() => _status = 'SETTLED');
-              }),
-              _choice('逾期', _status == 'OVERDUE', () {
-                applyFilter(() => _status = 'OVERDUE');
-              }),
-              _choice('贷项', _status == 'CREDIT', () {
-                applyFilter(() => _status = 'CREDIT');
-              }),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
           _dateRange(
             label: '立账日期',
             from: _dateFrom,
@@ -1270,13 +1227,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
       ),
     ),
   );
-
-  Widget _choice(String label, bool selected, VoidCallback onSelected) =>
-      ChoiceChip(
-        label: Text(label),
-        selected: selected,
-        onSelected: (_) => onSelected(),
-      );
 
   Widget _dateRange({
     required String label,

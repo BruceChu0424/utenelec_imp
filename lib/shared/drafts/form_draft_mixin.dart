@@ -62,7 +62,10 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   /// Adopt only a locally persisted, already confirmed checkpoint after the
   /// feature validates its original command receipt. No business API is called.
-  void adoptFormDraftRecoveryCheckpoint(FormDraft checkpoint) {
+  void adoptFormDraftRecoveryCheckpoint(
+    FormDraft checkpoint, {
+    String status = '原创建已核对，未完成附件仍保留在本机',
+  }) {
     if (!formDraftIdentityIsCurrent ||
         checkpoint.id != _draftId ||
         ref
@@ -83,7 +86,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     _draftError = null;
     _draftSavedJson = _captureDraftJson();
     _draftPendingJson = null;
-    _draftStatus.value = '原创建已核对，未完成附件仍保留在本机';
+    _draftStatus.value = status;
     if (mounted) super.setState(() {});
   }
 
@@ -157,6 +160,22 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// The original local draft is retained, and unresolved submissions cannot
   /// use this escape hatch.
   Future<void> Function()? get formDraftReloadSource => null;
+
+  /// A refreshed task changed its source identity. Keep the original input,
+  /// then let the existing source-reload flow start a separate draft identity.
+  /// An unresolved command must continue using its original recovery protocol.
+  void holdFormDraftForSourceReload(Object error) {
+    if (!_draftReady ||
+        !formDraftIdentityIsCurrent ||
+        formDraftHasUnknownSubmission) {
+      return;
+    }
+    _draftRestoreBlocked = true;
+    _draftError = error;
+    _draftStatus.value = '来源已变化，原填写草稿已保留，请重新读取最新任务。';
+    super.setState(() {});
+  }
+
   Iterable<Listenable> get formDraftListenables => const [];
 
   /// Static grids retain their legacy codec. Pages that rebuild derived rows

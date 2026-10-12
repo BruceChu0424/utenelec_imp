@@ -6,8 +6,6 @@ import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -153,7 +151,7 @@ class _ProcurementIqcRejectionListPageState
     _load(1);
   }
 
-  /// 表头筛选回调：与工具条下拉同源（receiptType 枚举/status 参数均已在），
+  /// 表头筛选回调：来源只在表头筛选（receiptType/status 参数均已在），
   /// 复用既有 [_changeReceiptType]/[_changeStatus]，重拉回第 1 页。
   void _onColumnFilterChanged(String key, String? value) {
     if (key == 'receiptType') {
@@ -263,7 +261,7 @@ class _ProcurementIqcRejectionListPageState
           ],
           if (_counts != null) _buildCounts(_counts!),
           if (_counts != null) const SizedBox(height: UtenSpacing.s12),
-          _buildFilters(expanded: expanded),
+          _buildFilters(),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s8),
             Semantics(
@@ -362,76 +360,18 @@ class _ProcurementIqcRejectionListPageState
     );
   }
 
-  Widget _buildFilters({required bool expanded}) {
-    // 「全部」口径：null 值用空串哨兵承接，回调里互转回 null。
-    final type = UtenDropdownField(
-      key: const Key('iqc-rejection-type-filter'),
-      label: '来源类型',
-      value: _receiptType?.name ?? '',
-      allowClear: false,
-      enabled: !_loading,
-      items: [
-        const UtenDropdownItem(value: '', label: '采购 + 委外'),
-        for (final t in ProcurementIqcReceiptType.values)
-          UtenDropdownItem(value: t.name, label: t.label),
-      ],
-      onChanged: (v) => _changeReceiptType(
-        v == null || v.isEmpty
-            ? null
-            : ProcurementIqcReceiptType.values
-                  .where((t) => t.name == v)
-                  .firstOrNull,
-      ),
-    );
-    final status = UtenDropdownField(
-      key: const Key('iqc-rejection-status-filter'),
-      label: '任务状态',
-      value: _statusSelected ? (_status ?? '') : '',
-      allowClear: false,
-      enabled: !_loading,
-      items: const [
-        UtenDropdownItem(value: '', label: '全部状态'),
-        UtenDropdownItem(value: 'PENDING_RETURN', label: '待登记实物退回'),
-        UtenDropdownItem(value: 'RETURN_RECORDED', label: '已退回 / 待财务'),
-        UtenDropdownItem(value: 'FINANCE_EXCEPTION', label: '财务投影异常'),
-        UtenDropdownItem(value: 'TERMINAL', label: '终态'),
-      ],
-      onChanged: (v) => _changeStatus(v == null || v.isEmpty ? null : v),
-    );
-    final search = UtenSearchBar(
-      key: const Key('iqc-rejection-search'),
-      hint: '搜索收货单、订货单、供应商/委外商、货品',
-      initialValue: _keyword,
-      onInputChanged: (_) => _requestId++,
-      onChanged: _search,
-    );
-    if (!expanded) {
-      return Column(
-        children: [
-          search,
-          const SizedBox(height: UtenSpacing.s8),
-          type,
-          const SizedBox(height: UtenSpacing.s8),
-          status,
-        ],
-      );
-    }
-    return Row(
-      children: [
-        // 2026-10-07 用户口径：搜索栏宽度减半（390 → 195）。
-        SizedBox(width: 195, child: search),
-        const SizedBox(width: UtenSpacing.s12),
-        SizedBox(width: 190, child: type),
-        const SizedBox(width: UtenSpacing.s12),
-        SizedBox(width: 220, child: status),
-        const Spacer(),
-        Text(
-          '共 ${_result?.total ?? 0} 条',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
-    );
-  }
+  Widget _buildFilters() => UtenFilterToolbar<String>(
+    searchKey: const Key('iqc-rejection-search'),
+    searchHint: '搜索收货单、订货单、供应商/委外商、货品',
+    searchWidth: 195,
+    initialSearchValue: _keyword,
+    onSearchInputChanged: (_) => _requestId++,
+    onSearchChanged: _search,
+    trailing: Text(
+      '共 ${_result?.total ?? 0} 条',
+      style: Theme.of(context).textTheme.bodySmall,
+    ),
+  );
 
   Widget _buildTable(PagedResult<ProcurementIqcRejectionCase> result) {
     return MasterDataTableView<ProcurementIqcRejectionCase>(
@@ -446,7 +386,7 @@ class _ProcurementIqcRejectionListPageState
       columns: _columns,
       items: result.items,
       // 来源/状态是固定枚举（服务端 receiptType/status 参数均已在），前端
-      // 硬编码桶；count=0 表示不强调计数。桶值与工具条下拉/分段同源。
+      // 固定枚举桶；count=0 表示不强调计数。状态仍与主工作阶段同源。
       facets: const {
         'receiptType': [
           MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购'),
@@ -516,8 +456,9 @@ class _ProcurementIqcRejectionListPageState
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 72,
-      value: (item) => item.status.label,
+      width: 210,
+      value: (item) =>
+          '${item.receiptType?.label ?? '未知来源'} · ${item.status.label}',
       // 2026-09-27 用户口径「表格状态列整格底色」：与徽章同源分类色。
       cellColor: (context, item) => utenStatusBadgeCellColor(
         procurementIqcRejectionBadgeType(item.status),

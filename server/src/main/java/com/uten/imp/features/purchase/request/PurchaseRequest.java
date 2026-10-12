@@ -15,6 +15,8 @@ import java.util.UUID;
 /** 采购申请单主表（采购管理）。源 P_Application。链路起点：无供应商/币种（本币），审核无库存联动。 */
 @Getter @Setter @NoArgsConstructor @Entity @Table(name = "purchase_requests")
 public class PurchaseRequest extends SoftDeletableEntity {
+    @jakarta.persistence.Column(name="quantity_semantics")
+    private String quantitySemantics = "LEGACY_RECORDED";
     @Column(name = "legacy_id", unique = true) private Integer legacyId;
     @Column(name = "bill_no", nullable = false) private String billNo;
     @Column(name = "bill_date", nullable = false) private LocalDate billDate;

@@ -79,7 +79,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 jdbc.update("INSERT INTO settlement_methods VALUES (?, '原结算方式')", settlement);
                 jdbc.update("INSERT INTO goods VALUES (?, 'G1', '现有主档名称')", goods);
                 jdbc.update("INSERT INTO units VALUES (?, '公斤')", unit);
-                jdbc.update("INSERT INTO " + prefix + "_orders VALUES (?, ?, NULL, ?, ?, NULL, NULL, '原头备注')", order, supplier, currency, settlement);
+                jdbc.update("INSERT INTO " + prefix + "_orders(id,supplier_id,warehouse_id,currency_id,settlement_method_id,purchaser_id,maker_id,remark) VALUES (?, ?, NULL, ?, ?, NULL, NULL, '原头备注')", order, supplier, currency, settlement);
                 jdbc.update("INSERT INTO " + prefix + "_order_items(id,order_id,line_no,goods_id,unit_id,goods_code_snapshot,goods_name_snapshot,weight," + extraColumn + ",remark) VALUES (?, ?, 1, ?, ?, 'G1', '提交时货品', 1.2500, 2.50, '原行备注')", item, order, goods, unit);
                 sources(jdbc, prefix, item);
                 OrderSnapshot original = snapshot(type, order, item, goods, unit, supplier, currency, settlement, "10");
@@ -211,7 +211,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 """);
         for (String prefix : List.of("purchase", "subcontract")) {
             String source = prefix.equals("purchase") ? "request" : "application";
-            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date)");
+            jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date,status smallint DEFAULT 0,is_deleted boolean DEFAULT FALSE)");
             String extra = prefix.equals("purchase") ? "gift_qty numeric(18,4)" : "allowed_loss_pct numeric(5,2)";
             jdbc.execute("CREATE TABLE " + prefix + "_order_items(id uuid,order_id uuid,line_no int,goods_id uuid,color_id uuid,unit_id uuid,goods_code_snapshot text,goods_name_snapshot text,weight numeric(18,4)," + extra + ",remark text,source_doc_no text,is_deleted boolean DEFAULT FALSE)");
             jdbc.execute("CREATE TABLE " + prefix + "_order_item_sources(order_item_id uuid," + source + "_item_id uuid,alloc_qty numeric,line_no int)");

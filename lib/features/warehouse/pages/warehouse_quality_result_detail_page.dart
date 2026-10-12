@@ -27,6 +27,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
 import '../models/warehouse_iqc_return.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
@@ -60,7 +62,64 @@ class WarehouseQualityResultDetailPage extends ConsumerStatefulWidget {
 }
 
 class _WarehouseQualityResultDetailPageState
-    extends ConsumerState<WarehouseQualityResultDetailPage> {
+    extends ConsumerState<WarehouseQualityResultDetailPage>
+    with FormDraftMixin<WarehouseQualityResultDetailPage> {
+  WarehouseIqcStockInConfirmCommand? _pendingCommand;
+  @override
+  bool get formDraftBusy => _saving || _loading;
+  @override
+  Future<void> Function()? get formDraftReloadSource => () async {
+    await _load();
+    if (_error != null) throw StateError(_error!);
+  };
+  @override
+  bool get formDraftCanReplaySubmission => _pendingCommand != null;
+  @override
+  bool get formDraftHasUnknownSubmission => _pendingCommand != null;
+  @override
+  FormDraftSpec
+  get formDraftSpec => FormDraftCatalog.warehouseQualityStockIn.spec(
+    route:
+        '${RouteName.warehouseQualityResults}/${widget.receiptType}/${widget.receiptId}',
+  );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _grid,
+    for (final draft in _drafts) ...[draft.quantity, draft.place],
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'receipts': [
+      {'receiptType': widget.receiptType, 'receiptId': widget.receiptId},
+    ],
+    'inputs': captureQualitySliceInputs(_drafts),
+    'pendingCommand': _pendingCommand?.toJson(),
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final pending = data['pendingCommand'];
+    _pendingCommand = pending is Map
+        ? WarehouseIqcStockInConfirmCommand.fromDraft(
+            Map<String, dynamic>.from(pending),
+          )
+        : null;
+    restoreQualitySliceInputs(
+      _drafts,
+      data['inputs'],
+      hasPendingCommand: _pendingCommand != null,
+    );
+  }
+
+  @override
+  Widget? get formDraftSubmissionRecoveryAction => _pendingCommand == null
+      ? null
+      : UtenButton(
+          onPressed: _saving || _loading || !_hasConfirmPermission
+              ? null
+              : () => _executeStockIn(_pendingCommand!),
+          icon: Icons.refresh_rounded,
+          child: const Text('核对原入库提交'),
+        );
   WarehouseQualityResultDetail? _detail;
   List<WarehouseQualitySliceDraft> _drafts = const [];
   final UtenEditableGridController<WarehouseQualityMergedRow> _grid =
@@ -82,6 +141,7 @@ class _WarehouseQualityResultDetailPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     _load();
   }
 
@@ -110,7 +170,10 @@ class _WarehouseQualityResultDetailPageState
         .contains(Perm.procurementIqcRejectionRecordReturn);
   }
 
-  bool get _canConfirm => _detail?.canConfirm == true && _hasConfirmPermission;
+  bool get _canConfirm =>
+      _pendingCommand == null &&
+      _detail?.canConfirm == true &&
+      _hasConfirmPermission;
 
   Future<void> _load({bool preserveInputs = false}) async {
     final version = ++_requestVersion;
@@ -122,7 +185,9 @@ class _WarehouseQualityResultDetailPageState
       final detail = await ref
           .read(warehouseQualityResultRepositoryProvider)
           .detail(widget.receiptType, widget.receiptId);
-      if (!mounted || version != _requestVersion) return;
+      if (!mounted || !formDraftIdentityIsCurrent || version != _requestVersion) {
+        return;
+      }
       final nextDrafts = [
         for (final slice in detail.items)
           WarehouseQualitySliceDraft(
@@ -157,6 +222,7 @@ class _WarehouseQualityResultDetailPageState
           draft.dispose();
         }
       });
+      await initializeFormDraft();
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
@@ -237,23 +303,28 @@ class _WarehouseQualityResultDetailPageState
                 '提交成功后才会增加可用库存并推进对应生产供给。',
     );
     if (!approved || !mounted) return;
+    await _executeStockIn(
+      WarehouseIqcStockInConfirmCommand(idempotencyKey: key, items: items),
+    );
+  }
+
+  Future<void> _executeStockIn(
+    WarehouseIqcStockInConfirmCommand command,
+  ) async {
+    if (_saving || !_hasConfirmPermission) return;
+    _pendingCommand = command;
     setState(() {
       _saving = true;
       _busy = (title: '正在确认入库', description: '正在写入库存与生产预留事实，请勿重复提交或离开本页。');
       _conflictMessage = null;
     });
     try {
-      final result = await ref
-          .read(warehouseIqcStockInRepositoryProvider)
-          .confirm(
-            widget.receiptType,
-            widget.receiptId,
-            WarehouseIqcStockInConfirmCommand(
-              idempotencyKey: key,
-              items: items,
-            ),
-          );
-      if (!mounted) return;
+      final result = await runFormDraftSubmission(
+        () => ref
+            .read(warehouseIqcStockInRepositoryProvider)
+            .confirm(widget.receiptType, widget.receiptId, command),
+      );
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
       refreshBadges(ref);
       setState(() {
@@ -271,10 +342,12 @@ class _WarehouseQualityResultDetailPageState
       } else {
         context.appSuccess('成功入库 ${result.confirmedCount} 条放行明细，实际去向见下方入库历史');
       }
-      await _load();
+      _pendingCommand = null;
+      await resetFormDraftAfterSubmission(prepare: () => _load());
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.code == 'CONFLICT') {
+        _pendingCommand = null;
         final message = '${error.message}；已保留当前输入，请按刷新后的余量重新核对。';
         context.appWarning(message, force: true);
         await _load(preserveInputs: true);
@@ -282,11 +355,17 @@ class _WarehouseQualityResultDetailPageState
           setState(() => _conflictMessage = message);
         }
       } else {
+        if (error.httpStatus == 400 || error.httpStatus == 422) {
+          _pendingCommand = null;
+        }
         context.appError(error.message);
       }
-    } catch (_) {
+      await checkpointFormDraftAfterCreation();
+    } catch (error) {
       if (mounted) {
-        context.appError('入库确认失败，当前输入已保留，请稍后重试');
+        context.appError(
+          describeSubmitError(error, fallback: '入库提交待核对，当前输入已保留，请核对原提交'),
+        );
       }
     } finally {
       if (mounted) {
@@ -337,50 +416,54 @@ class _WarehouseQualityResultDetailPageState
   @override
   Widget build(BuildContext context) {
     final detail = _detail;
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '品质检查结果详情',
-        subtitle: detail == null
-            ? '收货单办理'
-            : '${detail.billNo ?? detail.receiptId} · ${detail.receiptType.label}',
-        leading: UtenBackButton(
-          onPressed: () => popOrBackTo(
-            context,
-            defaultPath: RouteName.warehouseQualityResults,
+    return withFormDraft(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '品质检查结果详情',
+          subtitle: detail == null
+              ? '收货单办理'
+              : '${detail.billNo ?? detail.receiptId} · ${detail.receiptType.label}',
+          leading: UtenBackButton(
+            onPressed: () => popOrBackTo(
+              context,
+              defaultPath: RouteName.warehouseQualityResults,
+            ),
           ),
-        ),
-        actions: [
-          UtenAppBarActionButton(
-            key: const Key('warehouse-quality-detail-refresh'),
-            label: '刷新',
-            icon: Icons.refresh_rounded,
-            isLoading: _loading && detail != null,
-            onPressed: _loading || _saving
-                ? null
-                : () => _load(preserveInputs: true),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        // 提交期间的全屏加载遮罩（root Overlay 传送门，挂载位置只求在树里）。
-        child: Stack(
-          children: [
-            _body(),
-            if (_busy != null)
-              UtenBusyOverlay(
-                title: _busy!.title,
-                description: _busy!.description,
-              ),
+          actions: [
+            UtenAppBarActionButton(
+              key: const Key('warehouse-quality-detail-refresh'),
+              label: '刷新',
+              icon: Icons.refresh_rounded,
+              isLoading: _loading && detail != null,
+              onPressed: _loading || _saving
+                  ? null
+                  : () => _load(preserveInputs: true),
+            ),
           ],
         ),
+        body: SafeArea(
+          // 提交期间的全屏加载遮罩（root Overlay 传送门，挂载位置只求在树里）。
+          child: Stack(
+            children: [
+              _body(),
+              if (_busy != null)
+                UtenBusyOverlay(
+                  title: _busy!.title,
+                  description: _busy!.description,
+                ),
+            ],
+          ),
+        ),
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton:
+            detail != null &&
+                ((_canConfirm && _drafts.isNotEmpty) ||
+                    detail.canPreStockIn ||
+                    (_pendingCommand != null && _hasConfirmPermission))
+            ? _floatingActions()
+            : null,
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton:
-          detail != null &&
-              ((_canConfirm && _drafts.isNotEmpty) || detail.canPreStockIn)
-          ? _floatingActions()
-          : null,
     );
   }
 
@@ -762,6 +845,11 @@ class _WarehouseQualityResultDetailPageState
   /// （UtenButtonType.danger——「点了就往下走一步」的统一配色），
   /// 高度由 UtenFloatingActionGroup 统一到 52。
   Widget _floatingActions() {
+    if (_pendingCommand != null) {
+      return UtenFloatingActionGroup(
+        children: [formDraftSubmissionRecoveryAction!],
+      );
+    }
     final detail = _detail;
     final canConfirmHere = _canConfirm && _drafts.isNotEmpty;
     final preStockable = detail?.preStockableLines.length ?? 0;

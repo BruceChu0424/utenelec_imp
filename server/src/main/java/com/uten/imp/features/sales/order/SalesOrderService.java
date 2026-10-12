@@ -767,7 +767,7 @@ public class SalesOrderService {
         return "PENDING";
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     @PreAuthorize("hasAuthority('sales_order:view')")
     public OrderDetail detail(UUID id) { return readDetail(id, false); }
 
@@ -1639,6 +1639,51 @@ public class SalesOrderService {
         return detail(id);
     }
 
+    @Transactional(readOnly = true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('sales_order:view') and hasAuthority('sales_order:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        SalesOrder order=requireReadableOrder(id);
+        List<SalesOrderItem> items=itemRepo.findByOrderIdAndDeletedFalseOrderByLineNoAsc(id);
+        Map<UUID,List<PlanOrderItemLink>> links=new HashMap<>();
+        for(var item:items) links.put(item.getId(),linkRepo.findActiveByOrderItemId(item.getId()));
+        String facts=String.valueOf(em.createNativeQuery("""
+            SELECT jsonb_build_object('header',to_jsonb(o),'items',COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id)
+              FROM sales_order_items i WHERE i.order_id=o.id),'[]'::jsonb),'plans',COALESCE((SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id)
+              FROM plan_order_item_links l JOIN sales_order_items i ON i.id=l.order_item_id WHERE i.order_id=o.id),'[]'::jsonb),
+              'stock',COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM stock_reservations r JOIN sales_order_items i ON i.id=r.order_item_id WHERE i.order_id=o.id),'[]'::jsonb),
+              'shipments',COALESCE((SELECT jsonb_agg(to_jsonb(h) ORDER BY h.id) FROM sales_shipments h WHERE h.id IN(SELECT si.shipment_id FROM sales_shipment_items si JOIN sales_order_items i ON i.id=si.order_item_id WHERE i.order_id=o.id)),'[]'::jsonb),
+              'prepayments',COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM finance_receipts r WHERE r.sales_order_id=o.id),'[]'::jsonb),
+              'offsets',COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM customer_open_item_offsets r WHERE r.sales_order_id=o.id),'[]'::jsonb))::text
+            FROM sales_orders o WHERE o.id=:id
+            """).setParameter("id",id).getSingleResult());
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("salesOrder",facts,()-> {
+            accessPolicy.requireWritable(order.getOwnerEmployeeId(),"只能操作本人负责的销售订货单");
+            requireOrderUnapprovalInputs(order,items,links);
+        });
+    }
+
+    private void requireOrderUnapprovalInputs(SalesOrder order,List<SalesOrderItem> items,Map<UUID,List<PlanOrderItemLink>> links) {
+        if(order.getStatus()==null || order.getStatus()!=STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+        assertNoApprovedCustomerPrepayment(order.getId());
+        if(!activeShipmentWork(items.stream().map(SalesOrderItem::getId).toList()).isEmpty())
+            throw new ApiException(ErrorCode.CONFLICT,"存在仓库待备货作业，请先撤销相关出货作业再反审订单");
+        for(var item:items) {
+            var currentLinks=links.getOrDefault(item.getId(),List.of());
+            for(var link:currentLinks) requireActivePlanLink(link, Set.of(item.getId()));
+            requireConsistentPlanningLedger(item,currentLinks);
+            if(nz(item.getShippedQty()).signum()>0) throw new ApiException(ErrorCode.BUSINESS,"订单已有发货记录，不能整单反审；请处理出货或仅取消未发部分");
+            if(nz(item.getPlannedQty()).signum()>0 || !currentLinks.isEmpty()) throw new ApiException(ErrorCode.BUSINESS,"订单已有排产，请先撤销相关生产计划");
+            if(nz(item.getProducedQty()).signum()>0) throw new ApiException(ErrorCode.BUSINESS,"订单已有完工事实，请先处理生产及仓库流程");
+        }
+        if(!items.isEmpty()) {
+            BigDecimal used=(BigDecimal)em.createNativeQuery("""
+                SELECT COALESCE(SUM(COALESCE(consumed_qty,0)),0)-COALESCE(SUM(qty) FILTER(WHERE source_doc_type='SALES_SHIPMENT_REVERSE'),0)
+                FROM stock_reservations WHERE order_item_id IN(:ids) AND NOT is_deleted
+                """).setParameter("ids",items.stream().map(SalesOrderItem::getId).toList()).getSingleResult();
+            if(used.signum()>0) throw new ApiException(ErrorCode.BUSINESS,"订单仍有已发货消耗的预留，请先反向出货流程");
+        }
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('sales_order:reverse')")
     public OrderDetail reverse(UUID id) {
@@ -1648,24 +1693,8 @@ public class SalesOrderService {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         List<SalesOrderItem> items = lockOrderItems(id);
-        assertNoActiveShipmentWork(
-                items.stream().map(SalesOrderItem::getId).toList(), "红冲订单");
-        Map<UUID, List<PlanOrderItemLink>> activeLinks = lockActivePlanLinks(items);
-        for (SalesOrderItem item : items) {
-            requireConsistentPlanningLedger(item, activeLinks.getOrDefault(item.getId(), List.of()));
-        }
-        for (SalesOrderItem it : items) {
-            if (nz(it.getShippedQty()).signum() > 0) {
-                throw new ApiException(ErrorCode.BUSINESS, "订单已有发货记录，不能整单红冲；请只取消未发货部分");
-            }
-            if (nz(it.getPlannedQty()).signum() > 0
-                    || !activeLinks.getOrDefault(it.getId(), List.of()).isEmpty()) {
-                throw new ApiException(ErrorCode.BUSINESS, "订单已排产，需生产部确认后走取消流程");
-            }
-            if (nz(it.getProducedQty()).signum() > 0) {
-                throw new ApiException(ErrorCode.BUSINESS, "订单已有完工入库，需生产部确认后走取消流程");
-            }
-        }
+        Map<UUID,List<PlanOrderItemLink>> activeLinks=lockActivePlanLinks(items);
+        requireOrderUnapprovalInputs(o,items,activeLinks);
         // 对称释放全部生效预留（内部兜底：已有消耗的预留拒绝释放）
         reservationService.releaseByOrderItems(items.stream().map(SalesOrderItem::getId).toList());
         for (SalesOrderItem it : items) {
@@ -3142,8 +3171,8 @@ public class SalesOrderService {
      * 仓库草稿已经形成待备货分配。订单行锁与出货草稿创建使用同一锁顺序，
      * 所以让单、改量、取消或红冲不能越过已经下发仓库的作业。
      */
-    private void assertNoActiveShipmentWork(List<UUID> orderItemIds, String action) {
-        if (orderItemIds == null || orderItemIds.isEmpty()) return;
+    private List<String> activeShipmentWork(List<UUID> orderItemIds) {
+        if(orderItemIds==null || orderItemIds.isEmpty()) return List.of();
         @SuppressWarnings("unchecked")
         List<String> shipmentNos = em.createNativeQuery("""
                 SELECT DISTINCT s.bill_no
@@ -3158,10 +3187,12 @@ public class SalesOrderService {
                 """, String.class)
                 .setParameter("ids", orderItemIds)
                 .getResultList();
-        if (!shipmentNos.isEmpty()) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    action + "前必须先撤销仓库待备货单：" + String.join("、", shipmentNos));
-        }
+        return shipmentNos;
+    }
+    private void assertNoActiveShipmentWork(List<UUID> orderItemIds,String action) {
+        List<String> shipmentNos=activeShipmentWork(orderItemIds);
+        if(!shipmentNos.isEmpty()) throw new ApiException(ErrorCode.CONFLICT,
+            action+"前必须先撤销仓库待备货单："+String.join("、",shipmentNos));
     }
 
     private boolean isDeletedOrderItem(UUID orderItemId) {
@@ -3380,6 +3411,20 @@ public class SalesOrderService {
         return items;
     }
 
+    private void requireActivePlanLink(PlanOrderItemLink link, java.util.Set<UUID> allowed) {
+        BigDecimal allocated = link.getAllocatedQty();
+        BigDecimal produced = link.getProducedQty();
+        if (link.isDeleted()
+                || !allowed.contains(link.getOrderItemId())
+                || allocated == null || allocated.signum() < 0
+                || produced == null || produced.signum() < 0
+                || produced.compareTo(allocated) > 0
+                || (link.getCappedQty() != null && link.getCappedQty().signum() < 0)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                "排产分摊状态或数量异常，禁止改量/取消");
+        }
+    }
+
     /** 订单头/行之后锁有效排产联动，后续减量或取消只写 refresh 后的当前实体。 */
     private Map<UUID, List<PlanOrderItemLink>> lockActivePlanLinks(
             List<SalesOrderItem> items) {
@@ -3405,17 +3450,7 @@ public class SalesOrderService {
                 throw new ApiException(ErrorCode.CONFLICT, "排产分摊记录已被别人删除，请刷新后重试");
             }
             em.refresh(link, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-            BigDecimal allocated = link.getAllocatedQty();
-            BigDecimal produced = link.getProducedQty();
-            if (link.isDeleted()
-                    || !allowed.contains(link.getOrderItemId())
-                    || allocated == null || allocated.signum() < 0
-                    || produced == null || produced.signum() < 0
-                    || produced.compareTo(allocated) > 0
-                    || (link.getCappedQty() != null && link.getCappedQty().signum() < 0)) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "排产分摊状态或数量异常，禁止改量/取消");
-            }
+            requireActivePlanLink(link, allowed);
             byOrderItem.computeIfAbsent(link.getOrderItemId(), ignored -> new ArrayList<>())
                     .add(link);
         }

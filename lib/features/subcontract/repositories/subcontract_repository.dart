@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 委外单据仓库（8 单据统一，按 docType 切端点）。
 //
 // 端点 /api/subcontract/{inquiries|applications|orders|receipts|returns|material-issues|
@@ -189,7 +190,16 @@ class SubcontractRepository {
   }
 
   Future<SubcontractDocDetail> reverse(String id) async {
-    final json = await api.post('${_doc(id)}/reverse');
+    final json = await unapproveDocument(api, switch (type) {
+      SubcontractDocType.order => 'subcontractOrder',
+      SubcontractDocType.receipt => 'subcontractReceipt',
+      SubcontractDocType.returnDoc => 'subcontractReturn',
+      SubcontractDocType.inquiry => 'subcontractInquiry',
+      SubcontractDocType.materialIssue => 'subcontractMaterialIssue',
+      SubcontractDocType.materialReturn => 'subcontractMaterialReturn',
+      SubcontractDocType.waste => 'subcontractWaste',
+      SubcontractDocType.application => 'subcontractApplication',
+    }, id);
     return SubcontractDocDetail.fromJson(json);
   }
 

@@ -151,6 +151,38 @@ Future<void> _pump(
 }
 
 void main() {
+  for (final status in [kPurchaseStatusCanceled, kPurchaseStatusReversed]) {
+    testWidgets(
+      'terminal purchase $status does not offer correction for historical rejection',
+      (tester) async {
+        final api = _RecordingApi()
+          ..approvalStatus = 'REJECTED'
+          ..orderStatus = status
+          ..allowedActions = const [];
+        await _pump(tester, api);
+        expect(find.text('财务已退回，请修改后重新提交'), findsNothing);
+        expect(find.text('重新提交财务'), findsNothing);
+        expect(find.text('历史审批：财务已退回'), findsOneWidget);
+        expect(find.text('编辑'), findsNothing);
+        expect(api.posts, isEmpty);
+      },
+    );
+  }
+
+  testWidgets(
+    'approved quantity review is shown as a review rather than first approval',
+    (tester) async {
+      final api = _RecordingApi()
+        ..approvalStatus = 'REJECTED'
+        ..orderStatus = kPurchaseStatusApproved
+        ..allowedActions = const [];
+      await _pump(tester, api);
+      expect(find.text('改量财务已退回，请修订后重新提交'), findsOneWidget);
+      expect(find.text('改量财务退回'), findsOneWidget);
+      expect(api.posts, isEmpty);
+    },
+  );
+
   for (final size in <Size>[const Size(1200, 1800), const Size(375, 812)]) {
     testWidgets('混合授权账号在 $size 的待审采购详情仍完全只读', (tester) async {
       final api = _RecordingApi();

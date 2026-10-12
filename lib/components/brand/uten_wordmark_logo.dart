@@ -11,7 +11,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../../core/constants/assets.dart';
+import '../../shared/platform_branding/platform_brand_logo.dart';
 
 class UtenWordmarkLogo extends StatelessWidget {
   const UtenWordmarkLogo({super.key, this.width = 240, this.height = 44});
@@ -34,14 +34,6 @@ class UtenWordmarkLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
-      UtenAssets.logoName,
-      width: width,
-      height: height,
-      fit: BoxFit.contain,
-      // 图像未加载完成前不闪烁；包一层语义标签便于屏幕阅读器
-      semanticLabel: 'Uten ELEC',
-      gaplessPlayback: true,
-    );
+    return PlatformBrandLogo(width: width, height: height);
   }
 }

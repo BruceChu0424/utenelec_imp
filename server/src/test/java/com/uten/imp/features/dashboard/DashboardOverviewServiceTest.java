@@ -234,6 +234,8 @@ class DashboardOverviewServiceTest {
                 .containsExactly(
                         org.assertj.core.groups.Tuple.tuple("expense-approval", 3L),
                         org.assertj.core.groups.Tuple.tuple("expense-payment", 2L));
+        assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::route)
+                .containsExactly("/expense/approval?queue=pending", "/expense/approval?queue=payable");
         verify(jdbc, never()).queryForObject(contains("expense_claims"), eq(Long.class),
                 ArgumentMatchers.<Object[]>any());
         verify(jdbc, never()).queryForObject(contains("payroll_batches"), eq(Long.class));

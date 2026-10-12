@@ -149,7 +149,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
             path = path.substring(contextPath.length());
         }
-        return PUBLIC_STAFF_AUTH_PATHS.contains(path)
+        return PublicPlatformBrandingRequest.matches(request)
+                || PUBLIC_STAFF_AUTH_PATHS.contains(path)
                 || path.startsWith("/api/visitor/auth/");
     }
 

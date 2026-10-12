@@ -96,6 +96,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/platform/branding", "/api/platform/branding/logo").permitAll()
                         .requestMatchers(publicPaths).permitAll()
                         .anyRequest().authenticated()
                 )

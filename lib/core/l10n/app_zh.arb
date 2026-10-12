@@ -287,7 +287,7 @@
       "code": {}
     }
   },
-  "visitorIsEmployee": "该手机号为优腾员工账号，请走员工通道登录",
+  "visitorIsEmployee": "该手机号为员工账号，请走员工通道登录",
   "visitorPhoneInvalid": "请输入正确的手机号",
   "visitorHomeTitle": "我的访客预约",
   "visitorSettingsTitle": "访客设置",
@@ -2798,7 +2798,6 @@
   "salesQuoteStatusActionWithdraw": "撤回",
   "salesQuoteStatusActionReopen": "重新修改",
   "salesQuoteStatusActionConvert": "转订货单",
-  "salesQuoteStatusActionReverse": "作废",
   "salesQuoteStatusActionEdit": "编辑",
   "salesQuoteStatusActionDelete": "删除",
   "salesQuoteStatusActionFinanceReview": "去核价",
@@ -2807,7 +2806,6 @@
   "salesQuoteStatusSubmitConfirmBody": "提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?",
   "salesQuoteStatusWithdrawConfirmBody": "撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?",
   "salesQuoteStatusReopenConfirmBody": "财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?",
-  "salesQuoteStatusReverseConfirmBody": "作废后这张报价不能再转订货单, 也不能恢复。确定作废?",
   "salesQuoteStatusDeleteConfirmBody": "确定删除这张报价草稿? 删除后不能恢复。",
   "salesQuoteStatusConvertConfirmBody": "根据双方同意的当前报价生成订货单草稿，带入核定单价、折扣及条款。请核对信息后保存、审查并提交财务审核。",
   "salesQuoteStatusConfirm": "确定",
@@ -2815,7 +2813,6 @@
   "salesQuoteStatusSubmitted": "已提交财务核价",
   "salesQuoteStatusWithdrawn": "已撤回, 可以继续修改",
   "salesQuoteStatusReopened": "已回到草稿, 改好后请重新提交财务核价",
-  "salesQuoteStatusReversedDone": "报价已作废",
   "salesQuoteStatusDeleted": "已删除",
   "salesQuoteStatusConvertDone": "已生成订货单草稿 {billNo}",
   "@salesQuoteStatusConvertDone": {

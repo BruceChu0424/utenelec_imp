@@ -7,14 +7,18 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/subcontract_outbound.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_subcontract_outbound_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 import 'outbound_weight_fakes.dart';
 import 'subcontract_outbound_test_support.dart';
@@ -25,6 +29,96 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
+  });
+
+  for (final unknown in [false, true]) {
+    testWidgets('原待发料行显示填写状态且按同一领料UUID续填，待核对=$unknown', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = SubcontractOutboundFakeApi();
+      final router = _router();
+      addTearDown(router.dispose);
+      final spec = FormDraftCatalog.subcontractOutbound.spec(
+        route: '/warehouse/subcontract-outbound/issue-1',
+      );
+      final draft = FormDraft(
+        id: 'original-input',
+        title: '原拣货填写',
+        module: spec.module,
+        route: spec.route,
+        permission: spec.permission,
+        data: {formDraftUnknownSubmissionKey: unknown},
+        updatedAt: DateTime.utc(2026, 10, 11),
+      );
+      await tester.pumpWidget(
+        _app(
+          api: api,
+          router: router,
+          permissions: subcontractOutboundPermissions,
+          drafts: [draft],
+        ),
+      );
+      await tester.pumpAndSettle();
+      final table = _table(tester);
+      expect(table.items, hasLength(3));
+      final status = table.columns.singleWhere(
+        (column) => column.key == 'status',
+      );
+      expect(status.value(table.items.first), unknown ? '提交待核对' : '草稿');
+      expect(status.value(table.items[1]), '待发料');
+      table.onRowTap!(table.items.first);
+      await tester.pumpAndSettle();
+      expect(find.text('detail-issue-1'), findsOneWidget);
+      final opened = GoRouterState.of(
+        tester.element(find.text('detail-issue-1')),
+      ).uri;
+      expect(opened.path, '/warehouse/subcontract-outbound/issue-1');
+      expect(opened.queryParameters['draftId'], 'original-input');
+      expect(api.updates, isEmpty);
+      expect(api.approvals, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('服务端办结离开待发料队列后，未知原提交仍有核对入口', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = SubcontractOutboundFakeApi()..taskHeaders.clear();
+    final router = _router();
+    addTearDown(router.dispose);
+    final spec = FormDraftCatalog.subcontractOutbound.spec(
+      route: '/warehouse/subcontract-outbound/issue-1',
+    );
+    final draft = FormDraft(
+      id: 'unknown-original',
+      title: '原提交核对',
+      module: spec.module,
+      route: spec.route,
+      permission: spec.permission,
+      data: const {formDraftUnknownSubmissionKey: true},
+      updatedAt: DateTime.utc(2026, 10, 11),
+    );
+    await tester.pumpWidget(
+      _app(
+        api: api,
+        router: router,
+        permissions: subcontractOutboundPermissions,
+        drafts: [draft],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).items, isEmpty);
+    expect(find.text('核对原提交'), findsOneWidget);
+    await tester.tap(find.text('核对原提交'));
+    await tester.pumpAndSettle();
+    expect(find.text('detail-issue-1'), findsOneWidget);
+    final opened = GoRouterState.of(
+      tester.element(find.text('detail-issue-1')),
+    ).uri;
+    expect(opened.queryParameters['draftId'], 'unknown-original');
+    expect(api.updates, isEmpty);
+    expect(api.approvals, isEmpty);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('一行一张领料单: 单击选中、双击按领料单进拣货页, 返回后重拉列表', (tester) async {
@@ -42,6 +136,7 @@ void main() {
     expect(table.batchActionsBuilder, isNull);
     expect(table.facets, isEmpty, reason: '列表只有待发料一种状态');
     expect(table.columns.map((column) => column.label), [
+      '状态',
       '领料单号',
       '委外订货单',
       '委外商',
@@ -166,9 +261,18 @@ Widget _app({
   required SubcontractOutboundFakeApi api,
   required GoRouter router,
   Set<String> permissions = const {Perm.subcontractOutboundView},
+  List<FormDraft>? drafts,
 }) {
   return ProviderScope(
     overrides: [
+      if (drafts != null)
+        formDraftsProvider.overrideWith(() => _Drafts(drafts)),
+      if (drafts != null)
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'warehouse-user'),
+        ),
+      if (drafts != null)
+        apiBaseUrlProvider.overrideWithValue('https://task-ui.example/api'),
       fakeWeightRepositoryOverride(),
       apiClientProvider.overrideWithValue(api),
       masterNameServiceProvider.overrideWithValue(OutboundNames(api)),
@@ -189,6 +293,12 @@ GoRouter _router() {
         builder: (_, _) => const WarehouseSubcontractOutboundPage(),
       ),
       GoRoute(
+        path: '/warehouse/subcontract-outbound/batch',
+        builder: (_, state) => WarehouseSubcontractOutboundBatchPage(
+          issueIds: state.uri.queryParameters['issueIds']!.split(','),
+        ),
+      ),
+      GoRoute(
         path: '/warehouse/subcontract-outbound/:issueId',
         builder: (context, state) => Scaffold(
           body: Column(
@@ -205,6 +315,13 @@ GoRouter _router() {
       ),
     ],
   );
+}
+
+class _Drafts extends FormDraftsNotifier {
+  _Drafts(this.values);
+  final List<FormDraft> values;
+  @override
+  List<FormDraft> build() => values;
 }
 
 MasterDataTableView<OutboundTask> _table(WidgetTester tester) {

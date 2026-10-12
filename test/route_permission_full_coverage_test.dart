@@ -142,6 +142,9 @@ const _reviewedNewGuardedRoutes = <String, List<String>>{
 /// 库存分析是管理口径 (呆滞/供应商少数)，只给 stock_report:view；
 /// 独立称重计数页库存查看即可进 (保存抽样的称样权限由页面与后端另行把关)。
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  // V839: the route additionally requires super-admin identity through the
+  // shared platform-settings capability policy; its permission grant stays explicit.
+  '/admin/platform-settings': [Perm.authorizationManage],
   '/production/over-limit-dispositions': [Perm.productionPlanApprove],
   '/production/over-limit-dispositions/:id': [
     Perm.productionPlanApprove,

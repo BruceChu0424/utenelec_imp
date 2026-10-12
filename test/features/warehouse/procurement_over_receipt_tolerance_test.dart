@@ -99,12 +99,40 @@ class _FinanceRepository implements ProcurementInboundRepository {
   Future<PagedResult<ProcurementArrivalException>> financeTasks({
     int page = 1,
     int size = 20,
+    String? status,
   }) async =>
       PagedResult(items: [task], page: 1, size: size, total: 1, totalPages: 1);
 
   @override
   Future<ProcurementArrivalException> financeTaskDetail(String id) async =>
       task;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FinanceStageRepository implements ProcurementInboundRepository {
+  final statuses = <String?>[];
+  @override
+  Future<PagedResult<ProcurementArrivalException>> financeTasks({
+    int page = 1,
+    int size = 20,
+    String? status,
+  }) async {
+    statuses.add(status);
+    final task = ProcurementArrivalException.fromJson({
+      ..._exceptionJson(),
+      if (status == 'PROCESSED') 'status': 'RECEIPT_ADJUSTED',
+      if (status == 'PROCESSED') 'allowedActions': <String>[],
+    });
+    return PagedResult(
+      items: [task],
+      page: page,
+      size: size,
+      total: 1,
+      totalPages: 1,
+    );
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -235,6 +263,41 @@ void main() {
         isNull,
       );
     });
+  });
+
+  testWidgets('财务超量审批已处理分类保留原异常入口', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _FinanceStageRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          procurementInboundRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: FinanceArrivalExceptionTasksPage(embedded: true),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.statuses, ['PENDING_FINANCE']);
+    await tester.tap(find.text('已处理'));
+    await tester.pumpAndSettle();
+    expect(repository.statuses, ['PENDING_FINANCE', 'PROCESSED']);
+    expect(
+      find.byKey(const Key('finance-arrival-task-exception-1')),
+      findsOneWidget,
+    );
+    final card = tester.widget<InkWell>(
+      find.descendant(
+        of: find.byKey(const Key('finance-arrival-task-exception-1')),
+        matching: find.byType(InkWell),
+      ),
+    );
+    expect(card.onTap, isNotNull);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('财务超量到货任务卡按允许超收口径说明', (tester) async {

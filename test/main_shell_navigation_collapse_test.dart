@@ -4,10 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
 import 'package:uten_imp/features/shell/widgets/floating_capsule_nav_bar.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
+import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 
 void main() {
   for (final variant in _ContentVariant.values) {
@@ -244,6 +247,10 @@ Future<GoRouter> _pumpShell(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('https://shell-test.invalid/api'),
+        platformBrandingSnapshotProvider.overrideWithValue(
+          PlatformBranding.defaults,
+        ),
         badgeTotalTodoProvider.overrideWithValue(5),
         unreadNoticeCountProvider.overrideWithValue(2),
         publicSettingsRepositoryProvider.overrideWithValue(

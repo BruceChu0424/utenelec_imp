@@ -1,3 +1,4 @@
+import '../../../shared/models/procurement_quantity.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
@@ -88,6 +89,7 @@ class ProcurementInspectionItem {
   const ProcurementInspectionItem({
     required this.id,
     this.receiptItemId,
+    this.quantityTranche,
     this.goodsId,
     this.goodsCode,
     this.goodsName,
@@ -108,6 +110,8 @@ class ProcurementInspectionItem {
 
   final String id;
   final String? receiptItemId;
+  final String? quantityTranche;
+  String get quantityTrancheLabel => procurementTrancheLabel(quantityTranche);
   final String? goodsId;
   final String? goodsCode;
   final String? goodsName;
@@ -133,6 +137,7 @@ class ProcurementInspectionItem {
       ProcurementInspectionItem(
         id: json['id'] as String,
         receiptItemId: json['receiptItemId'] as String?,
+        quantityTranche: json['quantityTranche'] as String?,
         goodsId: json['goodsId'] as String?,
         goodsCode: json['goodsCode'] as String?,
         goodsName: json['goodsName'] as String?,

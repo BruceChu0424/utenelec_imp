@@ -10,6 +10,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
+import '../models/warehouse_task_form_drafts.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -24,7 +31,6 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_outbound.dart';
-import '../pages/warehouse_subcontract_outbound_batch_page.dart';
 import '../repositories/warehouse_subcontract_outbound_repository.dart';
 import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -151,6 +157,15 @@ class _WarehouseSubcontractOutboundWorkbenchState
 
   Future<void> _openTask(OutboundTask task) async {
     if (_loading || _openingBatch) return;
+    final drafts = subcontractOutboundTaskDrafts(
+      ref.read(formDraftsProvider),
+      task.issueId,
+    );
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load(_result?.page ?? 1);
+      return;
+    }
     // 保存返回时补刷列表；出仓成功会定位任务中心，由父页刷新。
     final version = _requestVersion;
     await context.push<bool>(
@@ -174,13 +189,11 @@ class _WarehouseSubcontractOutboundWorkbenchState
     setState(() => _openingBatch = true);
     final version = _requestVersion;
     try {
-      final completed = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (batchContext) => WarehouseSubcontractOutboundBatchPage(
-            issueIds: ids.toList(),
-            onCompleted: () => Navigator.of(batchContext).pop(true),
-          ),
-        ),
+      final completed = await context.push<bool>(
+        Uri(
+          path: '/warehouse/subcontract-outbound/batch',
+          queryParameters: {'issueIds': ids.join(',')},
+        ).toString(),
       );
       if (mounted) {
         setState(() => _selectedIds = {});
@@ -200,6 +213,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     ref.watch(currentPermissionsProvider);
     final l10n =
         Localizations.of<AppLocalizations>(context, AppLocalizations) ??
@@ -219,6 +233,13 @@ class _WarehouseSubcontractOutboundWorkbenchState
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!widget.embedded)
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(
+                module: BadgeModule.warehouse,
+                routePrefix: '/warehouse/subcontract-outbound/',
+              ),
+            ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
@@ -347,6 +368,26 @@ class _WarehouseSubcontractOutboundWorkbenchState
   }
 
   List<MasterColumnDef<OutboundTask>> get _columns => [
+    MasterColumnDef(
+      key: 'status',
+      label: '状态',
+      width: 100,
+      value: (task) {
+        final drafts = subcontractOutboundTaskDrafts(
+          ref.read(formDraftsProvider),
+          task.issueId,
+        );
+        return drafts.isEmpty ? '待发料' : taskDraftStatus(drafts);
+      },
+      cellColor: (context, task) => utenStatusBadgeCellColor(
+        subcontractOutboundTaskDrafts(
+              ref.read(formDraftsProvider),
+              task.issueId,
+            ).isEmpty
+            ? UtenStatusBadgeType.success
+            : UtenStatusBadgeType.neutral,
+      ),
+    ),
     MasterColumnDef(
       key: 'issueBillNo',
       label: '领料单号',

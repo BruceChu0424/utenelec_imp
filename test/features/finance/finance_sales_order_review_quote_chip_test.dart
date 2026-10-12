@@ -2,6 +2,7 @@
 // 一致 / 有 N 行和报价不同」，明细多出报价单价/报价折扣/与报价，以及客户文件三列；
 // 非报价转入的老订单不出现这些内容(也不要求本地化实例)。列表状态列在一致时加注。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -27,8 +28,8 @@ class _Session extends SessionNotifier {
 
 class _Repo implements SalesOrderFinanceConfirmationRepository {
   _Repo(this.value);
-  final SalesOrderFinanceReview value;
-
+  SalesOrderFinanceReview value;
+  final List<int?> confirms = [];
   @override
   Future<SalesOrderFinanceReview> review(String orderId) async => value;
 
@@ -39,6 +40,7 @@ class _Repo implements SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,
@@ -55,6 +57,7 @@ class _Repo implements SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   }) async => const [];
 
   @override
@@ -66,7 +69,9 @@ class _Repo implements SalesOrderFinanceConfirmationRepository {
     String? remark,
     int? expectedRevision,
     String? expectedClaimId,
-  }) async {}
+  }) async {
+    confirms.add(expectedRevision);
+  }
 
   @override
   Future<void> confirmBatch(
@@ -90,6 +95,7 @@ Future<void> _pump(
   Map<String, dynamic> json, {
   bool localized = true,
   bool canViewQuote = true,
+  _Repo? repository,
 }) async {
   tester.view.physicalSize = const Size(2400, 1400);
   tester.view.devicePixelRatio = 1;
@@ -99,6 +105,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderFinanceView,
@@ -108,7 +115,7 @@ Future<void> _pump(
         sessionProvider.overrideWith(_Session.new),
         fixedBadgeSummaryOverride(),
         salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(
-          _Repo(review),
+          repository ?? _Repo(review),
         ),
         taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
       ],
@@ -163,6 +170,29 @@ List<String> _columnKeys(WidgetTester tester) => tester
     .toList();
 
 void main() {
+  testWidgets('销售财审金额只读，按已查看版本确认且不修改商业事实', (tester) async {
+    final json = _order();
+    final repository = _Repo(SalesOrderFinanceReview.fromJson(json));
+    await _pump(tester, json, repository: repository);
+    expect(find.byKey(const Key('sales-finance-save-edits')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('sales-finance-price-line-1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('sales-finance-discount-line-1')),
+      findsNothing,
+    );
+    expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.byKey(const Key('finance-review-confirm')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('finance-review-confirm-submit')));
+    await tester.pumpAndSettle();
+    expect(repository.confirms, [1]);
+    expect(repository.value.items.single.price, '100');
+    expect(repository.value.items.single.qty, '4');
+    expect(repository.value.items.single.discount, '0.95');
+  });
   testWidgets(
     'finance-only readers see the retained first-quote explanation without a sales history link',
     (tester) async {

@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.common.finance.ProcurementQuantities;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.port.ProcurementArrivalBlockedException;
 import com.uten.imp.common.concurrency.ProcurementMutationLocks;
@@ -142,6 +143,10 @@ public class WarehouseArrivalRegistrationService {
         tx.bind();
         if (request == null || request.lines() == null || request.lines().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "登记实际到货请求不能为空");
+        }
+        for (BatchArrivalLine line : request.lines()) {
+            if (line == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货明细不能为空");
+            validateArrivalQuantities(normalizeOrderType(line.orderType()), List.of(line.toArrivalLine()));
         }
         UUID makerId = currentUser.requireEmployeeId();
         String batchKey = normalizeIdempotencyKey(request.idempotencyKey());
@@ -305,6 +310,7 @@ public class WarehouseArrivalRegistrationService {
         UUID makerId = currentUser.requireEmployeeId();
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
         String orderType = normalizeOrderType(request.orderType());
+        validateArrivalQuantities(orderType, request.items());
         validateActualWeights(request.items());
         boolean stockInFirst = request.stockInBeforeInspectionRequested();
         if (stockInFirst) {
@@ -355,7 +361,8 @@ public class WarehouseArrivalRegistrationService {
             billNo = created.getBillNo();
             receiptLines = created.getItems() == null ? List.of() : created.getItems().stream()
                     .map(item -> new ReceiptLine(item.getId(), item.getLineNo(), item.getGoodsId(),
-                            item.getColorId(), item.getUnitId(), item.getUnitRate(), item.getQty(),
+                            item.getColorId(), item.getUnitId(), item.getUnitRate(),
+                            new BigDecimal(ProcurementQuantities.physicalText(item.getQuantitySemantics(), item.getQty(), item.getGiftQty())),
                             item.getWeight()))
                     .toList();
         } else {
@@ -729,7 +736,7 @@ public class WarehouseArrivalRegistrationService {
         return req;
     }
 
-    private List<ReceiptItemLine> purchaseLines(
+    static List<ReceiptItemLine> purchaseLines(
             WarehouseArrivalRegisterRequest request, List<BigDecimal> weights) {
         List<ReceiptItemLine> lines = new ArrayList<>(request.items().size());
         int autoLine = 1;
@@ -741,6 +748,7 @@ public class WarehouseArrivalRegistrationService {
             item.setUnitId(line.unitId());
             item.setUnitRate(line.unitRate());
             item.setQty(line.qty());
+            item.setGiftQty(line.giftQty());
             item.setReplacementIntent(line.replacementIntent());
             item.setWeight(weights.get(autoLine - 1));
             autoLine++;
@@ -889,7 +897,7 @@ public class WarehouseArrivalRegistrationService {
         String placeholders = String.join(", ",
                 Collections.nCopies(orderItemIds.size(), "?"));
         List<OrderHeader> headers = jdbc.query("""
-                SELECT DISTINCT order_doc.supplier_id, order_doc.currency_id,
+                SELECT DISTINCT order_doc.id AS source_order_id,order_doc.supplier_id, order_doc.currency_id,
                        order_doc.exchange_rate, order_doc.tax_rate,
                        order_doc.settlement_method_id
                 FROM %s order_item
@@ -898,10 +906,11 @@ public class WarehouseArrivalRegistrationService {
                 """.formatted(orderItemTable, orderTable, placeholders), (rs, rowNum) -> new OrderHeader(
                 rs.getObject("supplier_id", UUID.class),
                 rs.getObject("currency_id", UUID.class),
-                rs.getBigDecimal("exchange_rate"),
+                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(jdbc,orderType,
+                    rs.getObject("source_order_id",UUID.class),rs.getBigDecimal("exchange_rate")).rate(),
                 rs.getBigDecimal("tax_rate"),
                 rs.getObject("settlement_method_id", UUID.class)),
-                orderItemIds.toArray());
+                orderItemIds.toArray()).stream().distinct().toList();
         if (headers.size() != 1) {
             throw new ApiException(ErrorCode.CONFLICT,
                     "到货登记明细必须全部来自同一张财务批准的订货单");
@@ -1083,6 +1092,11 @@ public class WarehouseArrivalRegistrationService {
         for (var item : items) {
             appendHash(canonical, item == null ? null : item.goodsId());
             appendHash(canonical, item == null ? null : decimalText(item.qty()));
+            // Preserve pre-gift hashes for omitted/zero free quantities; a nonzero gift is a new intent.
+            if (item != null && item.giftQty() != null && item.giftQty().signum() != 0) {
+                appendHash(canonical, "giftQty");
+                appendHash(canonical, decimalText(item.giftQty()));
+            }
             appendHash(canonical, item == null ? null : item.orderItemId());
             appendHash(canonical, item == null ? null : item.colorId());
             appendHash(canonical, item == null ? null : item.unitId());
@@ -1126,6 +1140,18 @@ public class WarehouseArrivalRegistrationService {
 
     private static String decimalText(BigDecimal value) {
         return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
+    static void validateArrivalQuantities(String orderType, List<WarehouseArrivalRegisterRequest.ArrivalLine> lines) {
+        if (lines == null || lines.isEmpty()) throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货明细不能为空");
+        for (var line : lines) {
+            if (line == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货明细不能为空");
+            if (SUBCONTRACT.equals(orderType) && line.giftQty() != null && line.giftQty().signum() != 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外回厂不能混入采购赠品，请分别登记实际来源");
+            }
+            ProcurementQuantities.of(PURCHASE.equals(orderType) ? ProcurementQuantities.EXTRA_GIFT : ProcurementQuantities.LEGACY,
+                    line.qty(), line.giftQty(), BigDecimal.ONE);
+        }
     }
 
     private static void validateActualWeights(

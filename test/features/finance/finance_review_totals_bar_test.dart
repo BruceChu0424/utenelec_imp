@@ -5,6 +5,7 @@
 //  - 订货审批的折合项随汇率编辑联动（2026-10-10 改名「折合人民币」）；
 //  - 销售订单阶段不落本币事实，故销售审核详情不出「折合人民币」项。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
@@ -174,6 +175,7 @@ Future<void> _pumpProcurementReview(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.financeOrderApprovalView,
@@ -210,6 +212,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String status = 'PENDING',
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeWorkflowRepo(this.reviewResult);
 
@@ -224,6 +227,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     String? sort,
     String? order,
     String? billNo,
+    String status = 'PENDING',
   }) async => const FinanceProcurementApprovalPage(
     items: [],
     page: 1,
@@ -233,7 +237,7 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   );
 
   @override
-  Future<Map<String, int>> approvalTypeCounts() async => {'PURCHASE': 1};
+  Future<Map<String, int>> approvalTypeCounts({String status = 'PENDING'}) async => {'PURCHASE': 1};
 
   @override
   Future<FinanceProcurementApprovalReview> review(String caseId) async =>
@@ -300,6 +304,7 @@ Future<void> _pumpSalesReview(WidgetTester tester) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderFinanceView,
@@ -325,6 +330,7 @@ class _FakeSalesReviewRepo implements SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeSalesReviewRepo(this.reviewValue);
 
@@ -337,6 +343,7 @@ class _FakeSalesReviewRepo implements SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,

@@ -159,7 +159,7 @@ void main() {
       _item(api.arrivalBodies.single).containsKey('qtyFromWeight'),
       isFalse,
     );
-    expect(_item(api.arrivalBodies.single)['qty'], 5);
+    expect(_item(api.arrivalBodies.single)['qty'], '5');
   });
 
   testWidgets('实称重量: 后缀换千克提交, 幂等键带重量, 偏差出称重核对标签', (tester) async {
@@ -174,12 +174,21 @@ void main() {
     final grid = tester.widget<UtenEditableGrid<EditableGridRow>>(_grid());
     final labels = grid.columns.map((column) => column.label).toList();
     final qty = labels.indexOf('本次实收');
-    expect(labels[qty + 1], '实称重量(kg)');
-    expect(labels[qty + 2], '称重核对');
-    expect(labels[qty + 3], '入库仓库');
+    expect(labels.sublist(qty, qty + 6), [
+      '本次实收',
+      '赠品数量',
+      '实物数量',
+      '实称重量(kg)',
+      '称重核对',
+      '入库仓库',
+    ]);
     expect(labels.contains('单位'), isFalse);
     // 只读数量列单位内联；录入列单位挂输入框尾部。
-    expect(find.text('5 个'), findsOneWidget);
+    expect(
+      grid.columns.singleWhere((column) => column.key == 'physicalQty').label,
+      '实物数量',
+    );
+    expect(find.text('5 个'), findsNWidgets(2));
     expect(
       tester
           .widget<TextField>(
@@ -220,7 +229,7 @@ void main() {
     expect(api.arrivalBodies, hasLength(1));
     final first = api.arrivalBodies.single;
     expect(_item(first)['weight'], 0.02);
-    expect(_item(first)['qty'], 5);
+    expect(_item(first)['qty'], '5');
     expect(_item(first).containsKey('qtyFromWeight'), isFalse);
 
     // 改了重量再提交是另一个请求 (幂等键不同)。
@@ -290,7 +299,7 @@ void main() {
     await _submit(tester);
     await tester.pumpAndSettle(const Duration(seconds: 5));
     final item = _item(api.arrivalBodies.single);
-    expect(item['qty'], 9654);
+    expect(item['qty'], '9654');
     expect(item['weight'], 19.3);
     expect(item['qtyFromWeight'], isTrue);
   });

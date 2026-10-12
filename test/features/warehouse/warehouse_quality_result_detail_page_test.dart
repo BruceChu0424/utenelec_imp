@@ -124,6 +124,114 @@ void main() {
   );
 
   testWidgets(
+    'charged and gift releases are both counted and submitted by distinct event IDs',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1800, 1200);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final detail = {
+        ..._detailJson(),
+        'lines': [
+          for (final pair in [
+            ('charged-inspection', 'CHARGED', 10),
+            ('gift-inspection', 'GIFT', 1),
+          ])
+            {
+              'inspectionItemId': pair.$1,
+              'goodsId': 'same-goods',
+              'goodsCode': 'SAME',
+              'goodsName': '同一业务行材料',
+              'unitId': 'unit-1',
+              'unitName': '件',
+              'quantityTranche': pair.$2,
+              'lineStatus': 'RESOLVED',
+              'receivedBaseQty': pair.$3,
+              'passedBaseQty': pair.$3,
+              'failedBaseQty': 0,
+              'warehouseStockedBaseQty': 0,
+              'pendingStockBaseQty': pair.$3,
+            },
+        ],
+        'items': [
+          {
+            ..._sliceJson(
+              'charged-pass',
+              'charged-inspection',
+              'same-goods',
+              'SAME',
+              '同一业务行材料',
+              10,
+            ),
+            'quantityTranche': 'CHARGED',
+          },
+          {
+            ..._sliceJson(
+              'gift-pass',
+              'gift-inspection',
+              'same-goods',
+              'SAME',
+              '同一业务行材料',
+              1,
+            ),
+            'quantityTranche': 'GIFT',
+          },
+        ],
+      };
+      final gateway = _StockInGateway();
+      final prefs = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            warehouseQualityResultRepositoryProvider.overrideWithValue(
+              _QualityGateway(detail),
+            ),
+            warehouseIqcStockInRepositoryProvider.overrideWithValue(gateway),
+            warehouseIqcReturnRepositoryProvider.overrideWithValue(
+              _FailingReturnGateway(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.warehouseIqcStockInView,
+              Perm.warehouseIqcStockInConfirm,
+            }),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: const MaterialApp(
+            home: WarehouseQualityResultDetailPage(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-1',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('确认入库(2)'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-detail-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('赠品'), findsWidgets);
+      expect(find.textContaining('收费'), findsWidgets);
+      await tester.tap(
+        find.byKey(const Key('warehouse-inbound-allocation-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.confirmCalls, 1);
+      final items = gateway.lastCommand!.items;
+      expect(items.map((row) => row.passEventId).toSet(), {
+        'charged-pass',
+        'gift-pass',
+      });
+      expect(items.map((row) => row.baseQty).toList(), [10.0, 1.0]);
+      expect(items.map((row) => row.expectedRemainingBaseQty).toList(), [
+        10.0,
+        1.0,
+      ]);
+    },
+  );
+
+  testWidgets(
     'merged table joins verdicts and releasable slices with solo-confirm path',
     (tester) async {
       tester.view.devicePixelRatio = 1;

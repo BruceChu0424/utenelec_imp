@@ -110,6 +110,9 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
 class _ProductionDailyReportEditPageState
     extends ConsumerState<ProductionDailyReportEditPage>
     with FormDraftMixin<ProductionDailyReportEditPage> {
+  String? _savedWarehouseId;
+  String? _savedSupplierId;
+  String? _savedSourceDocNo;
   bool _saveOperationActive = false;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
@@ -760,14 +763,17 @@ class _ProductionDailyReportEditPageState
   }
 
   Future<void> _init() async {
+    bool isCurrent() => mounted;
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
+    if (!mounted || !isCurrent()) return;
     await _resolveDeptIds();
+    if (!mounted || !isCurrent()) return;
     if (widget.id != null) {
       try {
-        final d = await ref
-            .read(productionDailyReportRepositoryProvider)
-            .detail(widget.id!);
+        final repo = ref.read(productionDailyReportRepositoryProvider);
+        final d = await repo.detail(widget.id!);
+        if (!isCurrent()) return;
         final writable =
             d.status == kProductionStatusDraft &&
             await loadDocumentOwnerCanWrite(
@@ -775,7 +781,7 @@ class _ProductionDailyReportEditPageState
               DocumentDataScope.productionPlan,
               d.makerId,
             );
-        if (!mounted) return;
+        if (!mounted || !isCurrent()) return;
         if (!writable) {
           context.appWarning(documentScopeReadOnlyMessage, force: true);
           context.replace(RoutePath.productionDailyReportDetail(widget.id!));
@@ -789,7 +795,7 @@ class _ProductionDailyReportEditPageState
             .read(masterNameServiceProvider)
             .loadGoodsNamesWithCodes(goodsIds);
         await _preloadEmployees(d.workerIds);
-        if (!mounted) return;
+        if (!mounted || !isCurrent()) return;
         _billNo.text = d.billNo ?? '';
         _remark.text = d.remark ?? '';
         if (d.billDate != null) {
@@ -804,6 +810,9 @@ class _ProductionDailyReportEditPageState
         _makerName = d.makerName;
         _createdAt = d.createdAt;
         _rowVersion = d.rowVersion;
+        _savedWarehouseId = d.warehouseId;
+        _savedSupplierId = d.supplierId;
+        _savedSourceDocNo = d.sourceDocNo;
         // V583：已登记的实耗按需求 UUID 回填到重新拉取的台账行上(草稿还没记账，
         // 台账数字可能已被别人改动，所以只回填用户填过的数，不回填当时的上限)。
         _surplusReturnRequested = d.surplusReturnRequested;
@@ -874,11 +883,11 @@ class _ProductionDailyReportEditPageState
       }
     }
     if (_grid.isEmpty) _grid.addRow(DailyGridRow());
-    if (!mounted) return;
+    if (!mounted || !isCurrent()) return;
     final supplement = widget.initialSupplement;
     if (supplement != null) {
       final restored = await _restoreSupplementContext(supplement);
-      if (!mounted) return;
+      if (!mounted || !isCurrent()) return;
       if (!restored && widget.id == null && !_resumeBlocked) {
         final source = supplement.sourceLine;
         if (source == null ||
@@ -914,9 +923,9 @@ class _ProductionDailyReportEditPageState
         await _loadInitialSources(initialIds);
       }
     }
-    if (!mounted) return;
+    if (!mounted || !isCurrent()) return;
     await _reloadMaterialRows();
-    if (mounted) {
+    if (mounted && isCurrent()) {
       setState(() => _loading = false);
       await initializeFormDraft();
     }
@@ -3161,6 +3170,9 @@ class _ProductionDailyReportEditPageState
               '${widget.id}|$_rowVersion',
             ),
       if (widget.id != null) 'expectedVersion': _rowVersion,
+      if (_savedWarehouseId != null) 'warehouseId': _savedWarehouseId,
+      if (_savedSupplierId != null) 'supplierId': _savedSupplierId,
+      if (_savedSourceDocNo != null) 'sourceDocNo': _savedSourceDocNo,
       if (_departmentId != null) 'departmentId': _departmentId,
       if (_workshopName != null && _workshopName!.trim().isNotEmpty)
         'workshopName': _workshopName,
@@ -3281,9 +3293,13 @@ class _ProductionDailyReportEditPageState
               _createReceiptCheckpoint = resolution.toCheckpoint();
               return resolution.detail!;
             }, isDefiniteRejection: mayTreatCreateAsRejected)
-          : await requestScope.run(
-              () => repo.update(widget.id!, body, expectedVersion: _rowVersion),
-            );
+          : await requestScope.run(() async {
+              return repo.update(
+                widget.id!,
+                body,
+                expectedVersion: _rowVersion,
+              );
+            });
       if (!ownsSubmission()) {
         if (widget.id == null) holdFormDraftForReadRecovery();
         return;

@@ -1945,7 +1945,7 @@ String _statusText(String status) => switch (status) {
   'IN_PROGRESS' => '生产中',
   'COMPLETED' => '已完成',
   'CANCELLED' => '已取消',
-  'REVERSED' => '已红冲',
+  'REVERSED' => '已撤回',
   _ => status,
 };
 

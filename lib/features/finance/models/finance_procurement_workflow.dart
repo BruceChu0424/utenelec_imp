@@ -589,6 +589,7 @@ class FinanceProcurementReviewHistoryEntry {
   final String? reason;
 
   String get eventLabel => switch (eventType.toUpperCase()) {
+    'FINANCE_EDIT' => '财务修改',
     'SUBMITTED' => '提交财务审核',
     'APPROVED' => '财务通过',
     'REJECTED' => '财务驳回',

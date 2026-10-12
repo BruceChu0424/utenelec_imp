@@ -2,16 +2,18 @@
 // 文档：docs/02-组件库/UtenBrandMascot.md（资产路径来自 UtenAssets，禁止硬编码）。
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/brand/uten_brand_mascot.dart';
 import '../../../core/constants/assets.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../models/notice.dart';
 
 /// 庆典吉祥物：生日 / 周年 / 新婚 / 新生儿 各一张「小优」美术（assets/celebration/）。
 ///
 /// 美术文件未提供时通过 [Image.errorBuilder] 回落到 [UtenBrandMascot]（logo_ip.png），
 /// 保证功能先上线、视觉随后替换。
-class CelebrationMascot extends StatelessWidget {
+class CelebrationMascot extends ConsumerWidget {
   const CelebrationMascot({super.key, required this.type, this.size = 160});
 
   final NoticeType type;
@@ -26,7 +28,10 @@ class CelebrationMascot extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!ref.watch(platformBrandingSnapshotProvider).usesDefaultArtwork) {
+      return UtenBrandMascot.size(size);
+    }
     return SizedBox(
       width: size,
       height: size,

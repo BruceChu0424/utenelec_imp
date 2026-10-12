@@ -25,6 +25,8 @@
         <uten.test.jvm.args></uten.test.jvm.args>
         <!-- Explicit runner heap cap only; keep ordinary Maven/JVM ergonomics unchanged. -->
         <uten.test.jvm.heap.args></uten.test.jvm.heap.args>
+        <!-- Bound retained migrated Spring contexts in full-suite JVMs. -->
+        <uten.test.context.cache.maxSize>8</uten.test.context.cache.maxSize>
         <jjwt.version>0.12.6</jjwt.version>
         <bucket4j.version>8.10.1</bucket4j.version>
         <aliyun-sms.version>4.6.0</aliyun-sms.version>
@@ -239,7 +241,13 @@
     <build>
         <directory>${uten.build.directory}</directory>
         <resources>
-            <resource><directory>src/main/resources</directory></resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <excludes>
+                    <exclude>**/.mimosa/**</exclude>
+                    <exclude>legacy-migration/**</exclude>
+                </excludes>
+            </resource>
             <resource>
                 <directory>../assets/fonts</directory>
                 <targetPath>fonts</targetPath>
@@ -315,6 +323,16 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/.mimosa/**</exclude>
+                        <exclude>legacy-migration/**</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <proc>full</proc>
@@ -335,6 +353,7 @@
                     <systemPropertyVariables>
                         <!-- Isolated builds and test forks must not roll the live dev log. -->
                         <logging.file.name>${project.build.directory}/logs/surefire-${surefire.forkNumber}.log</logging.file.name>
+                        <spring.test.context.cache.maxSize>${uten.test.context.cache.maxSize}</spring.test.context.cache.maxSize>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
@@ -353,6 +372,7 @@
                     <argLine>${uten.test.jvm.args} ${uten.test.jvm.heap.args}</argLine>
                     <systemPropertyVariables>
                         <logging.file.name>${project.build.directory}/logs/failsafe-${surefire.forkNumber}.log</logging.file.name>
+                        <spring.test.context.cache.maxSize>${uten.test.context.cache.maxSize}</spring.test.context.cache.maxSize>
                         <uten.packaging.application-jar>${project.build.directory}/${project.build.finalName}.jar</uten.packaging.application-jar>
                         <uten.packaging.migrator-jar>${project.build.directory}/uten-imp-migrator.jar</uten.packaging.migrator-jar>
                         <uten.packaging.migration-source>${project.basedir}/src/main/resources/db/migration</uten.packaging.migration-source>

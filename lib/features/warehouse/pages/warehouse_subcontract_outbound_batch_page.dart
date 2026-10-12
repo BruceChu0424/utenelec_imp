@@ -7,6 +7,8 @@
 // 单张拣货页「退回委外(不发)」。
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,10 +30,15 @@ import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/form_draft_values.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
@@ -47,6 +54,7 @@ import '../repositories/warehouse_subcontract_outbound_repository.dart';
 import '../repositories/subcontract_outbound_detail_loader.dart';
 import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../widgets/subcontract_outbound_detail_table.dart';
+import '../models/warehouse_form_draft_codec.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
 
 class WarehouseSubcontractOutboundBatchPage extends ConsumerStatefulWidget {
@@ -103,7 +111,8 @@ class _BatchDraft {
 /// Opening this page performs reads only. Confirmation saves and approves each
 /// draw document's own EC draft, preserving supplier, plan UUIDs and quantities.
 class _WarehouseSubcontractOutboundBatchPageState
-    extends ConsumerState<WarehouseSubcontractOutboundBatchPage> {
+    extends ConsumerState<WarehouseSubcontractOutboundBatchPage>
+    with FormDraftMixin<WarehouseSubcontractOutboundBatchPage> {
   final _drafts = <_BatchDraft>[];
   final _employees = <String, UtenEmployeePickerItem>{};
   bool _loading = true;
@@ -113,6 +122,166 @@ class _WarehouseSubcontractOutboundBatchPageState
   String? _error;
   int _loadGeneration = 0;
   Set<String> _submittedDraftIds = {};
+  final Set<String> _completedIssueIds = {};
+  final Map<String, Map<String, dynamic>> _retainedUncertainInputs = {};
+  bool _savedExitReady = false;
+
+  @override
+  bool get formDraftBusy => _loading || _saving || _confirming;
+  // Every command targets a confirmed existing issue UUID. Unknown rows stay
+  // outside the pending queue; only untouched rows may start a new operation.
+  @override
+  bool get formDraftCanReplaySubmission => true;
+  @override
+  bool get formDraftHasConfirmedExternalRecovery => _savedExitReady;
+  @override
+  bool get formDraftHasUnknownSubmission => _drafts.any(
+    (draft) => const {
+      SubcontractOutboundExecutionState.saving,
+      SubcontractOutboundExecutionState.approving,
+      SubcontractOutboundExecutionState.needsVerification,
+    }.contains(draft.state),
+  );
+  @override
+  Widget? get formDraftSubmissionRecoveryAction => UtenButton(
+    type: UtenButtonType.secondary,
+    onPressed: _saving || _loading ? null : _verify,
+    child: const Text('核对出仓结果'),
+  );
+  @override
+  FormDraftSpec get formDraftSpec =>
+      FormDraftCatalog.subcontractOutboundBatch.spec(
+        route: Uri(
+          path: '/warehouse/subcontract-outbound/batch',
+          queryParameters: {'issueIds': widget.issueIds.join(',')},
+        ).toString(),
+      );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    for (final draft in _drafts) ...[
+      draft.remark,
+      for (final row in draft.lines) ...[
+        row.qty,
+        row.remarkController,
+        row.weight.weight,
+      ],
+    ],
+  ];
+
+  Map<String, dynamic> _sourceIdentity(SubcontractOutboundLineDraft row) => {
+    'goodsId': row.item.goodsId ?? row.line.goodsId,
+    'colorId': row.item.colorId,
+    'unitId': row.item.unitId,
+    'unitRate': row.item.unitRate,
+    'orderItemId': row.item.orderItemId,
+    'planItemId': row.line.planItemId,
+    'requestedQty': row.line.requestedQty,
+  };
+
+  Map<String, dynamic> _captureInput(_BatchDraft draft) => {
+    'issueId': draft.document.id,
+    'serverFingerprint': subcontractOutboundDraftFingerprint(draft.document),
+    'state': draft.state.name,
+    'warehouseId': draft.warehouseId,
+    'workerId': draft.workerId,
+    'billDate': draft.date.toIso8601String(),
+    'deliverDate': draft.deliveryDate?.toIso8601String(),
+    'remark': draft.remark.text,
+    'rows': [
+      for (final row in draft.lines)
+        {
+          'planItemId': row.line.planItemId,
+          'sourceIdentity': _sourceIdentity(row),
+          'qty': row.qty.text,
+          'qtyAutofilled': row.qty.autofilled,
+          'weight': weightEntryDraft(row.weight.weight, qty: row.qty),
+          'remark': row.remarkController.text,
+          'selected': row.selected,
+        },
+    ],
+  };
+
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'issueIds': widget.issueIds,
+    'completed': _completedIssueIds.toList(),
+    'submittedIssueIds': _submittedDraftIds.toList(),
+    'changed': _changed,
+    'documents': [
+      for (final draft in _drafts)
+        _retainedUncertainInputs[draft.document.id] ?? _captureInput(draft),
+    ],
+  };
+
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _submittedDraftIds = draftStrings(data['submittedIssueIds']).toSet();
+    _changed = data['changed'] == true;
+    final byId = {for (final draft in _drafts) draft.document.id: draft};
+    for (final saved in draftMaps(data['documents'])) {
+      final id = saved['issueId'];
+      if (_completedIssueIds.contains(id)) continue;
+      final draft = byId[id];
+      if (draft == null) throw const FormatException('领料单来源已变化，原填写草稿继续保留');
+      final unknown = const [
+        'saving',
+        'approving',
+        'needsVerification',
+      ].contains(saved['state']);
+      if (unknown) {
+        draft.state = SubcontractOutboundExecutionState.needsVerification;
+        draft.error = '上次提交结果待核对，请先核对出仓结果，不能重新发送';
+        _retainedUncertainInputs[draft.document.id] = {
+          ...saved,
+          'state': SubcontractOutboundExecutionState.needsVerification.name,
+        };
+      } else if (saved['serverFingerprint'] !=
+          subcontractOutboundDraftFingerprint(draft.document)) {
+        throw const FormatException('领料单被其他人修改过，原填写草稿继续保留；请核对最新领料单');
+      }
+      final savedRows = draftMaps(saved['rows']);
+      final rows = {for (final row in draft.lines) row.line.planItemId: row};
+      final matches =
+          rows.length == draft.lines.length &&
+          savedRows.length == draft.lines.length &&
+          savedRows.map((row) => row['planItemId']).toSet().length ==
+              savedRows.length &&
+          savedRows.every((value) {
+            final row = rows[value['planItemId']];
+            return row != null &&
+                value['sourceIdentity'] is Map &&
+                mapEquals(
+                  (value['sourceIdentity'] as Map).cast<String, dynamic>(),
+                  _sourceIdentity(row),
+                );
+          });
+      if (!matches) {
+        if (unknown) continue;
+        throw const FormatException('领料明细来源已变化，原填写草稿继续保留；禁止按货品猜测恢复');
+      }
+      draft.warehouseId = saved['warehouseId'] as String?;
+      draft.workerId = saved['workerId'] as String?;
+      draft.date =
+          DateTime.tryParse(draftText(saved, 'billDate')) ?? draft.date;
+      draft.deliveryDate = DateTime.tryParse(draftText(saved, 'deliverDate'));
+      draft.remark.text = draftText(saved, 'remark');
+      for (final value in savedRows) {
+        final row = rows[value['planItemId']]!;
+        if (value['qtyAutofilled'] == true) {
+          row.qty.setAutomaticText(draftText(value, 'qty'));
+        } else {
+          row.qty.text = draftText(value, 'qty');
+        }
+        restoreWeightEntryDraft(
+          row.weight.weight,
+          value['weight'],
+          qty: row.qty,
+        );
+        row.remarkController.text = draftText(value, 'remark');
+        row.selected = value['selected'] != false;
+      }
+    }
+  }
 
   // 2026-09-22 全站表格滚动口径：出仓明细表表头吸顶 + 置顶后才显示页面滚动条。
   final ScrollController _pageScroll = ScrollController();
@@ -136,6 +305,7 @@ class _WarehouseSubcontractOutboundBatchPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -169,16 +339,65 @@ class _WarehouseSubcontractOutboundBatchPageState
       final docRepo = ref.read(
         subcontractRepositoryProvider(SubcontractDocType.materialIssue),
       );
+      await ref.read(formDraftsProvider.notifier).ready;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      final resumeId = goRouterPageStateOrNull(
+        context,
+      )?.uri.queryParameters['draftId'];
+      final resume = ref
+          .read(formDraftsProvider)
+          .where((draft) => draft.id == resumeId)
+          .firstOrNull;
+      final savedCompleted = resume == null
+          ? <String>{}
+          : draftStrings(resume.data['completed']).toSet();
+      final savedIds = resume == null
+          ? <String>{}
+          : draftStrings(resume.data['issueIds']).toSet();
+      if (resume != null &&
+          (!setEquals(savedIds, ids.toSet()) ||
+              !formDraftSpec.canRestore(
+                resume,
+                currentRoute: formDraftSpec.route,
+              ))) {
+        throw const FormatException('本机草稿不是这批领料单，不能跨任务恢复');
+      }
+      final documents = await readOutboundInBatches(ids, docRepo.detail);
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !formDraftIdentityIsCurrent) {
+        return;
+      }
+      final remainingIds = <String>[];
+      for (final document in documents) {
+        if (document.status == 1 && resume != null) {
+          _completedIssueIds.add(document.id);
+        } else if (savedCompleted.contains(document.id) ||
+            document.status != 0) {
+          throw FormatException(l10n.warehouseSubcontractOutboundChanged);
+        } else {
+          remainingIds.add(document.id);
+        }
+      }
       final results = await Future.wait([
         ref.read(masterNameServiceProvider).ensureWarehousesLoaded(),
-        loadSubcontractOutboundDetails(
-          issueIds: ids,
-          taskDetail: taskRepo.taskDetail,
-          documentDetail: docRepo.detail,
-        ),
+        readOutboundInBatches(remainingIds, taskRepo.taskDetail),
       ]);
-      if (!mounted || generation != _loadGeneration) return;
-      final bundles = results[1] as List<SubcontractOutboundReadBundle>;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !formDraftIdentityIsCurrent) {
+        return;
+      }
+      final documentById = {
+        for (final document in documents) document.id: document,
+      };
+      final bundles = [
+        for (final task in results[1] as List<OutboundTaskDetail>)
+          SubcontractOutboundReadBundle(
+            task: task,
+            document: documentById[task.issueId]!,
+          ),
+      ];
       final weightUnit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
       final defaultWorker = ref.read(sessionProvider).user?.employeeId;
       for (final bundle in bundles) {
@@ -223,6 +442,10 @@ class _WarehouseSubcontractOutboundBatchPageState
       unawaited(
         _preloadEmployees(loaded.map((draft) => draft.workerId), generation),
       );
+      await initializeFormDraft();
+      if (_drafts.isEmpty && _completedIssueIds.isNotEmpty && mounted) {
+        await _finishCompletedSubmission();
+      }
     } catch (error) {
       for (final draft in loaded) {
         draft.dispose();
@@ -246,7 +469,11 @@ class _WarehouseSubcontractOutboundBatchPageState
     await readOutboundInBatches(ids, (id) async {
       try {
         final employee = await repo.getById(id);
-        if (!mounted || generation != _loadGeneration) return;
+        if (!mounted ||
+            generation != _loadGeneration ||
+            !formDraftIdentityIsCurrent) {
+          return;
+        }
         setState(
           () => _employees[id] = UtenEmployeePickerItem(
             id: employee.id,
@@ -262,7 +489,20 @@ class _WarehouseSubcontractOutboundBatchPageState
     });
   }
 
-  void _finishCompletedSubmission() {
+  Future<void> _finishCompletedSubmission() async {
+    if (_drafts.every(
+      (draft) => draft.state == SubcontractOutboundExecutionState.completed,
+    )) {
+      await completeFormDraft();
+    } else {
+      await saveFormDraftNow();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      _savedExitReady =
+          widget.onCompleted != null ||
+          GoRouter.maybeOf(context) != null ||
+          Navigator.of(context).canPop();
+    }
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     setState(() {
       _saving = false;
       _confirming = false;
@@ -271,7 +511,7 @@ class _WarehouseSubcontractOutboundBatchPageState
       widget.onCompleted!();
     } else if (GoRouter.maybeOf(context) != null) {
       returnToSubcontractOutboundTasks(context);
-    } else {
+    } else if (Navigator.of(context).canPop()) {
       unawaited(Navigator.of(context).maybePop(true));
     }
   }
@@ -344,20 +584,24 @@ class _WarehouseSubcontractOutboundBatchPageState
       );
       _submittedDraftIds = targets.map((draft) => draft.document.id).toSet();
       for (final draft in targets) {
+        if (!mounted || !formDraftIdentityIsCurrent) break;
         var writeStarted = false;
         try {
           // Re-read the exact EC draft. Never overwrite a draft that another
           // employee (or the subcontract side) has changed since it was read.
           final document = draft.document;
           final fresh = await repo.detail(document.id);
+          if (!mounted || !formDraftIdentityIsCurrent) break;
           if (subcontractOutboundDraftFingerprint(fresh) !=
               subcontractOutboundDraftFingerprint(document)) {
             throw FormatException(l10n.warehouseSubcontractOutboundChanged);
           }
-          writeStarted = true;
           setState(
             () => draft.state = SubcontractOutboundExecutionState.saving,
           );
+          await saveFormDraftNow();
+          if (!mounted || !formDraftIdentityIsCurrent) break;
+          writeStarted = true;
           draft.document = await repo.update(document.id, {
             'billDate': _date(draft.date),
             'supplierId': document.supplierId,
@@ -373,7 +617,9 @@ class _WarehouseSubcontractOutboundBatchPageState
             'items': subcontractOutboundPayloadItems(draft.lines),
           });
           _changed = true;
+          if (!mounted || !formDraftIdentityIsCurrent) break;
           final beforeApproval = await repo.detail(draft.document.id);
+          if (!mounted || !formDraftIdentityIsCurrent) break;
           if (subcontractOutboundDraftFingerprint(beforeApproval) !=
               subcontractOutboundDraftFingerprint(draft.document)) {
             throw FormatException(l10n.warehouseSubcontractOutboundChanged);
@@ -381,16 +627,23 @@ class _WarehouseSubcontractOutboundBatchPageState
           setState(
             () => draft.state = SubcontractOutboundExecutionState.approving,
           );
+          await saveFormDraftNow();
+          if (!mounted || !formDraftIdentityIsCurrent) break;
           final approved = await repo.approve(draft.document.id);
+          if (!mounted || !formDraftIdentityIsCurrent) break;
           if (approved.status != 1) {
-            throw FormatException(l10n.warehouseSubcontractOutboundUncertain);
+            throw StateError(l10n.warehouseSubcontractOutboundUncertain);
           }
           draft.document = approved;
           setState(() {
             draft.state = SubcontractOutboundExecutionState.completed;
             draft.error = null;
+            _completedIssueIds.add(draft.document.id);
+            _retainedUncertainInputs.remove(draft.document.id);
           });
+          await saveFormDraftNow();
         } catch (error) {
+          if (!mounted || !formDraftIdentityIsCurrent) break;
           final uncertain =
               writeStarted &&
               error is! FormatException &&
@@ -407,6 +660,7 @@ class _WarehouseSubcontractOutboundBatchPageState
                 : _message(error);
           });
           _changed = _changed || writeStarted;
+          await checkpointFormDraftAfterCreation();
           break;
         }
       }
@@ -424,7 +678,7 @@ class _WarehouseSubcontractOutboundBatchPageState
       if (targets.every(
         (draft) => draft.state == SubcontractOutboundExecutionState.completed,
       )) {
-        _finishCompletedSubmission();
+        await _finishCompletedSubmission();
       }
     } finally {
       if (mounted) {
@@ -449,6 +703,7 @@ class _WarehouseSubcontractOutboundBatchPageState
       )) {
         try {
           final fresh = await repo.detail(draft.document.id);
+          if (!mounted || !formDraftIdentityIsCurrent) return;
           // A draft still visible after a timeout is not proof that an earlier
           // mutation cannot commit later. Keep it blocked; verification is GET only.
           if (fresh.status == 1) {
@@ -456,6 +711,8 @@ class _WarehouseSubcontractOutboundBatchPageState
               draft.document = fresh;
               draft.state = SubcontractOutboundExecutionState.completed;
               draft.error = null;
+              _completedIssueIds.add(draft.document.id);
+              _retainedUncertainInputs.remove(draft.document.id);
             });
           }
         } catch (error) {
@@ -463,17 +720,21 @@ class _WarehouseSubcontractOutboundBatchPageState
         }
       }
       invalidateWarehouseTaskCounts(ref);
+      await saveFormDraftNow();
       if (mounted &&
           _submittedDraftIds.isNotEmpty &&
           _submittedDraftIds.every(
-            (id) => _drafts.any(
-              (draft) =>
-                  draft.document.id == id &&
-                  draft.state == SubcontractOutboundExecutionState.completed,
-            ),
+            (id) =>
+                _drafts.any(
+                  (draft) =>
+                      draft.document.id == id &&
+                      draft.state ==
+                          SubcontractOutboundExecutionState.completed,
+                ) ||
+                _completedIssueIds.contains(id),
           )) {
         context.appSuccess(l10n.warehouseSubcontractOutboundDone);
-        _finishCompletedSubmission();
+        await _finishCompletedSubmission();
       }
     } finally {
       if (mounted) {
@@ -500,162 +761,168 @@ class _WarehouseSubcontractOutboundBatchPageState
     ref.watch(currentPermissionsProvider);
     final names = ref.watch(masterNameServiceProvider);
     final pending = _drafts.any((draft) => draft.pending && draft.selected);
-    return PopScope(
-      canPop: !_saving && !_confirming,
-      child: Scaffold(
-        appBar: UtenAppBar(
-          title: l10n.warehouseSubcontractOutboundBatchTitle,
-          leading: UtenBackButton(
-            onPressed: _saving || _confirming
-                ? null
-                : () => Navigator.of(context).pop(_changed),
+    return withFormDraft(
+      PopScope(
+        canPop: !_saving && !_confirming,
+        child: Scaffold(
+          appBar: UtenAppBar(
+            title: l10n.warehouseSubcontractOutboundBatchTitle,
+            leading: UtenBackButton(
+              onPressed: _saving || _confirming
+                  ? null
+                  : () => Navigator.of(context).pop(_changed),
+            ),
           ),
-        ),
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: SafeArea(
-                child: UtenContentContainer.wide(
-                  child: _loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _error != null
-                      ? UtenEmpty.error(
-                          message: _error,
-                          actionLabel: l10n.commonRetry,
-                          onAction: _load,
-                        )
-                      : AbsorbPointer(
-                          absorbing: _saving || _confirming,
-                          child: UtenGridPageScrollbar(
-                            pinned: _gridPinned,
-                            controller: _pageScroll,
-                            child: ListView(
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: SafeArea(
+                  child: UtenContentContainer.wide(
+                    child: _loading
+                        ? const Center(child: CircularProgressIndicator())
+                        : _error != null
+                        ? UtenEmpty.error(
+                            message: _error,
+                            actionLabel: l10n.commonRetry,
+                            onAction: _load,
+                          )
+                        : AbsorbPointer(
+                            absorbing: _saving || _confirming,
+                            child: UtenGridPageScrollbar(
+                              pinned: _gridPinned,
                               controller: _pageScroll,
-                              padding: const EdgeInsets.fromLTRB(
-                                UtenSpacing.s12,
-                                UtenSpacing.s16,
-                                UtenSpacing.s12,
-                                UtenFloatingActionGroup.scrollClearance,
-                              ),
-                              children: [
-                                _headers(),
-                                for (final draft in _drafts)
-                                  if (draft.error != null)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: UtenSpacing.s8,
-                                      ),
-                                      child: Text(
-                                        '${draft.detail.orderBillNo ?? '—'}: ${draft.error}',
-                                        style: TextStyle(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.error,
-                                        ),
-                                      ),
-                                    ),
-                                // 明细表紧接单据卡，不再写「出库明细」标题:
-                                // 页面本身就叫批量出库详情，表头已说明每列是什么。
-                                const SizedBox(height: UtenSpacing.s16),
-                                SubcontractOutboundDetailTable(
-                                  stickyHeaderPinned: _gridPinned,
-                                  rows: [
-                                    for (final draft in _drafts)
-                                      for (final line in draft.lines)
-                                        SubcontractOutboundTableRow(
-                                          draft: line,
-                                          warehouse: names.warehouse(
-                                            draft.warehouseId,
-                                          ),
-                                          orderBillNo: draft.detail.orderBillNo,
-                                          supplierName:
-                                              draft.detail.supplierName,
-                                          documentNo:
-                                              draft.detail.issueBillNo ??
-                                              draft.document.billNo,
-                                          documentRemark: draft.remark,
-                                          warehouseId: draft.warehouseId,
-                                          warehouses: names.warehouseHierarchy,
-                                          onWarehouseChanged: (value) =>
-                                              setState(
-                                                () => draft.warehouseId = value,
-                                              ),
-                                          status: _status(draft),
-                                          editable: draft.pending,
-                                        ),
-                                  ],
-                                  editable: _canExecute,
-                                  selectable: true,
-                                  onRowSelected: (row, selected) {
-                                    final document = _drafts.firstWhere(
-                                      (draft) =>
-                                          draft.lines.contains(row.draft),
-                                    );
-                                    // 按整张领料单勾选: 一张单要么整单出库, 要么整单不动。
-                                    for (final line in document.lines) {
-                                      line.selected = selected;
-                                    }
-                                  },
-                                  showOrder: true,
-                                  onChanged: () => setState(() {}),
+                              child: ListView(
+                                controller: _pageScroll,
+                                padding: const EdgeInsets.fromLTRB(
+                                  UtenSpacing.s12,
+                                  UtenSpacing.s16,
+                                  UtenSpacing.s12,
+                                  UtenFloatingActionGroup.scrollClearance,
                                 ),
-                              ],
+                                children: [
+                                  _headers(),
+                                  for (final draft in _drafts)
+                                    if (draft.error != null)
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: UtenSpacing.s8,
+                                        ),
+                                        child: Text(
+                                          '${draft.detail.orderBillNo ?? '—'}: ${draft.error}',
+                                          style: TextStyle(
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.error,
+                                          ),
+                                        ),
+                                      ),
+                                  // 明细表紧接单据卡，不再写「出库明细」标题:
+                                  // 页面本身就叫批量出库详情，表头已说明每列是什么。
+                                  const SizedBox(height: UtenSpacing.s16),
+                                  SubcontractOutboundDetailTable(
+                                    stickyHeaderPinned: _gridPinned,
+                                    rows: [
+                                      for (final draft in _drafts)
+                                        for (final line in draft.lines)
+                                          SubcontractOutboundTableRow(
+                                            draft: line,
+                                            warehouse: names.warehouse(
+                                              draft.warehouseId,
+                                            ),
+                                            orderBillNo:
+                                                draft.detail.orderBillNo,
+                                            supplierName:
+                                                draft.detail.supplierName,
+                                            documentNo:
+                                                draft.detail.issueBillNo ??
+                                                draft.document.billNo,
+                                            documentRemark: draft.remark,
+                                            warehouseId: draft.warehouseId,
+                                            warehouses:
+                                                names.warehouseHierarchy,
+                                            onWarehouseChanged: (value) =>
+                                                setState(
+                                                  () =>
+                                                      draft.warehouseId = value,
+                                                ),
+                                            status: _status(draft),
+                                            editable: draft.pending,
+                                          ),
+                                    ],
+                                    editable: _canExecute,
+                                    selectable: true,
+                                    onRowSelected: (row, selected) {
+                                      final document = _drafts.firstWhere(
+                                        (draft) =>
+                                            draft.lines.contains(row.draft),
+                                      );
+                                      // 按整张领料单勾选: 一张单要么整单出库, 要么整单不动。
+                                      for (final line in document.lines) {
+                                        line.selected = selected;
+                                      }
+                                    },
+                                    showOrder: true,
+                                    onChanged: () => setState(() {}),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
+                  ),
                 ),
               ),
-            ),
-            if (_saving)
-              Positioned.fill(
-                child: UtenBusyOverlay(title: l10n.commonLoading),
-              ),
-          ],
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: _loading || _error != null
-            ? null
-            : UtenFloatingActionGroup(
-                children: [
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    size: UtenButtonSize.large,
-                    onPressed: _saving || _confirming
-                        ? null
-                        : () => Navigator.of(context).pop(_changed),
-                    child: Text(l10n.commonBack),
-                  ),
-                  if (_drafts.any(
-                    (draft) =>
-                        draft.state ==
-                        SubcontractOutboundExecutionState.needsVerification,
-                  ))
+              if (_saving)
+                Positioned.fill(
+                  child: UtenBusyOverlay(title: l10n.commonLoading),
+                ),
+            ],
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
+          floatingActionButton: _loading || _error != null
+              ? null
+              : UtenFloatingActionGroup(
+                  children: [
                     UtenButton(
                       type: UtenButtonType.secondary,
                       size: UtenButtonSize.large,
-                      isLoading: _saving,
-                      onPressed: _saving ? null : _verify,
-                      child: Text(l10n.warehouseSubcontractOutboundVerify),
+                      onPressed: _saving || _confirming
+                          ? null
+                          : () => Navigator.of(context).pop(_changed),
+                      child: Text(l10n.commonBack),
                     ),
-                  if (_canExecute)
-                    UtenButton(
-                      key: const Key('subcontract-outbound-batch-confirm'),
-                      type: UtenButtonType.danger,
-                      size: UtenButtonSize.large,
-                      icon: Icons.outbound_outlined,
-                      isLoading: _saving,
-                      onPressed: pending && !_saving && !_confirming
-                          ? _submit
-                          : null,
-                      child: Text(
-                        _changed
-                            ? l10n.warehouseSubcontractOutboundContinue
-                            : l10n.warehouseSubcontractOutboundBatchConfirm,
+                    if (_drafts.any(
+                      (draft) =>
+                          draft.state ==
+                          SubcontractOutboundExecutionState.needsVerification,
+                    ))
+                      UtenButton(
+                        type: UtenButtonType.secondary,
+                        size: UtenButtonSize.large,
+                        isLoading: _saving,
+                        onPressed: _saving ? null : _verify,
+                        child: Text(l10n.warehouseSubcontractOutboundVerify),
                       ),
-                    ),
-                ],
-              ),
+                    if (_canExecute)
+                      UtenButton(
+                        key: const Key('subcontract-outbound-batch-confirm'),
+                        type: UtenButtonType.danger,
+                        size: UtenButtonSize.large,
+                        icon: Icons.outbound_outlined,
+                        isLoading: _saving,
+                        onPressed: pending && !_saving && !_confirming
+                            ? _submit
+                            : null,
+                        child: Text(
+                          _changed
+                              ? l10n.warehouseSubcontractOutboundContinue
+                              : l10n.warehouseSubcontractOutboundBatchConfirm,
+                        ),
+                      ),
+                  ],
+                ),
+        ),
       ),
     );
   }

@@ -99,6 +99,11 @@ class InventoryPositionPostgresTest {
     }
     @AfterAll static void stop(){if(emf!=null)emf.close();DB.stop();}
 
+    private static List<Integer> readinessRowCounts(){
+        return List.of("stock_value_pools","stock_value_nodes","stock_value_events","stock_value_position_transfers","stock_value_postings","stock_movements")
+                .stream().map(table->db.queryForObject("SELECT count(*) FROM "+table,Integer.class)).toList();
+    }
+
     @Test void multiPartSingleMovementKeepsExactInputsAndLaterCostsReachSoldAndWarehouseParts(){
         PoolKey k=key();PositionValue first=acquire(k,"10","100","0",true,List.of());
         PositionValue second=acquire(k,"10","200","0",true,List.of());
@@ -133,6 +138,15 @@ class InventoryPositionPostgresTest {
         MovementValue second=storeInPool(actual,List.of(slice(passed.positionRootId(),"3")));
         physicalPool(actual,"7","86.4197");
         money(ownedInPool(suggested,"QUALITY_PASSED"),"37.0370");
+
+        var withdrawals=List.of(new StoreWithdrawal(actual,second.movementId(),false),new StoreWithdrawal(actual,first.movementId(),false));
+        List<Integer> beforeRead=readinessRowCounts();
+        String snapshot=positions.requireStoresReversible(withdrawals);
+        assertThat(snapshot).matches("[a-f0-9]{64}");
+        assertThat(positions.requireStoresReversible(withdrawals)).isEqualTo(snapshot);
+        assertThatThrownBy(()->positions.requireStoresReversible(List.of(new StoreWithdrawal(actual,first.movementId(),false))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("其它未撤回入库");
+        assertThat(readinessRowCounts()).isEqualTo(beforeRead);
 
         EventContext secondReversal=context();
         ReverseStore secondCommand=new ReverseStore(secondReversal,UUID.randomUUID(),actual,bd("7"),second.movementId());
@@ -182,6 +196,10 @@ class InventoryPositionPostgresTest {
                 .isInstanceOf(ApiException.class).hasMessage("原入库与当前库存池不一致，不能猜测撤回来源")
                 .extracting(failure -> ((ApiException) failure).getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT);
         issue(actual,"1");
+        List<Integer> beforeRead=readinessRowCounts();
+        assertThatThrownBy(()->positions.requireStoresReversible(List.of(new StoreWithdrawal(actual,stored.movementId(),false))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("已有出库");
+        assertThat(readinessRowCounts()).isEqualTo(beforeRead);
         assertThatThrownBy(()->locked(actual,()->positions.reverseStore(
                 new ReverseStore(context(),UUID.randomUUID(),actual,bd("9"),stored.movementId()))))
                 .isInstanceOf(ApiException.class).hasMessageContaining("已有出库");
@@ -557,10 +575,16 @@ class InventoryPositionPostgresTest {
         PoolKey k=key();var acquired=acquire(k,"10","100","0",true,List.of());
         UUID issue=UUID.randomUUID();
         var consumed=locked(k,()->positions.move(new Move(context(),k,Owner.COST_WIP,UUID.randomUUID(),List.of(slice(acquired.positionRootId(),"10")))));
+        List<Integer> beforeRead=readinessRowCounts();
+        assertThat(positions.requireRestoreUnallocatedConsumedAvailable(k,consumed.positionRootId())).matches("[a-f0-9]{64}");
+        assertThat(readinessRowCounts()).isEqualTo(beforeRead);
         var restored=locked(k,()->positions.restoreUnallocatedConsumed(new RestoreConsumed(context(),k,consumed.positionRootId(),issue,UUID.randomUUID())));
         money(restored.knownValueLocal(),"100");money(owned(k,"COST_WIP"),"0");money(owned(k,"WIP"),"100");
         assertThat(positions.position(restored.positionRootId()).ownerId()).isEqualTo(issue);
         Production p=production();productionRevision(p,0,"20",true);
+        beforeRead=readinessRowCounts();
+        assertThatThrownBy(()->positions.requireRestoreUnallocatedConsumedAvailable(p.b(),p.bInput())).isInstanceOf(ApiException.class);
+        assertThat(readinessRowCounts()).isEqualTo(beforeRead);
         assertThatThrownBy(()->locked(p.b(),()->positions.restoreUnallocatedConsumed(
                 new RestoreConsumed(context(),p.b(),p.bInput(),UUID.randomUUID(),UUID.randomUUID())))).isInstanceOf(ApiException.class);
     }

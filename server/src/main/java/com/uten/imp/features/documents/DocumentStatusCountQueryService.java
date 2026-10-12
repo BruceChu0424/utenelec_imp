@@ -108,12 +108,13 @@ public class DocumentStatusCountQueryService {
                         "purchaseOrder".equals(kind) ? "PURCHASE" : "SUBCONTRACT");
                 List<Bucket> buckets = new ArrayList<>(List.of(
                         new Bucket(DRAFT, draft),
-                        new Bucket(PENDING_FINANCE, "o.status = 0 AND " + latest + " = 'PENDING'"),
-                        new Bucket(FINANCE_REJECTED, "o.status = 0 AND " + latest + " = 'REJECTED'"),
+                        new Bucket(PENDING_FINANCE, "o.status IN (0, 1) AND " + latest + " = 'PENDING'"),
+                        new Bucket(FINANCE_REJECTED, "o.status IN (0, 1) AND " + latest + " = 'REJECTED'"),
                         new Bucket(APPROVED, "o.status = 1"),
                         new Bucket(REVERSED, "o.status = -1")));
                 if ("subcontractOrder".equals(kind)) {
-                    buckets.add(new Bucket(EXECUTING, "o.status = 1 AND o.is_closed = false"));
+                    buckets.add(new Bucket(EXECUTING, "o.status = 1 AND o.is_closed = false AND "
+                            + latest + " NOT IN ('PENDING', 'REJECTED')"));
                 }
                 yield List.copyOf(buckets);
             }

@@ -137,7 +137,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=com.uten.imp.common.web.ApiException.class)
     public FinanceExpenseDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -338,19 +338,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     public FinanceExpenseDetail reverse(UUID id) {
         tx.bind();
         FinanceExpense e = lockActiveForProjection(id);
-        access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
-                "finance_expense:reverse");
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
-        if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
-        Number linked=(Number)em.createNativeQuery("SELECT count(*) FROM expense_claims WHERE finance_expense_id=:id")
-                .setParameter("id",id).getSingleResult();
-        if(linked.longValue()>0) throw new ApiException(ErrorCode.CONFLICT,
-                "员工报销付款已绑定报销单，不能通过一般费用红冲破坏付款与报销状态的一致性");
-        if (e.getGlStatus() != null && e.getGlStatus() == 2) {
-            throw new ApiException(ErrorCode.CONFLICT, "该费用单已财务确认(gl_status=2)，须先撤销确认再红冲");
-        }
+        requireUnapprovalHeader(e);
         // 账户余额与流水由账本按原始流水一并冲回。
         reverseReconciliation(e.getId());
         // C6：红冲对称删总账分录，回到未过账
@@ -382,6 +370,47 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         e.setGlStatus((short) 2);
         expenseRepo.save(e);
         return detail(id);
+    }
+
+    private void requireUnapprovalHeader(FinanceExpense e) {
+        access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
+                "finance_expense:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
+        if (e.getStatus() == null || e.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        }
+        Number linked=(Number)em.createNativeQuery("SELECT count(*) FROM expense_claims WHERE finance_expense_id=:id")
+                .setParameter("id",e.getId()).getSingleResult();
+        if(linked.longValue()>0) throw new ApiException(ErrorCode.CONFLICT,
+                "员工报销付款已绑定报销单，不能通过一般费用红冲破坏付款与报销状态的一致性");
+        if (e.getGlStatus() != null && e.getGlStatus() == 2) {
+            throw new ApiException(ErrorCode.CONFLICT, "该费用单已财务确认(gl_status=2)，须先撤销确认再红冲");
+        }
+    }
+
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('finance_expense:view')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);
+        FinanceExpense e=require(id);
+        return com.uten.imp.features.finance.FinanceUnapprovalPreflight.evaluate(em,"financeExpense","finance_expenses",id,"finance_expense:reverse",()->unapprovalDependencyFacts(id),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("DOCUMENT_REVERSE_BLOCKED",()->requireUnapprovalHeader(e)),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("GL_PROJECTION_BLOCKED",()->glPosting.requireRemovableAutoProjection(RECON_SOURCE,RECON_SOURCE,e.getId(),e.getBillNo(),e.getBillDate())),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("BANK_POSTING_BLOCKED",()->accountFlowLedger.requireReversible(RECON_SOURCE,id)));
+    }
+
+    private String unapprovalDependencyFacts(UUID id) {
+        return String.valueOf(em.createNativeQuery("""
+            SELECT jsonb_build_object(
+                'bank',(SELECT jsonb_agg(to_jsonb(flow) ORDER BY flow.id) FROM finance_reconciliations flow
+                        WHERE flow.source_doc_id=:id),
+                'accounts',(SELECT jsonb_agg(to_jsonb(account) ORDER BY account.id) FROM accounts account
+                        WHERE account.id IN(SELECT account_id FROM finance_reconciliations WHERE source_doc_id=:id)),
+                'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher
+                        WHERE voucher.source_doc_id=:id),
+                'claims',(SELECT jsonb_agg(to_jsonb(claim) ORDER BY claim.id) FROM expense_claims claim
+                        WHERE claim.finance_expense_id=:id))::text
+            """).setParameter("id",id).getSingleResult());
     }
 
     // ===================== 账户/流水 =====================

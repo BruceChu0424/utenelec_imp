@@ -24,6 +24,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "purchase_orders")
 public class PurchaseOrder extends SoftDeletableEntity {
+    @jakarta.persistence.Column(name="quantity_semantics")
+    private String quantitySemantics = "LEGACY_RECORDED";
 
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;

@@ -120,6 +120,8 @@ void main() {
         ProviderScope(
           overrides: [
             sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue(const {}),
+            isSuperAdminProvider.overrideWithValue(false),
             systemSettingRepositoryProvider.overrideWithValue(repository),
           ],
           child: const MaterialApp(

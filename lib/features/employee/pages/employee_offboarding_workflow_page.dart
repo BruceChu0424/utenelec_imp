@@ -137,6 +137,7 @@ class _EmployeeOffboardingWorkflowPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -159,18 +160,24 @@ class _EmployeeOffboardingWorkflowPageState
             .read(dataHandoverRepositoryProvider)
             .employeePreview(widget.employeeId),
       ]);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       setState(() {
         _employee = results[0] as EmployeeProfile;
         _preview = results[1] as DataHandoverPreview;
       });
       await initializeFormDraft();
     } on ApiException catch (error) {
-      if (mounted) setState(() => _loadError = error.message);
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() => _loadError = error.message);
+      }
     } catch (_) {
-      if (mounted) setState(() => _loadError = '离职资料加载失败，请重试');
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() => _loadError = '离职资料加载失败，请重试');
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -186,20 +193,27 @@ class _EmployeeOffboardingWorkflowPageState
           .read(dataHandoverRepositoryProvider)
           .employeePreview(widget.employeeId, successorEmployeeId: successorId);
       if (mounted &&
+          formDraftIdentityIsCurrent &&
           request == _previewRequestSerial &&
           _successor?.id == successorId) {
         setState(() => _preview = preview);
       }
     } on ApiException catch (error) {
-      if (mounted && request == _previewRequestSerial) {
+      if (mounted &&
+          formDraftIdentityIsCurrent &&
+          request == _previewRequestSerial) {
         setState(() => _previewError = error.message);
       }
     } catch (_) {
-      if (mounted && request == _previewRequestSerial) {
+      if (mounted &&
+          formDraftIdentityIsCurrent &&
+          request == _previewRequestSerial) {
         setState(() => _previewError = '数据盘点失败，请重试');
       }
     } finally {
-      if (mounted && request == _previewRequestSerial) {
+      if (mounted &&
+          formDraftIdentityIsCurrent &&
+          request == _previewRequestSerial) {
         setState(() => _previewLoading = false);
       }
     }

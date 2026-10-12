@@ -87,7 +87,7 @@ void main() {
       );
       Finder segment(String label) =>
           find.descendant(of: toolbar, matching: find.text(label));
-      for (final label in const ['草稿', '等待财务审核', '财务已退回', '已审', '红冲']) {
+      for (final label in const ['草稿', '等待财务审核', '财务已退回', '已审', '已反审']) {
         expect(segment(label), findsOneWidget, reason: '分段「$label」');
       }
 
@@ -129,8 +129,13 @@ void main() {
         (q) => q['size'] == 20,
         orElse: () => const {},
       );
-      expect(listQuery['status'], 0);
+      expect(
+        listQuery.containsKey('status'),
+        isFalse,
+        reason: '含已生效改单复核，不仅是草稿',
+      );
       expect(listQuery['financeApproval'], 'REJECTED');
+      expect(find.text('改量财务退回'), findsOneWidget, reason: '实物结案后的财务修订仍须可见');
 
       // 点选「等待财务审核」段：列表请求带 status=0 + financeApproval=PENDING。
       api.listQueries.clear();
@@ -140,8 +145,13 @@ void main() {
         (q) => q['size'] == 20,
         orElse: () => const {},
       );
-      expect(listQuery['status'], 0);
+      expect(
+        listQuery.containsKey('status'),
+        isFalse,
+        reason: '含已生效改单复核，不仅是草稿',
+      );
       expect(listQuery['financeApproval'], 'PENDING');
+      expect(find.text('改量待财务复核'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -176,8 +186,9 @@ class _OrderListApi extends ApiClient {
           'id': 'order-1',
           'billNo': 'PO26090001',
           'billDate': '2026-09-19',
-          'status': 0,
-          'financeApproval': {'status': 'PENDING'},
+          'status': query?['financeApproval'] == 'NONE' ? 0 : 1,
+          'closed': query?['financeApproval'] != 'NONE',
+          'financeApproval': {'status': query?['financeApproval'] == 'NONE' ? 'DRAFT' : query?['financeApproval'] ?? 'PENDING'},
         },
       ],
       'page': 1,

@@ -155,7 +155,7 @@ public class SubcontractWasteService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public WasteDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -389,6 +389,37 @@ public class SubcontractWasteService {
         materialValue.wasteRecorded(id,currentUser.requireId(),false);
         lossClaimPort.openForApprovedWaste(approvedWaste);
         return detail(id);
+    }
+
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('subcontract_waste:view') and hasAuthority('subcontract_waste:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);
+        SubcontractWaste value=requireWaste(id);
+        String facts=com.uten.imp.common.review.SubcontractMaterialReversalFacts.read(em,"WASTE",id);
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("subcontractWaste",facts,()->{
+            access.requireWritable(value.getMakerId(),"只能操作本人负责的委外损耗单");
+            if(value.getStatus()==null||value.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            lossClaimPort.requireWasteReversibleReadOnly(id);
+            glPostingService.requireRemovableAutoProjection("SUBCONTRACT_ABNORMAL_LOSS","SUBCONTRACT_ABNORMAL_LOSS",id,value.getBillNo()+"-LOSS",value.getBillDate());
+            if(value.isDeductPosted()) {
+                try { arApService.requireReversibleSource(id,StockService.SRC_SUBCONTRACT_WASTE); }
+                catch(IllegalStateException blocked){throw new ApiException(ErrorCode.CONFLICT,"损耗资金来源缺失或已核销，请先核对资金记录");}
+            }
+            if(!historicalWarehouseOutItems(id).isEmpty())throw new ApiException(ErrorCode.CONFLICT,"历史损耗曾变更公司仓，需专项核对原库存路径");
+            requireWasteCounter(id);
+            materialValue.requireWasteReversalAvailable(id);
+        });
+    }
+
+    private void requireWasteCounter(UUID id) {
+        Boolean invalid=(Boolean)em.createNativeQuery("""
+            SELECT EXISTS(SELECT 1 FROM (SELECT material_issue_item_id,SUM(qty) qty
+              FROM subcontract_waste_items WHERE waste_id=:id AND NOT is_deleted GROUP BY material_issue_item_id) source
+              LEFT JOIN subcontract_material_issue_items issue ON issue.id=source.material_issue_item_id
+              WHERE issue.id IS NULL OR COALESCE(issue.wasted_qty,0)<source.qty)
+            """).setParameter("id",id).getSingleResult();
+        if(Boolean.TRUE.equals(invalid))throw new ApiException(ErrorCode.CONFLICT,"原发料已损耗数量不足，禁止反审吞并来源错账");
     }
 
     /**

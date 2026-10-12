@@ -91,6 +91,7 @@ class PurchaseRequestServiceUnitPolicyTest {
                 .thenReturn(java.util.Optional.of(request));
         when(fixture.itemRepo.findByRequestIdOrderByLineNoAsc(requestId))
                 .thenReturn(List.of(item));
+
         when(fixture.lineUnitPolicy.normalizeAndValidate(goodsId, null, null, 1))
                 .thenReturn(new PurchaseLineUnitPolicy.ResolvedUnit(
                         baseUnitId, BigDecimal.ONE));
@@ -176,6 +177,19 @@ class PurchaseRequestServiceUnitPolicyTest {
                 .thenReturn(pendingQuery);
         when(fixture.itemRepo.findByRequestIdOrderByLineNoAsc(requestId))
                 .thenReturn(List.of(item));
+
+        Query available = mock(Query.class);
+        when(available.setParameter(anyString(), any())).thenReturn(available);
+        when(available.getSingleResult()).thenReturn(Boolean.TRUE);
+        when(fixture.em.createNativeQuery(contains("fn_purchase_request_qty_correction_available"))).thenReturn(available);
+        Query minimum = mock(Query.class);
+        when(minimum.setParameter(anyString(), any())).thenReturn(minimum);
+        when(minimum.getSingleResult()).thenReturn(BigDecimal.ZERO);
+        when(fixture.em.createNativeQuery(contains("fn_purchase_request_qty_source_minimum"))).thenReturn(minimum);
+        Query prepared = mock(Query.class);
+        when(prepared.setParameter(anyString(), any())).thenReturn(prepared);
+        when(prepared.executeUpdate()).thenReturn(1);
+        when(fixture.em.createNativeQuery(contains("INSERT INTO purchase_request_qty_revisions"))).thenReturn(prepared);
 
         Query changed = mock(Query.class);
         when(changed.setParameter(anyString(), any())).thenReturn(changed);

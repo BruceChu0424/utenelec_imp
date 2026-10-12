@@ -233,14 +233,17 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
             if (financeApproval != null) {
+                if (java.util.Set.of("PENDING", "REJECTED").contains(financeApproval)) {
+                    ps.add(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED));
+                }
                 if ("IN_PROGRESS".equals(financeApproval)) {
-                    // 进行中包含财务在审/退回待修改，以及批准后尚未结案的执行单。
+                    // 实物结案不结束财务复核；在审/退回仍须显示原单，再加尚未结案的执行单。
                     // 聚合在数据库分页前完成，不能在前端拼接多份分页结果。
                     java.util.Set<UUID> financeIds = new java.util.HashSet<>(pendingFinanceIds);
                     financeIds.addAll(rejectedFinanceIds);
                     Predicate financePending = financeIds.isEmpty()
                             ? cb.disjunction()
-                            : cb.and(cb.equal(root.get("status"), STATUS_DRAFT),
+                            : cb.and(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED),
                                     root.get("id").in(financeIds));
                     Predicate executing = cb.and(
                             cb.equal(root.get("status"), STATUS_APPROVED),
@@ -275,7 +278,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public OrderDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -1089,6 +1092,28 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     /** 红冲：1→-1。反向回写 ordered_qty + 重算申请 is_closed（无 ArAp 无库存）。 */
+    @Transactional(readOnly = true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('subcontract_order:view') and hasAuthority('subcontract_order:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        SubcontractOrder order=requireOrder(id);
+        access.requireReadable(order.getMakerId(),"订货单不存在");
+        var items=itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        String facts=com.uten.imp.common.integrity.ProcurementOrderReversalPreflight.facts(em,"SUBCONTRACT",id);
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("subcontractOrder",facts,()->{
+            access.requireWritable(order.getMakerId(),"只能操作本人负责的订货单");
+            if(order.getStatus()==null || order.getStatus()!=STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            requireOrderReversalInputs(id,items);
+        });
+    }
+
+    private void requireOrderReversalInputs(UUID id,List<SubcontractOrderItem> items) {
+        if(items.stream().anyMatch(it->positive(it.getReceivedQty()) || positive(it.getReturnedQty())))
+            throw new ApiException(ErrorCode.CONFLICT,"订货单已有收货或退货，请先撤销下游单据");
+        if(hasApprovedMaterialActivity(items.stream().map(SubcontractOrderItem::getId).toList()))
+            throw new ApiException(ErrorCode.CONFLICT,"委外仍有已审核发料、退料或损耗，请先撤销这些下游单据");
+        com.uten.imp.common.integrity.ProcurementOrderReversalPreflight.require(em,"SUBCONTRACT",id);
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:reverse')")
     public OrderDetail reverse(UUID id) {
@@ -1100,21 +1125,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         mutationGuard.verifyUnchanged();
-        reviewCancellation.cancelUnclaimedPending(orderType(),id,"ORDER_REVERSED");
         List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
-        if (items.stream().anyMatch(it ->
-                positive(it.getReceivedQty())
-                        || positive(it.getReturnedQty()))) {
-            throw new ApiException(
-                    ErrorCode.BUSINESS,
-                    "委外订货已有进仓/成品退货记录，请先红冲下游单据");
-        }
-        if (hasApprovedMaterialActivity(
-                items.stream().map(SubcontractOrderItem::getId).toList())) {
-            throw new ApiException(
-                    ErrorCode.BUSINESS,
-                    "委外订货仍有已审核发料/退料/损耗单，请先红冲下游单据");
-        }
+        requireOrderReversalInputs(id,items);
+        reviewCancellation.cancelUnclaimedPending(orderType(),id,"ORDER_REVERSED");
         // V463：红冲按来源分配份额对称扣回（与审批回写同口径）。
         Map<UUID, List<Object[]>> reverseSources = orderItemSources(
                 items.stream().map(SubcontractOrderItem::getId).toList());
@@ -1636,6 +1649,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines,Map<OrderItemLine,SubcontractOrderItem> retained,
             Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
+        for (OrderItemLine line : lines) {
+            if (line.getQty() == null || line.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外订货明细数量必须大于 0");
+            }
+            com.uten.imp.common.util.FinancialExactAmount.quantity(line.getQty(), "委外订货明细数量");
+        }
         // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
         //（末位来源吸收超额）；application_item_id 落首来源（主锚点）。
         Map<OrderItemLine, List<SourceSplit>> splits = planSourceSplits(lines);
@@ -1731,7 +1750,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     /**
      * 同货品合并行的来源 FIFO 拆分（采购侧对称）：按各申请行当前剩余量
-     *（qty - ordered_qty - 待财务审核订货占用）在「需求日期升序、id 升序」
+     *（qty - ordered_qty - 在审或退回待修订订货占用）在「需求日期升序、id 升序」
      * 稳定顺序上先到先得，末位来源吸收超额；份额为 0 的来源丢弃。
      * 手工行（无来源）与单来源行退化为 alloc = 行数量（与历史单锚一致）。
      */
@@ -1754,17 +1773,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         LEFT JOIN (
                             SELECT src.application_item_id,
                                    SUM(COALESCE(src.alloc_qty, 0)) AS pending_qty
-                            FROM procurement_order_approval_cases approval
-                            JOIN subcontract_orders so
-                              ON approval.order_type = 'SUBCONTRACT'
-                             AND approval.order_id = so.id
-                             AND approval.status = 'PENDING'
+                            FROM subcontract_orders so
                             JOIN subcontract_order_items oi ON oi.order_id = so.id
                             JOIN subcontract_order_item_sources src
                               ON src.order_item_id = oi.id
                             WHERE so.status = 0
                               AND so.is_deleted = FALSE
                               AND oi.is_deleted = FALSE
+                              AND fn_procurement_order_latest_approval_status('SUBCONTRACT', so.id)
+                                    IN ('PENDING', 'REJECTED')
                               AND src.application_item_id IN (:ids)
                             GROUP BY src.application_item_id
                         ) pending ON pending.application_item_id = item.id
@@ -1792,6 +1809,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED, "委外订货明细数量必须大于 0");
             }
+            com.uten.imp.common.util.FinancialExactAmount.quantity(line.getQty(), "委外订货明细数量");
             List<UUID> ordered = resolved.stream()
                     .sorted(java.util.Comparator.comparing(
                             id -> stableOrder.contains(id)
@@ -1989,7 +2007,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 sourceApplication == null ? null : sourceApplication.id(),
                 sourceApplication == null ? null : sourceApplication.billNo(),
                 priceMasked,
-                shortDeliveryHold);
+                shortDeliveryHold,
+                priceMasked || order.getStatus()!=STATUS_APPROVED || order.getExchangeRate()==null || order.getExchangeRate().signum()<=0 ? null :
+                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(em,"SUBCONTRACT",order.getId(),order.getExchangeRate()).rate());
     }
 
     /** ADR-143 §二.3：草稿上缺 BOM 的委外件逐行标出(提交财务会被拒并通知研发完善)。 */

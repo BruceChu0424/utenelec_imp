@@ -691,7 +691,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get visitorIsEmployee =>
-      'This phone is a Uten employee account, please use staff sign in';
+      'This phone is an employee account, please use staff sign in';
 
   @override
   String get visitorPhoneInvalid => 'Please enter a valid phone number';
@@ -5811,9 +5811,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusActionConvert => 'Convert to order';
 
   @override
-  String get salesQuoteStatusActionReverse => 'Void';
-
-  @override
   String get salesQuoteStatusActionEdit => 'Edit';
 
   @override
@@ -5841,10 +5838,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?';
 
   @override
-  String get salesQuoteStatusReverseConfirmBody =>
-      'A voided quote can no longer be converted and cannot be restored. Void it?';
-
-  @override
   String get salesQuoteStatusDeleteConfirmBody =>
       'Delete this draft quote? This cannot be undone.';
 
@@ -5867,9 +5860,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get salesQuoteStatusReopened =>
       'Back to draft; submit for pricing again when ready';
-
-  @override
-  String get salesQuoteStatusReversedDone => 'Quote voided';
 
   @override
   String get salesQuoteStatusDeleted => 'Deleted';

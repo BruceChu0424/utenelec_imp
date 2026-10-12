@@ -43,7 +43,7 @@ void main() {
 
     expect(api.putCalls, hasLength(1));
     expect(api.putCalls.single.$1, endsWith('/items/item-1/qty'));
-    expect(api.putCalls.single.$2, {'qty': 12.5, 'expectedVersion': 7});
+    expect(api.putCalls.single.$2, {'qty': '12.5', 'expectedVersion': 7});
     // 保存成功后回填详情并清掉待保存标记。
     expect(find.text('1 行待保存'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -101,6 +101,7 @@ class _AdjustApi extends ApiClient {
 
   final List<(String, Map<String, dynamic>)> putCalls = [];
   double _savedQty = 10;
+  String _savedQtyExact = '10';
   int _rowVersion = 7;
 
   @override
@@ -121,7 +122,8 @@ class _AdjustApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
     putCalls.add((path, (body as Map<String, dynamic>?) ?? const {}));
-    _savedQty = (putCalls.last.$2['qty'] as num).toDouble();
+    _savedQtyExact = putCalls.last.$2['qty'].toString();
+    _savedQty = double.parse(_savedQtyExact);
     _rowVersion++;
     return _detail();
   }
@@ -144,6 +146,7 @@ class _AdjustApi extends ApiClient {
         'colorId': 'color-1',
         'unitId': 'unit-1',
         'qty': _savedQty,
+        'qtyExact': _savedQtyExact,
         'rowVersion': _rowVersion,
         'orderedQty': 0,
         'productionPlanNo': 'PLAN-1',

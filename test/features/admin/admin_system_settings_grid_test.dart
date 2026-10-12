@@ -8,15 +8,26 @@ import 'package:uten_imp/features/admin/models/system_setting_entry.dart';
 import 'package:uten_imp/features/admin/models/system_updater_status.dart';
 import 'package:uten_imp/features/admin/pages/admin_system_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/system_setting_repository.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 
-Future<void> _pump(WidgetTester tester, Size size) async {
+Future<void> _pump(
+  WidgetTester tester,
+  Size size, {
+  bool platformAdmin = false,
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [systemSettingRepositoryProvider.overrideWithValue(_Repo())],
+      overrides: [
+        systemSettingRepositoryProvider.overrideWithValue(_Repo()),
+        currentPermissionsProvider.overrideWithValue(
+          platformAdmin ? const {Perm.authorizationManage} : const {},
+        ),
+        isSuperAdminProvider.overrideWithValue(platformAdmin),
+      ],
       child: const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -29,6 +40,25 @@ Future<void> _pump(WidgetTester tester, Size size) async {
 }
 
 void main() {
+  testWidgets('platform entry precedes the unchanged runtime policy grid', (
+    tester,
+  ) async {
+    await _pump(tester, const Size(1600, 1200), platformAdmin: true);
+    final platform = tester.getTopLeft(
+      find.byKey(const ValueKey('system-settings-platform-entry')),
+    );
+    final ai = tester.getTopLeft(
+      find.byKey(const ValueKey('system-settings-ai-entry')),
+    );
+    final security = tester.getTopLeft(
+      find.ancestor(of: find.text('安全策略'), matching: find.byType(Card)),
+    );
+    expect(platform.dy, lessThan(ai.dy));
+    expect(security.dx, greaterThan(ai.dx));
+    expect(security.dy, closeTo(ai.dy, 0.5));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('wide layout puts the AI entry beside group cards', (
     tester,
   ) async {

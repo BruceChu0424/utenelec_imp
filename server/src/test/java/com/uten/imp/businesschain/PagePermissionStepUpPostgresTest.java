@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Map;
 
@@ -41,8 +42,10 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
         requireReauthentication(change(admin, target, true, 0, otherSession));
 
         String expired = stepUp(admin, ADMIN_PASSWORD);
-        jdbc.update("UPDATE auth_sessions SET step_up_expires_at=now()-interval '1 minute' WHERE step_up_token_hash=?",
-                com.uten.imp.common.util.HashUtil.sha256(expired));
+        assertEquals(1, jdbc.update(
+                "UPDATE auth_sessions SET step_up_expires_at=? WHERE step_up_token_hash=?",
+                Timestamp.from(clock.instant().minusSeconds(1)),
+                com.uten.imp.common.util.HashUtil.sha256(expired)));
         requireReauthentication(change(admin, target, true, 0, expired));
         assertEquals(0, overrides(target));
         assertEquals(0, auditChanges(target));

@@ -34,6 +34,8 @@ class _Api extends ApiClient {
 
 class _Gateway implements OperationsWorkbenchGateway {
   final List<String?> statuses = [];
+  final List<String?> exceptions = [];
+  final List<Map<String, String?>> filters = [];
 
   @override
   Future<OperationsWorkbenchData> load({
@@ -54,6 +56,8 @@ class _Gateway implements OperationsWorkbenchGateway {
     String? needTo,
   }) async {
     statuses.add(status);
+    exceptions.add(exception);
+    filters.add(Map.of(columnFilters));
     final items = status == 'IN_PROGRESS'
         ? [
             _order(
@@ -243,15 +247,42 @@ void main() {
       cellOf('o-rejected'),
       utenStatusBadgeCellColor(UtenStatusBadgeType.danger),
     );
-    // 异常小类行：短交与退回都在（红徽章形态由 UtenFilterSegment 决定）。
+    // 短交是独立处置案件，保留手动入口；退回只在状态列，不自动收窄进行中。
     expect(
       find.byKey(const Key('subcontract-decomposition-exceptions')),
       findsOneWidget,
     );
+    expect(gateway.exceptions.last, isNull);
+    final exceptionRow = find.byKey(
+      const Key('subcontract-decomposition-exceptions'),
+    );
+    expect(
+      find.descendant(of: exceptionRow, matching: find.text('财务已退回')),
+      findsNothing,
+    );
+    await tester.tap(
+      find.descendant(of: exceptionRow, matching: find.text('回厂短交待判定')),
+    );
+    await tester.pumpAndSettle();
+    expect(gateway.exceptions.last, 'SHORT_DELIVERY');
+    await tester.tap(
+      find.descendant(of: exceptionRow, matching: find.text('全部')),
+    );
+    await tester.pumpAndSettle();
+    expect(gateway.exceptions.last, isNull);
+    expect(gateway.statuses.last, 'IN_PROGRESS');
+    table.onFilterChanged('status', 'FINANCE_REJECTED');
+    await tester.pumpAndSettle();
+    expect(gateway.filters.last['status'], 'FINANCE_REJECTED');
+    table.onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(gateway.filters.last, isNot(contains('status')));
     expect(tester.takeException(), isNull);
   });
 
   test('ADR-143 进行中状态码的状态列文案', () {
+    expect(subcontractProgressStatusLabel('FINANCE_REVIEW_PENDING'), '改量待财务复核');
+    expect(subcontractProgressStatusLabel('FINANCE_REVIEW_REJECTED'), '改量财务退回');
     expect(subcontractProgressStatusLabel('DRAWABLE'), '可领料·去领料');
     expect(subcontractProgressStatusLabel('DRAW_SUBMITTED'), '已提交领料·待仓库发料');
     expect(subcontractProgressStatusLabel('WAITING_MATERIAL'), '等待物料');

@@ -13,7 +13,6 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/human_error_message.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -574,7 +573,7 @@ class _SlipPreviewRow extends StatelessWidget {
       trailing: Text(
         '¥ ${slip.netIncome.toStringAsFixed(2)}',
         style: theme.textTheme.bodyMedium?.copyWith(
-          color: UtenColors.primary,
+          color: theme.colorScheme.primary,
           fontWeight: FontWeight.w600,
           fontFeatures: const [FontFeature.tabularFigures()],
         ),

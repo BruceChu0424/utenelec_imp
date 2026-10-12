@@ -436,9 +436,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         }
       }
       if (widget.id != null) {
-        final d = await ref
-            .read(financeRepositoryProvider(widget.docType))
-            .detail(widget.id!);
+        final repo = ref.read(financeRepositoryProvider(widget.docType));
+        final d = await repo.detail(widget.id!);
         final writable =
             !d.legacyImported &&
             d.status == kFinanceStatusDraft &&

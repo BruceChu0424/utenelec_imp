@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.plan;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.FinancialExactAmount;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
@@ -137,7 +138,7 @@ public class ProductionPlanService {
         return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_plans", p.getContent()) : result;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public PlanDetail detail(UUID id) {
         ProductionPlan p = requirePlan(id);
         access.requireReadable(
@@ -217,12 +218,14 @@ public class ProductionPlanService {
 
     /** Keep source/inventory locks ahead of the platform field snapshot's plan header lock. */
     @Transactional(propagation = Propagation.MANDATORY)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:edit')")
     public void lockPlatformColumnSave(UUID id, PlanSaveRequest request) {
         tx.bind();
         requirePlanForUpdate(id, requestedFootprint(request));
     }
 
     @Transactional
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_plan_item", requestArgument=1, documentIdArgument=0)
     public PlanDetail update(UUID id, PlanSaveRequest req) {
         tx.bind();
@@ -970,7 +973,7 @@ public class ProductionPlanService {
         if (qty == null || qty.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "排产分摊数量必须大于 0");
         }
-        return qty;
+        return FinancialExactAmount.quantity(qty, "生产计划数量");
     }
 
     private static BigDecimal normalizedPositiveRate(BigDecimal rate, String source) {
@@ -1024,6 +1027,9 @@ public class ProductionPlanService {
 
     /** 锁定全部有效计划行，并以行级累计量作为红冲的第一道门禁。 */
     private List<UUID> lockAndValidatePlanItemsForReverse(UUID planId) {
+        return validatePlanItemsForReverse(planId,true);
+    }
+    private List<UUID> validatePlanItemsForReverse(UUID planId, boolean lock) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id, fqty, iqty
@@ -1031,8 +1037,7 @@ public class ProductionPlanService {
                         WHERE plan_id = :pid
                           AND COALESCE(is_deleted, false) = false
                         ORDER BY id
-                        FOR UPDATE
-                        """)
+                        """ + (lock ? " FOR UPDATE" : ""))
                 .setParameter("pid", planId)
                 .getResultList();
         if (rows.isEmpty()) {
@@ -1053,7 +1058,8 @@ public class ProductionPlanService {
      * 父计划不能越过仍有效的下游单据直接红冲。三类查询都锁定当前
      * 联动与单据行；生成端同样锁父计划头，因此不会在检查后插入新下游。
      */
-    private void validateNoActiveDownstream(UUID planId) {
+    private void validateNoActiveDownstream(UUID planId) { validateNoActiveDownstream(planId,true); }
+    private void validateNoActiveDownstream(UUID planId, boolean lock) {
         List<?> stockDocuments = em.createNativeQuery("""
                         SELECT d.id, d.doc_type, d.bill_no
                         FROM plan_draw_links l
@@ -1064,8 +1070,7 @@ public class ProductionPlanService {
                           AND COALESCE(d.status, 0) <> -1
                           AND d.doc_type IN ('DRAW', 'FINISHED_IN')
                         ORDER BY d.id
-                        FOR UPDATE OF l, d
-                        """)
+                        """ + (lock ? " FOR UPDATE OF l, d" : ""))
                 .setParameter("pid", planId)
                 .setMaxResults(1)
                 .getResultList();
@@ -1083,8 +1088,7 @@ public class ProductionPlanService {
                           AND COALESCE(r.is_deleted, false) = false
                           AND COALESCE(r.status, 0) <> -1
                         ORDER BY r.id
-                        FOR UPDATE OF g, r
-                        """)
+                        """ + (lock ? " FOR UPDATE OF g, r" : ""))
                 .setParameter("pid", planId)
                 .setMaxResults(1)
                 .getResultList();
@@ -1102,8 +1106,7 @@ public class ProductionPlanService {
                           AND COALESCE(sp.is_deleted, false) = false
                           AND COALESCE(sp.status, 0) <> -1
                         ORDER BY sp.id
-                        FOR UPDATE OF l, sp
-                        """)
+                        """ + (lock ? " FOR UPDATE OF l, sp" : ""))
                 .setParameter("pid", planId)
                 .setMaxResults(1)
                 .getResultList();
@@ -1215,6 +1218,49 @@ public class ProductionPlanService {
         return v == null ? BigDecimal.ZERO : (BigDecimal) v;
     }
 
+    @Transactional(readOnly = true,noRollbackFor=ApiException.class)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:view') and hasAuthority('production_plan:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);
+        ProductionPlan plan = requirePlan(id);
+        String facts = String.valueOf(em.createNativeQuery("""
+                SELECT jsonb_build_object('plan',to_jsonb(p),'items',COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id)
+                  FROM production_plan_items i WHERE i.plan_id=p.id),'[]'::jsonb),'links',COALESCE((
+                  SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id) FROM plan_order_item_links l
+                  JOIN production_plan_items i ON i.id=l.plan_item_id WHERE i.plan_id=p.id),'[]'::jsonb),
+                  'sales',COALESCE((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.id) FROM sales_order_items o WHERE o.id IN(
+                    SELECT l.order_item_id FROM plan_order_item_links l JOIN production_plan_items i ON i.id=l.plan_item_id WHERE i.plan_id=p.id)),'[]'::jsonb),
+                  'stock',COALESCE((SELECT jsonb_agg(jsonb_build_object('link',to_jsonb(l),'document',to_jsonb(d)) ORDER BY l.id)
+                    FROM plan_draw_links l JOIN stock_documents d ON d.id=l.draw_id WHERE l.plan_id=p.id),'[]'::jsonb),
+                  'purchase',COALESCE((SELECT jsonb_agg(jsonb_build_object('link',to_jsonb(g),'document',to_jsonb(r)) ORDER BY g.id)
+                    FROM mrp_generations g JOIN purchase_requests r ON r.id=g.request_id WHERE g.plan_id=p.id),'[]'::jsonb),
+                  'children',COALESCE((SELECT jsonb_agg(jsonb_build_object('link',to_jsonb(l),'plan',to_jsonb(sp)) ORDER BY l.id)
+                    FROM subplan_links l JOIN production_plans sp ON sp.id=l.subplan_id WHERE l.plan_id=p.id OR l.subplan_id=p.id),'[]'::jsonb))::text
+                FROM production_plans p WHERE p.id=:id
+                """).setParameter("id",id).getSingleResult());
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("productionPlan",facts,()-> {
+            access.requireWritable(plan.getMakerId(), "只能操作本人负责的生产计划");
+            if(plan.getStatus()==null || plan.getStatus()!=STATUS_APPROVED)
+                throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            rejectDirectLifecycleOfExecutionV1Subplan(id,"反审",false);
+            List<UUID> itemIds = validatePlanItemsForReverse(id,false);
+            validateNoActiveDownstream(id,false);
+            Map<UUID,BigDecimal> releases = new HashMap<>();
+            for(PlanOrderItemLink link : linkRepo.findActiveByPlanItemIds(itemIds)) {
+                if(link.getOrderItemId()==null) throw new ApiException(ErrorCode.CONFLICT,"计划关联缺少销售订单行");
+                if(hasNonZero(link.getInboundQty(),link.getProducedQty(),link.getCappedQty()))
+                    throw new ApiException(ErrorCode.BUSINESS,"计划关联已有报工、入库或封顶累计，不能反审");
+                releases.merge(link.getOrderItemId(),requirePositiveAllocation(link.getAllocatedQty()),BigDecimal::add);
+            }
+            for(var entry:releases.entrySet()) {
+                var rows=em.createNativeQuery("SELECT planned_qty FROM sales_order_items WHERE id=:id AND NOT is_deleted")
+                        .setParameter("id",entry.getKey()).getResultList();
+                if(rows.isEmpty() || bd(rows.getFirst()).compareTo(entry.getValue())<0)
+                    throw new ApiException(ErrorCode.CONFLICT,"销售来源已排产量不足，请先核对联动数据");
+            }
+        });
+    }
+
     /**
      * 红冲（status 1→-1）。
      *
@@ -1244,8 +1290,10 @@ public class ProductionPlanService {
      * 父计划包服务会按父包→子计划的稳定锁序校验并关闭子计划、关联与物料需求；
      * 在这里直接改终态会留下仍为 CONFIRMED 的父包和失去供给来源的父需求。
      */
-    private void rejectDirectLifecycleOfExecutionV1Subplan(
-            UUID planId, String action) {
+    private void rejectDirectLifecycleOfExecutionV1Subplan(UUID planId,String action) {
+        rejectDirectLifecycleOfExecutionV1Subplan(planId,action,true);
+    }
+    private void rejectDirectLifecycleOfExecutionV1Subplan(UUID planId,String action,boolean lock) {
         List<?> links = em.createNativeQuery("""
                         SELECT link.id
                         FROM subplan_links link
@@ -1253,8 +1301,7 @@ public class ProductionPlanService {
                           AND link.is_deleted = FALSE
                           AND link.source = 'EXECUTION_V1'
                         ORDER BY link.id
-                        FOR UPDATE OF link
-                        """)
+                        """ + (lock ? " FOR UPDATE OF link" : ""))
                 .setParameter("planId", planId)
                 .setMaxResults(1)
                 .getResultList();
@@ -1713,7 +1760,7 @@ public class ProductionPlanService {
             it.setClientName(l.getClientName());
             it.setClientNo(l.getClientNo());
             it.setOqty(zeroIfNull(l.getOqty()));
-            it.setQty(zeroIfNull(l.getQty()));
+            it.setQty(requirePositiveAllocation(l.getQty()));
             LineAllowance allowance = allowanceFor(l, savedLines);
             it.setAllowedOverproductionRate(allowance.allowance().rate());
             it.setAllowedOverproductionRateSource(allowance.allowance().source());

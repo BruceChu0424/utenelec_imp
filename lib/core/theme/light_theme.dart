@@ -14,8 +14,10 @@ import 'package:flutter/services.dart';
 import 'uten_colors.dart';
 import 'uten_tokens.dart';
 import 'uten_page_transitions.dart';
+import '../../shared/platform_branding/platform_branding.dart';
+import 'brand_theme.dart';
 
-ThemeData buildLightTheme() {
+ThemeData buildLightTheme({PlatformBranding? branding}) {
   // 浅色模式交互主色：统一使用深色模式下的 teal（青绿）系绿
   // —— 实心交互使用 teal700 + 白字，满足普通文字 WCAG AA 对比度
   const colorScheme = ColorScheme(
@@ -54,7 +56,7 @@ ThemeData buildLightTheme() {
     surfaceTint: UtenColors.teal700,
   );
 
-  return ThemeData(
+  final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
     colorScheme: colorScheme,
@@ -498,4 +500,5 @@ ThemeData buildLightTheme() {
       dividerColor: UtenColors.border,
     ),
   );
+  return applyPlatformBrandTheme(base, branding ?? PlatformBranding.defaults);
 }

@@ -70,10 +70,13 @@ void main() {
   setUp(resetReviewPendingDialogForTest);
   test('expense correction returns to the applicant workbench', () {
     expect(workbenchRouteFor('EXPENSE_CLAIM_REJECTED'), RouteName.expense);
-    expect(workbenchRouteFor('EXPENSE_CLAIM_SUBMITTED'), '/expense/approval');
+    expect(
+      workbenchRouteFor('EXPENSE_CLAIM_SUBMITTED'),
+      '/expense/approval?queue=pending',
+    );
     expect(
       workbenchRouteFor('EXPENSE_CLAIM_PENDING_PAYMENT'),
-      '/expense/approval',
+      '/expense/approval?queue=payable',
     );
   });
 
@@ -224,10 +227,13 @@ void main() {
     );
     expect(workbenchRouteFor('VISITOR_APPLY_SUBMITTED'), '/visitor-approval');
     expect(workbenchRouteFor('VISITOR_HOST_CONFIRM_REQUIRED'), '/my-visitors');
-    expect(workbenchRouteFor('EXPENSE_CLAIM_SUBMITTED'), '/expense/approval');
+    expect(
+      workbenchRouteFor('EXPENSE_CLAIM_SUBMITTED'),
+      '/expense/approval?queue=pending',
+    );
     expect(
       workbenchRouteFor('EXPENSE_CLAIM_PENDING_PAYMENT'),
-      '/expense/approval',
+      '/expense/approval?queue=payable',
     );
     expect(workbenchRouteFor('PAYROLL_BATCH_SUBMITTED'), '/payroll/review');
     expect(

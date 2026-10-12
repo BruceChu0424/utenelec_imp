@@ -75,6 +75,7 @@ public final class MoneyPolicy {
      * 没有币种的单据(申请、报价、发料等)由调用方传汇率 1。
      */
     public static LineAmounts line(BigDecimal quantity, BigDecimal price, BigDecimal discount, BigDecimal rate) {
+        if (quantity != null) FinancialExactAmount.quantity(quantity, "数量");
         if (quantity == null || price == null) {
             return new LineAmounts(null, null);
         }

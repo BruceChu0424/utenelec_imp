@@ -42,7 +42,7 @@ class StandardDocumentLifecycleCapabilitiesTest {
                     StandardDocumentLifecycleCapabilities.requireDraftForDelete(status))
                     .isInstanceOfSatisfying(ApiException.class, error -> {
                         assertThat(error.getCode()).isEqualTo(ErrorCode.BUSINESS);
-                        assertThat(error.getMessage()).contains("仅草稿", "红冲历史必须保留");
+                        assertThat(error.getMessage()).contains("仅草稿", "原审核历史必须保留");
                     });
         }
     }

@@ -20,7 +20,13 @@ import 'package:uten_imp/features/notice/models/notice.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
 import 'package:uten_imp/features/notice/repositories/notice_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/drafts/form_draft_storage_api.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+
+import '../../shared/drafts/memory_form_draft_storage.dart';
 
 class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
   _FakeHrTaskRepository(this.summaryValue);
@@ -150,11 +156,18 @@ Widget _app({
   _FakeNoticeRepository? notices,
   Set<String> permissions = const {},
   GoRouter? router,
+  FormDraftStorage? draftStorage,
 }) => ProviderScope(
   overrides: [
     hrTaskRepositoryProvider.overrideWithValue(hrTasks),
     sharedPreferencesProvider.overrideWithValue(preferences),
     currentPermissionsProvider.overrideWithValue(permissions),
+    if (draftStorage != null) ...[
+      formDraftStorageProvider.overrideWithValue(draftStorage),
+      authenticatedScopeProvider.overrideWithValue(
+        const AuthenticatedScope(userId: 'hr-editor'),
+      ),
+    ],
     if (employees != null)
       employeeRepositoryProvider.overrideWithValue(employees),
     if (notices != null) noticeRepositoryProvider.overrideWithValue(notices),
@@ -188,6 +201,180 @@ UtenMenuItem _menuItem(WidgetTester tester, HrTaskItem item, String label) =>
     );
 
 void main() {
+  testWidgets(
+    'identity draft remains on all original rows and resumes the original whole plan',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final storage = MemoryFormDraftStorage();
+      Uri? opened;
+      final router = GoRouter(
+        initialLocation: '/hr/tasks/identity',
+        routes: [
+          GoRoute(
+            path: '/hr/tasks/identity',
+            builder: (_, _) => const HrTaskListPage(type: HrTaskType.identity),
+          ),
+          GoRoute(
+            path: RouteName.hrReconcile,
+            builder: (_, state) {
+              opened = state.uri;
+              return const Scaffold(body: Text('original-plan-editor'));
+            },
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        _app(
+          type: HrTaskType.identity,
+          hrTasks: _FakeHrTaskRepository(
+            _summary(identityReview: [_item('a'), _item('b'), _item('c')]),
+          ),
+          preferences: preferences,
+          router: router,
+          draftStorage: storage,
+          permissions: {
+            Perm.employeeView,
+            Perm.employeeEdit,
+            Perm.employeePiiEdit,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(HrTaskListPage)),
+      );
+      final spec = FormDraftCatalog.employeeReconcile.spec(
+        route:
+            '/hr/tasks/reconcile?planId=original-plan&employeeIds=a,b&returnTo=%2Fhr%2Ftasks%2Fidentity',
+      );
+      final saved = await container
+          .read(formDraftsProvider.notifier)
+          .save(
+            FormDraft(
+              id: 'original-input',
+              title: spec.title,
+              module: spec.module,
+              route: spec.route,
+              permission: spec.permission,
+              draftKind: spec.draftKind,
+              updatedAt: DateTime.utc(2026, 10, 11),
+              data: {
+                'planId': 'original-plan',
+                'planVersion': 1,
+                'rows': [
+                  {
+                    'employeeId': 'a',
+                    'sourceVersion': 4,
+                    'manual': '1101051949',
+                  },
+                  {'employeeId': 'b', 'sourceVersion': 4, 'manual': ''},
+                ],
+              },
+            ),
+          );
+      await tester.pumpAndSettle();
+      final table = _table(tester);
+      final status = table.columns.firstWhere(
+        (column) => column.key == 'status',
+      );
+      expect(
+        status.value(table.items.firstWhere((row) => row.employeeId == 'a')),
+        '草稿',
+      );
+      expect(
+        status.value(table.items.firstWhere((row) => row.employeeId == 'b')),
+        '草稿',
+      );
+      expect(
+        status.value(table.items.firstWhere((row) => row.employeeId == 'c')),
+        '待核对',
+      );
+      expect(
+        _menuLabels(
+          tester,
+          table.items.firstWhere((row) => row.employeeId == 'b'),
+        ),
+        contains('恢复核对草稿'),
+      );
+      table.onSelectedIdsChanged!({'a'});
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hr-task-batch-identity-review')));
+      await tester.pumpAndSettle();
+      expect(opened!.queryParameters['planId'], 'original-plan');
+      expect(opened!.queryParameters['employeeIds'], 'a,b');
+      expect(opened!.queryParameters['draftId'], saved.id);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'empty identity queue retains a records entry without generating a plan',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      Uri? recordsUri;
+      final router = GoRouter(
+        initialLocation: '/hr/tasks/identity',
+        routes: [
+          GoRoute(
+            path: '/hr/tasks/identity',
+            builder: (_, _) => const HrTaskListPage(type: HrTaskType.identity),
+          ),
+          GoRoute(
+            path: RouteName.hrReconcile,
+            builder: (_, state) {
+              recordsUri = state.uri;
+              return Scaffold(body: Text(state.uri.toString()));
+            },
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        _app(
+          type: HrTaskType.identity,
+          hrTasks: _FakeHrTaskRepository(_summary()),
+          preferences: preferences,
+          permissions: {
+            Perm.employeeView,
+            Perm.employeeEdit,
+            Perm.employeePiiEdit,
+          },
+          router: router,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('hr-task-reconcile-records')));
+      await tester.pumpAndSettle();
+      final uri = recordsUri!;
+      expect(uri.path, RouteName.hrReconcile);
+      expect(uri.queryParameters['returnTo'], '/hr/tasks/identity');
+      expect(uri.queryParameters.containsKey('employeeIds'), isFalse);
+      expect(uri.queryParameters.containsKey('planId'), isFalse);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('pii edit alone does not grant the global records entry', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.identity,
+        hrTasks: _FakeHrTaskRepository(_summary()),
+        preferences: preferences,
+        permissions: {Perm.employeeView, Perm.employeePiiEdit},
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('hr-task-reconcile-records')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('confirm queue renders the unified table with client facets', (
     tester,
   ) async {

@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 钱流仓库（5 单据统一 + 应收应付台账 + 账户流水 + 报表）。
 //
 // 5 单据按 docType 切端点：/api/finance/{receipts|payments|expenses|incomes|bank-transfers}
@@ -179,8 +180,14 @@ class FinanceRepository {
   }
 
   Future<FinanceDocDetail> reverse(String id) async {
-    final json = await api.post(FinanceEndpoints.docReverse(_seg, id));
-    return FinanceDocDetail.fromJson(json);
+    final json = await unapproveDocument(api, switch (type) {
+      FinanceDocType.receipt => 'financeReceipt',
+      FinanceDocType.payment => 'financePayment',
+      FinanceDocType.expense => 'financeExpense',
+      FinanceDocType.otherIncome => 'financeOtherIncome',
+      FinanceDocType.bankTransfer => 'financeBankTransfer',
+    }, id);
+    return FinanceDocDetail.fromJson(Map<String, dynamic>.from(json as Map));
   }
 
   /// C6 财务确认（仅费用单）：已过账的费用单确认入账（gl_status 1→2）。
@@ -208,6 +215,7 @@ class ArApFilter {
     this.dateFrom,
     this.dateTo,
     this.billNo,
+    this.sourceDocNo,
     this.salesOrderNos,
   });
   final String? keyword;
@@ -221,6 +229,9 @@ class ArApFilter {
 
   /// 台账单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
+
+  /// 来源单号表头值筛选，在服务端分页前精确匹配。
+  final String? sourceDocNo;
 
   /// 关联销售单号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? salesOrderNos;
@@ -251,6 +262,8 @@ class ArApLedgerRepository {
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
       if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
         'billNo': filter.billNo!.trim(),
+      if (filter.sourceDocNo != null && filter.sourceDocNo!.trim().isNotEmpty)
+        'sourceDocNo': filter.sourceDocNo!.trim(),
       if (filter.salesOrderNos != null &&
           filter.salesOrderNos!.trim().isNotEmpty)
         'salesOrderNos': filter.salesOrderNos!.trim(),

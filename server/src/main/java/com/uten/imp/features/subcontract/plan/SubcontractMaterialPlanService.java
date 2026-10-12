@@ -275,12 +275,30 @@ public class SubcontractMaterialPlanService {
         }
     }
 
+    /** Read-only equivalent of the final CAS; ordinary draft issues remain included. */
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=ApiException.class)
+    public void requireMaterialReturnReversible(UUID returnId) {
+        for(Object[] returned:returnLines(returnId)) {
+            List<Object[]> facts=rows("""
+                SELECT line.issued_qty,line.planned_qty,COALESCE((SELECT SUM(item.qty)
+                  FROM subcontract_material_issue_items item JOIN subcontract_material_issues issue
+                    ON issue.id=item.issue_id AND issue.status=0 AND NOT issue.is_deleted
+                  WHERE item.plan_item_id=line.id AND NOT item.is_deleted),0)
+                FROM subcontract_material_plan_items line WHERE line.id=:id AND NOT line.is_deleted
+                """,Map.of("id",returned[0]));
+            if(facts.size()!=1 || decimal(facts.getFirst()[0]).add(decimal(returned[1]))
+                    .add(decimal(facts.getFirst()[2])).compareTo(decimal(facts.getFirst()[1]))>0)
+                throw new ApiException(ErrorCode.CONFLICT,"退回的料已重新领出，不能反审退料");
+        }
+    }
+
     /**
      * 退料红冲同事务: 已发净量加回。若退回的料已被重新领出(已发 + 待仓库发 + 本次 &gt; 计划)则拒绝,
      * 守住「每种物料已覆盖 ≤ 计划」。
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void syncAfterMaterialReturnReversed(UUID returnId) {
+        requireMaterialReturnReversible(returnId);
         List<Object[]> lines = returnLines(returnId);
         for (Object[] line : lines) {
             BigDecimal qty = decimal(line[1]);

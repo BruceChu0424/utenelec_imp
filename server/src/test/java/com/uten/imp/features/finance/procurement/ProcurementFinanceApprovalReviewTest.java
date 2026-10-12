@@ -13,6 +13,8 @@ import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentMatchers;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -34,6 +36,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 /**
  * 审核详情投影的口径锁定：未知 case fail-closed；allowedActions 仅对
@@ -112,6 +116,31 @@ class ProcurementFinanceApprovalReviewTest {
         assertEquals(0, new BigDecimal("1.13").compareTo(review.exchangeRate()));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PURCHASE", "SUBCONTRACT"})
+    void pendingDraftReviewOnlyAdvertisesApprovalDecisions(String orderType) {
+        UUID caseId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        JdbcTemplate jdbc = headerRow(caseId, orderId, "PENDING", null, orderType);
+        // Before the removal, this real draft state caused the projection to expose EDIT.
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(orderId))).thenReturn(1);
+
+        ApprovalReview review = service(jdbc, true).review(caseId);
+
+        assertEquals(List.of("APPROVE", "REJECT"), review.allowedActions());
+        verify(jdbc, never()).queryForObject(anyString(), eq(Integer.class), eq(orderId));
+    }
+
+    @Test
+    void onlyLatestEffectiveApprovalMayExposeTheExistingDocumentUnapprovalEntry() {
+        UUID caseId = UUID.randomUUID();
+        JdbcTemplate jdbc = headerRow(caseId, UUID.randomUUID(), "APPROVED", BigDecimal.ONE);
+        when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(caseId))).thenReturn(0, 1);
+        var service = service(jdbc, true, Set.of("purchase_order:view", "purchase_order:reverse"));
+        assertTrue(service.review(caseId).allowedActions().isEmpty(), "旧轮次不得反审当前订货代次");
+        assertEquals(List.of("UNAPPROVE"), service.review(caseId).allowedActions());
+    }
+
     @Test
     void pendingCaseWithoutReviewerEligibilityExposesNoActions() {
         UUID caseId = UUID.randomUUID();
@@ -127,13 +156,37 @@ class ProcurementFinanceApprovalReviewTest {
                 "驳回 case 不落财务汇率（V835：驳回不写）");
     }
 
+    @Test
+    void historicalFinanceEditRemainsVisibleWhileItsCanceledRoundHasNoActions() {
+        UUID caseId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        JdbcTemplate jdbc = headerRow(caseId, orderId, "CANCELED", null);
+        var historical = new ProcurementApprovalContracts.ReviewHistoryEntry(
+                1, "FINANCE_EDIT", "历史审核员", OffsetDateTime.now(), null);
+        when(jdbc.query(ArgumentMatchers.argThat(
+                        (String sql) -> sql != null && sql.contains("procurement_order_approval_events")),
+                ArgumentMatchers.<RowMapper<ProcurementApprovalContracts.ReviewHistoryEntry>>notNull(),
+                eq("PURCHASE"), eq(orderId))).thenReturn(List.of(historical));
+
+        ApprovalReview review = service(jdbc, true).review(caseId);
+
+        assertEquals(List.of(historical), review.history());
+        assertTrue(review.allowedActions().isEmpty());
+    }
+
     private static JdbcTemplate headerRow(
             UUID caseId, UUID orderId, String status,
             java.math.BigDecimal financeExchangeRate) {
+        return headerRow(caseId, orderId, status, financeExchangeRate, "PURCHASE");
+    }
+
+    private static JdbcTemplate headerRow(
+            UUID caseId, UUID orderId, String status,
+            java.math.BigDecimal financeExchangeRate, String orderType) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         Object[] row = new Object[26];
         row[0] = caseId;
-        row[1] = "PURCHASE";
+        row[1] = orderType;
         row[2] = orderId;
         row[3] = "CG20260901001";
         row[4] = status;
@@ -188,6 +241,12 @@ class ProcurementFinanceApprovalReviewTest {
 
     private static ProcurementFinanceApprovalService service(
             JdbcTemplate jdbc, boolean eligible) {
+        return service(jdbc, eligible, Set.of(WorkflowReviewerEligibility.APPROVE_PERMISSION,
+                WorkflowReviewerEligibility.REJECT_PERMISSION));
+    }
+
+    private static ProcurementFinanceApprovalService service(
+            JdbcTemplate jdbc, boolean eligible, Set<String> permissions) {
         WorkflowReviewerEligibility reviewer =
                 mock(WorkflowReviewerEligibility.class);
         when(reviewer.findEligible(USER_ID)).thenReturn(eligible
@@ -198,9 +257,7 @@ class ProcurementFinanceApprovalReviewTest {
                 mock(SecurityContextCurrentUser.class);
         AuthUser actor = mock(AuthUser.class);
         when(actor.getId()).thenReturn(USER_ID);
-        when(actor.getPermissions()).thenReturn(Set.of(
-                WorkflowReviewerEligibility.APPROVE_PERMISSION,
-                WorkflowReviewerEligibility.REJECT_PERMISSION));
+        when(actor.getPermissions()).thenReturn(permissions);
         when(currentUser.get()).thenReturn(Optional.of(actor));
         return new ProcurementFinanceApprovalService(
                 List.of(),

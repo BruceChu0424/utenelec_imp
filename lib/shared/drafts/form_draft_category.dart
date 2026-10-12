@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/utils/china_datetime.dart';
 import 'form_draft.dart';
 import 'form_draft_store.dart';
+import 'task_form_drafts.dart';
 import '../providers/draft_counts_provider.dart' show DraftDocKind;
 
 export 'form_draft.dart';
@@ -27,6 +28,7 @@ class FormDraftCategoryScope {
     this.query = const {},
     this.excludeKinds = const {},
     this.excludeRoutes = const {},
+    this.excludeTaskDrafts = false,
   });
   final String? kind;
   final BadgeModule? module;
@@ -36,10 +38,12 @@ class FormDraftCategoryScope {
   final Map<String, String> query;
   final Set<String> excludeKinds;
   final Set<String> excludeRoutes;
+  final bool excludeTaskDrafts;
 
   bool matches(FormDraft draft) {
     final uri = Uri.parse(draft.route);
     return (kind == null || formDraftBusinessKind(draft) == kind) &&
+        (!excludeTaskDrafts || !isTaskFormDraft(draft)) &&
         (module == null || draft.module == module) &&
         (routePrefix == null || uri.path.startsWith(routePrefix!)) &&
         (routePath == null || uri.path == routePath) &&
@@ -58,6 +62,7 @@ class FormDraftCategoryScope {
       other.module == module &&
       other.routePrefix == routePrefix &&
       other.routePath == routePath &&
+      other.excludeTaskDrafts == excludeTaskDrafts &&
       setEquals(other.routePrefixes, routePrefixes) &&
       mapEquals(other.query, query) &&
       setEquals(other.excludeKinds, excludeKinds) &&
@@ -68,6 +73,7 @@ class FormDraftCategoryScope {
     module,
     routePrefix,
     routePath,
+    excludeTaskDrafts,
     Object.hashAllUnordered(routePrefixes),
     Object.hashAllUnordered(
       query.entries.map((e) => Object.hash(e.key, e.value)),

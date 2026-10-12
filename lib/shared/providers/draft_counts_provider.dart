@@ -245,7 +245,9 @@ final draftCountsProvider = Provider<DraftCounts>((ref) {
   final local = {
     for (final kind in DraftDocKind.values)
       kind: ref.watch(
-        formDraftCategoryCountProvider(FormDraftCategoryScope(kind: kind.name)),
+        formDraftCategoryCountProvider(
+          FormDraftCategoryScope(kind: kind.name, excludeTaskDrafts: true),
+        ),
       ),
   };
   return DraftCounts.fromJson({

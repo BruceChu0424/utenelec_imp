@@ -50,9 +50,11 @@ void main() {
     );
 
     expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
-    expect(find.text('合计数量: '), findsOneWidget);
+    expect(find.text('收费量 / 原数量: '), findsOneWidget);
     // 10 公斤 + 4 箱 绝不合并成 14。
-    expect(find.text('4 箱 · 10 公斤'), findsOneWidget);
+    expect(find.text('4 箱 · 10 公斤'), findsNWidgets(2));
+    expect(find.text('实物量: '), findsOneWidget);
+    expect(find.text('赠品量: '), findsOneWidget);
     expect(find.text('14'), findsNothing);
 
     expect(find.text('合计金额(美元): '), findsOneWidget);
@@ -77,8 +79,9 @@ void main() {
     await _pumpDetail(tester, permissions: const {}, priceMasked: true);
 
     expect(find.byType(UtenTotalsSummaryBar), findsOneWidget);
-    expect(find.text('合计数量: '), findsOneWidget);
-    expect(find.text('4 箱 · 10 公斤'), findsOneWidget);
+    expect(find.text('收费量 / 原数量: '), findsOneWidget);
+    expect(find.text('4 箱 · 10 公斤'), findsNWidgets(2));
+    expect(find.text('实物量: '), findsOneWidget);
     expect(find.textContaining('合计金额'), findsNothing);
     expect(find.text('合计(本币): '), findsNothing);
   });

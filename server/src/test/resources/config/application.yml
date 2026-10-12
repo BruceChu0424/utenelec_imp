@@ -1,5 +1,9 @@
 # 只在测试类路径上生效(打包的应用不含本文件), 优先级高于 src/main/resources/application.yml。
 uten:
+  inventory:
+    value-work:
+      # Tests drain explicit workers; cached Spring contexts must never poll another fixture.
+      enabled: false
   notices:
     planning-catch-up:
       # True-PG tests call runBatch explicitly; cached contexts must not race each other's fixtures.

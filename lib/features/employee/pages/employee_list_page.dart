@@ -31,6 +31,9 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/employee_api_models.dart';
@@ -221,9 +224,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
       final deptOk =
           dept == null || dept.isEmpty || (e.departmentName ?? '') == dept;
       final statusOk =
-          status == null ||
-          status.isEmpty ||
-          (e.status != null && _statusLabel(l10n, e.status!) == status);
+          status == null || status.isEmpty || _displayStatus(l10n, e) == status;
       final positionOk =
           position == null ||
           position.isEmpty ||
@@ -250,10 +251,7 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
 
     return {
       'departmentName': bucketsOf(_items.map((e) => e.departmentName ?? '')),
-      'status': bucketsOf([
-        for (final e in _items)
-          if (e.status != null) _statusLabel(l10n, e.status!),
-      ]),
+      'status': bucketsOf([for (final e in _items) _displayStatus(l10n, e)]),
       'positionName': bucketsOf(_items.map((e) => e.positionName ?? '')),
     };
   }
@@ -304,7 +302,23 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     _ => key,
   };
 
+  List<FormDraft> _offboardingDrafts(String employeeId) => taskDraftsFor(
+    ref.read(formDraftsProvider),
+    matches: (draft) =>
+        FormDraftCatalog.employeeOffboarding.groups(draft) &&
+        Uri.parse(draft.route).path == '/employee/$employeeId/offboarding',
+  );
+
+  String _displayStatus(AppLocalizations l10n, EmployeeSummary employee) {
+    final status = employee.status == null
+        ? ''
+        : _statusLabel(l10n, employee.status!);
+    final drafts = _offboardingDrafts(employee.id);
+    return drafts.isEmpty ? status : '$status · 离职办理${taskDraftStatus(drafts)}';
+  }
+
   Widget _body() {
+    ref.watch(formDraftsProvider);
     final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: UtenSpacing.s12),
@@ -335,6 +349,13 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
         // 双击行进入员工详情；右键/长按菜单同入口（类似人员行同语义）。
         onRowTap: _openDetail,
         rowMenuBuilder: (e) => [
+          if (_offboardingDrafts(e.id).isNotEmpty)
+            UtenMenuItem(
+              label: '继续离职办理草稿',
+              icon: Icons.drafts_outlined,
+              onTap: () =>
+                  resumeTaskFormDraft(context, ref, _offboardingDrafts(e.id)),
+            ),
           UtenMenuItem(
             label: '查看员工档案',
             icon: Icons.open_in_new_rounded,
@@ -380,8 +401,8 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 72,
-      value: (e) => e.status == null ? null : _statusLabel(l10n, e.status!),
+      width: 160,
+      value: (e) => _displayStatus(l10n, e),
       // 员工状态色铺整格底色，替代原格内胶囊（2026-09-27 用户口径）。
       cellColor: (context, e) =>
           utenStatusBadgeCellColor(employeeStatusBadgeType(e.status)),

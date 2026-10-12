@@ -15,9 +15,13 @@ import com.uten.imp.features.rbac.PermissionRepository;
 import com.uten.imp.features.rbac.UserPermissionOverrideRepository;
 import com.uten.imp.security.PermissionDelegationPolicy;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -61,6 +65,7 @@ public class PermissionResolver {
     private final PermissionDelegationPolicy delegationPolicy;
     private final PermissionSurfaceRegistry surfaceRegistry;
     private final PagePermissionDelegationFeatureGate delegationFeatureGate;
+    private final NamedParameterJdbcTemplate batchJdbc;
 
     public PermissionResolver(PermissionRepository permissionRepo,
                               DepartmentPermissionRepository departmentPermissionRepo,
@@ -73,6 +78,25 @@ public class PermissionResolver {
                               PermissionDelegationPolicy delegationPolicy,
                               PermissionSurfaceRegistry surfaceRegistry,
                               PagePermissionDelegationFeatureGate delegationFeatureGate) {
+        this(permissionRepo, departmentPermissionRepo, overrideRepo, employeeRepo,
+                secondaryDepartmentRepo, userAccountRepo, departmentRepo,
+                managerDelegationRepo, delegationPolicy, surfaceRegistry,
+                delegationFeatureGate, null);
+    }
+
+    @Autowired
+    public PermissionResolver(PermissionRepository permissionRepo,
+                              DepartmentPermissionRepository departmentPermissionRepo,
+                              UserPermissionOverrideRepository overrideRepo,
+                              EmployeeRepository employeeRepo,
+                              com.uten.imp.features.org.employee.EmployeeSecondaryDepartmentRepository secondaryDepartmentRepo,
+                              UserAccountRepository userAccountRepo,
+                              DepartmentRepository departmentRepo,
+                              ManagerPermissionDelegationRepository managerDelegationRepo,
+                              PermissionDelegationPolicy delegationPolicy,
+                              PermissionSurfaceRegistry surfaceRegistry,
+                              PagePermissionDelegationFeatureGate delegationFeatureGate,
+                              JdbcTemplate jdbc) {
         this.permissionRepo = permissionRepo;
         this.departmentPermissionRepo = departmentPermissionRepo;
         this.overrideRepo = overrideRepo;
@@ -84,6 +108,7 @@ public class PermissionResolver {
         this.delegationPolicy = delegationPolicy;
         this.surfaceRegistry = surfaceRegistry;
         this.delegationFeatureGate = delegationFeatureGate;
+        this.batchJdbc = jdbc == null ? null : new NamedParameterJdbcTemplate(jdbc);
     }
 
     /**
@@ -176,6 +201,61 @@ public class PermissionResolver {
                 .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
                 .map(this::grantedPermsOf)
                 .orElse(Set.of());
+    }
+
+    /**
+     * Current, actually granted authority intersection for an entire recipient pool.
+     * One statement reads both base sources and every dynamic delegation condition;
+     * no per-account JPA lookups or super-admin catalog expansion are performed.
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> usersGrantedAll(Collection<UUID> candidates, Set<String> required) {
+        return usersGrantedAllAndAny(candidates, required, Set.of());
+    }
+
+    /** JDBC is mandatory in the production constructor; direct unit fixtures may omit it. */
+    public boolean supportsGrantedPermissionBatch() { return batchJdbc != null; }
+
+    @Transactional(readOnly = true)
+    public List<UUID> usersGrantedAllAndAny(Collection<UUID> candidates,
+                                          Set<String> required, Set<String> alternatives) {
+        if (candidates.isEmpty()) return List.of();
+        Set<String> requested = new HashSet<>(required);
+        requested.addAll(alternatives);
+        Map<UUID, Set<String>> granted = grantedPermissionsFor(candidates, requested);
+        return candidates.stream().distinct().filter(id -> {
+            Set<String> actual = granted.getOrDefault(id, Set.of());
+            return actual.containsAll(required)
+                    && (alternatives.isEmpty() || alternatives.stream().anyMatch(actual::contains));
+        }).toList();
+    }
+
+    /** A single authority statement, shared by conjunctions and complex recipient predicates. */
+    @Transactional(readOnly = true)
+    public Map<UUID, Set<String>> grantedPermissionsFor(Collection<UUID> candidates, Set<String> requested) {
+        if (candidates.isEmpty()) return Map.of();
+        if (requested.isEmpty()) throw new IllegalArgumentException("At least one authority is required");
+        // Retain the established direct-construction test seam. Spring always uses
+        // the JDBC constructor above, including database-backed integration tests.
+        if (batchJdbc == null) {
+            Map<UUID, Set<String>> legacy = new HashMap<>();
+            candidates.stream().distinct().forEach(id -> legacy.put(id, grantedPermsOf(id)));
+            return Map.copyOf(legacy);
+        }
+        Map<UUID, Set<String>> granted = new HashMap<>();
+        var rows = batchJdbc.query(GRANTED_PERMISSION_BATCH_SQL,
+                Map.of("userIds", candidates, "codes", requested,
+                        "delegationsEnabled", delegationFeatureGate.enabled()),
+                (rs, row) -> new BatchGrantedPermission(rs.getObject("user_id", UUID.class),
+                        rs.getString("code"), rs.getString("surface_key")));
+        for (BatchGrantedPermission row : rows) {
+            if (row.surfaceKey() != null && (!delegationPolicy.isDelegable(row.code())
+                    || !surfaceRegistry.isKnown(row.surfaceKey())
+                    || !surfaceRegistry.contains(row.surfaceKey(), row.code()))) continue;
+            granted.computeIfAbsent(row.userId(), ignored -> new HashSet<>()).add(row.code());
+        }
+        granted.replaceAll((id, codes) -> Set.copyOf(codes));
+        return Map.copyOf(granted);
     }
 
     /**
@@ -471,6 +551,148 @@ public class PermissionResolver {
     private Set<String> allPermissionCodes() {
         return new HashSet<>(permissionRepo.findAllCodes());
     }
+
+    private record BatchGrantedPermission(UUID userId, String code, String surfaceKey) {}
+
+    // Mirrors baseParts/delegationCeiling/resolveManagerGrants for requested codes.
+    // A single MVCC statement prevents mixed authorization generations during fanout.
+    private static final String GRANTED_PERMISSION_BATCH_SQL = """
+            WITH RECURSIVE requested AS MATERIALIZED (
+                SELECT id, code, baseline FROM permissions WHERE code IN (:codes)
+            ), requested_accounts AS MATERIALIZED (
+                SELECT account.id, account.employee_id, account.is_super_admin,
+                       account.permission_delegation_generation, account.auth_version
+                FROM users account
+                WHERE account.id IN (:userIds) AND NOT account.is_deleted AND account.status='active'
+            ), accounts AS MATERIALIZED (
+                SELECT account.* FROM requested_accounts account
+                UNION
+                SELECT grantor.id, grantor.employee_id, grantor.is_super_admin,
+                       grantor.permission_delegation_generation, grantor.auth_version
+                FROM users grantor
+                JOIN manager_permission_delegations delegation ON delegation.granted_by_user_id=grantor.id
+                JOIN requested_accounts target ON target.id=delegation.user_id
+                JOIN requested permission ON permission.id=delegation.permission_id
+                WHERE delegation.enabled AND :delegationsEnabled
+                  AND NOT grantor.is_deleted AND grantor.status='active'
+            ), memberships(user_id, department_id) AS (
+                SELECT account.id, employee.department_id FROM accounts account
+                JOIN employees employee ON employee.id=account.employee_id
+                WHERE employee.department_id IS NOT NULL
+                UNION
+                SELECT account.id, secondary.department_id FROM accounts account
+                JOIN employee_secondary_departments secondary ON secondary.employee_id=account.employee_id
+            ), ancestors(user_id, department_id, parent_id) AS (
+                SELECT membership.user_id, department.id, department.parent_id FROM memberships membership
+                JOIN departments department ON department.id=membership.department_id
+                UNION
+                SELECT ancestor.user_id, parent.id, parent.parent_id FROM ancestors ancestor
+                JOIN departments parent ON parent.id=ancestor.parent_id
+            ), department_codes AS MATERIALIZED (
+                SELECT DISTINCT ancestor.user_id, permission.code FROM ancestors ancestor
+                JOIN department_permissions allocation ON allocation.department_id=ancestor.department_id
+                JOIN requested permission ON permission.id=allocation.permission_id
+            ), overrides AS MATERIALIZED (
+                SELECT allocation.user_id, permission.code, allocation.effect, allocation.authority_source
+                FROM user_permission_overrides allocation
+                JOIN accounts account ON account.id=allocation.user_id
+                JOIN requested permission ON permission.id=allocation.permission_id
+                WHERE allocation.active
+            ), base_codes(user_id, code) AS (
+                SELECT account.id, permission.code FROM requested_accounts account
+                CROSS JOIN requested permission WHERE permission.baseline
+                UNION
+                SELECT department.user_id, department.code FROM department_codes department
+                JOIN requested_accounts account ON account.id=department.user_id
+                UNION
+                SELECT allocation.user_id, allocation.code FROM overrides allocation
+                JOIN requested_accounts account ON account.id=allocation.user_id
+                WHERE allocation.effect IS DISTINCT FROM 'revoke'
+            ), delegation_targets AS MATERIALIZED (
+                SELECT delegation.*, permission.code, permission.baseline,
+                       grantor.employee_id AS grantor_employee_id,
+                       grantor.is_super_admin AS grantor_super_admin,
+                       target_employee.department_id AS current_department_id
+                FROM manager_permission_delegations delegation
+                JOIN requested permission ON permission.id=delegation.permission_id
+                JOIN requested_accounts target ON target.id=delegation.user_id
+                JOIN employees target_employee ON target_employee.id=target.employee_id
+                JOIN departments target_department ON target_department.id=target_employee.department_id
+                JOIN accounts grantor ON grantor.id=delegation.granted_by_user_id
+                LEFT JOIN employees grantor_employee ON grantor_employee.id=grantor.employee_id
+                CROSS JOIN authorization_state auth_state
+                WHERE :delegationsEnabled AND delegation.enabled AND auth_state.singleton_id=1
+                  AND NOT target_employee.is_deleted AND target_employee.status IN ('active','probation','onLeave')
+                  AND NOT target_department.is_deleted
+                  AND delegation.department_id=target_employee.department_id
+                  AND delegation.target_user_generation=target.permission_delegation_generation
+                  AND delegation.target_employee_generation=target_employee.permission_delegation_generation
+                  AND delegation.target_department_generation=target_department.permission_delegation_generation
+                  AND delegation.grantor_user_generation=grantor.permission_delegation_generation
+                  AND delegation.grantor_auth_version=grantor.auth_version
+                  AND delegation.grantor_authorization_epoch=auth_state.epoch
+                  AND (grantor.is_super_admin OR (NOT grantor_employee.is_deleted
+                       AND grantor_employee.status IN ('active','probation','onLeave')))
+                  AND NOT permission.baseline
+                  AND (grantor.is_super_admin OR EXISTS (
+                      SELECT 1 FROM department_codes department
+                      WHERE department.user_id=grantor.id AND department.code=permission.code)
+                      OR EXISTS (SELECT 1 FROM overrides allocation
+                          WHERE allocation.user_id=grantor.id AND allocation.code=permission.code
+                            AND allocation.effect IS DISTINCT FROM 'revoke'
+                            AND allocation.authority_source='SUPER_ADMIN_CONFIRMED'))
+                  AND NOT EXISTS (SELECT 1 FROM overrides allocation
+                      WHERE allocation.user_id=grantor.id AND allocation.code=permission.code
+                        AND allocation.effect='revoke')
+            ), scope_ancestors(user_id, permission_id, id, parent_id, code, level, manager_id, depth) AS (
+                SELECT target.user_id, target.permission_id, department.id, department.parent_id,
+                       department.code, department.level, department.manager_id, 0
+                FROM delegation_targets target JOIN departments department ON department.id=target.current_department_id
+                WHERE NOT department.is_deleted
+                UNION ALL
+                SELECT child.user_id, child.permission_id, parent.id, parent.parent_id,
+                       parent.code, parent.level, parent.manager_id, child.depth+1
+                FROM scope_ancestors child JOIN departments parent ON parent.id=child.parent_id
+                WHERE NOT parent.is_deleted
+            ), delegated_codes(user_id, code, surface_key) AS (
+                SELECT target.user_id, target.code, target.surface_key FROM delegation_targets target
+                LEFT JOIN departments scope ON scope.id=target.scope_department_id
+                LEFT JOIN employees grantor_employee ON grantor_employee.id=target.grantor_employee_id
+                LEFT JOIN LATERAL (
+                    SELECT authority.id FROM (
+                        SELECT office.id, 0 AS priority, 0 AS depth
+                        FROM departments office JOIN departments company ON company.id=office.parent_id
+                        WHERE office.code='GM' AND office.manager_id=target.grantor_employee_id
+                          AND NOT office.is_deleted
+                          AND office.level IN ('管理中心','一级部门','二级班组','三级科室')
+                          AND grantor_employee.department_id=office.id AND NOT grantor_employee.is_deleted
+                          AND grantor_employee.status IN ('active','probation','onLeave')
+                          AND NOT company.is_deleted AND company.level='公司' AND company.parent_id IS NULL
+                        UNION ALL
+                        SELECT ancestor.id, 1 AS priority, ancestor.depth FROM scope_ancestors ancestor
+                        WHERE ancestor.user_id=target.user_id AND ancestor.permission_id=target.permission_id
+                          AND ancestor.manager_id=target.grantor_employee_id AND ancestor.code<>'GM'
+                          AND ancestor.level IN ('管理中心','一级部门','二级班组','三级科室')
+                    ) authority ORDER BY authority.priority, authority.depth LIMIT 1
+                ) current_scope ON TRUE
+                WHERE (target.scope_source='SUPER_ADMIN' AND target.grantor_super_admin
+                    AND target.grantor_employee_generation IS NULL AND target.scope_department_id IS NULL
+                    AND target.scope_generation IS NULL AND target.scope_assignment_id IS NULL
+                    AND target.scope_assignment_version IS NULL)
+                  OR (target.scope_source='DEPARTMENT_MANAGER' AND grantor_employee.id IS NOT NULL
+                    AND target.grantor_employee_generation=grantor_employee.permission_delegation_generation
+                    AND scope.id IS NOT NULL AND NOT scope.is_deleted
+                    AND target.scope_generation=scope.permission_delegation_generation
+                    AND target.scope_assignment_id IS NULL AND target.scope_assignment_version IS NULL
+                    AND current_scope.id=scope.id)
+            ), granted(user_id, code, surface_key) AS (
+                SELECT base.user_id, base.code, CAST(NULL AS text) FROM base_codes base
+                UNION ALL SELECT delegated.user_id, delegated.code, delegated.surface_key FROM delegated_codes delegated
+            )
+            SELECT granted.user_id, granted.code, granted.surface_key FROM granted
+            WHERE NOT EXISTS (SELECT 1 FROM overrides allocation
+                WHERE allocation.user_id=granted.user_id AND allocation.code=granted.code AND allocation.effect='revoke')
+            """;
 
     private record BaseParts(
             UUID departmentId,

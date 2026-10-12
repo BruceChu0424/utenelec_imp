@@ -127,7 +127,7 @@ public class VisitorApplicationService {
         app.setPhoneEnc(acc.getPhoneEnc());
         app.setIdCardEnc(idCardNo == null ? null : tx.encrypt(idCardNo));
         app.setIdCardLast4(last4(idCardNo));
-        app.setCompany(isBlank(req.company()) ? "优腾电器" : req.company().trim());
+        app.setCompany(isBlank(req.company()) ? null : req.company().trim());
         app.setVisitPurpose(req.visitPurpose().trim());
         app.setHasVehicle(req.hasVehicle());
         app.setPlateNoEnc(req.hasVehicle() ? tx.encrypt(plateNo) : null);

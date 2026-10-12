@@ -41,6 +41,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import '../widgets/warehouse_form_draft_categories.dart';
 import '../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
@@ -243,6 +244,9 @@ class _WarehouseTaskCenterPageState
     final categoryBar = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const TaskDraftRecoveryNotice(
+          scope: FormDraftCategoryScope(module: BadgeModule.warehouse),
+        ),
         UtenFilterToolbar<String>(
           segmentsKey: const Key('warehouse-task-center-groups'),
           searchKey: const Key('warehouse-task-center-search'),

@@ -11,6 +11,7 @@ import com.uten.imp.application.port.ProcurementReceiptConsiderationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.InventoryMutationLock;
+import com.uten.imp.support.MigratedProjectionSchema;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.*;
@@ -83,14 +84,14 @@ class InventoryPositionPostgresTest {
             db.execute(migration.substring(migration.indexOf("ALTER TABLE stock_value_production_cost_objects"),
                     migration.indexOf("CREATE FUNCTION fn_guard_cost_business_refresh_source")));
         }
+        // Keep report-input projections complete as migrations evolve. The value
+        // oracle's functions adapt one unsplit scope and its base-unit target.
+        MigratedProjectionSchema.createCurrentTables(db,"production_execution_segments",
+                "production_daily_reports","production_daily_report_items");
         db.execute("""
-                CREATE TABLE production_execution_segments(id uuid PRIMARY KEY,target_qty_base numeric NOT NULL);
                 CREATE FUNCTION fn_production_execution_cost_scope(uuid) RETURNS uuid LANGUAGE sql AS $$ SELECT $1 $$;
                 CREATE FUNCTION fn_production_execution_cost_target(uuid) RETURNS numeric LANGUAGE sql
-                    AS $$ SELECT target_qty_base FROM production_execution_segments WHERE id=$1 $$;
-                CREATE TABLE production_daily_reports(id uuid PRIMARY KEY,status smallint,is_deleted boolean NOT NULL DEFAULT false);
-                CREATE TABLE production_daily_report_items(id uuid PRIMARY KEY,report_id uuid,execution_segment_id uuid,
-                    is_final boolean,is_actual_surplus boolean,is_deleted boolean NOT NULL DEFAULT false);
+                    AS $$ SELECT planned_qty*product_unit_rate FROM production_execution_segments WHERE id=$1 $$;
                 """);
         db.execute("CREATE TABLE stock_documents(id uuid PRIMARY KEY,doc_type text,warehouse_id uuid,status smallint,is_deleted boolean DEFAULT false,transfer_kind text NOT NULL DEFAULT 'NORMAL',defect_reason text,channel_request_key text)");
         db.execute("CREATE TABLE stock_document_items(id uuid PRIMARY KEY,doc_id uuid,execution_segment_id uuid)");
@@ -763,7 +764,8 @@ class InventoryPositionPostgresTest {
     }
     private static void reportTargetChanged(Production p){
         UUID report=UUID.randomUUID();
-        db.update("INSERT INTO production_execution_segments VALUES (?,21)",p.segment());
+        db.update("INSERT INTO production_execution_segments(id,planned_qty,product_unit_rate,product_goods_id) VALUES (?,10.5,2,?)",p.segment(),p.product().goodsId());
+        money(db.queryForObject("SELECT fn_production_execution_cost_target(?)",BigDecimal.class,p.segment()),"21");
         db.update("INSERT INTO production_daily_reports(id,status) VALUES (?,1)",report);
         db.update("INSERT INTO production_daily_report_items(id,report_id,execution_segment_id,is_final,is_actual_surplus) VALUES (?,?,?,true,false)",UUID.randomUUID(),report,p.segment());
         locked(p.product(),()->{new ProductionInventoryValueService(new NamedParameterJdbcTemplate(db),positions,productionCosts,mutex,null).targetChangedByReport(report,USER);return null;});

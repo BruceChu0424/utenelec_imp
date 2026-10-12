@@ -30,31 +30,11 @@ public final class BatchPermissionFixture {
 
     public BatchPermissionFixture(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
-        jdbc.execute("""
-                DROP SCHEMA public CASCADE; CREATE SCHEMA public;
-                CREATE TABLE permissions(id uuid PRIMARY KEY,code text UNIQUE,baseline boolean NOT NULL DEFAULT false);
-                CREATE TABLE departments(id uuid PRIMARY KEY,code text,name text,level text,parent_id uuid,manager_id uuid,
-                  is_deleted boolean NOT NULL DEFAULT false,permission_delegation_generation bigint NOT NULL DEFAULT 0);
-                CREATE TABLE employees(id uuid PRIMARY KEY,department_id uuid,full_name text NOT NULL DEFAULT 'Staff',code text NOT NULL DEFAULT '',status text NOT NULL DEFAULT 'active',
-                  is_deleted boolean NOT NULL DEFAULT false,permission_delegation_generation bigint NOT NULL DEFAULT 0);
-                CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid,is_super_admin boolean NOT NULL DEFAULT false,
-                  is_deleted boolean NOT NULL DEFAULT false,status text NOT NULL DEFAULT 'active',
-                  permission_delegation_generation bigint NOT NULL DEFAULT 0,auth_version bigint NOT NULL DEFAULT 0);
-                CREATE TABLE employee_secondary_departments(employee_id uuid,department_id uuid);
-                CREATE TABLE department_permissions(department_id uuid,permission_id uuid);
-                CREATE TABLE user_permission_overrides(user_id uuid,permission_id uuid,effect text,active boolean NOT NULL DEFAULT true,
-                  authority_source text NOT NULL DEFAULT 'SUPER_ADMIN_CONFIRMED',PRIMARY KEY(user_id,permission_id));
-                CREATE TABLE authorization_state(singleton_id integer PRIMARY KEY,epoch bigint NOT NULL);
-                INSERT INTO authorization_state VALUES (1,0);
-                CREATE TABLE manager_permission_delegations(user_id uuid,department_id uuid,permission_id uuid,
-                  granted_by_user_id uuid,surface_key text,enabled boolean NOT NULL DEFAULT true,
-                  target_user_generation bigint NOT NULL DEFAULT 0,target_employee_generation bigint NOT NULL DEFAULT 0,
-                  target_department_generation bigint NOT NULL DEFAULT 0,grantor_user_generation bigint NOT NULL DEFAULT 0,
-                  grantor_employee_generation bigint,grantor_auth_version bigint NOT NULL DEFAULT 0,
-                  grantor_authorization_epoch bigint NOT NULL DEFAULT 0,scope_source text,
-                  scope_department_id uuid,scope_generation bigint,scope_assignment_id uuid,scope_assignment_version bigint,
-                  PRIMARY KEY(user_id,department_id,permission_id));
-                """);
+        jdbc.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+        MigratedProjectionSchema.createCurrentTables(jdbc,"permissions","departments","employees","users",
+                "employee_secondary_departments","department_permissions","user_permission_overrides",
+                "authorization_state","manager_permission_delegations");
+        jdbc.update("INSERT INTO authorization_state(singleton_id,epoch) VALUES (1,0)");
         jdbc.update("INSERT INTO permissions(id,code) VALUES (?,?),(?,?)", view, VIEW, confirm, CONFIRM);
         department(company, "COMPANY", "公司", null);
         department(finance, "DEPT_FIN", "一级部门", company);
@@ -78,8 +58,9 @@ public final class BatchPermissionFixture {
 
     public UUID account(UUID department, boolean superAdmin) {
         UUID id = UUID.randomUUID();
-        jdbc.update("INSERT INTO employees(id,department_id) VALUES (?,?)", id, department);
-        jdbc.update("INSERT INTO users(id,employee_id,is_super_admin) VALUES (?,?,?)", id, id, superAdmin);
+        jdbc.update("INSERT INTO employees(id,department_id,full_name,code,status) VALUES (?,?,'Staff',?,'active')",
+                id, department,"FIX-"+id);
+        jdbc.update("INSERT INTO users(id,employee_id,is_super_admin,status) VALUES (?,?,?,'active')", id, id, superAdmin);
         return id;
     }
 
@@ -88,10 +69,10 @@ public final class BatchPermissionFixture {
         List<Object[]> employees = new ArrayList<>(), users = new ArrayList<>();
         for (int index=0; index<count; index++) {
             UUID id=UUID.randomUUID(); ids.add(id);
-            employees.add(new Object[]{id,department}); users.add(new Object[]{id,id,superAdmin});
+            employees.add(new Object[]{id,department,"FIX-"+id}); users.add(new Object[]{id,id,superAdmin});
         }
-        jdbc.batchUpdate("INSERT INTO employees(id,department_id) VALUES (?,?)",employees);
-        jdbc.batchUpdate("INSERT INTO users(id,employee_id,is_super_admin) VALUES (?,?,?)",users);
+        jdbc.batchUpdate("INSERT INTO employees(id,department_id,full_name,code,status) VALUES (?,?,'Staff',?,'active')",employees);
+        jdbc.batchUpdate("INSERT INTO users(id,employee_id,is_super_admin,status) VALUES (?,?,?,'active')",users);
         return List.copyOf(ids);
     }
 
@@ -113,12 +94,39 @@ public final class BatchPermissionFixture {
     }
 
     public void delegation(UUID target, UUID department, UUID grantor, UUID permission, boolean superAdminSource, UUID scope) {
+        // The real V322 catalog deliberately leaves historical snapshot columns
+        // NULL. A new fixture grant must capture its actual subjects, never turn
+        // unknown snapshots into a permissive default.
+        Map<String,Object> current=jdbc.queryForMap("""
+                SELECT target.permission_delegation_generation target_user_generation,
+                       target_employee.permission_delegation_generation target_employee_generation,
+                       target_department.permission_delegation_generation target_department_generation,
+                       grantor.permission_delegation_generation grantor_user_generation,
+                       grantor_employee.permission_delegation_generation grantor_employee_generation,
+                       grantor.auth_version grantor_auth_version,auth_state.epoch grantor_authorization_epoch
+                FROM users target JOIN employees target_employee ON target_employee.id=target.employee_id
+                JOIN departments target_department ON target_department.id=?
+                CROSS JOIN users grantor
+                LEFT JOIN employees grantor_employee ON grantor_employee.id=grantor.employee_id
+                CROSS JOIN authorization_state auth_state
+                WHERE target.id=? AND grantor.id=? AND auth_state.singleton_id=1
+                """,department,target,grantor);
+        for(String key:List.of("target_user_generation","target_employee_generation","target_department_generation",
+                "grantor_user_generation","grantor_auth_version","grantor_authorization_epoch")) {
+            if(!(current.get(key) instanceof Number))throw new IllegalStateException("Unknown fixture delegation snapshot: "+key);
+        }
+        Long scopeGeneration=superAdminSource?null:jdbc.queryForObject(
+                "SELECT permission_delegation_generation FROM departments WHERE id=?",Long.class,scope);
         jdbc.update("""
                 INSERT INTO manager_permission_delegations(user_id,department_id,permission_id,granted_by_user_id,
-                  surface_key,scope_source,grantor_employee_generation,scope_department_id,scope_generation)
-                VALUES (?,?,?,?,'sales.finance',?,?,?,?)
+                  surface_key,scope_source,grantor_employee_generation,scope_department_id,scope_generation,
+                  target_user_generation,target_employee_generation,target_department_generation,
+                  grantor_user_generation,grantor_auth_version,grantor_authorization_epoch)
+                VALUES (?,?,?,?,'sales.finance',?,?,?,?,?,?,?,?,?,?)
                 """, target, department, permission, grantor,
                 superAdminSource ? "SUPER_ADMIN" : "DEPARTMENT_MANAGER",
-                superAdminSource ? null : 0L, superAdminSource ? null : scope, superAdminSource ? null : 0L);
+                superAdminSource ? null : current.get("grantor_employee_generation"), superAdminSource ? null : scope,scopeGeneration,
+                current.get("target_user_generation"),current.get("target_employee_generation"),current.get("target_department_generation"),
+                current.get("grantor_user_generation"),current.get("grantor_auth_version"),current.get("grantor_authorization_epoch"));
     }
 }

@@ -132,8 +132,8 @@ class GlPostingServicePaymentAccountingTest {
                 com.uten.imp.common.time.BusinessTime.today());
 
         assertThat(sqlStatements).hasSize(4);
-        assertThat(sqlStatements.getFirst()).contains("SELECT legacy_id FROM finance_payments WHERE id=:id");
-        assertThat(sqlStatements.get(1)).contains("pg_advisory_xact_lock");
+        assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
+        assertThat(sqlStatements.get(1)).contains("SELECT legacy_id FROM finance_payments WHERE id=:id");
         assertThat(sqlStatements.get(2))
                 .contains("FROM gl_vouchers voucher")
                 .contains("NOT EXISTS")
@@ -170,8 +170,8 @@ class GlPostingServicePaymentAccountingTest {
                 .hasMessageContaining("不能直接删除");
 
         assertThat(sqlStatements).hasSize(3);
-        assertThat(sqlStatements.getFirst()).contains("SELECT legacy_id FROM finance_payments WHERE id=:id");
-        assertThat(sqlStatements.get(1)).contains("pg_advisory_xact_lock");
+        assertThat(sqlStatements.getFirst()).contains("pg_advisory_xact_lock");
+        assertThat(sqlStatements.get(1)).contains("SELECT legacy_id FROM finance_payments WHERE id=:id");
         assertThat(sqlStatements.getLast())
                 .contains("NOT EXISTS")
                 .contains("OR EXISTS")

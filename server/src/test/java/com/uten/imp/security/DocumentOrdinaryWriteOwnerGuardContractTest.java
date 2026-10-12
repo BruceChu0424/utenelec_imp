@@ -1,6 +1,7 @@
 package com.uten.imp.security;
 
 import org.junit.jupiter.api.Test;
+import com.uten.imp.support.DraftMutationSourceContract;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -105,6 +106,49 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
     }
 
     @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void ordinaryFinanceUpdatesReachOwnerDenialBeforeAnyChildWrite() throws Exception {
+        for (String part : List.of("payment/FinancePayment", "receipt/FinanceReceipt", "expense/FinanceExpense",
+                "bank_transfer/FinanceBankTransfer", "other_income/FinanceOtherIncome")) {
+            String name = part.substring(part.indexOf('/') + 1);
+            Class<?> serviceType = Class.forName("com.uten.imp.features.finance." + part.replace('/', '.') + "Service");
+            Class<?> headerType = Class.forName("com.uten.imp.features.finance." + part.replace('/', '.'));
+            Object header = headerType.getConstructor().newInstance();
+            java.util.UUID id = java.util.UUID.randomUUID(), owner = java.util.UUID.randomUUID();
+            headerType.getMethod("setId", java.util.UUID.class).invoke(header, id);
+            headerType.getMethod("setMakerId", java.util.UUID.class).invoke(header, owner);
+            var constructor = serviceType.getConstructors()[0];
+            Object[] arguments = new Object[constructor.getParameterCount()];
+            var children = new java.util.ArrayList<Object>();
+            com.uten.imp.features.finance.FinanceDocumentAccessPolicy policy = null;
+            for (int index = 0; index < arguments.length; index++) {
+                Class<?> type = constructor.getParameterTypes()[index];
+                arguments[index] = org.mockito.Mockito.mock(type, org.mockito.Mockito.RETURNS_DEEP_STUBS);
+                if (type.getSimpleName().equals(name + "Repository")) {
+                    org.mockito.Mockito.when(((org.springframework.data.jpa.repository.JpaRepository) arguments[index])
+                            .findById(id)).thenReturn(java.util.Optional.of(header));
+                } else if (org.springframework.data.repository.Repository.class.isAssignableFrom(type)) {
+                    children.add(arguments[index]);
+                }
+                if (type == com.uten.imp.features.finance.FinanceDocumentAccessPolicy.class)
+                    policy = (com.uten.imp.features.finance.FinanceDocumentAccessPolicy) arguments[index];
+            }
+            org.mockito.Mockito.doThrow(new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.FORBIDDEN))
+                    .when(policy).requireWritable(org.mockito.ArgumentMatchers.eq(owner), org.mockito.ArgumentMatchers.anyString());
+            Object service = constructor.newInstance(arguments);
+            var update = java.util.Arrays.stream(serviceType.getMethods()).filter(method -> method.getName().equals("update")).findFirst().orElseThrow();
+            Object request = update.getParameterTypes()[1].getConstructor().newInstance();
+            var error = org.junit.jupiter.api.Assertions.assertThrows(java.lang.reflect.InvocationTargetException.class,
+                    () -> update.invoke(service, id, request));
+            assertThat(error.getCause()).as("ordinary owner denial for %s", name)
+                    .isInstanceOf(com.uten.imp.common.web.ApiException.class);
+            assertThat(((com.uten.imp.common.web.ApiException) error.getCause()).getCode())
+                    .isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN);
+            org.mockito.Mockito.verifyNoInteractions(children.toArray());
+        }
+    }
+
+    @Test
     void submissionGuardRunsBeforeFinanceSnapshotValidation() throws Exception {
         String source = source(
                 "features/finance/procurement/ProcurementFinanceApprovalService.java");
@@ -164,6 +208,18 @@ class DocumentOrdinaryWriteOwnerGuardContractTest {
                     body = method(source, " approveOrdinaryLocked(");
                 }
             }
+            if (" update(".equals(signature) && body.contains("updateDraft(id, req, false, null)")) {
+                body = DraftMutationSourceContract.ordinaryUpdateBody(source);
+            }
+            // The public operational approve remains the owner path; review-only
+            // approval is a distinct internal flag and may not weaken this branch.
+            if (" approve(".equals(signature)
+                    && (body.contains("approveReceipt(id, false)") || body.contains("approveReturn(id, false)"))) {
+                String kernel = body.contains("approveReceipt") ? "approveReceipt" : "approveReturn";
+                body = DraftMutationSourceContract.methodContaining(source, kernel, "else access.requireWritable(");
+                assertThat(body).contains("else access.requireWritable(");
+            }
+            body = DraftMutationSourceContract.expandUnapprovalAuthorization(source, body);
             assertThat(body)
                     .as("%s in %s", signature.trim(), relative)
                     .containsAnyOf(

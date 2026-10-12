@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance;
 
 import org.junit.jupiter.api.Test;
+import com.uten.imp.support.DraftMutationSourceContract;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -85,7 +86,11 @@ class FinanceDocumentObjectScopeContractTest {
     private static void assertMutations(String relative, String... signatures) throws Exception {
         String source = source(relative);
         for (String signature : signatures) {
-            assertThat(method(source, signature))
+            String body = " update(".equals(signature)
+                    ? DraftMutationSourceContract.ordinaryUpdateBody(source)
+                    : method(source, signature);
+            body = DraftMutationSourceContract.expandUnapprovalAuthorization(source, body);
+            assertThat(body)
                     .as("%s in %s", signature.trim(), relative)
                     .containsAnyOf(
                             "access.requireWritable(",

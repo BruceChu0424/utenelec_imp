@@ -694,7 +694,8 @@ public class WarehouseQualityResultService {
                                COALESCE(pending_release.pending_qty, 0),inspection.warehouse_id,source_warehouse.name,
                                inspection.pre_stocked_warehouse_id, pre_stocked_warehouse.name,
                                inspection.pre_stocked_place, inspection.pre_stocked_at, pre_stocked_by.full_name,
-                               COALESCE(preference.place, NULLIF(BTRIM(goods.stock_place), ''))
+                               COALESCE(preference.place, NULLIF(BTRIM(goods.stock_place), '')),
+                               inspection.quantity_tranche
                         FROM procurement_inspection_items inspection
                         LEFT JOIN warehouses source_warehouse ON source_warehouse.id=inspection.warehouse_id
                         LEFT JOIN warehouses pre_stocked_warehouse
@@ -853,7 +854,7 @@ public class WarehouseQualityResultService {
                                item.base_qty, item.weight,
                                item.place_snapshot, employee.full_name,
                                batch.confirmed_at,item.warehouse_id,actual_warehouse.name,
-                               batch.origin
+                               batch.origin, inspection.quantity_tranche
                         FROM procurement_iqc_stock_in_batch_items item
                         JOIN procurement_iqc_stock_in_batches batch
                           ON batch.id = item.batch_id

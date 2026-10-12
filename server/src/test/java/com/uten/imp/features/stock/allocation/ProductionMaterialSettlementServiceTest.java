@@ -51,6 +51,21 @@ class ProductionMaterialSettlementServiceTest {
     }
 
     @Test
+    void reportReversalRefusesInactiveDemandBeforeEventOrValuationWrites() {
+        var fixture=commandFixture();fixture.request().getLines().getFirst().setSourcePostingId(UUID.randomUUID());
+        var invalid=mock(jakarta.persistence.Query.class);
+        when(invalid.setParameter(anyString(),any())).thenReturn(invalid);
+        when(invalid.getSingleResult()).thenReturn(0L);
+        when(fixture.em().createNativeQuery(startsWith("SELECT COUNT(*) FROM production_material_demands")))
+                .thenReturn(invalid);
+        ApiException failure=assertThrows(ApiException.class,()->
+                fixture.service().reverseForDailyReport(fixture.plan(),fixture.request(),fixture.actor()));
+        assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT,failure.getCode());
+        verify(fixture.em(),never()).createNativeQuery(contains("INSERT INTO production_material_settlement_events"));
+        verifyNoInteractions(fixture.value());
+    }
+
+    @Test
     void reportCommandStillRejectsBothWriteAndReadScopeDenialsBeforeWriting() {
         for(boolean denyRead:List.of(false,true)) {
             var fixture=commandFixture();
@@ -75,11 +90,16 @@ class ProductionMaterialSettlementServiceTest {
             String sql=call.getArgument(0);var parameters=new java.util.HashMap<String,Object>();
             var query=mock(jakarta.persistence.Query.class);
             when(query.setParameter(anyString(),any())).thenAnswer(binding->{parameters.put(binding.getArgument(0),binding.getArgument(1));return query;});
+            if(sql.startsWith("SELECT COUNT(*) FROM production_material_demands"))
+                when(query.getSingleResult()).thenReturn(1L);
             when(query.getResultList()).thenAnswer(ignored->{
                 if(sql.contains("FROM v_production_material_clearance"))return List.of();
                 if(sql.contains("FROM production_plans"))return List.of(plan);
                 if(sql.contains("FROM production_material_settlement_events")&&stored.containsKey("requestHash"))
                     return java.util.Collections.singletonList(new Object[]{event,stored.get("requestHash")});
+                if(sql.contains("FROM production_material_settlement_postings source"))
+                    return java.util.Collections.singletonList(new Object[]{demand,"CONSUMED",BigDecimal.ONE,
+                            null,issue,BigDecimal.ZERO,demand,"ISSUE"});
                 if(sql.contains("FROM production_material_stock_postings"))
                     return java.util.Collections.singletonList(new Object[]{demand,issue,BigDecimal.ONE});
                 if(sql.startsWith("SELECT issue_posting_id,qty_base FROM production_material_settlement_postings"))
@@ -93,7 +113,11 @@ class ProductionMaterialSettlementServiceTest {
         });
         var locked=mock(jakarta.persistence.Query.class);
         when(locked.setParameter(anyString(),any())).thenReturn(locked);when(locked.getResultList()).thenReturn(List.of(demand));
-        when(em.createNativeQuery(anyString(),eq(UUID.class))).thenReturn(locked);
+        var completed=mock(jakarta.persistence.Query.class);
+        when(completed.setParameter(anyString(),any())).thenReturn(completed);
+        when(completed.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(anyString(),eq(UUID.class))).thenAnswer(call->
+                ((String)call.getArgument(0)).contains("FROM production_execution_segments segment")?completed:locked);
         var request=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();
         request.setIdempotencyKey("report-command");request.setReason("本批实际用料");
         var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();

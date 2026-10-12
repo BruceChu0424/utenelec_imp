@@ -243,7 +243,10 @@ class WorkshopSupplyAdversarialEndToEndTest {
         var before=db.queryForMap("SELECT node.id,node.quantity_basis,node.basis_value_local FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",destination,raw);
         Throwable rejected=assertThrows(RuntimeException.class,()->stock.reverse(request.documentId()),"已实际按混合池出库的成本必须先处理真实后继");
         while(rejected.getCause()!=null)rejected=rejected.getCause();
-        assertTrue(rejected.getMessage().contains("later actual stock consumption"),rejected.getMessage());
+        assertTrue(rejected instanceof com.uten.imp.common.web.ApiException,rejected.toString());
+        assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT,
+                ((com.uten.imp.common.web.ApiException)rejected).getCode());
+        assertEquals("原收仓之后已有实际耗用或成本来源变化，请先处理对应后续业务",rejected.getMessage());
         assertEquals(before,db.queryForMap("SELECT node.id,node.quantity_basis,node.basis_value_local FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",destination,raw));
         assertEquals(1,db.queryForObject("SELECT status FROM stock_documents WHERE id=?",Integer.class,request.documentId()));
         qty("3",db.queryForObject("SELECT SUM(reservation.qty-reservation.consumed_qty-reservation.released_qty) FROM stock_reservations reservation JOIN production_workshop_material_custody_moves move ON move.target_reservation_id=reservation.id JOIN production_material_return_request_items item ON item.id=move.request_item_id WHERE item.request_id=?",BigDecimal.class,request.documentId()));

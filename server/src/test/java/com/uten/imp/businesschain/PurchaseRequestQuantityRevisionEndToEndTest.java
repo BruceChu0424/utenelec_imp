@@ -23,13 +23,14 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 import static org.assertj.core.api.Assertions.*;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
+// Shares FullChain singleton PostgreSQL: bootstrap identity and crypto must match its existing context.
 @SpringBootTest(properties={"spring.profiles.active=dev","uten.audit.retention.enabled=false",
     "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
     "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
-    "uten.jwt.secret=quantity-regression-isolated-jwt-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
-    "uten.crypto.pgp-master-key=quantity-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
-    "uten.crypto.hmac-key=quantity-regression-isolated-hmac-key-0123456789-abcdef",
-    "uten.bootstrap.admin-login=quantity-regression-bootstrap","uten.bootstrap.admin-password=QuantityRegressionAdmin-1!"})
+    "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
+    "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
+    "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
+    "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class PurchaseRequestQuantityRevisionEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
     @Autowired AutowireCapableBeanFactory beans;

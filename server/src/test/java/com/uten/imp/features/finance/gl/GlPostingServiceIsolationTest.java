@@ -24,7 +24,8 @@ class GlPostingServiceIsolationTest {
                         "SUPPLIER_CLAIM_RECEIVABLE",
                         "SUPPLIER_CLAIM_CASH",
                         "CUSTOMER_PREPAYMENT_OFFSET",
-                        SubcontractWasteLossGlProjection.SOURCE_TYPE)
+                        SubcontractWasteLossGlProjection.SOURCE_TYPE,
+                        ProcurementReturnCostGlProjection.SOURCE_TYPE)
                 .doesNotContain("COST_CARRY", "ACTUAL_COGS", "RECEIPT", "RECEIPT_REV",
                         "FA_CAP", "DA_RECOGNITION", "FA_DEP", "DA_AMT", "FA_DISPOSAL");
     }
@@ -62,6 +63,15 @@ class GlPostingServiceIsolationTest {
                 .contains("'AUTO','BALANCE_ADJUSTMENT'");
         assertThat(allSql).contains("SELECT enabled FROM inventory_cost_gl_policy")
                 .doesNotContain("unresolved.ready", "INSERT INTO inventory_cost_gl_links");
+        assertThat(deleteSql)
+                .contains("cash_source.legacy_id IS NULL")
+                .contains("payment.amount_authority_version=2");
+        assertThat(allSql)
+                .contains("voucher.source_type='PROC_RETURN_VARIANCE'")
+                .contains("FROM purchase_returns document")
+                .contains("FROM subcontract_returns document")
+                .contains("system_posting_style_id('PROCUREMENT_RETURN_VARIANCE')")
+                .contains("system_posting_style_id('INVENTORY_ASSET')");
         verify(tx).bind();
     }
 }

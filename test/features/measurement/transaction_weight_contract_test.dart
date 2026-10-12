@@ -140,14 +140,12 @@ void main() {
       picker,
       contains('unitRateText: _cfg.itemFields.unitRateText?.call(it)'),
     );
-    expect(purchaseEdit, contains('..unitRateText = it.unitRateText'));
+    expect(purchaseEdit, contains('..unitRateText = it.unitRateExactText'));
     expect(
       purchaseEdit,
-      contains(
-        "if (r.recordedUnitRateText != null) 'unitRate': r.recordedUnitRateText",
-      ),
+      contains('if (r.unitRateText != null || r.unitRate != null)'),
     );
-    expect(purchaseEdit, isNot(contains("'unitRate': r.unitRate")));
+    expect(purchaseEdit, contains("'unitRate': r.unitRateText ?? r.unitRate"));
     expect(salesEdit, contains("'unitRate': r.unitRate"));
     expect(salesEdit, isNot(contains('_computedParcelCount')));
     expect(salesEdit, contains("labelText: '物流件数'"));

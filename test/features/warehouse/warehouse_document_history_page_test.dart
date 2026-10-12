@@ -81,46 +81,57 @@ void main() {
     },
   );
 
-  testWidgets('embedded history uses the status header and preserves the date range', (tester) async {
-    _setViewport(tester, const Size(1200, 1500));
-    final gateway = _Gateway();
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          warehouseDocumentHistoryRepositoryProvider(
-            WarehouseDocumentHistoryType.purchaseReceipt,
-          ).overrideWithValue(gateway),
-        ],
-        child: const MaterialApp(
-          home: Scaffold(
-            body: WarehouseDocumentHistoryView(
-              type: WarehouseDocumentHistoryType.purchaseReceipt,
-              embedded: true,
-              dateFrom: '2026-10-01',
-              dateTo: '2026-10-11',
+  testWidgets(
+    'embedded history uses the status header and preserves the date range',
+    (tester) async {
+      _setViewport(tester, const Size(1200, 1500));
+      final gateway = _Gateway();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            warehouseDocumentHistoryRepositoryProvider(
+              WarehouseDocumentHistoryType.purchaseReceipt,
+            ).overrideWithValue(gateway),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: WarehouseDocumentHistoryView(
+                type: WarehouseDocumentHistoryType.purchaseReceipt,
+                embedded: true,
+                dateFrom: '2026-10-01',
+                dateTo: '2026-10-11',
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('warehouse-history-status-purchase-receipts')), findsNothing);
-    MasterDataTableView<WarehouseDocumentHistorySummary> table() => tester.widget(
-      find.byKey(const Key('warehouse-history-table-purchase-receipts')),
-    );
-    expect(table().facets['status']?.map((bucket) => bucket.value), ['0', '1', '-1']);
-    table().onFilterChanged('status', '1');
-    await tester.pumpAndSettle();
-    expect(gateway.statuses.last, '1');
-    expect(gateway.lastRange, ('2026-10-01', '2026-10-11'));
-    expect(gateway.lastPage, 1);
-    expect(table().filters['status'], '1');
-    table().onFilterChanged('status', null);
-    await tester.pumpAndSettle();
-    expect(gateway.statuses.last, isNull);
-    expect(gateway.lastRange, ('2026-10-01', '2026-10-11'));
-    expect(tester.takeException(), isNull);
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('warehouse-history-status-purchase-receipts')),
+        findsNothing,
+      );
+      MasterDataTableView<WarehouseDocumentHistorySummary> table() =>
+          tester.widget(
+            find.byKey(const Key('warehouse-history-table-purchase-receipts')),
+          );
+      expect(table().facets['status']?.map((bucket) => bucket.value), [
+        '0',
+        '1',
+        '-1',
+      ]);
+      table().onFilterChanged('status', '1');
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, '1');
+      expect(gateway.lastRange, ('2026-10-01', '2026-10-11'));
+      expect(gateway.lastPage, 1);
+      expect(table().filters['status'], '1');
+      table().onFilterChanged('status', null);
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, isNull);
+      expect(gateway.lastRange, ('2026-10-01', '2026-10-11'));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('detail at 375px renders physical facts and no commercial leak', (
     tester,

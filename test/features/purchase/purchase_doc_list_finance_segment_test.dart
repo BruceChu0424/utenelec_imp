@@ -188,7 +188,11 @@ class _OrderListApi extends ApiClient {
           'billDate': '2026-09-19',
           'status': query?['financeApproval'] == 'NONE' ? 0 : 1,
           'closed': query?['financeApproval'] != 'NONE',
-          'financeApproval': {'status': query?['financeApproval'] == 'NONE' ? 'DRAFT' : query?['financeApproval'] ?? 'PENDING'},
+          'financeApproval': {
+            'status': query?['financeApproval'] == 'NONE'
+                ? 'DRAFT'
+                : query?['financeApproval'] ?? 'PENDING',
+          },
         },
       ],
       'page': 1,

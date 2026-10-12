@@ -46,7 +46,8 @@ import '../../features/employee/pages/employee_offboarding_workflow_page.dart';
 import '../../features/employee/pages/employee_onboarding_page.dart';
 import '../../features/expense/pages/expense_approval_detail_page.dart';
 import '../../features/expense/pages/expense_approval_list_page.dart';
-import '../../features/expense/providers/expense_providers.dart' show expenseApprovalQueueFromRoute;
+import '../../features/expense/providers/expense_providers.dart'
+    show expenseApprovalQueueFromRoute;
 import '../../features/expense/pages/expense_detail_page.dart';
 import '../../features/expense/pages/expense_list_page.dart';
 import '../../features/expense/pages/expense_claim_edit_page.dart';
@@ -503,7 +504,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/expense/approval',
             name: 'expense-approval-list',
             builder: (_, s) => ExpenseApprovalListPage(
-              initialQueue: expenseApprovalQueueFromRoute(s.uri.queryParameters['queue']),
+              initialQueue: expenseApprovalQueueFromRoute(
+                s.uri.queryParameters['queue'],
+              ),
             ),
           ),
           DraftAwareGoRoute(
@@ -1057,8 +1060,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                   ? s.extra! as List<WarehouseQualityResultTask>
                   : const [],
               receipts: [
-                for (final item in (s.uri.queryParameters['receipts'] ?? '').split(','))
-                  if (item.split(':') case [final type, final id] when type.isNotEmpty && id.isNotEmpty)
+                for (final item
+                    in (s.uri.queryParameters['receipts'] ?? '').split(','))
+                  if (item.split(':') case [
+                    final type,
+                    final id,
+                  ] when type.isNotEmpty && id.isNotEmpty)
                     (receiptType: type, receiptId: id),
               ],
             ),
@@ -1218,14 +1225,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/warehouse/material-returns/batch-receive',
             name: 'warehouse-material-returns-batch-receive',
             builder: (_, state) => WarehouseMaterialReturnBatchReceivePage(
-              documentIds: (state.uri.queryParameters['documentIds'] ?? '').split(',').where((id) => id.isNotEmpty).toList(),
+              documentIds: (state.uri.queryParameters['documentIds'] ?? '')
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
             ),
           ),
           DraftAwareGoRoute(
             path: '/warehouse/sales-outbound/batch',
             name: 'warehouse-sales-outbound-batch',
             builder: (_, state) => WarehouseSalesOutboundBatchPage(
-              shipmentIds: (state.uri.queryParameters['shipmentIds'] ?? '').split(',').where((id) => id.isNotEmpty).toList(),
+              shipmentIds: (state.uri.queryParameters['shipmentIds'] ?? '')
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
               action: WarehouseSalesOutboundAction.confirmShipment,
             ),
           ),
@@ -1259,7 +1272,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/warehouse/subcontract-outbound/batch',
             name: 'warehouse-subcontract-outbound-batch',
             builder: (_, state) => WarehouseSubcontractOutboundBatchPage(
-              issueIds: (state.uri.queryParameters['issueIds'] ?? '').split(',').where((id) => id.isNotEmpty).toList(),
+              issueIds: (state.uri.queryParameters['issueIds'] ?? '')
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
             ),
           ),
           DraftAwareGoRoute(

@@ -115,8 +115,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
                     const _Entry(
                       icon: Icons.fact_check_outlined,
                       label: '业务审核中心',
-                      description:
-                          '销售订单 · 出货 · 订货 · 超量到货 · IQC 退回，一站式审核',
+                      description: '销售订单 · 出货 · 订货 · 超量到货 · IQC 退回，一站式审核',
                       location: RouteName.financeAudits,
                       badgeScope: BadgeScope.entry(
                         BadgeEntry.financeAuditCenter,

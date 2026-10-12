@@ -44,71 +44,104 @@ void main() {
     _preferences = await SharedPreferences.getInstance();
   });
   for (final unknown in [false, true]) {
-    testWidgets('local batch report remains on source row and resumes whole snapshot (unknown $unknown)', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final draft = FormDraft(
-        id: 'local-batch',
-        title: '两个工单报工填写',
-        module: BadgeModule.workshop,
-        route: '/production/daily-reports/new?executionSegmentIds=segment-a,segment-b&from=workshop-tasks',
-        permission: Perm.productionDailyReportCreate,
-        draftKind: 'productionDailyReport',
-        updatedAt: DateTime(2026, 10, 11),
-        data: {
-          if (unknown) formDraftUnknownSubmissionKey: true,
-          'rows': [
-            {'executionSegmentId': 'segment-a', 'qty': '3.1250'},
-            {'executionSegmentId': 'segment-b', 'qty': '6.8750'},
+    testWidgets(
+      'local batch report remains on source row and resumes whole snapshot (unknown $unknown)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final draft = FormDraft(
+          id: 'local-batch',
+          title: '两个工单报工填写',
+          module: BadgeModule.workshop,
+          route:
+              '/production/daily-reports/new?executionSegmentIds=segment-a,segment-b&from=workshop-tasks',
+          permission: Perm.productionDailyReportCreate,
+          draftKind: 'productionDailyReport',
+          updatedAt: DateTime(2026, 10, 11),
+          data: {
+            if (unknown) formDraftUnknownSubmissionKey: true,
+            'rows': [
+              {'executionSegmentId': 'segment-a', 'qty': '3.1250'},
+              {'executionSegmentId': 'segment-b', 'qty': '6.8750'},
+            ],
+          },
+        );
+        final container = ProviderContainer(
+          overrides: [
+            localServerReachableProvider.overrideWith(
+              (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+            ),
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            apiClientProvider.overrideWithValue(
+              _draftClaimingApi(claimedQty: () => 0),
+            ),
+            currentPermissionsProvider.overrideWithValue(const {
+              Perm.productionExecutionView,
+              Perm.productionDailyReportView,
+              Perm.productionDailyReportCreate,
+            }),
+            formDraftsProvider.overrideWith(() => _TaskDrafts([draft])),
+            fixedBadgeSummaryOverride(badgeSummaryFixture()),
           ],
-        },
-      );
-      final container = ProviderContainer(overrides: [
-        localServerReachableProvider.overrideWith(
-          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
-        ),
-        sharedPreferencesProvider.overrideWithValue(_preferences),
-        apiClientProvider.overrideWithValue(_draftClaimingApi(claimedQty: () => 0)),
-        currentPermissionsProvider.overrideWithValue(const {
-          Perm.productionExecutionView,
-          Perm.productionDailyReportView,
-          Perm.productionDailyReportCreate,
-        }),
-        formDraftsProvider.overrideWith(() => _TaskDrafts([draft])),
-        fixedBadgeSummaryOverride(badgeSummaryFixture()),
-      ]);
-      addTearDown(container.dispose);
-      Uri? resumed;
-      final router = GoRouter(initialLocation: RouteName.productionWorkshopTasks, routes: [
-        GoRoute(path: RouteName.productionWorkshopTasks, builder: (_, _) => const ProductionWorkshopTasksPage()),
-        GoRoute(path: '/production/daily-reports/new', builder: (_, state) {
-          resumed = state.uri;
-          return const Scaffold(body: Text('原报工填写'));
-        }),
-        GoRoute(path: '/production/daily-reports/create-recovery', builder: (_, state) {
-          resumed = state.uri;
-          return const Scaffold(body: Text('原报工填写'));
-        }),
-      ]);
-      addTearDown(router.dispose);
-      await tester.pumpWidget(UncontrolledProviderScope(container: container, child: MaterialApp.router(routerConfig: router)));
-      await tester.pumpAndSettle();
-      await selectFilterSegment(tester, '生产中');
-      await tester.pumpAndSettle();
-      expect(find.text('产品 A'), findsOneWidget);
-      expect(find.text(unknown ? '提交待核对' : '草稿'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('workshop-task-draft-segment-a')));
-      await tester.pumpAndSettle();
-      expect(find.text('原报工填写'), findsOneWidget);
-      expect(resumed!.queryParameters['draftId'], 'local-batch');
-      if (unknown) {
-        expect(resumed!.path, '/production/daily-reports/create-recovery');
-      } else {
-        expect(resumed!.queryParameters['executionSegmentIds'], 'segment-a,segment-b');
-      }
-      expect(container.read(formDraftsProvider).single.data['rows'], draft.data['rows']);
-      expect(tester.takeException(), isNull);
-    });
+        );
+        addTearDown(container.dispose);
+        Uri? resumed;
+        final router = GoRouter(
+          initialLocation: RouteName.productionWorkshopTasks,
+          routes: [
+            GoRoute(
+              path: RouteName.productionWorkshopTasks,
+              builder: (_, _) => const ProductionWorkshopTasksPage(),
+            ),
+            GoRoute(
+              path: '/production/daily-reports/new',
+              builder: (_, state) {
+                resumed = state.uri;
+                return const Scaffold(body: Text('原报工填写'));
+              },
+            ),
+            GoRoute(
+              path: '/production/daily-reports/create-recovery',
+              builder: (_, state) {
+                resumed = state.uri;
+                return const Scaffold(body: Text('原报工填写'));
+              },
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await selectFilterSegment(tester, '生产中');
+        await tester.pumpAndSettle();
+        expect(find.text('产品 A'), findsOneWidget);
+        expect(find.text(unknown ? '提交待核对' : '草稿'), findsOneWidget);
+        await tester.tap(
+          find.byKey(const ValueKey('workshop-task-draft-segment-a')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('原报工填写'), findsOneWidget);
+        expect(resumed!.queryParameters['draftId'], 'local-batch');
+        if (unknown) {
+          expect(resumed!.path, '/production/daily-reports/create-recovery');
+        } else {
+          expect(
+            resumed!.queryParameters['executionSegmentIds'],
+            'segment-a,segment-b',
+          );
+        }
+        expect(
+          container.read(formDraftsProvider).single.data['rows'],
+          draft.data['rows'],
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
   testWidgets(
     'saved draft opens review and completes both route futures on return',

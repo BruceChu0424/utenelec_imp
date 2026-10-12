@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +18,7 @@ import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dar
 import 'package:uten_imp/features/dashboard/widgets/module_badge_sum.dart';
 import 'package:uten_imp/features/quality/pages/quality_task_center_page.dart';
 import 'package:uten_imp/features/quality/pages/quality_pending_disposal_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inspection_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -262,29 +262,42 @@ void main() {
   ) async {
     await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
 
-    expect(find.byKey(const ValueKey('row:receipt-1')), findsOneWidget);
-    expect(find.byKey(const ValueKey('row:receipt-2')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('row:iqc:PURCHASE:receipt-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('row:iqc:SUBCONTRACT:receipt-2')),
+      findsOneWidget,
+    );
     expect(find.text('CJ20260822000001'), findsOneWidget);
     expect(find.text('WT20260823000002'), findsOneWidget);
   });
 
-  testWidgets('type segments filter the queue by receipt type', (tester) async {
+  testWidgets('source header filters the queue by receipt type', (
+    tester,
+  ) async {
     await _pumpTaskCenter(tester, _twoTypeDispositionRepository());
 
-    // 分段文本与表头筛选桶同名（如「委外回厂」），点击须限定在分段导航内。
-    Finder segmentText(String text) => find.descendant(
-      of: find.byType(UtenSegmentRow<String>),
-      matching: find.text(text),
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const Key('iqc-receipt-table')),
     );
-
-    await tester.tap(segmentText('委外回厂'));
+    expect(
+      table.facets['docType']?.map((bucket) => (bucket.value, bucket.count)),
+      containsAll([('PURCHASE', 1), ('SUBCONTRACT', 1)]),
+    );
+    table.onFilterChanged('docType', 'SUBCONTRACT');
     await tester.pumpAndSettle();
 
     expect(find.text('CJ20260822000001'), findsNothing);
     expect(find.text('WT20260823000002'), findsOneWidget);
 
-    // 点「全部待检单」回到全部。
-    await tester.tap(segmentText('全部待检单'));
+    // 清除唯一的来源表头筛选，恢复相同的完整待检队列。
+    tester
+        .widget<MasterDataTableView<dynamic>>(
+          find.byKey(const Key('iqc-receipt-table')),
+        )
+        .onFilterChanged('docType', null);
     await tester.pumpAndSettle();
 
     expect(find.text('CJ20260822000001'), findsOneWidget);
@@ -347,7 +360,10 @@ void main() {
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
     expect(find.text('测试物料A'), findsOneWidget);
     expect(find.text('CJ20260822000001'), findsOneWidget);
-    expect(find.byKey(const ValueKey('row:receipt-1')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('row:iqc:PURCHASE:receipt-1')),
+      findsNothing,
+    );
     expect(find.text('正在准备草稿保护…'), findsNothing);
     expect(find.byTooltip('返回').hitTestable(), findsOneWidget);
 
@@ -355,7 +371,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // 返回任务中心后队列重载，表格行重新可见。
-    expect(find.byKey(const ValueKey('row:receipt-1')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('row:iqc:PURCHASE:receipt-1')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsNothing);
   });
 
@@ -686,16 +705,7 @@ Future<void> _pumpTaskCenter(
     ),
   );
   await tester.pumpAndSettle();
-  // 2026-10-04 起工具条进页面自动选中第一个红徽章段（采购收货）；本组测试
-  // 默认断言混合队列，统一切回「全部待检单」段。
-  final allSegment = find.descendant(
-    of: find.byType(UtenSegmentRow<String>),
-    matching: find.text('全部待检单'),
-  );
-  if (tester.any(allSegment)) {
-    await tester.tap(allSegment);
-    await tester.pumpAndSettle();
-  }
+  // 全部授权来源默认可见；分类仅由表头过滤，避免重复来源分段。
 }
 
 Future<void> _pumpInspectionDetailPage(

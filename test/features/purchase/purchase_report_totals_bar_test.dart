@@ -36,7 +36,8 @@ void main() {
     expect(find.textContaining('920'), findsNothing);
 
     // 金额按币种分组，同样不合并。
-    expect(find.text('1,234.50 CNY · 200.00 USD'), findsOneWidget);
+    expect(find.text('1234.50 元 · 200.00 美金'), findsOneWidget);
+    expect(find.textContaining('1434.50'), findsNothing);
     expect(find.textContaining('1,434'), findsNothing);
   });
 

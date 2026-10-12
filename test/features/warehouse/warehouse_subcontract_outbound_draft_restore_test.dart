@@ -73,7 +73,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.savedBodies, hasLength(1));
     expect(api.approvals, isEmpty);
-    expect(harness.container.read(formDraftsProvider).single.hasUnknownSubmission, isTrue);
+    expect(
+      harness.container.read(formDraftsProvider).single.hasUnknownSubmission,
+      isTrue,
+    );
     expect(tester.takeException(), isNull);
   });
   for (final approve in [false, true]) {

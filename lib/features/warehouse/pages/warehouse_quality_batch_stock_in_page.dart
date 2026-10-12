@@ -201,7 +201,9 @@ class _WarehouseQualityBatchStockInPageState
         eagerError: true,
       );
       final details = fetched;
-      if (!mounted || !formDraftIdentityIsCurrent || version != _requestVersion) {
+      if (!mounted ||
+          !formDraftIdentityIsCurrent ||
+          version != _requestVersion) {
         return;
       }
       final drafts = [

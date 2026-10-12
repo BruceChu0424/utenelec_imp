@@ -257,6 +257,13 @@ class InventoryPositionPostgresTest {
         // real task on a positive input ancestor has not reached it yet.
         var source=values.node(stored.valueNodeId(),false);assertThat(source.pending()).isZero();
         assertThat(values.sourceClosureState(source)).isEqualTo(State.PENDING);
+        var before=readinessRowCounts();
+        assertThatThrownBy(()->positions.requireStoresReversible(List.of(new StoreWithdrawal(target,stored.movementId(),false,true))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("成本来源");
+        assertThat(readinessRowCounts()).isEqualTo(before);
+        assertThat(positions.requireStoresReversible(List.of(new StoreWithdrawal(target,stored.movementId(),false))))
+                .matches("[a-f0-9]{64}");
+        assertThat(readinessRowCounts()).isEqualTo(before);
         EventContext context=context();ReverseStore command=new ReverseStore(context,UUID.randomUUID(),target,bd("10"),stored.movementId());
         MovementValue reversed=locked(target,()->{var result=positions.reverseStore(command);physical(result,context,target,bd("10"),-1);return result;});
         assertThat(reversed.state()).isEqualTo(State.PENDING);assertThat(locked(target,()->positions.reverseStore(command)).state()).isEqualTo(State.PENDING);

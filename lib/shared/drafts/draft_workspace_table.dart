@@ -346,8 +346,10 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
       }
       if (value.hasError) failures.add(draftWorkspaceKindLabel(kind));
     }
-    final local = ref.watch(formDraftCategoryProvider(widget.localScope))
-        .where((draft) => !isTaskFormDraft(draft)).toList();
+    final local = ref
+        .watch(formDraftCategoryProvider(widget.localScope))
+        .where((draft) => !isTaskFormDraft(draft))
+        .toList();
     final search = '${widget.search} $_search'.trim().toLowerCase();
     final searchable =
         mergeDraftWorkspaceRows(

@@ -53,27 +53,42 @@ class _Api extends ApiClient {
 }
 
 void main() {
-  testWidgets('finance history confirmation uses the shared snapshot-bound successor transaction', (tester) async {
-    final api = _Api();
-    var completed = 0;
-    await tester.pumpWidget(ProviderScope(overrides: [
-      ...nativeDetailReaderOverrides(includeSession: false),
-      sessionProvider.overrideWith(_Reader.new),
-      apiClientProvider.overrideWithValue(api),
-    ], child: MaterialApp(home: Scaffold(body: FinanceDocumentUnapprovalAction(
-      family: 'salesOrder', documentId: 'original', revision: 'r1', onCompleted: () => completed++,
-    )))));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('反审'));
-    await tester.pumpAndSettle();
-    expect(api.posts, 0);
-    await tester.tap(find.widgetWithText(TextButton, '确认反审'));
-    await tester.pumpAndSettle();
-    expect(api.posts, 1);
-    expect(api.postedPath, '/documents/salesOrder/original/unapprove');
-    expect((api.postedBody as Map)['expectedSnapshot'], 'a' * 64);
-    expect(completed, 1);
-  });
+  testWidgets(
+    'finance history confirmation uses the shared snapshot-bound successor transaction',
+    (tester) async {
+      final api = _Api();
+      var completed = 0;
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...nativeDetailReaderOverrides(includeSession: false),
+            sessionProvider.overrideWith(_Reader.new),
+            apiClientProvider.overrideWithValue(api),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: FinanceDocumentUnapprovalAction(
+                family: 'salesOrder',
+                documentId: 'original',
+                revision: 'r1',
+                onCompleted: () => completed++,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('反审'));
+      await tester.pumpAndSettle();
+      expect(api.posts, 0);
+      await tester.tap(find.widgetWithText(TextButton, '确认反审'));
+      await tester.pumpAndSettle();
+      expect(api.posts, 1);
+      expect(api.postedPath, '/documents/salesOrder/original/unapprove');
+      expect((api.postedBody as Map)['expectedSnapshot'], 'a' * 64);
+      expect(completed, 1);
+    },
+  );
   testWidgets(
     'finance history reversal cannot submit after identity changes in its confirmation',
     (tester) async {

@@ -811,7 +811,10 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
         await _acknowledgeSubmission(planId, previousInput);
       } else if (receipt.status == 'INTERRUPTED') {
         final latest = await _repo.getPlan(planId);
-        if (!mounted || !current() || latest.id != planId || recoveryId == null) {
+        if (!mounted ||
+            !current() ||
+            latest.id != planId ||
+            recoveryId == null) {
           return;
         }
         _knownInterruptedReceipt = {

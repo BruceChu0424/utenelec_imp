@@ -502,6 +502,9 @@ public class SubcontractReceiptService {
         }
         // IQC：红冲前须质检结案；只反向仓库已确认入库量（无冻结行的历史单走全量）。
         inspectionService.requireResolvedForReverse(ProcurementInspectionPort.SUBCONTRACT, id);
+        var withdrawals=inspectionService.requireResolvedReversibleReadOnly(ProcurementInspectionPort.SUBCONTRACT, id);
+        if(!withdrawals.isEmpty())unapprovalPositions.requireStoresReversibleAfterSubcontractCostRelease(
+                withdrawals,procurementValue.previewReceiptCostWithdrawal(ProcurementInspectionPort.SUBCONTRACT, id));
         productionSupply.beforeSubcontractReceiptReversed(id);
         // 分析备料绑定对称反向：释放本进仓单建立的分析归属预留（V298）。
         preplanAnalysisPeg.releaseForReceipt(ProcurementInspectionPort.SUBCONTRACT, id);

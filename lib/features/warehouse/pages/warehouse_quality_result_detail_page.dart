@@ -185,7 +185,9 @@ class _WarehouseQualityResultDetailPageState
       final detail = await ref
           .read(warehouseQualityResultRepositoryProvider)
           .detail(widget.receiptType, widget.receiptId);
-      if (!mounted || !formDraftIdentityIsCurrent || version != _requestVersion) {
+      if (!mounted ||
+          !formDraftIdentityIsCurrent ||
+          version != _requestVersion) {
         return;
       }
       final nextDrafts = [

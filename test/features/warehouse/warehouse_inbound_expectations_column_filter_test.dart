@@ -46,7 +46,10 @@ void main() {
       containsAll(<String>['orderType', 'supplierName']),
     );
     expect(table.facets['supplierName']?.single.value, 'supplier-1');
-    expect(find.byKey(const Key('inbound-expectation-type-segments')), findsNothing);
+    expect(
+      find.byKey(const Key('inbound-expectation-type-segments')),
+      findsNothing,
+    );
     expect(api.lastQuery?.containsKey('orderType'), isFalse);
 
     api.lastQuery = null;

@@ -11,11 +11,15 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.*;
 import static org.assertj.core.api.Assertions.*;
@@ -109,7 +113,8 @@ class PurchaseGiftRequestFulfilmentEndToEndTest {
   assertThat(db.queryForObject("SELECT SUM(qty) FROM stock_balances WHERE goods_id=?",BigDecimal.class,w.goodsD())).isEqualByComparingTo("11");assertThat(db.queryForObject("SELECT SUM(amount_local) FROM stock_balances WHERE goods_id=?",BigDecimal.class,w.goodsD())).isEqualByComparingTo("100");
  }
  private void assertPending(FullChainEndToEndTest.World w,String physical,String money){assertThat(db.queryForObject("SELECT COALESCE(SUM(pending_qty),0) FROM purchase_order_pending_v WHERE goods_id=?",BigDecimal.class,w.goodsD())).isEqualByComparingTo(physical);assertThat(db.queryForObject("SELECT COALESCE(SUM(pending_amt),0) FROM purchase_order_pending_v WHERE goods_id=?",BigDecimal.class,w.goodsD())).isEqualByComparingTo(money);}
- @Test void legacyAnnotationDoesNotIncreasePhysicalNeedAndForwardRepairChangesOnlyTheStaleDerivedFlag(){
+ @Test void legacyAnnotationDoesNotIncreasePhysicalNeedAndForwardRepairChangesOnlyTheStaleDerivedFlag() throws IOException {
+  Resource forwardMigration=physicalFulfilmentMigration();
   var w=harness.seedWorld("request-legacy-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());
   var input=new com.uten.imp.features.purchase.request.dto.RequestSaveRequest();input.setBillDate(BusinessTime.today());input.setWarehouseId(w.warehouseId());
   var line=new com.uten.imp.features.purchase.request.dto.RequestItemLine();line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal("10"));line.setGiftQty(BigDecimal.ONE);input.setItems(List.of(line));
@@ -119,12 +124,26 @@ class PurchaseGiftRequestFulfilmentEndToEndTest {
   requests.approve(draft.getId());Source s=new Source(w,draft.getId(),item);UUID order=order(s,"9","1");approve(s,order);
   assertSource(s,"9","1","0","0",true);assertThat(new BigDecimal(requests.detail(s.request()).getItems().getFirst().getPhysicalQtyExact())).isEqualByComparingTo("10");
   String originalItem=db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_request_items i WHERE id=?",String.class,item);
-  db.update("UPDATE purchase_requests SET is_closed=false WHERE id=?",s.request());assertThat(closed(s)).isFalse();
-  new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.FileSystemResource(System.getProperty("uten.test.giftFulfilmentMigration"))).execute(Objects.requireNonNull(db.getDataSource()));
-  assertThat(closed(s)).isTrue();assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_request_items i WHERE id=?",String.class,item)).isEqualTo(originalItem);
-  String headerDigest=db.queryForObject("SELECT encode(digest(to_jsonb(r)::text,'sha256'),'hex') FROM purchase_requests r WHERE id=?",String.class,s.request());
-  new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(new org.springframework.core.io.FileSystemResource(System.getProperty("uten.test.giftFulfilmentMigration"))).execute(Objects.requireNonNull(db.getDataSource()));
-  assertThat(db.queryForObject("SELECT encode(digest(to_jsonb(r)::text,'sha256'),'hex') FROM purchase_requests r WHERE id=?",String.class,s.request())).isEqualTo(headerDigest);
+  String originalHeader=db.queryForObject("SELECT to_jsonb(r)::text FROM purchase_requests r WHERE id=?",String.class,s.request());
+  String latestProjection=db.queryForObject("SELECT pg_get_viewdef('v_procurement_decomposition_tasks'::regclass,true)",String.class);
+  // FullChain shares its latest schema: V853 replay must not leave its pre-V854 view behind.
+  new org.springframework.transaction.support.TransactionTemplate(transactionManager).executeWithoutResult(tx->{
+   tx.setRollbackOnly();
+   db.update("UPDATE purchase_requests SET is_closed=false WHERE id=?",s.request());assertThat(closed(s)).isFalse();
+   new ResourceDatabasePopulator(forwardMigration).execute(Objects.requireNonNull(db.getDataSource()));
+   assertThat(closed(s)).isTrue();assertThat(db.queryForObject("SELECT to_jsonb(i)::text FROM purchase_request_items i WHERE id=?",String.class,item)).isEqualTo(originalItem);
+   String headerDigest=db.queryForObject("SELECT encode(digest(to_jsonb(r)::text,'sha256'),'hex') FROM purchase_requests r WHERE id=?",String.class,s.request());
+   new ResourceDatabasePopulator(forwardMigration).execute(Objects.requireNonNull(db.getDataSource()));
+   assertThat(db.queryForObject("SELECT encode(digest(to_jsonb(r)::text,'sha256'),'hex') FROM purchase_requests r WHERE id=?",String.class,s.request())).isEqualTo(headerDigest);
+  });
+  assertThat(db.queryForObject("SELECT to_jsonb(r)::text FROM purchase_requests r WHERE id=?",String.class,s.request())).isEqualTo(originalHeader);
+  assertThat(db.queryForObject("SELECT pg_get_viewdef('v_procurement_decomposition_tasks'::regclass,true)",String.class)).isEqualTo(latestProjection);
+ }
+ private static Resource physicalFulfilmentMigration() throws IOException {
+  Resource[] migrations=new PathMatchingResourcePatternResolver().getResources("classpath:db/migration/V853__*.sql");
+  assertThat(migrations).as("exactly one V853 physical fulfilment migration on the test classpath").hasSize(1);
+  assertThat(migrations[0].isReadable()).as("V853 physical fulfilment migration is readable").isTrue();
+  return migrations[0];
  }
  @Test void legalAlternateRateKeepsPhysicalAndSourceBillingQuantitiesAndRejectsMixedFrozenBases(){
   var w=harness.seedWorld("request-unit-"+UUID.randomUUID());harness.loginAs(w.superAdminUserId());UUID unit=UUID.randomUUID();

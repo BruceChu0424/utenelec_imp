@@ -71,7 +71,6 @@ class ProductionMaterialReturnCanonicalGateTest {
         when(locks.acquire(any())).thenReturn(mock(FulfillmentMutationLocks.Guard.class));
         StockDocument document=document("WDRAW");
         document.setMakerId(UUID.randomUUID());
-        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
         when(em.find(StockDocument.class,document.getId(),LockModeType.PESSIMISTIC_WRITE)).thenReturn(document);
         Query absent=mock(Query.class);
         when(absent.setParameter("id",document.getId())).thenReturn(absent);
@@ -83,7 +82,10 @@ class ProductionMaterialReturnCanonicalGateTest {
         assertTrue(error.getMessage().contains("没有正式材料来源申请"));
         assertEquals((short)0,document.getStatus());
         verify(access).requireWritable(eq(document.getMakerId()),anyString());
+        verify(currentUser,never()).requireId();
         verify(currentUser,never()).requireEmployeeId();
+        verify(empty,never()).executeUpdate();
+        verify(absent,never()).executeUpdate();
         verifyNoInteractions(documents,items,ledger);
     }
 

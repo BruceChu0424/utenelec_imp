@@ -243,7 +243,7 @@ void main() {
       expect(checkbox('ap-usd').value, isTrue);
       expect(checkbox('ap-eur').onChanged, isNull);
       expect(checkbox('ap-incomplete').onChanged, isNull);
-      expect(find.text('本次币种：USD'), findsOneWidget);
+      expect(find.text('本次币种：美金'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
       await tester.pumpAndSettle();

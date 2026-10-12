@@ -208,7 +208,10 @@ class _ProductionFinishedBatchStockInPageState
       if (context.canPop()) {
         context.pop(true);
       } else {
-        backTo(context, defaultPath: RouteName.warehouseProductionFinishedInboundTasks);
+        backTo(
+          context,
+          defaultPath: RouteName.warehouseProductionFinishedInboundTasks,
+        );
       }
     } on ApiException catch (error) {
       if (error.httpStatus == 400 ||

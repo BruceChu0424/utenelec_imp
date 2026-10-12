@@ -1103,7 +1103,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 断点恢复：任务停在「已登记 · 待送检」，双击行直接弹「继续送检」责任确认框 → 完成。
-    expect(find.text('已登记 · 待送检'), findsOneWidget);
+    expect(find.text('委外 · 已登记 · 待送检'), findsOneWidget);
     await _doubleTapRow(tester, find.text('SC-PO-001'));
     await tester.pumpAndSettle();
     expect(find.text('确认送检'), findsOneWidget);
@@ -1169,10 +1169,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('已送检 · 结果见「品质部检查结果」'), findsOneWidget);
+    expect(find.text('委外 · 已送检 · 结果见「品质部检查结果」'), findsOneWidget);
     expect(
       find.ancestor(
-        of: find.text('已送检 · 结果见「品质部检查结果」'),
+        of: find.text('委外 · 已送检 · 结果见「品质部检查结果」'),
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is Container &&
@@ -1211,7 +1211,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       find.ancestor(
-        of: find.text('已送检 · 结果见「品质部检查结果」'),
+        of: find.text('委外 · 已送检 · 结果见「品质部检查结果」'),
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is Container &&

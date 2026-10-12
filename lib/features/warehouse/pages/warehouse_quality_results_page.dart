@@ -243,11 +243,9 @@ class _WarehouseQualityResultsPageState
     if (_receiptType == type) return;
     setState(() {
       _receiptType = type;
-      _statusSeg = const _QStatusSeg.all();
-      _historyTime = const UtenHistoryTimeValue.all();
+      // 来源是独立表头筛选，保留已选作业阶段、历史日期及其他列条件。
       _selectedIds = {};
       _result = null;
-      _columnFilters.clearValues();
       ++_requestVersion;
       // 切换来源后旧计数口径失效，清空待新值（避免显示上一来源的数字）。
       _statusCounts = null;

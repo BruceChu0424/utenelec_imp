@@ -33,19 +33,23 @@ class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
   Future<HrTaskSummary> summary() async => value;
 }
 
-HrTaskItem _item(String id, String note, {bool claimedByMe = false, bool blessed = false}) =>
-    HrTaskItem(
-      employeeId: id,
-      code: 'UT-$id',
-      name: '员工$id',
-      deptName: '生产部',
-      date: '2026-03-01',
-      days: 218,
-      note: note,
-      claimedByName: claimedByMe ? '我' : null,
-      claimedByMe: claimedByMe,
-      blessed: blessed,
-    );
+HrTaskItem _item(
+  String id,
+  String note, {
+  bool claimedByMe = false,
+  bool blessed = false,
+}) => HrTaskItem(
+  employeeId: id,
+  code: 'UT-$id',
+  name: '员工$id',
+  deptName: '生产部',
+  date: '2026-03-01',
+  days: 218,
+  note: note,
+  claimedByName: claimedByMe ? '我' : null,
+  claimedByMe: claimedByMe,
+  blessed: blessed,
+);
 
 HrTaskSummary _summary(List<HrTaskItem> identityReview) => HrTaskSummary(
   generatedAt: '2026-10-05T08:00:00+08:00',
@@ -123,9 +127,15 @@ Future<void> _pump(
 
 void main() {
   testWidgets('档案查看和编辑岗位可从工作台查看核对记录而不取得证件更正权限', (tester) async {
-    await _pump(tester, _summary(const []), permissions: const {Perm.employeeView, Perm.employeeEdit});
+    await _pump(
+      tester,
+      _summary(const []),
+      permissions: const {Perm.employeeView, Perm.employeeEdit},
+    );
     expect(find.byKey(_identityEntry), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('hr-workbench-reconcile-records')));
+    await tester.tap(
+      find.byKey(const ValueKey('hr-workbench-reconcile-records')),
+    );
     await tester.pumpAndSettle();
     expect(find.text('task-list:reconcile'), findsOneWidget);
   });
@@ -162,7 +172,10 @@ void main() {
       unconfirmedLegacyCount: 0,
       birthdayToday: [_item('b1', '今日生日'), _item('b2', '已送祝福', blessed: true)],
       birthdayUpcoming: List.generate(12, (i) => _item('p$i', '')),
-      anniversaryToday: [_item('a1', '入职满 5 年'), _item('a2', '已送祝福', blessed: true)],
+      anniversaryToday: [
+        _item('a1', '入职满 5 年'),
+        _item('a2', '已送祝福', blessed: true),
+      ],
       newHires: [_item('n1', ''), _item('n2', '')],
       identityReview: const [],
       badgeCount: 4,

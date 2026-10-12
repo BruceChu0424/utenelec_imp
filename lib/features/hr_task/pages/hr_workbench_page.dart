@@ -107,7 +107,9 @@ class HrWorkbenchPage extends ConsumerWidget {
         title: 'HR 工作台',
         showBackButton: true,
         actions: [
-          if (isSuperAdmin || (perms.contains(Perm.employeeView) && perms.contains(Perm.employeeEdit)))
+          if (isSuperAdmin ||
+              (perms.contains(Perm.employeeView) &&
+                  perms.contains(Perm.employeeEdit)))
             IconButton(
               key: const ValueKey('hr-workbench-reconcile-records'),
               tooltip: '核对记录',

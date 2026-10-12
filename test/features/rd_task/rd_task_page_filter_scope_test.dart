@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -44,12 +43,15 @@ void main() {
         tester.widget(find.byType(MasterDataTableView<RdTaskRow>));
     expect(table().items.single.category, 'BOM');
     expect(table().totalPages, 2);
-    expect(table().facets, isEmpty, reason: '当前页样本不应成为全局筛选桶');
-
-    final category = tester.widget<UtenDropdownField>(
-      find.byKey(const Key('rd-task-category-filter')),
+    final categoryCodes = {'BOM', 'DESIGN', 'SAMPLE', 'TRIAL', 'ECN', 'OTHER'};
+    expect(
+      table().facets['category']!.map((bucket) => bucket.value).toSet(),
+      categoryCodes,
+      reason: '固定类别桶必须覆盖其他页类别，不得取当前页样本',
     );
-    category.onChanged('SAMPLE');
+    expect(table().facets.containsKey('status'), isFalse);
+    expect(find.byKey(const Key('rd-task-category-filter')), findsNothing);
+    table().onFilterChanged('category', 'SAMPLE');
     await tester.pumpAndSettle();
     expect(api.queries.last['category'], 'SAMPLE');
     expect(api.queries.last['page'], 1);
@@ -57,18 +59,18 @@ void main() {
     expect(table().totalPages, 1);
     expect(find.text('当前筛选下没有研发任务'), findsNothing);
 
-    tester
-        .widget<UtenDropdownField>(
-          find.byKey(const Key('rd-task-category-filter')),
-        )
-        .onChanged('');
+    table().onFilterChanged('category', null);
     await tester.pumpAndSettle();
     expect(api.queries.last.containsKey('category'), isFalse);
     table().onPageChange!(2);
     await tester.pumpAndSettle();
     expect(api.queries.last['page'], 2);
     expect(table().items.single.category, 'SAMPLE');
-    expect(table().facets, isEmpty);
+    expect(
+      table().facets['category']!.map((bucket) => bucket.value).toSet(),
+      categoryCodes,
+      reason: '翻页后仍使用完整类别枚举，不随当前页样本变化',
+    );
     expect(tester.takeException(), isNull);
   });
 }

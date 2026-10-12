@@ -162,7 +162,10 @@ void main() {
       final router = GoRouter(
         initialLocation: RouteName.warehouseProductionFinishedBatchStockIn,
         routes: [
-        GoRoute(path: RouteName.warehouseProductionFinishedInboundTasks, builder: (_, _) => const Scaffold()),
+          GoRoute(
+            path: RouteName.warehouseProductionFinishedInboundTasks,
+            builder: (_, _) => const Scaffold(),
+          ),
           GoRoute(path: '/blank', builder: (_, _) => const Scaffold()),
           GoRoute(
             path: RouteName.warehouseProductionFinishedBatchStockIn,

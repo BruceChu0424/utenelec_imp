@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.AdditionalMatchers.aryEq;
@@ -92,8 +93,9 @@ class ProcurementFinanceApprovalBatchValidationTest {
 
         fixture.service().tasks(2, 30, "PURCHASE", " Vendor A ");
 
+        String supplierFilter = "LOWER(COALESCE(c.display_snapshot ->> 'supplierName', supplier.name, '')) LIKE ?";
         verify(fixture.jdbc()).queryForObject(
-                contains("LOWER(COALESCE(supplier.name"),
+                contains(supplierFilter),
                 eq(Long.class),
                 aryEq(new Object[]{
                         "PURCHASE",
@@ -102,7 +104,8 @@ class ProcurementFinanceApprovalBatchValidationTest {
                         "%vendor a%"
                 }));
         verify(fixture.jdbc()).query(
-                contains("ORDER BY c.submitted_at, c.id"),
+                argThat(sql -> sql.contains(supplierFilter)
+                        && sql.contains("ORDER BY c.submitted_at, c.id")),
                 any(RowMapper.class),
                 aryEq(new Object[]{
                         "PURCHASE",

@@ -725,7 +725,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         var stocked=readStockedItems(receiptType,receiptId);
         requireStockedCompleteness(rows,stocked);
         return stocked.stream().map(item->new com.uten.imp.application.port.InventoryPositionPort.StoreWithdrawal(
-            new com.uten.imp.application.port.InventoryValuationPort.PoolKey((UUID)item[2],(UUID)item[3],(UUID)item[4]),(UUID)item[8],false)).toList();
+            new com.uten.imp.application.port.InventoryValuationPort.PoolKey((UUID)item[2],(UUID)item[3],(UUID)item[4]),(UUID)item[8],false,true)).toList();
     }
     private void requireStockedCompleteness(List<Object[]> inspections,List<Object[]> stocked){
         for(Object[] row:inspections){

@@ -272,6 +272,8 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                 if(head==null)throw conflict("原入库缺少当前库存成本池");
                 cursor=new WithdrawalCursor(head.id(),head.qty(),projectCostRelease(head,costReleases).value(),Set.of());}
             WithdrawalPlan plan=prepareStoreWithdrawal(pool,cursor,withdrawal.originalMovementId(),withdrawal.materialReturn(),false,costReleases);
+            if(withdrawal.requireStableCost()&&sourceClosureWorkPending(plan.source()))
+                throw conflict("本单成本来源仍在核对或传播，请待本来源成本处理完成后重新核对反审");
             facts.add(withdrawal.toString());facts.add(cursor.toString());facts.add(plan.toString());
             Set<UUID> removed=new HashSet<>(cursor.removedSources());removed.add(plan.source().id());
             UUID nextHead=withdrawal.materialReturn()?cursor.headId():(plan.predecessor()==null?cursor.headId():plan.predecessor().id());

@@ -16,7 +16,7 @@ void main() {
         financeMoneyWithUnitSuffix('12.3456', currencyCode: '002'),
         '12.3456',
       );
-      expect(financeMoneyWithUnitSuffix('5', currencyCode: 'USD'), '5.00 USD');
+      expect(financeMoneyWithUnitSuffix('5', currencyCode: 'USD'), '5.00 美金');
       // 本位币后缀短名「元」。
       expect(financeMoneyWithUnitSuffix('0.5', currencyName: '人民币'), '0.50 元');
       expect(financeLocalMoneyWithUnitSuffix('1500'), '1500.00 元');

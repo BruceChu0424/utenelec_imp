@@ -59,6 +59,18 @@ class SalesOrderBilledAmountsPostgresTest {
         shipment("SHIPPED", 1, false, CURRENCY.toString(), null);
         assertThat(read(false)).isNull();
     }
+    @Test void standardEnglishCurrencyNamesUseChineseWithoutChangingIdentity() {
+        db.update("INSERT INTO currencies(id,name,code) VALUES (?,'US Dollar','002')", CURRENCY);
+        assertThat(db.queryForObject("SELECT " + CurrencyDisplayLabel.sql("currency")
+                + " FROM currencies currency", String.class)).isEqualTo("美金");
+        assertThat(CurrencyDisplayLabel.of("US Dollar", "002")).isEqualTo("美金");
+        db.update("UPDATE currencies SET name='Swiss Franc',code='CHF'");
+        assertThat(db.queryForObject("SELECT " + CurrencyDisplayLabel.sql("currency")
+                + " FROM currencies currency", String.class)).isEqualTo("瑞士法郎");
+        assertThat(CurrencyDisplayLabel.of("Swiss Franc", "CHF")).isEqualTo("瑞士法郎");
+        assertThat(db.queryForObject("SELECT id FROM currencies", UUID.class)).isEqualTo(CURRENCY);
+        assertThat(CurrencyDisplayLabel.of(null, "002")).isNull();
+    }
     @Test void currencyLabelsPreferChineseNamesAndNeverInferLegacyNumericCodes() {
         db.update("INSERT INTO currencies(id,name,code) VALUES (?,'美金','002')", CURRENCY);
         assertThat(db.queryForObject("SELECT " + CurrencyDisplayLabel.sql("currency")

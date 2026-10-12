@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/pages/production_plan_detail_page.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
@@ -21,8 +22,9 @@ class _QuantityNames extends MasterNameService {
 }
 
 class _QuantityApi extends ApiClient {
-  _QuantityApi(this.items) : super(Dio());
+  _QuantityApi(this.items, {this.canApprove = false}) : super(Dio());
   final List<Map<String, Object?>> items;
+  final bool canApprove;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -33,7 +35,7 @@ class _QuantityApi extends ApiClient {
           'billNo': 'TEST-EXACT-PLAN',
           'billDate': '2026-10-11',
           'status': 0,
-          'allowedActions': ['VIEW'],
+          'allowedActions': ['VIEW', if (canApprove) 'APPROVE'],
           'items': items,
         }
       : <String, dynamic>{};
@@ -46,11 +48,12 @@ class _QuantityApi extends ApiClient {
 
 Future<void> _open(
   WidgetTester tester,
-  List<Map<String, Object?>> items,
-) async {
+  List<Map<String, Object?>> items, {
+  bool canApprove = false,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1100));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  final api = _QuantityApi(items);
+  final api = _QuantityApi(items, canApprove: canApprove);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -60,7 +63,10 @@ Future<void> _open(
         ),
         masterNameServiceProvider.overrideWithValue(_QuantityNames(api)),
         isSuperAdminProvider.overrideWithValue(false),
-        currentPermissionsProvider.overrideWithValue({Perm.productionPlanView}),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionPlanView,
+          if (canApprove) Perm.productionPlanApprove,
+        }),
       ],
       child: const MaterialApp(
         home: ProductionPlanDetailPage(id: 'quantity-plan'),
@@ -76,6 +82,19 @@ Future<void> _open(
 }
 
 void main() {
+  testWidgets(
+    'plan approval exposes only a decision without document amendment',
+    (tester) async {
+      await _open(tester, [
+        {'id': 'item-1', 'goodsId': 'goods-1', 'unitId': 'piece', 'qty': 1},
+      ], canApprove: true);
+      expect(find.widgetWithText(UtenButton, '审核'), findsOneWidget);
+      expect(find.text('修改后审核'), findsNothing);
+      expect(find.text('保存并审核'), findsNothing);
+      expect(find.widgetWithText(UtenButton, '编辑'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final exact in ['12.1256', '0.0001', '99999999999999.9999']) {
     testWidgets('draft plan summary and hero retain exact quantity $exact', (
       tester,

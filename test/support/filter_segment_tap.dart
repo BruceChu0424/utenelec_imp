@@ -5,19 +5,71 @@
 // 目标菜单项。页面测试统一走本助手，断言不随视口宽度漂移。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 
 /// 点选工具条上标签为 [label] 的分类分段。
 Future<void> selectFilterSegment(WidgetTester tester, String label) async {
-  final segment = find.text(label);
+  // 表格可能也有同名来源单元格，而且窄屏时位于视口外；只点分类/历史时间控件。
+  final toolbars = find.byWidgetPredicate(
+    (widget) =>
+        widget is UtenFilterToolbar ||
+        widget is UtenHistoryTimeFilter ||
+        widget is UtenSegmentRow,
+  );
+  final segment = find
+      .descendant(of: toolbars, matching: find.text(label))
+      .hitTestable();
   if (tester.any(segment)) {
-    await tester.tap(segment);
+    final popup = find.ancestor(
+      of: segment.first,
+      matching: find.byWidgetPredicate((widget) => widget is PopupMenuButton),
+    );
+    await tester.tap(segment.first);
     await tester.pump();
+    // 下拉按钮会显示当前分类名；选一次相同菜单项以完成真实操作并关闭遮罩。
+    if (tester.any(popup)) {
+      await _pumpMenuAnimation(tester);
+      await tester.tap(_menuItem(label).last);
+      await _pumpMenuAnimation(tester);
+    }
     return;
   }
   // 收起形态：打开「分类」下拉再点目标菜单项。触发按钮文案会变成已选分类名，
   // 统一用下拉箭头图标定位；菜单项在遮罩层里，取最后一个匹配。
-  await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text(label).last);
-  await tester.pumpAndSettle();
+  final arrows = find
+      .descendant(
+        of: toolbars,
+        matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+      )
+      .hitTestable();
+  final count = arrows.evaluate().length;
+  for (var index = 0; index < count; index++) {
+    await tester.tap(arrows.at(index));
+    await _pumpMenuAnimation(tester);
+    final item = _menuItem(label);
+    if (tester.any(item)) {
+      await tester.tap(item.last);
+      await _pumpMenuAnimation(tester);
+      return;
+    }
+    // 来源、状态各自折叠时，先关闭没有目标项的菜单再试下一颗分类按钮。
+    await tester.tapAt(const Offset(1, 1));
+    await _pumpMenuAnimation(tester);
+  }
+  throw TestFailure('没有可操作的分类：$label');
+}
+
+Finder _menuItem(String label) => find
+    .descendant(
+      of: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
+      matching: find.text(label),
+    )
+    .hitTestable();
+
+Future<void> _pumpMenuAnimation(WidgetTester tester) async {
+  // Material popup menus animate for 300ms; a task request may deliberately stay pending.
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
 }

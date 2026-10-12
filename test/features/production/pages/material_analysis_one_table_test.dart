@@ -3514,6 +3514,40 @@ void main() {
     );
   });
 
+  for (final mismatchedField in [
+    'goodsId',
+    'colorId',
+    'unitId',
+    'analysisLineId',
+  ]) {
+    testWidgets('转交进度目标 $mismatchedField 不一致时保留同步警告', (tester) async {
+      await _pump(
+        tester,
+        mutate: (data) {
+          nestedDelegatedFixture(data);
+          _fixtureMaterial(data, 'm-6-shared')[mismatchedField] =
+              'foreign-identity';
+          return data;
+        },
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('material-table-row-m-6')),
+          matching: find.text('已下达，计划进度待同步'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('material-table-row-m-6')),
+          matching: find.textContaining('生产中 · 可报工'),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 已是共享批次来源的行(还有未撤回的 AGGREGATE_SUPPLY 引用)单独下达时也要走
   // 汇总通道——服务端会把这次的量并进那张还挂着的批次，而不是在按产品通道另起
   // 一条申请(2026-09-26)。

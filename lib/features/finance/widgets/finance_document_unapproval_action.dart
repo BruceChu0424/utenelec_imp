@@ -52,7 +52,8 @@ class _FinanceDocumentUnapprovalActionState
     setState(() => _busy = true);
     try {
       final scope = await api.captureRequestScope(isCurrent: isCurrent);
-      if (widget.validateReview != null && !await scope.run(widget.validateReview!)) {
+      if (widget.validateReview != null &&
+          !await scope.run(widget.validateReview!)) {
         if (mounted && isCurrent()) context.appWarning('审批版本已变化，请刷新详情后再反审');
         return;
       }
@@ -75,7 +76,8 @@ class _FinanceDocumentUnapprovalActionState
         ),
       );
       if (confirmed != true || !isCurrent()) return;
-      if (widget.validateReview != null && !await scope.run(widget.validateReview!)) {
+      if (widget.validateReview != null &&
+          !await scope.run(widget.validateReview!)) {
         if (mounted && isCurrent()) context.appWarning('审批版本已变化，请刷新详情后再反审');
         return;
       }

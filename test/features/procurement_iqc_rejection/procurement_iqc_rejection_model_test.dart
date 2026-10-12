@@ -35,7 +35,7 @@ void main() {
     expect(visible.localAmountLabel(visible.failedAmountLocal), '125.50');
     expect(
       visible.originalAmountLabel(visible.failedAmountOriginal),
-      '125.50 CNY',
+      '125.50 元',
     );
     expect(visible.localAmountLabel(null), '待核对');
   });

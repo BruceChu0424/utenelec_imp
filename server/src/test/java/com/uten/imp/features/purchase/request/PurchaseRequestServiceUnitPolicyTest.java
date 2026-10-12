@@ -6,6 +6,7 @@ import com.uten.imp.common.integrity.ProductionSupplySourceGuard;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.purchase.common.PurchaseLineUnitPolicy;
+import com.uten.imp.features.purchase.common.PurchaseRequestQuantities;
 import com.uten.imp.features.purchase.request.dto.RequestItemLine;
 import com.uten.imp.features.purchase.request.dto.RequestSaveRequest;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -137,18 +138,16 @@ class PurchaseRequestServiceUnitPolicyTest {
         assertTrue(ordered.getMessage().contains("已生成订货单"));
 
         item.setOrderedQty(null);
-        Query pendingQuery = mock(Query.class);
-        when(pendingQuery.setParameter(anyString(), any())).thenReturn(pendingQuery);
-        when(pendingQuery.getSingleResult()).thenReturn(new BigDecimal("2"));
-        when(fixture.em.createNativeQuery(
-                org.mockito.ArgumentMatchers.contains(
-                        "procurement_order_approval_cases")))
-                .thenReturn(pendingQuery);
+        Query pendingQuery = stubPendingPhysicalQuantity(fixture.em, new BigDecimal("2"));
         ApiException pending = assertThrows(
                 ApiException.class,
                 () -> fixture.service.adjustItemQty(
                         requestId, itemId, new BigDecimal("6"), 0L));
         assertTrue(pending.getMessage().contains("待财务审核"));
+        verify(pendingQuery).setParameter("itemId", itemId);
+        verify(pendingQuery).getSingleResult();
+        assertEquals(0, new BigDecimal("10").compareTo(item.getQty()));
+        assertEquals(0L, item.getRowVersion());
     }
 
     @Test
@@ -168,13 +167,7 @@ class PurchaseRequestServiceUnitPolicyTest {
                 .thenReturn(java.util.Optional.of(request));
         when(fixture.itemRepo.findById(itemId))
                 .thenReturn(java.util.Optional.of(item));
-        Query pendingQuery = mock(Query.class);
-        when(pendingQuery.setParameter(anyString(), any())).thenReturn(pendingQuery);
-        when(pendingQuery.getSingleResult()).thenReturn(new BigDecimal("0"));
-        when(fixture.em.createNativeQuery(
-                org.mockito.ArgumentMatchers.contains(
-                        "procurement_order_approval_cases")))
-                .thenReturn(pendingQuery);
+        Query pendingQuery = stubPendingPhysicalQuantity(fixture.em, BigDecimal.ZERO);
         when(fixture.itemRepo.findByRequestIdOrderByLineNoAsc(requestId))
                 .thenReturn(List.of(item));
 
@@ -202,7 +195,7 @@ class PurchaseRequestServiceUnitPolicyTest {
         Query detailRows = mock(Query.class);
         when(detailRows.setParameter(anyString(), any())).thenReturn(detailRows);
         when(detailRows.getResultList()).thenReturn(java.util.Collections.singletonList(
-                new Object[]{itemId,BigDecimal.ZERO,1L}));
+                new Object[]{itemId,BigDecimal.ZERO,1L,BigDecimal.ZERO}));
         when(fixture.em.createNativeQuery(contains("SELECT i.id, pending.pending_qty")))
                 .thenReturn(detailRows);
         var detail = fixture.service.adjustItemQty(
@@ -212,6 +205,20 @@ class PurchaseRequestServiceUnitPolicyTest {
         assertEquals(0, new BigDecimal("12.5").compareTo(item.getQty()));
         assertEquals(0, new BigDecimal("12.5").compareTo(
                 detail.getItems().getFirst().getQty()));
+        verify(pendingQuery).setParameter("itemId", itemId);
+        verify(pendingQuery).getSingleResult();
+    }
+
+    private static Query stubPendingPhysicalQuantity(EntityManager em, BigDecimal quantity) {
+        Query query = mock(Query.class);
+        String sql = """
+                SELECT pending.pending_physical_qty FROM purchase_request_items i
+                %s WHERE i.id=:itemId AND NOT i.is_deleted
+                """.formatted(PurchaseRequestQuantities.pendingJoin("i"));
+        when(em.createNativeQuery(sql)).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getSingleResult()).thenReturn(quantity);
+        return query;
     }
 
     private static void stubMasterSnapshot(EntityManager em, UUID goodsId) {

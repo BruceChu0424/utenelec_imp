@@ -15,13 +15,21 @@ void main() {
     expect(financeCurrencyDisplayLabel(name: '㐀', code: 'USD'), '㐀');
     expect(
       financeCurrencyDisplayLabel(name: 'Swiss Franc', code: 'CHF'),
-      'Swiss Franc',
+      '瑞士法郎',
     );
     expect(financeCurrencyDisplayLabel(name: '港币', code: 'USD'), '港币');
     expect(
       financeCurrencyDisplayLabel(name: 'Unmapped currency'),
       'Unmapped currency',
     );
+  });
+
+  test('standard English master names stay Chinese with legacy codes', () {
+    expect(financeCurrencyDisplayLabel(name: 'US Dollar', code: '002'), '美金');
+    expect(financeCurrencyDisplayLabel(name: 'Euro', code: '003'), '欧元');
+    expect(financeCurrencyDisplayLabel(code: 'CHF'), '瑞士法郎');
+    expect(financeCurrencyDisplayLabel(name: '港币', code: 'USD'), '港币');
+    expect(financeCurrencyDisplayLabel(code: '002'), isNull);
   });
 
   test('currency display never exposes a legacy numeric code', () {

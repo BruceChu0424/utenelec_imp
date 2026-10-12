@@ -81,7 +81,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('stock-doc-issue-DRAW')), findsNothing);
     expect(tableWidget().facets['issueStatus']?.map((bucket) => bucket.value), [
-      '0', '1', '2',
+      '0',
+      '1',
+      '2',
     ]);
     tableWidget().onFilterChanged('issueStatus', '1');
     await tester.pumpAndSettle();

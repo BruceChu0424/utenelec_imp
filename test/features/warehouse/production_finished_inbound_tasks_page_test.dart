@@ -47,7 +47,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
-          apiBaseUrlProvider.overrideWithValue('https://finished-task-test.example/api'),
+          apiBaseUrlProvider.overrideWithValue(
+            'https://finished-task-test.example/api',
+          ),
           apiClientProvider.overrideWithValue(api),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.stockDocView,
@@ -174,7 +176,9 @@ void main() {
       ProviderScope(
         overrides: [
           apiClientProvider.overrideWithValue(_FinishedInboundApi()),
-          apiBaseUrlProvider.overrideWithValue('https://finished-task-test.example/api'),
+          apiBaseUrlProvider.overrideWithValue(
+            'https://finished-task-test.example/api',
+          ),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.stockDocView,
           }),

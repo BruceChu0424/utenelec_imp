@@ -130,32 +130,6 @@ class StockDocRepository {
     return StockDocDetail.fromJson(json);
   }
 
-  Future<({String snapshot, StockDocDetail detail})> reviewDraft(
-    String id,
-  ) async {
-    final json = await api.get('${ApiEndpoints.stockDoc(id)}/review');
-    return (
-      snapshot: json['snapshot'] as String,
-      detail: StockDocDetail.fromJson(json['detail'] as Map<String, dynamic>),
-    );
-  }
-
-  Future<StockDocDetail> updateReviewed(
-    String id,
-    Map<String, dynamic> body,
-    String expectedSnapshot, {
-    bool approveNow = true,
-  }) async => StockDocDetail.fromJson(
-    await api.put(
-      '${ApiEndpoints.stockDoc(id)}/review',
-      body: {
-        'expectedSnapshot': expectedSnapshot,
-        'document': body,
-        'approveNow': approveNow,
-      },
-    ),
-  );
-
   Future<void> delete(String id) async => api.delete(ApiEndpoints.stockDoc(id));
   Future<StockDocDetail> approve(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocApprove(id)));

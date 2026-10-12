@@ -287,6 +287,8 @@ Future<void> _pumpOutboundDetail(
   double textScale = 1.0,
 }) async {
   useUtenViewport(tester, size);
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   final gateway = _OutboundGateway(
     WarehouseSalesOutboundSummary.fromJson(_outboundJson),
     WarehouseSalesOutboundDetail.fromJson(_outboundJson),
@@ -294,6 +296,7 @@ Future<void> _pumpOutboundDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
         warehouseSalesOutboundRepositoryProvider.overrideWithValue(gateway),
       ],
       child: MaterialApp(

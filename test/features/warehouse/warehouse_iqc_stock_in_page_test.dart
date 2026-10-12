@@ -114,17 +114,27 @@ void main() {
     'merged quality-result list exposes status columns and batch entry only',
     (tester) async {
       _viewport(tester, const Size(375, 900));
+      final previousHitTestWarning =
+          WidgetController.hitTestWarningShouldBeFatal;
+      WidgetController.hitTestWarningShouldBeFatal = true;
+      addTearDown(
+        () => WidgetController.hitTestWarningShouldBeFatal =
+            previousHitTestWarning,
+      );
       final gateway = _QualityGateway();
       final preferences = await SharedPreferences.getInstance();
       await tester.pumpWidget(
         _qualityApp(const WarehouseQualityResultsPage(), gateway, preferences),
       );
       await tester.pumpAndSettle();
-      // 2026-09-03 分类范式：来源/状态默认不选（未选不发请求），
-      // 先选来源（采购收货）再选状态（等待结果）才渲染表格。
-      await selectFilterSegment(tester, '采购收货');
-      await tester.pumpAndSettle();
+      // 作业阶段在工具条，采购/委外来源只从表头筛选；不点同名来源单元格。
       await selectFilterSegment(tester, '等待结果');
+      await tester.pumpAndSettle();
+      tester
+          .widget<MasterDataTableView<WarehouseQualityResultTask>>(
+            find.byKey(const Key('warehouse-quality-result-table')),
+          )
+          .onFilterChanged('receiptType', 'PURCHASE');
       await tester.pumpAndSettle();
 
       final table = tester
@@ -147,7 +157,21 @@ void main() {
         columnKeys.intersection(warehouseIqcStockInForbiddenKeys),
         isEmpty,
       );
-      expect(find.text('等待检查结果'), findsWidgets);
+      expect(table.items, hasLength(1));
+      expect(
+        table.items.single.receiptType,
+        WarehouseIqcStockInReceiptType.purchase,
+      );
+      expect(
+        table.items.single.workStatus,
+        WarehouseQualityWorkStatus.waitingInspection,
+      );
+      expect(gateway.lastReceiptType, WarehouseIqcStockInReceiptType.purchase);
+      expect(
+        gateway.lastWorkStatus,
+        WarehouseQualityWorkStatus.waitingInspection,
+      );
+      expect(find.text('采购 · 等待检查结果'), findsWidgets);
       expect(find.text('等待结果'), findsWidgets);
       expect(find.text('999999.99'), findsNothing);
       expect(find.text('USD-SECRET'), findsNothing);
@@ -180,6 +204,8 @@ Widget _qualityApp(
 }
 
 class _QualityGateway implements WarehouseQualityResultGateway {
+  WarehouseIqcStockInReceiptType? lastReceiptType;
+  WarehouseQualityWorkStatus? lastWorkStatus;
   @override
   Future<List<MasterFacetBucket>> billNoFacets({
     WarehouseIqcStockInReceiptType? receiptType,
@@ -202,13 +228,17 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? order,
     String? billNo,
     String? scopeWarehouseId,
-  }) async => PagedResult(
-    items: [WarehouseQualityResultTask.fromJson(_qualitySummaryJson)],
-    page: page,
-    size: size,
-    total: 1,
-    totalPages: 1,
-  );
+  }) async {
+    lastReceiptType = receiptType;
+    lastWorkStatus = workStatus;
+    return PagedResult(
+      items: [WarehouseQualityResultTask.fromJson(_qualitySummaryJson)],
+      page: page,
+      size: size,
+      total: 1,
+      totalPages: 1,
+    );
+  }
 
   @override
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({

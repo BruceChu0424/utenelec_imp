@@ -129,19 +129,29 @@ void main() {
     }
 
     // 切到「报价单」大类：嵌入的列表页按财务核价分桶分段(ADR-134)：
-    // 草稿/财务退回/待财务核价/已核价/作废/历史记录。
+    // 窄屏可能收成分类下拉，真实分段模型仍须完整保留所有分桶。
     await tester.tap(find.text('报价单'));
     await tester.pump();
     await tester.pump();
-    for (final label in ['草稿', '财务退回', '待财务核价', '已核价', '作废', '历史记录']) {
-      expect(
-        find.byWidgetPredicate(
-          (w) => w is UtenSegmentBadgeLabel && w.label == label,
-        ),
-        findsOneWidget,
-        reason: label,
-      );
-    }
+    final toolbar = tester.widget<UtenFilterToolbar<dynamic>>(
+      find.byWidgetPredicate(
+        (w) =>
+            w is UtenFilterToolbar &&
+            w.segmentsKey == const Key('sales-doc-status-quotes'),
+      ),
+    );
+    expect(toolbar.segments.map((segment) => segment.label), [
+      '全部',
+      '草稿',
+      '财务退回',
+      '待财务核价',
+      '待客户同意',
+      '待生成订货单',
+      '已核价',
+      '作废',
+      '历史记录',
+    ]);
+    expect(toolbar.selected, isEmpty);
     expect(find.text('已审'), findsNothing);
     expect(find.text('红冲'), findsNothing);
     // 状态默认不选：列表引导占位，不发请求。

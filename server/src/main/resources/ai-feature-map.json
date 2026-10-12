@@ -848,7 +848,7 @@
       "title": "业务审核中心",
       "aliases": [],
       "module": "钱流管理",
-      "purpose": "销售订单 · 订单修改 · 出货 · 订货 · 超量到货 · IQC 退回，一站式审核",
+      "purpose": "销售订单 · 出货 · 订货 · 超量到货 · IQC 退回，一站式审核",
       "paths": [
         [
           "工作台",
@@ -3958,6 +3958,26 @@
       "doc": "docs/03-页面/待检处置页.md"
     },
     {
+      "route": "/warehouse/material-returns/batch-receive",
+      "title": "生产退料批量收料",
+      "aliases": [
+        "批量退料收料",
+        "整批生产退料",
+        "生产退料批量收料页"
+      ],
+      "module": "仓库管理",
+      "purpose": "仓库逐张核对已选生产退料单的实物数量并确认收料。",
+      "paths": [],
+      "parent": "/warehouse",
+      "record": false,
+      "anyOf": [
+        "stock_doc:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/生产退料批量收料页.md"
+    },
+    {
       "route": "/warehouse/production-finished-in/tasks",
       "title": "产成品待点收任务页",
       "aliases": [],
@@ -4058,6 +4078,26 @@
       "doc": "docs/03-页面/销售出货仓库作业页.md"
     },
     {
+      "route": "/warehouse/sales-outbound/batch",
+      "title": "销售出货批量出库",
+      "aliases": [
+        "批量确认出库",
+        "整批销售出库",
+        "销售出货批量出库页"
+      ],
+      "module": "仓库管理",
+      "purpose": "仓库集中核对已选销售出货单并逐张确认实物出库。",
+      "paths": [],
+      "parent": "/warehouse/sales-outbound",
+      "record": false,
+      "anyOf": [
+        "warehouse_sales_outbound:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/销售出货批量出库页.md"
+    },
+    {
       "route": "/warehouse/shelf-labels",
       "title": "货架目视化清单",
       "aliases": [
@@ -4131,6 +4171,26 @@
       "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/仓库委外出仓工作台页.md"
+    },
+    {
+      "route": "/warehouse/subcontract-outbound/batch",
+      "title": "委外领料批量出仓",
+      "aliases": [
+        "委外领料批量出仓页",
+        "批量委外出仓",
+        "整批委外发料"
+      ],
+      "module": "仓库管理",
+      "purpose": "仓库集中核对委外人员已提交的领料单并逐张办理实际出仓。",
+      "paths": [],
+      "parent": "/warehouse/subcontract-outbound",
+      "record": false,
+      "anyOf": [
+        "subcontract_outbound:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/委外领料批量出仓页.md"
     },
     {
       "route": "/warehouse/tasks",

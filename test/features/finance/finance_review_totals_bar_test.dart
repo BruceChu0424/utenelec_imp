@@ -237,7 +237,9 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   );
 
   @override
-  Future<Map<String, int>> approvalTypeCounts({String status = 'PENDING'}) async => {'PURCHASE': 1};
+  Future<Map<String, int>> approvalTypeCounts({
+    String status = 'PENDING',
+  }) async => {'PURCHASE': 1};
 
   @override
   Future<FinanceProcurementApprovalReview> review(String caseId) async =>

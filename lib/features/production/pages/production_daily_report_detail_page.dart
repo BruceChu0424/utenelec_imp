@@ -372,46 +372,6 @@ class _ProductionDailyReportDetailPageState
   void _signalExecutionChanged() =>
       bumpListRefresh(ref, productionExecutionRefreshKey);
 
-  Future<void> _reviewAndApprove() async {
-    if (_busy || !_canApprove) return;
-    final isCurrent = _approvalViewFence(requireCurrentRoute: false);
-    late final AuthenticatedRequestScope requestScope;
-    ProductionDailyReportDetail? saved;
-    try {
-      requestScope = await ref
-          .read(apiClientProvider)
-          .captureRequestScope(isCurrent: isCurrent);
-      await requestScope.verify();
-      if (!mounted || !isCurrent() || !_canApprove) return;
-      saved = await context.push<ProductionDailyReportDetail>(
-        '/production/daily-reports/${widget.id}/edit?review=1',
-      );
-      if (saved == null) return;
-      await requestScope.verify();
-      if (!mounted || !isCurrent()) return;
-      if (saved.id != widget.id || saved.status != kProductionStatusDraft) {
-        context.appWarning('核改响应无法核对，本次未发送审核，请重新读取草稿');
-        return;
-      }
-      await _load();
-      await requestScope.verify();
-      if (!mounted || !isCurrent()) return;
-      if (_detail?.rowVersion != saved.rowVersion || !_canApprove) {
-        context.appWarning('核改已保存为草稿；单据版本或审核范围已变化，请重新核对，本次未继续审核');
-        return;
-      }
-      await _approve(retainedScope: requestScope);
-    } on ApiException catch (error) {
-      if (mounted) {
-        context.appWarning(
-          saved == null
-              ? error.message
-              : '核改已保存为草稿；${error.message} 本次未继续审核，请重新读取核对',
-        );
-      }
-    }
-  }
-
   Future<void> _approve({AuthenticatedRequestScope? retainedScope}) async {
     if (_busy || _approvalConfirming || !_canApprove) return;
     final reviewed = _detail;
@@ -1646,17 +1606,6 @@ class _ProductionDailyReportDetailPageState
             icon: Icons.edit_outlined,
             onPressed: _edit,
             child: const Text('编辑'),
-          ),
-        );
-      }
-      if (_canApprove) {
-        addAction(
-          UtenButton(
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.large,
-            icon: Icons.edit_note_outlined,
-            onPressed: _reviewAndApprove,
-            child: const Text('修改后审核'),
           ),
         );
       }

@@ -17,6 +17,22 @@ String? financeCurrencyDisplayLabel({String? name, String? code}) {
     'CAD': '加元',
     'KRW': '韩元',
     'RUB': '卢布',
+    'CHF': '瑞士法郎',
+    'CHINESE YUAN': '人民币',
+    'RENMINBI': '人民币',
+    'US DOLLAR': '美金',
+    'UNITED STATES DOLLAR': '美金',
+    'HONG KONG DOLLAR': '港币',
+    'EURO': '欧元',
+    'JAPANESE YEN': '日元',
+    'POUND STERLING': '英镑',
+    'BRITISH POUND': '英镑',
+    'SINGAPORE DOLLAR': '新加坡元',
+    'AUSTRALIAN DOLLAR': '澳元',
+    'CANADIAN DOLLAR': '加元',
+    'SOUTH KOREAN WON': '韩元',
+    'RUSSIAN RUBLE': '卢布',
+    'SWISS FRANC': '瑞士法郎',
   };
   String? readable(String? candidate) {
     final value = candidate?.trim();

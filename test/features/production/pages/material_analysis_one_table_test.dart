@@ -4955,6 +4955,121 @@ void main() {
     );
   });
 
+  for (final scenario in [
+    ('SJ20261012000001', true),
+    ('SJ20261012000001-LONG-PLAN-NUMBER', true),
+    ('SJ20261012000001-LONG-PLAN-NUMBER', false),
+  ]) {
+    final (planNo, canView) = scenario;
+    testWidgets('顶层已下计划办理单行显示且单号不重复：$planNo 查看=$canView', (tester) async {
+      await _pump(
+        tester,
+        permissions: {
+          ..._permissions,
+          if (canView) Perm.productionPlanView,
+          Perm.productionMaterialAnalysisGenerate,
+          Perm.productionPlanningPackageCancel,
+        },
+        mutate: (data) {
+          // 本回归只验证顶层已下计划的办理格，保留其根物料来源。
+          (data['flatMaterials'] as List).removeWhere(
+            (material) => (material as Map)['materialLineId'] != 'm-root',
+          );
+          (data['allowedActions'] as List).add('GENERATE_PLAN');
+          final product = (data['products'] as List).single as Map;
+          product.addAll(<String, dynamic>{
+            'issuedPlanQty': 2000,
+            'canSchedule': false,
+            'canIssueSurplus': true,
+            'remainingQty': 0,
+            'latestPlanId': 'plan-1',
+            'latestPlanNo': planNo,
+          });
+          _fixturePlanAssignment(product);
+          return data;
+        },
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(const ValueKey('material-bom-product-product-1'));
+      final viewPlan = find.byKey(
+        const ValueKey('material-top-level-view-plan'),
+      );
+      final cancelPlan = find.byKey(
+        const ValueKey('material-top-level-cancel-plan'),
+      );
+      expect(
+        find.descendant(of: row, matching: find.textContaining(planNo)),
+        findsOneWidget,
+        reason: '同一计划号不能在查看与撤回入口各显示一遍',
+      );
+      expect(tester.getSize(row).height, lessThanOrEqualTo(64));
+      if (canView) {
+        expect(
+          tester.getCenter(viewPlan).dy,
+          closeTo(tester.getCenter(cancelPlan).dy, 0.1),
+          reason: '查看与撤回必须在同一行，不把顶层行撑成两行按钮',
+        );
+        expect(tester.widget<TextButton>(viewPlan).onPressed, isNotNull);
+        expect(tester.widget<IconButton>(cancelPlan).onPressed, isNotNull);
+        expect(
+          find.byTooltip('查看计划 $planNo'),
+          findsOneWidget,
+          reason: '长单号省略时仍可查看完整计划号',
+        );
+        expect(
+          tester.widget<IconButton>(cancelPlan).tooltip,
+          startsWith('整批撤回 $planNo'),
+        );
+      } else {
+        expect(viewPlan, findsNothing);
+        expect(tester.widget<TextButton>(cancelPlan).onPressed, isNotNull);
+        expect(
+          find.descendant(of: cancelPlan, matching: find.text('整批撤回 $planNo')),
+          findsOneWidget,
+          reason: '无查看权限时仍保留带单号的撤回入口',
+        );
+      }
+      expect(tester.takeException(), isNull);
+      // 共享表格可拖到 48px：按钮也须受列宽约束，不能由固定尾部图标撑溢出。
+      final handleHeader = find
+          .ancestor(
+            of: find.text('物料办理'),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Container &&
+                  widget.constraints?.hasBoundedWidth == true,
+            ),
+          )
+          .first;
+      final grip = tester.widget<GestureDetector>(
+        find.descendant(
+          of: handleHeader,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is GestureDetector &&
+                widget.onHorizontalDragUpdate != null &&
+                widget.child is MouseRegion &&
+                (widget.child! as MouseRegion).cursor ==
+                    SystemMouseCursors.resizeColumn,
+          ),
+        ),
+      );
+      grip.onHorizontalDragUpdate!(
+        DragUpdateDetails(
+          delta: Offset(48 - tester.getSize(handleHeader).width, 0),
+          globalPosition: tester.getCenter(handleHeader),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(handleHeader).width, 48);
+      expect(tester.getSize(row).height, lessThanOrEqualTo(64));
+      expect(tester.takeException(), isNull, reason: '最窄列也不横向溢出或折成两行');
+    });
+  }
+
   testWidgets('按物料汇总顶层自制已下计划：整批撤回取消计划包并静默重载(2026-10-10)', (tester) async {
     await _pump(
       tester,
@@ -4987,12 +5102,11 @@ void main() {
       const ValueKey('material-top-level-cancel-plan'),
     );
     expect(cancelPlan, findsOneWidget, reason: '有取消计划包权限时顶层必须给整批撤回');
-    expect(tester.widget<TextButton>(cancelPlan).onPressed, isNotNull);
-    // 2026-10-10 二次修订：与子层级撤回按钮同一形态（默认色 TextButton +
-    // 计划号），且不再显示「已下达车间计划 N」文字行。
+    expect(tester.widget<IconButton>(cancelPlan).onPressed, isNotNull);
+    // 查看链接只显示一次计划号，整批撤回入口与说明放在旁边图标的悬浮中。
     expect(
-      find.descendant(of: cancelPlan, matching: find.text('整批撤回 PP-2026-001')),
-      findsOneWidget,
+      tester.widget<IconButton>(cancelPlan).tooltip,
+      startsWith('整批撤回 PP-2026-001'),
     );
     expect(find.text('已下达车间计划 2000 个'), findsNothing);
     requests.clear();

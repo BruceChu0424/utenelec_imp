@@ -160,9 +160,9 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
   /// [groups] 供空态分流（2026-10-10）：自制组的下达走 issue-plans 生成生产计划，
   /// 不进供给行动表——actionIds 为空是常态。全部组都按自制锚点计划下达时不显
   /// 示「已下达车间计划 N」文字行（2026-10-10 二次修订，说明进整批撤回的悬浮），
-  /// 锚点带计划号且有查看权限时给「查看计划」入口（与按产品视图的计划引用同
-  /// 一路由），有取消计划包权限时给「整批撤回 单号」（取消最新计划包，与子
-  /// 层级撤回按钮同一形态）；真下了供给单而无可撤回任务的行维持
+  /// 锚点带计划号且有查看权限时给计划号链接（与按产品视图同一路由），有取消
+  /// 计划包权限时在同一行给撤回图标，单号只显示一次；没有查看权限时仍给
+  /// 「整批撤回 单号」。真下了供给单而无可撤回任务的行维持
   /// 「已下单，暂无可撤回任务」。
   Widget? withdrawCell({
     required Iterable<String> materialLineIds,
@@ -197,51 +197,95 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
       final makePlan = _issuedMakePlanOf(groups ?? const []);
       if (makePlan != null) {
         final anchor = makePlan.anchor;
+        final planNo = anchor?.planNo?.trim();
         final viewPlan = anchor == null || !owner._canViewPlans || owner._busy
             ? null
-            : TextButton(
-                key: ValueKey('$keyPrefix-view-plan'),
-                onPressed: () => unawaited(
-                  owner.context.push(
-                    RoutePath.productionPlanDetail(anchor.planId),
-                  ),
-                ),
-                child: Text(anchor.planNo ?? '查看计划'),
-              );
-        // 2026-10-10 用户口径二次修订：不再显示「已下达车间计划 N」文字行；
-        // 整批撤回（=取消最新生产计划包，与生产计划详情同一端点/必填原因/
-        // 幂等键）与子层级撤回按钮同一形态——默认色 TextButton + 单号，说明
-        // 进悬浮。仅未开工且无执行事实的计划包可取消，取消后分析静默重载。
-        final planNo = anchor?.planNo?.trim();
-        final cancelPlan = anchor == null || !owner._canCancelPlanningPackage
-            ? null
             : Tooltip(
-                message:
-                    '已下达车间计划 ${owner._qty(makePlan.qty)}'
-                    '${makePlan.unit == null ? '' : ' ${makePlan.unit}'}。'
-                    '整批撤回 = 取消最新计划包'
-                    '${(planNo ?? '').isEmpty ? '' : '（$planNo）'}，'
-                    '仅未开工且没有执行事实的计划包可取消，系统会原子释放占用并'
-                    '关闭可撤销的下游草稿；已开工计划的撤回在生产计划里办理。',
+                message: '查看计划${(planNo ?? '').isEmpty ? '' : ' $planNo'}',
                 child: TextButton(
-                  key: ValueKey('$keyPrefix-cancel-plan'),
-                  onPressed: owner._busy
-                      ? null
-                      : () => unawaited(
-                          owner._cancelIssuedPlanningPackage(
-                            planId: anchor.planId,
-                            planNo: planNo,
-                          ),
-                        ),
+                  key: ValueKey('$keyPrefix-view-plan'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s4,
+                      vertical: UtenSpacing.s8,
+                    ),
+                  ),
+                  onPressed: () => unawaited(
+                    owner.context.push(
+                      RoutePath.productionPlanDetail(anchor.planId),
+                    ),
+                  ),
                   child: Text(
-                    '整批撤回${(planNo ?? '').isEmpty ? '' : ' $planNo'}',
+                    (planNo ?? '').isEmpty ? '查看计划' : planNo!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               );
+        // 查看与撤回共享一份单号，单行布局避免两个默认按钮叠加撑高整行。
+        // 取消最新计划包仍走原端点、必填原因、权限与幂等键口径。
+        Widget? cancelPlan;
+        if (anchor != null && owner._canCancelPlanningPackage) {
+          final label = '整批撤回${(planNo ?? '').isEmpty ? '' : ' $planNo'}';
+          final tooltip =
+              '$label。已下达车间计划 ${owner._qty(makePlan.qty)}'
+              '${makePlan.unit == null ? '' : ' ${makePlan.unit}'}。'
+              '整批撤回 = 取消最新计划包，仅未开工且没有执行事实的计划包可取消，'
+              '系统会原子释放占用并关闭可撤销的下游草稿；'
+              '已开工计划的撤回在生产计划里办理。';
+          final VoidCallback? onCancel = owner._busy
+              ? null
+              : () => unawaited(
+                  owner._cancelIssuedPlanningPackage(
+                    planId: anchor.planId,
+                    planNo: planNo,
+                  ),
+                );
+          cancelPlan = viewPlan == null
+              ? Tooltip(
+                  message: tooltip,
+                  child: TextButton(
+                    key: ValueKey('$keyPrefix-cancel-plan'),
+                    onPressed: onCancel,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+              : IconButton(
+                  key: ValueKey('$keyPrefix-cancel-plan'),
+                  tooltip: tooltip,
+                  onPressed: onCancel,
+                  icon: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Icon(Icons.undo_rounded, size: 18),
+                  ),
+                  style: IconButton.styleFrom(
+                    foregroundColor: Theme.of(
+                      owner.context,
+                    ).colorScheme.primary,
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(40, 40),
+                    visualDensity: VisualDensity.standard,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                );
+        }
+        final actions = viewPlan != null && cancelPlan != null
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(flex: 3, child: viewPlan),
+                  Flexible(child: cancelPlan),
+                ],
+              )
+            : viewPlan ?? cancelPlan;
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [?viewPlan, ?cancelPlan, ?note],
+          children: [?actions, ?note],
         );
       }
       final issued = Tooltip(

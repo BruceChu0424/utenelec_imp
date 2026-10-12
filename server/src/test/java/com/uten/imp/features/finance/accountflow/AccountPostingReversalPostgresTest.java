@@ -330,6 +330,17 @@ class AccountPostingReversalPostgresTest {
         var request=new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest("permission-"+UUID.randomUUID(),"无权操作测试");
         org.assertj.core.api.Assertions.assertThatThrownBy(()->unapprovals.unapprove("financeExpense",original.documentId(),request))
                 .isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN));
+        var withoutViewPermissions=new java.util.HashSet<>(actor.getPermissions());
+        withoutViewPermissions.remove("finance_expense:view");
+        AuthUser withoutView=new AuthUser(actor.getId(),actor.getEmployeeId(),actor.getLoginAccount(),
+                withoutViewPermissions,false,true,true);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(withoutView,null,withoutView.getAuthorities()));
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->unapprovals.unapprove("financeExpense",original.documentId(),request))
+                .as("Reverse authority cannot bypass the document's readonly eligibility authority")
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(jdbc.queryForObject("SELECT status FROM finance_expenses WHERE id=?",Short.class,original.documentId())).isEqualTo((short)1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM document_unapprovals WHERE original_id=?",Long.class,original.documentId())).isZero();
+        assertBalancesEqual(balances(original.accounts()),before);
         AuthUser foreign=new AuthUser(actor.getId(),actor.getEmployeeId(),actor.getLoginAccount(),
                 Set.of("finance_expense:view","finance_expense:edit","finance_expense:reverse"),false,true,false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(foreign,null,foreign.getAuthorities()));
@@ -679,7 +690,7 @@ class AccountPostingReversalPostgresTest {
                 "customer_prepayment:view", "account:view", "account:balance:view", "account:balance:adjust"));
         for (String document : List.of("finance_payment", "finance_receipt", "finance_other_income",
                 "finance_bank_transfer", "finance_expense")) {
-            for (String action : List.of("create", "edit", "delete", "approve", "reverse")) {
+            for (String action : List.of("view", "create", "edit", "delete", "approve", "reverse")) {
                 permissions.add(document + ":" + action);
             }
         }

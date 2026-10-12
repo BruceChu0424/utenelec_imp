@@ -21,6 +21,45 @@ import static org.mockito.Mockito.when;
 
 class MaterialAnalysisSupplyWakeupServiceTest {
 
+    @Test void singlePurchaseSubcontractAndReportUseOneResolvedReceiptSelector() {
+        EntityManager em=mock(EntityManager.class);
+        Query candidates=query(List.of());
+        List<String> statements=routeQueries(em,candidates);
+        var service=new MaterialAnalysisSupplyWakeupService(em,mock(MaterialAnalysisService.class),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class));
+        UUID purchase=UUID.randomUUID(),subcontract=UUID.randomUUID();
+        service.afterPurchaseReceiptApproved(purchase);
+        service.afterSubcontractReceiptApproved(subcontract);
+        service.afterQualityReportCompleted(List.of(
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt("PURCHASE",purchase)),List.of());
+        assertThat(statements).hasSize(3).allMatch(sql -> sql.equals(statements.getFirst()));
+    }
+
+    @Test void mixedReportUnionsResolvedAndPartialTargetsWithoutLosingFailureOnlyReceipts() {
+        EntityManager em = mock(EntityManager.class);
+        MaterialAnalysisService analysis = mock(MaterialAnalysisService.class);
+        UUID target = UUID.randomUUID(), purchase = UUID.randomUUID(), subcontract = UUID.randomUUID();
+        Query candidates = query(List.<Object[]>of(new Object[]{target, UUID.randomUUID()}));
+        List<String> statements = routeQueries(em, candidates);
+        var service = new MaterialAnalysisSupplyWakeupService(em, analysis,
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class),
+                mock(com.uten.imp.features.notice.ChainNoticeService.class));
+        service.afterQualityReportCompleted(List.of(
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt("PURCHASE", purchase),
+                new com.uten.imp.application.port.ProductionInspectionStockInPort.ResolvedReceipt("SUBCONTRACT", subcontract)),
+                List.of(new com.uten.imp.application.port.ProductionInspectionStockInPort.ReceiptStockIn(
+                        "PURCHASE", purchase, UUID.randomUUID(), List.of(UUID.randomUUID()))));
+        verify(analysis).refreshLocked(target);
+        assertThat(statements).hasSize(2);
+        assertThat(statements.getFirst()).contains("inspection.status = 'RESOLVED'", "stock.warehouse_id")
+                .doesNotContain("warehouse_stocked_base_qty > 0");
+        verify(candidates, times(2)).setParameter("purchaseReceiptIds", purchase.toString());
+        verify(candidates).setParameter("subcontractReceiptIds", subcontract.toString());
+    }
+
     @Test
     void unexpectedCallbackSourceStopsBeforeAnalysisWritesOrNotifications() {
         EntityManager em = mock(EntityManager.class);
@@ -73,9 +112,9 @@ class MaterialAnalysisSupplyWakeupServiceTest {
                 .contains("ORDER BY analysis.id")
                 .doesNotContain("FOR UPDATE")
                 .doesNotContain("material.unit_id =");
-        verify(candidates).setParameter("includeLegacyFallback", false);
+        verify(candidates).setParameter("purchaseReceiptIds", receiptId.toString());
+        verify(candidates).setParameter("subcontractReceiptIds", "");
         assertThat(statements).hasSize(1);
-        verify(candidates).setParameter("sourceDocumentId", receiptId);
     }
 
     @Test
@@ -245,7 +284,7 @@ class MaterialAnalysisSupplyWakeupServiceTest {
         UUID analysisId = UUID.randomUUID();
         Query candidates = query(List.<Object[]>of(
                 new Object[]{analysisId, UUID.randomUUID()}));
-        routeQueries(em, candidates);
+        List<String> statements = routeQueries(em, candidates);
         MaterialAnalysisSupplyWakeupService service =
                 new MaterialAnalysisSupplyWakeupService(em, analysis,
                 com.uten.imp.support.FulfillmentMutationLockTestSupport.locks(),
@@ -254,7 +293,8 @@ class MaterialAnalysisSupplyWakeupServiceTest {
 
         service.afterPurchaseReceiptReversed(UUID.randomUUID());
 
-        verify(candidates).setParameter("includeLegacyFallback", true);
+        assertThat(statements.getFirst()).contains("receipt.status = -1", "inspection.status = 'REVERSED'", "NOT EXISTS")
+                .doesNotContain("receipt.status = 1", "includeLegacyFallback");
         verify(analysis).refreshLocked(analysisId);
     }
 

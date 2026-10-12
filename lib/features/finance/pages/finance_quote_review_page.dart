@@ -33,6 +33,7 @@ import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/data_display/uten_revision_table.dart';
+import '../../../components/data_display/uten_review_input_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -1367,6 +1368,16 @@ class _FinanceQuoteReviewPageState
             final amount = draft == null ? line.amount : draft.amountPreview;
             return financeLocalMoneyWithUnitSuffix(amount);
           },
+          cellBuilder: (_, line) {
+            final draft = _drafts[line.itemId];
+            final amount = draft == null ? line.amount : draft.amountPreview;
+            return UtenReviewInputCell(
+              before: line.amount,
+              after: amount,
+              beforeLabel: financeLocalMoneyWithUnitSuffix(line.amount),
+              child: Text(financeLocalMoneyWithUnitSuffix(amount)),
+            );
+          },
         ),
         if (hasFile)
           MasterColumnDef(
@@ -1532,31 +1543,38 @@ class _FinanceQuoteReviewPageState
     if (!editable || draft.removed || (!quantity && !draft.priceEditable)) {
       return Text(
         quantity
-            ? formatQtyWithUnit(double.tryParse(controller.text), unit)
+            ? formatExactQtyWithUnit(controller.text, unit)
             : financeLocalMoneyWithUnitSuffix(controller.text),
       );
     }
-    return TextField(
-      key: ValueKey(
-        'quote-finance-${quantity ? 'qty' : 'price'}-${line.itemId}',
+    return UtenReviewInputCell(
+      before: quantity ? line.qty : line.listPrice,
+      after: controller.text,
+      beforeKey: ValueKey(
+        'quote-finance-before-${quantity ? 'qty' : 'price'}-${line.itemId}',
       ),
-      controller: controller,
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [_decimalInput],
-      onChanged: (text) => setState(() {
-        if (!quantity) draft.onPriceChanged(text);
-      }),
-      decoration: UtenInputDecoration(
-        InputDecoration(
-          isDense: true,
-          suffixText: quantity ? unit : '元',
-          error: quantity && draft.error == QuoteFinanceLineError.quantity
-              ? const UtenFieldMessage.error('数量须大于 0')
-              : !quantity &&
-                    draft.directPricing &&
-                    !isValidFinancePrice(controller.text)
-              ? const UtenFieldMessage.error('单价不能是负数')
-              : null,
+      child: TextField(
+        key: ValueKey(
+          'quote-finance-${quantity ? 'qty' : 'price'}-${line.itemId}',
+        ),
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        inputFormatters: [_decimalInput],
+        onChanged: (text) => setState(() {
+          if (!quantity) draft.onPriceChanged(text);
+        }),
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            suffixText: quantity ? unit : '元',
+            error: quantity && draft.error == QuoteFinanceLineError.quantity
+                ? const UtenFieldMessage.error('数量须大于 0')
+                : !quantity &&
+                      draft.directPricing &&
+                      !isValidFinancePrice(controller.text)
+                ? const UtenFieldMessage.error('单价不能是负数')
+                : null,
+          ),
         ),
       ),
     );
@@ -1619,7 +1637,14 @@ class _FinanceQuoteReviewPageState
           '${l10n.quoteFinanceColDealPrice}',
       child: Row(
         children: [
-          Expanded(child: field),
+          Expanded(
+            child: UtenReviewInputCell(
+              before: line.dealPrice,
+              after: draft.deal.text,
+              beforeKey: ValueKey('quote-finance-before-deal-${line.itemId}'),
+              child: field,
+            ),
+          ),
           if (chip != null) ...[
             const SizedBox(width: UtenSpacing.s4),
             Tooltip(
@@ -1677,12 +1702,16 @@ class _FinanceQuoteReviewPageState
       label:
           '${line.goodsName ?? line.goodsCode ?? ''} '
           '${l10n.quoteFinanceColDiscount}',
-      child: batchCount > 0
-          ? Tooltip(
-              message: l10n.quoteFinanceCheckedEditHint(batchCount),
-              child: field,
-            )
-          : field,
+      child: UtenReviewInputCell(
+        before: line.discount,
+        after: draft.discount.text,
+        child: batchCount > 0
+            ? Tooltip(
+                message: l10n.quoteFinanceCheckedEditHint(batchCount),
+                child: field,
+              )
+            : field,
+      ),
     );
   }
 

@@ -248,6 +248,42 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
         mutate(planId, request, actorId, true, false);
     }
 
+    @Transactional(readOnly=true,propagation=org.springframework.transaction.annotation.Propagation.MANDATORY,noRollbackFor=ApiException.class)
+    public Set<UUID> requireDailyReportReversalAvailable(UUID planId,ProductionMaterialSettlementRequest request) {
+        requirePlanExists(planId,false);
+        List<Line> lines=normalize(request,true);
+        List<UUID> demands=lines.stream().map(Line::demandId).distinct().toList();
+        taskAccess.requireDemandWriteReadOnly(planId,demands,request.getExecutionSegmentId(),"production_material:reverse");
+        Number valid=(Number)em.createNativeQuery("SELECT COUNT(*) FROM production_material_demands WHERE id IN(:ids) AND plan_id=:plan AND NOT is_deleted AND status NOT IN('RELEASED','REVERSED')")
+            .setParameter("ids",demands).setParameter("plan",planId).getSingleResult();
+        if(valid.longValue()!=demands.size())throw new ApiException(ErrorCode.CONFLICT,"清账物料需求不属于当前有效计划");
+        for(Line line:lines) {
+            List<Object[]> sources=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT source.demand_id,source.settlement_type,source.qty_base,source.source_posting_id,source.issue_posting_id,
+                  COALESCE((SELECT SUM(back.qty_base) FROM production_material_settlement_postings back
+                    JOIN production_material_settlement_events e ON e.id=back.event_id
+                    WHERE back.source_posting_id=source.id AND e.event_type='REVERSE'),0),issue.demand_id,issue.posting_type
+                FROM production_material_settlement_postings source
+                LEFT JOIN production_material_stock_postings issue ON issue.id=source.issue_posting_id
+                WHERE source.id=:id
+                """).setParameter("id",line.sourcePostingId()));
+            if(sources.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"实际用料原清账记录不存在");
+            Object[] source=sources.getFirst();
+            if(!Objects.equals(source[0],line.demandId())||!Objects.equals(source[1],line.type())||source[3]!=null
+                ||source[4]==null||!Objects.equals(source[6],line.demandId())||!"ISSUE".equals(source[7])
+                ||decimal(source[5]).add(line.qty()).compareTo(decimal(source[2]))>0)
+                throw new ApiException(ErrorCode.CONFLICT,"实际用料反向必须保持原需求、类型与领料来源，且不能超过未反向数量");
+            inventoryValue.requireConsumptionReversalAvailable(line.sourcePostingId(),line.qty());
+        }
+        return Set.copyOf(NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT segment.id FROM production_execution_segments segment
+                WHERE segment.status='COMPLETED' AND NOT segment.is_deleted AND EXISTS(
+                  SELECT 1 FROM production_material_demands demand WHERE demand.id IN(:ids)
+                    AND (demand.execution_segment_id=segment.id OR demand.execution_segment_id IN(
+                       SELECT segment_id FROM fn_production_material_usage_source_segments(segment.id))))
+                """,UUID.class).setParameter("ids",demands),UUID.class));
+    }
+
     @Transactional
     public List<ProductionMaterialClearanceRow> close(UUID planId) {
         tx.bind();
@@ -367,6 +403,7 @@ public class ProductionMaterialSettlementService implements ProductionMaterialUs
         }
 
         sourceGuard.verifyUnchanged();
+        if(reverse)requireDailyReportReversalAvailable(planId,request);
         UUID eventId = UUID.randomUUID();
         em.createNativeQuery("""
                         INSERT INTO production_material_settlement_events(

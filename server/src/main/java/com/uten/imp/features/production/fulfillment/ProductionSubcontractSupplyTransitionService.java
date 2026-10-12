@@ -460,6 +460,10 @@ public class ProductionSubcontractSupplyTransitionService
     }
 
     @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public List<UUID> requireSubcontractReceiptReversible(UUID receiptId){return readiness.requireReceiptReversible("SUBCONTRACT",receiptId);}
+
+    @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeSubcontractReceiptReversed(UUID receiptId) {
         readiness.beforeSubcontractReceiptReversed(receiptId);

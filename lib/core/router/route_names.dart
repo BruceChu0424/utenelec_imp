@@ -175,6 +175,8 @@ abstract final class RouteName {
       '/admin/audit-logs/sessions/:sessionId';
   // 系统设置（安全/业务策略阈值；超管 authorization:manage，改设置二次密码确认）
   static const String adminSystemSettings = '/admin/system-settings';
+  // 公司品牌、服务器连接与配置入口；仅当前超级管理员可进入。
+  static const String adminPlatformSettings = '/admin/platform-settings';
   static const String adminServerStatus = '/admin/server-status';
   // AI 服务设置(ADR-133: 服务商/密钥/连接测试; 超管, 写操作再认证)
   static const String adminAiSettings = '/admin/ai-settings';

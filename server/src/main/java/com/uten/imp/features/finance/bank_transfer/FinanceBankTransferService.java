@@ -86,6 +86,8 @@ public class FinanceBankTransferService {
     private final DocNumberService docNumberService;
     private final EntityManager em;
     private final FinanceDocumentAccessPolicy access;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<FinanceBankTransferService> reviewedDraftProxy;
     private final GlPostingService glPosting;
     private final AccountFlowLedgerService accountFlowLedger;
 
@@ -158,7 +160,7 @@ public class FinanceBankTransferService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=com.uten.imp.common.web.ApiException.class)
     public FinanceBankTransferDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -193,9 +195,49 @@ public class FinanceBankTransferService {
     @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_bank_transfer_item", requestArgument=1, documentIdArgument=0)
     public FinanceBankTransferDetail update(UUID id, FinanceBankTransferSaveRequest req) {
+        return updateDraft(id, req, false, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_bank_transfer:view') and hasAuthority('finance_bank_transfer:approve')")
+    public com.uten.imp.features.finance.FinanceDraftReview.View<FinanceBankTransferDetail> review(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
-        access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, t.getMakerId(), "finance_bank_transfer");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
+        if (t.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
+        return new com.uten.imp.features.finance.FinanceDraftReview.View<>(
+                com.uten.imp.features.finance.FinanceDraftReview.snapshot(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.TRANSFER, id), detail(id));
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_bank_transfer:view') and hasAuthority('finance_bank_transfer:approve')")
+    public FinanceBankTransferDetail updateReviewed(UUID id, FinanceBankTransferSaveRequest req, String expectedSnapshot, boolean approveNow) {
+        var review = review(id);
+        com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.TRANSFER, id, expectedSnapshot);
+        FinanceBankTransferDetail saved;
+        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("finance_bank_transfer_item", id, currentUser.requireId())) {
+            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
+        }
+        return approveNow ? approve(id) : saved;
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_bank_transfer:view') and hasAuthority('finance_bank_transfer:approve')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_bank_transfer_item", requestArgument=1, documentIdArgument=0)
+    public FinanceBankTransferDetail saveReviewedDraft(UUID id, FinanceBankTransferSaveRequest req, String expectedSnapshot) {
+        FinanceBankTransferDetail saved = updateDraft(id, req, true, expectedSnapshot);
+        em.flush();
+        return saved;
+    }
+
+    private FinanceBankTransferDetail updateDraft(UUID id, FinanceBankTransferSaveRequest req, boolean review, String expectedSnapshot) {
+        tx.bind();
+        FinanceBankTransfer t = lockActive(id);
+        if (review) {
+            com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, t.getMakerId(), "finance_bank_transfer");
+            com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.TRANSFER, id, expectedSnapshot);
+        } else access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -257,12 +299,7 @@ public class FinanceBankTransferService {
     public FinanceBankTransferDetail reverse(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
-        access.requireScopedOperationWritable(t.getMakerId(), "只能操作本人负责或已交接的银行存取款单",
-                "finance_bank_transfer:reverse");
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
-        if (t.getStatus() == null || t.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
+        requireUnapprovalHeader(t);
         glPosting.removeAutoProjection("BANK_TRANSFER", t.getId(), t.getBillNo(), t.getBillDate());
         List<FinanceBankTransferLine> lines = lineRepo.findByTransferIdOrderByLineNoAsc(id);
         TransferPosting posting = preparePosting(t, lines, false);
@@ -272,6 +309,40 @@ public class FinanceBankTransferService {
         t.setStatus(STATUS_REVERSED);
         transferRepo.save(t);
         return detail(id);
+    }
+
+    private void requireUnapprovalHeader(FinanceBankTransfer t) {
+        access.requireScopedOperationWritable(t.getMakerId(), "只能操作本人负责或已交接的银行存取款单",
+                "finance_bank_transfer:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
+        if (t.getStatus() == null || t.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        }
+    }
+
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('finance_bank_transfer:view')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);
+        FinanceBankTransfer t=require(id);
+        return com.uten.imp.features.finance.FinanceUnapprovalPreflight.evaluate(em,"financeBankTransfer","finance_bank_transfers",id,"finance_bank_transfer:reverse",()->unapprovalDependencyFacts(id),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("DOCUMENT_REVERSE_BLOCKED",()->requireUnapprovalHeader(t)),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("GL_PROJECTION_BLOCKED",()->glPosting.requireRemovableAutoProjection("BANK_TRANSFER","BANK_TRANSFER",t.getId(),t.getBillNo(),t.getBillDate())),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("BANK_POSTING_BLOCKED",()->accountFlowLedger.requireReversible("BANK_TRANSFER",id)),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("BANK_POSTING_BLOCKED",()->assertCompletePosting(id,
+                lineRepo.findByTransferIdOrderByLineNoAsc(id).stream().map(FinanceBankTransferLine::getInAccountId).distinct().count()+1)));
+    }
+
+    private String unapprovalDependencyFacts(UUID id) {
+        return String.valueOf(em.createNativeQuery("""
+            SELECT jsonb_build_object(
+                'bank',(SELECT jsonb_agg(to_jsonb(flow) ORDER BY flow.id) FROM finance_reconciliations flow
+                        WHERE flow.source_doc_id=:id),
+                'accounts',(SELECT jsonb_agg(to_jsonb(account) ORDER BY account.id) FROM accounts account
+                        WHERE account.id IN(SELECT account_id FROM finance_reconciliations WHERE source_doc_id=:id)),
+                'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher
+                        WHERE voucher.source_doc_id=:id))::text
+            """).setParameter("id",id).getSingleResult());
     }
 
     private TransferPosting preparePosting(

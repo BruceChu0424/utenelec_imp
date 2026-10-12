@@ -56,6 +56,9 @@ public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMeta
      * (分批到货还是接受损耗), 期间这批货先不入库、也不许人工改量; 判定完成自动解除。
      */
     private ShortDeliveryHold shortDeliveryHold;
+    /** Effective financial decision for downstream receipts; contract exchangeRate remains frozen. */
+    @com.fasterxml.jackson.databind.annotation.JsonSerialize(using=com.uten.imp.common.finance.ExactDecimalText.class)
+    private java.math.BigDecimal effectiveFinanceExchangeRate;
 
     /**
      * @param caseId 首条案件 id, 供页面深链到委外回厂短交判定页

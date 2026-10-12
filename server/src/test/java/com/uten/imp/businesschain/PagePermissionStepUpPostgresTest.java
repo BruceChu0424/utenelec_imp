@@ -4,6 +4,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -41,8 +45,7 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
         requireReauthentication(change(admin, target, true, 0, otherSession));
 
         String expired = stepUp(admin, ADMIN_PASSWORD);
-        jdbc.update("UPDATE auth_sessions SET step_up_expires_at=now()-interval '1 minute' WHERE step_up_token_hash=?",
-                com.uten.imp.common.util.HashUtil.sha256(expired));
+        expireStepUpProof(expired);
         requireReauthentication(change(admin, target, true, 0, expired));
         assertEquals(0, overrides(target));
         assertEquals(0, auditChanges(target));
@@ -63,6 +66,27 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
         assertEquals(200, revoked.getResponse().getStatus(), body(revoked));
         assertEquals("revoke", effect(target));
         assertEquals(2, auditChanges(target));
+    }
+
+    @Test
+    void expiredProofIsRejectedWhenTheSessionClockLagsTheDatabaseClock() throws Exception {
+        Instant originalTime = clock.instant();
+        Instant databaseTime = jdbc.queryForObject("SELECT now()", OffsetDateTime.class).toInstant();
+        // A slow context startup leaves the fixed session clock behind PostgreSQL's wall clock.
+        // Make that difference explicit so the expiry scenario never depends on machine speed.
+        clock.advance(Duration.between(originalTime, databaseTime.minus(Duration.ofMinutes(10))));
+        try {
+            String admin = adminToken();
+            Employee target = newEmployee(admin, "DEPT_ENG");
+            String expired = stepUp(admin, ADMIN_PASSWORD);
+            expireStepUpProof(expired);
+
+            requireReauthentication(change(admin, target, true, 0, expired));
+            assertEquals(0, overrides(target));
+            assertEquals(0, auditChanges(target));
+        } finally {
+            clock.advance(Duration.between(clock.instant(), originalTime));
+        }
     }
 
     @Test
@@ -116,6 +140,14 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
     private void requireReauthentication(MvcResult result) throws Exception {
         assertEquals(403, result.getResponse().getStatus(), body(result));
         assertEquals("REAUTH_REQUIRED", json(result).path("code").asText());
+    }
+
+    private void expireStepUpProof(String proof) {
+        // AuthSessionService compares expiry with the injected clock, not database now().
+        assertEquals(1, jdbc.update(
+                "UPDATE auth_sessions SET step_up_expires_at=? WHERE step_up_token_hash=?",
+                Timestamp.from(clock.instant().minusSeconds(1)),
+                com.uten.imp.common.util.HashUtil.sha256(proof)));
     }
 
     private int overrides(Employee target) {

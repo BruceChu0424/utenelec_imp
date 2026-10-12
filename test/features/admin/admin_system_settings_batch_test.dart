@@ -7,6 +7,7 @@ import 'package:uten_imp/features/admin/models/system_setting_entry.dart';
 import 'package:uten_imp/features/admin/models/system_updater_status.dart';
 import 'package:uten_imp/features/admin/pages/admin_system_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/system_setting_repository.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/idle_timeout_controller.dart';
 
 void main() {
@@ -166,7 +167,11 @@ Future<void> _pump(WidgetTester tester, _Repository repo) async {
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [systemSettingRepositoryProvider.overrideWithValue(repo)],
+      overrides: [
+        systemSettingRepositoryProvider.overrideWithValue(repo),
+        currentPermissionsProvider.overrideWithValue(const {}),
+        isSuperAdminProvider.overrideWithValue(false),
+      ],
       child: const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,

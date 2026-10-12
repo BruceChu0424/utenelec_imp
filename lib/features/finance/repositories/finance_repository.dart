@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 钱流仓库（5 单据统一 + 应收应付台账 + 账户流水 + 报表）。
 //
 // 5 单据按 docType 切端点：/api/finance/{receipts|payments|expenses|incomes|bank-transfers}
@@ -159,6 +160,32 @@ class FinanceRepository {
     return FinanceDocDetail.fromJson(json);
   }
 
+  Future<({String snapshot, FinanceDocDetail detail})> review(String id) async {
+    final json = await api.get('${FinanceEndpoints.docOne(_seg, id)}/review');
+    return (
+      snapshot: json['snapshot'] as String,
+      detail: FinanceDocDetail.fromJson(
+        Map<String, dynamic>.from(json['detail'] as Map),
+      ),
+    );
+  }
+
+  Future<FinanceDocDetail> saveReviewed(
+    String id,
+    Map<String, dynamic> body,
+    String snapshot,
+  ) async {
+    final json = await api.post(
+      '${FinanceEndpoints.docOne(_seg, id)}/review',
+      body: {
+        'expectedSnapshot': snapshot,
+        'document': body,
+        'approveNow': true,
+      },
+    );
+    return FinanceDocDetail.fromJson(json);
+  }
+
   Future<FinanceDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(FinanceEndpoints.docBase(_seg), body: body);
     return FinanceDocDetail.fromJson(json);
@@ -179,8 +206,14 @@ class FinanceRepository {
   }
 
   Future<FinanceDocDetail> reverse(String id) async {
-    final json = await api.post(FinanceEndpoints.docReverse(_seg, id));
-    return FinanceDocDetail.fromJson(json);
+    final json = await unapproveDocument(api, switch (type) {
+      FinanceDocType.receipt => 'financeReceipt',
+      FinanceDocType.payment => 'financePayment',
+      FinanceDocType.expense => 'financeExpense',
+      FinanceDocType.otherIncome => 'financeOtherIncome',
+      FinanceDocType.bankTransfer => 'financeBankTransfer',
+    }, id);
+    return FinanceDocDetail.fromJson(Map<String, dynamic>.from(json as Map));
   }
 
   /// C6 财务确认（仅费用单）：已过账的费用单确认入账（gl_status 1→2）。

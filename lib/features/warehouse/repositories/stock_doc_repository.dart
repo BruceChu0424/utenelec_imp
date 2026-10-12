@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 仓库单据仓库（8 类统一，端点 /api/stock/docs，docType 区分）。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -129,6 +130,32 @@ class StockDocRepository {
     return StockDocDetail.fromJson(json);
   }
 
+  Future<({String snapshot, StockDocDetail detail})> reviewDraft(
+    String id,
+  ) async {
+    final json = await api.get('${ApiEndpoints.stockDoc(id)}/review');
+    return (
+      snapshot: json['snapshot'] as String,
+      detail: StockDocDetail.fromJson(json['detail'] as Map<String, dynamic>),
+    );
+  }
+
+  Future<StockDocDetail> updateReviewed(
+    String id,
+    Map<String, dynamic> body,
+    String expectedSnapshot, {
+    bool approveNow = true,
+  }) async => StockDocDetail.fromJson(
+    await api.put(
+      '${ApiEndpoints.stockDoc(id)}/review',
+      body: {
+        'expectedSnapshot': expectedSnapshot,
+        'document': body,
+        'approveNow': approveNow,
+      },
+    ),
+  );
+
   Future<void> delete(String id) async => api.delete(ApiEndpoints.stockDoc(id));
   Future<StockDocDetail> approve(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocApprove(id)));
@@ -184,7 +211,12 @@ class StockDocRepository {
       },
     ),
   );
-  Future<StockDocDetail> reverse(String id) async =>
+  Future<StockDocDetail> reverse(String id) async => StockDocDetail.fromJson(
+    await unapproveDocument(api, 'stockDocument', id),
+  );
+
+  /// Production return receipts retain the source-specific, symmetrical physical reversal.
+  Future<StockDocDetail> reverseMaterialReturn(String id) async =>
       StockDocDetail.fromJson(await api.post(ApiEndpoints.stockDocReverse(id)));
 
   /// 已点收生产成品入库专用红冲：服务端重建原 accepted slice 待点收草稿。

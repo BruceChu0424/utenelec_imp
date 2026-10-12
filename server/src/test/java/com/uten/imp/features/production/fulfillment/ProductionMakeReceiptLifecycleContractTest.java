@@ -52,7 +52,8 @@ class ProductionMakeReceiptLifecycleContractTest {
                 .contains("readiness.onFinishedInboundApproved(")
                 .contains("readiness.beforeFinishedInboundReversed(");
 
-        int chain = stock.indexOf("applyFinishedInChain(d, items, +1)");
+        int chain = stock.indexOf(
+                "applyFinishedInChain(d, items, +1, confirmed == null ? null : confirmed.planId())");
         int approved = stock.indexOf("d.setStatus(STATUS_APPROVED)", chain);
         int flushed = stock.indexOf("em.flush()", approved);
         int promotion = stock.indexOf(

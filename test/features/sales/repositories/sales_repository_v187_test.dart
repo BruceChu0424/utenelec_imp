@@ -1,10 +1,81 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
 
 void main() {
+  for (final type in [SalesDocType.shipment, SalesDocType.customerShipment]) {
+    test('$type rejects unsupported generic unapproval without HTTP', () async {
+      final requests = <RequestOptions>[];
+      final repository = SalesRepository(
+        _api((request) {
+          requests.add(request);
+          return const {'id': 'unexpected-draft', 'status': 0};
+        }),
+        type,
+      );
+
+      await expectLater(
+        repository.reverse('shipment-1'),
+        throwsA(
+          isA<ApiException>()
+              .having((error) => error.code, 'code', 'CONFLICT')
+              .having(
+                (error) => error.message,
+                'stock facts',
+                contains('已出库事实'),
+              )
+              .having(
+                (error) => error.message,
+                'return workflow',
+                contains('销售退货检验'),
+              ),
+        ),
+      );
+      expect(requests, isEmpty);
+    });
+  }
+
+  test(
+    'quote rejects generic unapproval before making any HTTP request',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = SalesRepository(
+        _api((request) {
+          requests.add(request);
+          return const {'id': 'unexpected-draft', 'status': 0};
+        }),
+        SalesDocType.quote,
+      );
+
+      await expectLater(
+        repository.reverse('quote-1'),
+        throwsA(
+          isA<ApiException>()
+              .having((error) => error.code, 'code', 'CONFLICT')
+              .having(
+                (error) => error.message,
+                'business action',
+                contains('重新报价'),
+              )
+              .having(
+                (error) => error.message,
+                'version contract',
+                contains('报价版本'),
+              )
+              .having(
+                (error) => error.message,
+                'customer acceptance',
+                contains('客户确认'),
+              ),
+        ),
+      );
+      expect(requests, isEmpty);
+    },
+  );
+
   test(
     'batch shipping decodes array responses and sends reviewed idempotent lines without warehouse',
     () async {

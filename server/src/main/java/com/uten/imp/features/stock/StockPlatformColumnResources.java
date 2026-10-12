@@ -30,11 +30,15 @@ public class StockPlatformColumnResources {
                 Set.of("stock_doc:view"), Set.of("stock_doc:edit"), Set.of("goods:cost:view"), StockDocument.class,
                 lines ? "SELECT id, doc_id FROM stock_document_items WHERE id IN (:ids) AND NOT is_deleted" : null,
                 documents::detail, (id, header) -> DocumentPlatformColumnAdapter.draft(header)
-                        && header.path("canEdit").asBoolean(false) && !header.path("productionLinked").asBoolean(false),
+                        && header.path("canEdit").asBoolean(false) && !header.path("productionLinked").asBoolean(false)
+                        && documents.canEditPlatformFields(id),
                 List.of(new FactDefinition("qty", "数量 / 盘点账面数量", false), new FactDefinition("weight", "重量(kg)", false),
                         new FactDefinition("countQty", "实盘数量", false), new FactDefinition("countWeight", "实盘重量(kg)", false),
                         new FactDefinition("bookWeight", "账面重量(kg)", false)))
                 .documentCreateAuthorities(Set.of("stock_doc:create"))
+                .reviewedSaveAuthorities(Set.of("stock_doc:approve"),(id,header)->DocumentPlatformColumnAdapter.draft(header)
+                    && header.path("canEdit").asBoolean(false) && !header.path("productionLinked").asBoolean(false))
+                .documentSaveLocks(com.uten.imp.features.stock.dto.StockDocSaveRequest.class,documents::lockDraftInputsForPlatform)
                 .history(documents::history, lines ? historicalParent() : null);
     }
 

@@ -24,4 +24,7 @@ public class BalanceRow {
     private OffsetDateTime lastMovementDate;
     /** 当前用户无 goods:cost:view 时金额已由服务端置空。 */
     private boolean costMasked;
+
+    /** Lossless JSON companions; existing numeric fields and constructor remain compatible. */
+    public String getQtyExact() { return qty == null ? null : qty.toPlainString(); }
 }

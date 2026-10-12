@@ -22,6 +22,9 @@ public interface ProductionFqcRecoveryPort {
             BigDecimal declaredQuantity);
 
     void reverseReportEffects(UUID reportId);
+    default void requireReportEffectsReversible(UUID reportId) {
+        throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对FQC补产的反审条件");
+    }
 
     void requireLegacyExemption(UUID reportItemId);
 }

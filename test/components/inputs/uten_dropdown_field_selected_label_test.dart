@@ -236,11 +236,17 @@ void main() {
     },
   );
 
-  testWidgets('menu keeps its field width and follows scrolling', (
+  testWidgets('menu follows both nested viewports and window resizing', (
     tester,
   ) async {
-    final scroll = ScrollController();
-    addTearDown(scroll.dispose);
+    final outer = ScrollController();
+    final inner = ScrollController();
+    addTearDown(outer.dispose);
+    addTearDown(inner.dispose);
+    tester.view.physicalSize = const Size(800, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       MaterialApp(
         theme: buildLightTheme(),
@@ -251,16 +257,28 @@ void main() {
               width: 220,
               height: 300,
               child: SingleChildScrollView(
-                controller: scroll,
+                controller: outer,
                 child: Column(
                   children: [
-                    const SizedBox(height: 80),
-                    UtenDropdownField(
-                      value: 'first-demand',
-                      items: _items,
-                      allowClear: false,
-                      searchable: false,
-                      onChanged: (_) {},
+                    const SizedBox(height: 60),
+                    SizedBox(
+                      height: 240,
+                      child: SingleChildScrollView(
+                        controller: inner,
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 80),
+                            UtenDropdownField(
+                              value: 'first-demand',
+                              items: _items,
+                              allowClear: false,
+                              searchable: false,
+                              onChanged: (_) {},
+                            ),
+                            const SizedBox(height: 500),
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 500),
                   ],
@@ -271,16 +289,27 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.byType(UtenDropdownField));
+    final field = find.byType(UtenDropdownField);
+    await tester.tap(field);
     await tester.pumpAndSettle();
     final menuItem = find.byWidgetPredicate(
       (widget) => widget is Tooltip && widget.message == _firstLabel,
     );
     final before = tester.getRect(menuItem);
     expect(before.width, 220);
-    scroll.jumpTo(40);
+    outer.jumpTo(20);
     await tester.pumpAndSettle();
-    expect(tester.getRect(menuItem).top, moreOrLessEquals(before.top - 40));
+    expect(tester.getRect(menuItem).top, moreOrLessEquals(before.top - 20));
+    inner.jumpTo(40);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(menuItem).top, moreOrLessEquals(before.top - 60));
+    tester.view.physicalSize = const Size(1000, 700);
+    await tester.pumpAndSettle();
+    final resizedField = tester.getRect(field);
+    final resizedMenu = tester.getRect(menuItem);
+    expect(resizedMenu.left, moreOrLessEquals(resizedField.left));
+    expect(resizedMenu.top, moreOrLessEquals(resizedField.bottom + 2));
+    expect(resizedMenu.width, moreOrLessEquals(resizedField.width));
     await tester.tapAt(const Offset(10, 500));
     await tester.pumpAndSettle();
     expect(menuItem, findsNothing);

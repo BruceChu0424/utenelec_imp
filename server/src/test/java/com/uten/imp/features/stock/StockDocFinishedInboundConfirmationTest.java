@@ -60,6 +60,7 @@ class StockDocFinishedInboundConfirmationTest {
     private SecurityContextCurrentUser currentUser;
     private ChainNoticeService notices;
     private ProductionQualityInspectionPort qualityInspection;
+    private TaskClaimService taskClaim;
     private StockDocService service;
     private StockDocument document;
     private StockDocumentItem item;
@@ -78,6 +79,7 @@ class StockDocFinishedInboundConfirmationTest {
         notices = mock(ChainNoticeService.class);
         taskAccess = mock(ProductionStockTaskAccessPolicy.class);
         qualityInspection = mock(ProductionQualityInspectionPort.class);
+        taskClaim = mock(TaskClaimService.class);
         when(access.hasAuthority(anyString())).thenReturn(true);
         when(taskAccess.canAccessWarehouseTasks()).thenReturn(true);
 
@@ -119,7 +121,7 @@ class StockDocFinishedInboundConfirmationTest {
                 notices,
                 mock(ProductionMaterialStockLedgerService.class),
                 completion,
-                mock(TaskClaimService.class),
+                taskClaim,
                 access,
                 taskAccess,
                 mock(PreplanAnalysisPegPort.class),
@@ -212,6 +214,30 @@ class StockDocFinishedInboundConfirmationTest {
 
         assertThat(error.getMessage()).contains("必须填写差异原因");
         verifyNoInteractions(stock);
+    }
+
+    @Test
+    void aLateTaskClaimRejectsApprovalAfterConfirmationBeforeInventoryPosting() {
+        arrangeConfirmationQueries(List.of());
+        var checks = new java.util.concurrent.atomic.AtomicInteger();
+        org.mockito.Mockito.doAnswer(invocation -> {
+            if (checks.incrementAndGet() == 2) {
+                throw new ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT, "另一位员工刚刚认领了此任务");
+            }
+            return null;
+        }).when(taskClaim).requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", documentId.toString());
+
+        ApiException rejected = assertThrows(ApiException.class, () -> service.confirmFinishedInbound(
+                documentId, request("10.0000", null, "confirm-late-claim")));
+
+        assertThat(rejected.getMessage()).contains("刚刚认领");
+        verify(taskClaim, times(2)).requireNoActiveClaimByOther("FULFILLMENT_TASK_APPROVE", documentId.toString());
+        verify(items).save(item);
+        assertThat(document.getStatus()).isZero();
+        verify(documents, never()).save(document);
+        assertThat(org.mockito.Mockito.mockingDetails(stock).getInvocations())
+                .allSatisfy(invocation -> assertThat(invocation.getMethod().getName()).isEqualTo("lockInventory"));
+        verifyNoInteractions(completion);
     }
 
     @Test
@@ -342,7 +368,8 @@ class StockDocFinishedInboundConfirmationTest {
                 // 两半，授权口径必须一起走，否则自动通道过了前半段还会被后半段要仓库的码。
                 // 前三个实参的语义不变：实收已确认、不是 DRAW 直审、带批次上下文。
                 .contains("return approveDocumentAfterPrelock(\n"
-                        + "                id, true, false, batchContext, lane)")
+                        + "                id, true, false, batchContext, lane,")
+                .contains("new ConfirmedFinishedInbound(document, items.stream().filter(item -> !item.isDeleted()).toList(), planId, lane)")
                 // 自动通道必须「证据即授权」：借不到别人的成品入库单。
                 .contains("requirePreStockedFinishedInDocument(document)")
                 .contains("该成品入库单不是先入库后质检登记产生的，请走仓库的正常点收")

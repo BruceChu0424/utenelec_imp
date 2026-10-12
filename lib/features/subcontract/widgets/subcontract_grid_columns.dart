@@ -23,6 +23,7 @@ import '../../../components/layout/uten_editable_grid.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show GoodsOption, masterNameServiceProvider;
 import '../../../shared/widgets/procurement_commercial_grid.dart';
+import '../../../shared/widgets/procurement_document_layout.dart';
 import '../../../shared/widgets/procurement_supplier_cell.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart' show SubcontractSourceApplicationRef;
@@ -401,7 +402,8 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
   ValueChanged<String?> Function(SubcontractGridRow row)? onPickSettlement,
   bool showRemark = false,
 }) {
-  final showSupplier = supplierEntries.isNotEmpty && cfg.hasSupplier;
+  final showSupplier =
+      cfg.hasSupplier && (supplierRequired || supplierEntries.isNotEmpty);
   // 列说明统一挂表头 ⓘ（2026-09-09 口径）：每行重复的 ⓘ 既冗余又挤占格宽。
   final l10n = workflowFieldText(context);
   // 2026-10-10 数量+单位口径：单位内联在数量输入框 suffixText（行单位由货品带出，
@@ -426,7 +428,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
     return name == '—' ? null : name;
   }
 
-  return [
+  final columns = <EditableGridColumn<SubcontractGridRow>>[
     EditableGridColumn<SubcontractGridRow>(
       key: 'goods',
       label: '货品名称',
@@ -500,6 +502,27 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         builder: (context, _, _) => UtenGoodsAttributeCell(colorNameOf(row)),
       ),
     ),
+    if (showCommercial)
+      EditableGridColumn<SubcontractGridRow>(
+        key: 'source',
+        label: '申请来源',
+        width: 150,
+        textOf: (row) => row.sourceDocs
+            .map((source) => source.billNo)
+            .whereType<String>()
+            .where((no) => no.isNotEmpty)
+            .toSet()
+            .join('、'),
+        cellBuilder: (context, row) {
+          final sources = row.sourceDocs
+              .map((source) => source.billNo)
+              .whereType<String>()
+              .where((no) => no.isNotEmpty)
+              .toSet()
+              .join('、');
+          return Text(sources.isEmpty ? '—' : sources);
+        },
+      ),
     if (cfg.itemHasStockPlace)
       EditableGridColumn<SubcontractGridRow>(
         key: 'stockPlace',
@@ -760,4 +783,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       amountHint: l10n.businessColumnAmountHint,
     ),
   ];
+  return showCommercial
+      ? canonicalProcurementColumns(columns, keyOf: (column) => column.key)
+      : columns;
 }

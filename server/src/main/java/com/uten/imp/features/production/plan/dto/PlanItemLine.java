@@ -48,6 +48,8 @@ public class PlanItemLine extends com.uten.imp.common.platformcolumns.PlatformCo
     // 数量族（12，全可编辑透传；触发器重算本期后置）
     private BigDecimal oqty;
     @NotNull
+    @jakarta.validation.constraints.DecimalMin("0.0001")
+    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
     private BigDecimal qty;
     /**
      * Initial allowance approved together with this plan (ADR-129 §2.10)：空 = 按货品默认填写(不记忆)；

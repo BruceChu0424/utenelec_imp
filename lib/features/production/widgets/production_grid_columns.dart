@@ -1,8 +1,7 @@
 // 生产计划单明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
 // ProductionGridRow：产品编号/货品(选择)/排产量/订货量/颜色/关联销售订单号/备注。
-// 生产计划无金额（数量驱动）：qtyNotifier 作表尾合计源（重写 amountValue/listenAmount），
-// 底栏 ValueListenableBuilder 订阅 grid.totalListenable 显示「排产合计」（镜像销售金额合计范式）。
+// 生产计划无金额：qtyNotifier 保留网格兼容刷新接口；准确表尾合计从数量原文本按单位汇总。
 // 颜色选货品后直接回填货品主档 UUID；编号/名称只作只读显示，不做 legacy→UUID 反查。
 // 2026-10-10 用户口径（全站表格数量口径）：独立「单位」列撤销，单位作为排产量/
 // 订货量输入框的后缀（suffixText）随行回填的 unitId 即时刷新。
@@ -52,6 +51,7 @@ class ProductionGridRow extends EditableGridRow {
   String? sellerId;
   String? sellerName;
   double? unitRate; // 单位换算率（订单行带出；MRP 毛需求按基本单位折算依赖它）
+  String? unitRateExact;
   String? orderDate; // yyyy-MM-dd（订单日期）
   String? outboundDate; // yyyy-MM-dd（交货日）
 
@@ -64,7 +64,7 @@ class ProductionGridRow extends EditableGridRow {
   String? get unitId => unitIdNotifier.value;
   set unitId(String? v) => unitIdNotifier.value = v;
 
-  /// 排产量合计源：qty 变化 → qtyNotifier；表尾合计订阅它（复用 grid.totalListenable）。
+  /// 网格兼容刷新信号；实际合计监听 qty 控制器并使用精确原文本。
   final ValueNotifier<double> qtyNotifier = ValueNotifier<double>(0);
 
   @override

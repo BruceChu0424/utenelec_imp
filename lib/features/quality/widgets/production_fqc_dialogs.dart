@@ -12,7 +12,7 @@ String fqcStatusLabel(ProductionFqcInspection inspection) =>
       'PENDING' => '待检',
       'PARTIAL' => '部分已决定',
       'RESOLVED' => '已全部决定',
-      'CANCELLED' => '已取消（来源报工红冲或登记撤回）',
+      'CANCELLED' => '已取消（来源报工反审或登记撤回）',
       _ => inspection.status,
     };
 

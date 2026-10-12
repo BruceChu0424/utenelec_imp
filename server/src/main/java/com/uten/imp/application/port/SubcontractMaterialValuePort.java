@@ -10,6 +10,9 @@ public interface SubcontractMaterialValuePort {
     record WasteValue(UUID orderItemId,UUID normalValueNodeId,UUID excessValueNodeId,
                       BigDecimal normalValueLocal,BigDecimal excessValueLocal,State state) {}
     void validateWaste(UUID wasteId);
+    default void requireWasteReversalAvailable(UUID wasteId) {
+        throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对损耗原成本的反向条件");
+    }
     void wasteRecorded(UUID wasteId,UUID actorUserId,boolean reversal);
     WasteValue wasteValue(UUID wasteItemId);
 }

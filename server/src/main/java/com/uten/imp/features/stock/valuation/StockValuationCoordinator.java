@@ -53,6 +53,12 @@ public class StockValuationCoordinator {
                     ||request.movementType()==StockService.TYPE_WORKSHOP_APPROVED_COUNT)){
             return workshopMaterials.value(movement,request,pool,before,context,ref);
         }
+        if(request.direction()==StockService.DIR_OUT && request.costReference() instanceof InventoryMovementCostReference.OriginalTransferInMovement ref){
+            return values.reverseTransferIn(new ReverseTransferIn(context,movement,pool,before,ref.originalMovementId()));
+        }
+        if(request.direction()==StockService.DIR_OUT&&request.costReference() instanceof InventoryMovementCostReference.OriginalReceiveMovement ref){
+            return values.reverseReceive(new ReverseReceive(context,movement,pool,before,ref.originalMovementId()));
+        }
         if(request.direction()==StockService.DIR_OUT&&request.costReference() instanceof InventoryMovementCostReference.ProcurementStockIn ref){
             return procurement.reverseStock(ref.stockInItemId(),movement,pool,before,context);
         }
@@ -70,6 +76,27 @@ public class StockValuationCoordinator {
                 return production.withdrawOutput(new InventoryProductionCostPort.Withdrawal(context,material.costScope((UUID)original.get("execution_segment_id")),pool,
                         (UUID)original.get("original_movement"),movement,request.qty(),before));
             }
+        }
+        if(request.direction()==StockService.DIR_OUT
+                && request.movementType()==StockService.TYPE_SUBCONTRACT_MATERIAL_RETURN
+                && StockService.SRC_SUBCONTRACT_MATERIAL_RETURN.equals(request.sourceDocType())) {
+            var originals=db.queryForList("""
+                SELECT movement.id,movement.qty
+                FROM stock_movements movement
+                JOIN subcontract_material_return_items item ON item.id=movement.source_item_id
+                JOIN subcontract_material_returns document ON document.id=item.material_return_id
+                WHERE movement.source_doc_type='SUBCONTRACT_MATERIAL_RETURN'
+                  AND movement.source_doc_id=:doc AND movement.source_item_id=:item
+                  AND movement.direction=1 AND movement.movement_type=16
+                  AND item.material_return_id=:doc AND item.material_issue_item_id IS NOT NULL
+                  AND movement.goods_id=:goods AND movement.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND movement.warehouse_id=:warehouse AND document.warehouse_id=movement.warehouse_id
+                """,new org.springframework.jdbc.core.namedparam.MapSqlParameterSource()
+                  .addValue("doc",request.sourceDocId()).addValue("item",request.sourceItemId())
+                  .addValue("goods",request.goodsId()).addValue("color",request.colorId()).addValue("warehouse",request.warehouseId()));
+            if(originals.size()!=1 || ((BigDecimal)originals.getFirst().get("qty")).compareTo(request.qty())!=0)
+                throw conflict("委外退料反审必须关联同源、同仓且数量一致的唯一原退料入库流水");
+            return subcontractMaterials.reverseMaterialReturn(context,movement,pool,before,(UUID)originals.getFirst().get("id"));
         }
         if(request.direction()==StockService.DIR_OUT){
             Destination destination=switch(request.movementType()){
@@ -140,7 +167,7 @@ public class StockValuationCoordinator {
     }
     public void bindProductionMovements(UUID event,Map<UUID,UUID> movements){material.bound(event,movements);}
     private MovementValue originalReturn(EventContext context,UUID movement,PoolKey pool,BigDecimal qty,BigDecimal before,UUID original){
-        var roots=db.queryForList("SELECT result_node_id FROM stock_value_events WHERE movement_id=:id AND operation='ISSUE'",Map.of("id",original),UUID.class);
+        var roots=db.queryForList("SELECT event.result_node_id FROM stock_value_events event JOIN stock_value_nodes node ON node.id=event.result_node_id WHERE event.movement_id=:id AND node.kind='ISSUE_POSITION' AND node.root_issue_id=node.id AND (event.operation='ISSUE' OR event.operation='POSITION_STORE_REVERSE' AND EXISTS(SELECT 1 FROM stock_value_events original WHERE original.id=event.position_store_reversal_of AND original.operation='RETURN_ISSUE'))",Map.of("id",original),UUID.class);
         if(roots.size()!=1)throw conflict("退回缺少原出库实际成本，请核对原来源");
         return values.returnIssue(new ReturnIssue(context,movement,pool,qty,before,roots.getFirst()));
     }

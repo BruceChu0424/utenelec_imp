@@ -12,6 +12,7 @@ import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.rd_task.RdTaskService;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -416,6 +417,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private WarehouseNoticePool warehousePool(String... authorities) {
         List<UUID> department = departmentUserIdsWithAuthorities("SUB_WH", authorities);
         Set<String> required = Set.of(authorities);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return new WarehouseNoticePool(department,
+                    userId -> !permissionResolver.usersGrantedAll(List.of(userId), required).isEmpty());
+        }
         return new WarehouseNoticePool(department, userId -> userRepo.findById(userId)
                 .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
                 .map(permissionResolver::grantedPermsOf)
@@ -679,8 +684,8 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             }
             if("PRODUCTION_OVER_LIMIT_PENDING".equals(event)) {
                 if(!Set.of("PENDING","HELD","RETURNED").contains(status))return;
-                for(UUID user:departmentUserIdsWithSecondaryAuthorities("SUB_PLAN",NOTICE_READ_AUTHORITY,"production_plan:approve")) {
-                    if(!canReadProductionAnalysis(user,(UUID)request.get("maker_id")))continue;
+                for(UUID user:productionAnalysisReaders(departmentUserIdsWithSecondaryAuthorities(
+                        "SUB_PLAN",NOTICE_READ_AUTHORITY,"production_plan:approve"),(UUID)request.get("maker_id"))) {
                     sendToUser(user,TYPE_APPROVAL,"超限产出待处理："+code,
                         "车间已登记实际产量，其中超限 "+qty(bd(request.get("qty")))+" 待处理。原因："+str(request.get("reason"))
                         +"。允许范围内的产量继续正常办理；请决定本批超限产出的接收方式。",
@@ -774,9 +779,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                     : userIdOfEmployee(handoverVisibility.currentResponsible("production_plan", makerEmployeeId));
             if (successor != null) candidates.add(successor);
             Set<UUID> recipients = new LinkedHashSet<>();
-            for (UUID candidate : candidates) {
-                if (canHandlePlanningUrge(candidate) && canReadProductionAnalysis(candidate, makerEmployeeId)) {
-                    recipients.add(candidate);
+            if (permissionResolver.supportsGrantedPermissionBatch()) {
+                List<UUID> actionable = permissionResolver.usersGrantedAllAndAny(candidates,
+                        Set.of(NOTICE_READ_AUTHORITY, ANALYSIS_VIEW_AUTHORITY),
+                        Set.of("production_material_analysis:notify", "production_material_analysis:generate"));
+                recipients.addAll(productionAnalysisReaders(actionable, makerEmployeeId));
+            } else {
+                for (UUID candidate : candidates) {
+                    if (canHandlePlanningUrge(candidate) && canReadProductionAnalysis(candidate, makerEmployeeId)) {
+                        recipients.add(candidate);
+                    }
                 }
             }
             int times = ((Number) urge.get("urge_count")).intValue();
@@ -812,6 +824,16 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         return canReadOwnedDocument(userId, "production_plan", makerEmployeeId);
     }
 
+    private List<UUID> productionAnalysisReaders(Collection<UUID> candidates, UUID makerEmployeeId) {
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            Set<UUID> visible = new HashSet<>(permissionResolver.usersGrantedAll(candidates,
+                    Set.of("production_plan:view:all")));
+            visible.addAll(usersThatCanReadOwnedDocument(candidates, "production_plan", makerEmployeeId));
+            return candidates.stream().filter(visible::contains).toList();
+        }
+        return candidates.stream().filter(id -> canReadProductionAnalysis(id, makerEmployeeId)).toList();
+    }
+
     /**
      * 归属可见范围(OwnerVisibility 同口径, 不含「查看全部」权限——调用方先判): 本人是归属人 /
      * 交接链上的现负责人 / user_data_scopes 授权了该归属人(按再入职代次)。超管恒可见。
@@ -843,8 +865,36 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         return Boolean.TRUE.equals(readable);
     }
 
+    /** Same owner/hand-over/data-scope gate as canReadOwnedDocument, for a whole pool. */
+    private Set<UUID> usersThatCanReadOwnedDocument(Collection<UUID> candidates, String scope, UUID ownerEmployeeId) {
+        if (candidates.isEmpty()) return Set.of();
+        UUID responsible = handoverVisibility == null || ownerEmployeeId == null ? null
+                : handoverVisibility.currentResponsible(scope, ownerEmployeeId);
+        Map<String, Object> parameters = new java.util.HashMap<>();
+        parameters.put("users", candidates); parameters.put("owner", ownerEmployeeId);
+        parameters.put("responsible", responsible); parameters.put("scope", scope);
+        return Set.copyOf(new NamedParameterJdbcTemplate(jdbc).queryForList("""
+                WITH owner_generation AS MATERIALIZED (
+                    SELECT count(*) AS generation FROM employment_history
+                    WHERE employee_id=CAST(:owner AS uuid) AND event_type='rehire'
+                )
+                SELECT account.id FROM users account
+                WHERE account.id IN (:users) AND NOT account.is_deleted AND account.status='active'
+                  AND (account.employee_id=CAST(:owner AS uuid)
+                    OR account.employee_id=CAST(:responsible AS uuid)
+                    OR EXISTS (SELECT 1 FROM user_data_scopes data_scope
+                        WHERE data_scope.user_id=account.id AND data_scope.scope=:scope
+                          AND data_scope.owner_employee_id=CAST(:owner AS uuid)
+                          AND data_scope.owner_employment_generation=(SELECT generation FROM owner_generation)))
+                """, parameters, UUID.class));
+    }
+
     private boolean userHasAllAuthorities(UUID userId, String... authorities) {
         Set<String> required = Set.of(authorities);
+        if (userId == null) return false;
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return !permissionResolver.usersGrantedAll(List.of(userId), required).isEmpty();
+        }
         return userRepo.findById(userId)
                 .filter(account -> !account.isDeleted() && "active".equals(account.getStatus()))
                 .map(permissionResolver::grantedPermsOf)
@@ -2896,6 +2946,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /** 可下单卡的收件人: 采购委外部门(含下级)里能读通知、能看委外申请、能生成委外订货单的在职账号。 */
     private List<UUID> subcontractOrderKitRecipients() {
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return permissionResolver.usersGrantedAll(departmentUserIds("SUB_PURCHASE"),
+                    Set.of(NOTICE_READ_AUTHORITY, SUBCONTRACT_APPLICATION_VIEW_AUTHORITY,
+                            SUBCONTRACT_ORDER_DECOMPOSE_AUTHORITY));
+        }
         List<UUID> recipients = new ArrayList<>();
         for (UUID userId : new LinkedHashSet<>(departmentUserIds("SUB_PURCHASE"))) {
             if (userHasAllAuthorities(userId, NOTICE_READ_AUTHORITY, SUBCONTRACT_APPLICATION_VIEW_AUTHORITY,
@@ -2912,8 +2967,15 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
      */
     private List<UUID> subcontractDrawRecipients(UUID makerEmployeeId) {
         List<UUID> recipients = new ArrayList<>();
-        for (UUID userId : userIdsWithPermissions(NOTICE_READ_AUTHORITY,
-                SUBCONTRACT_ORDER_VIEW_AUTHORITY, SUBCONTRACT_ORDER_DRAW_AUTHORITY)) {
+        Set<UUID> candidates = userIdsWithPermissions(NOTICE_READ_AUTHORITY,
+                SUBCONTRACT_ORDER_VIEW_AUTHORITY, SUBCONTRACT_ORDER_DRAW_AUTHORITY);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            Set<UUID> visible = new HashSet<>(permissionResolver.usersGrantedAll(candidates,
+                    Set.of(SUBCONTRACT_VIEW_ALL_AUTHORITY)));
+            visible.addAll(usersThatCanReadOwnedDocument(candidates, SUBCONTRACT_OWNER_SCOPE, makerEmployeeId));
+            return candidates.stream().filter(visible::contains).toList();
+        }
+        for (UUID userId : candidates) {
             if (userHasAllAuthorities(userId, SUBCONTRACT_VIEW_ALL_AUTHORITY)
                     || canReadOwnedDocument(userId, SUBCONTRACT_OWNER_SCOPE, makerEmployeeId)) {
                 recipients.add(userId);
@@ -4406,6 +4468,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
 
     /** 候选账号逐人过当前有效权限: 在职账号 + notice:read + 车间任务办理权(canHandleWorkshop, 含个人回收)。 */
     private List<UUID> withWorkshopTaskPermission(List<UUID> candidates) {
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            Map<UUID, Set<String>> granted = permissionResolver.grantedPermissionsFor(candidates,
+                    Set.of(NOTICE_READ_AUTHORITY, "production_execution:view", "production_execution:start",
+                            "production_daily_report:view", "production_daily_report:create"));
+            return candidates.stream().filter(id -> ReviewNoticeAudience.canHandleWorkshop(
+                    granted.getOrDefault(id, Set.of()))).toList();
+        }
         return candidates.stream()
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
@@ -4704,12 +4773,17 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             // V459 审核待办弹卡：直达单据级财务审核页；aggregate 绑定订单，
             // 办结（确认/驳回）时按 (SALES_ORDER, orderId) 批量撤回全部接收人的弹卡。
             List<UUID> confirmers = salesOrderFinanceConfirmers.eligibleUserIds();
+            if (confirmers.isEmpty()) return;
+            // The locked order serializes cancellation/requotation and duplicate
+            // delivery. Read all existing recipients once rather than one query
+            // per reviewer while keeping that same business transaction/lock.
+            Set<UUID> activeReviewers = new HashSet<>(jdbc.queryForList("""
+                    SELECT DISTINCT audience_user_id FROM notices
+                    WHERE aggregate_kind = 'SALES_ORDER' AND aggregate_id = ?
+                      AND source_event = ? AND resolved_at IS NULL
+                    """, UUID.class, orderId, EVENT_ORDER_PENDING_FINANCE));
             for (UUID userId : confirmers) {
-                if (Boolean.TRUE.equals(jdbc.queryForObject("""
-                        SELECT EXISTS(SELECT 1 FROM notices
-                        WHERE aggregate_kind = 'SALES_ORDER' AND aggregate_id = ?
-                          AND source_event = ? AND audience_user_id = ? AND resolved_at IS NULL)
-                        """, Boolean.class, orderId, EVENT_ORDER_PENDING_FINANCE, userId))) continue;
+                if (activeReviewers.contains(userId)) continue;
                 sendToUser(userId, TYPE_APPROVAL,
                         (afterModification ? "改量后待财务确认：" : "待财务确认：")
                                 + o.billNo(),
@@ -5422,6 +5496,12 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         List<UserAccount> candidates = permissionCandidates == null ? userRepo.findAll()
                 : permissionCandidates.possibleUsers(possibleActions)
                         .map(userRepo::findAllById).orElseGet(userRepo::findAll);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            List<UUID> ids = candidates.stream().filter(Objects::nonNull)
+                    .filter(user -> !user.isDeleted() && "active".equals(user.getStatus()))
+                    .map(UserAccount::getId).toList();
+            return new LinkedHashSet<>(permissionResolver.usersGrantedAllAndAny(ids, required, alternatives));
+        }
         Set<UUID> result = new LinkedHashSet<>();
         // 2026-10-09(ADR-063 追加修订): 任务卡池一律按「真实授出权限」解析——超管的全量
         // 目录码是操作授权面，不是任务归属；超管真实拿到码(基础包/部门/个人/委派)才进池。
@@ -5453,6 +5533,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private boolean userHasPermissions(UUID userId, String... required) {
         if (userId == null) return false;
         Set<String> permissions = Set.of(required);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return !permissionResolver.usersGrantedAll(List.of(userId), permissions).isEmpty();
+        }
         return userRepo.findById(userId)
                 .filter(user -> !user.isDeleted()
                         && "active".equals(user.getStatus()))
@@ -5819,6 +5902,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         if (candidates.isEmpty()) {
             return result;
         }
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return new LinkedHashSet<>(permissionResolver.usersGrantedAll(candidates,
+                    Set.of(NOTICE_READ_AUTHORITY, requiredAuthority)));
+        }
         for (UserAccount account : userRepo.findAllById(candidates)) {
             if (account == null
                     || account.isDeleted()
@@ -5847,6 +5934,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             String actionRoute,
             String requiredViewAuthority) {
         Set<UUID> candidates = new LinkedHashSet<>(departmentUserIds("SUB_PURCHASE"));
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            for (UUID userId : permissionResolver.usersGrantedAll(candidates,
+                    Set.of(NOTICE_READ_AUTHORITY, requiredViewAuthority))) {
+                sendToUser(userId, type, title, content, actionRoute);
+            }
+            return;
+        }
         for (UUID userId : candidates) {
             UserAccount account = userRepo.findById(userId).orElse(null);
             if (account == null
@@ -5928,6 +6022,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                   AND user_account.status = 'active'
                 ORDER BY user_account.id
                 """, UUID.class);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return permissionResolver.usersGrantedAll(qualityCandidates,
+                    Set.of(NOTICE_READ_AUTHORITY, IQC_VIEW_AUTHORITY, "procurement_inspection:handle"));
+        }
         return qualityCandidates.stream()
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
@@ -5960,7 +6058,11 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private List<UUID> departmentUserIdsWithAuthorities(
             String departmentCode, String... authorities) {
         Set<String> required = Set.of(authorities);
-        return departmentUserIds(departmentCode).stream()
+        List<UUID> candidates = departmentUserIds(departmentCode);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return permissionResolver.usersGrantedAll(candidates, required);
+        }
+        return candidates.stream()
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()
                                 && "active".equals(account.getStatus()))
@@ -6008,6 +6110,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                   AND user_account.status = 'active'
                 ORDER BY user_account.id
                 """, UUID.class, departmentCode);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return permissionResolver.usersGrantedAll(candidates, required);
+        }
         return candidates.stream()
                 .filter(userId -> userRepo.findById(userId)
                         .filter(account -> !account.isDeleted()

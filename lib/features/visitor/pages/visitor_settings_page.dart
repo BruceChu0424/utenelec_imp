@@ -22,7 +22,7 @@ import '../../../components/settings/uten_font_scaler.dart';
 import '../../../components/settings/uten_locale_switcher.dart';
 import '../../../components/settings/uten_performance_switcher.dart';
 import '../../../components/settings/uten_theme_switcher.dart';
-import '../../../core/constants/app_info.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -39,6 +39,7 @@ class VisitorSettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final branding = ref.watch(platformBrandingSnapshotProvider);
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -117,7 +118,7 @@ class VisitorSettingsPage extends ConsumerWidget {
 
               Center(
                 child: Text(
-                  l10n.visitorSettingsPortalTag(AppInfo.displayName),
+                  l10n.visitorSettingsPortalTag(branding.platformName),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

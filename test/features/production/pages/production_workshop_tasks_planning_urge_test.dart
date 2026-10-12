@@ -267,10 +267,7 @@ void main() {
     // 起格内不画胶囊，品红区分色由整格底色表达，文字为正文字号）。
     expect(find.text('等计划下单 · 缺 2 种'), findsOneWidget);
     // 物料列：缺 3 种里 2 种计划没下单，单独点出来。
-    final summary = tester.widget<Text>(
-      find.byKey(const ValueKey('workshop-material-summary-seg-1')),
-    );
-    expect(summary.textSpan!.toPlainText(), contains('计划未下单 2 种'));
+    expect(find.textContaining('计划未下单 2 种'), findsOneWidget);
 
     await _openDetail(tester);
     expect(
@@ -282,11 +279,29 @@ void main() {
     // 逐种物料：计划没下单的品红「等计划下单」；计划没定供应方式的另说；
     // 缺但计划已经下过单的(外壳)照旧「等采购到货」一类。
     await tester.pumpAndSettle();
+    // The task detail starts with one material; open its real all-materials
+    // control before verifying each distinct planning/source state.
+    final allMaterials = find.byKey(
+      const Key('workshop-task-material-toggle-all'),
+    );
+    await tester.ensureVisible(allMaterials);
+    await tester.tap(allMaterials);
+    await tester.pumpAndSettle();
     final copper = tester.widget<WorkshopMaterialStateCell>(
       find.byKey(const ValueKey('workshop-task-material-state-d-copper')),
     );
     expect(copper.label, '等计划下单');
     expect(copper.type, UtenStatusBadgeType.fuchsia);
+    expect(
+      find.byKey(const ValueKey('workshop-task-material-state-d-spring')),
+      findsNothing,
+    );
+    final expandMaterials = find.byKey(
+      const Key('workshop-task-material-toggle-all'),
+    );
+    await tester.ensureVisible(expandMaterials);
+    await tester.tap(expandMaterials);
+    await tester.pumpAndSettle();
     expect(
       tester
           .widget<WorkshopMaterialStateCell>(

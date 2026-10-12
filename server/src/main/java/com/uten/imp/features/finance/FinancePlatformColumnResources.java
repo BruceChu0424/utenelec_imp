@@ -94,6 +94,12 @@ public class FinancePlatformColumnResources {
                         new FactDefinition("balanceBeforeOriginal", "核销前原币余额", true),
                         new FactDefinition("balanceAfterOriginal", "核销后原币余额", true),
                         new FactDefinition("qty", "数量", false), new FactDefinition("price", "单价", true)))
-                .documentCreateAuthorities(Set.of(permission + ":create"));
+                .documentCreateAuthorities(Set.of(permission + ":create"))
+                .reviewedSaveAuthorities(Set.of(permission + ":approve"), (id, header) -> {
+                    if (!DocumentPlatformColumnAdapter.draft(header) || header.hasNonNull("legacyId")) return false;
+                    access.requireScopedOperationWritable(DocumentPlatformColumnAdapter.uuid(header, "makerId"),
+                            "只能修改本人审核范围内的财务草稿", permission + ":approve");
+                    return true;
+                });
     }
 }

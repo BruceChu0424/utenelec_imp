@@ -153,11 +153,11 @@ void main() {
     expect(items[0]['goodsId'], _goodsA);
     expect(items[0]['warehouseId'], _whMain);
     expect(items[0]['place'], 'A-01-记忆');
-    expect(items[0]['qty'], 10);
+    expect(items[0]['qty'], '10');
     expect(items[1]['goodsId'], _goodsB);
     expect(items[1]['warehouseId'], _whSecond);
     expect(items[1]['place'], 'B-02');
-    expect(items[1]['qty'], 20);
+    expect(items[1]['qty'], '20');
   });
 
   testWidgets('盘点: 仓库仍在表头, 表格没有行内仓库列', (tester) async {

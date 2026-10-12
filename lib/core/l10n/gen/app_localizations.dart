@@ -100,6 +100,30 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @release2511DailyReport.
+  ///
+  /// In zh, this message translates to:
+  /// **'生产日报改为紧凑货品卡片，支持展开去向与子件；审核余料处理保留完整数量和来源。'**
+  String get release2511DailyReport;
+
+  /// No description provided for @release2511Workshop.
+  ///
+  /// In zh, this message translates to:
+  /// **'车间任务弹窗按状态呈现操作，物料默认显示一项并可展开全部。'**
+  String get release2511Workshop;
+
+  /// No description provided for @release2511Batch.
+  ///
+  /// In zh, this message translates to:
+  /// **'物料批量下单与品质批量处理共用写入流程，减少重复读取、锁定和收尾计算。'**
+  String get release2511Batch;
+
+  /// No description provided for @release2511Platform.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增平台设置，超级管理员可配置公司品牌、Logo和主题色；升级保留已有配置及个人偏好。'**
+  String get release2511Platform;
+
   /// No description provided for @businessResetAuditScope.
   ///
   /// In zh, this message translates to:
@@ -1273,7 +1297,7 @@ abstract class AppLocalizations {
   /// No description provided for @visitorIsEmployee.
   ///
   /// In zh, this message translates to:
-  /// **'该手机号为优腾员工账号，请走员工通道登录'**
+  /// **'该手机号为员工账号，请走员工通道登录'**
   String get visitorIsEmployee;
 
   /// No description provided for @visitorPhoneInvalid.
@@ -10277,12 +10301,6 @@ abstract class AppLocalizations {
   /// **'转订货单'**
   String get salesQuoteStatusActionConvert;
 
-  /// No description provided for @salesQuoteStatusActionReverse.
-  ///
-  /// In zh, this message translates to:
-  /// **'作废'**
-  String get salesQuoteStatusActionReverse;
-
   /// No description provided for @salesQuoteStatusActionEdit.
   ///
   /// In zh, this message translates to:
@@ -10331,12 +10349,6 @@ abstract class AppLocalizations {
   /// **'财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?'**
   String get salesQuoteStatusReopenConfirmBody;
 
-  /// No description provided for @salesQuoteStatusReverseConfirmBody.
-  ///
-  /// In zh, this message translates to:
-  /// **'作废后这张报价不能再转订货单, 也不能恢复。确定作废?'**
-  String get salesQuoteStatusReverseConfirmBody;
-
   /// No description provided for @salesQuoteStatusDeleteConfirmBody.
   ///
   /// In zh, this message translates to:
@@ -10378,12 +10390,6 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'已回到草稿, 改好后请重新提交财务核价'**
   String get salesQuoteStatusReopened;
-
-  /// No description provided for @salesQuoteStatusReversedDone.
-  ///
-  /// In zh, this message translates to:
-  /// **'报价已作废'**
-  String get salesQuoteStatusReversedDone;
 
   /// No description provided for @salesQuoteStatusDeleted.
   ///

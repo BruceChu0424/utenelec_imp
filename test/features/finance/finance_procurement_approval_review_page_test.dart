@@ -27,7 +27,10 @@ import '../../helpers/finance_claim_fixture.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
-class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
+class _FakeWorkflowRepo
+    implements
+        FinanceProcurementWorkflowRepository,
+        FinanceProcurementReviewAmendmentRepository {
   @override
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
@@ -36,6 +39,23 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   _FakeWorkflowRepo(this.reviewResult);
 
   FinanceProcurementApprovalReview reviewResult;
+  FinanceProcurementApprovalReview? amendedResult;
+  final List<
+    ({
+      FinanceProcurementDecisionItem decision,
+      List<Map<String, dynamic>> lines,
+    })
+  >
+  amendments = [];
+  @override
+  Future<FinanceProcurementApprovalReview> amendReview(
+    FinanceProcurementDecisionItem decision,
+    List<Map<String, dynamic>> lines,
+  ) async {
+    amendments.add((decision: decision, lines: lines));
+    return reviewResult = amendedResult ?? reviewResult;
+  }
+
   String? requestedCaseId;
   final List<
     ({
@@ -101,6 +121,20 @@ class _FinanceReviewerSessionNotifier extends SessionNotifier {
   SessionState build() => const SessionState(
     user: AppUser(id: 'finance-reviewer', code: 'FIN001', name: '财务李四'),
   );
+}
+
+class _ExactWorkflowRepo extends _FakeWorkflowRepo
+    implements FinanceProcurementExactApprovalRepository {
+  _ExactWorkflowRepo(super.reviewResult);
+  final List<String?> exactRates = [];
+  @override
+  Future<void> approveOrdersAtExactRate(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+    String? exchangeRate,
+  }) async {
+    exactRates.add(exchangeRate);
+  }
 }
 
 Map<String, dynamic> _pendingReviewJson({
@@ -254,6 +288,135 @@ Future<GoRouter> _pumpReviewPage(
 }
 
 void main() {
+  testWidgets('巨大合法汇率从审核输入到提交保持全部12+6位原文', (tester) async {
+    final repository = _ExactWorkflowRepo(_pendingReview());
+    await _pumpReviewPage(tester, repository);
+    final field = find.byKey(const Key('finance-order-review-rate-field'));
+    await tester.ensureVisible(field);
+    await tester.enterText(field, '999999999999.123456');
+    await tester.pump();
+    final table = tester
+        .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
+          find.byType(UtenRevisionTable<FinanceProcurementReviewLine>),
+        );
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'amountLocal')
+          .value(table.rows.single.value),
+      '9999999999991234.56 元',
+    );
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('finance-order-review-approve-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.exactRates, ['999999999999.123456']);
+  });
+  testWidgets('审核改单价绑定旧case版本认领，保存后比较原值并使用新case审核', (tester) async {
+    final before = _pendingReviewJson(
+      allowedActions: {'APPROVE', 'REJECT', 'EDIT'},
+    );
+    final repository = _FakeWorkflowRepo(
+      FinanceProcurementApprovalReview.fromJson(before),
+    );
+    final after = {
+      ...before,
+      'caseId': 'case-2',
+      'attempt': 3,
+      'version': 1,
+      'totalOriginal': '9000',
+      'totalLocal': '63900',
+      'previousItems': before['items'],
+      'items': [
+        {
+          ...(before['items'] as List).single as Map<String, dynamic>,
+          'price': '90',
+          'amountOriginal': '9000',
+          'amountLocal': '63900',
+        },
+      ],
+    };
+    repository.amendedResult = FinanceProcurementApprovalReview.fromJson(after);
+    await _pumpReviewPage(tester, repository);
+    final price = find.byKey(
+      const ValueKey('finance-order-review-price-order-item-1'),
+    );
+    await tester.enterText(
+      find.byKey(const Key('finance-order-review-rate-field')),
+      '6.85',
+    );
+    await tester.ensureVisible(price);
+    await tester.enterText(price, '90');
+    await tester.pump();
+    final old = tester.widget<Text>(
+      find.byKey(const ValueKey('finance-order-review-before-order-item-1')),
+    );
+    expect(old.style!.decoration, TextDecoration.lineThrough);
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    expect(repository.approved, isEmpty);
+    await tester.tap(find.byKey(const Key('finance-order-review-save-edits')));
+    await tester.pumpAndSettle();
+    expect(repository.amendments.single.decision.caseId, 'case-1');
+    expect(repository.amendments.single.decision.expectedVersion, 3);
+    expect(repository.amendments.single.decision.expectedClaimId, isNotNull);
+    expect(repository.amendments.single.lines, [
+      {'itemId': 'order-item-1', 'price': '90'},
+    ]);
+    expect(repository.requestedCaseId, 'case-2');
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('finance-order-review-rate-field')),
+          )
+          .controller!
+          .text,
+      '6.85',
+    );
+    final table = tester
+        .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
+          find.byType(UtenRevisionTable<FinanceProcurementReviewLine>),
+        );
+    expect(
+      table.rows.map((row) => row.kind),
+      containsAll([UtenRevisionKind.removed, UtenRevisionKind.added]),
+    );
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('finance-order-review-approve-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.approved.single.items.single.caseId, 'case-2');
+    expect(repository.approved.single.items.single.expectedVersion, 1);
+  });
+
+  testWidgets('审核总金额计价只编辑总金额，负数阻止保存', (tester) async {
+    final json = _pendingReviewJson(
+      allowedActions: {'APPROVE', 'REJECT', 'EDIT'},
+    );
+    final totalLine =
+        (json['items'] as List<Object?>).single as Map<String, dynamic>;
+    totalLine['totalAmountInput'] = '10000';
+    final repository = _FakeWorkflowRepo(
+      FinanceProcurementApprovalReview.fromJson(json),
+    );
+    await _pumpReviewPage(tester, repository);
+    expect(
+      find.byKey(const ValueKey('finance-order-review-price-order-item-1')),
+      findsNothing,
+    );
+    final total = find.byKey(
+      const ValueKey('finance-order-review-total-order-item-1'),
+    );
+    await tester.ensureVisible(total);
+    await tester.enterText(total, '-1');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('finance-order-review-save-edits')));
+    await tester.pumpAndSettle();
+    expect(repository.amendments, isEmpty);
+  });
   for (final type in ['PURCHASE', 'SUBCONTRACT']) {
     testWidgets('$type 总金额计价在财审中标记参考单价并保持金额原文', (tester) async {
       final json = _pendingReviewJson();
@@ -741,20 +904,24 @@ void main() {
     // 会把本页新键甩到列尾）。
     expect(table.tableKey, 'finance.procurement.review.purchase.items');
     expect(table.columns.map((column) => column.key).toList(), [
-      'sourceDocNo',
-      'sourceApplicationNos',
-      'lineNo',
       'goods',
       'goodsCode',
       'colorName',
+      'sourceApplicationNos',
+      'supplier',
       'qty',
       'allowedOverReceiptPct',
       'price',
       'amountOriginal',
+      'currency',
+      'taxRate',
+      'settlement',
+      'remark',
+      'sourceDocNo',
+      'lineNo',
       'exchangeRate',
       'amountLocal',
       'deliverDate',
-      'remark',
     ]);
     final row = table.rows.single.value;
     // 数量 + 单位内联（formatQtyWithUnit 口径），单位不再单独占列。
@@ -912,7 +1079,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.approved, isEmpty);
     // 2026-10-10 字段消息契约：错误文案收进格内 ⓘ（Tooltip），不再有裸 errorText。
-    expect(find.byTooltip('汇率必须是大于 0 的数字'), findsOneWidget);
+    expect(find.byTooltip('汇率须大于 0，整数最多 12 位，小数最多 6 位'), findsOneWidget);
 
     await tester.enterText(field, '');
     await tester.pump();
@@ -945,7 +1112,7 @@ void main() {
     final title = tester.widget<Text>(find.text('供应商财务快照 · 供应商A(S-001)'));
     expect(title.style?.color, theme.colorScheme.error);
     expect(title.style?.fontWeight, FontWeight.w800);
-    final supplier = tester.widget<Text>(find.text('供应商A'));
+    final supplier = tester.widget<Text>(find.text('供应商A').first);
     expect(supplier.style?.color, theme.colorScheme.error);
     expect(supplier.style?.fontWeight, FontWeight.w700);
   });

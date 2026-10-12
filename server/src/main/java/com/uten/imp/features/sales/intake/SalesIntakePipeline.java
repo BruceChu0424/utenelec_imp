@@ -87,20 +87,27 @@ final class SalesIntakePipeline {
     private final ObjectMapper json;
     private final BooleanSupplier visionSupported;
     private final Clock clock;
+    private final IntakeSellerIdentity seller;
 
     SalesIntakePipeline(MasterIntakeLookupPort lookup, IntakeReferenceData data, ObjectMapper json,
                         BooleanSupplier visionSupported, Clock clock) {
+        this(lookup, data, json, visionSupported, clock, IntakeSellerIdentity.DEFAULT);
+    }
+
+    SalesIntakePipeline(MasterIntakeLookupPort lookup, IntakeReferenceData data, ObjectMapper json,
+                        BooleanSupplier visionSupported, Clock clock, IntakeSellerIdentity seller) {
         this.lookup = lookup;
         this.data = data;
         this.json = json;
         this.visionSupported = visionSupported;
         this.clock = clock;
+        this.seller = Objects.requireNonNull(seller, "seller identity");
     }
 
     /** 处理一个任务; 用户取消时返回空 Map(任务状态由框架置为已取消)。 */
     Map<String, Object> run(AiJobContext ctx) {
         IntakeParams params = IntakeParams.parse(ctx.params());
-        Run run = new Run(ctx, params, new IntakeAi(ctx, json));
+        Run run = new Run(ctx, params, new IntakeAi(ctx, json), seller);
         ctx.progress("READING", 10);
         AiJobInput input = ctx.input();
         DocumentKind kind = parseKind(input.kind());
@@ -128,7 +135,8 @@ final class SalesIntakePipeline {
             result.put("mapping", run.template.mapping());
             result.put("layoutSource", run.layoutSource);
             result.put("extraction", Map.of("layoutSource", run.layoutSource, "layoutFingerprint", run.layout.fingerprint(),
-                    "headerTexts", run.layout.headerTexts(), "columnRoles", run.layout.columnRolesByLetter()));
+                    "headerTexts", run.layout.headerTexts(), "columnRoles", run.layout.columnRolesByLetter(),
+                    "sellerCompanyName", run.seller.companyName(), "sellerIdentityVersion", run.seller.version()));
             result.put("notices", run.ai.allowed() ? List.copyOf(run.notices) : List.of(IntakeTexts.NOTICE_AI_OFF));
             ctx.progress("DONE", 100);
             return result;
@@ -176,6 +184,7 @@ final class SalesIntakePipeline {
         final AiJobContext ctx;
         final IntakeParams params;
         final IntakeAi ai;
+        final IntakeSellerIdentity seller;
         final List<String> notices = new ArrayList<>();
         final List<LineResult> lines = new ArrayList<>();
         IntakeHeader header = new IntakeHeader();
@@ -199,9 +208,14 @@ final class SalesIntakePipeline {
         com.uten.imp.features.sales.template.QuoteTemplateWorkbook.Candidate template;
 
         Run(AiJobContext ctx, IntakeParams params, IntakeAi ai) {
+            this(ctx, params, ai, IntakeSellerIdentity.DEFAULT);
+        }
+
+        Run(AiJobContext ctx, IntakeParams params, IntakeAi ai, IntakeSellerIdentity seller) {
             this.ctx = ctx;
             this.params = params;
             this.ai = ai;
+            this.seller = seller;
         }
     }
 
@@ -352,14 +366,14 @@ final class SalesIntakePipeline {
         if (run.params.templateOnly()) return;
         run.fileCurrency = chosen.layout().fileCurrency() != null ? chosen.layout().fileCurrency()
                 : chosen.extraction().currencyFromCells();
-        run.header = IntakeHeaderRules.extract(chosen.sheet(), chosen.layout().headerRow0());
+        run.header = IntakeHeaderRules.extract(chosen.sheet(), chosen.layout().headerRow0(), run.seller);
         if (run.header.buyerName == null && run.ai.usable()) {
             IntakeHeaderRules.MinimizedHeader minimized = IntakeHeaderRules.minimize(chosen.sheet(),
-                    chosen.layout().headerRow0(), HEADER_PROMPT_CHARS);
+                    chosen.layout().headerRow0(), HEADER_PROMPT_CHARS, run.seller);
             if (!minimized.text().isBlank()) {
-                run.ai.call(IntakePrompts.header(minimized.text(), run.ctx.jobId()))
+                run.ai.call(IntakePrompts.header(minimized.text(), run.ctx.jobId(), run.seller))
                         .ifPresent(node -> mergeAiHeader(run.header, node, minimized.text(), minimized.placeholders(),
-                                "RULES+AI"));
+                                "RULES+AI", run.seller));
             }
         }
     }
@@ -536,12 +550,12 @@ final class SalesIntakePipeline {
         }
         int from = Math.max(target.rows().getFirst().index0(), anchor - 3);
         int to = from + COLUMN_PROMPT_ROWS - 1;
-        Sheet sanitized = IntakeHeaderRules.sanitizeForColumnPrompt(target, from, to);
+        Sheet sanitized = IntakeHeaderRules.sanitizeForColumnPrompt(target, from, to, run.seller);
         String table = PromptTable.render(sanitized, from, to, 6000, Set.of());
         if (table.isBlank()) {
             return null;
         }
-        Optional<JsonNode> node = run.ai.call(IntakePrompts.columns(table, run.ctx.jobId()));
+        Optional<JsonNode> node = run.ai.call(IntakePrompts.columns(table, run.ctx.jobId(), run.seller));
         if (node.isEmpty() || !node.get().path("headerRow").canConvertToInt()) {
             return null;
         }
@@ -594,7 +608,7 @@ final class SalesIntakePipeline {
         }
         List<String> allLines = new ArrayList<>();
         text.pages().forEach(p -> allLines.addAll(p.lines()));
-        IntakeHeaderRules.contactsFromText(allLines, run.header);
+        IntakeHeaderRules.contactsFromText(allLines, run.header, run.seller);
         Map<String, String> placeholders = new LinkedHashMap<>();
         List<List<String>> chunks = new ArrayList<>();
         List<Set<Integer>> chunkPageStarts = new ArrayList<>();
@@ -630,10 +644,10 @@ final class SalesIntakePipeline {
                 run.notices.add("文件太长, 只识别了前面的部分");
                 break;
             }
-            String minimized = IntakeHeaderRules.minimizeText(chunks.get(i), chunkPageStarts.get(i), placeholders);
+            String minimized = IntakeHeaderRules.minimizeText(chunks.get(i), chunkPageStarts.get(i), placeholders, run.seller);
             sentText.append(minimized).append('\n');
             Optional<JsonNode> node = run.ai.call(IntakePrompts.documentText(minimized, chunks.get(i).size(),
-                    run.ctx.jobId()));
+                    run.ctx.jobId(), run.seller));
             if (node.isEmpty()) {
                 if (i == 0) {
                     throw aiFailed(run);
@@ -654,7 +668,7 @@ final class SalesIntakePipeline {
         if (!visionSupported.getAsBoolean()) {
             throw fail(IntakeTexts.FAIL_VISION, "AI_VISION_UNAVAILABLE");
         }
-        Optional<JsonNode> node = run.ai.call(IntakePrompts.documentImages(images, mediaType, run.ctx.jobId()));
+        Optional<JsonNode> node = run.ai.call(IntakePrompts.documentImages(images, mediaType, run.ctx.jobId(), run.seller));
         if (node.isEmpty()) {
             throw aiFailed(run);
         }
@@ -671,7 +685,7 @@ final class SalesIntakePipeline {
                                Map<String, String> placeholders, boolean verifyAgainstText) {
         JsonNode header = node.path("header");
         if (header.isObject()) {
-            mergeAiHeader(run.header, header, verifyAgainstText ? sourceText : null, placeholders, "AI");
+            mergeAiHeader(run.header, header, verifyAgainstText ? sourceText : null, placeholders, "AI", run.seller);
         }
         if (run.fileCurrency == null) {
             String currency = IntakeAi.text(node, "currency");
@@ -755,17 +769,26 @@ final class SalesIntakePipeline {
      */
     static void mergeAiHeader(IntakeHeader h, JsonNode node, String sourceText, Map<String, String> placeholders,
                               String source) {
+        mergeAiHeader(h, node, sourceText, placeholders, source, IntakeSellerIdentity.DEFAULT);
+    }
+
+    static void mergeAiHeader(IntakeHeader h, JsonNode node, String sourceText, Map<String, String> placeholders,
+                              String source, IntakeSellerIdentity seller) {
         boolean used = false;
         String haystack = sourceText == null ? null : squash(sourceText);
+        String maskedBuyer = IntakeAi.text(node, "buyerName");
+        String candidate = verified(maskedBuyer, haystack, placeholders);
+        boolean rejectedSeller = seller.isSellerBuyer(maskedBuyer) || seller.isSellerBuyer(candidate);
+        if (seller.isSellerBuyer(h.buyerName)) h.buyerName = null;
         if (h.buyerName == null) {
-            h.buyerName = verified(IntakeAi.text(node, "buyerName"), haystack, placeholders);
+            h.buyerName = rejectedSeller ? null : candidate;
             used |= h.buyerName != null;
         }
-        if (h.buyerAddress == null) {
+        if (!rejectedSeller && h.buyerAddress == null) {
             h.buyerAddress = verified(IntakeAi.text(node, "buyerAddress"), haystack, placeholders);
             used |= h.buyerAddress != null;
         }
-        if (h.contactName == null) {
+        if (!rejectedSeller && h.contactName == null) {
             h.contactName = verified(IntakeAi.text(node, "contactName"), haystack, placeholders);
             used |= h.contactName != null;
         }
@@ -792,15 +815,16 @@ final class SalesIntakePipeline {
                 used = true;
             }
         }
-        if (h.country == null) {
+        if (!rejectedSeller && h.country == null) {
             h.country = IntakeCountries.normalize(IntakeAi.text(node, "country"));
             used |= h.country != null;
         }
         if (used) {
             h.source = source;
         }
-        for (String value : placeholders.values()) {
-            if (value.contains("@")) {
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            String value = entry.getValue();
+            if (!rejectedSeller && entry.getKey().startsWith("⟨EMAIL_") && value.contains("@") && !seller.containsName(value)) {
                 h.addEmail(value);
             }
         }
@@ -1085,7 +1109,7 @@ final class SalesIntakePipeline {
             for (String r : batchRefs) {
                 catalog.put(r, compact(refs.get(r)));
             }
-            Optional<JsonNode> node = run.ai.call(IntakePrompts.match(matchLines, catalog, historyRefs, run.ctx.jobId()));
+            Optional<JsonNode> node = run.ai.call(IntakePrompts.match(matchLines, catalog, historyRefs, run.ctx.jobId(), run.seller));
             if (node.isEmpty()) {
                 return;
             }
@@ -1327,6 +1351,8 @@ final class SalesIntakePipeline {
         result.put("file", file);
 
         Map<String, Object> extraction = new LinkedHashMap<>();
+        extraction.put("sellerCompanyName", run.seller.companyName());
+        extraction.put("sellerIdentityVersion", run.seller.version());
         extraction.put("layoutSource", run.layoutSource);
         extraction.put("headerSource", run.header.source);
         extraction.put("aiUsed", run.ai.used());

@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/widgets/sales_document_layout.dart';
+import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/sales_order_finance_confirmation.dart';
 
@@ -55,13 +58,13 @@ Set<String> _changedColumns(
         before.values.containsKey(key) &&
         after.values.containsKey(key) &&
         before.values[key] != after.values[key])
-      key,
+      salesDocumentColumnKey(key),
   if (before.goodsName != null && after.goodsName != null
       ? before.goodsName != after.goodsName
       : before.values.containsKey('货品') &&
             after.values.containsKey('货品') &&
             before.values['货品'] != after.values['货品'])
-    'goodsName',
+    'goods',
   if (before.goodsCode != null &&
       after.goodsCode != null &&
       before.goodsCode != after.goodsCode)
@@ -74,29 +77,31 @@ class SalesOrderRevisionTable extends StatelessWidget {
     required this.diff,
     required this.currencyLabel,
     this.summaryBar,
+    this.cellBuilders,
   });
   final SalesOrderRevisionDiff diff;
   final String currencyLabel;
   final Widget? summaryBar;
+  final Map<
+    String,
+    Widget Function(BuildContext, UtenRevisionRow<SalesOrderRevisionLine>)
+  >?
+  cellBuilders;
 
   @override
   Widget build(BuildContext context) {
     final fields = <(String, String, double)>[
       ('颜色', '颜色', 90),
-      // 2026-09-25 用户口径：与编辑页列序对齐——数量后紧跟单位；客户型号退役。
+      // Quantity retains its unit inside the cell, matching entry and ordinary review.
       ('数量', '数量', 100),
-      ('单位', '单位', 80),
       ('单价', '单价', 100),
       ('折扣', '折扣', 80),
-      (
-        '原币金额',
-        diff.headerChanges.any((change) => change.field == '币种')
-            ? '原币金额'
-            : '金额($currencyLabel)',
-        130,
-      ),
+      ('原币金额', '总金额(订单币种)', 130),
       ('交货日期', '交货日期', 120),
       ('客户编号', '客户编号', 120),
+      ('客户型号', '文件型号', 120),
+      ('客户文件品名', '文件品名', 180),
+      ('客户文件单价', '文件单价', 140),
       ('换算率', '换算率', 100),
       ('重量', '重量', 100),
       ('加工费', '机加价', 100),
@@ -136,38 +141,50 @@ class SalesOrderRevisionTable extends StatelessWidget {
             primary: true,
             bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
             rows: salesOrderRevisionRows(diff),
-            columns: [
-              MasterColumnDef(
-                key: 'goodsName',
-                label: '货品名称',
-                width: 200,
-                value: (row) => row.goodsName ?? row.values['货品'] ?? '—',
-              ),
-              MasterColumnDef(
-                key: '英文名称',
-                label: '英文名称',
-                width: 180,
-                value: (row) => row.values['英文名称'],
-              ),
-              MasterColumnDef(
-                key: 'goodsCode',
-                label: '编号',
-                width: 130,
-                value: (row) => row.goodsCode ?? '—',
-              ),
-              for (final (key, label, width) in fields)
-                if (show(key))
+            cellBuilders: cellBuilders,
+            columns:
+                canonicalSalesColumns<MasterColumnDef<SalesOrderRevisionLine>>([
                   MasterColumnDef(
-                    key: key,
-                    label: label,
-                    width: width,
-                    value: (row) => row.values[key] ?? '—',
+                    key: 'goods',
+                    label: '货品名称',
+                    width: 200,
+                    value: (row) => row.goodsName ?? row.values['货品'] ?? '—',
                   ),
-              ...businessReadOnlyColumns<SalesOrderRevisionLine>(
-                allRows,
-                columnsOf: (row) => row.extraColumns,
-              ),
-            ],
+                  MasterColumnDef(
+                    key: 'nameEn',
+                    label: '英文名称',
+                    width: 180,
+                    value: (row) => row.values['英文名称'],
+                  ),
+                  MasterColumnDef(
+                    key: 'goodsCode',
+                    label: '编号',
+                    width: 130,
+                    value: (row) => row.goodsCode ?? '—',
+                  ),
+                  for (final (key, label, width) in fields)
+                    if (show(key))
+                      MasterColumnDef(
+                        key: salesDocumentColumnKey(key),
+                        label: label,
+                        width: width,
+                        value: (row) => key == '数量'
+                            ? formatExactQtyWithUnit(
+                                row.values[key],
+                                row.values['单位'],
+                              )
+                            : key == '单价' || key == '原币金额'
+                            ? financeMoneyWithUnitSuffix(
+                                row.values[key],
+                                currencyName: currencyLabel,
+                              )
+                            : row.values[key] ?? '—',
+                      ),
+                  ...businessReadOnlyColumns<SalesOrderRevisionLine>(
+                    allRows,
+                    columnsOf: (row) => row.extraColumns,
+                  ),
+                ], keyOf: (column) => column.key),
             summaryBar: summaryBar,
           ),
         ),

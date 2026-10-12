@@ -1,3 +1,5 @@
+import '../../../shared/documents/document_unapproval_action.dart';
+import '../../../shared/documents/document_unapproval.dart';
 // 生产日报详情页（全页路由 · production_daily_report:view）：主表头卡 + 只读明细子表 +
 // 状态门控操作（审核/红冲/编辑/删除）。结构与生产计划单详情页同构。
 //
@@ -369,6 +371,46 @@ class _ProductionDailyReportDetailPageState
   /// 车间任务页与调度台返回时整页重拉。
   void _signalExecutionChanged() =>
       bumpListRefresh(ref, productionExecutionRefreshKey);
+
+  Future<void> _reviewAndApprove() async {
+    if (_busy || !_canApprove) return;
+    final isCurrent = _approvalViewFence(requireCurrentRoute: false);
+    late final AuthenticatedRequestScope requestScope;
+    ProductionDailyReportDetail? saved;
+    try {
+      requestScope = await ref
+          .read(apiClientProvider)
+          .captureRequestScope(isCurrent: isCurrent);
+      await requestScope.verify();
+      if (!mounted || !isCurrent() || !_canApprove) return;
+      saved = await context.push<ProductionDailyReportDetail>(
+        '/production/daily-reports/${widget.id}/edit?review=1',
+      );
+      if (saved == null) return;
+      await requestScope.verify();
+      if (!mounted || !isCurrent()) return;
+      if (saved.id != widget.id || saved.status != kProductionStatusDraft) {
+        context.appWarning('核改响应无法核对，本次未发送审核，请重新读取草稿');
+        return;
+      }
+      await _load();
+      await requestScope.verify();
+      if (!mounted || !isCurrent()) return;
+      if (_detail?.rowVersion != saved.rowVersion || !_canApprove) {
+        context.appWarning('核改已保存为草稿；单据版本或审核范围已变化，请重新核对，本次未继续审核');
+        return;
+      }
+      await _approve(retainedScope: requestScope);
+    } on ApiException catch (error) {
+      if (mounted) {
+        context.appWarning(
+          saved == null
+              ? error.message
+              : '核改已保存为草稿；${error.message} 本次未继续审核，请重新读取核对',
+        );
+      }
+    }
+  }
 
   Future<void> _approve({AuthenticatedRequestScope? retainedScope}) async {
     if (_busy || _approvalConfirming || !_canApprove) return;
@@ -907,73 +949,119 @@ class _ProductionDailyReportDetailPageState
     return lines.isEmpty ? '' : '${lines.join('\n')}\n';
   }
 
-  Future<void> _reverse() => _doAction(
-    _l10n.productionDailyReportReverseConfirmation,
-    (repo) => repo.reverse(widget.id),
-    '已红冲',
-    targetStatus: kProductionStatusReversed,
-  );
-
-  Future<void> _doAction(
-    String confirm,
-    Future<ProductionDailyReportDetail> Function(
-      ProductionDailyReportRepository,
-    )
-    fn,
-    String ok, {
-    required int targetStatus,
-    bool reviewerResponsibility = false,
-  }) async {
-    if (_busy) return;
-    final c = reviewerResponsibility
-        ? await showUtenReviewerConfirmDialog(context, message: confirm)
-        : await UtenDialog.show(
-            context,
-            title: _l10n.commonConfirm,
-            content: Text(confirm),
-            confirmLabel: _l10n.commonConfirm,
-            cancelLabel: _l10n.commonCancel,
-            danger: true,
-          );
-    if (c != true || !mounted || _busy) return;
+  Future<void> _reverse() async {
+    if (_busy || !_canReverse) return;
+    final originalId = widget.id;
+    final isCurrent = _approvalViewFence();
+    final sameOwner = _approvalViewFence(requireCurrentRoute: false);
+    final api = ref.read(apiClientProvider);
+    late final AuthenticatedRequestScope requestScope;
+    try {
+      requestScope = await api.captureRequestScope(isCurrent: isCurrent);
+    } on ApiException catch (error) {
+      if (mounted && isCurrent()) {
+        context.appWarning(error.message);
+      }
+      return;
+    }
+    if (!mounted || !isCurrent()) return;
+    final confirmed = await UtenDialog.show(
+      context,
+      title: '反审生产日报',
+      content: const Text(documentUnapprovalConfirmation),
+      confirmLabel: '确认反审',
+      cancelLabel: '取消',
+      danger: true,
+    );
+    if (confirmed != true || !mounted || !isCurrent()) return;
     setState(() {
       _busy = true;
-      _busyTitle = '正在${reviewerResponsibility ? '审核' : '红冲'}生产日报';
+      _busyTitle = '正在反审生产日报';
     });
     try {
-      final updated = await fn(
-        ref.read(productionDailyReportRepositoryProvider),
+      final draft = await requestScope.run(
+        () => ref
+            .read(productionDailyReportRepositoryProvider)
+            .reverse(originalId),
       );
-      if (!mounted) return;
-      // 服务端已返回审核/红冲后的完整详情：直接落页面，省掉一次详情往返。
-      _applyDetail(updated);
-      _signalExecutionChanged();
-      if (updated.status != targetStatus) {
-        context.appWarning(_l10n.productionDailyReportStateChangedReview);
-        return;
+      if (!mounted || !isCurrent()) return;
+      if (draft.id == originalId) {
+        throw ApiException('UNAPPROVAL_UNCONFIRMED', '反审未返回后续单据，请刷新后核对。');
       }
-      context.appSuccess(ok);
-      if (reviewerResponsibility) await _returnAfterApproval(updated);
-    } on ApiException catch (e) {
-      await _settleFailedAction(
-        e.message,
-        targetStatus: targetStatus,
-        returnAfterApproval: reviewerResponsibility,
-      );
-    } catch (_) {
-      await _settleFailedAction(
-        '操作失败，请稍后重试',
-        targetStatus: targetStatus,
-        returnAfterApproval: reviewerResponsibility,
-      );
+      _openUnapprovalResult(draft, verified: false);
+    } catch (error) {
+      if (!mounted || !isCurrent()) return;
+      // A lost write response is resolved using the permanent original-to-successor relation.
+      try {
+        final relation = await requestScope.run(
+          () => api.get(
+            '/documents/productionDailyReport/$originalId/unapproval',
+          ),
+        );
+        if (!mounted || !isCurrent()) return;
+        final links = relation['links'];
+        final matching = links is List
+            ? links.whereType<Map<String, dynamic>>().where(
+                (row) => row['originalId'] == originalId,
+              )
+            : const Iterable<Map<String, dynamic>>.empty();
+        if (matching.isNotEmpty && matching.first['draftId'] is String) {
+          final successorId = matching.first['draftId'] as String;
+          final successor = await requestScope.run(
+            () => ref
+                .read(productionDailyReportRepositoryProvider)
+                .detail(successorId),
+          );
+          if (!mounted || !isCurrent()) return;
+          if (successor.id != successorId || successor.id == originalId) {
+            throw ApiException('UNAPPROVAL_UNCONFIRMED', '后续单据身份不一致，请刷新后核对。');
+          }
+          _openUnapprovalResult(successor, verified: true);
+          return;
+        }
+      } catch (_) {}
+      final before = _detail?.status;
+      try {
+        final fresh = await requestScope.run(
+          () => ref
+              .read(productionDailyReportRepositoryProvider)
+              .detail(originalId),
+        );
+        if (!mounted || !isCurrent()) return;
+        _applyDetail(fresh);
+        if (fresh.status != before) {
+          _signalExecutionChanged();
+          context.appWarning('日报状态已变化，反审结果仍需核对。');
+          return;
+        }
+      } catch (_) {}
+      if (mounted && isCurrent()) {
+        context.appApiError(error);
+      }
     } finally {
-      if (mounted) {
+      if (mounted && sameOwner()) {
         setState(() {
           _busy = false;
           _busyTitle = null;
         });
       }
     }
+  }
+
+  void _openUnapprovalResult(
+    ProductionDailyReportDetail successor, {
+    required bool verified,
+  }) {
+    _signalExecutionChanged();
+    if (successor.status == kProductionStatusDraft) {
+      context.appSuccess(verified ? '已核对反审后的草稿' : '已反审，进入草稿');
+    } else {
+      showDocumentUnapprovalResult(context, successor.status);
+    }
+    openUnapprovedDraft(
+      context,
+      RoutePath.productionDailyReportDetail(successor.id),
+    );
   }
 
   /// 写请求没拿到结果时的收尾：先按服务端权威状态刷新本页，再决定说什么。
@@ -1192,6 +1280,11 @@ class _ProductionDailyReportDetailPageState
                               notice,
                               const SizedBox(height: UtenSpacing.s12),
                             ],
+                            documentUnapprovalBannerForRoute(
+                              'production',
+                              'daily-reports',
+                              widget.id,
+                            ),
                             _headerCard(theme),
                             if (_materialReviewSection()
                                 case final material?) ...[
@@ -1559,6 +1652,17 @@ class _ProductionDailyReportDetailPageState
       if (_canApprove) {
         addAction(
           UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            icon: Icons.edit_note_outlined,
+            onPressed: _reviewAndApprove,
+            child: const Text('修改后审核'),
+          ),
+        );
+      }
+      if (_canApprove) {
+        addAction(
+          UtenButton(
             size: UtenButtonSize.large,
             icon: Icons.check_circle_outline,
             onPressed: _approve,
@@ -1570,12 +1674,11 @@ class _ProductionDailyReportDetailPageState
     } else if (detail.status == kProductionStatusApproved) {
       if (_canReverse) {
         addAction(
-          UtenButton(
-            type: UtenButtonType.danger,
-            size: UtenButtonSize.large,
-            icon: Icons.undo_outlined,
+          DocumentUnapprovalAction(
+            family: 'productionDailyReport',
+            documentId: widget.id,
+            revision: detail,
             onPressed: _reverse,
-            child: const Text('红冲'),
           ),
         );
       }

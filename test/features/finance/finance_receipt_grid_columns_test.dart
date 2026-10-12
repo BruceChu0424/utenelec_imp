@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/data_display/uten_review_input_cell.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
@@ -8,6 +9,16 @@ import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
 
 class _Names extends Fake implements FinanceNameService {}
+
+class _ReviewNames extends Fake implements FinanceNameService {
+  @override
+  Map<String, String> get accountEntries => const {};
+  @override
+  String styleName(String? id, String category) => id ?? '';
+  @override
+  String department(String? id, {String? referencedName}) =>
+      referencedName ?? id ?? '';
+}
 
 Widget _app(WidgetBuilder builder) => MaterialApp(
   locale: const Locale('zh'),
@@ -17,6 +28,49 @@ Widget _app(WidgetBuilder builder) => MaterialApp(
 );
 
 void main() {
+  testWidgets(
+    'review amount cell retains its exact old value and clears the red line when restored',
+    (tester) async {
+      final row = FinanceGridRow(mode: ItemMode.settle)
+        ..amount.text = '90071992547409.123456';
+      final names = _ReviewNames();
+      final baseline = {
+        row: financeGridReviewValues(row, names, FinanceDocType.payment, null),
+      };
+      addTearDown(row.dispose);
+      await tester.pumpWidget(
+        _app((context) {
+          final columns = financeGridColumns(
+            ItemMode.settle,
+            context: context,
+            names: names,
+            type: FinanceDocType.payment,
+            reviewBaseline: baseline,
+          );
+          final amount = columns.singleWhere(
+            (column) => column.key == 'amount',
+          );
+          expect(amount.required, isTrue);
+          expect(amount.numeric, isTrue);
+          return amount.cellBuilder(context, row);
+        }),
+      );
+      final originalText = find.byKey(
+        ValueKey('finance-review-before-amount-${row.hashCode}'),
+      );
+      expect(originalText, findsNothing);
+      await tester.enterText(find.byType(TextField), '90071992547409.123457');
+      await tester.pump();
+      final old = tester.widget<Text>(originalText);
+      expect(old.data, '90071992547409.123456');
+      expect(old.style?.decoration, TextDecoration.lineThrough);
+      expect(find.byType(UtenReviewInputCell), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '90071992547409.123456');
+      await tester.pump();
+      expect(originalText, findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final expanded in [false, true]) {
     testWidgets(
       'receipt reconciliation=$expanded keeps conversion next to allocation',

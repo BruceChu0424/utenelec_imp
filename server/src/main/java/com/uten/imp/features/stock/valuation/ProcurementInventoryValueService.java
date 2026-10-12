@@ -95,6 +95,41 @@ public class ProcurementInventoryValueService implements ProcurementInventoryVal
                     (UUID)row.get("consideration_part_id"),takeOwner(current.owner(),id,(BigDecimal)row.get("base_qty"),id)));
         }
     }
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public CostWithdrawalPreview previewReceiptCostWithdrawal(String type,UUID receipt){
+        if(!"SUBCONTRACT".equals(type))throw conflict("专用材料成本释放只能核对原委外收货");
+        return subcontractMaterials.requireUnusedReceiptReversible(receipt);
+    }
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public String requireReceiptReversible(String type,UUID receipt){
+        var facts=new ArrayList<String>();
+        if("SUBCONTRACT".equals(type)){
+            Long stocked=db.queryForObject("SELECT COUNT(*) FROM procurement_iqc_stock_in_batch_items stock JOIN procurement_inspection_items inspection ON inspection.id=stock.inspection_item_id WHERE inspection.receipt_type='SUBCONTRACT' AND inspection.receipt_id=:id",Map.of("id",receipt),Long.class);
+            facts.add(stocked!=null&&stocked>0?subcontractMaterials.requireUnusedReceiptReversible(receipt).toString():subcontractMaterials.requireUnstoredReceiptReversible(receipt));
+        }
+        var parts=db.queryForList("SELECT id,base_qty FROM procurement_receipt_consideration_parts WHERE receipt_type=:type AND receipt_id=:id ORDER BY id",Map.of("type",type,"id",receipt));
+        if(parts.isEmpty())throw conflict("收货尚无准确的计款与成本来源");
+        for(var part:parts){
+            UUID id=(UUID)part.get("id");var root=positions.position(acquisition(id));facts.add(root.toString());
+            var qualities=db.queryForList("SELECT quality.id,event.action,quality.base_qty FROM procurement_iqc_quality_consideration_parts quality JOIN procurement_inspection_events event ON event.id=quality.inspection_event_id WHERE quality.consideration_part_id=:id ORDER BY quality.id",Map.of("id",id));
+            for(var quality:qualities){
+                UUID qualityId=(UUID)quality.get("id"),qualityRoot=result("PROCUREMENT_QUALITY",qualityId);
+                if(qualityRoot==null)throw conflict("品质切片尚无唯一的原成本位置");
+                var position=positions.position(qualityRoot);facts.add(position.toString());
+                Owner expected="PASS".equals(quality.get("action"))?Owner.QUALITY_PASSED:Owner.REJECTED_HOLD;
+                if(position.owner()!=expected || !qualityId.equals(position.ownerId()))throw conflict("品质成本切片已转入后续托管或损耗，请先反向后续事实");
+                // PASS stored slices are returned to this exact custody position by the checked original stock withdrawal.
+                BigDecimal total=(BigDecimal)quality.get("base_qty");
+                BigDecimal stored=db.queryForObject("SELECT COALESCE(SUM(base_qty),0) FROM procurement_iqc_stock_consideration_parts WHERE quality_part_id=:id AND fn_procurement_consideration_active('STOCK',id)",Map.of("id",qualityId),BigDecimal.class);
+                if(position.remainingQtyBase()==null||position.remainingQtyBase().add(stored).compareTo(total)!=0)
+                    throw conflict("原品质成本剩余与已入库切片不守恒，不能猜测反审数量");
+            }
+        }
+        return com.uten.imp.common.util.CanonicalFingerprint.sha256(facts);
+    }
+
     @Override public void receiptReversed(String type,UUID receipt,UUID actor){
         if("SUBCONTRACT".equals(type))subcontractMaterials.receiptReversed(receipt,actor);
         for(var row:db.queryForList("SELECT id,base_qty,billing_mode,funding_slice_id FROM procurement_receipt_consideration_parts WHERE receipt_type=:type AND receipt_id=:id ORDER BY id",Map.of("type",type,"id",receipt))){

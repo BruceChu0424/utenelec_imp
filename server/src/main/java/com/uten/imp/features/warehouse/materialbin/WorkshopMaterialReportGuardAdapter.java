@@ -41,8 +41,18 @@ public class WorkshopMaterialReportGuardAdapter implements WorkshopMaterialRepor
     }
 
     @Override
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=ApiException.class)
+    public void requireReversibleReadOnly(UUID reportId,LocalDate billDate,Collection<UUID> segmentIds) {
+        check(reportId,billDate,segmentIds,Operation.REVERSE,false);
+    }
+
+    @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void lockAndCheck(UUID reportId, LocalDate billDate, Collection<UUID> segmentIds, Operation op) {
+        check(reportId,billDate,segmentIds,op,true);
+    }
+
+    private void check(UUID reportId,LocalDate billDate,Collection<UUID> segmentIds,Operation op,boolean lock) {
         if (billDate == null || segmentIds == null || segmentIds.isEmpty()) return;
         List<UUID> segments = List.copyOf(new LinkedHashSet<>(segmentIds));
         List<Map<String, Object>> periods = db.queryForList("""
@@ -57,8 +67,7 @@ public class WorkshopMaterialReportGuardAdapter implements WorkshopMaterialRepor
                       AND candidate.start_date <= :billDate
                       AND (candidate.end_date IS NULL OR candidate.end_date >= :billDate))
                 ORDER BY period.id
-                FOR SHARE
-                """, new MapSqlParameterSource("segments", segments).addValue("billDate", billDate));
+                """+(lock?" FOR SHARE":""), new MapSqlParameterSource("segments", segments).addValue("billDate", billDate));
         for (Map<String, Object> period : periods) {
             if (!"CLOSED".equals(period.get("status"))) continue;
             LocalDate start = WorkshopMaterialBinSupport.date(period.get("start_date"));
@@ -70,9 +79,9 @@ public class WorkshopMaterialReportGuardAdapter implements WorkshopMaterialRepor
             }
             throw new ApiException(ErrorCode.CONFLICT, start + " 至 " + end
                     + " 的车间内料仓已经结算, 不能再改这期的报工。需要改的话请找有撤销结算权限的人 ("
-                    + reopeners() + ") 撤销后再改");
+                    + (lock?reopeners():"对应车间负责人") + ") 撤销后再改");
         }
-        if (op == Operation.APPROVE) {
+        if (lock && op == Operation.APPROVE) {
             WorkshopMaterialCloseRequester requester = closeRequests.getIfAvailable();
             UUID actor = currentUser.id().orElse(null);
             if (requester == null || actor == null) return;

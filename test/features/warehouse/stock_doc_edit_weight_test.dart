@@ -128,8 +128,8 @@ void main() {
     expect(body['warehouseId'], _warehouseId);
     final item = (body['items'] as List).cast<Map<String, dynamic>>().single;
     expect(item['goodsId'], _goodsId);
-    expect(item['qty'], 10); // 账面
-    expect(item['countQty'], 10); // 实盘
+    expect(item['qty'], '10'); // 账面
+    expect(item['countQty'], '10'); // 实盘
     expect(item['countWeight'], 0.02);
     expect(item['qtyFromWeight'], isTrue);
     expect(item.containsKey('weight'), isFalse);

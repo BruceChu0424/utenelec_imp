@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/finance_procurement_workflow.dart';
 
@@ -44,11 +45,100 @@ abstract interface class FinanceProcurementWorkflowRepository {
   );
 }
 
+abstract interface class FinanceProcurementReviewAmendmentRepository {
+  Future<FinanceProcurementApprovalReview> amendReview(
+    FinanceProcurementDecisionItem decision,
+    List<Map<String, dynamic>> lines,
+  );
+}
+
+abstract interface class FinanceProcurementExactApprovalRepository {
+  Future<void> approveOrdersAtExactRate(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+    String? exchangeRate,
+  });
+}
+
+extension ProcurementExactRateAccess on FinanceProcurementWorkflowRepository {
+  Future<void> approveOrdersWithExactRate(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+    String? exchangeRate,
+  }) {
+    final repository = this;
+    if (repository is FinanceProcurementExactApprovalRepository) {
+      return (repository as FinanceProcurementExactApprovalRepository)
+          .approveOrdersAtExactRate(
+            items,
+            remark: remark,
+            exchangeRate: exchangeRate,
+          );
+    }
+    // Older adapters remain compatible only when their numeric API can carry
+    // the exact decimal. Never silently degrade an unsupported exact input.
+    final number = exchangeRate == null ? null : double.tryParse(exchangeRate);
+    if (exchangeRate != null &&
+        (number == null ||
+            financeExactTrimmed(number.toString()) !=
+                financeExactTrimmed(exchangeRate))) {
+      throw UnsupportedError('当前连接不能无损提交此汇率，请重新连接后重试');
+    }
+    return repository.approveOrdersBatch(
+      items,
+      remark: remark,
+      exchangeRate: number,
+    );
+  }
+}
+
+extension ProcurementReviewAmendmentAccess
+    on FinanceProcurementWorkflowRepository {
+  Future<FinanceProcurementApprovalReview> amendReview(
+    FinanceProcurementDecisionItem decision,
+    List<Map<String, dynamic>> lines,
+  ) {
+    final repository = this;
+    if (repository is FinanceProcurementReviewAmendmentRepository) {
+      return (repository as FinanceProcurementReviewAmendmentRepository)
+          .amendReview(decision, lines);
+    }
+    throw UnsupportedError('当前连接不支持审核修改');
+  }
+}
+
 class DioFinanceProcurementWorkflowRepository
-    implements FinanceProcurementWorkflowRepository {
+    implements
+        FinanceProcurementWorkflowRepository,
+        FinanceProcurementReviewAmendmentRepository,
+        FinanceProcurementExactApprovalRepository {
   const DioFinanceProcurementWorkflowRepository(this.api);
 
   final ApiClient api;
+
+  @override
+  Future<void> approveOrdersAtExactRate(
+    List<FinanceProcurementDecisionItem> items, {
+    String? remark,
+    String? exchangeRate,
+  }) async {
+    final exactRate = financeExactTrimmed(exchangeRate);
+    final units = financeRateUnits(exactRate);
+    if (exchangeRate != null &&
+        (units == null ||
+            units <= BigInt.zero ||
+            units >= BigInt.from(10).pow(18))) {
+      throw const FormatException('汇率须大于 0，整数最多 12 位，小数最多 6 位');
+    }
+    await api.post(
+      ApiEndpoints.financeProcurementApprovalBatchApprove,
+      body: {
+        'items': [for (final item in items) item.toJson()],
+        if (remark?.trim().isNotEmpty == true) 'remark': remark!.trim(),
+        'exchangeRate': ?exactRate,
+      },
+    );
+  }
 
   @override
   Future<FinanceProcurementApprovalPage> approvalTasks({
@@ -112,6 +202,22 @@ class DioFinanceProcurementWorkflowRepository
       ApiEndpoints.financeProcurementApprovalReview(
         Uri.encodeComponent(caseId),
       ),
+    );
+    return FinanceProcurementApprovalReview.fromJson(json);
+  }
+
+  @override
+  Future<FinanceProcurementApprovalReview> amendReview(
+    FinanceProcurementDecisionItem decision,
+    List<Map<String, dynamic>> lines,
+  ) async {
+    final json = await api.post(
+      '${ApiEndpoints.financeProcurementApprovalTasks}/${Uri.encodeComponent(decision.caseId)}/amend',
+      body: {
+        'expectedVersion': decision.expectedVersion,
+        'expectedClaimId': decision.expectedClaimId,
+        'lines': lines,
+      },
     );
     return FinanceProcurementApprovalReview.fromJson(json);
   }

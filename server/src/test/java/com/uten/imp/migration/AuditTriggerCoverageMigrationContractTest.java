@@ -23,6 +23,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -61,7 +62,7 @@ class AuditTriggerCoverageMigrationContractTest {
             "(?s)fn_audit_track_table\\(t, 'FULL', '([a-z_]+)', (true|false)\\)\\s+FROM unnest\\(ARRAY\\[(.*?)]\\) AS t;");
     private static final Pattern SCOPED_CALL = Pattern.compile(
             "(?s)fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'COLUMN_SCOPED'\\s*,\\s*'([a-z_]+)'\\s*,\\s*(true|false)\\s*,\\s*"
-                    + "ARRAY\\s*\\[(.*?)]\\s*,\\s*(true|false)\\s*(?:,\\s*'([a-z_][a-z0-9_.]*\\(\\))')?\\s*\\);");
+                    + "ARRAY\\s*\\[(.*?)]\\s*,\\s*(true|false)\\s*(?:,\\s*(?:'([a-z_][a-z0-9_.]*\\(\\))'|(?i:NULL(?:\\s*::\\s*text)?)))?\\s*\\);");
     private static final Pattern REGISTRATION = Pattern.compile(
             "fn_audit_track_table\\(\\s*'([a-z_][a-z0-9_]*)'\\s*,\\s*'(FULL|COLUMN_SCOPED|NONE)'");
     private static final Pattern QUOTED = Pattern.compile("'([a-z_][a-z0-9_]*)'");
@@ -85,6 +86,8 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
     static final List<FullGroup> FULL = List.of(
+            new FullGroup("document_unapprovals", "data_change", false,
+                    "反审的原审核与后续草稿关系及原因是永久审计事实", Set.of("document_unapprovals")),
             new FullGroup("authorization", "authorization", false,
                     "账号、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值(角色四表已随 V677 删除)",
                     Set.of(
@@ -238,6 +241,10 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** COLUMN_SCOPED: 只审计人为决定的列; 派生列的变化不留行审计。 */
     static final List<ScopedTable> COLUMN_SCOPED = List.of(
+            new ScopedTable("platform_branding", "system", false,
+                    List.of("company_name", "company_aliases", "platform_name", "tagline", "primary_color", "secondary_color", "login_notice",
+                            "support_phone", "support_email", "website", "logo_sha256", "updated_by"),
+                    "V839: 公司平台品牌是人工系统决定；只审公开字段与 Logo 摘要，二进制图片不复制到审计；单行种子不挂新增/删除审计"),
             new ScopedTable("production_material_analyses", "data_change", true,
                     List.of("status", "cancelled_by", "cancelled_at", "cancellation_reason", "is_deleted", "deleted_at", "warehouse_id", "participating_warehouse_ids", "maker_id"),
                     "物料分析表头: 只记新建/删除与状态、取消、仓库、制单人这些人为决定, 版本号和指纹每次刷新都会变, 不记"),
@@ -427,6 +434,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "procurement_order_source_revision_allocations",
                         "procurement_order_source_revision_peg_changes",
                         "procurement_order_source_revisions",
+                        "purchase_request_qty_revisions",
                         "procurement_receipt_consideration_parts",
                         "production_daily_report_material_release_events",
                         "production_overproduction_rate_decisions", "production_actual_output_supplement_proofs",
@@ -780,6 +788,26 @@ class AuditTriggerCoverageMigrationContractTest {
             assertFalse(migration.path().getFileName().toString().contains("refresh_audit_trigger_coverage"),
                     "Full-table audit sweeps are retired by ADR-105");
         }
+    }
+
+    @Test
+    void scopedRegistrationParserPreservesGenericAuditForExplicitNullUpdateFunction() {
+        String registration = "fn_audit_track_table('scope_probe', 'COLUMN_SCOPED', 'system', false,"
+                + " ARRAY['decision'], false";
+        for (String optionalFunction : List.of("", ", NULL", ", NULL::text", ", null :: TEXT")) {
+            Matcher scoped = SCOPED_CALL.matcher(registration + optionalFunction + ");");
+            assertTrue(scoped.matches(), "generic audit registration must parse " + optionalFunction);
+            assertEquals("scope_probe", scoped.group(1));
+            assertEquals("system", scoped.group(2));
+            assertEquals("'decision'", scoped.group(4));
+            assertEquals("false", scoped.group(5));
+            assertNull(scoped.group(6), "SQL NULL must retain the generic audit function and its column arguments");
+        }
+        Matcher narrow = SCOPED_CALL.matcher(registration + ", 'public.fn_audit_route_columns()');");
+        assertTrue(narrow.matches());
+        assertEquals("public.fn_audit_route_columns()", narrow.group(6));
+        assertFalse(SCOPED_CALL.matcher(registration + ", NULL::integer);").matches(),
+                "unsupported function argument types must not silently become generic audit");
     }
 
     @Test

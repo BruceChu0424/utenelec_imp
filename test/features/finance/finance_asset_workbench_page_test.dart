@@ -427,12 +427,7 @@ void main() {
   // ────────────────────────────────────────────────────────────────────
 
   // TODO(follow-up): 2026-10-09 紧凑布局(筛选稳定槽+行区提示)在 360x900 双横幅
-  // 初始帧仍有 167px 溢出(滚动收起横幅后恢复)；重排紧凑骨架时恢复本用例。
-  testWidgets(
-    'compact: banners scroll away, tab pins, content scrolls, scroll-down restores',
-    (tester) async {},
-    skip: true,
-  );
+  // 初始帧仍有 167px 溢出(滚动收起横幅后恢复)；需重排紧凑骨架并补齐实际回归。
 
   testWidgets('wide: drag on empty table collapses banners and pins tab bar', (
     tester,

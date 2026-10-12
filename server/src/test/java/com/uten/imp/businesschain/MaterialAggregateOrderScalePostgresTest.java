@@ -51,10 +51,163 @@ class MaterialAggregateOrderScalePostgresTest {
     @MockitoSpyBean MaterialAnalysisService analysis;
     @Autowired AggregateMaterialOrderPreviewService preview;
     @Autowired AggregateMaterialOrderWriteService writer;
+    @Autowired MaterialAnalysisCommandService commands;
     FullChainEndToEndTest fixture;
     private Object spy(){return AopTestUtils.getUltimateTargetObject(analysis);}
     @BeforeEach void setup(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
     @AfterEach void cleanup(){SecurityContextHolder.clearContext();ProductionJdbcMeasurement.end();}
+
+    @RepeatedTest(3) void independentExternalGroupsShareRecalculationAndPreserveEverySource() throws Exception {
+        exerciseExternalBatch(Integer.getInteger("uten.material.external.size",30),false);
+    }
+
+    @Test void independentExternalPartialOrdersAppendToTheSameDocuments() throws Exception {
+        exerciseExternalBatch(3,true);
+    }
+
+    @Test void independentExternalGroupsAfterRootIssueStillShareRecalculation() throws Exception {
+        exerciseExternalBatch(8,false,true);
+    }
+
+    private void exerciseExternalBatch(int size,boolean partial) throws Exception {
+        exerciseExternalBatch(size,partial,false);
+    }
+
+    private void exerciseExternalBatch(int size,boolean partial,boolean issueRoots) throws Exception {
+        for(String route:List.of("BUY","SUBCONTRACT")) {
+            String tag="ma-external-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
+            List<UUID> materials=new ArrayList<>();
+            UUID raw=goods(world,"共同直属原料",false);
+            for(int index=0;index<size;index++) {
+                UUID material=goods(world,"独立外部物料"+index,false);materials.add(material);
+                db.update("UPDATE goods SET source_type=?,default_supplier_id=? WHERE id=?","BUY".equals(route)?"采购":"委外",world.supplierId(),material);
+                if("SUBCONTRACT".equals(route))fixture.insertBom(material,raw,"1");
+            }
+            List<PreviewItem> sources=new ArrayList<>();
+            for(int index=0;index<2;index++) {
+                UUID root=goods(world,"销售产品"+index,true);for(UUID material:materials)fixture.insertBom(root,material,"1");
+                UUID order=fixture.createApprovedOrder(world,root,"10","100");
+                UUID item=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
+                sources.add(new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,BusinessTime.today().plusDays(10),BigDecimal.TEN));
+            }
+            AnalysisView initial=analysis.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"external-analysis-"+UUID.randomUUID(),sources));
+            AnalysisView routed=analysis.saveRoutes(initial.analysisId(),new RouteRequest(initial.version(),initial.fingerprint(),"external-routes-"+UUID.randomUUID(),initial.flatMaterials().stream()
+                    .filter(row->materials.contains(row.goodsId())).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),route,null)).toList()));
+            AnalysisView before=issueRoots?issueRoots(routed,world):routed;
+            assertTrue(before.flatMaterials().stream().filter(row->materials.contains(row.goodsId())).allMatch(row->row.planAnchorAnalysisLineId()==null),
+                    "root plans do not turn unrelated external components into MAKE anchors");
+            Scenario scenario=new Scenario(world,before.analysisId(),raw,null,null,size,false,Map.of(),Map.of());
+            List<GroupInput> groups=materials.stream().map(material->group(scenario,before,material,route,new BigDecimal("20")))
+                    .map(input->!partial?input:new GroupInput(input.clientGroupKey(),input.materialLineIds(),route,BigDecimal.TEN,false,
+                            null,null,null,null,null,null,null,BigDecimal.ZERO,input.materialLineIds().stream()
+                            .collect(Collectors.toMap(id->id,id->new BigDecimal("5"))))).toList();
+            var request=new AggregateMaterialOrderContracts.PreviewRequest(before.version(),before.fingerprint(),"external-order-"+UUID.randomUUID(),world.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,groups);
+            var reviewed=preview.preview(scenario.analysisId(),request);
+            var command=new SubmitRequest(request.version(),request.fingerprint(),request.idempotencyKey(),request.warehouseId(),request.billDate(),request.deliveryDate(),true,groups,reviewed.previewFingerprint());
+            var ordered=measure(scenario,route+"-submit",()->writer.submit(scenario.analysisId(),command));
+            assertFalse(ordered.value().replayed());assertEquals(size,ordered.value().batches().size());
+            for(BatchResult batch:ordered.value().batches()) {
+                amount(partial?BigDecimal.TEN:new BigDecimal("20"),batch.qty());assertEquals(route,batch.route());assertEquals(2,batch.sources().size());
+                for(SourcePreview source:batch.sources())amount(partial?new BigDecimal("5"):BigDecimal.TEN,source.allocatedQty());
+            }
+            List<Map<String,Object>> facts=db.queryForList("SELECT id,action_id,analysis_material_id,allocated_qty FROM preplan_supply_action_allocations WHERE analysis_id=? ORDER BY id",scenario.analysisId());
+            assertEquals(size*2,facts.size());
+            var replayed=measure(scenario,route+"-replay",()->writer.submit(scenario.analysisId(),command));
+            assertTrue(replayed.value().replayed());
+            org.assertj.core.api.Assertions.assertThat(replayed.value().batches()).usingRecursiveComparison()
+                    .withComparatorForType(BigDecimal::compareTo,BigDecimal.class).isEqualTo(ordered.value().batches());
+            assertEquals(facts,db.queryForList("SELECT id,action_id,analysis_material_id,allocated_qty FROM preplan_supply_action_allocations WHERE analysis_id=? ORDER BY id",scenario.analysisId()));
+            if(!"before".equals(System.getProperty("uten.material.order.run"))) {
+                assertTrue(ordered.analysisCalls().getOrDefault("refreshLocked/2",0L)<=3,"external sibling refresh count "+ordered.analysisCalls());
+                assertTrue(ordered.analysisCalls().getOrDefault("detailInternal/2",0L)<=3,"external sibling detail count "+ordered.analysisCalls());
+            }
+            if(partial) {
+                AnalysisView remaining=ordered.value().analysis();
+                var nextRequest=new AggregateMaterialOrderContracts.PreviewRequest(remaining.version(),remaining.fingerprint(),"external-append-"+UUID.randomUUID(),world.warehouseId(),request.billDate(),request.deliveryDate(),true,groups);
+                var nextReviewed=preview.preview(scenario.analysisId(),nextRequest);
+                var nextCommand=new SubmitRequest(nextRequest.version(),nextRequest.fingerprint(),nextRequest.idempotencyKey(),nextRequest.warehouseId(),nextRequest.billDate(),nextRequest.deliveryDate(),true,groups,nextReviewed.previewFingerprint());
+                var appended=measure(scenario,route+"-append",()->writer.submit(scenario.analysisId(),nextCommand));
+                assertEquals(ordered.value().batches().stream().map(BatchResult::batchId).toList(),appended.value().batches().stream().map(BatchResult::batchId).toList());
+                assertEquals(ordered.value().batches().stream().map(BatchResult::documentId).toList(),appended.value().batches().stream().map(BatchResult::documentId).toList());
+                List<BigDecimal> allocated=db.queryForList("SELECT allocated_qty FROM preplan_supply_action_allocations WHERE analysis_id=?",BigDecimal.class,scenario.analysisId());
+                assertEquals(size*2,allocated.size());allocated.forEach(qty->amount(BigDecimal.TEN,qty));
+                assertTrue(appended.analysisCalls().getOrDefault("refreshLocked/2",0L)<=3,"append sibling refresh count "+appended.analysisCalls());
+                assertTrue(writer.submit(scenario.analysisId(),nextCommand).replayed());
+                List<GroupInput> publicGroups=groups.stream().map(input->new GroupInput(input.clientGroupKey(),input.materialLineIds(),route,
+                        new BigDecimal("2"),true,null,null,null,null,null,null,null,BigDecimal.ZERO,
+                        input.materialLineIds().stream().collect(Collectors.toMap(id->id,id->BigDecimal.ONE)))).toList();
+                AnalysisView fulfilled=appended.value().analysis();
+                var publicRequest=new AggregateMaterialOrderContracts.PreviewRequest(fulfilled.version(),fulfilled.fingerprint(),"external-public-"+UUID.randomUUID(),world.warehouseId(),request.billDate(),request.deliveryDate(),true,publicGroups);
+                var publicReviewed=preview.preview(scenario.analysisId(),publicRequest);
+                var publicCommand=new SubmitRequest(publicRequest.version(),publicRequest.fingerprint(),publicRequest.idempotencyKey(),world.warehouseId(),request.billDate(),request.deliveryDate(),true,publicGroups,publicReviewed.previewFingerprint());
+                var extra=writer.submit(scenario.analysisId(),publicCommand);
+                assertEquals(ordered.value().batches().stream().map(BatchResult::documentId).toList(),extra.batches().stream().map(BatchResult::documentId).toList());
+                extra.batches().forEach(batch->{amount(new BigDecimal("2"),batch.publicExtraQty());amount(new BigDecimal("2"),batch.qty());});
+                amount(BigDecimal.valueOf(size*20L),db.queryForObject("SELECT sum(requested_qty) FROM preplan_supply_actions WHERE analysis_id=? AND route=?",BigDecimal.class,scenario.analysisId(),route));
+                amount(BigDecimal.valueOf(size*2L),db.queryForObject("SELECT sum(public_surplus_qty) FROM preplan_supply_actions WHERE analysis_id=? AND route=?",BigDecimal.class,scenario.analysisId(),route));
+                assertTrue(writer.submit(scenario.analysisId(),publicCommand).replayed());
+            }
+        }
+    }
+
+    private AnalysisView issueRoots(AnalysisView view,FullChainEndToEndTest.World world) {
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","external-roots-"+UUID.randomUUID());
+        UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+        List<IssueWorkshopPlansRequest.IssuePlanLine> lines=view.products().stream().filter(product->"SALES_ORDER_ITEM".equals(product.sourceType()))
+                .map(product->new IssueWorkshopPlansRequest.IssuePlanLine(null,product.analysisLineId(),BigDecimal.TEN,
+                        BusinessTime.today(),BusinessTime.today().plusDays(10),workshop,null,worker,null,null,false,BigDecimal.ZERO)).toList();
+        assertEquals(2,lines.size());
+        return commands.issueWorkshopPlans(view.analysisId(),new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),
+                "external-roots-"+UUID.randomUUID(),world.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,lines)).analysis();
+    }
+
+    @Test void externalChildrenOfSharedMakeBatchKeepOriginalIntentAndBatchTheRefresh() throws Exception {
+        for(String route:List.of("BUY","SUBCONTRACT")) {
+            String tag="external-alias-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
+            Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);
+            UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+            UUID parent=goods(world,"共享制造父件",true),raw=goods(world,"委外直属原料",false);
+            List<UUID> materials=new ArrayList<>();
+            for(int index=0;index<8;index++) {
+                UUID material=goods(world,"共享制造外部子件"+index,false);materials.add(material);
+                db.update("UPDATE goods SET source_type=?,default_supplier_id=? WHERE id=?","BUY".equals(route)?"采购":"委外",world.supplierId(),material);
+                fixture.insertBom(parent,material,"1");if("SUBCONTRACT".equals(route))fixture.insertBom(material,raw,"1");
+            }
+            List<PreviewItem> sources=new ArrayList<>();
+            for(int index=0;index<2;index++) {
+                UUID root=goods(world,"外层产品"+index,true);fixture.insertBom(root,parent,"1");
+                UUID order=fixture.createApprovedOrder(world,root,"10","100");
+                UUID item=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
+                sources.add(new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,BusinessTime.today().plusDays(10),BigDecimal.TEN));
+            }
+            AnalysisView initial=analysis.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),tag,sources));
+            AnalysisView routed=analysis.saveRoutes(initial.analysisId(),new RouteRequest(initial.version(),initial.fingerprint(),"alias-routes-"+UUID.randomUUID(),initial.flatMaterials().stream()
+                    .filter(row->materials.contains(row.goodsId())||parent.equals(row.goodsId()))
+                    .map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),parent.equals(row.goodsId())?"MAKE":route,null)).toList()));
+            Scenario scenario=new Scenario(world,routed.analysisId(),raw,workshop,worker,8,false,Map.of(),Map.of());
+            List<GroupInput> external=materials.stream().map(material->group(scenario,routed,material,route,new BigDecimal("20"))).toList();
+            GroupInput make=group(scenario,routed,parent,"MAKE",new BigDecimal("20"));
+            var parentRequest=new AggregateMaterialOrderContracts.PreviewRequest(routed.version(),routed.fingerprint(),"alias-parent-"+UUID.randomUUID(),world.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,List.of(make));
+            var parentPreview=preview.preview(scenario.analysisId(),parentRequest);
+            AnalysisView current=writer.submit(scenario.analysisId(),new SubmitRequest(parentRequest.version(),parentRequest.fingerprint(),parentRequest.idempotencyKey(),world.warehouseId(),parentRequest.billDate(),parentRequest.deliveryDate(),true,List.of(make),parentPreview.previewFingerprint())).analysis();
+            var request=new AggregateMaterialOrderContracts.PreviewRequest(current.version(),current.fingerprint(),"alias-external-"+UUID.randomUUID(),world.warehouseId(),parentRequest.billDate(),parentRequest.deliveryDate(),true,external);
+            var reviewed=preview.preview(scenario.analysisId(),request);
+            assertTrue(reviewed.groups().stream().allMatch(group->group.sources().size()==1),"two originals resolve to each shared batch child");
+            var command=new SubmitRequest(request.version(),request.fingerprint(),request.idempotencyKey(),world.warehouseId(),request.billDate(),request.deliveryDate(),true,external,reviewed.previewFingerprint());
+            var ordered=measure(scenario,route+"-shared-make-children",()->writer.submit(scenario.analysisId(),command));
+            assertEquals(8,ordered.value().batches().size());
+            for(BatchResult batch:ordered.value().batches()) {
+                amount(new BigDecimal("20"),batch.qty());assertEquals(1,batch.sources().size());
+                amount(new BigDecimal("20"),batch.sources().getFirst().allocatedQty());
+                assertEquals(2,batch.sources().getFirst().originalMaterialLineIds().size());
+            }
+            Map<UUID,MaterialView> after=ordered.value().analysis().flatMaterials().stream().collect(Collectors.toMap(MaterialView::materialLineId,row->row));
+            for(GroupInput input:external)for(UUID original:input.materialLineIds())amount(BigDecimal.TEN,after.get(original).aggregatePreparation().orderedQty());
+            assertTrue(ordered.analysisCalls().getOrDefault("refreshLocked/2",0L)<=3,"shared children still refreshed per group: "+ordered.analysisCalls());
+            assertTrue(ordered.analysisCalls().getOrDefault("detailInternal/2",0L)<=3,"shared children still read details per group: "+ordered.analysisCalls());
+            assertTrue(writer.submit(scenario.analysisId(),command).replayed());
+        }
+    }
 
     @Test void independentAndDependentGroupsConserveRealOrdersAtConfiguredScales() throws Exception {
         List<Integer> scales=Arrays.stream(System.getProperty("uten.material.order.sizes","10").split(","))
@@ -155,6 +308,7 @@ class MaterialAggregateOrderScalePostgresTest {
         record.put("writerClassSha256",classHash(AggregateMaterialOrderWriteService.class));record.put("analysisClassSha256",classHash(MaterialAnalysisService.class));record.put("sql",sql.result());
         Map<String,String> dependencies=new TreeMap<>();
         for(String name:List.of("com.uten.imp.features.production.analysis.MaterialAnalysisCommandService",
+                "com.uten.imp.features.production.analysis.AggregateExternalOrderCohort",
                 "com.uten.imp.features.production.plan.ProductionPlanService",
                 "com.uten.imp.features.production.mrp.ProductionPlanningPackageService",
                 "com.uten.imp.features.production.mrp.ProductionExecutionPackageCommandService",

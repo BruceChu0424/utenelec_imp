@@ -58,7 +58,13 @@ public class ProductionPlatformColumnResources {
                 List.of(new FactDefinition("qty", "数量", false), new FactDefinition("goodQty", "良品数量", false),
                         new FactDefinition("oqty", "订货数量", false),
                         new FactDefinition("defectQty", "不良数量", false), new FactDefinition("weight", "重量(kg)", false)))
-                .documentCreateAuthorities(Set.of(permission + ":create"));
+                .documentCreateAuthorities(Set.of(permission + ":create"))
+                .reviewedSaveAuthorities(Set.of(permission + ":approve"), (id, header) -> {
+                    if (!DocumentPlatformColumnAdapter.draft(header)) return false;
+                    com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, current,
+                            DocumentPlatformColumnAdapter.uuid(header, "makerId"), permission);
+                    return true;
+                });
     }
 
     /** Fixed registrations only. Both old existing rows and permanently retired rows keep their exact parent. */

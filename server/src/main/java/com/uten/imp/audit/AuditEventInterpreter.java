@@ -852,6 +852,7 @@ public class AuditEventInterpreter {
         values.put("/api/admin/audit-logs", "系统管理 · 审计中心");
         values.put("/api/admin/audit-sessions", "系统管理 · 登录会话审计");
         values.put("/api/admin/system-settings", "系统管理 · 系统设置");
+        values.put("/api/admin/platform-settings", "系统管理 · 平台设置");
         values.put("/api/admin/ai", "系统管理 · AI 服务");
         values.put("/api/ai", "AI 识别");
         values.put("/api/admin/departments", "系统管理 · 部门权限");
@@ -999,6 +1000,7 @@ public class AuditEventInterpreter {
         values.put("task_claims", "任务");
         values.put("hr_task_claims", "HR任务");
         values.put("system_settings", "系统设置");
+        values.put("platform_branding", "平台品牌");
         values.put("audit_retention", "审计留存数据");
         values.put("audit_log", "审计日志");
         values.put("audit_session", "登录会话审计");
@@ -1250,6 +1252,7 @@ public class AuditEventInterpreter {
         values.put("ar_ap_ledger", "应收应付台账");
         values.put("ar_ap_source_refs", "应收应付来源引用");
         values.put("finance_receipts", "收款单");
+        values.put("document_unapprovals", "单据反审记录");
         values.put("finance_receipt_lines", "收款单明细");
         values.put("finance_receipt_source_allocations", "收款单来源核销");
         values.put("finance_payments", "付款单");
@@ -1301,6 +1304,7 @@ public class AuditEventInterpreter {
         values.put("/api/admin/permissions", "权限配置");
         values.put("/api/admin/users", "用户账号");
         values.put("/api/admin/system-settings", "系统设置");
+        values.put("/api/admin/platform-settings", "平台设置");
         values.put("/api/admin/ai", "AI 服务配置");
         values.put("/api/ai/jobs", "AI 识别任务");
         values.put("/api/system-settings", "系统设置");
@@ -1627,6 +1631,18 @@ public class AuditEventInterpreter {
         reconcileApplies.put("started_at", "开始时间");
         reconcileApplies.put("finished_at", "结束时间");
         Map<String, Map<String, String>> values = new LinkedHashMap<>();
+        values.put("document_unapprovals", Map.ofEntries(
+                Map.entry("family", "单据类别"), Map.entry("original_id", "反审前单据"),
+                Map.entry("draft_id", "后续单据"), Map.entry("draft_bill_no", "后续单号"),
+                Map.entry("reason", "反审原因"), Map.entry("line_id_map", "前后明细关联"),
+                Map.entry("request_key", "提交编号")));
+        values.put("platform_branding", Map.ofEntries(
+                Map.entry("company_name", "公司名称"), Map.entry("company_aliases", "公司英文名与简称"), Map.entry("platform_name", "平台名称"),
+                Map.entry("tagline", "品牌标语"), Map.entry("primary_color", "主题色"),
+                Map.entry("secondary_color", "副主题色"), Map.entry("login_notice", "登录提示"),
+                Map.entry("support_phone", "联系电话"), Map.entry("support_email", "联系邮箱"),
+                Map.entry("website", "公司网站"), Map.entry("logo_sha256", "Logo 摘要"),
+                Map.entry("updated_by", "修改人")));
         values.put("goods_bom_items", Collections.unmodifiableMap(bom));
         values.put("employee_reconcile_plans", Collections.unmodifiableMap(reconcilePlans));
         values.put("employee_reconcile_plan_rows", Collections.unmodifiableMap(reconcileRows));

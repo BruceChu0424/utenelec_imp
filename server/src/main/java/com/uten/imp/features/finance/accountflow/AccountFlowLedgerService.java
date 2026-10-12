@@ -261,62 +261,8 @@ public class AccountFlowLedgerService {
                         + normalizedType + ":" + sourceId)
                 .getSingleResult();
 
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT reconciliation.id,
-                       reconciliation.bill_no,
-                       reconciliation.account_id,
-                       reconciliation.check_no,
-                       reconciliation.counterpart_name,
-                       reconciliation.in_amount,
-                       reconciliation.out_amount,
-                       reconciliation.source_remark,
-                       reconciliation.remark,
-                       reconciliation.legacy_bstyle,
-                       reconciliation.account_currency_id,
-                       reconciliation.amount_local,
-                       reconciliation.entry_kind,
-                       reconciliation.reversal_of_id
-                FROM finance_reconciliations reconciliation
-                WHERE reconciliation.source_doc_type=:sourceType
-                  AND reconciliation.source_doc_id=:sourceId
-                  AND COALESCE(reconciliation.is_deleted,FALSE)=FALSE
-                  AND reconciliation.entry_kind IN ('POSTING','REVERSAL')
-                ORDER BY reconciliation.account_id NULLS LAST,
-                         reconciliation.id
-                FOR UPDATE
-                """)
-                .setParameter("sourceType", normalizedType)
-                .setParameter("sourceId", sourceId));
-
-        List<Posting> postings = rows.stream()
-                .filter(row -> POSTING.equals(NativeValueConverters.text(row[12])))
-                .map(this::posting)
-                .toList();
-        long reversalCount = rows.stream()
-                .filter(row -> REVERSAL.equals(NativeValueConverters.text(row[12])))
-                .count();
-        if (postings.isEmpty()) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "账户流水原始入账缺失，禁止红冲：" + normalizedType + "/" + sourceId);
-        }
-        if (reversalCount != 0) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "账户流水已经存在反向分录，禁止重复红冲："
-                            + normalizedType + "/" + sourceId);
-        }
-
-        Set<UUID> accountIds = new HashSet<>();
-        for (Posting posting : postings) {
-            if (posting.accountId() == null || !accountIds.add(posting.accountId())) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT,
-                        "账户流水原始入账账户缺失或重复，禁止自动红冲："
-                                + normalizedType + "/" + sourceId);
-            }
-            requireOneSided(posting);
-        }
+        List<Posting> postings=checkedReversalPostings(reversalRows(normalizedType,sourceId,true),normalizedType,sourceId);
+        requireReversalAccountsEnabled(postings);
 
         // 余额按原始流水逐笔反向: 收入流水冲回 receipts_total, 支出流水冲回 payments_total。
         // 账户须仍启用(与正向过账、流水插入守卫同一口径)。
@@ -386,6 +332,84 @@ public class AccountFlowLedgerService {
             appended += inserted;
         }
         return appended;
+    }
+
+    /** Pure preflight; final reversal locks the same source rows and applies the same validation. */
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true, noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
+    public void requireReversible(String sourceType,UUID sourceId) {
+        String normalizedType=normalizeSourceType(sourceType);
+        if(sourceId==null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"账户流水反审缺少来源单据");
+        List<Posting> postings=checkedReversalPostings(reversalRows(normalizedType,sourceId,false),normalizedType,sourceId);
+        requireReversalAccountsEnabled(postings);
+    }
+
+    private List<Object[]> reversalRows(String normalizedType,UUID sourceId,boolean lock) {
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT reconciliation.id,
+                       reconciliation.bill_no,
+                       reconciliation.account_id,
+                       reconciliation.check_no,
+                       reconciliation.counterpart_name,
+                       reconciliation.in_amount,
+                       reconciliation.out_amount,
+                       reconciliation.source_remark,
+                       reconciliation.remark,
+                       reconciliation.legacy_bstyle,
+                       reconciliation.account_currency_id,
+                       reconciliation.amount_local,
+                       reconciliation.entry_kind,
+                       reconciliation.reversal_of_id
+                FROM finance_reconciliations reconciliation
+                WHERE reconciliation.source_doc_type=:sourceType
+                  AND reconciliation.source_doc_id=:sourceId
+                  AND COALESCE(reconciliation.is_deleted,FALSE)=FALSE
+                  AND reconciliation.entry_kind IN ('POSTING','REVERSAL')
+                ORDER BY reconciliation.account_id NULLS LAST,
+                         reconciliation.id
+                """ + (lock ? " FOR UPDATE" : ""))
+                .setParameter("sourceType", normalizedType)
+                .setParameter("sourceId", sourceId));
+
+    }
+
+    private List<Posting> checkedReversalPostings(List<Object[]> rows,String normalizedType,UUID sourceId) {
+        List<Posting> postings = rows.stream()
+                .filter(row -> POSTING.equals(NativeValueConverters.text(row[12])))
+                .map(this::posting)
+                .toList();
+        long reversalCount = rows.stream()
+                .filter(row -> REVERSAL.equals(NativeValueConverters.text(row[12])))
+                .count();
+        if (postings.isEmpty()) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "账户流水原始入账缺失，禁止红冲：" + normalizedType + "/" + sourceId);
+        }
+        if (reversalCount != 0) {
+            throw new ApiException(
+                    ErrorCode.CONFLICT,
+                    "账户流水已经存在反向分录，禁止重复红冲："
+                            + normalizedType + "/" + sourceId);
+        }
+
+        Set<UUID> accountIds = new HashSet<>();
+        for (Posting posting : postings) {
+            if (posting.accountId() == null || !accountIds.add(posting.accountId())) {
+                throw new ApiException(
+                        ErrorCode.CONFLICT,
+                        "账户流水原始入账账户缺失或重复，禁止自动红冲："
+                                + normalizedType + "/" + sourceId);
+            }
+            requireOneSided(posting);
+        }
+
+        return postings;
+    }
+
+    private void requireReversalAccountsEnabled(List<Posting> postings) {
+        long active=((Number)em.createNativeQuery("SELECT COUNT(*) FROM accounts WHERE id IN (:ids) AND status='使用' AND NOT is_deleted")
+                .setParameter("ids",postings.stream().map(Posting::accountId).toList()).getSingleResult()).longValue();
+        if(active!=postings.size())throw new ApiException(ErrorCode.CONFLICT,"反审涉及的资金账户不存在或已停用，请先启用账户");
     }
 
     private Posting posting(Object[] row) {

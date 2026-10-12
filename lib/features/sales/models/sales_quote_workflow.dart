@@ -22,7 +22,6 @@ enum SalesQuoteAction {
   customerConfirm('customerConfirm'),
   cancel('cancel'),
   requote('requote'),
-  reverse('reverse'),
   financeReview('financeReview');
 
   const SalesQuoteAction(this.code);

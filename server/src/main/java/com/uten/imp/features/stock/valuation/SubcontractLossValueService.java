@@ -40,7 +40,25 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
         }
     }
 
+    @Override
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public void requireWasteReversalAvailable(UUID waste) {
+        for(var row:lines(waste)) {
+            UUID item=(UUID)row.get("id"),issue=(UUID)row.get("material_issue_item_id");
+            BigDecimal qty=(BigDecimal)row.get("qty_base"),normal=(BigDecimal)row.get("normal_base"),excess=qty.subtract(normal);
+            if(normal.signum()>0 && result("SUBCONTRACT_NORMAL_LOSS_REVERSE",item)==null) {
+                UUID root=requiredResult("SUBCONTRACT_NORMAL_LOSS",item);
+                positions.requireReturnConsumedAvailable(positions.position(root).pool(),root,normal,Owner.SUBCONTRACT_WIP,issue);
+            }
+            if(excess.signum()>0 && result("SUBCONTRACT_EXCESS_LOSS_REVERSE",item)==null) {
+                UUID root=requiredResult("SUBCONTRACT_EXCESS_LOSS",item);
+                positions.requireMoveSourcesAvailable(positions.position(root).pool(),Owner.SUBCONTRACT_WIP,issue,List.of(new Slice(root,excess,item)));
+            }
+        }
+    }
+
     @Override public void wasteRecorded(UUID waste,UUID actor,boolean reversal){
+        if(reversal)requireWasteReversalAvailable(waste);
         var lines=lines(waste);List<InventoryKey> keys=new ArrayList<>();
         lines.forEach(row->{keys.add(new InventoryKey((UUID)row.get("goods_id"),(UUID)row.get("color_id")));
             keys.add(new InventoryKey((UUID)row.get("product_goods_id"),(UUID)row.get("product_color_id")));});mutex.lockAll(keys);

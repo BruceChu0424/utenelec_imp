@@ -377,7 +377,7 @@ class _DetailContent extends ConsumerWidget {
                 slip.netIncome.toStringAsFixed(2),
                 style: theme.textTheme.displayMedium?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: UtenColors.primary,
+                  color: theme.colorScheme.primary,
                   height: 1,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),

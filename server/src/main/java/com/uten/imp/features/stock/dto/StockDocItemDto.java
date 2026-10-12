@@ -67,4 +67,14 @@ public class StockDocItemDto {
     private BigDecimal issuedWeightKg;
     /** 已出库重量里含按库存均重或单重估算的部分(显示「≈」)。 */
     private boolean issuedWeightEstimated;
+
+    /** Lossless JSON companions; existing numeric fields and constructor remain compatible. */
+    public String getQtyExact() { return qty == null ? null : qty.toPlainString(); }
+    public String getCountQtyExact() { return countQty == null ? null : countQty.toPlainString(); }
+    public String getSurplusQtyExact() { return surplusQty == null ? null : surplusQty.toPlainString(); }
+    public String getUnitRateExact() { return unitRate == null ? null : unitRate.toPlainString(); }
+    public String getIssuedQtyExact() { return issuedQty == null ? null : issuedQty.toPlainString(); }
+    public String getRequestedQtyExact() { return requestedQty == null ? null : requestedQty.toPlainString(); }
+    public String getReportedQtyExact() { return reportedQty == null ? null : reportedQty.toPlainString(); }
+    public String getBaseQtyExact() { return baseQty == null ? null : baseQty.toPlainString(); }
 }

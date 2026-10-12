@@ -69,6 +69,9 @@ public class SubcontractMaterialIssueService {
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
 
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.SubcontractMaterialReversalValuePort reversalValue;
+
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
@@ -201,7 +204,7 @@ public class SubcontractMaterialIssueService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public MaterialIssueDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -505,6 +508,47 @@ public class SubcontractMaterialIssueService {
         }
     }
 
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('subcontract_material_issue:view') and hasAuthority('subcontract_material_issue:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);
+        SubcontractMaterialIssue value=requireIssue(id);
+        List<SubcontractMaterialIssueItem> items=itemRepo.findByIssueIdOrderByLineNoAsc(id);
+        String facts=com.uten.imp.common.review.SubcontractMaterialReversalFacts.read(em,"ISSUE",id);
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("subcontractMaterialIssue",facts,()->{
+            requireIssueReversible(value,items);
+            requireReturnCapacity(com.uten.imp.features.subcontract.receipt.SubcontractReturnCapacity
+                .readAfterIssueWithdrawal(em,items.stream().map(SubcontractMaterialIssueItem::getOrderItemId)
+                    .filter(Objects::nonNull).distinct().toList(),id));
+            requireOriginalSupplierPositions(items);
+            if(reversalValue==null)throw new ApiException(ErrorCode.CONFLICT,"当前无法核对委外原材料价值位置");
+            reversalValue.requireIssueReversible(id);
+        });
+    }
+
+    private void requireIssueReversible(SubcontractMaterialIssue issue,List<SubcontractMaterialIssueItem> items) {
+        requireIssueWritable(issue,"subcontract_material_issue:reverse");
+        if(issue.getStatus()==null || issue.getStatus()!=STATUS_APPROVED)
+            throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+        if(items.stream().anyMatch(it->positive(it.getReturnedQty())||positive(it.getWastedQty())||positive(it.getConsumedQty())))
+            throw new ApiException(ErrorCode.CONFLICT,"委外发料已有退料、损耗或回厂消费，请先撤回下游单据");
+    }
+
+    private void requireOriginalSupplierPositions(List<SubcontractMaterialIssueItem> items) {
+        for(var item:items) {
+            BigDecimal remaining=(BigDecimal)em.createNativeQuery("""
+                SELECT COALESCE(SUM(head.range_to-head.range_from),0)
+                FROM stock_value_nodes root JOIN stock_value_nodes head ON head.id=root.return_head_id
+                JOIN stock_value_pools pool ON pool.id=head.pool_id
+                WHERE root.root_issue_id=root.id AND head.owner_kind='SUBCONTRACT_WIP' AND head.owner_id=:id
+                  AND head.active AND head.range_to>head.range_from AND pool.goods_id=:goods
+                  AND pool.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                """).setParameter("id",item.getId()).setParameter("goods",item.getGoodsId()).setParameter("color",item.getColorId()).getSingleResult();
+            if(remaining.compareTo(baseQty(item))<0)
+                throw new ApiException(ErrorCode.CONFLICT,"原委外材料价值位置不足，请先完成同源消费或转移的反向处理");
+        }
+    }
+
     /**
      * 红冲：1→-1。反向 DIR_IN + 计划行已发净量对称回减；已有退料/损耗/回厂核销的发料行先红冲下游。
      * 红冲后委外商处物料可做成的套数必须仍覆盖已审核与草稿回厂(ADR-143 §三.6)。
@@ -515,17 +559,9 @@ public class SubcontractMaterialIssueService {
         tx.bind();
         var mutationGuard=mutationLocks.materialIssue(id);
         SubcontractMaterialIssue r = requireIssueForUpdate(id);
-        requireIssueWritable(r, "subcontract_material_issue:reverse");
         mutationGuard.verifyUnchanged();
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
         List<SubcontractMaterialIssueItem> items = itemRepo.findByIssueIdOrderByLineNoAsc(id);
-        if (items.stream().anyMatch(it ->
-                positive(it.getReturnedQty()) || positive(it.getWastedQty())
-                        || positive(it.getConsumedQty()))) {
-            throw new ApiException(ErrorCode.BUSINESS, "委外发料已有退料/损耗/回厂消费记录，请先红冲下游单据");
-        }
+        requireIssueReversible(r,items);
         // 与回厂草稿保存/审核共用订货明细行锁，先于库存锁取得。
         List<UUID> orderItemIds = items.stream()
                 .map(SubcontractMaterialIssueItem::getOrderItemId)
@@ -534,6 +570,9 @@ public class SubcontractMaterialIssueService {
                 .sorted()
                 .toList();
         lockOrderItems(orderItemIds);
+        requireReturnCapacity(com.uten.imp.features.subcontract.receipt.SubcontractReturnCapacity
+            .readAfterIssueWithdrawal(em,orderItemIds,id));
+        requireOriginalSupplierPositions(items);
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
@@ -578,15 +617,13 @@ public class SubcontractMaterialIssueService {
      * 仍须覆盖已审核与草稿回厂(与回厂草稿保存/审核同一段 SQL)；有其它批次足额覆盖时不阻断。
      */
     private void requireReturnCapacityAfterReverse(List<UUID> orderItemIds) {
-        for (com.uten.imp.features.subcontract.receipt.SubcontractReturnCapacity.Facts facts
-                : com.uten.imp.features.subcontract.receipt.SubcontractReturnCapacity
-                        .lockAndRead(em, orderItemIds, null).values()) {
-            if (facts.approvedReceiptBase().add(facts.activeDraftBase())
-                    .compareTo(facts.authorizedBase()) > 0) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT,
-                        "红冲后委外商处物料能做出来的数量不够覆盖已审核或草稿回厂，请先处理下游回厂单");
-            }
+        requireReturnCapacity(com.uten.imp.features.subcontract.receipt.SubcontractReturnCapacity.lockAndRead(em,orderItemIds,null));
+    }
+
+    private void requireReturnCapacity(Map<UUID,com.uten.imp.features.subcontract.receipt.SubcontractReturnCapacity.Facts> capacity) {
+        for(var facts:capacity.values()) {
+            if(facts.approvedReceiptBase().add(facts.activeDraftBase()).compareTo(facts.authorizedBase())>0)
+                throw new ApiException(ErrorCode.CONFLICT,"撤回发料后物料不足以覆盖已审核或草稿回厂，请先处理下游回厂单");
         }
     }
 

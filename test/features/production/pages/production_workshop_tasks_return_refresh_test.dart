@@ -460,12 +460,22 @@ void main() {
 
         if (claim < 8000) {
           await openTaskDetail();
+          final remaining = find.byKey(
+            const ValueKey('workshop-detail-quantity-remaining'),
+          );
           expect(
-            find.textContaining('待报数量（含品质恢复）：$expectedRemaining'),
+            find.descendant(of: remaining, matching: find.text('待报工')),
             findsOneWidget,
           );
           expect(
-            find.textContaining('报工草稿待审核 ${claim.toStringAsFixed(0)}'),
+            find.descendant(
+              of: remaining,
+              matching: find.text('$expectedRemaining 件'),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text('草稿待审核 ${claim.toStringAsFixed(0)} 件'),
             findsOneWidget,
           );
           await tester.tap(find.text('关闭'));
@@ -486,7 +496,15 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('批量报工(1)'), findsOneWidget, reason: '草稿删除后待办必须恢复');
         await openTaskDetail();
-        expect(find.textContaining('待报数量（含品质恢复）：8000'), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey('workshop-detail-quantity-remaining'),
+            ),
+            matching: find.text('8000 件'),
+          ),
+          findsOneWidget,
+        );
         await tester.tap(find.text('关闭'));
         await tester.pumpAndSettle();
         await selectFilterSegment(tester, '草稿');

@@ -53,7 +53,15 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
         // 2026-10-09(ADR-063 追加修订): allEligible 是通知接收池, 按「真实授出权限」解析——
         // 超管的全量目录码是操作授权面, 不是任务归属; findEligible/eligibleReviewers* 是操作与
         // 指派资格, 继续按 permsOf(超管可操作/可被指派)。
-        return eligibleRows(null).stream()
+        List<EligibleReviewer> candidates = eligibleRows(null);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            Set<UUID> eligible = Set.copyOf(permissionResolver.usersGrantedAllAndAny(
+                    candidates.stream().map(EligibleReviewer::userId).toList(),
+                    Set.of(VIEW_PERMISSION), REVIEW_PERMISSIONS));
+            return candidates.stream().filter(row -> eligible.contains(row.userId()))
+                    .map(row -> new EligibleFinanceReviewer(row.userId(),row.employeeId(),row.employeeName())).toList();
+        }
+        return candidates.stream()
                 .filter(row -> userRepo.findById(row.userId())
                         .map(this::hasAnyGrantedReviewAction).orElse(false))
                 .map(row -> new EligibleFinanceReviewer(

@@ -227,6 +227,26 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     }
 
     @Override
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public void requireWasteReversibleReadOnly(UUID wasteId) {
+        List<UUID> suppliers=NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT supplier_id FROM subcontract_wastes WHERE id=:id AND NOT is_deleted
+                """).setParameter("id",wasteId),UUID.class);
+        if(suppliers.size()!=1)throw conflict("委外损耗单不存在或已删除");
+        closedPeriodGuard.requireOpenReadOnly(suppliers.getFirst(),baseCurrencyId(),BusinessTime.today(),"委外损耗反审");
+        for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT status,(SELECT COUNT(*) FROM subcontract_loss_resolutions r WHERE r.case_id=c.id)
+                FROM subcontract_loss_cases c WHERE waste_id=:id AND NOT is_deleted
+                """).setParameter("id",wasteId)))requireReversibleClaimStatus((String)row[0],((Number)row[1]).longValue());
+    }
+
+    private static void requireReversibleClaimStatus(String status,long resolutions) {
+        if(Set.of("CANCELED","REVERSED").contains(status))return;
+        if(("OPEN".equals(status)||"RESOLVED".equals(status))&&resolutions==0)return;
+        throw conflict("该损耗已形成财务责任或索赔处理，请先反转责任决定再反审损耗单");
+    }
+
+    @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeWasteReverse(UUID wasteId) {
         tx.bind();
@@ -251,6 +271,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         UUID caseId = (UUID) row[0];
         String status = NativeValueConverters.text(row[1]);
         long resolutions = ((Number) row[3]).longValue();
+        requireReversibleClaimStatus(status,resolutions);
         if (Set.of("CANCELED", "REVERSED").contains(status)) return;
         if (("OPEN".equals(status) || "RESOLVED".equals(status)) && resolutions == 0) {
             em.createNativeQuery("""

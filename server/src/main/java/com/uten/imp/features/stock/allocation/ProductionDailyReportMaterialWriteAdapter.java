@@ -293,6 +293,43 @@ public class ProductionDailyReportMaterialWriteAdapter
             UUID dailyReportId,
             String idempotencyKey,
             String reason) {
+        List<ProductionMaterialSettlementRequest.Line> lines=reversibleReportLines(planId,dailyReportId);
+
+        if (lines.isEmpty()) return;
+
+        ProductionMaterialSettlementRequest request =
+                new ProductionMaterialSettlementRequest();
+        request.setIdempotencyKey(idempotencyKey);
+        request.setReason(reason);
+        request.setLines(lines);
+        try {
+            settlements.reverseForDailyReport(planId, request, currentUser.requireId());
+        } catch (ApiException failure) {
+            if (failure.getCode() == ErrorCode.FORBIDDEN) {
+                throw new ApiException(
+                        ErrorCode.FORBIDDEN,
+                        "本单审核时登记过实际用料，红冲需要同时具备材料冲销权限");
+            }
+            throw failure;
+        }
+        stampDailyReport(planId, "REVERSE", idempotencyKey, dailyReportId);
+    }
+
+    @Override
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=ApiException.class)
+    public java.util.Set<UUID> requireDailyReportReversible(UUID planId,UUID reportId) {
+        var lines=reversibleReportLines(planId,reportId);
+        if(lines.isEmpty())return java.util.Set.of();
+        var request=new ProductionMaterialSettlementRequest();request.setLines(lines);
+        request.setIdempotencyKey("DRREV-PREFLIGHT-"+reportId+"-"+planId);request.setReason("日报反审条件核对");
+        try { return settlements.requireDailyReportReversalAvailable(planId,request); }
+        catch(ApiException failure) {
+            if(failure.getCode()==ErrorCode.FORBIDDEN)throw new ApiException(ErrorCode.FORBIDDEN,"本单登记过实际用料，反审需要同时具备材料冲销权限及原任务范围");
+            throw failure;
+        }
+    }
+
+    private List<ProductionMaterialSettlementRequest.Line> reversibleReportLines(UUID planId,UUID dailyReportId) {
         // 只冲销「本单还没被冲销过」的剩余量：有人先在材料台账里手工冲销过一部分时，
         // 这里再按原额冲一次会把台账冲成负数，数据库守恒守卫会直接拒绝整笔红冲。
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -324,24 +361,7 @@ public class ProductionDailyReportMaterialWriteAdapter
             line.setSourcePostingId((UUID) row[0]);
             lines.add(line);
         }
-        if (lines.isEmpty()) return;
-
-        ProductionMaterialSettlementRequest request =
-                new ProductionMaterialSettlementRequest();
-        request.setIdempotencyKey(idempotencyKey);
-        request.setReason(reason);
-        request.setLines(lines);
-        try {
-            settlements.reverseForDailyReport(planId, request, currentUser.requireId());
-        } catch (ApiException failure) {
-            if (failure.getCode() == ErrorCode.FORBIDDEN) {
-                throw new ApiException(
-                        ErrorCode.FORBIDDEN,
-                        "本单审核时登记过实际用料，红冲需要同时具备材料冲销权限");
-            }
-            throw failure;
-        }
-        stampDailyReport(planId, "REVERSE", idempotencyKey, dailyReportId);
+        return lines;
     }
 
     /** 结算事件回填日报来源，供红冲反查与对账；事件行在同一事务内刚建好。 */

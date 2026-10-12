@@ -66,6 +66,9 @@ public class SubcontractMaterialReturnService {
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
 
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.SubcontractMaterialReversalValuePort reversalValue;
+
     private static final short STATUS_DRAFT = 0;
     private static final short STATUS_APPROVED = 1;
     private static final short STATUS_REVERSED = -1;
@@ -141,7 +144,7 @@ public class SubcontractMaterialReturnService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public MaterialReturnDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -306,6 +309,34 @@ public class SubcontractMaterialReturnService {
         // 领料计划行已发净量扣减退回量(CAS)，退回的料重新计入可领。
         materialPlans.syncAfterMaterialReturnApproved(id);
         return detail(id);
+    }
+
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('subcontract_material_return:view') and hasAuthority('subcontract_material_return:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);
+        SubcontractMaterialReturn value=requireReturn(id);
+        List<SubcontractMaterialReturnItem> items=itemRepo.findByMaterialReturnIdOrderByLineNoAsc(id);
+        String facts=com.uten.imp.common.review.SubcontractMaterialReversalFacts.read(em,"RETURN",id);
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("subcontractMaterialReturn",facts,()->{
+            access.requireWritable(value.getMakerId(),"只能操作本人负责的委外材料退货单");
+            if(value.getStatus()==null || value.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            materialPlans.requireMaterialReturnReversible(id);
+            requireReturnSourceCounter(id);
+            if(reversalValue==null)throw new ApiException(ErrorCode.CONFLICT,"当前无法核对委外退料原成本位置");
+            reversalValue.requireReturnReversible(id);
+        });
+    }
+
+    private void requireReturnSourceCounter(UUID id) {
+        Boolean invalid=(Boolean)em.createNativeQuery("""
+            SELECT EXISTS(SELECT 1 FROM (SELECT material_issue_item_id,SUM(qty) qty
+              FROM subcontract_material_return_items WHERE material_return_id=:id AND NOT is_deleted
+              GROUP BY material_issue_item_id) source LEFT JOIN subcontract_material_issue_items issue
+                ON issue.id=source.material_issue_item_id
+              WHERE issue.id IS NULL OR COALESCE(issue.returned_qty,0)<source.qty)
+            """).setParameter("id",id).getSingleResult();
+        if(Boolean.TRUE.equals(invalid))throw new ApiException(ErrorCode.CONFLICT,"原发料已退数量不足，禁止反审吞并来源错账");
     }
 
     /** 红冲：1→-1。反向 DIR_OUT + 回减发料子件 returned_qty（无 ArAp）。 */

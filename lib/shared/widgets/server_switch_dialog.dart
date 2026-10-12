@@ -4,13 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/inputs/required_field_decoration.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
-import '../../../components/layout/uten_segmented_filter.dart';
-import '../../../core/network/server_config.dart';
-import '../../../core/network/server_selection.dart';
-import '../../../core/ui/app_notification.dart';
-import '../../../shared/providers/shared_providers.dart';
+import '../../components/inputs/required_field_decoration.dart';
+import '../../components/inputs/uten_input_decoration.dart';
+import '../../components/layout/uten_segmented_filter.dart';
+import '../../core/network/server_config.dart';
+import '../../core/network/server_selection.dart';
+import '../../core/ui/app_notification.dart';
+import '../providers/shared_providers.dart';
 
 class ServerSwitchDialog extends ConsumerStatefulWidget {
   const ServerSwitchDialog({super.key});

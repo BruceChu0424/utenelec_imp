@@ -87,7 +87,7 @@ void main() {
       );
       Finder segment(String label) =>
           find.descendant(of: toolbar, matching: find.text(label));
-      for (final label in const ['草稿', '等待财务审核', '财务已退回', '已审', '红冲']) {
+      for (final label in const ['草稿', '等待财务审核', '财务已退回', '已审', '已反审']) {
         expect(segment(label), findsOneWidget, reason: '分段「$label」');
       }
 

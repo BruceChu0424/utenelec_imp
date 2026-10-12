@@ -1,3 +1,4 @@
+import '../../shared/formatters/exact_decimal.dart';
 // 「从上游单据引入」两步大面板（采购/销售/委外编辑页共用）。
 //
 // 结构收敛（2026-08-16，审计 §4.1 第 1 批）：purchase/sales/subcontract 三个
@@ -29,6 +30,7 @@ import '../../core/ui/app_notification.dart';
 import '../data_display/uten_goods_identity_cell.dart';
 import '../inputs/uten_field_message.dart';
 import '../../shared/models/paged_result.dart';
+import '../../shared/models/procurement_source_terms.dart';
 import '../forms/link_quantity_validator.dart';
 import '../inputs/uten_dropdown_field.dart';
 import '../inputs/uten_input_decoration.dart';
@@ -53,6 +55,7 @@ class UtenDocLinkDetail<I> {
     this.docId,
     this.docNo,
     this.settlementMethodId,
+    this.sourceTerms,
   });
 
   final String? partyId;
@@ -60,6 +63,7 @@ class UtenDocLinkDetail<I> {
   final String? docId;
   final String? docNo;
   final String? settlementMethodId;
+  final ProcurementSourceTerms? sourceTerms;
 }
 
 /// 勾选并校验通过的一行引入草稿（归一化，不含领域映射）。
@@ -68,6 +72,10 @@ class UtenDocLinkPickedItem {
     required this.goodsId,
     required this.qty,
     this.maxQty,
+    this.maxGiftQtyText,
+    this.giftQtyText,
+    this.maxQtyText,
+    this.qtyText,
     this.price,
     this.upstreamItemId,
     this.colorId,
@@ -78,6 +86,10 @@ class UtenDocLinkPickedItem {
   final String goodsId;
   final double qty;
   final double? maxQty;
+  final String? maxGiftQtyText;
+  final String? giftQtyText;
+  final String? maxQtyText;
+  final String? qtyText;
   final double? price;
   final String? upstreamItemId;
   final String? colorId;
@@ -96,6 +108,7 @@ class UtenDocLinkPickResult<I> {
     this.sourceDocId,
     this.sourceDocNo,
     this.settlementMethodId,
+    this.sourceTerms,
   });
 
   final List<UtenDocLinkPickedItem> items;
@@ -103,6 +116,7 @@ class UtenDocLinkPickResult<I> {
   final String? sourceDocId;
   final String? sourceDocNo;
   final String? settlementMethodId;
+  final ProcurementSourceTerms? sourceTerms;
 }
 
 /// 上游明细勾选行：持上游明细引用 + 选中态 + 本次数量控制器。
@@ -113,6 +127,7 @@ class UtenDocLinkItemRow<I> extends EditableGridRow {
   final ValueNotifier<bool> selectedNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<String?> qtyError = ValueNotifier<String?>(null);
   final TextEditingController qty = TextEditingController();
+  final TextEditingController giftQty = TextEditingController(text: '0');
   bool get selected => selectedNotifier.value;
 
   @override
@@ -120,6 +135,7 @@ class UtenDocLinkItemRow<I> extends EditableGridRow {
     selectedNotifier.dispose();
     qtyError.dispose();
     qty.dispose();
+    giftQty.dispose();
     super.dispose();
   }
 }
@@ -175,6 +191,8 @@ class UtenDocLinkPickerConfig<D, I, N> {
     required this.middleItemColumns,
     required this.remainQty,
     required this.createBlankRow,
+    this.remainQtyText,
+    this.remainGiftQtyText,
     this.allowOverRemaining = false,
   });
 
@@ -252,6 +270,8 @@ class UtenDocLinkPickerConfig<D, I, N> {
 
   /// 上游明细剩余可引量（也是"本次数量"默认值与上限）。
   final double Function(I item) remainQty;
+  final String? Function(I item)? remainQtyText;
+  final String? Function(I item)? remainGiftQtyText;
 
   /// UtenEditableGrid 的空白行工厂（showAddRow:false 下不会被调用）。
   final UtenDocLinkItemRow<I> Function() createBlankRow;
@@ -420,11 +440,19 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       if (!mounted || !_detailRequests.isCurrent(requestVersion)) return;
       // 只显示有剩余可引量的明细：已收完/已发完/已退完的行不显示。
       final visible = detail.items
-          .where((it) => _cfg.remainQty(it) > 0)
+          .where(
+            (it) =>
+                _cfg.remainQty(it) > 0 ||
+                (financeExactDecimalUnits(_cfg.remainGiftQtyText?.call(it)) ??
+                        BigInt.zero) >
+                    BigInt.zero,
+          )
           .toList();
       final rows = visible.map((it) {
         final row = UtenDocLinkItemRow<I>(it);
-        row.qty.text = _cfg.remainQty(it).toString();
+        row.qty.text =
+            _cfg.remainQtyText?.call(it) ?? _cfg.remainQty(it).toString();
+        row.giftQty.text = _cfg.remainGiftQtyText?.call(it) ?? '0';
         return row;
       }).toList();
       _grid.replaceAll(rows);
@@ -473,6 +501,30 @@ class _UtenDocLinkPickerSheetState<D, I, N>
 
   int get _selectedCount => _grid.rows.where((r) => r.selected).length;
 
+  String? _giftQuantityError(UtenDocLinkItemRow<I> row) {
+    final qty = financeExactDecimalUnits(row.qty.text);
+    final gift = financeExactDecimalUnits(row.giftQty.text);
+    if (qty == null ||
+        gift == null ||
+        qty.isNegative ||
+        gift.isNegative ||
+        qty + gift <= BigInt.zero) {
+      return '收费量和赠品量须不小于0，实物合计须大于0，小数最多4位';
+    }
+    final maxQty = financeExactDecimalUnits(
+      _cfg.remainQtyText?.call(row.item) ?? _cfg.remainQty(row.item).toString(),
+    );
+    final maxGift = financeExactDecimalUnits(
+      _cfg.remainGiftQtyText?.call(row.item),
+    );
+    if (maxGift == null) return '来源赠品可用量尚未留存，请刷新后核对';
+    if (gift > maxGift) return '赠品量不能超过来源可用赠品量';
+    if (!_cfg.allowOverRemaining && (maxQty == null || qty > maxQty)) {
+      return '收费量不能超过来源剩余量';
+    }
+    return null;
+  }
+
   void _submit() {
     final out = <UtenDocLinkPickedItem>[];
     var hasQuantityError = false;
@@ -482,11 +534,13 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       final goodsId = _cfg.itemFields.goodsId(it);
       if (goodsId == null) continue;
       final remaining = _cfg.remainQty(it);
-      final error = validateLinkQuantity(
-        row.qty.text,
-        remaining: remaining,
-        allowOverRemaining: _cfg.allowOverRemaining,
-      );
+      final error = _cfg.remainGiftQtyText == null
+          ? validateLinkQuantity(
+              row.qty.text,
+              remaining: remaining,
+              allowOverRemaining: _cfg.allowOverRemaining,
+            )
+          : _giftQuantityError(row);
       row.qtyError.value = error;
       if (error != null) {
         hasQuantityError = true;
@@ -497,6 +551,12 @@ class _UtenDocLinkPickerSheetState<D, I, N>
         UtenDocLinkPickedItem(
           goodsId: goodsId,
           qty: q,
+          qtyText: row.qty.text.trim(),
+          giftQtyText: _cfg.remainGiftQtyText == null
+              ? null
+              : row.giftQty.text.trim(),
+          maxQtyText: _cfg.remainQtyText?.call(it),
+          maxGiftQtyText: _cfg.remainGiftQtyText?.call(it),
           maxQty: remaining,
           price: _cfg.itemFields.price(it),
           upstreamItemId: _cfg.itemFields.upstreamItemId(it),
@@ -517,6 +577,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
         sourceDocId: _upDetail?.docId,
         sourceDocNo: _upDetail?.docNo,
         settlementMethodId: _upDetail?.settlementMethodId,
+        sourceTerms: _upDetail?.sourceTerms,
       ),
     );
   }

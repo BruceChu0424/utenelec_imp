@@ -1,3 +1,5 @@
+import '../../../shared/documents/document_unapproval_action.dart';
+import '../../../shared/documents/document_unapproval.dart';
 // 仓库单据详情页：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
 //
 // 2026-09-11 折叠头+表内滚改版（对齐采购/货品资料页）：整页 ListView 改
@@ -63,6 +65,7 @@ import '../widgets/production_material_return_receive_dialog.dart';
 import '../widgets/warehouse_stock_outbound_detail_table.dart';
 import '../../production/providers/production_execution_refresh.dart';
 import '../repositories/stock_doc_repository.dart';
+import 'stock_doc_edit_page.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
 
 class StockDocDetailPage extends ConsumerStatefulWidget {
@@ -397,7 +400,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
 
   Future<void> _act(
     String confirm,
-    Future<void> Function() fn,
+    Future<Object?> Function() fn,
     String ok, {
     bool reviewerResponsibility = false,
     String? confirmLabel,
@@ -433,10 +436,18 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     if (c != true) return;
     setState(() => _busy = true);
     try {
-      await fn();
+      final result = await fn();
       if (!mounted) return;
-      context.appSuccess(ok);
       bumpListRefresh(ref, widget.docType.refreshKey);
+      if (result is StockDocDetail && result.id != widget.id) {
+        showDocumentUnapprovalResult(context, result.status);
+        openUnapprovedDraft(
+          context,
+          RoutePath.stockDocDetail(widget.docType.code, result.id),
+        );
+        return;
+      }
+      context.appSuccess(ok);
       if (widget.docType == StockDocType.wdraw) {
         refreshAfterProductionPlanGenerated(ref);
       }
@@ -1136,6 +1147,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                DocumentUnapprovalBanner(
+                                  family: 'stockDocument',
+                                  documentId: widget.id,
+                                ),
                                 DocumentScopeWriteNotice(
                                   capability: scopeCapability,
                                   ownerEmployeeId: _d!.makerId,
@@ -1763,6 +1778,35 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           ),
         );
       }
+      if (_canApprove &&
+          detail.canEdit &&
+          !detail.productionLinked &&
+          widget.docType.supportsManualDraft &&
+          (widget.docType != StockDocType.check ||
+              ref
+                  .read(currentPermissionsProvider)
+                  .contains('stock:count:finance_review'))) {
+        addAction(
+          UtenButton(
+            size: UtenButtonSize.large,
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_note_rounded,
+            onPressed: () async {
+              final changed = await Navigator.of(context).push<StockDocDetail>(
+                MaterialPageRoute(
+                  builder: (_) => StockDocEditPage(
+                    docType: widget.docType,
+                    id: widget.id,
+                    reviewMode: true,
+                  ),
+                ),
+              );
+              if (changed != null && mounted) await _load();
+            },
+            child: const Text('核改后审核'),
+          ),
+        );
+      }
       if (children.isEmpty) addBack();
     } else if (detail.status == 1) {
       if (widget.docType == StockDocType.draw) {
@@ -1804,35 +1848,56 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
             widget.docType == StockDocType.wdraw &&
             detail.productionMaterialReturn;
         addAction(
-          UtenButton(
-            size: UtenButtonSize.large,
-            type: UtenButtonType.danger,
-            icon: Icons.undo_outlined,
-            onPressed: () => _act(
-              productionFinishedInbound
-                  ? '红冲后，系统会把这次入库的库存和累计数量减回去，并按原来实际收到的数量重新生成待点收草稿。确认红冲？'
-                  : materialReturn
-                  ? '撤回后，系统会按原来那笔收仓记录恢复车间余料和库存。若这批料已被后面的工单领用，要先处理完那些领用。确认撤回本次收仓？'
-                  : '红冲会把这次入库的库存减回去，确认？',
-              () {
-                final repository = ref.read(
-                  stockDocRepositoryProvider(widget.docType),
-                );
-                return productionFinishedInbound
-                    ? repository.reverseFinishedInbound(widget.id)
-                    : repository.reverse(widget.id);
-              },
-              productionFinishedInbound
-                  ? '已红冲并重建待点收任务'
-                  : materialReturn
-                  ? '已撤回收仓'
-                  : '已红冲',
-              reviewerResponsibility: materialReturn,
-              confirmLabel: materialReturn ? '撤回收仓' : null,
-              confirmTitle: materialReturn ? '核对并撤回收仓' : null,
-            ),
-            child: Text(materialReturn ? '撤回收仓' : '红冲'),
-          ),
+          !productionFinishedInbound && !materialReturn
+              ? DocumentUnapprovalAction(
+                  family: 'stockDocument',
+                  documentId: widget.id,
+                  revision: detail,
+                  onPressed: () => _act(
+                    documentUnapprovalConfirmation,
+                    () => ref
+                        .read(stockDocRepositoryProvider(widget.docType))
+                        .reverse(widget.id),
+                    '已反审，进入草稿',
+                  ),
+                )
+              : UtenButton(
+                  size: UtenButtonSize.large,
+                  type: UtenButtonType.danger,
+                  icon: Icons.undo_outlined,
+                  onPressed: () => _act(
+                    productionFinishedInbound
+                        ? '撤回后，系统会把这次入库的库存和累计数量减回去，并按原来实际收到的数量重新生成待点收草稿。确认撤回点收？'
+                        : materialReturn
+                        ? '撤回后，系统会按原来那笔收仓记录恢复车间余料和库存。若这批料已被后面的工单领用，要先处理完那些领用。确认撤回本次收仓？'
+                        : documentUnapprovalConfirmation,
+                    () {
+                      final repository = ref.read(
+                        stockDocRepositoryProvider(widget.docType),
+                      );
+                      return productionFinishedInbound
+                          ? repository.reverseFinishedInbound(widget.id)
+                          : materialReturn
+                          ? repository.reverseMaterialReturn(widget.id)
+                          : repository.reverse(widget.id);
+                    },
+                    productionFinishedInbound
+                        ? '已撤回并重建待点收任务'
+                        : materialReturn
+                        ? '已撤回收仓'
+                        : '已反审，进入草稿',
+                    reviewerResponsibility: materialReturn,
+                    confirmLabel: materialReturn ? '撤回收仓' : null,
+                    confirmTitle: materialReturn ? '核对并撤回收仓' : null,
+                  ),
+                  child: Text(
+                    materialReturn
+                        ? '撤回收仓'
+                        : productionFinishedInbound
+                        ? '撤回点收'
+                        : '反审',
+                  ),
+                ),
         );
       }
       if (children.isEmpty) addBack();

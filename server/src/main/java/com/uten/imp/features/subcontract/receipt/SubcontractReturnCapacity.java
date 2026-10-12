@@ -50,6 +50,18 @@ public final class SubcontractReturnCapacity {
      */
     public static Map<UUID, Facts> lockAndRead(
             EntityManager em, Collection<UUID> orderItemIds, UUID excludedReceiptId) {
+        return read(em,orderItemIds,excludedReceiptId,null,true);
+    }
+
+    /** Same complete-kit capacity after withdrawing this entire issue; no row locks or writes. */
+    public static Map<UUID,Facts> readAfterIssueWithdrawal(
+            EntityManager em,Collection<UUID> orderItemIds,UUID excludedIssueId) {
+        Objects.requireNonNull(excludedIssueId,"excluded issue");
+        return read(em,orderItemIds,null,excludedIssueId,false);
+    }
+
+    private static Map<UUID,Facts> read(EntityManager em,Collection<UUID> orderItemIds,
+            UUID excludedReceiptId,UUID excludedIssueId,boolean lock) {
         List<UUID> ids = orderItemIds == null ? List.of()
                 : orderItemIds.stream().filter(Objects::nonNull).distinct().sorted().toList();
         if (ids.isEmpty()) return Map.of();
@@ -57,10 +69,24 @@ public final class SubcontractReturnCapacity {
                 ? "" : " AND receipt_item.receipt_id <> :excludedReceiptId";
         String draftExclusion = excludedReceiptId == null
                 ? "" : " AND draft.id <> :excludedReceiptId";
+        String returnable=excludedIssueId==null
+                ? "COALESCE(fn_subcontract_returnable_qty(order_item.id),0)"
+                : """
+                  COALESCE((SELECT CASE WHEN COUNT(line.id)=0 THEN 0 ELSE LEAST(MAX(source_order.qty),
+                    MIN(fn_subcontract_draw_sets(COALESCE(supplier.usable_qty,0),line.bom_unit_qty))) END
+                    FROM subcontract_order_items source_order
+                    JOIN subcontract_material_plan_items line ON line.order_item_id=source_order.id AND NOT line.is_deleted
+                    LEFT JOIN LATERAL (SELECT SUM(item.at_supplier_qty+item.compensated_qty
+                       -COALESCE(item.returned_qty,0)-COALESCE(item.wasted_qty,0)) usable_qty
+                       FROM subcontract_material_issue_items item JOIN subcontract_material_issues issue ON issue.id=item.issue_id
+                         AND issue.status=1 AND NOT issue.is_deleted
+                       WHERE item.plan_item_id=line.id AND NOT item.is_deleted AND issue.id<>:excludedIssueId) supplier ON TRUE
+                    WHERE source_order.id=order_item.id),0)
+                  """;
         var query = em.createNativeQuery("""
                 SELECT order_item.id,
                        COALESCE(order_item.unit_rate, 1) AS order_unit_rate,
-                       COALESCE(fn_subcontract_returnable_qty(order_item.id), 0)
+                """ + returnable + """
                            * COALESCE(order_item.unit_rate, 1) AS returnable_base,
                        COALESCE((
                            SELECT SUM(rejection.failed_base_qty)
@@ -110,11 +136,11 @@ public final class SubcontractReturnCapacity {
                 WHERE order_item.id IN (:orderItemIds)
                   AND COALESCE(order_item.is_deleted, FALSE) = FALSE
                 ORDER BY order_item.id
-                FOR UPDATE OF order_item
-                """).setParameter("orderItemIds", ids);
+                """ + (lock?" FOR UPDATE OF order_item":"")).setParameter("orderItemIds", ids);
         if (excludedReceiptId != null) {
             query.setParameter("excludedReceiptId", excludedReceiptId);
         }
+        if(excludedIssueId!=null)query.setParameter("excludedIssueId",excludedIssueId);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = query.getResultList();
         if (rows.size() != ids.size()) {

@@ -508,6 +508,10 @@ void main() {
     await tester.enterText(_deal('a'), '95');
     await tester.pump();
     expect(_text(tester, _discount('a')), '0.95');
+    final originalPrice = tester.widget<Text>(
+      find.byKey(const ValueKey('quote-finance-before-deal-a')),
+    );
+    expect(originalPrice.style!.decoration, TextDecoration.lineThrough);
 
     await tester.enterText(_discount('b'), '0.9');
     await tester.pump();

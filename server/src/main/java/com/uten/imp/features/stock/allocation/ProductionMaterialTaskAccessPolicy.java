@@ -76,11 +76,19 @@ public class ProductionMaterialTaskAccessPolicy {
 
     /** Run with the plan locked, before replay or any mutation. Locks assignments before demand rows. */
     public void requireDemandWrite(UUID planId, List<UUID> demandIds, UUID segmentId, String authority) {
+        requireDemandWrite(planId,demandIds,segmentId,authority,true);
+    }
+
+    public void requireDemandWriteReadOnly(UUID planId,List<UUID> demandIds,UUID segmentId,String authority) {
+        requireDemandWrite(planId,demandIds,segmentId,authority,false);
+    }
+
+    private void requireDemandWrite(UUID planId,List<UUID> demandIds,UUID segmentId,String authority,boolean lock) {
         membership.requireActiveOperator();
         requireAuthority(authority);
         boolean wholePlan = canManagePlan(planId);
         if (!wholePlan && !has("production_execution:view")) throw forbidden();
-        em.createNativeQuery("""
+        if(lock)em.createNativeQuery("""
                 SELECT segment.id FROM production_execution_segments segment
                 WHERE segment.plan_id=:planId AND segment.is_deleted=FALSE
                   AND segment.id IN (SELECT demand.execution_segment_id FROM production_material_demands demand

@@ -41,8 +41,9 @@ public class ProcurementIqcReplacementAllocationService {
                        COALESCE(SUM(failed_base_qty),0),
                        CASE WHEN COUNT(*)=COUNT(failed_amount_original) THEN COALESCE(SUM(failed_amount_original),0) END,
                        CASE WHEN COUNT(*)=COUNT(failed_amount_local) THEN COALESCE(SUM(failed_amount_local),0) END
-                FROM procurement_iqc_rejection_cases
+                FROM procurement_iqc_rejection_cases rejection
                 WHERE receipt_type=:type AND order_item_id=:orderItemId
+                  AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                   AND is_deleted=FALSE AND return_recorded_at IS NOT NULL
                   AND status IN(
                       'RETURN_RECORDED','CREDIT_CONFIRMED',
@@ -51,6 +52,113 @@ public class ProcurementIqcReplacementAllocationService {
                 .setParameter("orderItemId",orderItemId).getSingleResult();
         return new ReleasedCapacity(
                 decimal(row[0]),decimal(row[1]),money(row[2]),money(row[3]));
+    }
+
+    /** Free physical failures release only the separate gift capacity, with zero commercial amounts. */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public ReleasedCapacity releasedGiftCapacity(String rawType,UUID orderItemId) {
+        String type=type(rawType);
+        if(!"PURCHASE".equals(type)) return new ReleasedCapacity(BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO);
+        Object[] row=(Object[])em.createNativeQuery("""
+                SELECT COALESCE(SUM(rejection.failed_qty),0),COALESCE(SUM(rejection.failed_base_qty),0),
+                       COALESCE(SUM(rejection.failed_amount_original),0),COALESCE(SUM(rejection.failed_amount_local),0)
+                FROM procurement_iqc_rejection_cases rejection
+                JOIN procurement_inspection_items inspection ON inspection.id=rejection.inspection_item_id
+                WHERE rejection.receipt_type=:type AND rejection.order_item_id=:orderItemId
+                  AND inspection.quantity_tranche='GIFT'
+                  AND rejection.is_deleted=FALSE AND rejection.return_recorded_at IS NOT NULL
+                  AND rejection.status IN ('RETURN_RECORDED','CREDIT_CONFIRMED','CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
+                """).setParameter("type",type).setParameter("orderItemId",orderItemId).getSingleResult();
+        if(decimal(row[2]).signum()!=0 || decimal(row[3]).signum()!=0)
+            throw conflict("赠品退回容量包含非零货款，请核对原质检分项");
+        return new ReleasedCapacity(decimal(row[0]),decimal(row[1]),BigDecimal.ZERO,BigDecimal.ZERO);
+    }
+
+    /** Gift replacement owns a physical/zero-funding share; it never consumes a charged allocation. */
+    @Transactional(propagation=Propagation.MANDATORY)
+    public String allocateGiftForReceiptItem(String rawType,UUID receiptId,UUID receiptItemId,UUID orderItemId,
+            BigDecimal giftQty,BigDecimal frozenGiftBaseQty,BigDecimal unitRate,
+            BigDecimal authorizedGiftQty,BigDecimal rawPriorGiftQty,String requestedIntent) {
+        String type=type(rawType);
+        if(giftQty==null || giftQty.signum()==0)return "NORMAL";
+        if(!"PURCHASE".equals(type) || giftQty.signum()<0 || frozenGiftBaseQty==null || frozenGiftBaseQty.signum()<=0
+                || unitRate==null || unitRate.signum()<=0)
+            throw conflict("赠品补回缺少可核对的冻结实物数量");
+        com.uten.imp.common.util.FinancialExactAmount.quantity(giftQty,"赠品数量");
+        com.uten.imp.common.util.FinancialExactAmount.quantity(frozenGiftBaseQty,"冻结赠品基本量");
+        @SuppressWarnings("unchecked")
+        List<UUID> caseIds=em.createNativeQuery("""
+                SELECT rejection.id FROM procurement_iqc_rejection_cases rejection
+                JOIN procurement_inspection_items inspection ON inspection.id=rejection.inspection_item_id
+                WHERE rejection.receipt_type=:type AND rejection.order_item_id=:orderItemId
+                  AND inspection.quantity_tranche='GIFT'
+                  AND rejection.is_deleted=FALSE AND rejection.return_recorded_at IS NOT NULL
+                  AND rejection.status IN ('RETURN_RECORDED','CREDIT_CONFIRMED','CLOSED_NO_CREDIT','FINANCE_EXCEPTION')
+                ORDER BY rejection.return_date,rejection.id FOR UPDATE OF rejection,inspection
+                """).setParameter("type",type).setParameter("orderItemId",orderItemId).getResultList();
+        List<ReturnedShare> availableShares=new ArrayList<>();
+        BigDecimal availableGift=BigDecimal.ZERO;
+        for(UUID caseId:caseIds) {
+            Object[] row=(Object[])em.createNativeQuery("""
+                    SELECT rejection.failed_qty,rejection.failed_base_qty,rejection.failed_amount_original,rejection.failed_amount_local,
+                           COALESCE(SUM(allocation.allocated_qty) FILTER(WHERE allocation.status='ACTIVE'),0),
+                           COALESCE(SUM(allocation.allocated_base_qty) FILTER(WHERE allocation.status='ACTIVE'),0),
+                           COALESCE(SUM(allocation.allocated_amount_original) FILTER(WHERE allocation.status='ACTIVE'),0),
+                           COALESCE(SUM(allocation.allocated_amount_local) FILTER(WHERE allocation.status='ACTIVE'),0)
+                    FROM procurement_iqc_rejection_cases rejection
+                    LEFT JOIN procurement_iqc_replacement_allocations allocation ON allocation.case_id=rejection.id
+                    WHERE rejection.id=:caseId GROUP BY rejection.id
+                    """).setParameter("caseId",caseId).getSingleResult();
+            if(decimal(row[2]).signum()!=0 || decimal(row[3]).signum()!=0 || decimal(row[6]).signum()!=0 || decimal(row[7]).signum()!=0)
+                throw conflict("赠品品质失败和补回分项必须为零货款");
+            BigDecimal left=decimal(row[0]).subtract(decimal(row[4]));
+            BigDecimal leftBase=decimal(row[1]).subtract(decimal(row[5]));
+            if(left.signum()<0 || leftBase.signum()<0)throw conflict("赠品补回分项数量超出原失败切片");
+            if(left.signum()>0) {
+                availableShares.add(new ReturnedShare(caseId,left,leftBase,BigDecimal.ZERO,BigDecimal.ZERO));
+                availableGift=availableGift.add(left);
+            }
+        }
+        BigDecimal ordinaryReturned=decimal(em.createNativeQuery("SELECT COALESCE(gift_returned_qty,0) FROM purchase_order_items WHERE id=:id")
+                .setParameter("id",orderItemId).getSingleResult());
+        BigDecimal priorAllocated=decimal(em.createNativeQuery("""
+                SELECT COALESCE(SUM(allocation.allocated_qty),0) FROM procurement_iqc_replacement_allocations allocation
+                JOIN procurement_iqc_rejection_cases rejection ON rejection.id=allocation.case_id
+                JOIN procurement_inspection_items inspection ON inspection.id=rejection.inspection_item_id
+                WHERE rejection.receipt_type=:type AND rejection.order_item_id=:id AND inspection.quantity_tranche='GIFT'
+                  AND allocation.status='ACTIVE' AND allocation.replacement_receipt_id<>:receipt
+                """).setParameter("type",type).setParameter("id",orderItemId).setParameter("receipt",receiptId).getSingleResult());
+        BigDecimal owed=authorizedGiftQty.subtract(rawPriorGiftQty).add(priorAllocated).add(ordinaryReturned).max(BigDecimal.ZERO);
+        String intent=resolveIntent(requestedIntent,availableGift,owed);
+        BigDecimal replacement="RETURN_REPLACEMENT".equals(intent)?giftQty.min(availableGift):BigDecimal.ZERO;
+        if(giftQty.subtract(replacement).compareTo(owed)>0)throw conflict("赠品正常到货超过订单尚未到货的赠品份额");
+        if(replacement.signum()==0)return intent;
+        BigDecimal left=replacement,allocatedBase=BigDecimal.ZERO;
+        UUID actor=currentUser.requireId();
+        for(ReturnedShare share:availableShares) {
+            if(left.signum()<=0)break;
+            BigDecimal take=left.min(share.qty());
+            BigDecimal base=take.compareTo(share.qty())==0?share.baseQty():MoneyPolicy.quantityShare(share.baseQty(),take,share.qty());
+            if(base.signum()<=0 || base.compareTo(share.baseQty())>0)throw conflict("赠品补回不能无损匹配原退回基本量");
+            allocatedBase=allocatedBase.add(base);
+            if(allocatedBase.compareTo(frozenGiftBaseQty)>0)throw conflict("赠品补回单位换算与原失败实物份额不一致");
+            em.createNativeQuery("""
+                    INSERT INTO procurement_iqc_replacement_allocations(id,case_id,replacement_receipt_type,replacement_receipt_id,
+                        replacement_receipt_item_id,allocated_base_qty,allocated_qty,allocated_amount_original,allocated_amount_local,status,row_version,created_by)
+                    VALUES(:id,:caseId,:type,:receiptId,:receiptItemId,:base,:qty,0,0,'ACTIVE',1,:actor)
+                    """).setParameter("id",UUID.randomUUID()).setParameter("caseId",share.caseId()).setParameter("type",type)
+                    .setParameter("receiptId",receiptId).setParameter("receiptItemId",receiptItemId)
+                    .setParameter("base",base).setParameter("qty",take).setParameter("actor",actor).executeUpdate();
+            em.createNativeQuery("""
+                    INSERT INTO procurement_iqc_rejection_events(id,case_id,event_type,actor_user_id,reference,reason)
+                    VALUES(:id,:caseId,'REPLACEMENT_ALLOCATED',:actor,:reference,'零货款赠品实物份额已被补回占用')
+                    """).setParameter("id",UUID.randomUUID()).setParameter("caseId",share.caseId()).setParameter("actor",actor)
+                    .setParameter("reference",receiptItemId.toString()).executeUpdate();
+            left=left.subtract(take);
+        }
+        if(left.signum()!=0 || (replacement.compareTo(giftQty)==0 && allocatedBase.compareTo(frozenGiftBaseQty)!=0))
+            throw conflict("赠品补回基本量与原失败切片无法无损守恒，请核对单位换算");
+        return intent;
     }
 
     /** Subcontract (and any line without an over-receipt tolerance). */
@@ -83,8 +191,9 @@ public class ProcurementIqcReplacementAllocationService {
         }
         @SuppressWarnings("unchecked")
         List<UUID> caseIds=em.createNativeQuery("""
-                SELECT id FROM procurement_iqc_rejection_cases
+                SELECT id FROM procurement_iqc_rejection_cases rejection
                 WHERE receipt_type=:type AND order_item_id=:orderItemId
+                  AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                   AND is_deleted=FALSE AND return_recorded_at IS NOT NULL
                   AND status IN(
                       'RETURN_RECORDED','CREDIT_CONFIRMED',
@@ -131,6 +240,7 @@ public class ProcurementIqcReplacementAllocationService {
                 FROM procurement_iqc_replacement_allocations allocation
                 JOIN procurement_iqc_rejection_cases rejection ON rejection.id=allocation.case_id
                 WHERE rejection.receipt_type=:type AND rejection.order_item_id=:id
+                  AND NOT EXISTS(SELECT 1 FROM procurement_inspection_items gift WHERE gift.id=rejection.inspection_item_id AND gift.quantity_tranche='GIFT')
                   AND allocation.status='ACTIVE' AND allocation.replacement_receipt_id<>:receipt
                 """).setParameter("type",type).setParameter("id",orderItemId)
                 .setParameter("receipt",receiptId).getSingleResult());
@@ -249,10 +359,13 @@ public class ProcurementIqcReplacementAllocationService {
     public BigDecimal activeAllocatedQty(String rawType,UUID receiptItemId){
         return decimal(em.createNativeQuery("""
                 SELECT COALESCE(SUM(allocated_qty),0)
-                FROM procurement_iqc_replacement_allocations
+                FROM procurement_iqc_replacement_allocations allocation
                 WHERE replacement_receipt_type=:type
                   AND replacement_receipt_item_id=:receiptItemId
                   AND status='ACTIVE'
+                  AND NOT EXISTS(SELECT 1 FROM procurement_iqc_rejection_cases rejection
+                        JOIN procurement_inspection_items inspection ON inspection.id=rejection.inspection_item_id
+                        WHERE rejection.id=allocation.case_id AND inspection.quantity_tranche='GIFT')
                 """).setParameter("type",type(rawType))
                 .setParameter("receiptItemId",receiptItemId).getSingleResult());
     }

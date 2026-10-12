@@ -60,6 +60,11 @@ Map<String, dynamic> expectationJsonOf(ProcurementReceiptPrefill prefill) {
           'orderedQty': item.approvedRemainingQty,
           'acceptedQty': 0,
           'remainingQty': item.approvedRemainingQty,
+          if (item.approvedRemainingQtyText != null)
+            'remainingQtyExact': item.approvedRemainingQtyText,
+          'quantitySemantics': item.quantitySemantics,
+          'remainingGiftQtyExact': item.approvedRemainingGiftQtyText,
+          'registeredGiftQtyExact': '0',
           'registeredQty': 0,
           'lastReceiptWarehouseId': item.lastReceiptWarehouseId,
           'lastReceiptWarehouseName': item.lastReceiptWarehouseName,

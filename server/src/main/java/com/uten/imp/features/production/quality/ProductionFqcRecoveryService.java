@@ -288,7 +288,7 @@ public class ProductionFqcRecoveryService implements ProductionFqcRecoveryPort {
     }
 
     @Override
-    @Transactional(readOnly = true, propagation = Propagation.MANDATORY)
+    @Transactional(readOnly = true, propagation = Propagation.MANDATORY,noRollbackFor=ApiException.class)
     public BigDecimal effectiveContribution(
             UUID reportItemId,
             BigDecimal declaredQuantity) {
@@ -310,9 +310,34 @@ public class ProductionFqcRecoveryService implements ProductionFqcRecoveryPort {
     }
 
     @Override
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=ApiException.class)
+    public void requireReportEffectsReversible(UUID reportId) {
+        List<UUID> children=NativeQueryResults.typedRows(em.createNativeQuery("""
+            SELECT a.id FROM production_fqc_recovery_authorizations a
+            JOIN production_daily_report_items item ON item.id=a.source_report_item_id
+            WHERE item.report_id=:id AND NOT EXISTS(SELECT 1 FROM production_fqc_recovery_cancellation_events c WHERE c.authorization_id=a.id)
+            ORDER BY a.id
+            """,UUID.class).setParameter("id",reportId),UUID.class);
+        for(UUID authorization:children) {
+            BigDecimal net=(BigDecimal)em.createNativeQuery("""
+                SELECT COALESCE(SUM(CASE event_type WHEN 'ALLOCATE' THEN qty WHEN 'RELEASE' THEN -qty ELSE 0 END),0)
+                  -COALESCE((SELECT SUM(active.qty) FROM production_fqc_recovery_allocation_events active
+                    JOIN production_daily_report_items current_item ON current_item.id=active.recovery_report_item_id
+                    WHERE active.authorization_id=:auth AND active.event_type='ALLOCATE' AND current_item.report_id=:id
+                      AND NOT EXISTS(SELECT 1 FROM production_fqc_recovery_allocation_events release
+                        WHERE release.source_allocation_event_id=active.id AND release.event_type='RELEASE')),0)
+                FROM production_fqc_recovery_allocation_events WHERE authorization_id=:auth
+                """).setParameter("auth",authorization).setParameter("id",reportId).getSingleResult();
+            if(net.signum()!=0)throw conflict("FQC补产授权已有其他日报报工，请先反审对应补产报工");
+            materialRecovery.requireAuthorizationCancellationReadOnly(authorization);
+        }
+    }
+
+    @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void reverseReportEffects(UUID reportId) {
         tx.bind();
+        requireReportEffectsReversible(reportId);
         UUID actorId = currentUser.requireId();
         List<Object[]> allocations = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""

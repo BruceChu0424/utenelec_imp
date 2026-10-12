@@ -131,7 +131,7 @@ public class ProcurementInspectionController {
                             (UUID) row[13], (String) row[14], nullableDec(row[15]),
                             (UUID) row[16], (String) row[17], (String) row[18],
                             WarehouseQualityResultService.preStocked(
-                                    row[19], row[20], row[21], row[22], row[23]));
+                                    row[19], row[20], row[21], row[22], row[23]), (String)row[24]);
                 })
                 .toList();
     }

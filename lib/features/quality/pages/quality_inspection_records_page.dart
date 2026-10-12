@@ -62,7 +62,7 @@ const _dispositionFacets = [
   MasterFacetBucket(value: 'REWORK', count: 0, label: '返工'),
   MasterFacetBucket(value: 'SCRAP', count: 0, label: '报废'),
   MasterFacetBucket(value: 'REJECT', count: 0, label: '拒收/退回'),
-  MasterFacetBucket(value: 'SOURCE_REPORT_REVERSED', count: 0, label: '来源报工红冲'),
+  MasterFacetBucket(value: 'SOURCE_REPORT_REVERSED', count: 0, label: '来源报工反审'),
   MasterFacetBucket(value: 'REGISTRATION_REVERSED', count: 0, label: '送检登记撤回'),
 ];
 
@@ -812,7 +812,7 @@ class _QualityInspectionRecordDetailPanelState
           if (!record.effective) ...[
             const SizedBox(height: UtenSpacing.s12),
             Text(
-              '该决定是不可变历史证据，但来源已红冲/取消，不代表当前可用库存或当前成品放行。',
+              '该决定是不可变历史证据，但来源已反审/取消，不代表当前可用库存或当前成品放行。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.error,
               ),

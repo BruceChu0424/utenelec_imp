@@ -12,4 +12,10 @@ public interface ProcurementInventoryValuePort {
     void creditReversed(UUID originalCreditDocumentId,UUID actorUserId);
     void returnedToSupplier(UUID failureCaseId,UUID actorUserId);
     void returnReversed(UUID failureCaseId,UUID actorUserId);
+    record CostScopePin(UUID scopeId,long currentVersion){}
+    record CostWithdrawalPreview(UUID receiptId,java.util.List<CostScopePin> scopes,String factsSnapshot){
+        public CostWithdrawalPreview { scopes=java.util.List.copyOf(scopes);if(receiptId==null||factsSnapshot==null||!factsSnapshot.matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid internal cost withdrawal proof"); }
+    }
+    default String requireReceiptReversible(String type,UUID receiptId){throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对原收货成本来源");}
+    default CostWithdrawalPreview previewReceiptCostWithdrawal(String type,UUID id){throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对委外收货专用成本释放");}
 }

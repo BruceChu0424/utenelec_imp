@@ -96,7 +96,8 @@ public final class ProcurementArrivalContracts {
 
         public record ArrivalLine(
                 @NotNull UUID goodsId,
-                @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal qty,
+                @NotNull @DecimalMin(value = "0", inclusive = true)
+                @Digits(integer = 14, fraction = 4) BigDecimal qty,
                 @NotNull UUID orderItemId,
                 UUID colorId,
                 UUID unitId,
@@ -112,7 +113,13 @@ public final class ProcurementArrivalContracts {
                  * 数量是按称重推算的(称重计数「按称重改数量」, ADR-135): 为真时本行不进单重学习
                  * (数量本身来自单重, 再拿来学单重是循环论证)。空 = 否。
                  */
-                Boolean qtyFromWeight) {
+                Boolean qtyFromWeight,
+                @DecimalMin(value = "0", inclusive = true)
+                @Digits(integer = 14, fraction = 4) BigDecimal giftQty) {
+            public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal weight, String sourceDocNo, String replacementIntent, String preStockPlace, Boolean qtyFromWeight) {
+                this(goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, null);
+            }
+
 
             public ArrivalLine(UUID goodsId, BigDecimal qty, UUID orderItemId,
                                UUID colorId, UUID unitId, BigDecimal unitRate,
@@ -198,7 +205,8 @@ public final class ProcurementArrivalContracts {
             @NotNull UUID warehouseId,
             UUID purchaserId,
             @NotNull UUID goodsId,
-            @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal qty,
+            @NotNull @DecimalMin(value = "0", inclusive = true)
+                @Digits(integer = 14, fraction = 4) BigDecimal qty,
             @NotNull UUID orderItemId,
             UUID colorId,
             UUID unitId,
@@ -208,11 +216,17 @@ public final class ProcurementArrivalContracts {
             @Size(max = 64) String sourceDocNo,
             @Pattern(regexp = "NORMAL|RETURN_REPLACEMENT") String replacementIntent,
             @Size(max = 100) String preStockPlace,
-            Boolean qtyFromWeight) {
+            Boolean qtyFromWeight,
+                @DecimalMin(value = "0", inclusive = true)
+                @Digits(integer = 14, fraction = 4) BigDecimal giftQty) {
+            public BatchArrivalLine(String orderType, UUID warehouseId, UUID purchaserId, UUID goodsId, BigDecimal qty, UUID orderItemId, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal weight, String sourceDocNo, String replacementIntent, String preStockPlace, Boolean qtyFromWeight) {
+                this(orderType, warehouseId, purchaserId, goodsId, qty, orderItemId, colorId, unitId, unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, null);
+            }
+
 
         public WarehouseArrivalRegisterRequest.ArrivalLine toArrivalLine() {
             return new WarehouseArrivalRegisterRequest.ArrivalLine(goodsId, qty, orderItemId, colorId, unitId,
-                    unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight);
+                    unitRate, weight, sourceDocNo, replacementIntent, preStockPlace, qtyFromWeight, giftQty);
         }
     }
 
@@ -433,7 +447,28 @@ public final class ProcurementArrivalContracts {
              * − 已收净量(已收 − 已退货 − 来料质检不合格已退回)，不小于 0；未扣已登记待审核量。
              * 预计到货仍在收满订货量时关闭，本值只用于显示「最多可收」。委外为 null。
              */
-            BigDecimal maxReceivableQty) {
+            BigDecimal maxReceivableQty,
+            String quantitySemantics, BigDecimal remainingGiftQty, BigDecimal registeredGiftQty) {
+        public InboundExpectationItem(UUID id, UUID orderItemId, Integer lineNo, UUID goodsId, String goodsCode, String goodsName, String goodsSeries, String goodsStockPlace, UUID colorId, String colorName, UUID unitId, String unitName, UUID baseUnitId, String baseUnitName, BigDecimal unitRate, BigDecimal unitPrice, BigDecimal orderedQty, BigDecimal acceptedQty, BigDecimal remainingQty, BigDecimal registeredQty, LocalDate expectedDate, List<ProcurementIqcStockInContracts.InboundAllocation> expectedAllocations, UUID lastReceiptWarehouseId, String lastReceiptWarehouseName, BigDecimal allowedOverReceiptPct, BigDecimal maxReceivableQty) {
+            this(id, orderItemId, lineNo, goodsId, goodsCode, goodsName, goodsSeries, goodsStockPlace, colorId, colorName, unitId, unitName, baseUnitId, baseUnitName, unitRate, unitPrice, orderedQty, acceptedQty, remainingQty, registeredQty, expectedDate, expectedAllocations, lastReceiptWarehouseId, lastReceiptWarehouseName, allowedOverReceiptPct, maxReceivableQty, "LEGACY_RECORDED", BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+
+        public String getOrderedQtyExact() { return orderedQty == null ? null : orderedQty.toPlainString(); }
+
+        public String getAcceptedQtyExact() { return acceptedQty == null ? null : acceptedQty.toPlainString(); }
+
+        public String getRemainingQtyExact() { return remainingQty == null ? null : remainingQty.toPlainString(); }
+
+        public String getRegisteredQtyExact() { return registeredQty == null ? null : registeredQty.toPlainString(); }
+
+        public String getUnitRateExact() { return unitRate == null ? null : unitRate.toPlainString(); }
+
+        public String getMaxReceivableQtyExact() { return maxReceivableQty == null ? null : maxReceivableQty.toPlainString(); }
+
+        public String getRemainingGiftQtyExact() { return remainingGiftQty == null ? null : remainingGiftQty.toPlainString(); }
+
+        public String getRegisteredGiftQtyExact() { return registeredGiftQty == null ? null : registeredGiftQty.toPlainString(); }
+
 
         public InboundExpectationItem {
             expectedAllocations = expectedAllocations == null

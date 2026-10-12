@@ -32,6 +32,7 @@ public class OrderSaveRequest {
     private Integer settlementStyleLegacy;
     private LocalDate deliverDate;
     private String remark;
+    private boolean confirmGiftSemantics;
     @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)

@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/brand_theme.dart';
 
 class UtenSectionHeader extends StatelessWidget {
   const UtenSectionHeader({
@@ -61,7 +62,7 @@ class UtenSectionHeader extends StatelessWidget {
             const SizedBox(width: 8),
           ],
           if (icon != null) ...[
-            Icon(icon, size: 16, color: UtenColors.teal600),
+            Icon(icon, size: 16, color: brandAccent(theme, UtenColors.teal600)),
             const SizedBox(width: 8),
           ],
           Flexible(

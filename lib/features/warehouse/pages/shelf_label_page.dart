@@ -30,9 +30,12 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/theme/light_theme.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/platform_branding/platform_branding.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -595,6 +598,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     showDialog<void>(
       context: context,
       builder: (_) => _ShelfLabelPrintDialog(
+        branding: ref.read(platformBrandingSnapshotProvider),
         defaultTitle: _headerTitle,
         groups: _printGroups,
         exportQuery: _exportQuery,
@@ -607,12 +611,14 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
 /// 抬头标题在本弹窗内可改（默认取所选仓库名 +「物料库」）。
 class _ShelfLabelPrintDialog extends StatefulWidget {
   const _ShelfLabelPrintDialog({
+    required this.branding,
     required this.defaultTitle,
     required this.groups,
     required this.exportQuery,
   });
 
   final String defaultTitle;
+  final PlatformBranding branding;
   final List<MapEntry<String, List<ShelfLabelRow>>> groups;
   final Map<String, dynamic> exportQuery;
 
@@ -621,7 +627,15 @@ class _ShelfLabelPrintDialog extends StatefulWidget {
 }
 
 class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
-  static const _teal = PdfColor.fromInt(0xFF1B7F8E);
+  PdfColor get _teal => widget.branding.usesDefaultColors
+      ? const PdfColor.fromInt(0xFF1B7F8E)
+      : PdfColor.fromInt(_paperPrimary.toARGB32());
+  Color get _paperPrimary => widget.branding.usesDefaultColors
+      ? UtenColors.teal700
+      : buildLightTheme(branding: widget.branding).colorScheme.primary;
+  String get _companyHeading => widget.branding.usesDefaultArtwork
+      ? 'UTEN优腾'
+      : widget.branding.companyName;
   static const _tealLight = PdfColor.fromInt(0xFFF2F8FA);
   static const _rowsPerPage = 16; // 每页数据行（不含末尾留白）
   static const _blankRows = 6; // 每库行末尾留白行（现场手写补充位）
@@ -727,7 +741,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text(
-                    'UTEN优腾',
+                    _companyHeading,
                     style: pw.TextStyle(
                       font: font,
                       fontSize: 16,
@@ -736,7 +750,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
                     ),
                   ),
                   pw.Text(
-                    '德国工匠 · 质造开关',
+                    widget.branding.tagline,
                     style: pw.TextStyle(
                       font: font,
                       fontSize: 7,
@@ -803,7 +817,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
           },
           children: [
             pw.TableRow(
-              decoration: const pw.BoxDecoration(color: _teal),
+              decoration: pw.BoxDecoration(color: _teal),
               children: [
                 // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
                 for (final h in ['库位号', '物料名称', '物料编码', '颜色', '物料系列']) hCell(h),
@@ -939,24 +953,27 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
         children: [
           Text(AppLocalizations.of(context).shelfLocationQuantityHint),
           Container(
-            color: UtenColors.teal700,
+            color: _paperPrimary,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Row(
               children: [
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'UTEN优腾',
-                      style: TextStyle(
+                      _companyHeading,
+                      style: const TextStyle(
                         color: UtenColors.surface,
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     Text(
-                      '德国工匠 · 质造开关',
-                      style: TextStyle(color: UtenColors.surface, fontSize: 8),
+                      widget.branding.tagline,
+                      style: const TextStyle(
+                        color: UtenColors.surface,
+                        fontSize: 8,
+                      ),
                     ),
                   ],
                 ),

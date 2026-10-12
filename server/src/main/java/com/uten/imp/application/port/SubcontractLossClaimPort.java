@@ -13,6 +13,10 @@ public interface SubcontractLossClaimPort {
 
     /** Reversing the physical waste is allowed only after finance effects are safely reversible. */
     void beforeWasteReverse(UUID wasteId);
+    /** Pure status/settlement-period check; never cancels a claim or emits an event. */
+    default void requireWasteReversibleReadOnly(UUID wasteId) {
+        throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对损耗财务责任的反审条件");
+    }
 
     record ApprovedWaste(
             UUID wasteId,

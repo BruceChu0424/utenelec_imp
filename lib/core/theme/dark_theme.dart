@@ -13,8 +13,10 @@ import 'package:flutter/services.dart';
 import 'uten_colors.dart';
 import 'uten_tokens.dart';
 import 'uten_page_transitions.dart';
+import '../../shared/platform_branding/platform_branding.dart';
+import 'brand_theme.dart';
 
-ThemeData buildDarkTheme() {
+ThemeData buildDarkTheme({PlatformBranding? branding}) {
   const colorScheme = ColorScheme(
     brightness: Brightness.dark,
     primary: UtenColors.teal400,
@@ -51,7 +53,7 @@ ThemeData buildDarkTheme() {
     surfaceTint: UtenColors.teal400,
   );
 
-  return ThemeData(
+  final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: colorScheme,
@@ -492,4 +494,5 @@ ThemeData buildDarkTheme() {
       dividerColor: UtenColors.darkBorder,
     ),
   );
+  return applyPlatformBrandTheme(base, branding ?? PlatformBranding.defaults);
 }

@@ -1,3 +1,7 @@
+import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
+import '../../../shared/measurement/widgets/weight_totals.dart';
+import '../../../shared/models/procurement_quantity.dart';
 // 登记实际到货页(/warehouse/inbound/arrivals/register；ADR-151 §5 单批合一)。
 //
 // 入库任务中心「预计到货」双击 = 1 个来源、多选 = N 个来源，都进这一个页面；来源身份走
@@ -154,6 +158,7 @@ class _InboundArrivalRegistrationPageState
         'expectationId': line.prefill.expectationId,
         'item': arrivalItemDraft(line.item),
         'qty': line.qty.text,
+        'giftQty': line.giftQty.text,
         'weight': weightEntryDraft(line.weight, qty: line.qty),
         'warehouseId': line.warehouseId,
         'warehouseAutofilled': line.warehouseAutofilled,
@@ -195,6 +200,9 @@ class _InboundArrivalRegistrationPageState
               onChanged: _onLineChanged,
             )
             ..qty.text = draftText(row, 'qty')
+            ..giftQty.text = draftText(row, 'giftQty').isEmpty
+                ? '0'
+                : draftText(row, 'giftQty')
             ..setWarehouse(
               row['warehouseId'] as String?,
               autofilled: row['warehouseAutofilled'] == true,
@@ -784,8 +792,15 @@ class _InboundArrivalRegistrationPageState
       if (!submitted.contains(line)) continue;
       final label =
           '第 ${index + 1} 行(${line.prefill.orderBillNo} ${line.item.goodsName})';
-      final qty = double.tryParse(line.qty.text.trim()) ?? 0;
-      if (qty <= 0) badQty.add(label);
+      if (procurementQuantityError(
+            line.qty.text,
+            line.giftQty.text,
+            extraGift:
+                line.prefill.orderType == ProcurementInboundOrderType.purchase,
+          ) !=
+          null) {
+        badQty.add(label);
+      }
       if (line.warehouseId == null || line.warehouseId!.isEmpty) {
         missingWarehouse.add(label);
       }
@@ -796,7 +811,11 @@ class _InboundArrivalRegistrationPageState
     }
     final rowIssues = <String>[
       if (badQty.isNotEmpty)
-        inboundRowIssueMessage(badQty, '的本次实收不是大于 0 的数字', action: '请改正后再提交'),
+        inboundRowIssueMessage(
+          badQty,
+          '的收费量、赠品量或实物合计不符合数量要求',
+          action: '请改正后再提交',
+        ),
       if (missingWarehouse.isNotEmpty)
         inboundRowIssueMessage(missingWarehouse, '未选择入库仓库', action: '请补齐后再提交'),
       if (missingPlace.isNotEmpty)
@@ -946,7 +965,9 @@ class _InboundArrivalRegistrationPageState
             if (line.prefill.orderType == ProcurementInboundOrderType.purchase)
               'purchaserId': line.prefill.purchaserId,
             'goodsId': line.item.goodsId,
-            'qty': double.tryParse(line.qty.text.trim()) ?? 0,
+            'qty': line.qty.text.trim(),
+            if (line.prefill.orderType == ProcurementInboundOrderType.purchase)
+              'giftQty': line.giftQty.text.trim(),
             'orderItemId': line.item.orderItemId,
             if (route.isStockInFirst) 'preStockPlace': line.place.text.trim(),
             if (line.source.apiValue != null)
@@ -1047,7 +1068,7 @@ class _InboundArrivalRegistrationPageState
       _registrationId,
       if (stockInFirst) 'stock-in-first',
       for (final line in lines)
-        '${line.item.orderItemId}:${line.warehouseId}:${(double.tryParse(line.qty.text.trim()) ?? 0)}'
+        '${line.item.orderItemId}:${line.warehouseId}:${line.qty.text.trim()}|gift=${line.giftQty.text.trim()}'
             '${line.source.apiValue == null ? '' : ':${line.source.apiValue}'}'
             '${_weightKeyPart(line)}',
     ].join('|');
@@ -1265,24 +1286,59 @@ class _InboundArrivalRegistrationPageState
                   // tooltip(_buildBottomBar)。
                   ListenableBuilder(
                     listenable: _weightCache,
-                    builder: (context, _) =>
-                        inboundTotalsBar<_BatchArrivalLine>(
-                          key: const Key('warehouse-arrival-totals'),
-                          lines: _lines,
-                          qtyLabel: '本次实收',
-                          qtyOf: (line) =>
-                              double.tryParse(line.qty.text.trim()) ?? 0,
-                          unitIdOf: (line) => line.item.unitId,
-                          unitNameOf: (line) => line.item.unitName,
-                          weight: warehouseWeightTotals<_BatchArrivalLine>(
+                    builder: (context, _) => UtenTotalsSummaryBar(
+                      key: const Key('warehouse-arrival-totals'),
+                      density: true,
+                      rowCount: _lines.length,
+                      entries: [
+                        UtenTotalEntry(
+                          '收费量',
+                          exactMeasurementTotalsText(
+                            _lines.map(
+                              (line) => ExactMeasuredAmount(
+                                value: line.qty.text,
+                                unitId: line.item.unitId,
+                                unitName: line.item.unitName,
+                              ),
+                            ),
+                          ),
+                        ),
+                        UtenTotalEntry(
+                          '赠品量',
+                          exactMeasurementTotalsText(
+                            _lines.map(
+                              (line) => ExactMeasuredAmount(
+                                value: line.giftQty.text,
+                                unitId: line.item.unitId,
+                                unitName: line.item.unitName,
+                              ),
+                            ),
+                          ),
+                        ),
+                        UtenTotalEntry(
+                          '实物量',
+                          exactMeasurementTotalsText(
+                            _lines.map(
+                              (line) => ExactMeasuredAmount(
+                                value: line.physicalQtyText,
+                                unitId: line.item.unitId,
+                                unitName: line.item.unitName,
+                              ),
+                            ),
+                          ),
+                        ),
+                        ...weightTotalEntries(
+                          warehouseWeightTotals<_BatchArrivalLine>(
                             _lines,
                             weightOf: (line) => line.weight,
                             exactKgOf: _exactKg,
                             paramsOf: _paramsOf,
                             qtyBaseOf: (line) => line.qtyBase,
                           ),
-                          weightDisplay: weightUnits.display,
+                          display: weightUnits.display,
                         ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1382,6 +1438,35 @@ class _InboundArrivalRegistrationPageState
         headerInfo: workflowFieldText(context).workflowArrivalQuantityHint,
       ),
       // 实称重量跟在数量组之后；按该行订货单供应商学到的单重核对(称重核对列)。
+      EditableGridColumn<_BatchArrivalLine>(
+        key: 'giftQty',
+        label: '赠品数量',
+        width: 150,
+        numeric: true,
+        cellBuilder: (_, line) => TextField(
+          controller: line.giftQty,
+          readOnly:
+              !editable(line) ||
+              line.prefill.orderType != ProcurementInboundOrderType.purchase,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            isDense: true,
+            suffixText: line.item.unitName,
+          ),
+        ),
+      ),
+      EditableGridColumn<_BatchArrivalLine>(
+        key: 'physicalQty',
+        label: '实物数量',
+        width: 150,
+        numeric: true,
+        cellBuilder: (_, line) => ListenableBuilder(
+          listenable: Listenable.merge([line.qty, line.giftQty]),
+          builder: (_, _) => Text(
+            '${line.physicalQtyText ?? '数量未留存'} ${line.item.unitName ?? ''}',
+          ),
+        ),
+      ),
       shared.weight(
         entryUnit: weightEntryUnit,
         enabled: editable,
@@ -1567,8 +1652,13 @@ class _InboundArrivalRegistrationPageState
 class _BatchArrivalLine extends InboundRegistrationLine {
   _BatchArrivalLine(this.prefill, this.item, {required this.onChanged})
     : qty = UtenAutofillTextController(
-        text: procurementQty(item.approvedRemainingQty),
+        text:
+            item.approvedRemainingQtyText ??
+            procurementQty(item.approvedRemainingQty),
         autofilled: false,
+      ),
+      giftQty = TextEditingController(
+        text: item.approvedRemainingGiftQtyText ?? '0',
       ),
       series = UtenAutofillTextController(text: item.goodsSeries ?? ''),
       super(
@@ -1581,6 +1671,7 @@ class _BatchArrivalLine extends InboundRegistrationLine {
         place: item.goodsStockPlace ?? '',
       ) {
     qty.addListener(onChanged);
+    giftQty.addListener(onChanged);
     weight.addListener(onChanged);
   }
 
@@ -1590,6 +1681,12 @@ class _BatchArrivalLine extends InboundRegistrationLine {
 
   /// 本次实收(行单位)；按称重改过时黄框待核对。
   final UtenAutofillTextController qty;
+  final TextEditingController giftQty;
+  String? get physicalQtyText => procurementPhysicalQuantityText(
+    quantitySemantics: procurementChargedPlusGiftQuantity,
+    chargedQty: qty.text,
+    giftQty: giftQty.text,
+  );
   WarehouseArrivalSource source = WarehouseArrivalSource.automatic;
   final UtenAutofillTextController series;
 
@@ -1602,7 +1699,9 @@ class _BatchArrivalLine extends InboundRegistrationLine {
   /// 本次实收折成基本单位(称重核对用)；没填为 null。
   double? get qtyBase {
     final value = double.tryParse(qty.text.trim());
-    return value == null ? null : value * unitRate;
+    return value == null
+        ? null
+        : (double.tryParse(physicalQtyText ?? '') ?? value) * unitRate;
   }
 
   @override
@@ -1615,6 +1714,8 @@ class _BatchArrivalLine extends InboundRegistrationLine {
   @override
   void dispose() {
     qty.removeListener(onChanged);
+    giftQty.removeListener(onChanged);
+    giftQty.dispose();
     weight.removeListener(onChanged);
     qty.dispose();
     series.dispose();

@@ -82,6 +82,7 @@ public final class PasswordChangeRequiredFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
+        if (PublicPlatformBrandingRequest.matches(request)) return true;
         String path = pathWithinApplication(request);
         return !(path.equals("/api") || path.startsWith("/api/"));
     }

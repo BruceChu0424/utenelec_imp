@@ -93,6 +93,27 @@ public class DailyReportExecutionSegmentGuard {
                 """).setParameter("ids", ids).getResultList();
     }
 
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=ApiException.class)
+    public void requireReversalReadOnly(List<ProductionDailyReportItem> items,Set<UUID> materialReopenedSegments) {
+        List<ReportLine> lines = items.stream()
+                .map(item -> new ReportLine(
+                        item.getId(),
+                        item.getFqcRecoveryAuthorizationId(),
+                        item.getExecutionSegmentId(),
+                        item.getExecutionSegmentSalesAllocationId(),
+                        item.getSalesOrderItemId(),
+                        item.getPlanItemId(),
+                        item.getGoodsId(),
+                        item.getColorId(),
+                        item.getUnitId(),
+                        item.getUnitRate(),
+                        item.getQty(),item.isFinal(),item.isActualSurplus()))
+                .toList();
+        Map<UUID,SegmentSnapshot> segments=lockAndValidateIdentity(lines,true,false,materialReopenedSegments);
+        Map<UUID,List<Object[]>> allocations=salesAllocations(segments.keySet());
+        for(ReportLine line:lines)validateSalesAllocation(line,segments.get(line.executionSegmentId()),allocations);
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public void reverse(List<ProductionDailyReportItem> items) {
         List<ReportLine> lines = items.stream()
@@ -217,6 +238,11 @@ public class DailyReportExecutionSegmentGuard {
     private Map<UUID, SegmentSnapshot> lockAndValidateIdentity(
             List<ReportLine> lines,
             boolean allowTerminalPackage) {
+        return lockAndValidateIdentity(lines,allowTerminalPackage,true,Set.of());
+    }
+
+    private Map<UUID,SegmentSnapshot> lockAndValidateIdentity(List<ReportLine> lines,
+            boolean allowTerminalPackage,boolean lock,Set<UUID> materialReopenedSegments) {
         validateLegacyPlanItemAccess(lines);
         TreeSet<UUID> ids = lines.stream()
                 .map(ReportLine::executionSegmentId)
@@ -227,11 +253,13 @@ public class DailyReportExecutionSegmentGuard {
                         TreeSet::addAll);
         Map<UUID, SegmentSnapshot> result = new LinkedHashMap<>();
         if (ids.isEmpty()) return result;
+        if(lock) {
         List<?> locked = em.createNativeQuery("""
                 SELECT s.id FROM production_execution_segments s
                 WHERE s.id IN (:ids) AND NOT s.is_deleted ORDER BY s.id FOR UPDATE OF s
                 """).setParameter("ids", ids).getResultList();
         if (locked.size() != ids.size()) throw conflict("报工关联的执行段不存在");
+        }
         // A join returned by a lock-waiting statement may retain its old plan /
         // package snapshot under READ COMMITTED. Start a new statement after all
         // segment locks are held before trusting any associated source facts.
@@ -301,7 +329,8 @@ public class DailyReportExecutionSegmentGuard {
                 throw conflict("执行段所属计划包已经终止");
             }
             if (!ProductionExecutionSegment.STATUS_IN_PROGRESS
-                    .equals(snapshot.status())) {
+                    .equals(snapshot.status()) && !( !lock && "COMPLETED".equals(snapshot.status())
+                        && materialReopenedSegments.contains(snapshot.id()))) {
                 throw conflict("请先在我的车间任务中开工，开工后才能报工");
             }
             result.put(snapshot.id(), snapshot);

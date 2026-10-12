@@ -1077,6 +1077,12 @@ class _QualityBatchApprovalPageState
           value: (row) => row.docNo,
         ),
         MasterColumnDef(
+          key: 'quantityTranche',
+          label: '数量来源',
+          width: 85,
+          value: (row) => row.iqc?.item.quantityTrancheLabel ?? '—',
+        ),
+        MasterColumnDef(
           key: 'goods',
           label: '货品名称',
           width: 200,

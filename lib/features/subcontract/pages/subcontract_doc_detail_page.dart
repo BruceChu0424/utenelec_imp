@@ -1,8 +1,11 @@
+import '../../../shared/documents/document_unapproval_action.dart';
+import 'subcontract_doc_edit_page.dart';
+import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
-// 委外单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
+// 委外单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/反审/编辑/删除）。
 //
-// 计划下达的委外申请始终只读；订货走财务审批；其余单据才沿用各自的草稿/审核/红冲动作。
+// 计划下达的委外申请始终只读；订货走财务审批；其余单据才沿用各自的草稿/审核/反审动作。
 // 财务决定只存在于财务任务中心；本页仅消费业务动作能力与 SUBMIT_FINANCE。
 // 名称解析：委外商(supplier)/仓库/币种/颜色/单位复用采购 MasterNameService；货品按明细 id 批量 lookup。
 // 审核仅调 approve，库存/应付/累计联动由后端承担；委外材料出仓单由委外人员在任务中心
@@ -41,14 +44,17 @@ import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../core/utils/currency_display.dart';
-import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/subcontract_short_delivery.dart'
     show formatSubcontractQty;
 import '../../../shared/widgets/source_doc_link.dart';
+import '../../../shared/widgets/procurement_document_layout.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
+import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/subcontract_doc_config.dart';
@@ -138,6 +144,30 @@ class _SubcontractDocDetailPageState
   bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
+  bool get _canReviewPhysical =>
+      nativeReadCanWrite &&
+      !(_detail?.legacyImported ?? false) &&
+      const {
+        SubcontractDocType.receipt,
+        SubcontractDocType.returnDoc,
+      }.contains(widget.docType) &&
+      _detail?.status == 0 &&
+      _hasPermission(_cfg.approvePerm);
+  Future<void> _openPhysicalReview() async {
+    if (!_canReviewPhysical) return;
+    final owns = captureNativeOwnership();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SubcontractDocEditPage(
+          docType: widget.docType,
+          id: widget.id,
+          reviewMode: true,
+        ),
+      ),
+    );
+    if (mounted && owns()) await _load();
+  }
+
   bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
 
   bool get _financeReviewOnly =>
@@ -287,10 +317,10 @@ class _SubcontractDocDetailPageState
   );
 
   Future<void> _reverse() async => _doAction(
-    '红冲将反向冲销，确认？',
+    documentUnapprovalConfirmation,
     (repo) => repo.reverse(widget.id),
-    '已红冲',
-    busyTitle: '正在红冲，请稍候',
+    '已反审，进入草稿',
+    busyTitle: '正在反审，请稍候',
   );
 
   /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
@@ -310,7 +340,7 @@ class _SubcontractDocDetailPageState
     for (final it in detail.items) {
       if (it.id != null) {
         ctrls[it.id!] = TextEditingController(
-          text: it.qty?.toStringAsFixed(2) ?? '',
+          text: it.qtyText ?? it.qty?.toString() ?? '',
         );
       }
     }
@@ -346,7 +376,7 @@ class _SubcontractDocDetailPageState
                             child: Text(
                               '${names.goods(it.goodsId)}'
                               '(${names.color(it.colorId)} · ${names.unit(it.unitId)}) '
-                              '${l10n.orderChangeQtyCurrent(it.qty?.toStringAsFixed(2) ?? '—')}',
+                              '${l10n.orderChangeQtyCurrent(financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '—')}',
                               style: Theme.of(ctx).textTheme.labelMedium
                                   ?.copyWith(fontWeight: FontWeight.w400),
                               overflow: TextOverflow.ellipsis,
@@ -395,16 +425,15 @@ class _SubcontractDocDetailPageState
     final changes = <Map<String, dynamic>>[];
     for (final it in detail.items) {
       if (it.id == null) continue;
-      final v = double.tryParse(ctrls[it.id!]!.text.trim());
-      // 行内校验：新数量必须解析成功且 > 0。
-      if (v == null || v <= 0) {
+      final v = positiveDocumentQuantityText(ctrls[it.id!]!.text);
+      if (v == null) {
         _disposeChangeQtyControllers(ctrls.values);
         if (mounted && ownsNative()) {
           context.appError(l10n.orderChangeQtyInvalid);
         }
         return;
       }
-      if (v != it.qty) {
+      if (v != financeExactTrimmed(it.qtyText ?? it.qty?.toString())) {
         changes.add({'orderItemId': it.id, 'newQty': v});
       }
     }
@@ -447,7 +476,7 @@ class _SubcontractDocDetailPageState
 
   Future<void> _doAction(
     String confirm,
-    Future<void> Function(SubcontractRepository) fn,
+    Future<Object?> Function(SubcontractRepository) fn,
     String ok, {
     void Function(ApiException error)? onApiError,
     bool reviewerConfirmation = false,
@@ -490,10 +519,20 @@ class _SubcontractDocDetailPageState
       _busyTitle = busyTitle ?? '正在处理，请稍候';
     });
     try {
-      await fn(ref.read(subcontractRepositoryProvider(widget.docType)));
+      final result = await fn(
+        ref.read(subcontractRepositoryProvider(widget.docType)),
+      );
       if (!mounted || !ownsNative()) return;
-      context.appSuccess(ok);
       bumpListRefresh(ref, _cfg.refreshKey);
+      if (result is SubcontractDocDetail && result.id != widget.id) {
+        showDocumentUnapprovalResult(context, result.status);
+        openUnapprovedDraft(
+          context,
+          RoutePath.subcontractDocDetail(widget.docType.pathSegment, result.id),
+        );
+        return;
+      }
+      context.appSuccess(ok);
       await _load();
     } on ApiException catch (e) {
       if (mounted && ownsNative()) {
@@ -647,6 +686,11 @@ class _SubcontractDocDetailPageState
                               ),
                             // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
                             // SelectionArea（准则 §3.4），无需再单独包。
+                            documentUnapprovalBannerForRoute(
+                              'subcontract',
+                              widget.docType.pathSegment,
+                              widget.id,
+                            ),
                             _headerCard(theme),
                             if (_cfg.approvalBlockedReason != null) ...[
                               const SizedBox(height: UtenSpacing.s12),
@@ -779,7 +823,7 @@ class _SubcontractDocDetailPageState
         approval?.isApproved == true) {
       return detail.closed ? '已结清' : '财务已审核，委外订货单已生效';
     }
-    if (detail.status == kSubcontractStatusReversed) return '已红冲';
+    if (detail.status == kSubcontractStatusReversed) return '已反审';
     return '订货草稿，待提交财务';
   }
 
@@ -836,7 +880,7 @@ class _SubcontractDocDetailPageState
           (d.deductAmount ?? 0) > 0)
         _KV('建议索赔金额(本币)', '${d.deductAmount?.toStringAsFixed(2)}(仅建议，不自动冲应付)'),
       if (canViewCommercialAmounts && _cfg.hasAmount && !_historicalReceipt)
-        _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
+        _KV('合计(本币)', financeExactMoneyDisplay(d.totalLocalText)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
@@ -931,12 +975,13 @@ class _SubcontractDocDetailPageState
     final canViewCommercialAmounts = _canViewCommercialAmounts;
     final names = ref.watch(mn.masterNameServiceProvider);
     // 2026-10-10 数量+单位口径：明细各数量列内联行单位(如 `12 PCS`)，独立单位列删除；
+    final settlementOptions = ref.watch(settlementMethodOptionsProvider);
     // 单位缺失时只显数字，空数量保持原有的 null/'—' 占位语义。
     String? unitOf(SubcontractDocItem it) => _dictText(names.unit(it.unitId));
     String? qtyWithUnit(
       SubcontractDocItem it,
       num? value, {
-      int maxDecimals = 3,
+      int maxDecimals = 4,
     }) => value == null
         ? null
         : formatQtyWithUnit(value, unitOf(it), maxDecimals: maxDecimals);
@@ -951,280 +996,324 @@ class _SubcontractDocDetailPageState
           child: MasterDataTableView<SubcontractDocItem>(
             tableKey: 'subcontract.${widget.docType.name}.items',
             primary: true,
-            columns: [
-              MasterColumnDef(
-                key: 'goods',
-                label: '货品名称',
-                // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-                // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
-                // 一格又不能各自排序筛选。2026-10-10 起单位内联在数量后（原独立
-                // 单位列删除），名称格仍不带单位副行。
-                width: 200,
-                value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
-                cellBuilderHandlesSemantics: true,
-                cellBuilder: (context, it) => UtenGoodsIdentityCell(
-                  name: _dictText(names.goods(it.goodsId)),
-                ),
-              ),
-              MasterColumnDef(
-                key: 'goodsCode',
-                label: '编号',
-                width: 130,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  names.goodsInfo(it.goodsId)?.code,
-                ),
-                cellBuilder: (context, it) =>
-                    UtenGoodsAttributeCell(names.goodsInfo(it.goodsId)?.code),
-              ),
-              MasterColumnDef(
-                key: 'colorName',
-                label: '颜色',
-                width: 96,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  _dictText(names.color(it.colorId)),
-                ),
-                cellBuilder: (context, it) =>
-                    UtenGoodsAttributeCell(_dictText(names.color(it.colorId))),
-              ),
-              // 实物出入库单据（进仓/发料/退货/材料退）：库位号（主档带出，上架/拣货指引）。
-              if (_cfg.itemHasStockPlace)
-                MasterColumnDef(
-                  key: 'stockPlace',
-                  label: '库位号',
-                  width: 90,
-                  value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
-                ),
-              // 进仓单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
-              if (widget.docType == SubcontractDocType.receipt)
-                MasterColumnDef(
-                  key: 'orderBillNo',
-                  label: '来源订货单',
-                  width: 150,
-                  value: (it) => it.orderBillNo ?? '',
-                ),
-              // V463：合并订货行的来源申请单号（多来源顿号连接，单来源一条）。
-              if (widget.docType == SubcontractDocType.order)
-                MasterColumnDef(
-                  key: 'sourceApplications',
-                  label: '来源申请',
-                  width: 170,
-                  value: (it) => it.sourceApplications
-                      .map((source) => source.billNo)
-                      .whereType<String>()
-                      .where((no) => no.isNotEmpty)
-                      .join('、'),
-                ),
-              // 单位内联在数量后（2026-10-10 口径，原独立单位列删除）。
-              MasterColumnDef(
-                key: 'qty',
-                label: widget.docType == SubcontractDocType.order
-                    ? '订货量'
-                    : '数量',
-                width: 100,
-                type: 'number',
-                value: (it) => _historicalReceipt
-                    ? historicalReceiptAmount(it.qtyText)
-                    : qtyWithUnit(it, it.qty),
-              ),
-              if (_cfg.itemHasPrice && canViewCommercialAmounts) ...[
-                MasterColumnDef(
-                  key: 'price',
-                  label: '单价',
-                  width:
-                      widget.docType == SubcontractDocType.order &&
-                          _detail!.items.any(
-                            (it) => it.totalAmountInputText != null,
-                          )
-                      ? 220
-                      : 120,
-                  type: 'money',
-                  info: widget.docType == SubcontractDocType.order
-                      ? '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。'
-                      : null,
-                  value: (it) =>
-                      widget.docType == SubcontractDocType.order &&
-                          it.totalAmountInputText != null
-                      ? '${financeMoneyWithUnitSuffix(financeExactTrimmed(it.priceText ?? it.price?.toString()), currencyName: docCurrencyName)}（参考）'
-                      : _historicalReceipt
-                      ? financeMoneyWithUnitSuffix(
-                          historicalReceiptAmount(it.priceText),
-                          currencyName: docCurrencyName,
-                        )
-                      : it.price == null
-                      ? null
-                      : financeMoneyWithUnitSuffix(
-                          it.price!.toStringAsFixed(2),
-                          currencyName: docCurrencyName,
-                        ),
-                ),
-                MasterColumnDef(
-                  key: 'amount',
-                  label: _historicalReceipt
-                      ? '原币对应值（已核验）'
-                      : widget.docType == SubcontractDocType.order
-                      ? '总金额'
-                      : '金额',
-                  width: 130,
-                  type: 'money',
-                  // 总金额计价保留服务端原文；记录缺失时不能回乘参考单价补造金额。
-                  value: (it) =>
-                      widget.docType == SubcontractDocType.order &&
-                          it.totalAmountInputText != null
-                      ? financeMoneyWithUnitSuffix(
-                          it.amountOriginalText ?? it.amountLocalText,
-                          currencyName: docCurrencyName,
-                        )
-                      : _historicalReceipt
-                      ? financeMoneyWithUnitSuffix(
-                          historicalReceiptAmount(it.amountOriginalText),
-                          currencyName: docCurrencyName,
-                        )
-                      : financeMoneyWithUnitSuffix(
-                          (it.amountOriginal ?? it.amountLocal) != null
-                              ? (it.amountOriginal ?? it.amountLocal)!
-                                    .toStringAsFixed(2)
-                              : ((it.qty ?? 0) * (it.price ?? 0))
-                                    .toStringAsFixed(2),
-                          currencyName: docCurrencyName,
-                        ),
-                ),
-                if (_historicalReceipt)
-                  MasterColumnDef(
-                    key: 'recordedLocalAmount',
-                    label: '本币成本（STotal）',
-                    width: 180,
-                    type: 'money',
-                    // 恒本币：折合人民币金额带「元」后缀（历史「未知」原文不拼）。
-                    value: (it) => financeLocalMoneyWithUnitSuffix(
-                      historicalReceiptAmount(it.amountLocalText),
+            columns:
+                canonicalProcurementColumns<
+                  MasterColumnDef<SubcontractDocItem>
+                >(
+                  [
+                    MasterColumnDef(
+                      key: 'goods',
+                      label: '货品名称',
+                      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+                      // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
+                      // 一格又不能各自排序筛选。2026-10-10 起单位内联在数量后（原独立
+                      // 单位列删除），名称格仍不带单位副行。
+                      width: 200,
+                      value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
+                      cellBuilderHandlesSemantics: true,
+                      cellBuilder: (context, it) => UtenGoodsIdentityCell(
+                        name: _dictText(names.goods(it.goodsId)),
+                      ),
                     ),
-                  ),
-              ],
-              if (_historicalReceipt)
-                MasterColumnDef(
-                  key: 'recordedUnitRate',
-                  label: '单位换算率',
-                  width: 180,
-                  value: (it) => historicalReceiptRate(it.unitRateText),
+                    MasterColumnDef(
+                      key: 'goodsCode',
+                      label: '编号',
+                      width: 130,
+                      value: (it) => UtenGoodsAttributeCell.text(
+                        names.goodsInfo(it.goodsId)?.code,
+                      ),
+                      cellBuilder: (context, it) => UtenGoodsAttributeCell(
+                        names.goodsInfo(it.goodsId)?.code,
+                      ),
+                    ),
+                    MasterColumnDef(
+                      key: 'colorName',
+                      label: '颜色',
+                      width: 96,
+                      value: (it) => UtenGoodsAttributeCell.text(
+                        _dictText(names.color(it.colorId)),
+                      ),
+                      cellBuilder: (context, it) => UtenGoodsAttributeCell(
+                        _dictText(names.color(it.colorId)),
+                      ),
+                    ),
+                    // 实物出入库单据（进仓/发料/退货/材料退）：库位号（主档带出，上架/拣货指引）。
+                    if (_cfg.itemHasStockPlace)
+                      MasterColumnDef(
+                        key: 'stockPlace',
+                        label: '库位号',
+                        width: 90,
+                        value: (it) =>
+                            names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                      ),
+                    // 进仓单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
+                    if (widget.docType == SubcontractDocType.receipt)
+                      MasterColumnDef(
+                        key: 'orderBillNo',
+                        label: '来源订货单',
+                        width: 150,
+                        value: (it) => it.orderBillNo ?? '',
+                      ),
+                    // V463：合并订货行的来源申请单号（多来源顿号连接，单来源一条）。
+                    if (widget.docType == SubcontractDocType.order)
+                      MasterColumnDef(
+                        key: 'sourceApplications',
+                        label: '申请来源',
+                        width: 170,
+                        value: (it) => it.sourceApplications
+                            .map((source) => source.billNo)
+                            .whereType<String>()
+                            .where((no) => no.isNotEmpty)
+                            .join('、'),
+                      ),
+                    // 单位内联在数量后（2026-10-10 口径，原独立单位列删除）。
+                    MasterColumnDef(
+                      key: 'qty',
+                      label: '数量',
+                      width: 100,
+                      type: 'number',
+                      value: (it) => _historicalReceipt
+                          ? historicalReceiptAmount(it.qtyText)
+                          : it.qtyText == null
+                          ? qtyWithUnit(it, it.qty)
+                          : formatExactQtyWithUnit(it.qtyText, unitOf(it)),
+                    ),
+                    if (_cfg.itemHasPrice && canViewCommercialAmounts) ...[
+                      MasterColumnDef(
+                        key: 'price',
+                        label: '单价',
+                        width:
+                            widget.docType == SubcontractDocType.order &&
+                                _detail!.items.any(
+                                  (it) => it.totalAmountInputText != null,
+                                )
+                            ? 220
+                            : 120,
+                        type: 'money',
+                        info: widget.docType == SubcontractDocType.order
+                            ? '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。'
+                            : null,
+                        value: (it) =>
+                            widget.docType == SubcontractDocType.order &&
+                                it.totalAmountInputText != null
+                            ? '${financeMoneyWithUnitSuffix(financeExactTrimmed(it.priceText ?? it.price?.toString()), currencyName: docCurrencyName)}（参考）'
+                            : _historicalReceipt
+                            ? financeMoneyWithUnitSuffix(
+                                historicalReceiptAmount(it.priceText),
+                                currencyName: docCurrencyName,
+                              )
+                            : financeMoneyWithUnitSuffix(
+                                it.priceText,
+                                currencyName: docCurrencyName,
+                              ),
+                      ),
+                      MasterColumnDef(
+                        key: 'amount',
+                        label: _historicalReceipt
+                            ? '原币对应值（已核验）'
+                            : widget.docType == SubcontractDocType.order
+                            ? '总金额'
+                            : '金额',
+                        width: 130,
+                        type: 'money',
+                        // 总金额计价保留服务端原文；记录缺失时不能回乘参考单价补造金额。
+                        value: (it) =>
+                            widget.docType == SubcontractDocType.order &&
+                                it.totalAmountInputText != null
+                            ? financeMoneyWithUnitSuffix(
+                                it.amountOriginalText ?? it.amountLocalText,
+                                currencyName: docCurrencyName,
+                              )
+                            : _historicalReceipt
+                            ? financeMoneyWithUnitSuffix(
+                                historicalReceiptAmount(it.amountOriginalText),
+                                currencyName: docCurrencyName,
+                              )
+                            : financeMoneyWithUnitSuffix(
+                                it.amountOriginalText ?? it.amountLocalText,
+                                currencyName: docCurrencyName,
+                              ),
+                      ),
+                      if (_historicalReceipt)
+                        MasterColumnDef(
+                          key: 'recordedLocalAmount',
+                          label: '本币成本（STotal）',
+                          width: 180,
+                          type: 'money',
+                          // 恒本币：折合人民币金额带「元」后缀（历史「未知」原文不拼）。
+                          value: (it) => financeLocalMoneyWithUnitSuffix(
+                            historicalReceiptAmount(it.amountLocalText),
+                          ),
+                        ),
+                    ],
+                    if (_historicalReceipt)
+                      MasterColumnDef(
+                        key: 'recordedUnitRate',
+                        label: '单位换算率',
+                        width: 180,
+                        value: (it) => historicalReceiptRate(it.unitRateText),
+                      ),
+                    if (_cfg.itemHasGirth)
+                      MasterColumnDef(
+                        key: 'girth',
+                        label: '围数',
+                        width: 96,
+                        type: 'number',
+                        value: (it) => it.girthQty == null
+                            ? null
+                            : formatSubcontractQty(it.girthQty!),
+                      ),
+                    if (_cfg.itemHasBoxQty)
+                      MasterColumnDef(
+                        key: 'boxQty',
+                        label: '胶箱数',
+                        width: 96,
+                        type: 'number',
+                        value: (it) => it.boxQty == null
+                            ? null
+                            : formatSubcontractQty(it.boxQty!),
+                      ),
+                    // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
+                    if (_cfg.showReceived)
+                      MasterColumnDef(
+                        key: 'received',
+                        label: '已收',
+                        width: 100,
+                        type: 'number',
+                        value: (it) => qtyWithUnit(it, it.receivedQty),
+                      ),
+                    if (widget.docType == SubcontractDocType.order)
+                      MasterColumnDef(
+                        key: 'settledLossQty',
+                        label: '结案损耗',
+                        width: 110,
+                        type: 'number',
+                        value: (it) =>
+                            qtyWithUnit(it, it.settledLossQty) ?? '—',
+                      ),
+                    // ADR-098：订货行允许损耗%（回厂累计低于 数量×(1−允许损耗) 即短交待判定）。
+                    if (_cfg.itemHasAllowedLossPct)
+                      MasterColumnDef(
+                        key: 'allowedLossPct',
+                        label: '允许损耗%',
+                        width: 100,
+                        type: 'number',
+                        value: (it) => it.allowedLossPct == null
+                            ? '未设'
+                            : it.allowedLossPct!.toStringAsFixed(2),
+                      ),
+                    if (_cfg.showReturned)
+                      MasterColumnDef(
+                        key: 'returned',
+                        label: '已退',
+                        width: 100,
+                        type: 'number',
+                        value: (it) => qtyWithUnit(it, it.returnedQty),
+                      ),
+                    if (_cfg.showWasted)
+                      MasterColumnDef(
+                        key: 'wasted',
+                        label: '已损耗',
+                        width: 100,
+                        type: 'number',
+                        value: (it) => qtyWithUnit(it, it.wastedQty),
+                      ),
+                    if (_cfg.showSupplierLedger) ...[
+                      MasterColumnDef(
+                        key: 'atSupplier',
+                        label: '在供应商处',
+                        width: 110,
+                        type: 'number',
+                        value: (it) => qtyWithUnit(it, it.atSupplierQty),
+                      ),
+                      MasterColumnDef(
+                        key: 'consumed',
+                        label: '已消费',
+                        width: 100,
+                        type: 'number',
+                        value: (it) => qtyWithUnit(it, it.consumedQty),
+                      ),
+                      MasterColumnDef(
+                        key: 'supplierEnding',
+                        label: '供应商结存',
+                        width: 110,
+                        type: 'number',
+                        value: (it) => qtyWithUnit(it, it.supplierEnding),
+                      ),
+                      MasterColumnDef(
+                        key: 'frozenUnitQty',
+                        label: '冻结单耗',
+                        width: 100,
+                        type: 'number',
+                        value: (it) => qtyWithUnit(it, it.frozenUnitQty),
+                      ),
+                    ],
+                    if (_cfg.itemHasWasteFields)
+                      MasterColumnDef(
+                        key: 'wasteCause',
+                        label: '损耗率/原因',
+                        width: 140,
+                        value: (it) => [
+                          if (it.wasteRate != null) '${it.wasteRate}%',
+                          if (it.cause?.isNotEmpty == true) it.cause,
+                        ].join(' · '),
+                      ),
+                    if (widget.docType == SubcontractDocType.order) ...[
+                      MasterColumnDef(
+                        key: 'supplier',
+                        label: '委外商',
+                        width: 170,
+                        value: (_) => names.supplier(d.supplierId),
+                      ),
+                      if (canViewCommercialAmounts) ...[
+                        MasterColumnDef(
+                          key: 'currency',
+                          label: '币种',
+                          width: 110,
+                          value: (_) => names.currency(d.currencyId),
+                        ),
+                        MasterColumnDef(
+                          key: 'taxRate',
+                          label: '税率(%)',
+                          width: 100,
+                          value: (_) => d.taxRate?.toString(),
+                        ),
+                        MasterColumnDef(
+                          key: 'settlement',
+                          label: '结算方式',
+                          width: 150,
+                          value: (_) {
+                            for (final method
+                                in settlementOptions.valueOrNull ??
+                                    const <ReferenceMethodOption>[]) {
+                              if (method.id == d.settlementMethodId) {
+                                return method.name;
+                              }
+                            }
+                            return d.settlementMethodId == null
+                                ? '—'
+                                : settlementOptions.isLoading
+                                ? '加载中…'
+                                : '未能解析(${d.settlementMethodId})';
+                          },
+                        ),
+                      ],
+                    ],
+                    MasterColumnDef(
+                      key: 'remark',
+                      label: '备注',
+                      width: 220,
+                      value: (it) => it.remark,
+                    ),
+                    ...businessReadOnlyColumns<SubcontractDocItem>(
+                      items,
+                      columnsOf: (line) => line.extraColumns,
+                      priceMasked: !canViewCommercialAmounts,
+                    ),
+                  ],
+                  keyOf: (column) => column.key,
+                  enabled: widget.docType == SubcontractDocType.order,
                 ),
-              if (_cfg.itemHasGirth)
-                MasterColumnDef(
-                  key: 'girth',
-                  label: '围数',
-                  width: 96,
-                  type: 'number',
-                  value: (it) => it.girthQty == null
-                      ? null
-                      : formatSubcontractQty(it.girthQty!),
-                ),
-              if (_cfg.itemHasBoxQty)
-                MasterColumnDef(
-                  key: 'boxQty',
-                  label: '胶箱数',
-                  width: 96,
-                  type: 'number',
-                  value: (it) => it.boxQty == null
-                      ? null
-                      : formatSubcontractQty(it.boxQty!),
-                ),
-              // 实际重量列已下线（2026-09-04：单位已表达重量，编辑页不再录入）。
-              if (_cfg.showReceived)
-                MasterColumnDef(
-                  key: 'received',
-                  label: '已收',
-                  width: 100,
-                  type: 'number',
-                  value: (it) => qtyWithUnit(it, it.receivedQty),
-                ),
-              if (widget.docType == SubcontractDocType.order)
-                MasterColumnDef(
-                  key: 'settledLossQty',
-                  label: '结案损耗',
-                  width: 110,
-                  type: 'number',
-                  value: (it) =>
-                      qtyWithUnit(it, it.settledLossQty, maxDecimals: 4) ?? '—',
-                ),
-              // ADR-098：订货行允许损耗%（回厂累计低于 数量×(1−允许损耗) 即短交待判定）。
-              if (_cfg.itemHasAllowedLossPct)
-                MasterColumnDef(
-                  key: 'allowedLossPct',
-                  label: '允许损耗%',
-                  width: 100,
-                  type: 'number',
-                  value: (it) => it.allowedLossPct == null
-                      ? '未设'
-                      : it.allowedLossPct!.toStringAsFixed(2),
-                ),
-              if (_cfg.showReturned)
-                MasterColumnDef(
-                  key: 'returned',
-                  label: '已退',
-                  width: 100,
-                  type: 'number',
-                  value: (it) => qtyWithUnit(it, it.returnedQty),
-                ),
-              if (_cfg.showWasted)
-                MasterColumnDef(
-                  key: 'wasted',
-                  label: '已损耗',
-                  width: 100,
-                  type: 'number',
-                  value: (it) => qtyWithUnit(it, it.wastedQty),
-                ),
-              if (_cfg.showSupplierLedger) ...[
-                MasterColumnDef(
-                  key: 'atSupplier',
-                  label: '在供应商处',
-                  width: 110,
-                  type: 'number',
-                  value: (it) => qtyWithUnit(it, it.atSupplierQty),
-                ),
-                MasterColumnDef(
-                  key: 'consumed',
-                  label: '已消费',
-                  width: 100,
-                  type: 'number',
-                  value: (it) => qtyWithUnit(it, it.consumedQty),
-                ),
-                MasterColumnDef(
-                  key: 'supplierEnding',
-                  label: '供应商结存',
-                  width: 110,
-                  type: 'number',
-                  value: (it) => qtyWithUnit(it, it.supplierEnding),
-                ),
-                MasterColumnDef(
-                  key: 'frozenUnitQty',
-                  label: '冻结单耗',
-                  width: 100,
-                  type: 'number',
-                  value: (it) =>
-                      qtyWithUnit(it, it.frozenUnitQty, maxDecimals: 4),
-                ),
-              ],
-              if (_cfg.itemHasWasteFields)
-                MasterColumnDef(
-                  key: 'wasteCause',
-                  label: '损耗率/原因',
-                  width: 140,
-                  value: (it) => [
-                    if (it.wasteRate != null) '${it.wasteRate}%',
-                    if (it.cause?.isNotEmpty == true) it.cause,
-                  ].join(' · '),
-                ),
-              MasterColumnDef(
-                key: 'remark',
-                label: '备注',
-                width: 220,
-                value: (it) => it.remark,
-              ),
-              ...businessReadOnlyColumns<SubcontractDocItem>(
-                items,
-                columnsOf: (line) => line.extraColumns,
-                priceMasked: !canViewCommercialAmounts,
-              ),
-            ],
             items: items,
             facets: const {},
             nullCounts: const {},
@@ -1259,12 +1348,15 @@ class _SubcontractDocDetailPageState
                           compact: true,
                           rowCount: items.length,
                           entries: [
-                            utenQuantityTotalEntry(
-                              items.map(
-                                (it) => MeasuredAmount(
-                                  value: it.qty ?? 0,
-                                  unitId: it.unitId,
-                                  unitName: names.unit(it.unitId),
+                            UtenTotalEntry(
+                              '合计数量',
+                              exactMeasurementTotalsText(
+                                items.map(
+                                  (it) => ExactMeasuredAmount(
+                                    value: it.qtyText ?? it.qty?.toString(),
+                                    unitId: it.unitId,
+                                    unitName: names.unit(it.unitId),
+                                  ),
                                 ),
                               ),
                             ),
@@ -1277,21 +1369,19 @@ class _SubcontractDocDetailPageState
                                         )
                                       : null,
                                 ),
-                                (d.totalOriginal ??
-                                        items.fold<double>(
-                                          0,
-                                          (sum, it) =>
-                                              sum +
-                                              (it.amountOriginal ??
-                                                  it.amountLocal ??
-                                                  0),
-                                        ))
-                                    .toStringAsFixed(2),
+                                financeExactMoneyDisplay(
+                                  d.totalOriginalText ??
+                                      financeExactSumTexts(
+                                        items.map(
+                                          (it) => it.amountOriginalText,
+                                        ),
+                                      ),
+                                ),
                                 danger: true,
                               ),
                               UtenTotalEntry(
                                 '合计(本币)',
-                                d.totalLocal?.toStringAsFixed(2) ?? '',
+                                financeExactMoneyDisplay(d.totalLocalText),
                               ),
                             ],
                           ],
@@ -1599,14 +1689,16 @@ class _SubcontractDocDetailPageState
           ),
         );
       }
-      if (_canReverse && d.canReverse) {
+      if (_canReverse) {
         addAction(
-          UtenButton(
-            type: UtenButtonType.danger,
-            size: UtenButtonSize.large,
-            icon: Icons.undo_outlined,
+          DocumentUnapprovalAction(
+            family: unapprovalFamilyForRoute(
+              'subcontract',
+              widget.docType.pathSegment,
+            )!,
+            documentId: widget.id,
+            revision: d,
             onPressed: _reverse,
-            child: const Text('红冲'),
           ),
         );
       }
@@ -1662,6 +1754,20 @@ class _SubcontractDocDetailPageState
               SubcontractRoute.edit(_cfg.pathSegment, widget.id),
             ),
             child: const Text('编辑'),
+          ),
+        );
+      }
+      if (_canReviewPhysical) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            icon: Icons.edit_note_outlined,
+            onPressed: _openPhysicalReview,
+            child: const Text('修改后审核'),
           ),
         );
       }
@@ -1727,17 +1833,19 @@ class _SubcontractDocDetailPageState
           );
         }
       }
-      if (_canReverse && d.canReverse) {
+      if (_canReverse) {
         if (children.isNotEmpty) {
           children.add(const SizedBox(width: UtenSpacing.s8));
         }
         children.add(
-          UtenButton(
-            type: UtenButtonType.danger,
-            size: UtenButtonSize.large,
-            icon: Icons.undo_outlined,
+          DocumentUnapprovalAction(
+            family: unapprovalFamilyForRoute(
+              'subcontract',
+              widget.docType.pathSegment,
+            )!,
+            documentId: widget.id,
+            revision: d,
             onPressed: _reverse,
-            child: const Text('红冲'),
           ),
         );
       }

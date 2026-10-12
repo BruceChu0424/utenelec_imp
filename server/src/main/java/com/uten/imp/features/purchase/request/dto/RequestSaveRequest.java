@@ -35,6 +35,7 @@ public class RequestSaveRequest {
     private UUID applicantId;
     private LocalDate needDate;
     private String remark;
+    private boolean confirmGiftSemantics;
     @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)

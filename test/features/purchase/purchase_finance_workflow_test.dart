@@ -37,12 +37,12 @@ void main() {
     expect(purchaseOrderDisplayLabel(0, approval('DRAFT')), '待提交财务');
     expect(purchaseOrderDisplayLabel(1, approval('APPROVED')), '财务已通过');
     // 终态（红冲/已取消）优先于审批投影，红冲后的在案通过不再盖过「红冲」。
-    expect(purchaseOrderDisplayLabel(-1, approval('APPROVED')), '红冲');
+    expect(purchaseOrderDisplayLabel(-1, approval('APPROVED')), '已反审');
     expect(purchaseOrderDisplayLabel(2, approval('CANCELED')), '已取消');
     // 无投影（未建案）与历史/未知态回落单据状态文案。
     expect(purchaseOrderDisplayLabel(0, null), '草稿');
     expect(purchaseOrderDisplayLabel(1, approval('LEGACY_EFFECTIVE')), '已审');
-    expect(purchaseOrderDisplayLabel(-1, approval('LEGACY_REVERSED')), '红冲');
+    expect(purchaseOrderDisplayLabel(-1, approval('LEGACY_REVERSED')), '已反审');
   });
 
   test('business repository only sends the submit-finance command', () async {

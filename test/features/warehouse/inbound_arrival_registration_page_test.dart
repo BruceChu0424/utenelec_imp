@@ -29,6 +29,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_inbound_expectations_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
+import 'package:uten_imp/shared/models/procurement_quantity.dart';
 
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import 'inbound_arrival_test_support.dart';
@@ -39,6 +40,83 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 const _ids = ['expectation-batch-1', 'expectation-batch-2'];
 
 void main() {
+  testWidgets(
+    'gift-only arrival survives source read and draft restore then submits charged0 gift1',
+    (tester) async {
+      tester.view.physicalSize = const Size(1800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _BatchApi(
+        customPrefills: const [
+          ProcurementReceiptPrefill(
+            expectationId: 'expectation-batch-1',
+            orderType: ProcurementInboundOrderType.purchase,
+            orderBillNo: 'GIFT-PO',
+            supplierId: 'supplier-1',
+            warehouseId: 'warehouse-1',
+            purchaserId: 'purchaser-1',
+            items: [
+              ProcurementReceiptPrefillItem(
+                orderItemId: 'gift-source',
+                goodsId: 'gift-goods',
+                goodsCode: 'GIFT',
+                goodsName: '赠品物料',
+                unitId: 'piece',
+                unitName: '件',
+                unitRate: 1,
+                approvedRemainingQty: 0,
+                approvedRemainingQtyText: '0',
+                approvedRemainingGiftQtyText: '1.0001',
+                quantitySemantics: procurementChargedPlusGiftQuantity,
+              ),
+            ],
+          ),
+        ],
+      );
+      final router = _router(
+        ids: [_ids.first],
+        route: InboundRoute.inspectFirst,
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(api),
+            sessionProvider.overrideWith(_TestSessionNotifier.new),
+            masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('赠品物料'), findsOneWidget);
+      expect(find.text('1.0001 件'), findsWidgets);
+      final editor =
+          tester.state(find.byType(InboundArrivalRegistrationPage))
+              as FormDraftMixin<InboundArrivalRegistrationPage>;
+      final draft = editor.captureFormDraft();
+      final rows = (draft['rows'] as List).cast<Map<String, dynamic>>();
+      expect(rows.single['qty'], '0');
+      expect(rows.single['giftQty'], '1.0001');
+      await editor.restoreFormDraft(draft);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('inbound-route-submit-inspectFirst')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认登记送检'));
+      await tester.pumpAndSettle();
+      final lines = (api.arrivalPostBodies.single['lines'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(lines.single['orderItemId'], 'gift-source');
+      expect(lines.single['qty'], '0');
+      expect(lines.single['giftQty'], '1.0001');
+      expect(lines.single.containsKey('physicalQty'), isFalse);
+      expect(lines.single.containsKey('amount'), isFalse);
+    },
+  );
+
   for (final single in [true, false]) {
     testWidgets(
       'arrival draft restores ${single ? 'single' : 'multi'} source after restart from the source-id route',
@@ -499,7 +577,7 @@ void main() {
         .cast<Map<String, dynamic>>();
     expect(lines.single['orderItemId'], 'batch-item-1');
     expect(lines.single['warehouseId'], 'warehouse-1');
-    expect(lines.single['qty'], 5);
+    expect(lines.single['qty'], '5');
     expect(find.text('预计到货任务中心'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -956,10 +1034,12 @@ class _ExpectationsApi extends ApiClient {
 /// 登记页桩：主档字典 + 按 id 读预计到货 + 批量登记命令回执。
 class _BatchApi extends ApiClient {
   _BatchApi({
+    this.customPrefills,
     this.disabledFirst = false,
     this.arrivalError,
     this.ambiguousArrivalOnce = false,
   }) : super(Dio());
+  final List<ProcurementReceiptPrefill>? customPrefills;
   final bool disabledFirst;
 
   /// 非空时登记端点按它失败(服务端明确拒绝 / 结果不确定)。
@@ -1000,7 +1080,7 @@ class _BatchApi extends ApiClient {
     }
     if (path == arrivalExpectationsByIdsPath) {
       byIdsQueries.add(query);
-      return expectationsByIdsAnswer(query, _prefills());
+      return expectationsByIdsAnswer(query, customPrefills ?? _prefills());
     }
     return const [];
   }

@@ -821,7 +821,7 @@ class _ProgressList extends ConsumerWidget {
         ? '草稿'
         : p.planStatus == 1
         ? (p.planClosed ? '已审·已结案' : '已审核')
-        : '红冲';
+        : '已撤回';
     // 计划状态文字色走 ADR-169 状态色板（原裸 Colors.green 已收编）。
     final statusColor = p.planStatus == 0
         ? UtenColors.statusNeutral
@@ -894,7 +894,7 @@ class _ProgressList extends ConsumerWidget {
       'IN_PROGRESS' => '生产中',
       'COMPLETED' => '已完成',
       'CANCELLED' => '已取消',
-      'REVERSED' => '已红冲',
+      'REVERSED' => '已撤回',
       _ => segment.status ?? '未知状态',
     };
     final statusColor = switch (segment.status) {

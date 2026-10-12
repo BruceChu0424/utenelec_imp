@@ -1721,6 +1721,12 @@ class _ProcurementInspectionDetailPageState
         _ => '待检',
       },
     ),
+    MasterColumnDef(
+      key: 'quantityTranche',
+      label: '数量来源',
+      width: 85,
+      value: (item) => item.quantityTrancheLabel,
+    ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
     // 同名不同编号的来料必须分得清再填数量；颜色与验收单位本表已有独立列。
     MasterColumnDef(

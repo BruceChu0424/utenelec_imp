@@ -79,7 +79,7 @@ void main() {
       '财务已退回',
       '已审',
       '已出库',
-      '红冲',
+      '已反审',
       '历史记录',
     ]) {
       expect(segmentText(label), findsOneWidget, reason: '分段「$label」');

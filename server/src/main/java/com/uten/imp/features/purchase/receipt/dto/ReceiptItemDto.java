@@ -9,8 +9,44 @@ import java.util.UUID;
 
 /** 收货明细返回 DTO。 */
 @Getter
-@AllArgsConstructor
+
 public class ReceiptItemDto {
+    @lombok.Setter private String giftReplacementIntent;
+    @lombok.Setter private String quantitySemantics = "LEGACY_RECORDED";
+    @lombok.Setter private BigDecimal giftReturnedQty = BigDecimal.ZERO;
+    @lombok.Setter private BigDecimal returnableGiftQty = BigDecimal.ZERO;
+    @lombok.Setter private BigDecimal giftStockedQty = BigDecimal.ZERO;
+
+    public ReceiptItemDto(UUID id, Integer lineNo, UUID goodsId, String goodsCodeSnapshot, String goodsNameSnapshot, String goodsSnapshotSource, OffsetDateTime goodsSnapshotLockedAt, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal qty, BigDecimal price, BigDecimal amountOriginal, BigDecimal amountLocal, BigDecimal returnedQty, BigDecimal giftQty, BigDecimal weight, UUID orderItemId, UUID orderId, String orderBillNo, String sourceDocNo, String remark) {
+        this.id = id;
+        this.lineNo = lineNo;
+        this.goodsId = goodsId;
+        this.goodsCodeSnapshot = goodsCodeSnapshot;
+        this.goodsNameSnapshot = goodsNameSnapshot;
+        this.goodsSnapshotSource = goodsSnapshotSource;
+        this.goodsSnapshotLockedAt = goodsSnapshotLockedAt;
+        this.colorId = colorId;
+        this.unitId = unitId;
+        this.unitRate = unitRate;
+        this.qty = qty;
+        this.price = price;
+        this.amountOriginal = amountOriginal;
+        this.amountLocal = amountLocal;
+        this.returnedQty = returnedQty;
+        this.giftQty = giftQty;
+        this.weight = weight;
+        this.orderItemId = orderItemId;
+        this.orderId = orderId;
+        this.orderBillNo = orderBillNo;
+        this.sourceDocNo = sourceDocNo;
+        this.remark = remark;
+    }
+    public String getGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftQty);}
+    public String getPhysicalQtyExact(){return com.uten.imp.common.finance.ProcurementQuantities.physicalText(quantitySemantics,qty,giftQty);}
+    public String getGiftReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftReturnedQty);}
+    public String getReturnableGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnableGiftQty);}
+    public String getGiftStockedQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftStockedQty);}
+
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;
@@ -42,4 +78,5 @@ public class ReceiptItemDto {
     public String getUnitRateExact() { return com.uten.imp.common.util.DecimalText.of(unitRate); }
     public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
     public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
+    public String getReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnedQty);}
 }

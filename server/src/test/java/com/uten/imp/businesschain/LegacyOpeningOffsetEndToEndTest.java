@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.*;
         "spring.profiles.active=dev","spring.flyway.enabled=false","uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000"})
+})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @TestExecutionListeners(listeners=LegacyOpeningOffsetEndToEndTest.Cleanup.class,mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class LegacyOpeningOffsetEndToEndTest {

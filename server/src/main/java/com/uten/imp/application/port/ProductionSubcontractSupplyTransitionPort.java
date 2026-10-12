@@ -43,4 +43,6 @@ public interface ProductionSubcontractSupplyTransitionPort {
     default void afterSubcontractReceiptReversed(UUID receiptId) {
         // Optional for test doubles and non-production adapters.
     }
+    default java.util.List<UUID> requireSubcontractReceiptReversible(UUID id){throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对收货下游生产占用");}
+
 }

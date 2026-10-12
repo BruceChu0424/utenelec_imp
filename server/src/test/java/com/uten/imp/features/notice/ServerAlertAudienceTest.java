@@ -20,18 +20,31 @@ class ServerAlertAudienceTest {
         var revoked = user("active");
         var noNotice = user("active");
         var disabled = user("disabled");
+        var deleted = user("active");deleted.setDeleted(true);
         when(candidates.possibleUsers(any())).thenReturn(Optional.empty());
-        when(users.findAll()).thenReturn(List.of(allowed, revoked, noNotice, disabled));
-        when(permissions.permsOf(allowed)).thenReturn(Set.of("notice:read", "server_status:alert:receive"));
-        when(permissions.permsOf(revoked)).thenReturn(Set.of("notice:read"));
-        when(permissions.permsOf(noNotice)).thenReturn(Set.of("server_status:alert:receive"));
-        assertThat(new ServerAlertAudience(candidates, users, permissions).receivers())
-                .containsExactly(allowed.getId());
-        verify(permissions, never()).permsOf(disabled);
+        when(users.findAll()).thenReturn(List.of(allowed, revoked, noNotice, disabled, deleted));
+        UUID allowedId=allowed.getId();
+        List<UUID> activeIds=List.of(allowedId,revoked.getId(),noNotice.getId());
+        when(permissions.usersGrantedAll(activeIds,
+                Set.of("notice:read",ServerStatusAlertScheduler.RECEIVE_AUTHORITY))).thenReturn(List.of(allowedId));
+        assertThat(new ServerAlertAudience(candidates, users, permissions).receivers()).containsExactly(allowed.getId());
+        verify(permissions,never()).permsOf(any(UserAccount.class));
+        verify(permissions,times(1)).usersGrantedAll(anyList(),eq(Set.of("notice:read",ServerStatusAlertScheduler.RECEIVE_AUTHORITY)));
+    }
+    @Test void completeCandidateShapeAvoidsLoadingDetachedUserEntitiesEntirely() {
+        var candidates=mock(NoticePermissionCandidateQuery.class);
+        var users=mock(UserAccountRepository.class);
+        var permissions=mock(PermissionResolver.class);
+        UUID allowed=UUID.randomUUID(),revoked=UUID.randomUUID();
+        when(candidates.possibleUsers(any())).thenReturn(Optional.of(Set.of(allowed,revoked)));
+        when(permissions.usersGrantedAll(anyList(),anySet())).thenReturn(List.of(allowed));
+        assertThat(new ServerAlertAudience(candidates,users,permissions).receivers()).containsExactly(allowed);
+        verifyNoInteractions(users);
+        verify(permissions,never()).permsOf(any(UserAccount.class));
     }
     private static UserAccount user(String status) {
-        var user = new UserAccount();
-        user.setId(UUID.randomUUID()); user.setStatus(status);
+        var user=spy(new UserAccount());user.setId(UUID.randomUUID());user.setStatus(status);
+        doThrow(new AssertionError("Detached employee proxy must never be dereferenced")).when(user).getEmployee();
         return user;
     }
 }

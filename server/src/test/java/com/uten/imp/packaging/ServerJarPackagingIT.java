@@ -33,7 +33,9 @@ class ServerJarPackagingIT {
             List<String> entries = entryNames(jar);
             assertThat(entries)
                     .contains("BOOT-INF/classes/com/uten/imp/UtenImpApplication.class")
-                    .noneMatch(name -> name.startsWith("BOOT-INF/classes/org/postgresql/"));
+                    .noneMatch(name -> name.startsWith("BOOT-INF/classes/org/postgresql/"))
+                    .noneMatch(name -> name.startsWith("BOOT-INF/classes/legacy-migration/")
+                            || name.contains("/.mimosa/"));
             List<String> postgresDrivers = entries.stream()
                     .filter(name -> name.matches("BOOT-INF/lib/postgresql-[^/]+\\.jar"))
                     .toList();
@@ -73,6 +75,8 @@ class ServerJarPackagingIT {
                             "com/uten/imp/migration/AuditFreshStartGuardCallback.class",
                             "org/postgresql/util/LazyCleaner.class")
                     .noneMatch(name -> name.startsWith("BOOT-INF/"))
+                    .noneMatch(name -> name.startsWith("legacy-migration/")
+                            || name.startsWith(".mimosa/") || name.contains("/.mimosa/"))
                     .noneMatch(name -> name.startsWith("ai-knowledge/"))
                     .noneMatch(name -> name.startsWith("org/springframework/"));
             assertThat(entries.stream()

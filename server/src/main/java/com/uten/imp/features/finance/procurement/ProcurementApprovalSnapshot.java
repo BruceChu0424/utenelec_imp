@@ -61,6 +61,12 @@ final class ProcurementApprovalSnapshot {
         if (item.allowedOverReceiptPct() != null) {
             row.put("allowedOverReceiptPct", decimal(item.allowedOverReceiptPct()));
         }
+        // V843 freezes free physical stock only for the new explicit semantics.
+        // Existing LEGACY_RECORDED cases retain their byte-identical canonical facts.
+        if (com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(item.quantitySemantics())) {
+            row.put("quantitySemantics", item.quantitySemantics());
+            row.put("giftQty", decimal(item.giftQty()));
+        }
         return row;
     }
 

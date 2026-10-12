@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(properties = {
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false", "uten.production.readiness-reconcile.enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000", "uten.workshop-material.auto-close.enabled=false",
+"uten.workshop-material.auto-close.enabled=false",
         "uten.ai.job-poll-initial-delay-ms=3600000", "uten.ai.housekeeping-initial-delay-ms=3600000",
         "uten.policy-intelligence.enabled=false", "uten.features.goods-owner-scope-enabled=false",
         "uten.storage.uploads-enabled=true", "uten.storage.malware-scan.provider=test-only",

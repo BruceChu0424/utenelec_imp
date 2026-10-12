@@ -17,10 +17,14 @@ class WorkshopTaskMaterialTable extends ConsumerStatefulWidget {
     super.key,
     required this.segmentId,
     this.unitFallback,
+    this.compact = false,
   });
 
   final String segmentId;
   final String? unitFallback;
+
+  /// 任务弹窗默认只展示物料身份、状态和关键数量，其余到料事实逐行展开。
+  final bool compact;
 
   @override
   ConsumerState<WorkshopTaskMaterialTable> createState() =>
@@ -30,11 +34,23 @@ class WorkshopTaskMaterialTable extends ConsumerStatefulWidget {
 class _WorkshopTaskMaterialTableState
     extends ConsumerState<WorkshopTaskMaterialTable> {
   late Future<List<ProductionWorkshopTaskMaterial>> _future;
+  final Set<String> _expandedDemandIds = {};
+  bool _showAllMaterials = false;
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant WorkshopTaskMaterialTable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.segmentId != widget.segmentId) {
+      _expandedDemandIds.clear();
+      _showAllMaterials = false;
+      _future = _load();
+    }
   }
 
   Future<List<ProductionWorkshopTaskMaterial>> _load() => ref
@@ -72,7 +88,12 @@ class _WorkshopTaskMaterialTableState
               ),
               TextButton(
                 key: const Key('workshop-task-material-retry'),
-                onPressed: () => setState(() => _future = _load()),
+                onPressed: () {
+                  final future = _load();
+                  setState(() {
+                    _future = future;
+                  });
+                },
                 child: const Text('重试'),
               ),
             ],
@@ -85,6 +106,40 @@ class _WorkshopTaskMaterialTableState
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
+          );
+        }
+        if (widget.compact) {
+          final visibleRows = _showAllMaterials ? rows : rows.take(1).toList();
+          return Column(
+            key: const Key('workshop-task-material-table'),
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < visibleRows.length; index++) ...[
+                if (index > 0) const SizedBox(height: UtenSpacing.s8),
+                _compactRow(context, visibleRows[index]),
+              ],
+              if (rows.length > 1) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                FilledButton.tonalIcon(
+                  key: const Key('workshop-task-material-toggle-all'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, UtenSpacing.s48),
+                  ),
+                  onPressed: () => setState(() {
+                    _showAllMaterials = !_showAllMaterials;
+                    if (!_showAllMaterials) _expandedDemandIds.clear();
+                  }),
+                  icon: Icon(
+                    _showAllMaterials
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                  ),
+                  label: Text(
+                    _showAllMaterials ? '收起物料' : '展开查看全部物料（共 ${rows.length} 项）',
+                  ),
+                ),
+              ],
+            ],
           );
         }
         final small = theme.textTheme.bodySmall;
@@ -235,6 +290,219 @@ class _WorkshopTaskMaterialTableState
           onFilterChanged: (_, _) {},
         );
       },
+    );
+  }
+
+  Widget _compactRow(BuildContext context, ProductionWorkshopTaskMaterial row) {
+    final theme = Theme.of(context);
+    final expanded = _expandedDemandIds.contains(row.demandId);
+    final identity = [
+      row.goodsCode,
+      if (row.colorName?.trim().isNotEmpty == true) row.colorName!,
+    ].where((value) => value.isNotEmpty).join(' · ');
+    return Container(
+      key: ValueKey('workshop-task-material-row-${row.demandId}'),
+      padding: const EdgeInsets.all(UtenSpacing.s12),
+      decoration: BoxDecoration(
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+        borderRadius: UtenRadius.mdAll,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final identityBlock = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row.goodsName,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s4),
+                  Wrap(
+                    spacing: UtenSpacing.s8,
+                    runSpacing: UtenSpacing.s4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (identity.isNotEmpty)
+                        Text(
+                          identity,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      WorkshopMaterialStateCell(
+                        key: ValueKey(
+                          'workshop-task-material-state-${row.demandId}',
+                        ),
+                        label: row.stateLabel,
+                        icon: row.waitingForPlanning
+                            ? Icons.campaign_rounded
+                            : null,
+                        type: row.waitingForPlanning
+                            ? UtenStatusBadgeType.fuchsia
+                            : _badgeType(row.state),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+              final quantities = Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _compactFact(context, '需求', row.requiredQty, row),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: _compactFact(context, '已领', row.issuedQty, row),
+                  ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: _compactFact(
+                      context,
+                      '缺口',
+                      row.shortageQty,
+                      row,
+                      error: row.shortageQty > 0,
+                    ),
+                  ),
+                ],
+              );
+              final detailsButton = TextButton.icon(
+                key: ValueKey('workshop-task-material-details-${row.demandId}'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s4,
+                    vertical: UtenSpacing.s4,
+                  ),
+                ),
+                onPressed: () => setState(() {
+                  if (expanded) {
+                    _expandedDemandIds.remove(row.demandId);
+                  } else {
+                    _expandedDemandIds.add(row.demandId);
+                  }
+                }),
+                icon: Icon(
+                  expanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                ),
+                label: const Text('到料明细'),
+              );
+              if (constraints.maxWidth >= 600) {
+                return Row(
+                  children: [
+                    Expanded(flex: 4, child: identityBlock),
+                    const SizedBox(width: UtenSpacing.s16),
+                    Expanded(flex: 3, child: quantities),
+                    const SizedBox(width: UtenSpacing.s8),
+                    detailsButton,
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  identityBlock,
+                  const SizedBox(height: UtenSpacing.s8),
+                  quantities,
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: detailsButton,
+                  ),
+                ],
+              );
+            },
+          ),
+          if (expanded) ...[
+            const Divider(height: UtenSpacing.s12),
+            _arrivalDetails(context, row),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _compactFact(
+    BuildContext context,
+    String label,
+    double value,
+    ProductionWorkshopTaskMaterial row, {
+    bool error = false,
+  }) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: error
+                ? theme.colorScheme.error
+                : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: UtenSpacing.s2),
+        Text(
+          _qty(value, row.unitName),
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: error ? theme.colorScheme.error : null,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _arrivalDetails(
+    BuildContext context,
+    ProductionWorkshopTaskMaterial row,
+  ) {
+    final theme = Theme.of(context);
+    final facts = <(String, String)>[
+      ('仓库已到', _qty(row.warehouseAvailableQty, row.unitName)),
+      ('已预留', _qty(row.reservedQty, row.unitName)),
+      ('待仓库发料', _qty(row.requestedUnissuedQty, row.unitName)),
+      ('可申请领料', _qty(row.requestableQty, row.unitName)),
+      if (row.supplyRoute == 'MAKE') ...[
+        ('直送已交接', _qty(row.directReceivedQty, row.unitName)),
+        ('直送可分配', _qty(row.directAvailableQty, row.unitName)),
+        ('直送料待投入', _qty(row.lineSidePendingQty, row.unitName)),
+      ],
+      if (row.planningGapQty > 0)
+        ('计划未下单', _qty(row.planningGapQty, row.unitName)),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: UtenSpacing.s16,
+          runSpacing: UtenSpacing.s6,
+          children: [
+            for (final (label, value) in facts)
+              Text('$label $value', style: theme.textTheme.bodySmall),
+          ],
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+        Text(
+          '来源 ${row.sourceLabel}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (row.producingSegmentsLabel?.isNotEmpty == true) ...[
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            '子件工单 ${row.producingSegmentsLabel}',
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
+      ],
     );
   }
 

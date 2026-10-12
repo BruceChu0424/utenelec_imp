@@ -15,8 +15,13 @@ public class RequestItemLine extends com.uten.imp.common.platformcolumns.Platfor
     private UUID colorId;
     private UUID unitId;
     private BigDecimal unitRate;
-    @NotNull private BigDecimal qty;
+    @NotNull
+    @jakarta.validation.constraints.DecimalMin("0.0001")
+    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
+    private BigDecimal qty;
     private BigDecimal price;
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
     private BigDecimal giftQty;
     private BigDecimal weight;
     private String sourceDocNo;

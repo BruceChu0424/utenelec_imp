@@ -38,7 +38,15 @@ void main() {
       expect(detail, isNot(contains('并生成成品入库草稿')));
       expect(edit, contains("'fqcRecoveryAuthorizationId'"));
       expect(edit, isNot(contains('_warehouseId')));
-      expect(edit, isNot(contains("'warehouseId'")));
+      // 已存仓库属于原单抬头，核改后保存要原样透传；它不是日报编辑列。
+      expect(edit, contains('_savedWarehouseId = d.warehouseId;'));
+      expect(
+        edit,
+        contains(
+          "if (_savedWarehouseId != null) 'warehouseId': _savedWarehouseId",
+        ),
+      );
+      expect(edit, isNot(contains("key: 'warehouseId'")));
       expect(edit, isNot(contains("label: '仓库'")));
       // 2026-09-24 简洁口径：计量口径教学横幅已撤，不再常驻页面。
       expect(edit, isNot(contains('先由仓库登记成品仓和库位并送检')));

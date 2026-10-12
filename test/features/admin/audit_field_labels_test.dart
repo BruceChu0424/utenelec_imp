@@ -41,6 +41,47 @@ void main() {
     expect(AuditFieldLabels.valueOf('READY'), '已就绪');
   });
 
+  test(
+    'company branding changes have readable, server-aligned audit fields',
+    () {
+      const table = 'platform_branding';
+      const labels = {
+        'company_name': '公司名称',
+        'company_aliases': '公司英文名与简称',
+        'platform_name': '平台名称',
+        'tagline': '品牌标语',
+        'primary_color': '主题色',
+        'secondary_color': '副主题色',
+        'login_notice': '登录提示',
+        'support_phone': '联系电话',
+        'support_email': '联系邮箱',
+        'website': '公司网站',
+        'logo_sha256': 'Logo 摘要',
+        'updated_by': '修改人',
+      };
+      final server = File(
+        'server/src/main/java/com/uten/imp/audit/AuditEventInterpreter.java',
+      ).readAsStringSync();
+      for (final MapEntry(:key, :value) in labels.entries) {
+        expect(AuditFieldLabels.labelOf(key, table: table), value, reason: key);
+        expect(server, contains('Map.entry("$key", "$value")'), reason: key);
+      }
+      expect(AuditFieldLabels.labelOf('id', table: table), '主键 ID');
+      expect(AuditFieldLabels.labelOf('version', table: table), '版本号');
+      expect(AuditFieldLabels.labelOf('updated_at', table: table), '更新时间');
+      expect(
+        AuditFieldLabels.valueOf(
+          '星辰制造有限公司',
+          table: table,
+          field: 'company_name',
+        ),
+        '星辰制造有限公司',
+      );
+      // The branding override must not rename another record's audit actor.
+      expect(AuditFieldLabels.labelOf('updated_by', table: 'goods'), '最后修改人');
+    },
+  );
+
   test('translates replenishment cancellation audit fields', () {
     expect(AuditFieldLabels.labelOf('cycle_id'), '补产周期');
     expect(AuditFieldLabels.labelOf('authorization_id'), '补产授权');

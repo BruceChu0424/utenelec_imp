@@ -1371,7 +1371,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       'status': const [
         MasterFacetBucket(value: '0', count: 0, label: '草稿'),
         MasterFacetBucket(value: '1', count: 0, label: '已审'),
-        MasterFacetBucket(value: '-1', count: 0, label: '红冲'),
+        MasterFacetBucket(value: '-1', count: 0, label: '已反审'),
       ],
     if (_isShipment) ...{
       'client': masterDictionaryFacets(names.clientEntries),

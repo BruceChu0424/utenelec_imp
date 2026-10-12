@@ -583,13 +583,13 @@ public class WorkshopMaterialCountService {
                      AND ledger_period.period_no <= target.period_no
                     JOIN v_workshop_material_bin_ledger ledger ON ledger.period_id = ledger_period.id
                     WHERE ledger_period.period_no < target.period_no
-                       OR ledger.source_kind IN ('ISSUE', 'RETURN', 'OTHER_ISSUE')
+                       OR ledger.source_kind IN ('OPENING', 'ISSUE', 'RETURN', 'OTHER_ISSUE')
                     GROUP BY ledger.goods_id, ledger.color_id
                 ), wanted AS (
                     SELECT book.goods_id, book.color_id FROM book WHERE book.qty <> 0
                     UNION
                     SELECT ledger.goods_id, ledger.color_id FROM v_workshop_material_bin_ledger ledger
-                    WHERE ledger.period_id = :period AND ledger.source_kind IN ('ISSUE', 'RETURN', 'OTHER_ISSUE')
+                    WHERE ledger.period_id = :period AND ledger.source_kind IN ('OPENING', 'ISSUE', 'RETURN', 'OTHER_ISSUE')
                     UNION
                     SELECT line.goods_id, line.color_id FROM workshop_material_period_lines line
                     WHERE line.period_id = :period

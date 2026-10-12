@@ -66,6 +66,7 @@ part 'production_daily_report_create_recovery_cases.dart';
 part 'production_daily_report_attachment_late_ack_cases.dart';
 part 'production_daily_report_precision_cases.dart';
 part 'production_daily_report_session_boundary_cases.dart';
+part 'production_daily_report_reviewed_save_cases.dart';
 part 'production_daily_report_product_card_cases.dart';
 part 'production_daily_report_manual_destination_cases.dart';
 
@@ -96,6 +97,7 @@ class _ExactSegmentSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  registerDailyReviewedSaveTests();
   registerDailyReportProductCardTests();
   registerDailyReportManualDestinationTests();
   registerDailyReportSessionBoundaryTests();

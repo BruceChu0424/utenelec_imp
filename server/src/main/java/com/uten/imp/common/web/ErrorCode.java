@@ -33,7 +33,7 @@ public enum ErrorCode {
     PASSWORD_REUSE(422, "不能与最近用过的密码相同"),
     RATE_LIMITED(429, "请求过于频繁，请稍后再试"),
     BUSINESS(400, "业务处理失败"),
-    IS_EMPLOYEE(422, "该手机号为优腾员工账号，请走员工通道登录"),
+    IS_EMPLOYEE(422, "该手机号为员工账号，请走员工通道登录"),
     SMS_CODE_INVALID(400, "验证码错误"),
     SMS_CODE_EXPIRED(400, "验证码已过期，请重新获取"),
     SMS_RATE_LIMITED(429, "验证码发送过于频繁，请稍后再试"),

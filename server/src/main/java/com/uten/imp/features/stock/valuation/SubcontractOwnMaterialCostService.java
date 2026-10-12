@@ -22,7 +22,7 @@ import static com.uten.imp.features.stock.valuation.ValueMath.*;
 /** Company materials retain their issued cost roots; supplier consideration is a separate source. */
 @Service
 @Transactional(propagation=Propagation.MANDATORY)
-public class SubcontractOwnMaterialCostService {
+public class SubcontractOwnMaterialCostService implements com.uten.imp.application.port.SubcontractMaterialReversalValuePort {
     private final NamedParameterJdbcTemplate db;
     private final InventoryPositionPort positions;
     private final InventoryProductionCostPort costs;
@@ -62,8 +62,21 @@ public class SubcontractOwnMaterialCostService {
         }
     }
 
-    /** Withdraw only an unused original receipt; material and supplier fee remain separate. */
-    public void prepareUnusedReceiptReversal(UUID receipt,UUID actor){
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public String requireUnstoredReceiptReversible(UUID receipt){
+        var facts=new ArrayList<String>();
+        for(var row:consumptions(receipt)){
+            UUID fact=(UUID)row.get("id");if(result("SUBCONTRACT_RECEIPT_MATERIAL_REVERSE",fact)!=null)continue;
+            UUID root=result("SUBCONTRACT_RECEIPT_MATERIAL",fact);
+            if(root==null)throw conflict("原回厂尚无实际发料成本关联，请先核对原来源");
+            var pool=positions.position(root).pool();
+            facts.add(positions.requireMoveSourcesAvailable(pool,Owner.SUBCONTRACT_WIP,(UUID)row.get("issue_item_id"),take(Owner.SUBCONTRACT_WIP,fact,(BigDecimal)row.get("qty_base"))));
+        }
+        return com.uten.imp.common.util.CanonicalFingerprint.sha256(facts);
+    }
+
+    private record UnusedReceiptPlan(List<Map<String,Object>> scopes,List<UUID> scopeIds,List<Map<String,Object>> materials,boolean prepared){}
+    private UnusedReceiptPlan readUnusedReceiptPlan(UUID receipt,boolean lock){
         var scopes=db.queryForList("""
                 SELECT DISTINCT object.execution_segment_id,object.product_pool_id,p.goods_id,p.color_id
                 FROM stock_value_production_cost_objects object
@@ -73,15 +86,16 @@ public class SubcontractOwnMaterialCostService {
                 """,Map.of("receipt",receipt));
         if(scopes.isEmpty())throw conflict("委外回厂缺少独立的自有材料成本批次，不能直接按供应商费用撤回");
         var scopeIds=scopes.stream().map(row->(UUID)row.get("execution_segment_id")).toList();
-        if(Boolean.TRUE.equals(db.queryForObject("""
+        boolean prepared=Boolean.TRUE.equals(db.queryForObject("""
                 SELECT NOT EXISTS(SELECT 1 FROM stock_value_production_cost_objects object WHERE object.execution_segment_id IN(:ids)
                     AND NOT EXISTS(SELECT 1 FROM stock_value_production_cost_revisions revision
                         WHERE revision.execution_segment_id=object.execution_segment_id AND revision.source_doc_type='SUBCONTRACT_RECEIPT_COST_REVERSE'
                             AND revision.source_doc_id=:receipt))
-                """,Map.of("ids",scopeIds,"receipt",receipt),Boolean.class)))return;
+                """,Map.of("ids",scopeIds,"receipt",receipt),Boolean.class));
+        if(prepared)return new UnusedReceiptPlan(scopes,scopeIds,consumptions(receipt),true);
         var materials=consumptions(receipt);List<InventoryKey> keys=new ArrayList<>();
         materials.forEach(row->keys.add(new InventoryKey((UUID)row.get("goods_id"),(UUID)row.get("color_id"))));
-        scopes.forEach(row->keys.add(new InventoryKey((UUID)row.get("goods_id"),(UUID)row.get("color_id"))));mutex.lockAll(keys);
+        scopes.forEach(row->keys.add(new InventoryKey((UUID)row.get("goods_id"),(UUID)row.get("color_id"))));if(lock)mutex.lockAll(keys);
         var stored=db.queryForList("""
                 SELECT event.id,event.pool_id,event.result_head_id,pool.head_node_id
                 FROM procurement_iqc_stock_in_batch_items item JOIN procurement_inspection_items inspection ON inspection.id=item.inspection_item_id
@@ -115,6 +129,40 @@ public class SubcontractOwnMaterialCostService {
                         AND EXISTS(SELECT 1 FROM stock_value_production_cost_inputs input WHERE input.execution_segment_id=object.execution_segment_id))
                 """,Map.of("ids",scopeIds,"receipt",receipt),Boolean.class)))
             throw conflict("委外回厂已有跨补回批次或损耗成本归属，请先按专用来源完成更正");
+        return new UnusedReceiptPlan(scopes,scopeIds,materials,prepared);
+    }
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public ProcurementInventoryValuePort.CostWithdrawalPreview requireUnusedReceiptReversible(UUID receipt){
+        var plan=readUnusedReceiptPlan(receipt,false);
+        for(var row:plan.materials()){
+            UUID fact=(UUID)row.get("id"),root=result("SUBCONTRACT_CONSUMED_MATERIAL",fact);
+            if(root==null||result("SUBCONTRACT_RECEIPT_MATERIAL_UNCONSUME",fact)!=null)continue;
+            var position=positions.position(root);
+            positions.requireReturnConsumedAvailable(position.pool(),root,(BigDecimal)row.get("qty_base"),Owner.SUBCONTRACT_WIP,fact);
+        }
+        var pins=db.queryForList("SELECT execution_segment_id,version FROM stock_value_production_cost_objects WHERE execution_segment_id IN(:ids) ORDER BY execution_segment_id",Map.of("ids",plan.scopeIds()))
+            .stream().map(row->new ProcurementInventoryValuePort.CostScopePin((UUID)row.get("execution_segment_id"),((Number)row.get("version")).longValue())).toList();
+        return new ProcurementInventoryValuePort.CostWithdrawalPreview(receipt,pins,receiptReversalFacts(receipt,plan.scopeIds()));
+    }
+    private String receiptReversalFacts(UUID receipt,List<UUID> scopeIds){
+        String facts=db.queryForObject("""
+            SELECT jsonb_build_object(
+                'objects',(SELECT jsonb_agg(to_jsonb(object) ORDER BY object.execution_segment_id) FROM stock_value_production_cost_objects object WHERE object.execution_segment_id IN(:ids)),
+                'revisions',(SELECT jsonb_agg(to_jsonb(revision) ORDER BY revision.id) FROM stock_value_production_cost_revisions revision WHERE revision.id IN(SELECT current_revision_id FROM stock_value_production_cost_objects WHERE execution_segment_id IN(:ids))),
+                'inputs',(SELECT jsonb_agg(jsonb_build_object('input',to_jsonb(input),'node',to_jsonb(node)) ORDER BY input.input_node_id) FROM stock_value_production_cost_inputs input JOIN stock_value_nodes node ON node.id=input.input_node_id WHERE input.execution_segment_id IN(:ids)),
+                'outputs',(SELECT jsonb_agg(jsonb_build_object('output',to_jsonb(output),'node',to_jsonb(node),'pool',to_jsonb(pool)) ORDER BY output.source_node_id) FROM stock_value_production_cost_outputs output JOIN stock_value_nodes node ON node.id=output.source_node_id JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE output.execution_segment_id IN(:ids)),
+                'shares',(SELECT jsonb_agg(to_jsonb(share) ORDER BY share.input_node_id,share.output_source_node_id) FROM stock_value_production_cost_shares share WHERE share.output_source_node_id IN(SELECT source_node_id FROM stock_value_production_cost_outputs WHERE execution_segment_id IN(:ids))),
+                'tasks',(SELECT jsonb_agg(to_jsonb(task) ORDER BY task.id) FROM stock_value_production_cost_tasks task WHERE task.execution_segment_id IN(:ids)),
+                'materials',(SELECT jsonb_agg(to_jsonb(material) ORDER BY material.id) FROM subcontract_receipt_material_consumptions material JOIN subcontract_receipt_items item ON item.id=material.receipt_item_id WHERE item.receipt_id=:receipt))::text
+            """,Map.of("ids",scopeIds,"receipt",receipt),String.class);
+        return com.uten.imp.common.util.CanonicalFingerprint.sha256(List.of(facts));
+    }
+
+    /** Withdraw only an unused original receipt; material and supplier fee remain separate. */
+    public void prepareUnusedReceiptReversal(UUID receipt,UUID actor){
+        UnusedReceiptPlan readiness=readUnusedReceiptPlan(receipt,true);
+        if(readiness.prepared())return;
+        var scopeIds=readiness.scopeIds();var materials=readiness.materials();
         drainReceiptCost(scopeIds);
         for(var row:materials){
             UUID fact=(UUID)row.get("id"),root=result("SUBCONTRACT_CONSUMED_MATERIAL",fact);
@@ -266,6 +314,47 @@ public class SubcontractOwnMaterialCostService {
                 db.queryForObject("SELECT material_issue_item_id FROM subcontract_material_return_items WHERE id=:id",Map.of("id",request.sourceItemId()),UUID.class);
         if(issue==null)throw conflict("材料退回须关联原委外实发明细");
         return positions.store(new Store(context,movement,product,before,take(Owner.SUBCONTRACT_WIP,issue,request.qty())));
+    }
+
+    @Override
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public String requireIssueReversible(UUID issueId) {
+        List<String> snapshots=new ArrayList<>();Set<UUID> seenItems=new HashSet<>();
+        for(var item:db.queryForList("""
+            SELECT item.id,item.goods_id,item.color_id,document.warehouse_id,original.qty
+            FROM subcontract_material_issue_items item JOIN subcontract_material_issues document ON document.id=item.issue_id
+            JOIN stock_movements original ON original.source_doc_type='SUBCONTRACT_MATERIAL_ISSUE'
+              AND original.source_doc_id=document.id AND original.source_item_id=item.id AND original.direction=-1 AND original.movement_type=15
+            WHERE document.id=:id AND NOT item.is_deleted ORDER BY item.line_no,item.id
+            """,Map.of("id",issueId))) {
+            UUID id=(UUID)item.get("id");if(!seenItems.add(id))throw conflict("同一发料明细存在多个原实发库存来源");PoolKey pool=new PoolKey((UUID)item.get("warehouse_id"),(UUID)item.get("goods_id"),(UUID)item.get("color_id"));
+            snapshots.add(positions.requireStoreSourcesAvailable(pool,take(Owner.SUBCONTRACT_WIP,id,(BigDecimal)item.get("qty"))));
+        }
+        Long itemCount=db.queryForObject("SELECT COUNT(*) FROM subcontract_material_issue_items WHERE issue_id=:id AND NOT is_deleted",Map.of("id",issueId),Long.class);
+        if(itemCount==null||itemCount==0||snapshots.size()!=itemCount)throw conflict("原委外发料缺少每行唯一实发库存与成本来源");
+        return com.uten.imp.common.util.CanonicalFingerprint.sha256(snapshots);
+    }
+
+    @Override
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=com.uten.imp.common.web.ApiException.class)
+    public String requireReturnReversible(UUID returnId) {
+        var rows=db.queryForList("""
+            SELECT item.id,item.goods_id,item.color_id,document.warehouse_id,original.id movement_id
+            FROM subcontract_material_return_items item JOIN subcontract_material_returns document ON document.id=item.material_return_id
+            JOIN stock_movements original ON original.source_doc_type='SUBCONTRACT_MATERIAL_RETURN'
+              AND original.source_doc_id=document.id AND original.source_item_id=item.id AND original.direction=1 AND original.movement_type=16
+            WHERE document.id=:id AND NOT item.is_deleted ORDER BY item.line_no,item.id
+            """,Map.of("id",returnId));
+        Long itemCount=db.queryForObject("SELECT COUNT(*) FROM subcontract_material_return_items WHERE material_return_id=:id AND NOT is_deleted",Map.of("id",returnId),Long.class);
+        if(itemCount==null||itemCount==0||rows.size()!=itemCount||rows.stream().map(row->row.get("id")).distinct().count()!=itemCount)throw conflict("原委外退料缺少每行唯一入库与成本来源");
+        return positions.requireStoresReversible(rows.stream().map(row->new StoreWithdrawal(
+            new PoolKey((UUID)row.get("warehouse_id"),(UUID)row.get("goods_id"),(UUID)row.get("color_id")),(UUID)row.get("movement_id"),true)).toList());
+    }
+
+    /** Withdraw the exact original return store; later inbound values remain whole. */
+    public MovementValue reverseMaterialReturn(EventContext context,UUID movement,PoolKey pool,
+            BigDecimal before,UUID originalMovement) {
+        return positions.reverseMaterialStore(new ReverseStore(context,movement,pool,before,originalMovement));
     }
 
     public UUID materialReturnIssue(UUID returnItem){

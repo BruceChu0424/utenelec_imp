@@ -11,11 +11,13 @@ import '../helpers/badge_summary_fixture.dart';
 List<Override> nativeDetailReaderOverrides({
   bool includeSession = true,
   bool includeServer = true,
+  bool includeSnapshot = true,
 }) => [
   if (includeSession) sessionProvider.overrideWith(_NativeReaderSession.new),
   if (includeServer)
     apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
-  sessionSnapshotProvider.overrideWith(_NativeReaderSnapshot.new),
+  if (includeSnapshot)
+    sessionSnapshotProvider.overrideWith(_NativeReaderSnapshot.new),
   // Successful business writes still invoke refreshBadges. The page fixtures
   // check their writes/return behavior without starting an app-wide poll timer.
   fixedBadgeSummaryOverride(),

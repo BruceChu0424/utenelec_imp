@@ -50,6 +50,15 @@ class ProcurementFinanceApprovalExchangeRateTest {
     private static final BigDecimal SEVEN_DECIMALS = new BigDecimal("1.2345678");
 
     @Test
+    void decimalTextRequestPreservesAllLegalRateDigitsWithoutBinaryConversion() throws Exception {
+        var request = new ObjectMapper().readValue("""
+                {"items":[{"caseId":"00000000-0000-0000-0000-000000000001","expectedVersion":1}],
+                 "exchangeRate":"999999999999.123456"}
+                """, ProcurementApprovalContracts.BatchApprovalRequest.class);
+        assertEquals(new BigDecimal("999999999999.123456"), request.exchangeRate());
+    }
+
+    @Test
     void illegalRatesFailAs4xxBeforeAnyDatabaseMutation() {
         Fixture fixture = fixture();
         List<BatchDecisionItem> items = List.of(

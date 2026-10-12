@@ -726,7 +726,7 @@ public class WarehouseQualityResultService {
                 NativeValueConverters.toBigDecimal(row[8]), NativeValueConverters.toBigDecimal(row[9]), NativeValueConverters.toBigDecimal(row[10]),
                 NativeValueConverters.toBigDecimal(row[11]), NativeValueConverters.toBigDecimal(row[12]),NativeValueConverters.uuid(row[13]),str(row[14]),
                 preStocked(row[15], row[16], row[17], row[18], row[19]),
-                row[20] == null ? null : str(row[20]))).toList();
+                row[20] == null ? null : str(row[20]), str(row[21]))).toList();
     }
 
     /** 品质放行待入库切片（与 IQC 待入库详情同口径、只读不加锁）。 */
@@ -754,7 +754,7 @@ public class WarehouseQualityResultService {
                                         NULLIF(BTRIM(goods.stock_place), '')),
                                event.reason,
                                employee.full_name,
-                               event.occurred_at,inspection.warehouse_id,source_warehouse.name
+                               event.occurred_at,inspection.warehouse_id,source_warehouse.name,inspection.quantity_tranche
                         FROM procurement_inspection_events event
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = event.inspection_item_id
@@ -809,7 +809,7 @@ public class WarehouseQualityResultService {
                 NativeValueConverters.toBigDecimal(row[12]), NativeValueConverters.toBigDecimal(row[13]), NativeValueConverters.toBigDecimal(row[14]),
                 nullableDecimal(row[15]),
                 str(row[16]), str(row[17]), str(row[18]),
-                NativeValueConverters.toOffsetDateTime(row[19]),List.of(),NativeValueConverters.uuid(row[20]),str(row[21]))).toList();
+                NativeValueConverters.toOffsetDateTime(row[19]),List.of(),NativeValueConverters.uuid(row[20]),str(row[21]),str(row[22]))).toList();
         Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
                 inboundAllocationRead.expectedForPassEvents(
                         receiptType, receiptId,
@@ -825,7 +825,7 @@ public class WarehouseQualityResultService {
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
                 slice.releasedAt(), expected.getOrDefault(slice.passEventId(), List.of())
                         .stream().map(WarehouseQualityResultService::toAllocation)
-                        .toList(),slice.warehouseId(),slice.warehouseName())).toList();
+                        .toList(),slice.warehouseId(),slice.warehouseName(),slice.quantityTranche())).toList();
     }
 
     private static InboundAllocation toAllocation(
@@ -880,7 +880,7 @@ public class WarehouseQualityResultService {
                 str(row[4]), str(row[5]), str(row[6]), str(row[7]),
                 NativeValueConverters.toBigDecimal(row[8]), nullableDecimal(row[9]),
                 str(row[10]), str(row[11]), NativeValueConverters.toOffsetDateTime(row[12]),List.of(),NativeValueConverters.uuid(row[13]),str(row[14]),
-                str(row[15]))).toList();
+                str(row[15]),str(row[16]))).toList();
     }
 
     /** 检查不合格的实物退回案件（V440 拒收案件在仓库侧的投影）。 */

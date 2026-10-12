@@ -22,7 +22,8 @@ import 'package:flutter/material.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
-import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/weight_mass_units.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
@@ -83,6 +84,8 @@ import '../repositories/stock_doc_repository.dart';
 import '../repositories/warehouse_place_suggestion_repository.dart';
 import '../widgets/inbound_registration_widgets.dart';
 import '../widgets/stock_grid_columns.dart';
+import '../../../shared/widgets/reviewed_grid_columns.dart';
+import '../../../components/data_display/uten_review_input_cell.dart';
 
 class StockDocEditPage extends ConsumerStatefulWidget {
   const StockDocEditPage({
@@ -90,9 +93,11 @@ class StockDocEditPage extends ConsumerStatefulWidget {
     required this.docType,
     this.id,
     this.checkPrefill,
+    this.reviewMode = false,
   });
   final StockDocType docType;
   final String? id; // null=新建
+  final bool reviewMode;
 
   /// 新建盘点的预填(仓库 + 建议盘点的货品行)；null 时读路由 extra。
   final StockCheckPrefill? checkPrefill;
@@ -169,6 +174,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   bool _loadingCheckBooks = false;
   bool _loading = false;
   bool _loadedCanEdit = false;
+  String? _reviewSnapshot;
+  StockDocDetail? _reviewOriginal;
+  final Map<StockGridRow, StockDocItem> _reviewItems = {};
+  final Map<StockGridRow, Map<String, String?>> _reviewBaseline = {};
   String? _editRestrictionReason;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
@@ -514,17 +523,22 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     }
     if (widget.id != null) {
       try {
-        final d = await ref
-            .read(stockDocRepositoryProvider(widget.docType))
-            .detail(widget.id!);
+        final repository = ref.read(stockDocRepositoryProvider(widget.docType));
+        final review = widget.reviewMode
+            ? await repository.reviewDraft(widget.id!)
+            : null;
+        final d = review?.detail ?? await repository.detail(widget.id!);
+        _reviewSnapshot = review?.snapshot;
+        _reviewOriginal = review?.detail;
         final writable =
             !d.productionLinked &&
             d.canEdit &&
-            await loadDocumentOwnerCanWrite(
-              ref,
-              DocumentDataScope.stockDocument,
-              d.makerId,
-            );
+            (widget.reviewMode ||
+                await loadDocumentOwnerCanWrite(
+                  ref,
+                  DocumentDataScope.stockDocument,
+                  d.makerId,
+                ));
         if (!mounted) return;
         if (!writable) {
           context.appWarning(
@@ -584,6 +598,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             ..executionSegmentId = it.executionSegmentId
             ..executionSegmentSalesAllocationId =
                 it.executionSegmentSalesAllocationId;
+          if (widget.reviewMode) _reviewItems[row] = it;
           if (_usesLineWarehouse) {
             row.place.text = it.place ?? '';
           }
@@ -600,12 +615,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           if (_isCheck) {
             // 盘点：账面 = items.qty，实盘 = items.countQty；账面重量 = 保存时快照，
             // 实盘重量 = items.countWeight(按称重推算的实盘数量保留黄框)。
-            row.bookQty.text = it.qty?.toString() ?? '';
+            row.bookQty.text = it.qtyText ?? it.qty?.toString() ?? '';
             row.bookWeightKg.value = it.bookWeight;
             _restoreSavedWeight(
               row.countWeight,
               row.checkQty,
-              it.countQty?.toString() ?? '',
+              it.countQtyText ?? it.countQty?.toString() ?? '',
               it.countWeight,
               it.qtyFromWeight,
             );
@@ -613,16 +628,28 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             _restoreSavedWeight(
               row.weight,
               row.qty,
-              it.qty?.toString() ?? '',
+              it.qtyText ?? it.qty?.toString() ?? '',
               it.weight,
               it.qtyFromWeight,
             );
           }
           rows.add(row);
         }
+        if (widget.reviewMode) {
+          _reviewBaseline.clear();
+          for (final row in rows) {
+            _reviewBaseline[row] = _reviewValues(row);
+          }
+        }
         _grid.replaceAll(rows);
       } catch (_) {
-        // 静默降级
+        if (widget.reviewMode) {
+          if (mounted) {
+            context.appError('审核草稿读取失败，请返回详情重新读取');
+            Navigator.of(context).pop();
+          }
+          return;
+        }
       }
     }
     if (_grid.isEmpty) {
@@ -789,13 +816,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         return;
       }
       // 没有余额行 = 账面 0 个、0 重量。
-      var qty = 0.0;
+      String? qty = '0';
       double? weightKg = 0;
       var estimated = false;
       var found = false;
       for (final balance in result.items) {
         if (balance.colorId == row.colorId) {
-          qty = balance.qty ?? 0;
+          qty = balance.qtyText ?? balance.qty?.toString();
           weightKg = balance.weight;
           estimated = balance.weightEstimated;
           found = true;
@@ -806,11 +833,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       if (!found && row.colorId == null && result.items.length == 1) {
         final balance = result.items.single;
         row.colorId = balance.colorId;
-        qty = balance.qty ?? 0;
+        qty = balance.qtyText ?? balance.qty?.toString();
         weightKg = balance.weight;
         estimated = balance.weightEstimated;
       }
-      row.bookQty.text = _qtyText(qty);
+      row.bookQty.text = financeExactTrimmed(qty) ?? '';
       // 账面重量只作核对展示；保存时服务端按锁定的余额重新快照。
       row.bookWeightEstimated = estimated;
       row.bookWeightKg.value = weightKg;
@@ -841,11 +868,6 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     } finally {
       if (mounted) setState(() => _loadingCheckBooks = false);
     }
-  }
-
-  String _qtyText(double value) {
-    final fixed = value.toStringAsFixed(4);
-    return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
   /// 只有领料单接了 STOCK_DOCUMENT 附件策略的可见入口（详情页「出库凭证/照片」常驻区）；
@@ -934,9 +956,14 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         'goodsId': r.goods!.id,
         ...platformRowPayload(r),
       };
+      final original = widget.reviewMode ? _reviewItems[r] : null;
+      if (widget.reviewMode) {
+        if (original == null) return context.appError('审核原明细身份已变化，请重新读取');
+        m['sourceItemId'] = original.id;
+      }
       if (r.colorId != null) m['colorId'] = r.colorId;
       if (r.unitId != null) m['unitId'] = r.unitId;
-      m['unitRate'] = r.unitRate;
+      m['unitRate'] = original?.unitRateText ?? r.unitRate;
       if (_usesLineWarehouse) {
         m['warehouseId'] = r.warehouseId;
         final place = r.place.text.trim();
@@ -962,13 +989,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         if (countQty == 0 && sentKg != null) {
           return context.appError('${r.goods!.name} 的实盘数量为 0，不能再填实盘重量');
         }
-        m['qty'] = bookQty; // 账面写入 items.qty
-        m['countQty'] = countQty;
+        m['qty'] = r.bookQty.text.trim(); // 账面精确原文；服务端仍按锁定余额重验
+        m['countQty'] = r.checkQty.text.trim();
         // 仅作前端预览；后端会按权威账面快照重新计算盈亏。
-        m['surplusQty'] = countQty - bookQty;
+        m['surplusQty'] = r.surplusQtyText;
         if (sentKg != null) m['countWeight'] = sentKg;
       } else {
-        m['qty'] = double.tryParse(r.qty.text) ?? 0;
+        m['qty'] = r.qty.text.trim();
         if (sentKg != null) m['weight'] = sentKg;
       }
       // 回收料按 0 成本进仓：显式单价 0、金额 0 (不留空，留空是「成本未定」)。
@@ -1005,14 +1032,37 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       'items': items,
     };
+    if (widget.reviewMode) {
+      final before = _reviewOriginal;
+      if (before == null || _reviewSnapshot == null) {
+        return context.appError('审核快照缺失，请重新读取');
+      }
+      body.addAll({
+        'billDate': before.billDate,
+        'warehouseId': before.warehouseId,
+        'toWarehouseId': before.toWarehouseId,
+        'workerId': before.workerId,
+        'assTeam': before.assTeam,
+        'departmentId': before.departmentId,
+        'planNo': before.planNo,
+      });
+    }
     setState(() => _saving = true);
     try {
       final repo = ref.read(stockDocRepositoryProvider(widget.docType));
       final d = widget.id == null
           ? await runFormDraftSubmission(() => repo.create(body))
+          : widget.reviewMode
+          ? await repo.updateReviewed(widget.id!, body, _reviewSnapshot!)
           : await repo.update(widget.id!, body);
       if (!mounted) return;
-      context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      context.appSuccess(
+        widget.reviewMode
+            ? '已核改并审核'
+            : widget.id == null
+            ? '已创建'
+            : '已保存',
+      );
       bumpListRefresh(ref, widget.docType.refreshKey);
       if (widget.id == null && _hasAttachmentArea && _pendingFiles.isNotEmpty) {
         // 新建领料单：先拿到真实 UUID，再把保存前暂存的凭证逐个确认上传。
@@ -1023,6 +1073,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       }
       await completeFormDraft();
       if (!mounted) return;
+      if (widget.reviewMode) {
+        Navigator.of(context).pop(d);
+        return;
+      }
       context.replace(RoutePath.stockDocDetail(widget.docType.code, d.id));
     } catch (error) {
       if (mounted) context.appApiError(error, fallback: '保存失败');
@@ -1062,8 +1116,41 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     ];
   }
 
-  Widget _savedFields(Widget child) =>
-      SavedDocumentFields(locked: _createdDocId != null, child: child);
+  Widget _savedFields(Widget child) => SavedDocumentFields(
+    locked:
+        _createdDocId != null || (widget.reviewMode && child is UtenFormGrid),
+    child: child,
+  );
+
+  Map<String, String?> _reviewValues(StockGridRow row) => {
+    'qty': row.qty.text,
+    'checkQty': row.checkQty.text,
+    'place': row.place.text,
+  };
+  List<EditableGridColumn<StockGridRow>> _reviewColumns(
+    List<EditableGridColumn<StockGridRow>> columns,
+  ) => widget.reviewMode
+      ? reviewedGridColumns(
+          columns: columns,
+          baseline: _reviewBaseline,
+          valuesOf: _reviewValues,
+          listenableOf: (row) =>
+              Listenable.merge([row.qty, row.checkQty, row.place]),
+          editableKeys: {'qty', 'checkQty', 'place'},
+          keyPrefix: 'stock-review-before',
+        )
+      : columns;
+  Widget _reviewRemark(Widget child) => !widget.reviewMode
+      ? child
+      : ListenableBuilder(
+          listenable: _remark,
+          builder: (context, _) => UtenReviewInputCell(
+            before: _reviewOriginal?.remark,
+            after: _remark.text,
+            beforeKey: const Key('stock-review-before-remark'),
+            child: child,
+          ),
+        );
 
   /// 普通调拨的调入仓仍与调出仓同类(良品/不良品, ADR-146)；没选调入仓也算合法。
   bool _toWarehouseMatchesSource(List<WarehouseDictEntry> hierarchy) {
@@ -1241,12 +1328,14 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                       ),
                                     ),
                                     const SizedBox(height: UtenSpacing.s12),
-                                    TextField(
-                                      controller: _remark,
-                                      decoration: const InputDecoration(
-                                        labelText: '备注',
+                                    _reviewRemark(
+                                      TextField(
+                                        controller: _remark,
+                                        decoration: const InputDecoration(
+                                          labelText: '备注',
+                                        ),
+                                        maxLines: 2,
                                       ),
-                                      maxLines: 2,
                                     ),
                                   ],
                                 ),
@@ -1324,6 +1413,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                             _savedFields(
                               UtenEditableGrid<StockGridRow>(
                                 columnEditingEnabled:
+                                    !widget.reviewMode &&
                                     !_loading &&
                                     !_saving &&
                                     _createdDocId == null &&
@@ -1332,31 +1422,37 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                     'warehouse.${widget.docType.name}.items',
                                 controller: _grid,
                                 stickyHeaderPinned: _gridPinned,
-                                columns: stockGridColumns(
-                                  _pickGoods,
-                                  isCheck: _isCheck,
-                                  // V787 行级仓库：出库/入库类单据在表格里逐行选仓。
-                                  warehouse: _usesLineWarehouse
-                                      ? StockGridWarehouseWiring(
-                                          entries: names.warehouseHierarchy,
-                                          use: widget.docType.warehouseUse,
-                                          label: switch (widget.docType) {
-                                            StockDocType.otherIn ||
-                                            StockDocType.finishedIn => '入库仓',
-                                            _ => '发出仓',
-                                          },
-                                          onWarehouseChanged:
-                                              _onRowWarehouseChanged,
-                                        )
-                                      : null,
-                                  weight: StockGridWeightWiring(
-                                    entryUnit: weightUnits.entry,
-                                    mode: _weightMode,
-                                    paramsOf: _paramsOf,
-                                    paramsListenable: _weightCache,
-                                    exactKgOf: _exactKg,
-                                    onWeighCount: _weighCount,
-                                    display: weightUnits.display,
+                                showAddRow: !widget.reviewMode,
+                                showRowDelete: !widget.reviewMode,
+                                showRemoveRowsAction: !widget.reviewMode,
+                                selectionEnabled: !widget.reviewMode,
+                                columns: _reviewColumns(
+                                  stockGridColumns(
+                                    _pickGoods,
+                                    isCheck: _isCheck,
+                                    // V787 行级仓库：出库/入库类单据在表格里逐行选仓。
+                                    warehouse: _usesLineWarehouse
+                                        ? StockGridWarehouseWiring(
+                                            entries: names.warehouseHierarchy,
+                                            use: widget.docType.warehouseUse,
+                                            label: switch (widget.docType) {
+                                              StockDocType.otherIn ||
+                                              StockDocType.finishedIn => '入库仓',
+                                              _ => '发出仓',
+                                            },
+                                            onWarehouseChanged:
+                                                _onRowWarehouseChanged,
+                                          )
+                                        : null,
+                                    weight: StockGridWeightWiring(
+                                      entryUnit: weightUnits.entry,
+                                      mode: _weightMode,
+                                      paramsOf: _paramsOf,
+                                      paramsListenable: _weightCache,
+                                      exactKgOf: _exactKg,
+                                      onWeighCount: _weighCount,
+                                      display: weightUnits.display,
+                                    ),
                                   ),
                                 ),
                                 createBlankRow: () =>
@@ -1364,7 +1460,9 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                                 cloneRow: (r) => r.clone(),
                                 // 「称重单位: 千克▾」：录入单位是用户级偏好。
                                 toolbarActions: const [WeightEntryUnitButton()],
-                                rowMenuExtraBuilder: _rowWeightMenu,
+                                rowMenuExtraBuilder: widget.reviewMode
+                                    ? null
+                                    : _rowWeightMenu,
                                 footer: _gridTotals(weightUnits.display),
                               ),
                             ),
@@ -1407,15 +1505,17 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
           density: true,
           rowCount: rows.length,
           entries: [
-            utenQuantityTotalEntry(
-              rows.map(
-                (row) => MeasuredAmount(
-                  value: double.tryParse(row.activeQty.text.trim()) ?? 0,
-                  unitId: row.unitId,
-                  unitName: row.unitName,
+            UtenTotalEntry(
+              _isCheck ? '实盘' : '数量',
+              exactMeasurementTotalsText(
+                rows.map(
+                  (row) => ExactMeasuredAmount(
+                    value: row.activeQty.text,
+                    unitId: row.unitId,
+                    unitName: row.unitName,
+                  ),
                 ),
               ),
-              label: _isCheck ? '实盘' : '数量',
             ),
             ...weightTotalEntries(
               warehouseWeightTotals<StockGridRow>(
@@ -1442,10 +1542,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   /// 账面库存读取中沿用「保存中」的转圈态，让用户知道现在点不动是在等数据。
   Widget _floatingActions(ThemeData theme) {
     final busy = _saving || _loadingCheckBooks;
-    void cancel() => popOrBackTo(
-      context,
-      defaultPath: RoutePath.stockDocList(widget.docType.code),
-    );
+    void cancel() => widget.reviewMode
+        ? Navigator.of(context).pop()
+        : popOrBackTo(
+            context,
+            defaultPath: RoutePath.stockDocList(widget.docType.code),
+          );
     if (widget.id == null) {
       return UtenEditFloatingActions(
         onCancel: cancel,
@@ -1455,12 +1557,15 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     }
     return TaskClaimHandle(
       key: ValueKey('fulfillment_claim_${widget.id}'),
-      targetType: 'FULFILLMENT_TASK_EDIT',
+      targetType: widget.reviewMode
+          ? 'FULFILLMENT_TASK_APPROVE'
+          : 'FULFILLMENT_TASK_EDIT',
       targetKey: widget.id!,
       builder: (heldByMe, claim) {
         // 他人正编辑同一仓库单据 → 显示「XX 处理中」并禁用保存（UX 层；后端守卫兜底）。
         final blocked = !heldByMe && claim != null;
         return UtenEditFloatingActions(
+          saveLabel: widget.reviewMode ? '保存并审核' : '保存',
           onCancel: cancel,
           onSave: (blocked || !_loadedCanEdit) ? null : _save,
           saving: busy,

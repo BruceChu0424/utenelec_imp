@@ -76,6 +76,12 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SubcontractReceiptService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper reviewJson;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<SubcontractReceiptService> reviewedDraftProxy;
+
+
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
@@ -95,6 +101,11 @@ public class SubcontractReceiptService {
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。
      *  2026-09-25 单号列统一：billNo 进白名单（价格遮蔽分支见 list）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo");
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.InventoryPositionPort unapprovalPositions;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.InventoryValuationPort unapprovalValues;
 
     private final SubcontractReceiptRepository receiptRepo;
     private final SubcontractReceiptItemRepository itemRepo;
@@ -175,7 +186,7 @@ public class SubcontractReceiptService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
     public ReceiptDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -222,8 +233,10 @@ public class SubcontractReceiptService {
 
     /** Preserve the business prefix, header lock and source check before the field snapshot. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
+    @PreAuthorize("hasAuthority('subcontract_receipt:edit') or (hasAuthority('subcontract_receipt:view') and hasAuthority('subcontract_receipt:approve'))")
     public void lockPlatformColumnSave(UUID id, ReceiptSaveRequest request) {
+        if (!access.hasAuthority("subcontract_receipt:edit") && !com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("subcontract_receipt_item", id, currentUser.requireId()))
+            throw new ApiException(ErrorCode.FORBIDDEN);
         tx.bind();
         var guard = lockReceiptRequest(id, request);
         requireReceiptForUpdate(id);
@@ -234,10 +247,57 @@ public class SubcontractReceiptService {
     @PreAuthorize("hasAuthority('subcontract_receipt:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_receipt_item", requestArgument=1, documentIdArgument=0)
     public ReceiptDetail update(UUID id, ReceiptSaveRequest req) {
+        return updateDraft(id, req, false, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('subcontract_receipt:view') and hasAuthority('subcontract_receipt:approve')")
+    public com.uten.imp.common.review.DocumentDraftReview.View<ReceiptDetail> review(UUID id) {
+        tx.bind();
+        var guard = mutationLocks.receipt("SUBCONTRACT", id);
+        SubcontractReceipt r = requireReceiptForUpdate(id);
+        guard.verifyUnchanged();
+        com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_receipt");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
+        if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
+            throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
+        return new com.uten.imp.common.review.DocumentDraftReview.View<>(com.uten.imp.common.review.DocumentDraftReview.snapshot(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RECEIPT, id), detail(id));
+    }
+
+    @Transactional(noRollbackFor = ProcurementArrivalBlockedException.class)
+    @PreAuthorize("hasAuthority('subcontract_receipt:view') and hasAuthority('subcontract_receipt:approve')")
+    public ReceiptDetail updateReviewed(UUID id, ReceiptSaveRequest req, String expectedSnapshot, boolean approveNow) {
+        review(id);
+        com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RECEIPT, id, expectedSnapshot);
+        com.uten.imp.common.review.ProcurementPhysicalReview.constrain(em, reviewJson, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RECEIPT, id, req);
+        ReceiptDetail saved;
+        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("subcontract_receipt_item", id, currentUser.requireId())) {
+            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
+        }
+        if (!approveNow) return saved;
+        approveReceipt(id, true); return detail(id);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('subcontract_receipt:view') and hasAuthority('subcontract_receipt:approve')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_receipt_item", requestArgument=1, documentIdArgument=0)
+    public ReceiptDetail saveReviewedDraft(UUID id, ReceiptSaveRequest req, String expectedSnapshot) {
+        if (!com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("subcontract_receipt_item", id, currentUser.requireId()))
+            throw new ApiException(ErrorCode.FORBIDDEN);
+        ReceiptDetail result = updateDraft(id, req, true, expectedSnapshot);
+        em.flush();
+        return result;
+    }
+
+    private ReceiptDetail updateDraft(UUID id, ReceiptSaveRequest req, boolean reviewed, String expectedSnapshot) {
         tx.bind();
         var mutationGuard=lockReceiptRequest(id,req);
         SubcontractReceipt r = requireReceiptForUpdate(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
+        if (reviewed) {
+            com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_receipt");
+            com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RECEIPT, id, expectedSnapshot);
+            com.uten.imp.common.review.ProcurementPhysicalReview.constrain(em, reviewJson, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RECEIPT, id, req);
+        } else access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -292,7 +352,9 @@ public class SubcontractReceiptService {
     }
 
     /** Shared transaction kernel; warehouse commands do not need the commercial detail projection. */
-    private void approveReceipt(UUID id) {
+    private void approveReceipt(UUID id) { approveReceipt(id, false); }
+
+    private void approveReceipt(UUID id, boolean reviewed) {
         tx.bind();
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RECEIPT, id);
@@ -304,7 +366,8 @@ public class SubcontractReceiptService {
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
+        if (reviewed) com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_receipt");
+        else access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
         com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
@@ -320,6 +383,8 @@ public class SubcontractReceiptService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        r.setExchangeRate(com.uten.imp.common.finance.ProcurementApprovedExchangeRate.receiptRate(
+                em,"SUBCONTRACT",items.stream().map(SubcontractReceiptItem::getOrderItemId).toList(),r.getCurrencyId(),r.getExchangeRate()));
         sourceIntegrity.validateSubcontractReceipt(
                 r.getSupplierId(),
                 items.stream()
@@ -405,6 +470,66 @@ public class SubcontractReceiptService {
 
 
     /** 红冲：status 1→-1，先 reverseArAp（已核销则抛错）→ 反向 DIR_OUT + 回减 received_qty + ap_posted=false。 */
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('subcontract_receipt:view')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id){
+        detail(id);var r=requireReceipt(id);
+        return com.uten.imp.common.finance.ProcurementUnapprovalPreflight.evaluate(em,"subcontractReceipt","subcontract_receipts",id,"subcontract_receipt:reverse",()->unapprovalDependencyFacts(id),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOCUMENT_REVERSE_BLOCKED",()->requireUnapprovalHeader(r)),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("SUPPLIER_PERIOD_CLOSED",()->periodIdentityGuard.requireOpenTodayReadOnly(periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RECEIPT,id),"委外收货反审")),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOWNSTREAM_OR_COST_BLOCKED",()->requireReversibleBusiness(r)));
+    }
+    private void requireUnapprovalHeader(SubcontractReceipt r){
+        access.requireWritable(r.getMakerId(),"只能操作本人负责的委外收货单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
+        if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+    }
+    private void requireReversibleBusiness(SubcontractReceipt r){UUID id=r.getId();
+        var items=itemRepo.findByReceiptIdOrderByLineNoAsc(id);
+        if(items.stream().anyMatch(it->it.getReturnedQty()!=null&&it.getReturnedQty().signum()>0))throw new ApiException(ErrorCode.CONFLICT,"委外收货已有退货记录，请先反审下游退货单");
+        var withdrawals=inspectionService.requireResolvedReversibleReadOnly("SUBCONTRACT",id);
+        var formalReservations=productionSupply.requireSubcontractReceiptReversible(id);
+        preplanAnalysisPeg.requireReceiptReversible("SUBCONTRACT",id,formalReservations);
+        consideration.requireReceiptReversible("SUBCONTRACT",id);
+        procurementValue.requireReceiptReversible("SUBCONTRACT",id);
+        if(!withdrawals.isEmpty())unapprovalPositions.requireStoresReversibleAfterSubcontractCostRelease(withdrawals,procurementValue.previewReceiptCostWithdrawal("SUBCONTRACT",id));
+        requireReversibleArAp(id,StockService.SRC_SUBCONTRACT_RECEIPT);
+        requireMaterialConsumptionBalances(id);
+        var counters=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT SUM(line.qty),COALESCE(order_item.received_qty,0)
+            FROM subcontract_receipt_items line JOIN subcontract_order_items order_item ON order_item.id=line.order_item_id
+            WHERE line.receipt_id=:id GROUP BY order_item.id ORDER BY order_item.id
+            """).setParameter("id",id));
+        for(Object[] row:counters)if(((BigDecimal)row[0]).compareTo((BigDecimal)row[1])>0)
+            throw new ApiException(ErrorCode.CONFLICT,"原订货累计收货不足以完整反审，请核对后续事实");
+        if(inspectionCount("SUBCONTRACT",id)==0){
+            throw new ApiException(ErrorCode.CONFLICT,"原收货缺少可核对的质检/仓库成本来源，请专项核对历史数据");
+        }
+    }
+    private void requireReversibleArAp(UUID id,String type){
+        try{arApService.requireReversibleSource(id,type);}
+        catch(IllegalStateException denied){throw new ApiException(ErrorCode.CONFLICT,denied.getMessage());}
+    }
+    private long inspectionCount(String type,UUID id){return ((Number)em.createNativeQuery("SELECT COUNT(*) FROM procurement_inspection_items WHERE receipt_type=:type AND receipt_id=:id").setParameter("type",type).setParameter("id",id).getSingleResult()).longValue();}
+
+    private String unapprovalDependencyFacts(UUID id){return String.valueOf(em.createNativeQuery("""
+        SELECT jsonb_build_object(
+            'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM subcontract_receipt_items line WHERE line.receipt_id=:id),
+            'arAp',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger WHERE ledger.source_doc_id=:id),
+            'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
+            'supplierPeriods',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM supplier_settlement_batches batch JOIN subcontract_receipts doc ON doc.supplier_id=batch.supplier_id AND doc.currency_id=batch.currency_id WHERE doc.id=:id),
+            'movements',(SELECT jsonb_agg(to_jsonb(movement) ORDER BY movement.id) FROM stock_movements movement WHERE movement.source_doc_id=:id),
+            'inspection',(SELECT jsonb_agg(to_jsonb(inspection) ORDER BY inspection.id) FROM procurement_inspection_items inspection WHERE inspection.receipt_type='SUBCONTRACT' AND inspection.receipt_id=:id),
+            'cases',(SELECT jsonb_agg(to_jsonb(rejection) ORDER BY rejection.id) FROM procurement_iqc_rejection_cases rejection WHERE rejection.receipt_type='SUBCONTRACT' AND rejection.receipt_id=:id),
+            'allocations',(SELECT jsonb_agg(to_jsonb(allocation) ORDER BY allocation.id) FROM production_material_subcontract_receipt_allocations allocation WHERE allocation.receipt_id=:id),
+            'reservations',(SELECT jsonb_agg(to_jsonb(reservation) ORDER BY reservation.id) FROM stock_reservations reservation WHERE reservation.source_doc_id=:id OR reservation.demand_id IN(SELECT demand.id FROM production_material_demands demand JOIN production_material_subcontract_receipt_allocations allocation ON allocation.demand_id=demand.id WHERE allocation.receipt_id=:id)),
+            'outbox',(SELECT jsonb_agg(to_jsonb(event) ORDER BY event.id) FROM business_outbox event WHERE event.event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND event.payload->>'receiptId'=CAST(:id AS text)),
+            'costObjects',(SELECT jsonb_agg(to_jsonb(object) ORDER BY object.execution_segment_id) FROM stock_value_production_cost_objects object WHERE object.execution_segment_id IN(SELECT id FROM subcontract_receipt_items WHERE receipt_id=:id)),
+            'costInputs',(SELECT jsonb_agg(jsonb_build_object('input',to_jsonb(input),'node',to_jsonb(node)) ORDER BY input.input_node_id) FROM stock_value_production_cost_inputs input JOIN stock_value_nodes node ON node.id=input.input_node_id WHERE input.execution_segment_id IN(SELECT id FROM subcontract_receipt_items WHERE receipt_id=:id)),
+            'costShares',(SELECT jsonb_agg(to_jsonb(share) ORDER BY share.input_node_id,share.output_source_node_id) FROM stock_value_production_cost_shares share WHERE share.output_source_node_id IN(SELECT source_node_id FROM stock_value_production_cost_outputs WHERE execution_segment_id IN(SELECT id FROM subcontract_receipt_items WHERE receipt_id=:id))),
+            'poolHeads',(SELECT jsonb_agg(to_jsonb(pool) ORDER BY pool.id) FROM stock_value_pools pool WHERE (pool.goods_id,pool.color_id) IN(SELECT goods_id,color_id FROM subcontract_receipt_items WHERE receipt_id=:id)))::text
+        """).setParameter("id",id).getSingleResult());}
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_receipt:reverse')")
     public ReceiptDetail reverse(UUID id) {
@@ -424,11 +549,7 @@ public class SubcontractReceiptService {
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外进仓单");
-        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
+        requireUnapprovalHeader(r);
         List<SubcontractReceiptItem> items = itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         requireSameInventoryDimensions(prelockItems, items);
         if (items.stream().anyMatch(it ->
@@ -690,6 +811,17 @@ public class SubcontractReceiptService {
     }
 
     /** 红冲只按审核时记下的核销切片原样退回；本行没有核销切片时无事可做。 */
+    private void requireMaterialConsumptionBalances(UUID id){
+        var insufficient=em.createNativeQuery("""
+            SELECT issue.id FROM subcontract_receipt_material_consumptions original
+            JOIN subcontract_receipt_items receipt ON receipt.id=original.receipt_item_id AND receipt.receipt_id=:id
+            JOIN subcontract_material_issue_items issue ON issue.id=original.issue_item_id
+            WHERE original.reversal_of IS NULL AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions rev WHERE rev.reversal_of=original.id)
+            GROUP BY issue.id HAVING issue.consumed_qty<SUM(original.qty_doc)
+            """).setParameter("id",id).getResultList();
+        if(!insufficient.isEmpty())throw new ApiException(ErrorCode.CONFLICT,"原发料消费余量已变化，请刷新后重试");
+    }
+
     private void reverseReceiptMaterialConsumptions(UUID receiptItemId){
         @SuppressWarnings("unchecked")
         List<Object[]> sources=em.createNativeQuery("""
@@ -839,9 +971,13 @@ public class SubcontractReceiptService {
         r.setSupplierId(req.getSupplierId());
         warehouseScopes.require(r.getWarehouseId(), req.getWarehouseId(), "入库仓库", WarehouseUse.GOOD_IN);
         r.setWarehouseId(req.getWarehouseId());
-        r.setCurrencyId(req.getCurrencyId());
+        var sourceHeader = com.uten.imp.common.finance.ProcurementReceiptHeaderAuthority.deriveIfMissing(
+                em, "SUBCONTRACT", req.getItems() == null ? List.of()
+                        : req.getItems().stream().filter(java.util.Objects::nonNull).map(ReceiptItemLine::getOrderItemId).toList(),
+                req.getCurrencyId(), req.getTaxRate(), req.getSettlementMethodId());
+        r.setCurrencyId(sourceHeader.currencyId());
         r.setExchangeRate(req.getExchangeRate()==null?null:com.uten.imp.common.util.FinancialExactAmount.rate(req.getExchangeRate(),"委外收货汇率"));
-        r.setTaxRate(req.getTaxRate());
+        r.setTaxRate(sourceHeader.taxRate());
         var receiver = nameResolver.resolveForWrite(
                 req.getSenderId(), req.getReceiverLegacyId(), req.getReceiverName(), "收货人");
         if (!(receiver == null && r.getLegacyId() != null && r.getSenderId() == null)) {
@@ -851,10 +987,10 @@ public class SubcontractReceiptService {
         }
         r.setLastDate(req.getLastDate());
         r.setRemark(req.getRemark());
-        if (!(req.getSettlementMethodId() == null && req.getSettlementStyleLegacy() == null
+        if (!(sourceHeader.settlementMethodId() == null && req.getSettlementStyleLegacy() == null
                 && r.getSettlementMethodId() == null && r.getSettlementStyleLegacy() != null)) {
             var settlement = com.uten.imp.common.util.SettlementMethodReferenceResolver.resolve(
-                    em, req.getSettlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
+                    em, sourceHeader.settlementMethodId(), req.getSettlementStyleLegacy(), "结帐方式");
             r.setSettlementMethodId(settlement == null ? null : settlement.id());
             r.setSettlementStyleLegacy(settlement == null ? null : settlement.legacyId());
         }
@@ -875,6 +1011,9 @@ public class SubcontractReceiptService {
     }
 
     private List<ReceiptItemDto> saveItems(SubcontractReceipt r, List<ReceiptItemLine> lines) {
+        if(lines!=null) r.setExchangeRate(com.uten.imp.common.finance.ProcurementApprovedExchangeRate.receiptRate(
+                em,"SUBCONTRACT",lines.stream().filter(java.util.Objects::nonNull).map(ReceiptItemLine::getOrderItemId).toList(),
+                r.getCurrencyId(),r.getExchangeRate()));
         List<ReceiptItemDto> out = new ArrayList<>(lines.size());
         var amountDraft = receiptAmountPreview.draft("SUBCONTRACT", r.getId());
         Map<UUID, ReceiptSourceRef> orderRefs = orderRefsByItemIds(

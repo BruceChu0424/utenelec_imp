@@ -42,7 +42,12 @@ public class SalesQuoteFinanceReviewerEligibility implements SalesQuoteFinanceRe
     public List<UUID> eligibleUserIds() {
         // 2026-10-09(ADR-063 追加修订): 通知接收池按「真实授出权限」解析——超管全量镜像不算
         // 任务归属; isEligible 是操作资格门, 超管仍按 permsOf 全量可操作。
-        return candidateUserIds(null).stream()
+        List<UUID> candidates = candidateUserIds(null);
+        if (permissionResolver.supportsGrantedPermissionBatch()) {
+            return permissionResolver.usersGrantedAll(candidates,
+                    java.util.Set.of(VIEW_PERMISSION, CONFIRM_PERMISSION));
+        }
+        return candidates.stream()
                 .filter(userId -> userRepo.findById(userId)
                         .map(account -> permissionResolver.grantedPermsOf(account)
                                 .containsAll(java.util.Set.of(VIEW_PERMISSION, CONFIRM_PERMISSION)))

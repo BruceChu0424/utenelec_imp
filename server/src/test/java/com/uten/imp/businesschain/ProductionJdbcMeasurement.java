@@ -294,6 +294,19 @@ final class ProductionJdbcMeasurement {
         if (normalized.startsWith("with recursive roots(")) return "bom.expansion";
         if (normalized.startsWith("update purchase_orders order_doc set is_closed")) return "purchase.order_closure";
         if (normalized.startsWith("update subcontract_orders order_doc set is_closed")) return "subcontract.order_closure";
+        if (normalized.startsWith("insert into production_fqc_pass_all_batch_items")) return "fqc.batch_item_insert";
+        if (normalized.startsWith("select id, request_hash, created_by")
+                && normalized.contains("from production_fqc_decision_events")) return "fqc.decision_replay";
+        if (normalized.startsWith("select plan.id from plan_draw_links link")
+                && normalized.contains("for update of link, plan")) return "stock.confirm_graph";
+        if (normalized.startsWith("select exists") && normalized.contains("from stock_document_items item")
+                && normalized.contains("registration.stock_in_before_inspection")) return "stock.prestock_proof";
+        if (normalized.startsWith("select p.id, p.status, p.is_canceled, p.is_stopped, p.is_deleted"))
+            return "stock.plan_approval_proof";
+        if (normalized.startsWith("update production_plans p set is_closed")) return "stock.plan_close";
+        if (normalized.startsWith("select") && normalized.contains("stock_document_items")
+                && normalized.contains("order by") && normalized.contains(".line_no")
+                && normalized.matches("(?s).*\\.doc_id\\s*=\\s*\\?.*")) return "stock.document_items";
         if (normalized.startsWith("select id, status") && normalized.contains("from production_fqc_inspections")
                 && normalized.contains("source_report_item_id") && normalized.contains("for update")) return "fqc.release_inspections";
         if (normalized.startsWith("select id, source_report_item_id, stock_document_item_id, requested_qty")

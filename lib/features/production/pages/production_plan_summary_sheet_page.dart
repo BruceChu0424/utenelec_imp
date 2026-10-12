@@ -25,6 +25,8 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/platform_branding/platform_branding.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_material_analysis.dart';
@@ -454,10 +456,10 @@ class _ProductionPlanSummarySheetPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          '中山市优腾电器有限公司',
+        Text(
+          ref.watch(platformBrandingSnapshotProvider).companyName,
           textAlign: TextAlign.center,
-          style: TextStyle(
+          style: const TextStyle(
             color: _ink,
             fontSize: 15,
             fontWeight: FontWeight.w700,
@@ -774,7 +776,9 @@ class _ProductionPlanSummarySheetPageState
     if (_printing) return;
     setState(() => _printing = true);
     try {
-      final bytes = await _buildPdf();
+      final bytes = await _buildPdf(
+        companyName: ref.read(platformBrandingSnapshotProvider).companyName,
+      );
       if (!mounted) return;
       final ok = await printPdfBytes(bytes, '生产备料计划汇总单-$_today.pdf');
       if (!mounted) return;
@@ -787,10 +791,13 @@ class _ProductionPlanSummarySheetPageState
     }
   }
 
-  Future<Uint8List> _buildPdf() async {
+  Future<Uint8List> _buildPdf({String? companyName}) async {
+    final printCompanyName =
+        companyName ?? PlatformBranding.defaults.companyName;
     final fontData = await rootBundle.load('assets/fonts/NotoSansSCFull.ttf');
     final font = pw.Font.ttf(fontData);
     final doc = pw.Document(
+      author: printCompanyName,
       theme: pw.ThemeData.withFont(base: font, bold: font),
     );
     final buyRows = _supplyRows(MaterialSupplyRoute.buy);
@@ -802,7 +809,7 @@ class _ProductionPlanSummarySheetPageState
         build: (context) => [
           pw.Center(
             child: pw.Text(
-              '中山市优腾电器有限公司',
+              printCompanyName,
               style: const pw.TextStyle(
                 fontSize: 12,
                 fontWeight: pw.FontWeight.bold,

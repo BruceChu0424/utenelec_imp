@@ -146,7 +146,7 @@ class SubcontractHubPage extends ConsumerWidget {
       _Entry(
         icon: Icons.outbound_outlined,
         label: '委外材料出仓单',
-        description: '发给委外商的直属物料出仓单：查看、核对与红冲',
+        description: '发给委外商的直属物料出仓单：查看、核对与反审',
         location: SubcontractRoute.list(
           SubcontractDocConfig.materialIssue.pathSegment,
         ),

@@ -13,6 +13,7 @@
 // 识别客户文件导入或手填; 文件单价只读、仅有值时出现); 报价单价可议价，订货锁定、
 // 折扣可编辑(可留空交财务核价); 识别结果里需要核对的行货品格黄框提醒。
 import 'package:flutter/material.dart';
+import '../../../shared/widgets/sales_document_layout.dart';
 import '../../../shared/business_columns/business_columns_row.dart';
 import '../intake/sales_intake_l10n.dart';
 import '../../../components/inputs/required_field_decoration.dart';
@@ -617,7 +618,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       : docType == SalesDocType.returnDoc
       ? l10n.workflowReturnPriceHint
       : l10n.workflowPriceHint;
-  return [
+  final columns = <EditableGridColumn<SalesGridRow>>[
     EditableGridColumn<SalesGridRow>(
       key: 'goods',
       label: '货品名称',
@@ -1134,15 +1135,20 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
       priceMasked: priceMasked,
     ),
   ];
+  return canonicalSalesColumns(
+    columns,
+    keyOf: (column) => column.key,
+    enabled: isQuote || docType == SalesDocType.order,
+  );
 }
 
 /// 数量列冻结副本格文本（2026-10-10「数量 + 单位」内联口径）：数字后跟行单位
 ///（如 `12 箱`）；输入非法（解析不出数字）时原样显示用户输入。
 String _qtyFrozenText(SalesGridRow row, Map<String, String> unitEntries) {
-  final parsed = parseQty(row.qty.text);
-  return parsed == null
+  final exact = financeExactDecimal(row.qty.text);
+  return exact == null
       ? row.qty.text
-      : formatQtyWithUnit(parsed, unitEntries[row.unitId ?? '']);
+      : formatExactQtyWithUnit(exact, unitEntries[row.unitId ?? '']);
 }
 
 /// 进仓数量(历史参考)只读格文本：数量 + 行单位内联（2026-10-10 口径），空值显「—」。

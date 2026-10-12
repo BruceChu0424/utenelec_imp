@@ -28,7 +28,7 @@ public interface StandardDocumentLifecycleCapabilities {
         if (!isDraft(status)) {
             throw new ApiException(
                     ErrorCode.BUSINESS,
-                    "仅草稿单据可删除；已审核请先红冲，红冲历史必须保留");
+                    "仅草稿单据可删除；已审核请先反审进入后续草稿，原审核历史必须保留");
         }
     }
 

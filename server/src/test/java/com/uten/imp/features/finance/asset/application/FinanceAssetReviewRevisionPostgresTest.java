@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK, properties={
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
-        "uten.features.goods-owner-scope-enabled=false", "uten.inventory.value-work-initial-delay-ms=3600000",
+        "uten.features.goods-owner-scope-enabled=false",
         "uten.finance.asset.posted-workflows-enabled=true",
         "uten.jwt.secret=asset-review-only-jwt-key-0123456789-0123456789",
         "uten.crypto.pgp-master-key=asset-review-only-pgp-key-0123456789-0123456789",

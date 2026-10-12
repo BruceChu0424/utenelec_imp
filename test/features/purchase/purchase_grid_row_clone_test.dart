@@ -91,6 +91,9 @@ void main() {
     expect(keys, isNot(contains('weight')));
     expect(keys, isNot(contains('unit')));
     expect(keys.indexOf('price'), keys.indexOf('qty') + 1);
+    expect(keys, containsAll(['qty', 'giftQty', 'physicalQty']));
+    expect(keys.indexOf('giftQty'), greaterThan(keys.indexOf('amount')));
+    expect(keys.indexOf('physicalQty'), keys.indexOf('giftQty') + 1);
   });
 
   testWidgets('订货列序契约：允许超收% 紧跟数量，商业条款撤汇率（2026-10-10）', (tester) async {

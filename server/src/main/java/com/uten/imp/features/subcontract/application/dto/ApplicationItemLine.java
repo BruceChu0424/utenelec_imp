@@ -23,6 +23,8 @@ public class ApplicationItemLine extends com.uten.imp.common.platformcolumns.Pla
     private BigDecimal unitRate;
 
     @NotNull
+    @jakarta.validation.constraints.DecimalMin("0.0001")
+    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
     private BigDecimal qty;
 
     private BigDecimal price;

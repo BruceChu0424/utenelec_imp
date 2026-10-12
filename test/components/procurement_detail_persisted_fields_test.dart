@@ -17,6 +17,7 @@ import 'package:uten_imp/features/subcontract/repositories/subcontract_repositor
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+import 'package:uten_imp/shared/widgets/procurement_document_layout.dart';
 
 import '../support/document_scope_capability_overrides.dart';
 
@@ -62,7 +63,13 @@ class _DetailApi extends ApiClient {
               'boxQty': 8.5,
               'remark': _remark,
             },
-            {'id': 'line-empty', 'goodsId': 'goods-2', 'unitId': 'unit-1'},
+            {
+              'id': 'line-empty',
+              'goodsId': 'goods-2',
+              'unitId': 'unit-1',
+              'qtyExact': '1.2345',
+              'priceExact': '0.0000333333333',
+            },
           ],
         }
       : {'items': <Object?>[]};
@@ -243,6 +250,44 @@ void main() {
             } else {
               expect(
                 table.columns
+                    .take(13)
+                    .map((column) => procurementColumnKey(column.key)),
+                [
+                  'goods',
+                  'goodsCode',
+                  'colorName',
+                  'source',
+                  'supplier',
+                  'qty',
+                  'allowedOverReceiptPct',
+                  'price',
+                  'amount',
+                  'currency',
+                  'taxRate',
+                  'settlement',
+                  'remark',
+                ],
+              );
+              expect(
+                table.columns
+                    .singleWhere((column) => column.key == 'qty')
+                    .value(table.items.last),
+                '1.2345',
+              );
+              expect(
+                table.columns
+                    .singleWhere((column) => column.key == 'price')
+                    .value(table.items.last),
+                '0.0000333333333',
+              );
+              expect(
+                table.columns
+                    .singleWhere((column) => column.key == 'amount')
+                    .value(table.items.last),
+                '—',
+              );
+              expect(
+                table.columns
                     .singleWhere((column) => column.key == 'price')
                     .value(row),
                 '0.0333333333（参考）',
@@ -274,6 +319,44 @@ void main() {
                 isFalse,
               );
             } else {
+              expect(
+                table.columns
+                    .take(13)
+                    .map((column) => procurementColumnKey(column.key)),
+                [
+                  'goods',
+                  'goodsCode',
+                  'colorName',
+                  'source',
+                  'supplier',
+                  'qty',
+                  'allowedLossPct',
+                  'price',
+                  'amount',
+                  'currency',
+                  'taxRate',
+                  'settlement',
+                  'remark',
+                ],
+              );
+              expect(
+                table.columns
+                    .singleWhere((column) => column.key == 'qty')
+                    .value(table.items.last),
+                '1.2345',
+              );
+              expect(
+                table.columns
+                    .singleWhere((column) => column.key == 'price')
+                    .value(table.items.last),
+                '0.0000333333333',
+              );
+              expect(
+                table.columns
+                    .singleWhere((column) => column.key == 'amount')
+                    .value(table.items.last),
+                '—',
+              );
               expect(
                 table.columns
                     .singleWhere((column) => column.key == 'price')

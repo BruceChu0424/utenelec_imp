@@ -64,9 +64,9 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
         em.flush();
         String table = type.equals("PURCHASE") ? "purchase_receipt_items" : "subcontract_receipt_items";
         List<Object[]> items = rows("""
-                SELECT id,qty*unit_rate,amount_original,amount_local
+                SELECT id,qty*unit_rate,amount_original,amount_local%s
                 FROM %s WHERE receipt_id=:id AND is_deleted=FALSE ORDER BY id
-                """.formatted(table), Map.of("id", receiptId));
+                """.formatted(type.equals("PURCHASE")?",quantity_semantics,gift_base_qty,charged_base_qty":",'LEGACY_RECORDED',CAST(0 AS numeric),qty*unit_rate",table), Map.of("id", receiptId));
         if (items.isEmpty()) throw conflict("收货计款缺少有效明细");
         for (Object[] item : items) {
             UUID itemId = uuid(item[0]);
@@ -77,25 +77,36 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                     """, Map.of("id", itemId, "type", type)).signum() > 0) {
                 throw conflict("该收货明细已冻结计款份额，不能重复建立或更改");
             }
+            boolean v1=ProcurementQuantities.isExtraGift((String)item[4]);
+            BigDecimal chargedBase=v1?decimal(item[6]):decimal(item[1]);
+            BigDecimal giftBase=v1?decimal(item[5]):BigDecimal.ZERO;
             BigDecimal replacementBase = BigDecimal.ZERO;
+            BigDecimal replacementGiftBase = BigDecimal.ZERO;
             for (Object[] allocation : rows("""
-                    SELECT id,case_id,allocated_base_qty,allocated_amount_original,allocated_amount_local
-                    FROM procurement_iqc_replacement_allocations
+                    SELECT allocation.id,allocation.case_id,allocation.allocated_base_qty,allocation.allocated_amount_original,allocation.allocated_amount_local,
+                           inspection.quantity_tranche
+                    FROM procurement_iqc_replacement_allocations allocation
+                    JOIN procurement_iqc_rejection_cases rejection ON rejection.id=allocation.case_id
+                    JOIN procurement_inspection_items inspection ON inspection.id=rejection.inspection_item_id
                     WHERE replacement_receipt_type=:type AND replacement_receipt_item_id=:id
-                      AND status='ACTIVE' ORDER BY id
+                      AND allocation.status='ACTIVE' ORDER BY allocation.id
                     """, Map.of("type", type, "id", itemId))) {
                 freezeReplacement(type, receiptId, itemId, allocation);
-                replacementBase = replacementBase.add(decimal(allocation[2]));
+                if(allocation.length>5 && "GIFT".equals(allocation[5])) replacementGiftBase=replacementGiftBase.add(decimal(allocation[2]));
+                else replacementBase = replacementBase.add(decimal(allocation[2]));
             }
-            BigDecimal base = decimal(item[1]).subtract(replacementBase);
-            BigDecimal original = portion(decimal(item[2]), base, decimal(item[1]));
-            BigDecimal local = ProcurementConsiderationBasis.finiteBookPortion(decimal(item[3]), base, decimal(item[1]));
+            BigDecimal base = chargedBase.subtract(replacementBase);
+            BigDecimal original = base.signum()==0?BigDecimal.ZERO:portion(decimal(item[2]), base, chargedBase);
+            BigDecimal local = base.signum()==0?BigDecimal.ZERO:ProcurementConsiderationBasis.finiteBookPortion(decimal(item[3]), base, chargedBase);
             if (base.signum() < 0 || original==null || local==null || original.signum() < 0 || local.signum() < 0
                     || (base.signum() == 0 && (original.signum() != 0 || local.signum() != 0))) {
                 throw conflict("正常收货与补回的数量及计款份额不守恒");
             }
             if (base.signum() > 0) insertPart(type, receiptId, itemId, BillingMode.STANDARD,
-                    null, null, null, base, original, local);
+                    null, null, null, base, original, local, v1?"CHARGED":"LEGACY");
+            BigDecimal normalGiftBase=giftBase.subtract(replacementGiftBase);
+            if(normalGiftBase.signum()<0) throw conflict("赠品补回超过本次冻结的实物赠品基本量");
+            if(normalGiftBase.signum()>0) insertPart(type,receiptId,itemId,BillingMode.STANDARD,null,null,null,normalGiftBase,BigDecimal.ZERO,BigDecimal.ZERO,"GIFT");
         }
         return payable(type, receiptId);
     }
@@ -111,6 +122,25 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 FOR UPDATE
                 """, Map.of("id", caseId));
         if (caseRows.size() != 1) throw conflict("补回必须对应本次已经实际退回的质量失败份额");
+        if(allocation.length>5 && "GIFT".equals(allocation[5])) {
+            List<Object[]> freeFunding=funding(caseId);
+            if(freeFunding.isEmpty()) throw conflict("赠品失败补回缺少原始零金额资金份额");
+            BigDecimal giftLeft=decimal(allocation[2]);
+            for(Object[] fund:freeFunding) {
+                if(giftLeft.signum()<=0) break;
+                UUID fundingId=uuid(fund[0]);
+                Object[] free=uncommittedFunding(fundingId);
+                if(decimal(free[1]).signum()!=0 || decimal(free[2]).signum()!=0)
+                    throw conflict("赠品失败资金份额必须为零金额，不能借用计价分项");
+                BigDecimal take=giftLeft.min(decimal(free[0]));
+                if(take.signum()<=0) continue;
+                insertPart(type,receiptId,itemId,BillingMode.NO_CHARGE,allocationId,fundingId,null,
+                        take,BigDecimal.ZERO,BigDecimal.ZERO,"GIFT");
+                giftLeft=giftLeft.subtract(take);
+            }
+            if(giftLeft.signum()!=0) throw conflict("赠品补回数量超过原失败资金份额的剩余额度");
+            return;
+        }
         List<Object[]> funding = funding(caseId);
         if (funding.isEmpty()) throw conflict("旧IQC补回尚未核对资金来源，请先完成历史资金份额核对");
         BigDecimal left = decimal(allocation[2]);
@@ -166,13 +196,25 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
     private void insertPart(String type, UUID receiptId, UUID itemId, BillingMode mode,
             UUID allocationId, UUID fundingId, UUID creditId,
             BigDecimal base, BigDecimal original, BigDecimal local) {
+        insertPart(type,receiptId,itemId,mode,allocationId,fundingId,creditId,base,original,local,receiptTranche(type,itemId));
+    }
+
+    private String receiptTranche(String type,UUID itemId){
+        if(!"PURCHASE".equals(type))return "LEGACY";
+        String semantics=(String)em.createNativeQuery("SELECT quantity_semantics FROM purchase_receipt_items WHERE id=:id").setParameter("id",itemId).getSingleResult();
+        return ProcurementQuantities.isExtraGift(semantics)?"CHARGED":"LEGACY";
+    }
+
+    private void insertPart(String type, UUID receiptId, UUID itemId, BillingMode mode,
+            UUID allocationId, UUID fundingId, UUID creditId,
+            BigDecimal base, BigDecimal original, BigDecimal local,String tranche) {
         em.createNativeQuery("""
                 INSERT INTO procurement_receipt_consideration_parts(
                     id,receipt_type,receipt_id,receipt_item_id,billing_mode,replacement_allocation_id,
                     funding_slice_id,credit_slice_id,base_qty,nominal_original,nominal_local,
-                    payable_original,payable_local,created_by)
+                    payable_original,payable_local,created_by,quantity_tranche)
                 VALUES(:id,:type,:receiptId,:itemId,:mode,:allocationId,:fundingId,:creditId,
-                    :base,:original,:local,:payableOriginal,:payableLocal,:actor)
+                    :base,:original,:local,:payableOriginal,:payableLocal,:actor,:tranche)
                 """).setParameter("id", UUID.randomUUID()).setParameter("type", type)
                 .setParameter("receiptId", receiptId).setParameter("itemId", itemId)
                 .setParameter("mode", mode.name()).setParameter("allocationId", allocationId)
@@ -180,7 +222,7 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 .setParameter("base", base).setParameter("original", original).setParameter("local", local)
                 .setParameter("payableOriginal", mode == BillingMode.NO_CHARGE ? BigDecimal.ZERO : original)
                 .setParameter("payableLocal", mode == BillingMode.NO_CHARGE ? BigDecimal.ZERO : local)
-                .setParameter("actor", currentUser.requireId()).executeUpdate();
+                .setParameter("actor", currentUser.requireId()).setParameter("tranche",tranche).executeUpdate();
     }
 
     public Amounts payable(String rawType, UUID receiptId) {
@@ -220,6 +262,7 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 FROM procurement_inspection_items inspection
                 JOIN procurement_receipt_consideration_parts part
                   ON part.receipt_type=inspection.receipt_type AND part.receipt_item_id=inspection.receipt_item_id
+                 AND part.quantity_tranche=inspection.quantity_tranche
                 LEFT JOIN LATERAL (
                     SELECT SUM(base_qty) qty FROM procurement_iqc_quality_consideration_parts quality
                     WHERE quality.consideration_part_id=part.id
@@ -284,6 +327,7 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 LEFT JOIN procurement_iqc_funding_slices parent ON parent.id=part.funding_slice_id
                   AND part.billing_mode='NO_CHARGE'
                 LEFT JOIN ar_ap_ledger ledger ON ledger.source_doc_id=part.receipt_id
+                  AND part.quantity_tranche<>'GIFT'
                   AND ledger.source_doc_type=part.receipt_type||'_RECEIPT'
                   AND ledger.direction='AP' AND ledger.status=1 AND ledger.is_deleted=FALSE
                   AND part.billing_mode<>'NO_CHARGE'
@@ -520,6 +564,27 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
         }
     }
 
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public void requireReceiptReversible(String rawType,UUID receiptId){
+        String type=type(rawType);
+        requireFundingUnused(ids("""
+            SELECT funding.id FROM procurement_iqc_funding_slices funding
+            JOIN procurement_iqc_quality_consideration_parts quality ON quality.id=funding.quality_part_id
+            JOIN procurement_receipt_consideration_parts part ON part.id=quality.consideration_part_id
+            WHERE part.receipt_type=:type AND part.receipt_id=:receipt
+              AND fn_procurement_consideration_active('FUNDING',funding.id) ORDER BY funding.id
+            """,Map.of("type",type,"receipt",receiptId)));
+    }
+    private void requireFundingUnused(List<UUID> fundingIds){
+        for(UUID fundingId:fundingIds){
+            Object[] free=uncommittedFunding(fundingId);
+            BigDecimal total=number("SELECT base_qty FROM procurement_iqc_funding_slices WHERE id=:id",Map.of("id",fundingId));
+            if(decimal(free[0]).compareTo(total)!=0){
+                throw conflict("该收货失败份额已被补回或退货减款使用，请先反向对应后续事实");
+            }
+        }
+    }
+
     public void reverseReceipt(String rawType,UUID receiptId,UUID commandId,String reason) {
         String type=type(rawType);
         Map<String,Object> params=Map.of("type",type,"receipt",receiptId);
@@ -536,13 +601,7 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 WHERE part.receipt_type=:type AND part.receipt_id=:receipt
                   AND fn_procurement_consideration_active('FUNDING',funding.id) ORDER BY funding.id
                 """,params);
-        for(UUID fundingId:fundingIds){
-            Object[] free=uncommittedFunding(fundingId);
-            BigDecimal total=number("SELECT base_qty FROM procurement_iqc_funding_slices WHERE id=:id",Map.of("id",fundingId));
-            if(decimal(free[0]).compareTo(total)!=0){
-                throw conflict("该收货失败份额已被补回或退货减款使用，请先反向对应后续事实");
-            }
-        }
+        requireFundingUnused(fundingIds);
         List<UUID> stockIds=ids("""
                 SELECT stock.id FROM procurement_iqc_stock_consideration_parts stock
                 JOIN procurement_iqc_quality_consideration_parts quality ON quality.id=stock.quality_part_id
@@ -772,6 +831,7 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 LEFT JOIN procurement_iqc_funding_slices source_funding ON source_funding.id=part.funding_slice_id
                 LEFT JOIN procurement_iqc_rejection_cases source_case ON source_case.id=source_funding.case_id
                 LEFT JOIN ar_ap_ledger ledger ON ledger.source_doc_id=part.receipt_id
+                  AND part.quantity_tranche<>'GIFT'
                   AND ledger.source_doc_type=part.receipt_type||'_RECEIPT'
                   AND ledger.direction='AP' AND ledger.status=1 AND ledger.is_deleted=FALSE
                   AND part.billing_mode<>'NO_CHARGE'
@@ -792,6 +852,7 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 LEFT JOIN procurement_iqc_funding_slices funding ON funding.id=part.funding_slice_id
                 LEFT JOIN procurement_iqc_rejection_cases source_case ON source_case.id=funding.case_id
                 LEFT JOIN ar_ap_ledger ledger ON ledger.source_doc_id=part.receipt_id
+                  AND part.quantity_tranche<>'GIFT'
                   AND ledger.source_doc_type=part.receipt_type||'_RECEIPT'
                   AND ledger.direction='AP' AND ledger.status=1 AND ledger.is_deleted=FALSE
                   AND part.billing_mode<>'NO_CHARGE'

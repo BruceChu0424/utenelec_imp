@@ -22,6 +22,9 @@ import java.util.UUID;
 @Setter
 public class StockDocItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput {
 
+    /** Existing native row identity for the dedicated review command; ordinary saves cannot assign IDs. */
+    private UUID sourceItemId;
+
     private Integer lineNo;
 
     @NotNull
@@ -46,6 +49,8 @@ public class StockDocItemLine extends com.uten.imp.common.platformcolumns.Platfo
     /** 数量是否按称重计数推算(按称重改数量); 为真时本行不进单重学习。 */
     private Boolean qtyFromWeight;
 
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
     private BigDecimal giftQty;
 
     /** 盘点盘盈(+)盘亏(-)（仅 CHECK）。 */

@@ -1,8 +1,12 @@
+import '../../../shared/documents/document_unapproval_action.dart';
+import 'purchase_doc_edit_page.dart';
+import '../../../shared/models/procurement_quantity.dart';
+import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
-// 采购单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
+// 采购单据详情页（全页路由）：主表头卡 + 只读明细子表 + 状态门控操作（审核/反审/编辑/删除）。
 //
-// 计划下达的采购申请始终只读；订货走财务审批；收货/退货才沿用各自的草稿/审核/红冲动作。
+// 计划下达的采购申请始终只读；订货走财务审批；收货/退货才沿用各自的草稿/审核/反审动作。
 // 财务决定只存在于财务任务中心；本页仅消费业务动作能力与 SUBMIT_FINANCE。
 // 名称解析：供应商/仓库/币种/颜色/单位用 MasterNameService；货品按明细 id 批量 lookup。
 //
@@ -41,12 +45,16 @@ import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../core/utils/currency_display.dart';
-import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart'
-    show formatQtyWithUnit;
+    show formatQtyWithUnit, formatExactQtyWithUnit;
 import '../../../shared/widgets/source_doc_link.dart';
+import '../../../shared/widgets/procurement_document_layout.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
+import '../../../shared/measurement/document_quantity.dart';
+import '../../basic_data/repositories/reference_method_repository.dart';
+import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../config/purchase_doc_config.dart';
@@ -96,19 +104,39 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       _hasPermission(Perm.purchaseOrderCreate) &&
       _hasPermission(Perm.purchaseOrderDecompose);
 
-  double _remainingRequestQty(PurchaseDocItem item) =>
-      item.remainingQty ??
-      ((item.qty ?? 0) - (item.orderedQty ?? 0) - (item.pendingQty ?? 0)).clamp(
-        0,
-        double.infinity,
-      );
+  BigInt? _remainingRequestUnits(PurchaseDocItem item) {
+    final recorded = financeExactDecimalUnits(
+      item.remainingQtyText ?? item.remainingQty?.toString(),
+    );
+    if (recorded != null) return recorded.isNegative ? BigInt.zero : recorded;
+    final requested = financeExactDecimalUnits(
+      item.qtyText ?? item.qty?.toString(),
+    );
+    final ordered = financeExactDecimalUnits(
+      item.orderedQtyText ?? (item.orderedQty ?? 0).toString(),
+    );
+    final pending = financeExactDecimalUnits(
+      item.pendingQtyText ?? (item.pendingQty ?? 0).toString(),
+    );
+    if (requested == null || ordered == null || pending == null) return null;
+    final remaining = requested - ordered - pending;
+    return remaining.isNegative ? BigInt.zero : remaining;
+  }
+
+  String? _remainingRequestQtyText(PurchaseDocItem item) {
+    final units = _remainingRequestUnits(item);
+    return units == null
+        ? null
+        : financeExactTrimmed(financeExactDecimalFromUnits(units));
+  }
 
   bool _canSelectRequestItem(PurchaseDocItem item) =>
-      !_busy && item.id?.isNotEmpty == true && _remainingRequestQty(item) > 0;
+      !_busy &&
+      item.id?.isNotEmpty == true &&
+      (_remainingRequestUnits(item) ?? BigInt.zero) > BigInt.zero;
 
-  static String _requestQtyText(double? value) => value == null
-      ? '—'
-      : value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+  static String _requestQtyText(String? exact, double? value) =>
+      financeExactTrimmed(exact ?? value?.toString()) ?? '—';
 
   Future<void> _generateSelectedOrder() async {
     if (!nativeReadCanWrite) return;
@@ -165,7 +193,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     }
     final values = current == null
         ? '该行内容已有变化。'
-        : '原数量 ${_qtyInputBases[id]?.qty ?? '—'}，当前数量 ${_requestQtyText(current.qty)}，'
+        : '原数量 ${_qtyInputBases[id]?.qty ?? '—'}，当前数量 ${_requestQtyText(current.qtyText, current.qty)}，'
               '你填的是 ${_qtyControllers[id]?.text ?? '—'}。';
     return '${_qtyInputConflicts.length} 行数量需要核对：可能别人也改过，或已被订货占用。$values'
         '${_qtyWriteReviewRequired.isEmpty ? '' : '之前有一次提交结果不明；即使当前数量和你填的一样，也不能当作已保存成功。'}'
@@ -174,10 +202,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   ({String qty, String ordered, String pending, String source, int? version})
   _qtyInputBase(PurchaseDocItem item) => (
-    qty: _requestQtyText(item.qty),
+    qty: _requestQtyText(item.qtyText, item.qty),
     version: item.rowVersion,
-    ordered: _requestQtyText(item.orderedQty),
-    pending: _requestQtyText(item.pendingQty),
+    ordered: _requestQtyText(item.orderedQtyText, item.orderedQty),
+    pending: _requestQtyText(item.pendingQtyText, item.pendingQty),
     source:
         '${item.goodsId}/${item.colorId}/${item.unitId}/${item.sourceDocNo}/${item.productionPlanNo}/${item.salesOrderNo}',
   );
@@ -226,7 +254,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     var controller = _qtyControllers[id];
     if (controller == null) {
       controller = TextEditingController(
-        text: item.qty == null ? '' : _requestQtyText(item.qty),
+        text: item.qtyText == null && item.qty == null
+            ? ''
+            : _requestQtyText(item.qtyText, item.qty),
       );
       controller.addListener(() {
         if (mounted) setState(() {});
@@ -238,17 +268,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   }
 
   /// 有改动的明细（文本与原值不同的可编辑行）。
-  List<(PurchaseDocItem, double)> get _changedQtyItems {
+  List<(PurchaseDocItem, String)> get _changedQtyItems {
     if (!_canAdjustRequestQty) return const [];
     return [
       for (final item in _detail!.items)
         if (_itemQtyEditable(item) &&
             _qtyControllerOf(item).text.trim() !=
-                (item.qty == null ? '' : _requestQtyText(item.qty)))
-          (
-            item,
-            double.tryParse(_qtyControllerOf(item).text.trim()) ?? double.nan,
-          ),
+                (item.qtyText == null && item.qty == null
+                    ? ''
+                    : _requestQtyText(item.qtyText, item.qty)))
+          (item, _qtyControllerOf(item).text.trim()),
     ];
   }
 
@@ -276,7 +305,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
             child: Text(
               '${[for (final item in detail.items)
                 if (_qtyInputConflicts.contains(item.id)) '第 ${detail.items.indexOf(item) + 1} 行：原数量 ${_qtyInputBases[item.id]?.qty ?? '—'}，'
-                      '当前数量 ${_requestQtyText(item.qty)}，'
+                      '当前数量 ${_requestQtyText(item.qtyText, item.qty)}，'
                       '你填的是 ${_qtyControllers[item.id]?.text ?? '—'}。'].join('\n')}\n'
               '请选择「保留我填的数量」，或「采用当前数量」。此操作只更新本页的对照基准，不会提交修改，也不能认定先前那次提交已成功。',
             ),
@@ -327,10 +356,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       return;
     }
     final invalid = changes
-        .where((change) => !change.$2.isFinite || change.$2 <= 0)
+        .where((change) => positiveDocumentQuantityText(change.$2) == null)
         .toList();
     if (invalid.isNotEmpty) {
-      context.appError('数量必须大于 0');
+      context.appError('数量必须大于 0，最多 14 位整数和 4 位小数');
       return;
     }
     setState(() {
@@ -368,7 +397,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         if (acknowledged == null ||
             acknowledged.rowVersion == null ||
             acknowledged.rowVersion! <= expectedVersion ||
-            acknowledged.qty != qty) {
+            financeExactDecimalUnits(
+                  acknowledged.qtyText ?? acknowledged.qty?.toString(),
+                ) !=
+                financeExactDecimalUnits(qty)) {
           throw const FormatException(
             'Missing or mismatched quantity acknowledgement',
           );
@@ -450,6 +482,30 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
+  bool get _canReviewPhysical =>
+      nativeReadCanWrite &&
+      !(_detail?.legacyImported ?? false) &&
+      const {
+        PurchaseDocType.receipt,
+        PurchaseDocType.returnDoc,
+      }.contains(widget.docType) &&
+      _detail?.status == 0 &&
+      _hasPermission(_cfg.approvePerm);
+  Future<void> _openPhysicalReview() async {
+    if (!_canReviewPhysical) return;
+    final owns = captureNativeOwnership();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PurchaseDocEditPage(
+          docType: widget.docType,
+          id: widget.id,
+          reviewMode: true,
+        ),
+      ),
+    );
+    if (mounted && owns()) await _load();
+  }
+
   bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
 
   bool get _financeReviewOnly =>
@@ -531,7 +587,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         _detail = d;
         _selectedRequestItemIds.retainAll({
           for (final item in d.items)
-            if (item.id != null && _remainingRequestQty(item) > 0) item.id!,
+            if (item.id != null &&
+                (_remainingRequestUnits(item) ?? BigInt.zero) > BigInt.zero)
+              item.id!,
         });
         _loading = false;
       });
@@ -609,10 +667,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   );
 
   Future<void> _reverse() async => _doAction(
-    '红冲将反向冲销，确认？',
+    documentUnapprovalConfirmation,
     (repo) => repo.reverse(widget.id),
-    '已红冲',
-    busyTitle: '正在红冲，请稍候',
+    '已反审，进入草稿',
+    busyTitle: '正在反审，请稍候',
   );
 
   /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
@@ -632,7 +690,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     for (final it in detail.items) {
       if (it.id != null) {
         ctrls[it.id!] = TextEditingController(
-          text: it.qty?.toStringAsFixed(2) ?? '',
+          text: it.qtyText ?? it.qty?.toString() ?? '',
         );
       }
     }
@@ -668,7 +726,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                             child: Text(
                               '${names.goods(it.goodsId)}'
                               '(${names.color(it.colorId)} · ${names.unit(it.unitId)}) '
-                              '${l10n.orderChangeQtyCurrent(it.qty?.toStringAsFixed(2) ?? '—')}',
+                              '${l10n.orderChangeQtyCurrent(financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '—')}',
                               style: Theme.of(ctx).textTheme.labelMedium
                                   ?.copyWith(fontWeight: FontWeight.w400),
                               overflow: TextOverflow.ellipsis,
@@ -717,16 +775,15 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     final changes = <Map<String, dynamic>>[];
     for (final it in detail.items) {
       if (it.id == null) continue;
-      final v = double.tryParse(ctrls[it.id!]!.text.trim());
-      // 行内校验：新数量必须解析成功且 > 0。
-      if (v == null || v <= 0) {
+      final v = positiveDocumentQuantityText(ctrls[it.id!]!.text);
+      if (v == null) {
         _disposeChangeQtyControllers(ctrls.values);
         if (mounted && ownsNative()) {
           context.appError(l10n.orderChangeQtyInvalid);
         }
         return;
       }
-      if (v != it.qty) {
+      if (v != financeExactTrimmed(it.qtyText ?? it.qty?.toString())) {
         changes.add({'orderItemId': it.id, 'newQty': v});
       }
     }
@@ -777,7 +834,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
   Future<void> _doAction(
     String confirm,
-    Future<void> Function(PurchaseRepository) fn,
+    Future<Object?> Function(PurchaseRepository) fn,
     String ok, {
     void Function(ApiException error)? onApiError,
     bool reviewerConfirmation = false,
@@ -820,10 +877,20 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       _busyTitle = busyTitle ?? '正在处理，请稍候';
     });
     try {
-      await fn(ref.read(purchaseRepositoryProvider(widget.docType)));
+      final result = await fn(
+        ref.read(purchaseRepositoryProvider(widget.docType)),
+      );
       if (!mounted || !ownsNative()) return;
-      context.appSuccess(ok);
       bumpListRefresh(ref, _cfg.refreshKey);
+      if (result is PurchaseDocDetail && result.id != widget.id) {
+        showDocumentUnapprovalResult(context, result.status);
+        openUnapprovedDraft(
+          context,
+          RoutePath.purchaseDocDetail(widget.docType.pathSegment, result.id),
+        );
+        return;
+      }
+      context.appSuccess(ok);
       await _load();
     } on ApiException catch (e) {
       if (mounted && ownsNative()) {
@@ -971,6 +1038,11 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                               ),
                             // 表头信息卡文字可框选：外层 UtenContentContainer 已默认包局部
                             // SelectionArea（准则 §3.4），无需再单独包。
+                            documentUnapprovalBannerForRoute(
+                              'purchase',
+                              widget.docType.pathSegment,
+                              widget.id,
+                            ),
                             _headerCard(theme, names),
                             if (widget.docType == PurchaseDocType.order &&
                                 (_detail!.financeApproval?.isPending == true ||
@@ -1080,7 +1152,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       if (canViewCommercialAmounts &&
           widget.docType != PurchaseDocType.request &&
           !_historicalReceipt)
-        _KV('合计(本币)', d.totalLocal?.toStringAsFixed(2)),
+        _KV('合计(本币)', financeExactMoneyDisplay(d.totalLocalText)),
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       if (widget.docType == PurchaseDocType.order) ...[
         _KV('财务审批', _financeApprovalLabel()),
@@ -1187,7 +1259,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   /// 明细区：统一表格样式（MasterDataTableView 嵌入模式，与全站报表/主档同款：
   /// 表头设置列显隐 + 网格线 + 横滚），不再是卡片式拼凑行。
   Widget _itemsCard(ThemeData theme, MasterNameService names) {
-    final items = _detail!.items;
+    final d = _detail!;
+    final items = d.items;
+    final settlementOptions = ref.watch(settlementMethodOptionsProvider);
     final hasTotalPricing =
         widget.docType == PurchaseDocType.order &&
         items.any((it) => it.totalAmountInputText != null);
@@ -1201,8 +1275,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       return _dictText(names.unit(id));
     }
 
-    String qtyWithUnit(num? value, PurchaseDocItem it) =>
-        value == null ? '—' : formatQtyWithUnit(value, unitOf(it));
+    String qtyWithUnit(num? value, PurchaseDocItem it) => value == null
+        ? '—'
+        : formatQtyWithUnit(value, unitOf(it), maxDecimals: 4);
 
     // 历史收货：保留原始记录文本（未知/未记载不拼单位，避免造数字）。
     String historicalQtyWithUnit(PurchaseDocItem it) {
@@ -1213,7 +1288,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
 
     String qtyDisplayOf(PurchaseDocItem it) => _historicalReceipt
         ? historicalQtyWithUnit(it)
-        : qtyWithUnit(it.qty, it);
+        : (it.qtyText == null
+              ? qtyWithUnit(it.qty, it)
+              : formatExactQtyWithUnit(it.qtyText, unitOf(it)));
 
     // 金额「数值 币种」后缀（2026-10-10 口径）：明细行币种随单据表头
     // d.currencyId（names.currency 对缺失 id/未加载返回 '—'，助手遇 '—'
@@ -1303,267 +1380,350 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                 ..clear()
                 ..addAll(next);
             }),
-            columns: [
-              MasterColumnDef(
-                key: 'goods',
-                label: '货品名称',
-                // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-                // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
-                // 一格又不能各自排序筛选。2026-09-19 单位独立成列（数量之后），
-                // 名称格不再带单位副行。
-                width: 200,
-                value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
-                cellBuilderHandlesSemantics: true,
-                cellBuilder: (context, it) => UtenGoodsIdentityCell(
-                  name: _dictText(names.goods(it.goodsId)),
-                ),
-              ),
-              MasterColumnDef(
-                key: 'goodsCode',
-                label: '编号',
-                width: 130,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  names.goodsInfo(it.goodsId)?.code,
-                ),
-                cellBuilder: (context, it) =>
-                    UtenGoodsAttributeCell(names.goodsInfo(it.goodsId)?.code),
-              ),
-              MasterColumnDef(
-                key: 'colorName',
-                label: '颜色',
-                width: 96,
-                value: (it) => UtenGoodsAttributeCell.text(
-                  _dictText(names.color(it.colorId)),
-                ),
-                cellBuilder: (context, it) =>
-                    UtenGoodsAttributeCell(_dictText(names.color(it.colorId))),
-              ),
-              // 收货/退货实物单据：库位号（主档带出，上架/拣货指引）。
-              if (widget.docType == PurchaseDocType.receipt ||
-                  widget.docType == PurchaseDocType.returnDoc)
+            columns: canonicalProcurementColumns<MasterColumnDef<PurchaseDocItem>>(
+              [
                 MasterColumnDef(
-                  key: 'stockPlace',
-                  label: '库位号',
-                  width: 90,
-                  value: (it) => names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
-                ),
-              // 收货单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
-              if (widget.docType == PurchaseDocType.receipt)
-                MasterColumnDef(
-                  key: 'orderBillNo',
-                  label: '来源订货单',
-                  width: 150,
-                  value: (it) => it.orderBillNo ?? '',
-                ),
-              MasterColumnDef(
-                key: 'qty',
-                label: '数量',
-                // 单位内联（2026-10-10 T9）：单位撤独立列，跟在数字后；改量输入
-                // 框同样带单位 suffix。
-                width: _canAdjustRequestQty || _qtyControllers.isNotEmpty
-                    ? 150
-                    : 110,
-                type: 'number',
-                value: qtyDisplayOf,
-                cellBuilderHandlesSemantics: true,
-                // V477：申请明细在分解前可直接改量（已订货/待审占用的行只读）。
-                cellBuilder: (context, it) =>
-                    (_itemQtyEditable(it) || _qtyControllers.containsKey(it.id))
-                    ? SizedBox(
-                        width: 130,
-                        child: TextField(
-                          key: ValueKey('purchase-request-qty-${it.id}'),
-                          controller: _qtyControllerOf(it),
-                          enabled: !_busy && _itemQtyEditable(it),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            suffixText: unitOf(it),
-                          ),
-                        ),
-                      )
-                    : Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(qtyDisplayOf(it)),
-                      ),
-              ),
-              if (widget.docType != PurchaseDocType.request &&
-                  canViewCommercialAmounts) ...[
-                MasterColumnDef(
-                  key: 'price',
-                  label: '单价',
-                  width: hasTotalPricing ? 220 : 120,
-                  type: 'money',
-                  info: hasTotalPricing
-                      ? '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。'
-                      : null,
-                  value: (it) =>
-                      widget.docType == PurchaseDocType.order &&
-                          it.totalAmountInputText != null
-                      ? '${financeMoneyWithUnitSuffix(financeExactTrimmed(it.priceText ?? it.price?.toString()), currencyName: docCurrencyName)}（参考）'
-                      : _historicalReceipt
-                      ? financeMoneyWithUnitSuffix(
-                          historicalReceiptAmount(it.priceText),
-                          currencyName: docCurrencyName,
-                        )
-                      : it.price == null
-                      ? null
-                      : financeMoneyWithUnitSuffix(
-                          it.price!.toStringAsFixed(2),
-                          currencyName: docCurrencyName,
-                        ),
+                  key: 'goods',
+                  label: '货品名称',
+                  // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
+                  // 同名不同色、同名不同编号在本系统极普遍，只看名称会认错货；拼成
+                  // 一格又不能各自排序筛选。2026-09-19 单位独立成列（数量之后），
+                  // 名称格不再带单位副行。
+                  width: 200,
+                  value: (it) => _dictText(names.goods(it.goodsId)) ?? '—',
+                  cellBuilderHandlesSemantics: true,
+                  cellBuilder: (context, it) => UtenGoodsIdentityCell(
+                    name: _dictText(names.goods(it.goodsId)),
+                  ),
                 ),
                 MasterColumnDef(
-                  key: 'amount',
-                  label: _historicalReceipt
-                      ? '原币金额'
-                      : widget.docType == PurchaseDocType.order
-                      ? '总金额'
-                      : '金额',
+                  key: 'goodsCode',
+                  label: '编号',
                   width: 130,
-                  type: 'money',
-                  // 总金额计价保留服务端原文；记录缺失时不能回乘参考单价补造金额。
+                  value: (it) => UtenGoodsAttributeCell.text(
+                    names.goodsInfo(it.goodsId)?.code,
+                  ),
+                  cellBuilder: (context, it) =>
+                      UtenGoodsAttributeCell(names.goodsInfo(it.goodsId)?.code),
+                ),
+                MasterColumnDef(
+                  key: 'colorName',
+                  label: '颜色',
+                  width: 96,
+                  value: (it) => UtenGoodsAttributeCell.text(
+                    _dictText(names.color(it.colorId)),
+                  ),
+                  cellBuilder: (context, it) => UtenGoodsAttributeCell(
+                    _dictText(names.color(it.colorId)),
+                  ),
+                ),
+                // 收货/退货实物单据：库位号（主档带出，上架/拣货指引）。
+                if (widget.docType == PurchaseDocType.receipt ||
+                    widget.docType == PurchaseDocType.returnDoc)
+                  MasterColumnDef(
+                    key: 'stockPlace',
+                    label: '库位号',
+                    width: 90,
+                    value: (it) =>
+                        names.goodsInfo(it.goodsId)?.stockPlace ?? '—',
+                  ),
+                // 收货单逐行来源订货单编号（编号非 id；表头来源链可点跳详情）。
+                if (widget.docType == PurchaseDocType.receipt)
+                  MasterColumnDef(
+                    key: 'orderBillNo',
+                    label: '来源订货单',
+                    width: 150,
+                    value: (it) => it.orderBillNo ?? '',
+                  ),
+                MasterColumnDef(
+                  key: 'giftQty',
+                  label: '赠品数量',
+                  width: 145,
+                  type: 'number',
                   value: (it) =>
-                      widget.docType == PurchaseDocType.order &&
-                          it.totalAmountInputText != null
-                      ? financeMoneyWithUnitSuffix(
-                          it.amountOriginalText ?? it.amountLocalText,
-                          currencyName: docCurrencyName,
+                      '${financeExactTrimmed(it.giftQtyText ?? it.giftQty?.toString()) ?? '—'}${it.quantitySemantics == procurementChargedPlusGiftQuantity ? '' : '（旧标记）'}',
+                ),
+                MasterColumnDef(
+                  key: 'physicalQty',
+                  label: '实物数量',
+                  width: 155,
+                  type: 'number',
+                  value: (it) =>
+                      '${it.recordedPhysicalQtyText ?? '数量未留存'} ${names.unit(it.unitId)}',
+                ),
+                MasterColumnDef(
+                  key: 'qty',
+                  label: '数量',
+                  // 单位内联（2026-10-10 T9）：单位撤独立列，跟在数字后；改量输入
+                  // 框同样带单位 suffix。
+                  width: _canAdjustRequestQty || _qtyControllers.isNotEmpty
+                      ? 150
+                      : 110,
+                  type: 'number',
+                  value: qtyDisplayOf,
+                  cellBuilderHandlesSemantics: true,
+                  // V477：申请明细在分解前可直接改量（已订货/待审占用的行只读）。
+                  cellBuilder: (context, it) =>
+                      (_itemQtyEditable(it) ||
+                          _qtyControllers.containsKey(it.id))
+                      ? SizedBox(
+                          width: 130,
+                          child: TextField(
+                            key: ValueKey('purchase-request-qty-${it.id}'),
+                            controller: _qtyControllerOf(it),
+                            enabled: !_busy && _itemQtyEditable(it),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              suffixText: unitOf(it),
+                            ),
+                          ),
                         )
-                      : _historicalReceipt
-                      ? financeMoneyWithUnitSuffix(
-                          historicalReceiptAmount(it.amountOriginalText),
-                          currencyName: docCurrencyName,
-                        )
-                      : financeMoneyWithUnitSuffix(
-                          (it.amountOriginal ?? it.amountLocal) != null
-                              ? (it.amountOriginal ?? it.amountLocal)!
-                                    .toStringAsFixed(2)
-                              : ((it.qty ?? 0) * (it.price ?? 0))
-                                    .toStringAsFixed(2),
-                          currencyName: docCurrencyName,
+                      : Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(qtyDisplayOf(it)),
                         ),
                 ),
+                if (widget.docType != PurchaseDocType.request &&
+                    canViewCommercialAmounts) ...[
+                  MasterColumnDef(
+                    key: 'price',
+                    label: '单价',
+                    width: hasTotalPricing ? 220 : 120,
+                    type: 'money',
+                    info: hasTotalPricing
+                        ? '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。'
+                        : null,
+                    value: (it) =>
+                        widget.docType == PurchaseDocType.order &&
+                            it.totalAmountInputText != null
+                        ? '${financeMoneyWithUnitSuffix(financeExactTrimmed(it.priceText ?? it.price?.toString()), currencyName: docCurrencyName)}（参考）'
+                        : _historicalReceipt
+                        ? financeMoneyWithUnitSuffix(
+                            historicalReceiptAmount(it.priceText),
+                            currencyName: docCurrencyName,
+                          )
+                        : financeMoneyWithUnitSuffix(
+                            it.priceText,
+                            currencyName: docCurrencyName,
+                          ),
+                  ),
+                  MasterColumnDef(
+                    key: 'amount',
+                    label: _historicalReceipt
+                        ? '原币金额'
+                        : widget.docType == PurchaseDocType.order
+                        ? '总金额'
+                        : '金额',
+                    width: 130,
+                    type: 'money',
+                    // 总金额计价保留服务端原文；记录缺失时不能回乘参考单价补造金额。
+                    value: (it) =>
+                        widget.docType == PurchaseDocType.order &&
+                            it.totalAmountInputText != null
+                        ? financeMoneyWithUnitSuffix(
+                            it.amountOriginalText ?? it.amountLocalText,
+                            currencyName: docCurrencyName,
+                          )
+                        : _historicalReceipt
+                        ? financeMoneyWithUnitSuffix(
+                            historicalReceiptAmount(it.amountOriginalText),
+                            currencyName: docCurrencyName,
+                          )
+                        : financeMoneyWithUnitSuffix(
+                            it.amountOriginalText ?? it.amountLocalText,
+                            currencyName: docCurrencyName,
+                          ),
+                  ),
+                  if (_historicalReceipt)
+                    MasterColumnDef(
+                      key: 'recordedLocalAmount',
+                      label: '本币金额',
+                      width: 180,
+                      type: 'money',
+                      // 恒本币：折合人民币金额带「元」后缀（历史「未知」原文不拼）。
+                      value: (it) => financeLocalMoneyWithUnitSuffix(
+                        historicalReceiptAmount(it.amountLocalText),
+                      ),
+                    ),
+                ],
                 if (_historicalReceipt)
                   MasterColumnDef(
-                    key: 'recordedLocalAmount',
-                    label: '本币金额',
+                    key: 'recordedUnitRate',
+                    label: '单位换算率',
                     width: 180,
-                    type: 'money',
-                    // 恒本币：折合人民币金额带「元」后缀（历史「未知」原文不拼）。
-                    value: (it) => financeLocalMoneyWithUnitSuffix(
-                      historicalReceiptAmount(it.amountLocalText),
+                    value: (it) => historicalReceiptRate(it.unitRateText),
+                  ),
+                if (widget.docType == PurchaseDocType.request ||
+                    widget.docType == PurchaseDocType.order) ...[
+                  if (widget.docType == PurchaseDocType.request) ...[
+                    MasterColumnDef(
+                      key: 'approvedOrderQty',
+                      label: '已批准订货',
+                      width: 115,
+                      type: 'number',
+                      value: (it) => formatExactQtyWithUnit(
+                        it.orderedQtyText ?? it.orderedQty?.toString(),
+                        unitOf(it),
+                      ),
                     ),
-                  ),
-              ],
-              if (_historicalReceipt)
-                MasterColumnDef(
-                  key: 'recordedUnitRate',
-                  label: '单位换算率',
-                  width: 180,
-                  value: (it) => historicalReceiptRate(it.unitRateText),
-                ),
-              if (widget.docType == PurchaseDocType.request ||
-                  widget.docType == PurchaseDocType.order) ...[
-                if (widget.docType == PurchaseDocType.request) ...[
+                    MasterColumnDef(
+                      key: 'pendingOrderQty',
+                      label: '待财务确认',
+                      width: 115,
+                      type: 'number',
+                      value: (it) => formatExactQtyWithUnit(
+                        it.pendingQtyText ?? it.pendingQty?.toString(),
+                        unitOf(it),
+                      ),
+                    ),
+                    MasterColumnDef(
+                      key: 'remainingOrderQty',
+                      label: '可继续采购',
+                      width: 115,
+                      type: 'number',
+                      value: (it) => formatExactQtyWithUnit(
+                        _remainingRequestQtyText(it),
+                        unitOf(it),
+                      ),
+                    ),
+                  ],
                   MasterColumnDef(
-                    key: 'approvedOrderQty',
-                    label: '已批准订货',
-                    width: 115,
-                    type: 'number',
-                    value: (it) => qtyWithUnit(it.orderedQty ?? 0, it),
-                  ),
-                  MasterColumnDef(
-                    key: 'pendingOrderQty',
-                    label: '待财务确认',
-                    width: 115,
-                    type: 'number',
-                    value: (it) => qtyWithUnit(it.pendingQty ?? 0, it),
-                  ),
-                  MasterColumnDef(
-                    key: 'remainingOrderQty',
-                    label: '可继续采购',
-                    width: 115,
-                    type: 'number',
-                    value: (it) => qtyWithUnit(_remainingRequestQty(it), it),
-                  ),
-                ],
-                MasterColumnDef(
-                  // 2026-09-25 单号列统一：明细全量加载，就地排序+按值筛选。
-                  key: 'planNo',
-                  sortable: true,
-                  filterFromRows: true,
-                  label: '生产计划',
-                  width: 130,
-                  value: (it) => it.productionPlanNo ?? '',
-                ),
-                MasterColumnDef(
-                  key: 'salesOrderNo',
-                  sortable: true,
-                  filterFromRows: true,
-                  label: '销售订单',
-                  width: 150,
-                  value: (it) => it.salesOrderNo ?? '',
-                ),
-                // V463：合并订货行的来源申请单号（多来源顿号连接，单来源一条）。
-                if (widget.docType == PurchaseDocType.order)
-                  MasterColumnDef(
-                    key: 'sourceRequests',
+                    // 2026-09-25 单号列统一：明细全量加载，就地排序+按值筛选。
+                    key: 'planNo',
                     sortable: true,
                     filterFromRows: true,
-                    label: '来源申请',
-                    width: 170,
-                    value: (it) => it.sourceRequests
-                        .map((source) => source.billNo)
-                        .whereType<String>()
-                        .where((no) => no.isNotEmpty)
-                        .join('、'),
+                    label: '生产计划',
+                    width: 130,
+                    value: (it) => it.productionPlanNo ?? '',
                   ),
+                  MasterColumnDef(
+                    key: 'salesOrderNo',
+                    sortable: true,
+                    filterFromRows: true,
+                    label: '销售订单',
+                    width: 150,
+                    value: (it) => it.salesOrderNo ?? '',
+                  ),
+                  // V463：合并订货行的来源申请单号（多来源顿号连接，单来源一条）。
+                  if (widget.docType == PurchaseDocType.order)
+                    MasterColumnDef(
+                      key: 'sourceRequests',
+                      sortable: true,
+                      filterFromRows: true,
+                      label: '申请来源',
+                      width: 170,
+                      value: (it) => it.sourceRequests
+                          .map((source) => source.billNo)
+                          .whereType<String>()
+                          .where((no) => no.isNotEmpty)
+                          .join('、'),
+                    ),
+                ],
+                if (widget.docType == PurchaseDocType.order) ...[
+                  MasterColumnDef(
+                    key: 'supplier',
+                    label: '供应商',
+                    width: 170,
+                    value: (_) => names.supplier(d.supplierId),
+                  ),
+                  if (canViewCommercialAmounts) ...[
+                    MasterColumnDef(
+                      key: 'currency',
+                      label: '币种',
+                      width: 110,
+                      value: (_) => names.currency(d.currencyId),
+                    ),
+                    MasterColumnDef(
+                      key: 'taxRate',
+                      label: '税率(%)',
+                      width: 100,
+                      value: (_) => d.taxRate?.toString(),
+                    ),
+                    MasterColumnDef(
+                      key: 'settlement',
+                      label: '结账方式',
+                      width: 150,
+                      value: (_) {
+                        for (final method
+                            in settlementOptions.valueOrNull ??
+                                const <ReferenceMethodOption>[]) {
+                          if (method.id == d.settlementMethodId) {
+                            return method.name;
+                          }
+                        }
+                        return d.settlementMethodId == null
+                            ? '—'
+                            : settlementOptions.isLoading
+                            ? '加载中…'
+                            : '未能解析(${d.settlementMethodId})';
+                      },
+                    ),
+                  ],
+                ],
+                // ADR-144：订货行允许超收%（累计收货在 数量×(1+允许超收) 以内照常入库立应付，
+                // 超出部分才转财务）。比例不是价格，不随价格遮蔽。
+                if (_cfg.itemHasAllowedOverReceiptPct)
+                  MasterColumnDef(
+                    key: 'allowedOverReceiptPct',
+                    label: '允许超收%',
+                    width: 100,
+                    type: 'number',
+                    info:
+                        '供应商累计送货最多可到 数量×(1+允许超收%)，在这以内照常入库、立应付；超出部分才转财务审批。未设 = 不允许超收。',
+                    value: (it) => it.allowedOverReceiptPct == null
+                        ? '未设'
+                        : purchasePercentText(it.allowedOverReceiptPct!),
+                  ),
+                MasterColumnDef(
+                  key: 'giftReceivedQty',
+                  label: '已收赠品',
+                  width: 130,
+                  type: 'number',
+                  value: (it) => it.giftReceivedQtyText ?? '—',
+                ),
+                MasterColumnDef(
+                  key: 'giftReturnedQty',
+                  label: '已退赠品',
+                  width: 130,
+                  type: 'number',
+                  value: (it) => it.giftReturnedQtyText ?? '—',
+                ),
+                if (_cfg.showReceived)
+                  MasterColumnDef(
+                    key: 'received',
+                    label: '已收',
+                    width: 100,
+                    type: 'number',
+                    value: (it) =>
+                        '${financeExactTrimmed(it.receivedQtyText ?? it.receivedQty?.toString()) ?? '—'} ${names.unit(it.unitId)}',
+                  ),
+                if (_cfg.showReturned)
+                  MasterColumnDef(
+                    key: 'returned',
+                    label: '已退',
+                    width: 100,
+                    type: 'number',
+                    value: (it) =>
+                        '${financeExactTrimmed(it.returnedQtyText ?? it.returnedQty?.toString()) ?? '—'} ${names.unit(it.unitId)}',
+                  ),
+                MasterColumnDef(
+                  key: 'remark',
+                  label: '备注',
+                  width: 220,
+                  value: (it) => it.remark,
+                ),
+                ...businessReadOnlyColumns<PurchaseDocItem>(
+                  items,
+                  columnsOf: (line) => line.extraColumns,
+                  priceMasked: !canViewCommercialAmounts,
+                ),
               ],
-              // ADR-144：订货行允许超收%（累计收货在 数量×(1+允许超收) 以内照常入库立应付，
-              // 超出部分才转财务）。比例不是价格，不随价格遮蔽。
-              if (_cfg.itemHasAllowedOverReceiptPct)
-                MasterColumnDef(
-                  key: 'allowedOverReceiptPct',
-                  label: '允许超收%',
-                  width: 100,
-                  type: 'number',
-                  info:
-                      '供应商累计送货最多可到 数量×(1+允许超收%)，在这以内照常入库、立应付；超出部分才转财务审批。未设 = 不允许超收。',
-                  value: (it) => it.allowedOverReceiptPct == null
-                      ? '未设'
-                      : purchasePercentText(it.allowedOverReceiptPct!),
-                ),
-              if (_cfg.showReceived)
-                MasterColumnDef(
-                  key: 'received',
-                  label: '已收',
-                  width: 100,
-                  type: 'number',
-                  value: (it) => qtyWithUnit(it.receivedQty, it),
-                ),
-              if (_cfg.showReturned)
-                MasterColumnDef(
-                  key: 'returned',
-                  label: '已退',
-                  width: 100,
-                  type: 'number',
-                  value: (it) => qtyWithUnit(it.returnedQty, it),
-                ),
-              MasterColumnDef(
-                key: 'remark',
-                label: '备注',
-                width: 220,
-                value: (it) => it.remark,
-              ),
-              ...businessReadOnlyColumns<PurchaseDocItem>(
-                items,
-                columnsOf: (line) => line.extraColumns,
-                priceMasked: !canViewCommercialAmounts,
-              ),
-            ],
+              keyOf: (column) => column.key,
+              enabled: widget.docType == PurchaseDocType.order,
+            ),
             items: items,
             facets: const {},
             nullCounts: const {},
@@ -1605,23 +1765,49 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     final showAmounts =
         _canViewCommercialAmounts && widget.docType != PurchaseDocType.request;
     final totalOriginal =
-        d.totalOriginal ??
-        items.fold<double>(
-          0,
-          (sum, it) => sum + (it.amountOriginal ?? it.amountLocal ?? 0),
-        );
+        d.totalOriginalText ??
+        financeExactSumTexts(items.map((it) => it.amountOriginalText));
     return UtenTotalsSummaryBar(
       key: const Key('purchase-detail-totals'),
       density: true,
       compact: true,
       rowCount: items.length,
       entries: [
-        utenQuantityTotalEntry(
-          items.map(
-            (it) => MeasuredAmount(
-              value: it.qty ?? 0,
-              unitId: it.unitId,
-              unitName: names.unit(it.unitId),
+        UtenTotalEntry(
+          '收费量 / 原数量',
+          exactMeasurementTotalsText(
+            items.map(
+              (it) => ExactMeasuredAmount(
+                value: it.qtyText ?? it.qty?.toString(),
+                unitId: it.unitId,
+                unitName: names.unit(it.unitId),
+              ),
+            ),
+          ),
+        ),
+        UtenTotalEntry(
+          '赠品量',
+          exactMeasurementTotalsText(
+            items.map(
+              (it) => ExactMeasuredAmount(
+                value: it.hasExtraGift
+                    ? (it.giftQtyText ?? it.giftQty?.toString())
+                    : '0',
+                unitId: it.unitId,
+                unitName: names.unit(it.unitId),
+              ),
+            ),
+          ),
+        ),
+        UtenTotalEntry(
+          '实物量',
+          exactMeasurementTotalsText(
+            items.map(
+              (it) => ExactMeasuredAmount(
+                value: it.recordedPhysicalQtyText,
+                unitId: it.unitId,
+                unitName: names.unit(it.unitId),
+              ),
             ),
           ),
         ),
@@ -1634,10 +1820,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     )
                   : null,
             ),
-            totalOriginal.toStringAsFixed(2),
+            financeExactMoneyDisplay(totalOriginal),
             danger: true,
           ),
-          UtenTotalEntry('合计(本币)', d.totalLocal?.toStringAsFixed(2) ?? ''),
+          UtenTotalEntry('合计(本币)', financeExactMoneyDisplay(d.totalLocalText)),
         ],
       ],
     );
@@ -1683,7 +1869,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       'APPROVED' => '财务已通过',
       'CANCELED' => '审批已取消',
       'LEGACY_EFFECTIVE' => '历史已生效',
-      'LEGACY_REVERSED' => '历史已红冲',
+      'LEGACY_REVERSED' => '历史已反审',
       _ => approval.status,
     };
   }
@@ -1865,14 +2051,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
           ),
         );
       }
-      if (s == kPurchaseStatusApproved && _canReverse && d.canReverse) {
+      if (s == kPurchaseStatusApproved && _canReverse) {
         addAction(
-          UtenButton(
-            type: UtenButtonType.danger,
-            size: UtenButtonSize.large,
-            icon: Icons.undo_outlined,
+          DocumentUnapprovalAction(
+            family: unapprovalFamilyForRoute(
+              'purchase',
+              widget.docType.pathSegment,
+            )!,
+            documentId: widget.id,
+            revision: d,
             onPressed: _reverse,
-            child: const Text('红冲'),
           ),
         );
       }
@@ -1915,6 +2103,20 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
           ),
         );
       }
+      if (_canReviewPhysical) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.large,
+            icon: Icons.edit_note_outlined,
+            onPressed: _openPhysicalReview,
+            child: const Text('修改后审核'),
+          ),
+        );
+      }
       if (_canApprove) {
         if (children.isNotEmpty) {
           children.add(const SizedBox(width: UtenSpacing.s8));
@@ -1938,14 +2140,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
           ),
         );
       }
-    } else if (s == kPurchaseStatusApproved && _canReverse && d.canReverse) {
+    } else if (s == kPurchaseStatusApproved && _canReverse) {
       children.add(
-        UtenButton(
-          type: UtenButtonType.danger,
-          size: UtenButtonSize.large,
-          icon: Icons.undo_outlined,
+        DocumentUnapprovalAction(
+          family: unapprovalFamilyForRoute(
+            'purchase',
+            widget.docType.pathSegment,
+          )!,
+          documentId: widget.id,
+          revision: d,
           onPressed: _reverse,
-          child: const Text('红冲'),
         ),
       );
     } else if (_canOpenList) {

@@ -40,6 +40,12 @@ public interface ArApLedgerService {
      */
     void reverseArAp(UUID sourceDocId, String sourceDocType);
 
+    /** Domain preflight after the caller's ordinary document read scope; never a standalone lookup endpoint. */
+    void requireReversibleSource(UUID sourceDocId,String sourceDocType);
+
+    /** Removes only this nonlegacy return's same-period actual-cost supplement; free returns have no AP row. */
+    void reverseReturnCostProjection(UUID sourceDocId,String sourceDocType,String billNo,LocalDate billDate);
+
     /**
      * 立帐请求值对象。
      *
@@ -112,4 +118,5 @@ public interface ArApLedgerService {
             BigDecimal amountLocal) {
         public static final String SALES_ORDER = "SALES_ORDER";
     }
+    default void requireReturnCostProjectionReversible(UUID id,String sourceDocType,String billNo,LocalDate billDate){throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对退货总账成本来源");}
 }

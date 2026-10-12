@@ -262,8 +262,31 @@ void main() {
     );
 
     expect(find.text('红冲'), findsNothing);
+    expect(find.text('反审'), findsNothing);
     expect(find.textContaining('仅价款有误须财务调整，不能虚做退货'), findsOneWidget);
   });
+
+  for (final type in [SalesDocType.shipment, SalesDocType.customerShipment]) {
+    testWidgets('$type cannot expose an unsupported generic draft clone', (
+      tester,
+    ) async {
+      final api = await _pumpDetail(
+        tester,
+        type: type,
+        detail: const {
+          'id': 'shipment-approved-unshipped',
+          'status': 1,
+          'writable': true,
+          'warehouseWorkStatus': 'PENDING_PICK',
+          'items': <Map<String, dynamic>>[],
+        },
+        permissions: const {Perm.salesShipmentReverse},
+      );
+
+      expect(find.text('反审'), findsNothing);
+      expect(api.postPaths, isEmpty);
+    });
+  }
 
   testWidgets(
     'planned order hides guaranteed-failure cancel and gives remedy',

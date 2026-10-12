@@ -2203,7 +2203,7 @@ class _ProductionFqcInspectionPageState
                 : inspection.active
                 ? '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。'
                 : inspection.status == 'CANCELLED'
-                ? '来源报工已红冲或仓库登记已撤回，本任务只读且不能再登记检验决定。'
+                ? '来源报工已反审或仓库登记已撤回，本任务只读且不能再登记检验决定。'
                 : '该任务已完成决定，当前详情只读。',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,

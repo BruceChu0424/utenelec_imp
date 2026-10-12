@@ -37,6 +37,8 @@ public interface InventoryPositionPort {
     /** Exact withdrawal of an unused, most-recent qualified inbound and its original custody slices. */
     record ReverseStore(EventContext context,UUID movementId,PoolKey pool,BigDecimal expectedQtyBefore,
                         UUID originalMovementId) {}
+    /** Read-only withdrawal facts, in the same order used by the physical reversal. */
+    record StoreWithdrawal(PoolKey pool, UUID originalMovementId, boolean materialReturn) {}
     record PositionValue(UUID eventId, UUID positionRootId, UUID fundingSourceNodeId,
                          BigDecimal qtyBase, BigDecimal knownValueLocal,
                          State state, boolean replayed) {}
@@ -53,5 +55,14 @@ public interface InventoryPositionPort {
     MovementValue reverseStore(ReverseStore command);
     /** Reverse one actual workshop return receipt to its original WIP/transit slices. */
     MovementValue reverseMaterialStore(ReverseStore command);
+    /** Pure source/cost checks; never creates pools, events, positions or postings. */
+    String requireStoresReversible(List<StoreWithdrawal> withdrawals);
+    String requireStoresReversibleAfterSubcontractCostRelease(List<StoreWithdrawal> withdrawals,
+            ProcurementInventoryValuePort.CostWithdrawalPreview preview);
+    String requireStoreSourcesAvailable(PoolKey pool, List<Slice> sources);
+    String requireMoveSourcesAvailable(PoolKey pool, Owner owner, UUID ownerId, List<Slice> sources);
+    String requireReturnConsumedAvailable(PoolKey pool, UUID originalPositionRootId,
+                                         BigDecimal qtyBase, Owner materialOwner, UUID materialOwnerId);
+    String requireRestoreUnallocatedConsumedAvailable(PoolKey pool, UUID originalPositionRootId);
     PositionView position(UUID rootId);
 }

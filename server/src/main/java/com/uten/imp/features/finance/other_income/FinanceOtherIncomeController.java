@@ -124,6 +124,19 @@ public class FinanceOtherIncomeController {
         return service.update(id, req);
     }
 
+    @GetMapping("/{id}/review")
+    @PreAuthorize("hasAuthority('finance_other_income:view') and hasAuthority('finance_other_income:approve')")
+    public com.uten.imp.features.finance.FinanceDraftReview.View<FinanceOtherIncomeDetail> review(@PathVariable UUID id) {
+        return service.review(id);
+    }
+
+    @PostMapping("/{id}/review")
+    @PreAuthorize("hasAuthority('finance_other_income:view') and hasAuthority('finance_other_income:approve')")
+    public FinanceOtherIncomeDetail saveReview(@PathVariable UUID id,
+            @Valid @RequestBody com.uten.imp.features.finance.FinanceDraftReview.Save<FinanceOtherIncomeSaveRequest> request) {
+        return service.updateReviewed(id, request.document(), request.expectedSnapshot(), request.approveNow());
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_other_income:delete')")
     public void delete(@PathVariable UUID id) {

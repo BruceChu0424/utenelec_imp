@@ -47,6 +47,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 @AutoConfigureMockMvc(print=MockMvcPrint.NONE)
+@org.springframework.context.annotation.Import(ProductionJdbcMeasurement.Configuration.class)
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class IqcDecideReportBatchPostgresTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties){FullChainEndToEndTest.registerDataSource(properties);}
@@ -54,11 +55,16 @@ class IqcDecideReportBatchPostgresTest {
     @Autowired JdbcTemplate db;
     @Autowired ObjectMapper json;
     @Autowired MockMvc http;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    com.uten.imp.features.production.analysis.MaterialAnalysisService analyses;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService wakeup;
+    @Autowired com.uten.imp.features.warehouse.inbound.ProcurementInspectionService inspections;
     @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
     /** 1 张采购收货单 + 1 张委外进仓单，各 2 行（每行待检 1.25）。 */
     private record Stage(Map<UUID,List<WarehouseIqcScaleFixture.Receipt>> byReceipt,
-                         List<String> billNos,Authentication actor){}
+                         List<String> billNos,Authentication actor,UUID analysisId){}
 
     @Autowired com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInService preStock;
 
@@ -77,7 +83,7 @@ class IqcDecideReportBatchPostgresTest {
             String table=entry.getValue().getFirst().type().equals("PURCHASE")?"purchase_receipts":"subcontract_receipts";
             billNos.add(db.queryForObject("SELECT bill_no FROM "+table+" WHERE id=?",String.class,entry.getKey()));
         }
-        return new Stage(byReceipt,billNos,SecurityContextHolder.getContext().getAuthentication());
+        return new Stage(byReceipt,billNos,SecurityContextHolder.getContext().getAuthentication(),scenario.analysisId());
     }
 
     private BatchInspectionReportRequest report(Stage stage,BigDecimal corruptedRemainingForLastReceipt){
@@ -210,7 +216,16 @@ class IqcDecideReportBatchPostgresTest {
                     rows.stream().map(row->new com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInItem(
                             row.inspectionId(),row.warehouseId(),"BATCH-"+row.inspectionId().toString().substring(0,4))).toList()));
         }
-        JsonNode result=call(stage,report(stage,null),200);
+        Object analysisSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+        org.mockito.Mockito.clearInvocations(analysisSpy);
+        ProductionJdbcMeasurement.Sample measured=ProductionJdbcMeasurement.begin();
+        JsonNode result;
+        // Measure the business transaction itself. The HTTP task-snapshot filter owns a separate
+        // read transaction, so counting all HTTP commits would mislabel this atomic report as two.
+        try { result=json.valueToTree(inspections.decideReport(report(stage,null))); }
+        finally { ProductionJdbcMeasurement.end(); }
+        assertEquals(1,refreshes(stage),"All four receipt scopes share one final analysis refresh");
+        assertEquals(1,measured.commits,"Quality, physical stock, source allocation and final projection commit together");
         assertEquals(4,result.path("receiptCount").asInt());
         assertEquals(8,resolvedItemCount(stage));
         for(var entry:stage.byReceipt().entrySet()){
@@ -236,6 +251,73 @@ class IqcDecideReportBatchPostgresTest {
                     Integer.class,"%"+receiptId+"%");
         }
         assertEquals(0,warehousePendingNotices,"已上架合格行走自动转正，不再发仓库待确认入库事件");
+        String committed=facts(stage);
+        org.mockito.Mockito.clearInvocations(analysisSpy);
+        assertTrue(call(stage,report(stage,null),200).path("replay").asBoolean());
+        assertEquals(0,refreshes(stage),"Pure acknowledged replay must not refresh the analysis again");
+        assertEquals(committed,facts(stage));
+    }
+
+    @Test void finalAnalysisFailureRollsBackAllReceiptQualityStockAndOriginalKeysCanRetry(){
+        Stage stage=prepare(4,2);
+        SecurityContextHolder.getContext().setAuthentication(stage.actor());
+        for(var rows:stage.byReceipt().values()) {
+            preStock.preStockIn(rows.getFirst().type(),rows.getFirst().id(),
+                    new com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInRequest(
+                            rows.stream().map(row -> new com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInItem(
+                                    row.inspectionId(),row.warehouseId(),"ROLLBACK")).toList()));
+        }
+        String before=facts(stage);
+        var request=report(stage,null);
+        var wakeupTarget=org.springframework.test.util.AopTestUtils.<com.uten.imp.features.production.analysis.MaterialAnalysisSupplyWakeupService>getUltimateTargetObject(wakeup);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            assertEquals(8,resolvedItemCount(stage),"All quality writes precede the final projection");
+            for(var rows:stage.byReceipt().values()) for(var row:rows) {
+                assertEquals(0,new BigDecimal("0.7500").compareTo(balance(row.warehouseId(),row.goodsId())),
+                        "Each physical stock-in is immediate before the final projection");
+            }
+            throw new IllegalStateException("final quality projection failed");
+        }).when(wakeupTarget).afterQualityReportCompleted(org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList());
+        try {
+            assertThrows(IllegalStateException.class,()->inspections.decideReport(request));
+        } finally {
+            org.mockito.Mockito.doCallRealMethod().when(wakeupTarget)
+                    .afterQualityReportCompleted(org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyList());
+        }
+        assertEquals(before,facts(stage));
+        for(var rows:stage.byReceipt().values()) for(var row:rows) {
+            assertEquals(0,balance(row.warehouseId(),row.goodsId()).signum());
+            assertEquals(0,db.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?",
+                    Integer.class,row.id()));
+        }
+        assertFalse(inspections.decideReport(request).replay());
+        assertEquals(8,resolvedItemCount(stage));
+    }
+
+    @Test void partialStockThenFailureOnlyResolutionEachRefreshTheSharedAnalysisOnce(){
+        Stage stage=prepare();
+        SecurityContextHolder.getContext().setAuthentication(stage.actor());
+        for(var rows:stage.byReceipt().values()) {
+            preStock.preStockIn(rows.getFirst().type(),rows.getFirst().id(),
+                    new com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInRequest(
+                            rows.stream().map(row -> new com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInItem(
+                                    row.inspectionId(),row.warehouseId(),"PARTIAL")).toList()));
+        }
+        Object spy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+        for(boolean resolve:List.of(false,true)) {
+            var request=new BatchInspectionReportRequest(stage.byReceipt().values().stream().map(rows ->
+                    new BatchInspectionReportRequest.Receipt(rows.getFirst().type(),rows.getFirst().id(),rows.stream().map(row ->
+                            new BatchInspectionDecideRequest.Item(row.inspectionId(),new BigDecimal(resolve?"0.7500":"1.2500"),
+                                    new BigDecimal(resolve?"0":"0.5000"),new BigDecimal(resolve?"0.7500":"0"),
+                                    "iqc-partial-"+resolve+"-"+row.inspectionId())).toList())).toList(),"剩余不合格结案");
+            org.mockito.Mockito.clearInvocations(spy);
+            assertFalse(inspections.decideReport(request).replay());
+            assertEquals(1,refreshes(stage),resolve?"Failure-only resolved receipts still refresh shortages":"Partial automatic stock-in refreshes without receipt completion");
+            assertEquals(resolve?4:0,resolvedItemCount(stage));
+            for(var rows:stage.byReceipt().values()) for(var row:rows) {
+                assertEquals(0,new BigDecimal("0.5000").compareTo(balance(row.warehouseId(),row.goodsId())));
+            }
+        }
     }
 
     /**
@@ -245,6 +327,8 @@ class IqcDecideReportBatchPostgresTest {
     @Test void twentyReceiptBatchCompletesWithinDeadlineBudget()throws Exception{
         Stage stage=prepare(20,5);
         var request=report(stage,null);
+        Object analysisSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+        org.mockito.Mockito.clearInvocations(analysisSpy);
         long started=System.currentTimeMillis();
         JsonNode result=call(stage,request,200);
         long elapsed=System.currentTimeMillis()-started;
@@ -252,6 +336,7 @@ class IqcDecideReportBatchPostgresTest {
         assertEquals(20,result.path("receiptCount").asInt());
         assertEquals(100,result.path("lineCount").asInt());
         assertEquals(100,resolvedItemCount(stage));
+        assertEquals(1,refreshes(stage),"20 receipt scopes must not refresh the shared analysis 20 times");
         assertTrue(elapsed<30_000,"20 张单的整份报告必须远低于服务端 40s 命令截止，实测 " + elapsed + "ms");
     }
 
@@ -265,18 +350,28 @@ class IqcDecideReportBatchPostgresTest {
                             row.inspectionId(),row.warehouseId(),"BUDGET-"+row.inspectionId().toString().substring(0,4))).toList()));
         }
         var request=report(stage,null);
+        Object analysisSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+        org.mockito.Mockito.clearInvocations(analysisSpy);
         long started=System.currentTimeMillis();
         JsonNode result=call(stage,request,200);
         long elapsed=System.currentTimeMillis()-started;
         System.out.println("[decide-report] pre-stocked 20 receipts x 5 lines elapsedMs=" + elapsed);
         assertEquals(20,result.path("receiptCount").asInt());
         assertEquals(100,resolvedItemCount(stage));
+        assertEquals(1,refreshes(stage),"100 physical quality lines must retain one final shared-analysis refresh");
         assertTrue(elapsed<35_000,"全预入库 20 张单也须低于服务端 40s 命令截止(20 张上限的实测依据)，实测 " + elapsed + "ms");
     }
 
     private int resolvedItemCount(Stage stage){
         return db.queryForObject("SELECT count(*) FROM procurement_inspection_items WHERE receipt_id IN ("
                 + placeholders(stage) + ") AND status='RESOLVED'",Integer.class,stage.byReceipt().keySet().toArray());
+    }
+
+    private long refreshes(Stage stage){
+        Object spy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
+        return org.mockito.Mockito.mockingDetails(spy).getInvocations().stream().filter(invocation ->
+                invocation.getMethod().getName().equals("refreshLocked") && invocation.getArguments().length==1
+                        && stage.analysisId().equals(invocation.getArgument(0))).count();
     }
 
     private int passFailEventCount(Stage stage){

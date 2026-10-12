@@ -26,6 +26,16 @@ import java.util.UUID;
 @Entity
 @Table(name = "purchase_receipt_items")
 public class PurchaseReceiptItem extends BaseEntity {
+    @jakarta.persistence.Column(name="quantity_semantics")
+    private String quantitySemantics = "LEGACY_RECORDED";
+    @jakarta.persistence.Column(name="charged_base_qty")
+    private BigDecimal chargedBaseQty;
+    @jakarta.persistence.Column(name="gift_base_qty")
+    private BigDecimal giftBaseQty;
+    @jakarta.persistence.Column(name="gift_replacement_intent")
+    private String giftReplacementIntent;
+    @jakarta.persistence.Column(name="gift_returned_qty")
+    private BigDecimal giftReturnedQty = BigDecimal.ZERO;
 
     private Integer legacyId;
 

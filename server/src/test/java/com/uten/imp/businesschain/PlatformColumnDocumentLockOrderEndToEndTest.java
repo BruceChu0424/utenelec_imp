@@ -53,7 +53,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
         "uten.workshop-material.auto-close.enabled=false",
         "uten.production.readiness-reconcile.enabled=false", "uten.policy-intelligence.enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000"})
+})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestExecutionListeners(listeners = PlatformColumnDocumentLockOrderEndToEndTest.Cleanup.class,
         mergeMode = TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)

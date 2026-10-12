@@ -9,6 +9,20 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get release2511DailyReport =>
+      '生产日报改为紧凑货品卡片，支持展开去向与子件；审核余料处理保留完整数量和来源。';
+
+  @override
+  String get release2511Workshop => '车间任务弹窗按状态呈现操作，物料默认显示一项并可展开全部。';
+
+  @override
+  String get release2511Batch => '物料批量下单与品质批量处理共用写入流程，减少重复读取、锁定和收尾计算。';
+
+  @override
+  String get release2511Platform =>
+      '新增平台设置，超级管理员可配置公司品牌、Logo和主题色；升级保留已有配置及个人偏好。';
+
+  @override
   String get businessResetAuditScope =>
       '清空：全部测试业务、删除历史、字段版本和业务审计；保留登录认证、授权、安全、系统审计及清空核对凭据。';
 
@@ -635,7 +649,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get visitorIsEmployee => '该手机号为优腾员工账号，请走员工通道登录';
+  String get visitorIsEmployee => '该手机号为员工账号，请走员工通道登录';
 
   @override
   String get visitorPhoneInvalid => '请输入正确的手机号';
@@ -5516,9 +5530,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusActionConvert => '转订货单';
 
   @override
-  String get salesQuoteStatusActionReverse => '作废';
-
-  @override
   String get salesQuoteStatusActionEdit => '编辑';
 
   @override
@@ -5546,10 +5557,6 @@ class AppLocalizationsZh extends AppLocalizations {
       '财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?';
 
   @override
-  String get salesQuoteStatusReverseConfirmBody =>
-      '作废后这张报价不能再转订货单, 也不能恢复。确定作废?';
-
-  @override
   String get salesQuoteStatusDeleteConfirmBody => '确定删除这张报价草稿? 删除后不能恢复。';
 
   @override
@@ -5570,9 +5577,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesQuoteStatusReopened => '已回到草稿, 改好后请重新提交财务核价';
-
-  @override
-  String get salesQuoteStatusReversedDone => '报价已作废';
 
   @override
   String get salesQuoteStatusDeleted => '已删除';

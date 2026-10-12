@@ -97,6 +97,11 @@ public class SubcontractPlatformColumnAdapters {
                 "SELECT id,receipt_id FROM subcontract_receipt_items WHERE id IN (:ids) AND NOT is_deleted",
                 receiptService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(receiptService::detailHistory,"SELECT live.id,live.receipt_id FROM subcontract_receipt_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_receipt_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_receipt_items' AND parent_table='subcontract_receipts' AND CAST(CASE WHEN source_table='subcontract_receipt_items' AND parent_table='subcontract_receipts' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_receipt_items WHERE receipt_id=:document AND NOT is_deleted")
+                .reviewedSaveAuthorities(Set.of("subcontract_receipt:approve"), (id, header) -> {
+                    if (!DocumentPlatformColumnAdapter.draft(header) || header.hasNonNull("legacyId")) return false;
+                    access.requireScopedOperationWritable(DocumentPlatformColumnAdapter.uuid(header, "makerId"), "只能修改本人审核范围内的草稿", "subcontract_receipt:approve");
+                    return true;
+                })
                 .documentSaveLocks(com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest.class,receiptService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("subcontract_receipt:create"));
     }
@@ -118,6 +123,11 @@ public class SubcontractPlatformColumnAdapters {
                 "SELECT id,return_id FROM subcontract_return_items WHERE id IN (:ids) AND NOT is_deleted",
                 retService::detail,(id,header)->DocumentPlatformColumnAdapter.draft(header) && access.canWrite(DocumentPlatformColumnAdapter.uuid(header,"makerId")),LINE).history(retService::detailHistory,"SELECT live.id,live.return_id FROM subcontract_return_items live WHERE live.id IN (:ids) AND NOT EXISTS (SELECT 1 FROM business_record_identities retained WHERE retained.source_table='subcontract_return_items' AND retained.source_id=CAST(live.id AS text)) UNION ALL SELECT CAST(source_id AS uuid),CAST(parent_id AS uuid) FROM business_record_identities WHERE source_table='subcontract_return_items' AND parent_table='subcontract_returns' AND CAST(CASE WHEN source_table='subcontract_return_items' AND parent_table='subcontract_returns' THEN source_id END AS uuid) IN (:ids)")
                 .documentRows("SELECT id FROM subcontract_return_items WHERE return_id=:document AND NOT is_deleted")
+                .reviewedSaveAuthorities(Set.of("subcontract_return:approve"), (id, header) -> {
+                    if (!DocumentPlatformColumnAdapter.draft(header) || header.hasNonNull("legacyId")) return false;
+                    access.requireScopedOperationWritable(DocumentPlatformColumnAdapter.uuid(header, "makerId"), "只能修改本人审核范围内的草稿", "subcontract_return:approve");
+                    return true;
+                })
                 .documentSaveLocks(com.uten.imp.features.subcontract.ret.dto.ReturnSaveRequest.class,retService::lockPlatformColumnSave)
                 .documentCreateAuthorities(Set.of("subcontract_return:create"));
     }

@@ -85,6 +85,14 @@ public class ProcurementFinanceApprovalController {
                 request.items(), request.remark(), request.exchangeRate());
     }
 
+    @PostMapping("/tasks/{caseId}/amend")
+    @PreAuthorize("hasAuthority('finance_order_approval:view') and hasAuthority('finance_order_approval:approve')")
+    public ProcurementApprovalContracts.ApprovalReview amend(
+            @PathVariable UUID caseId,
+            @Valid @RequestBody ProcurementApprovalContracts.ReviewAmendmentRequest request) {
+        return service.amend(caseId, request);
+    }
+
     /** 整批使用同一退回原因；任一项失败则全部回滚。 */
     @PostMapping("/tasks/batch-reject")
     @PreAuthorize("hasAuthority('finance_order_approval:view') and "

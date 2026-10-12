@@ -68,7 +68,12 @@ public final class ProcurementIqcStockInContracts {
             OffsetDateTime releasedAt,
             List<InboundAllocation> expectedAllocations,
             @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
-            String warehouseName) {
+            String warehouseName,
+            String quantityTranche) {
+        public ReleasedSlice(UUID passEventId, UUID inspectionItemId, UUID goodsId, String goodsCode, String goodsName, String colorName, UUID unitId, String unitName, String sourceOrderNo, BigDecimal receivedBaseQty, BigDecimal qualityPassedBaseQty, BigDecimal warehouseStockedBaseQty, BigDecimal releasedBaseQty, BigDecimal stockedForReleaseBaseQty, BigDecimal remainingBaseQty, BigDecimal releasedWeight, String placeHint, String releaseNote, String releasedBy, OffsetDateTime releasedAt, List<InboundAllocation> expectedAllocations, UUID warehouseId, String warehouseName) {
+            this(passEventId, inspectionItemId, goodsId, goodsCode, goodsName, colorName, unitId, unitName, sourceOrderNo, receivedBaseQty, qualityPassedBaseQty, warehouseStockedBaseQty, releasedBaseQty, stockedForReleaseBaseQty, remainingBaseQty, releasedWeight, placeHint, releaseNote, releasedBy, releasedAt, expectedAllocations, warehouseId, warehouseName, "LEGACY");
+        }
+
 
         public ReleasedSlice {
             expectedAllocations = expectedAllocations == null
@@ -116,7 +121,12 @@ public final class ProcurementIqcStockInContracts {
             List<InboundAllocation> actualAllocations,
             @JsonSerialize(using = ToStringSerializer.class) UUID warehouseId,
             String warehouseName,
-            String origin) {
+            String origin,
+            String quantityTranche) {
+        public StockInHistoryItem(UUID stockInItemId, UUID batchId, UUID passEventId, UUID goodsId, String goodsCode, String goodsName, String colorName, String unitName, BigDecimal baseQty, BigDecimal weight, String place, String confirmedBy, OffsetDateTime confirmedAt, List<InboundAllocation> actualAllocations, UUID warehouseId, String warehouseName, String origin) {
+            this(stockInItemId, batchId, passEventId, goodsId, goodsCode, goodsName, colorName, unitName, baseQty, weight, place, confirmedBy, confirmedAt, actualAllocations, warehouseId, warehouseName, origin, "LEGACY");
+        }
+
 
         public StockInHistoryItem {
             actualAllocations = actualAllocations == null

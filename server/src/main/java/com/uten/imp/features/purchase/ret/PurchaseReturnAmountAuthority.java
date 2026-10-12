@@ -46,7 +46,8 @@ public class PurchaseReturnAmountAuthority {
                            source_receipt.settlement_method_id, source_receipt.tax_rate,
                            source_item.order_item_id, source_receipt.status,
                            TRUE,source_receipt.total_original,source_receipt.total_local,
-                           source_item.qty, source_item.amount_original, source_item.amount_local
+                           source_item.qty, source_item.amount_original, source_item.amount_local,
+                           source_item.quantity_semantics,source_item.gift_qty,source_item.gift_base_qty,source_item.charged_base_qty
                     FROM purchase_receipt_items source_item
                     JOIN purchase_receipts source_receipt
                       ON source_receipt.id=source_item.receipt_id
@@ -94,20 +95,24 @@ public class PurchaseReturnAmountAuthority {
                     || !Objects.equals(item.getOrderItemId(), sourceOrderItemId)) {
                 throw conflict("采购退货供应商、币种、汇率、税率、结算方式或订单来源与收货事实不一致");
             }
-            if (validatedReceipts.add(sourceReceiptId)) {
+            if (item.getQty().signum()>0 && validatedReceipts.add(sourceReceiptId)) {
                 ProcurementReturnPayableAuthority.lockAndValidate(
                         em, "PURCHASE", sourceReceiptId, sourceSupplierId,
                         sourceCurrencyId, sourceRate, sourceSettlementMethodId,
                         sourceReceiptOriginal, sourceReceiptLocal, sourceApPosted);
             }
-            ProcurementReturnQualityPolicy.ReturnableSource returnable =
-                    ProcurementReturnQualityPolicy.lockAndLimit(
+            ProcurementReturnQualityPolicy.ReturnableSource returnable = item.getQty().signum()==0
+                    ?new ProcurementReturnQualityPolicy.ReturnableSource(BigDecimal.ZERO,BigDecimal.ZERO,BigDecimal.ZERO,false)
+                    :ProcurementReturnQualityPolicy.lockAndLimit(
                             em, "PURCHASE", item.getReceiptItemId(),
                             sourceQty, sourceUnitRate, sourceOriginal, sourceLocal);
             Object[] prior = (Object[]) em.createNativeQuery("""
                     SELECT COALESCE(SUM(return_item.qty),0),
                            COALESCE(SUM(return_item.amount_original),0),
-                           COALESCE(SUM(return_item.amount_local),0)
+                           COALESCE(SUM(return_item.amount_local),0),
+                           COALESCE(SUM(return_item.charged_base_qty),0),
+                           COALESCE(SUM(return_item.gift_qty),0),
+                           COALESCE(SUM(return_item.gift_base_qty),0)
                     FROM purchase_return_items return_item
                     JOIN purchase_returns return_doc ON return_doc.id=return_item.return_id
                     WHERE return_item.receipt_item_id=:itemId
@@ -117,10 +122,25 @@ public class PurchaseReturnAmountAuthority {
                       AND COALESCE(return_doc.is_deleted,FALSE)=FALSE
                     """).setParameter("itemId", item.getReceiptItemId())
                     .setParameter("currentReturnId", purchaseReturn.getId()).getSingleResult();
-            ReturnAmounts amounts = sourceAmounts(
+            if(com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(item.getQuantitySemantics()) && item.getGiftQty().signum()>0){
+                if(!com.uten.imp.common.finance.ProcurementQuantities.isExtraGift((String)source[16]))throw conflict("旧来源赠品记录不是额外实物，不能生成赠品退货");
+                BigDecimal giftAvailable=ProcurementReturnQualityPolicy.lockGiftAndLimit(em,item.getReceiptItemId(),decimal(source[17]),decimal(source[18]));
+                BigDecimal giftPrior=(BigDecimal)em.createNativeQuery("SELECT COALESCE(SUM(ri.gift_qty),0) FROM purchase_return_items ri JOIN purchase_returns rd ON rd.id=ri.return_id WHERE ri.receipt_item_id=:id AND rd.id<>:current AND rd.status=1 AND NOT ri.is_deleted AND NOT rd.is_deleted AND ri.quantity_semantics='CHARGED_PLUS_GIFT_V1'").setParameter("id",item.getReceiptItemId()).setParameter("current",purchaseReturn.getId()).getSingleResult();
+                if(item.getGiftQty().add(giftPrior).compareTo(giftAvailable)>0)throw conflict("赠品退回超过已实收未退的赠品数量");
+            }
+            ReturnAmounts amounts = item.getQty().signum()==0?new ReturnAmounts(BigDecimal.ZERO,BigDecimal.ZERO):sourceAmounts(
                     item.getQty(), sourcePrice, sourceRate,
                     returnable.qty(), returnable.amountOriginal(), returnable.amountLocal(),
                     decimal(prior[0]), decimal(prior[1]), decimal(prior[2]));
+            if(com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(item.getQuantitySemantics())) {
+                if(com.uten.imp.common.finance.ProcurementQuantities.isExtraGift((String)source[16])) {
+                    item.setChargedBaseQty(returnedBase(item.getQty(),sourceQty,decimal(source[19]),decimal(prior[0]),decimal(prior[3])));
+                    item.setGiftBaseQty(returnedBase(item.getGiftQty(),decimal(source[17]),decimal(source[18]),decimal(prior[4]),decimal(prior[5])));
+                } else {
+                    var quantities=com.uten.imp.common.finance.ProcurementQuantities.of(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
+                    item.setChargedBaseQty(quantities.chargedBase());item.setGiftBaseQty(quantities.giftBase());
+                }
+            }
             item.setPrice(sourcePrice);
             item.setAmountOriginal(amounts.original());
             item.setAmountLocal(amounts.local());
@@ -131,6 +151,24 @@ public class PurchaseReturnAmountAuthority {
         itemRepo.flush();
         purchaseReturn.setTotalOriginal(money(totalOriginal));
         purchaseReturn.setTotalLocal(money(totalLocal));
+    }
+
+    /** Allocate each physical tranche from its source fact; the last return owns the residual. */
+    private static BigDecimal returnedBase(BigDecimal requested,BigDecimal sourceQty,BigDecimal sourceBase,
+            BigDecimal priorQty,BigDecimal priorBase) {
+        if(requested==null || requested.signum()<0)throw conflict("退货分量不合法");
+        if(requested.signum()==0)return BigDecimal.ZERO;
+        if(sourceQty==null || sourceQty.signum()<=0 || sourceBase==null || sourceBase.signum()<=0
+                || priorQty==null || priorQty.signum()<0 || priorBase==null || priorBase.signum()<0)
+            throw conflict("退货来源缺少有效冻结基本量，不能重算原实物");
+        BigDecimal remainingQty=sourceQty.subtract(priorQty),remainingBase=sourceBase.subtract(priorBase);
+        if(requested.compareTo(remainingQty)>0 || remainingBase.signum()<=0)
+            throw conflict("退货超过来源剩余原单位量或基本量");
+        BigDecimal base=requested.compareTo(remainingQty)==0 ? remainingBase
+                :sourceBase.multiply(requested).divide(sourceQty,4,java.math.RoundingMode.DOWN);
+        base=com.uten.imp.common.util.FinancialExactAmount.quantity(base,"退货冻结基本量");
+        if(base.signum()<=0 || base.compareTo(remainingBase)>0)throw conflict("退货分量小于可记录精度或超过冻结实物余量");
+        return base;
     }
 
     static void requireDistinctReceiptItems(List<UUID> sourceIds) {

@@ -1,3 +1,4 @@
+import '../../../shared/models/procurement_source_terms.dart';
 // 委外上游单据明细引入面板（编辑页"从上游引入"用）。
 //
 // 结构（2026-08-16 收敛）：面板状态机与外壳在共享组件
@@ -55,11 +56,13 @@ class SubcontractLinkPickResult {
     required this.items,
     this.supplierId,
     this.settlementMethodId,
+    this.sourceTerms,
   });
 
   final List<LinkedItem> items;
   final String? supplierId;
   final String? settlementMethodId;
+  final ProcurementSourceTerms? sourceTerms;
 }
 
 /// 由 cfg 推断上游单据类型。退货/材料退双链时优先进仓/发料（更接近源头）。
@@ -200,6 +203,13 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
             partyId: detail.supplierId,
             items: detail.items,
             settlementMethodId: detail.settlementMethodId,
+            sourceTerms:
+                upstream == SubcontractDocType.order ||
+                    upstream == SubcontractDocType.receipt
+                ? detail.sourceCommercialTerms(
+                    orderSource: upstream == SubcontractDocType.order,
+                  )
+                : null,
           );
         },
         itemFields: UtenDocLinkItemFields<SubcontractDocItem>(
@@ -233,6 +243,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
   return SubcontractLinkPickResult(
     supplierId: raw.partyId,
     settlementMethodId: raw.settlementMethodId,
+    sourceTerms: raw.sourceTerms,
     items: raw.items
         .map(
           (d) => LinkedItem(

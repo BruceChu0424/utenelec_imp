@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 销售单据仓库（5 单据统一，按 docType 切端点）。
 //
 // 端点 /api/sales/{quotes|orders|shipments|other-shipments|returns}
@@ -11,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../basic_data/models/master_facet.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/progress_timeline_event.dart';
 import '../models/sales_doc.dart';
@@ -285,7 +287,21 @@ class SalesRepository {
   }
 
   Future<SalesDocDetail> reverse(String id) async {
-    final json = await api.post('${_doc(id)}/reverse');
+    final family = switch (type) {
+      SalesDocType.quote => throw ApiException(
+        'CONFLICT',
+        '报价请通过“重新修改”或“重新报价”重新协商，按新报价版本完成财务核价和客户确认。',
+      ),
+      SalesDocType.order => 'salesOrder',
+      SalesDocType.returnDoc => 'salesReturn',
+      SalesDocType.otherShipment => 'salesOtherShipment',
+      SalesDocType.shipment ||
+      SalesDocType.customerShipment => throw ApiException(
+        'CONFLICT',
+        '销售出货请通过财务退回、仓库作业或销售退货检验处理；已出库事实不能通过通用反审生成草稿。',
+      ),
+    };
+    final json = await unapproveDocument(api, family, id);
     return SalesDocDetail.fromJson(json);
   }
 

@@ -89,16 +89,29 @@ public class FinanceReceiptSourceAllocationService {
 
     @Transactional(propagation = Propagation.MANDATORY)
     public void reverseApprovedReceipt(FinanceReceipt receipt, List<FinanceReceiptLine> lines) {
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(receipt.getLegacyId());
-        if (!"AR_SETTLEMENT".equals(receipt.getReceiptKind())) {
-            throw conflict("只有普通应收收款存在销售单来源分配");
-        }
         // The LIFO check and the reverse must see one serialized AR history.
         // Otherwise another receipt could post between checking history and locking its ledger.
         List<UUID> ledgerIds=lines.stream().map(FinanceReceiptLine::getAppliedLedgerId).distinct()
                 .sorted(java.util.Comparator.comparing(UUID::toString)).toList();
         if (!ledgerIds.isEmpty()) em.createNativeQuery("SELECT id FROM ar_ap_ledger WHERE id IN (:ids) ORDER BY id FOR UPDATE")
                 .setParameter("ids",ledgerIds).getResultList();
+        int orderLinkedLines=requireReversibleReceiptAllocations(receipt,lines);
+        int updated = em.createNativeQuery("""
+                UPDATE finance_receipt_source_allocations
+                SET status='REVERSED',reversed_at=now(),updated_at=now(),updated_by=:actor
+                WHERE receipt_id=:receiptId AND status='APPLIED'
+                """).setParameter("actor", currentUser.requireId())
+                .setParameter("receiptId", receipt.getId()).executeUpdate();
+        if (updated == 0 && orderLinkedLines>0) throw conflict("收款销售单来源分配缺失或已反转");
+    }
+
+    /** Shared pure LIFO/source check; final reversal already owns the AR source locks. */
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true, noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
+    public int requireReversibleReceiptAllocations(FinanceReceipt receipt,List<FinanceReceiptLine> lines) {
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(receipt.getLegacyId());
+        if (!"AR_SETTLEMENT".equals(receipt.getReceiptKind())) {
+            throw conflict("只有普通应收收款存在销售单来源分配");
+        }
         int orderLinkedLines=0;
         for (FinanceReceiptLine line : lines) {
             if (hasIndependentLedgerAuthority(receipt,line)) {
@@ -134,13 +147,7 @@ public class FinanceReceiptSourceAllocationService {
                 throw conflict("该收款来源已有后续收款或预收转销，必须按后进先出先反转后续业务");
             }
         }
-        int updated = em.createNativeQuery("""
-                UPDATE finance_receipt_source_allocations
-                SET status='REVERSED',reversed_at=now(),updated_at=now(),updated_by=:actor
-                WHERE receipt_id=:receiptId AND status='APPLIED'
-                """).setParameter("actor", currentUser.requireId())
-                .setParameter("receiptId", receipt.getId()).executeUpdate();
-        if (updated == 0 && orderLinkedLines>0) throw conflict("收款销售单来源分配缺失或已反转");
+        return orderLinkedLines;
     }
 
     @SuppressWarnings("unchecked")

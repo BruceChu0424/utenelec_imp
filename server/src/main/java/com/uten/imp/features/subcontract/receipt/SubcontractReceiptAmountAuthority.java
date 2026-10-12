@@ -44,7 +44,7 @@ public class SubcontractReceiptAmountAuthority {
                            source_order.settlement_method_id, source_order.tax_rate,
                            source_order.status,
                            COALESCE(source_item.arrival_overage_posted_qty,0),
-                           source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input
+                           source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input, source_order.id
                     FROM subcontract_order_items source_item
                     JOIN subcontract_orders source_order ON source_order.id=source_item.order_id
                     WHERE source_item.id=:itemId
@@ -65,6 +65,12 @@ public class SubcontractReceiptAmountAuthority {
             BigDecimal sourceQty = decimal(source[8]);
             BigDecimal sourceOriginal = decimal(source[9]);
             BigDecimal sourceLocal = decimal(source[10]);
+            var financialTerms=com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(
+                    em,"SUBCONTRACT",(UUID)source[12],sourceRate);
+            sourceRate=financialTerms.rate();
+            sourceLocal=financialTerms.local(sourceOriginal,sourceLocal);
+            com.uten.imp.common.finance.ProcurementApprovedExchangeRate.requireHistoricalReceiptRate(
+                    em,"SUBCONTRACT",item.getOrderItemId(),receipt.getId(),sourceRate);
             if (sourceStatus != APPROVED || sourcePrice == null || sourcePrice.signum() < 0
                     || sourceCurrencyId == null || sourceRate == null || sourceRate.signum() <= 0
                     || sourceSettlementMethodId == null || sourceQty == null || sourceQty.signum() <= 0
@@ -124,10 +130,10 @@ public class SubcontractReceiptAmountAuthority {
                     &&MoneyPolicy.local(sourceOriginal,sourceRate).compareTo(sourceLocal)==0;
             if(!exactPriceBasis&&(released.amountOriginal()==null||released.amountLocal()==null))
                 throw conflict("历史原单金额与单价不一致且退回金额没有有限表示，请保留来源待核对");
-            BigDecimal effectivePriorOriginal=exactPriceBasis
+            BigDecimal effectivePriorOriginal=released.amountOriginal()==null
                     ?MoneyPolicy.exactProduct(effectivePriorQty,sourcePrice)
                     :rawPriorOriginal.subtract(released.amountOriginal());
-            BigDecimal effectivePriorLocal=exactPriceBasis
+            BigDecimal effectivePriorLocal=released.amountLocal()==null
                     ?MoneyPolicy.local(effectivePriorOriginal,sourceRate)
                     :rawPriorLocal.subtract(released.amountLocal());
             if(effectivePriorQty.signum()<0||effectivePriorOriginal.signum()<0
@@ -142,6 +148,8 @@ public class SubcontractReceiptAmountAuthority {
             item.setAmountOriginal(amounts.original());
             item.setAmountLocal(amounts.local());
             itemRepo.saveAndFlush(item);
+            com.uten.imp.common.finance.ProcurementApprovedExchangeRate.pinReceiptCase(
+                    em,"SUBCONTRACT",item.getId(),financialTerms.caseId());
             item.setReplacementIntent(replacementAllocation.allocateForReceiptItem(
                     "SUBCONTRACT",receipt.getId(),item.getId(),item.getOrderItemId(),
                     item.getQty(),item.getUnitRate(),amounts.original(),amounts.local(),

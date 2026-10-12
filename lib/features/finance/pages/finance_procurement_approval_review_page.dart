@@ -19,8 +19,9 @@ import '../../../shared/business_columns/business_columns_table.dart';
 //    批量动作，整单决策仍走底部通过/驳回；
 //  - 审批历史卡：逐轮 提交/驳回/通过 事件与驳回原因；
 //  - 底栏三操作：驳回（必填原因）/ 通过（选填备注）/ 返回——不必退回任务中心即可决策。
-// 本页不出现采购/委外业务操作（改量/编辑/红冲/收货），职责分离；按钮按服务端
-// allowedActions（实时审核资格 × 权限码）渲染，未授权动作不显示。
+// 待生效订单可由财务在金额单元格核改：保存通过专用审核修订命令开新轮次，
+// 保留原提交快照、来源身份和数量份额。已生效订单复核不改金额。
+// 按服务端 allowedActions、版本与本人有效认领办理，保存后先核对新旧值再通过。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -29,6 +30,7 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/data_display/uten_revision_table.dart';
+import '../../../components/data_display/uten_review_input_cell.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart' show utenFmtIsoTime;
 import '../../../components/inputs/uten_field_message.dart';
@@ -41,15 +43,15 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
-import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
+import '../../../shared/widgets/procurement_document_layout.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
@@ -80,6 +82,40 @@ class _FinanceProcurementApprovalReviewPageState
   String? _error;
   TaskClaimSession? _reviewClaim;
   int _loadGeneration = 0;
+  late String _caseId;
+  bool _amended = false;
+  final Map<String, TextEditingController> _amountInputs = {};
+
+  bool get _canEditAmounts =>
+      _review?.allowedActions.contains('EDIT') == true &&
+      _reviewClaim?.isReady == true &&
+      !_busy;
+
+  String? _inputBaseline(FinanceProcurementReviewLine line) =>
+      line.totalAmountInput ?? line.price;
+
+  bool get _hasAmountEdits =>
+      _review?.items.any(
+        (line) =>
+            financeExactTrimmed(_amountInputs[line.orderItemId]?.text) !=
+            financeExactTrimmed(_inputBaseline(line)),
+      ) ==
+      true;
+
+  void _resetAmountInputs(FinanceProcurementApprovalReview review) {
+    for (final controller in _amountInputs.values) {
+      controller.dispose();
+    }
+    _amountInputs.clear();
+    for (final line in review.items) {
+      final id = line.orderItemId;
+      if (id != null) {
+        _amountInputs[id] = TextEditingController(
+          text: financeExactTrimmed(_inputBaseline(line)) ?? '',
+        );
+      }
+    }
+  }
 
   /// 汇率编辑框（case 级记账汇率，非行单位换算率）：加载后预填
   /// financeExchangeRate ?? 提交快照 exchangeRate ?? 1，未批 case 可改。
@@ -96,6 +132,9 @@ class _FinanceProcurementApprovalReviewPageState
   void dispose() {
     ++_loadGeneration;
     _rateController.dispose();
+    for (final controller in _amountInputs.values) {
+      controller.dispose();
+    }
     _reviewClaim?.removeListener(_claimChanged);
     _reviewClaim?.releaseAll().ignore();
     super.dispose();
@@ -106,7 +145,10 @@ class _FinanceProcurementApprovalReviewPageState
     covariant FinanceProcurementApprovalReviewPage oldWidget,
   ) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.caseId != widget.caseId) _load();
+    if (oldWidget.caseId != widget.caseId) {
+      _caseId = widget.caseId;
+      _load();
+    }
   }
 
   bool get _canView =>
@@ -118,6 +160,7 @@ class _FinanceProcurementApprovalReviewPageState
   @override
   void initState() {
     super.initState();
+    _caseId = widget.caseId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -146,7 +189,7 @@ class _FinanceProcurementApprovalReviewPageState
           permissions.contains(Perm.financeOrderApprovalReject)) {
         final claim = financeReviewClaim(container)..addListener(_claimChanged);
         _reviewClaim = claim;
-        await claim.claimAll('PROCUREMENT_FINANCE_APPROVE', [widget.caseId]);
+        await claim.claimAll('PROCUREMENT_FINANCE_APPROVE', [_caseId]);
         if (!mounted || generation != _loadGeneration || !claim.isCurrent) {
           await claim.releaseAll();
           return;
@@ -154,7 +197,7 @@ class _FinanceProcurementApprovalReviewPageState
       }
       final review = await ref
           .read(financeProcurementWorkflowRepositoryProvider)
-          .review(widget.caseId);
+          .review(_caseId);
       if (!mounted ||
           generation != _loadGeneration ||
           !container.read(sessionProvider).isSameIdentity(identity)) {
@@ -165,6 +208,7 @@ class _FinanceProcurementApprovalReviewPageState
         _loading = false;
         // 汇率编辑框每次加载重置为 case 默认值（已批 = 财务落定值，未批 = 快照兜底）。
         _rateController.text = _defaultRateText(review);
+        _resetAmountInputs(review);
       });
       if (!review.isPending) await _reviewClaim?.releaseAll();
     } on ApiException catch (e) {
@@ -184,6 +228,148 @@ class _FinanceProcurementApprovalReviewPageState
 
   String get widgetSafeBillNo => _review?.billNo ?? '';
 
+  Future<void> _saveAmountEdits() async {
+    final review = _review;
+    final claim = _reviewClaim;
+    if (review == null ||
+        claim == null ||
+        !_canEditAmounts ||
+        !_hasAmountEdits) {
+      return;
+    }
+    final generation = _loadGeneration;
+    final identity = ref.read(sessionProvider);
+    final pendingRateText = _rateController.text;
+    final lines = <Map<String, dynamic>>[];
+    for (final line in review.items) {
+      final text = _amountInputs[line.orderItemId]?.text;
+      if (financeExactTrimmed(text) ==
+          financeExactTrimmed(_inputBaseline(line))) {
+        continue;
+      }
+      final exact = financeExactTrimmed(text);
+      final units = financeAmountUnits(exact);
+      if (exact == null || units == null || units.isNegative) {
+        context.appWarning('第 ${line.lineNo} 行金额须为可精确保存的非负数字');
+        return;
+      }
+      lines.add({
+        'itemId': line.orderItemId,
+        if (line.totalAmountInput == null)
+          'price': exact
+        else
+          'totalAmountInput': exact,
+      });
+    }
+    final decision = review.decisionItem;
+    if (decision == null) return;
+    setState(() => _busy = true);
+    try {
+      if (!await claim.validateForDecision() ||
+          !mounted ||
+          generation != _loadGeneration ||
+          !identical(review, _review) ||
+          !ref.read(sessionProvider).isSameIdentity(identity)) {
+        return;
+      }
+      final amended = await ref
+          .read(financeProcurementWorkflowRepositoryProvider)
+          .amendReview(
+            decision.withClaimId(
+              claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', review.caseId)!,
+            ),
+            lines,
+          );
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !ref.read(sessionProvider).isSameIdentity(identity)) {
+        return;
+      }
+      _caseId = amended.caseId;
+      _amended = true;
+      await _load();
+      if (mounted && ref.read(sessionProvider).isSameIdentity(identity)) {
+        if (_review?.caseId == amended.caseId && _review?.isPending == true) {
+          setState(() => _rateController.text = pendingRateText);
+        }
+        context.appSuccess('审核修改已保存，请核对原值与新值后通过');
+        refreshBadges(ref);
+      }
+    } on ApiException catch (error) {
+      if (mounted && ref.read(sessionProvider).isSameIdentity(identity)) {
+        context.appError(error.message);
+      }
+    } catch (_) {
+      if (mounted && ref.read(sessionProvider).isSameIdentity(identity)) {
+        context.appError('审核修改保存失败，请核对后重试');
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _reviewAmountCell(
+    UtenRevisionRow<FinanceProcurementReviewLine> row, {
+    required bool total,
+  }) {
+    final line = row.value;
+    final controller = _amountInputs[line.orderItemId];
+    final editable =
+        _canEditAmounts &&
+        row.kind != UtenRevisionKind.removed &&
+        (line.totalAmountInput != null) == total &&
+        controller != null;
+    final recorded = total ? line.amountOriginal : line.price;
+    if (!editable) {
+      return Text(
+        financeMoneyWithUnitSuffix(
+              recorded,
+              currencyName: _review?.currencyName,
+            ) +
+            (!total && line.totalAmountInput != null ? '（参考）' : ''),
+      );
+    }
+    final changed =
+        financeExactTrimmed(controller.text) !=
+        financeExactTrimmed(_inputBaseline(line));
+    final red = Theme.of(context).colorScheme.error;
+    return UtenReviewInputCell(
+      before: _inputBaseline(line),
+      after: controller.text,
+      beforeLabel: financeMoneyWithUnitSuffix(
+        _inputBaseline(line),
+        currencyName: _review?.currencyName,
+      ),
+      beforeKey: ValueKey('finance-order-review-before-${line.orderItemId}'),
+      child: TextField(
+        key: ValueKey(
+          'finance-order-review-${total ? 'total' : 'price'}-${line.orderItemId}',
+        ),
+        controller: controller,
+        onChanged: (_) => setState(() {}),
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        style: changed
+            ? TextStyle(color: red, fontWeight: FontWeight.w700)
+            : null,
+        decoration: const InputDecoration(
+          isDense: true,
+          border: UnderlineInputBorder(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _leaveReview() async {
+    await _reviewClaim?.releaseAll();
+    if (!mounted) return;
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop(_amended ? true : null);
+    } else {
+      context.go(FinanceWorkflowRoutes.approvalTasks);
+    }
+  }
+
   // —— 汇率（case 级记账汇率）—————————————————————————————
 
   /// case 汇率默认值：已批 = 财务通过时落定的 financeExchangeRate；未批 = 提交
@@ -196,16 +382,17 @@ class _FinanceProcurementApprovalReviewPageState
   /// 编辑框当前是否为合法的 >0 十进制汇率（科学计数法等 double 能解析、
   /// 十进制精确乘算不认的写法一并判非法，避免折合列悄悄回落默认值）。
   bool _rateInputValid() {
-    final exact = financeExactTrimmed(_rateController.text.trim());
-    if (exact == null || financeExactDecimal(exact) == null) return false;
-    return (double.tryParse(exact) ?? 0) > 0;
+    final units = financeRateUnits(_rateController.text);
+    return units != null &&
+        units > BigInt.zero &&
+        units < BigInt.from(10).pow(18);
   }
 
   String? _rateInputError() => _rateController.text.trim().isEmpty
       ? '请填写大于 0 的汇率'
       : _rateInputValid()
       ? null
-      : '汇率必须是大于 0 的数字';
+      : '汇率须大于 0，整数最多 12 位，小数最多 6 位';
 
   /// 当前生效汇率（十进制原文）：未批 case 优先取编辑框合法输入，输入中的
   /// 空值/非法值暂按默认值显示；已批/已驳回只读取财务落定值。
@@ -234,12 +421,6 @@ class _FinanceProcurementApprovalReviewPageState
             r.totalLocal,
       );
 
-  /// 通过提交用汇率数值：前置校验后理论必为 >0；异常兜底 null（不进请求体）。
-  double? _effectiveRateDouble(FinanceProcurementApprovalReview r) {
-    final parsed = double.tryParse(_effectiveRateText(r));
-    return (parsed != null && parsed > 0) ? parsed : null;
-  }
-
   /// 决策完成后的落点：从任务中心 push 进来 → pop(true) 让列表刷新；
   /// 深链/通知直达导致路由栈空 → 跳回任务中心列表（不裸 pop——GoError 会被
   /// 外层 catch 误报成决策失败）。
@@ -255,6 +436,10 @@ class _FinanceProcurementApprovalReviewPageState
   Future<void> _approve() async {
     final review = _review;
     if (review == null || _busy) return;
+    if (_hasAmountEdits) {
+      context.appWarning('请先保存审核修改，核对服务端重算后的金额再通过');
+      return;
+    }
     final claim = _reviewClaim;
     final generation = _loadGeneration;
     if (review.isPending && !_rateInputValid()) {
@@ -332,14 +517,14 @@ class _FinanceProcurementApprovalReviewPageState
       }
       await ref
           .read(financeProcurementWorkflowRepositoryProvider)
-          .approveOrdersBatch(
+          .approveOrdersWithExactRate(
             [
               decision.withClaimId(
-                claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', widget.caseId)!,
+                claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', review.caseId)!,
               ),
             ],
             remark: remark,
-            exchangeRate: _effectiveRateDouble(review),
+            exchangeRate: _effectiveRateText(review),
           );
       if (!mounted) return;
       context.appSuccess('已通过 $widgetSafeBillNo，仓库预计到货任务已生成');
@@ -357,6 +542,10 @@ class _FinanceProcurementApprovalReviewPageState
   Future<void> _reject() async {
     final review = _review;
     if (review == null || _busy) return;
+    if (_hasAmountEdits) {
+      context.appWarning('请先保存审核修改或恢复原值，再驳回');
+      return;
+    }
     final claim = _reviewClaim;
     final generation = _loadGeneration;
     if (claim == null || !claim.isReady) {
@@ -450,7 +639,7 @@ class _FinanceProcurementApprovalReviewPageState
           .read(financeProcurementWorkflowRepositoryProvider)
           .rejectOrdersBatch([
             decision.withClaimId(
-              claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', widget.caseId)!,
+              claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', review.caseId)!,
             ),
           ], reason);
       if (!mounted) return;
@@ -500,10 +689,7 @@ class _FinanceProcurementApprovalReviewPageState
     return Scaffold(
       appBar: UtenAppBar(
         title: '订货审批审核详情',
-        leading: UtenBackButton(
-          onPressed: () =>
-              backTo(context, defaultPath: FinanceWorkflowRoutes.approvalTasks),
-        ),
+        leading: UtenBackButton(onPressed: _leaveReview),
       ),
       body: SafeArea(
         child: Stack(
@@ -651,15 +837,22 @@ class _FinanceProcurementApprovalReviewPageState
           ? null
           : UtenFloatingActionGroup(
               children: [
+                if (review.allowedActions.contains('EDIT'))
+                  UtenButton(
+                    key: const Key('finance-order-review-save-edits'),
+                    size: UtenButtonSize.large,
+                    icon: Icons.save_outlined,
+                    onPressed: _canEditAmounts && _hasAmountEdits
+                        ? _saveAmountEdits
+                        : null,
+                    child: const Text('保存审核修改'),
+                  ),
                 UtenButton(
                   key: const Key('finance-order-review-back'),
                   type: UtenButtonType.secondary,
                   size: UtenButtonSize.large,
                   icon: Icons.arrow_back_rounded,
-                  onPressed: () => backTo(
-                    context,
-                    defaultPath: FinanceWorkflowRoutes.approvalTasks,
-                  ),
+                  onPressed: _leaveReview,
                   child: const Text('返回'),
                 ),
                 if (review.allowedActions.contains('REJECT'))
@@ -1038,8 +1231,15 @@ class _FinanceProcurementApprovalReviewPageState
                 // 汇率列 = 表格内可编辑单元格（2026-10-10 用户口径：汇率写在表格
                 // 对应行的单元格里，不再表下另起一行编辑器）。
                 cellBuilders: {
+                  'price': (cellContext, row) =>
+                      _reviewAmountCell(row, total: false),
+                  'amountOriginal': (cellContext, row) =>
+                      _reviewAmountCell(row, total: true),
                   'exchangeRate': (cellContext, row) {
-                    if (!r.isPending || row.kind == UtenRevisionKind.removed) {
+                    if (!r.isPending ||
+                        row.kind == UtenRevisionKind.removed ||
+                        !r.allowedActions.contains('APPROVE') ||
+                        _reviewClaim?.isReady != true) {
                       return Text(
                         _trimNum(rateText) ?? '1',
                         key: const Key('finance-order-review-rate-readonly'),
@@ -1064,170 +1264,202 @@ class _FinanceProcurementApprovalReviewPageState
                     );
                   },
                 },
-                columns: [
-                  MasterColumnDef(
-                    key: 'sourceDocNo',
-                    label: '来源单号',
-                    width: 170,
-                    value: (it) => extra(it, it.sourceDocNo),
-                  ),
-                  MasterColumnDef(
-                    key: 'sourceApplicationNos',
-                    label: '申请来源 / 分配数量',
-                    width: 280,
-                    value: (it) => extra(it, it.sourceApplicationNos),
-                  ),
-                  MasterColumnDef(
-                    key: 'lineNo',
-                    label: '行号',
-                    width: 64,
-                    type: 'number',
-                    value: (it) => it.lineNo.toString(),
-                  ),
-                  // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
-                  // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。
-                  MasterColumnDef(
-                    key: 'goods',
-                    label: '货品名称',
-                    width: 200,
-                    value: (it) => it.goodsName ?? it.goodsCode ?? '—',
-                  ),
-                  MasterColumnDef(
-                    key: 'goodsCode',
-                    label: '编号',
-                    width: 130,
-                    value: (it) => UtenGoodsAttributeCell.text(it.goodsCode),
-                    cellBuilder: (_, it) =>
-                        UtenGoodsAttributeCell(it.goodsCode),
-                  ),
-                  MasterColumnDef(
-                    key: 'colorName',
-                    label: '颜色',
-                    width: 96,
-                    value: (it) => UtenGoodsAttributeCell.text(it.colorName),
-                    cellBuilder: (_, it) =>
-                        UtenGoodsAttributeCell(it.colorName),
-                  ),
-                  // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），
-                  // 独立单位列退役（formatQtyWithUnit 是唯一拼装点）。
-                  MasterColumnDef(
-                    key: 'qty',
-                    label: '数量',
-                    width: 110,
-                    type: 'number',
-                    value: (it) => formatQtyWithUnit(
-                      double.tryParse(it.qty ?? ''),
-                      it.unitName,
-                    ),
-                  ),
-                  // 采购=允许超收%（ADR-144，审批哈希快照自带，空=不允许超收）；
-                  // 委外=允许损耗%。数值后直接带 %（2026-10-10 财务口径）。
-                  if (r.orderType == FinanceProcurementOrderType.purchase)
-                    MasterColumnDef(
-                      key: 'allowedOverReceiptPct',
-                      label: '允许超收',
-                      width: 120,
-                      info:
-                          '供应商累计送货在 数量×(1+允许超收%) 以内照常入库、立应付，超出部分才转财务审核组审批；批准后不能再改。',
-                      value: (it) {
-                        final v = _trimNum(it.allowedOverReceiptPct);
-                        return v == null ? '不允许' : '$v%';
-                      },
-                    ),
-                  if (r.orderType == FinanceProcurementOrderType.subcontract)
-                    MasterColumnDef(
-                      key: 'allowedLossPct',
-                      label: '允许损耗',
-                      width: 120,
-                      value: (it) {
-                        if (!it.displaySnapshotComplete) return '历史未留存';
-                        final v = _trimNum(it.allowedLossPct);
-                        return v == null ? null : '$v%';
-                      },
-                    ),
-                  // 金额列自动带币种后缀（2026-10-10 口径「单价 0.5 元 / 总金额
-                  // 1500 美金」），币种不再写进列头。
-                  MasterColumnDef(
-                    key: 'price',
-                    label: '单价',
-                    width:
-                        [
-                          ...r.previousItems,
-                          ...r.items,
-                        ].any((it) => it.totalAmountInput != null)
-                        ? 190
-                        : 130,
-                    type: 'money',
-                    info: '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。',
-                    value: (it) => it.totalAmountInput == null
-                        ? financeMoneyWithUnitSuffix(
-                            it.price,
-                            currencyName: r.currencyName,
-                          )
-                        : '${financeMoneyWithUnitSuffix(it.price, currencyName: r.currencyName)}（参考）',
-                  ),
-                  MasterColumnDef(
-                    key: 'amountOriginal',
-                    label: comparing ? '原币总金额' : '总金额',
-                    width: 150,
-                    type: 'money',
-                    value: (it) => financeMoneyWithUnitSuffix(
-                      it.amountOriginal,
-                      currencyName: r.currencyName,
-                    ),
-                  ),
-                  // 汇率 = case 级记账汇率：未批 case 在本列单元格填写（全列同步），
-                  // 实时重算折合人民币列/合计/快照卡；已批只读财务落定值。行单位
-                  // 换算率（1箱=24只）与货币无关，2026-10-10 起退役本表。
-                  MasterColumnDef(
-                    key: 'exchangeRate',
-                    label: '汇率',
-                    width: 140,
-                    type: 'number',
-                    info:
-                        '未审批时在本列单元格填写记账汇率（同单全行同值，任一格输入全列同步）；折合人民币 = 总金额 × 汇率，实时重算。通过时随审批写入本单，驳回不落汇率。',
-                    value: (_) => _trimNum(rateText),
-                  ),
-                  // 折合人民币 = 总金额 × 当前汇率（实时联动；原币缺失回落快照本币）。
-                  MasterColumnDef(
-                    key: 'amountLocal',
-                    label: '折合人民币',
-                    width: 150,
-                    type: 'money',
-                    value: (it) => financeLocalMoneyWithUnitSuffix(
-                      _lineAmountLocal(it, rateText),
-                    ),
-                  ),
-                  MasterColumnDef(
-                    key: 'deliverDate',
-                    label: '交货日',
-                    width: 110,
-                    type: 'date',
-                    value: (it) => it.deliverDate,
-                  ),
-                  if (r.orderType == FinanceProcurementOrderType.purchase &&
-                      [...r.previousItems, ...r.items].any(
-                        (line) =>
-                            line.giftQty != null &&
-                            _trimNum(line.giftQty) != '0',
-                      ))
-                    MasterColumnDef(
-                      key: 'giftQty',
-                      label: '赠品数量',
-                      width: 110,
-                      value: (it) => extra(it, it.giftQty, numeric: true),
-                    ),
-                  MasterColumnDef(
-                    key: 'remark',
-                    label: '行备注',
-                    width: 220,
-                    value: (it) => extra(it, it.remark),
-                  ),
-                  ...businessReadOnlyColumns<FinanceProcurementReviewLine>([
-                    ...r.previousItems,
-                    ...r.items,
-                  ], columnsOf: (line) => line.extraColumns),
-                ],
+                columns:
+                    canonicalProcurementColumns<
+                      MasterColumnDef<FinanceProcurementReviewLine>
+                    >([
+                      MasterColumnDef(
+                        key: 'supplier',
+                        label:
+                            r.orderType ==
+                                FinanceProcurementOrderType.subcontract
+                            ? '委外商'
+                            : '供应商',
+                        width: 180,
+                        value: (_) => r.supplierName,
+                      ),
+                      MasterColumnDef(
+                        key: 'currency',
+                        label: '币种',
+                        width: 100,
+                        value: (_) => r.currencyName,
+                      ),
+                      MasterColumnDef(
+                        key: 'taxRate',
+                        label: '税率(%)',
+                        width: 100,
+                        value: (_) => _trimNum(r.taxRate),
+                      ),
+                      MasterColumnDef(
+                        key: 'settlement',
+                        label: '结算方式',
+                        width: 160,
+                        value: (_) => r.settlementMethodName,
+                      ),
+                      MasterColumnDef(
+                        key: 'sourceDocNo',
+                        label: '来源单号',
+                        width: 170,
+                        value: (it) => extra(it, it.sourceDocNo),
+                      ),
+                      MasterColumnDef(
+                        key: 'sourceApplicationNos',
+                        label: '申请来源 / 分配数量',
+                        width: 280,
+                        value: (it) => extra(it, it.sourceApplicationNos),
+                      ),
+                      MasterColumnDef(
+                        key: 'lineNo',
+                        label: '行号',
+                        width: 64,
+                        type: 'number',
+                        value: (it) => it.lineNo.toString(),
+                      ),
+                      // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
+                      // 不再拼成「编号 · 名称(颜色 · 单位)」一长串。
+                      MasterColumnDef(
+                        key: 'goods',
+                        label: '货品名称',
+                        width: 200,
+                        value: (it) => it.goodsName ?? it.goodsCode ?? '—',
+                      ),
+                      MasterColumnDef(
+                        key: 'goodsCode',
+                        label: '编号',
+                        width: 130,
+                        value: (it) =>
+                            UtenGoodsAttributeCell.text(it.goodsCode),
+                        cellBuilder: (_, it) =>
+                            UtenGoodsAttributeCell(it.goodsCode),
+                      ),
+                      MasterColumnDef(
+                        key: 'colorName',
+                        label: '颜色',
+                        width: 96,
+                        value: (it) =>
+                            UtenGoodsAttributeCell.text(it.colorName),
+                        cellBuilder: (_, it) =>
+                            UtenGoodsAttributeCell(it.colorName),
+                      ),
+                      // 2026-10-10「数量+单位」全站口径：单位内联在数字后（12 PCS），
+                      // 独立单位列退役（formatQtyWithUnit 是唯一拼装点）。
+                      MasterColumnDef(
+                        key: 'qty',
+                        label: '数量',
+                        width: 110,
+                        type: 'number',
+                        value: (it) =>
+                            formatExactQtyWithUnit(it.qty, it.unitName),
+                      ),
+                      // 采购=允许超收%（ADR-144，审批哈希快照自带，空=不允许超收）；
+                      // 委外=允许损耗%。数值后直接带 %（2026-10-10 财务口径）。
+                      if (r.orderType == FinanceProcurementOrderType.purchase)
+                        MasterColumnDef(
+                          key: 'allowedOverReceiptPct',
+                          label: '允许超收',
+                          width: 120,
+                          info:
+                              '供应商累计送货在 数量×(1+允许超收%) 以内照常入库、立应付，超出部分才转财务审核组审批；批准后不能再改。',
+                          value: (it) {
+                            final v = _trimNum(it.allowedOverReceiptPct);
+                            return v == null ? '不允许' : '$v%';
+                          },
+                        ),
+                      if (r.orderType ==
+                          FinanceProcurementOrderType.subcontract)
+                        MasterColumnDef(
+                          key: 'allowedLossPct',
+                          label: '允许损耗',
+                          width: 120,
+                          value: (it) {
+                            if (!it.displaySnapshotComplete) return '历史未留存';
+                            final v = _trimNum(it.allowedLossPct);
+                            return v == null ? null : '$v%';
+                          },
+                        ),
+                      // 金额列自动带币种后缀（2026-10-10 口径「单价 0.5 元 / 总金额
+                      // 1500 美金」），币种不再写进列头。
+                      MasterColumnDef(
+                        key: 'price',
+                        label: '单价',
+                        width:
+                            [
+                              ...r.previousItems,
+                              ...r.items,
+                            ].any((it) => it.totalAmountInput != null)
+                            ? 190
+                            : 130,
+                        type: 'money',
+                        info: '标注“参考”的单价由填写的总金额反算；除不尽时仅显示参考值，结算按单据记录的总金额。',
+                        value: (it) => it.totalAmountInput == null
+                            ? financeMoneyWithUnitSuffix(
+                                it.price,
+                                currencyName: r.currencyName,
+                              )
+                            : '${financeMoneyWithUnitSuffix(it.price, currencyName: r.currencyName)}（参考）',
+                      ),
+                      MasterColumnDef(
+                        key: 'amountOriginal',
+                        label: '总金额',
+                        width: 150,
+                        type: 'money',
+                        value: (it) => financeMoneyWithUnitSuffix(
+                          it.amountOriginal,
+                          currencyName: r.currencyName,
+                        ),
+                      ),
+                      // 汇率 = case 级记账汇率：未批 case 在本列单元格填写（全列同步），
+                      // 实时重算折合人民币列/合计/快照卡；已批只读财务落定值。行单位
+                      // 换算率（1箱=24只）与货币无关，2026-10-10 起退役本表。
+                      MasterColumnDef(
+                        key: 'exchangeRate',
+                        label: '汇率',
+                        width: 140,
+                        type: 'number',
+                        info:
+                            '未审批时在本列单元格填写记账汇率（同单全行同值，任一格输入全列同步）；折合人民币 = 总金额 × 汇率，实时重算。通过时随审批写入本单，驳回不落汇率。',
+                        value: (_) => _trimNum(rateText),
+                      ),
+                      // 折合人民币 = 总金额 × 当前汇率（实时联动；原币缺失回落快照本币）。
+                      MasterColumnDef(
+                        key: 'amountLocal',
+                        label: '折合人民币',
+                        width: 150,
+                        type: 'money',
+                        value: (it) => financeLocalMoneyWithUnitSuffix(
+                          _lineAmountLocal(it, rateText),
+                        ),
+                      ),
+                      MasterColumnDef(
+                        key: 'deliverDate',
+                        label: '交货日',
+                        width: 110,
+                        type: 'date',
+                        value: (it) => it.deliverDate,
+                      ),
+                      if (r.orderType == FinanceProcurementOrderType.purchase &&
+                          [...r.previousItems, ...r.items].any(
+                            (line) =>
+                                line.giftQty != null &&
+                                _trimNum(line.giftQty) != '0',
+                          ))
+                        MasterColumnDef(
+                          key: 'giftQty',
+                          label: '赠品数量',
+                          width: 110,
+                          value: (it) => extra(it, it.giftQty, numeric: true),
+                        ),
+                      MasterColumnDef(
+                        key: 'remark',
+                        label: '备注',
+                        width: 220,
+                        value: (it) => extra(it, it.remark),
+                      ),
+                      ...businessReadOnlyColumns<FinanceProcurementReviewLine>([
+                        ...r.previousItems,
+                        ...r.items,
+                      ], columnsOf: (line) => line.extraColumns),
+                    ], keyOf: (column) => column.key),
                 rows: rows,
               ),
             ),
@@ -1240,10 +1472,10 @@ class _FinanceProcurementApprovalReviewPageState
                   // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
                   UtenTotalEntry(
                     '合计数量',
-                    measurementTotalsText(
+                    exactMeasurementTotalsText(
                       r.items.map(
-                        (it) => MeasuredAmount(
-                          value: double.tryParse(it.qty ?? '') ?? 0,
+                        (it) => ExactMeasuredAmount(
+                          value: it.qty,
                           unitId: it.unitId,
                           unitName: it.unitName,
                         ),

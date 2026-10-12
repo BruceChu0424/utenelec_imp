@@ -748,7 +748,7 @@ class _ProductionWorkshopTasksPageState
               '不能更改生产路线；$description',
         _ =>
           '生产路线已冻结：本工单已有报工记录，更改路线不能改写已发生的生产事实。'
-              '如确需更改，请先红冲相关报工；$description',
+              '如确需更改，请先反审相关报工；$description',
       },
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2074,6 +2074,8 @@ class _ProductionWorkshopTasksPageState
               ),
               materialSummary: _detailMaterialSummary(dialogContext, task),
               notices: [
+                if (_showMaterialBinSetupHint(task))
+                  const Text(_materialBinSetupHint),
                 if (task.overLimitPendingQty > 0)
                   Container(
                     padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -2860,7 +2862,7 @@ class _ProductionWorkshopTasksPageState
                         )
                       : _isHistory && _historyTime.isNone
                       ? const UtenHistoryTimePlaceholder(
-                          description: '按计划完工日期加载已完工 / 已取消 / 已红冲工单',
+                          description: '按计划完工日期加载已完工 / 已取消 / 已撤回工单',
                         )
                       : MasterDataTableView<
                           ProductionExecutionWorkbenchSegment
@@ -3126,7 +3128,7 @@ class _ProductionWorkshopTasksPageState
                                           '去「草稿」分类处理或删除草稿后恢复')
                               : _status == 'REPORT_INSPECTION'
                               ? '当前车间没有已报工待检验的工单'
-                              : '该时间段内没有已完工 / 已取消 / 已红冲的工单',
+                              : '该时间段内没有已完工 / 已取消 / 已撤回的工单',
                         ),
                 ),
                 // 跑批期间的全屏加载遮罩(组件自己推 root Overlay, 挂载位置随意;

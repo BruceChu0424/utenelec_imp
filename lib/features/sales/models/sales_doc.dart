@@ -63,7 +63,7 @@ String salesStatusLabel(int? code) {
     case kSalesStatusApproved:
       return '已审';
     case kSalesStatusReversed:
-      return '红冲';
+      return '已反审';
     case kSalesStatusPendingFinance:
       return '待财务核价';
     default:
@@ -301,7 +301,7 @@ String salesShipmentStageLabel(String stage) => switch (stage) {
   SalesShipmentStage.financeRejected => '财务已退回',
   SalesShipmentStage.financeApproved => '已审',
   SalesShipmentStage.shipped => '已出库',
-  SalesShipmentStage.reversed => '红冲',
+  SalesShipmentStage.reversed => '已反审',
   _ => '—',
 };
 

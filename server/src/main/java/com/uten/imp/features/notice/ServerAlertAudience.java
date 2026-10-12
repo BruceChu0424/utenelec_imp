@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/** Candidate lookup is only a filter; effective permissions remain authoritative. */
+/** Candidate lookup is only a filter; current effective grants remain authoritative. */
 @Component
 @RequiredArgsConstructor
 class ServerAlertAudience {
@@ -18,12 +18,14 @@ class ServerAlertAudience {
     private final PermissionResolver permissions;
 
     List<UUID> receivers() {
-        var possible = candidates.possibleUsers(Set.of(ServerStatusAlertScheduler.RECEIVE_AUTHORITY))
-                .map(users::findAllById).orElseGet(users::findAll);
-        return possible.stream()
-                .filter(user -> !user.isDeleted() && "active".equals(user.getStatus()))
-                .filter(user -> permissions.permsOf(user).containsAll(
-                        Set.of("notice:read", ServerStatusAlertScheduler.RECEIVE_AUTHORITY)))
-                .map(user -> user.getId()).distinct().toList();
+        Set<String> required = Set.of("notice:read", ServerStatusAlertScheduler.RECEIVE_AUTHORITY);
+        List<UUID> possible = candidates.possibleUsers(Set.of(ServerStatusAlertScheduler.RECEIVE_AUTHORITY))
+                .map(ids -> ids.stream().sorted().toList())
+                .orElseGet(() -> users.findAll().stream()
+                        .filter(user -> !user.isDeleted() && "active".equals(user.getStatus()))
+                        .map(user -> user.getId()).distinct().toList());
+        // Read actual grants in one coherent SQL snapshot. Never dereference
+        // detached users' employee/department proxies or perform per-user RBAC.
+        return permissions.usersGrantedAll(possible, required);
     }
 }

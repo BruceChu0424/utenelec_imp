@@ -237,6 +237,71 @@ class DailyReportDefectLearningEndToEndTest {
         assertEquals(1,items.size());
         return items.getFirst();
     }
+
+    @org.junit.jupiter.params.ParameterizedTest(name="反审报工完整来源: {0}")
+    @org.junit.jupiter.params.provider.ValueSource(strings={"PRIVATE_PUBLIC","COUNTED_MATERIAL","OVER_LIMIT"})
+    void unapprovalKeepsOutputSlicesWorkersAndMaterialInputsAndReapprovalConservesThem(String branch) {
+        boolean shared="PRIVATE_PUBLIC".equals(branch);
+        Object task=invoke(fixture,"createStartedTask","unapprove-report-"+UUID.randomUUID(),shared,"10");
+        FullChainEndToEndTest.World world=invoke(task,"world");
+        FullChainEndToEndTest chain=(FullChainEndToEndTest)ReflectionTestUtils.getField(fixture,"fixture");
+        assertNotNull(chain);
+        List<ReportablePlanLine> choices=invoke(fixture,"sources",task);
+        ReportablePlanLine selected=shared ? choices.stream().filter(row->row.orderItemId()!=null).findFirst().orElseThrow()
+                : choices.getFirst();
+        String reported="COUNTED_MATERIAL".equals(branch)?"4":"OVER_LIMIT".equals(branch)?"12":"10";
+        String consumed="COUNTED_MATERIAL".equals(branch)?"4":"10";
+        DailyReportSaveRequest request=invoke(fixture,"reportRequest",task,selected,reported,consumed);
+        request.getItems().getFirst().setDefectQty(new BigDecimal("2"));
+        if("COUNTED_MATERIAL".equals(branch)) request.getMaterialLines().getFirst().setCountedLeftoverQty(new BigDecimal("6"));
+        if("OVER_LIMIT".equals(branch)) request.getItems().getFirst().setOverLimitReason("实际加工超出计划数量");
+        UUID original=reports.create(request).getId();
+        chain.loginAs(world.superAdminUserId());
+        var approved=reports.approve(original,DailyReportApproveRequests.freshKey());
+        UUID planItem=invoke(task,"planItem");
+        BigDecimal completed=planQuantity(planItem,"fqty");
+        var command=beans.getBean(com.uten.imp.features.documents.DocumentUnapprovalService.class);
+        var input=new com.uten.imp.features.documents.DocumentUnapprovalService.UnapproveRequest(
+                "unapprove-report-"+UUID.randomUUID(),"核对报工与实际用料");
+        var draft=(com.uten.imp.features.production.dailyreport.dto.DailyReportDetail)command.unapprove("productionDailyReport",original,input);
+        assertNotEquals(original,draft.getId());assertEquals((short)0,draft.getStatus());
+        assertEquals(approved.getMakerId(),draft.getMakerId());assertNull(draft.getApproverId());
+        assertEquals(approved.getWorkerIds(),draft.getWorkerIds());
+        assertEquals(approved.getItems().size(),draft.getItems().size());
+        var batches=new java.util.HashMap<UUID,UUID>();
+        qty("0",planQuantity(planItem,"fqty"));
+        for(int index=0;index<draft.getItems().size();index++) {
+            var before=approved.getItems().get(index);var after=draft.getItems().get(index);
+            assertNotEquals(before.getId(),after.getId());
+            assertEquals(before.getPlanItemId(),after.getPlanItemId());
+            assertEquals(before.getExecutionSegmentId(),after.getExecutionSegmentId());
+            assertEquals(before.getExecutionSegmentSalesAllocationId(),after.getExecutionSegmentSalesAllocationId());
+            assertNotEquals(before.getOutputBatchId(),after.getOutputBatchId());
+            UUID matchingBatch=batches.putIfAbsent(before.getOutputBatchId(),after.getOutputBatchId());
+            if(matchingBatch!=null)assertEquals(matchingBatch,after.getOutputBatchId());
+            assertEquals(before.getDestination(),after.getDestination());
+            assertEquals(before.getDirectTransferDemandId(),after.getDirectTransferDemandId());
+            assertEquals(before.isPublicOutput(),after.isPublicOutput());
+            assertEquals(before.isActualSurplus(),after.isActualSurplus());
+            assertEquals(before.isOverLimit(),after.isOverLimit());
+            qty(before.getQty().toPlainString(),after.getQty());
+            qty(before.getDefectQty().toPlainString(),after.getDefectQty());
+        }
+        assertEquals(approved.getMaterialUsages().size(),draft.getMaterialUsages().size());
+        for(int index=0;index<draft.getMaterialUsages().size();index++) {
+            var before=approved.getMaterialUsages().get(index);var after=draft.getMaterialUsages().get(index);
+            assertNotEquals(before.getId(),after.getId());
+            assertEquals(before.getDemandId(),after.getDemandId());
+            assertEquals(before.getCountedLeftoverQty(),after.getCountedLeftoverQty());
+            qty(before.getQtyBase().toPlainString(),after.getQtyBase());
+        }
+        var replay=(com.uten.imp.features.production.dailyreport.dto.DailyReportDetail)command.unapprove("productionDailyReport",original,input);
+        assertEquals(draft.getId(),replay.getId());
+        reports.approve(draft.getId(),DailyReportApproveRequests.freshKey());
+        qty(completed.toPlainString(),planQuantity(planItem,"fqty"));
+        qty(reported,db.queryForObject("SELECT sum(qty) FROM production_daily_report_items WHERE report_id=?",BigDecimal.class,draft.getId()));
+        qty("2",db.queryForObject("SELECT sum(defect_qty) FROM production_daily_report_items WHERE report_id=?",BigDecimal.class,draft.getId()));
+    }
     private ReportablePlanLine source(Object task){
         List<ReportablePlanLine> sources=invoke(fixture,"sources",task);
         return sources.getFirst();

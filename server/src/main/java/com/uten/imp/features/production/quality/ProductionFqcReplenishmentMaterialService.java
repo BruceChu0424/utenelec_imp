@@ -177,6 +177,28 @@ public class ProductionFqcReplenishmentMaterialService {
      * unissued DRAW becomes reversed history; physically issued material must
      * first follow reverse-issue / good-return.
      */
+    @Transactional(readOnly=true,propagation=Propagation.MANDATORY,noRollbackFor=ApiException.class)
+    public void requireAuthorizationCancellationReadOnly(UUID authorizationId) {
+        if(authorizationId==null)return;
+        List<UUID> cycles=NativeQueryResults.typedRows(em.createNativeQuery("""
+            SELECT cycle.id FROM production_fqc_replenishment_cycles cycle
+            WHERE cycle.authorization_id=:id AND NOT EXISTS(SELECT 1 FROM production_fqc_replenishment_cycle_cancellations c WHERE c.cycle_id=cycle.id)
+            ORDER BY cycle.generation,cycle.id
+            """,UUID.class).setParameter("id",authorizationId),UUID.class);
+        for(UUID cycle:cycles) {
+            var demands=demandRows(cycle,false).stream().map(DemandRow::id).toList();
+            if(demands.isEmpty())throw conflict("FQC补产周期缺少正式物料需求");
+            requireUnconsumedRecoveryDemands(demands);
+            requireUnissuedDraw(cycle,false);
+        }
+    }
+
+    private void requireUnconsumedRecoveryDemands(List<UUID> demandIds) {
+        Number consumed=(Number)em.createNativeQuery("SELECT COALESCE(SUM(consumed_qty),0) FROM stock_reservations WHERE demand_id IN(:ids) AND NOT is_deleted")
+            .setParameter("ids",demandIds).getSingleResult();
+        if(decimal(consumed).signum()>0)throw conflict("补产物料已实发，请先取消出库或按原领料行退料");
+    }
+
     @Transactional(propagation = Propagation.MANDATORY)
     public void beforeAuthorizationCancellation(UUID authorizationId) {
         if (authorizationId == null) return;
@@ -197,17 +219,7 @@ public class ProductionFqcReplenishmentMaterialService {
         UUID actorId = currentUser.requireId();
         for (UUID cycleId : cycleIds) {
             List<UUID> demandIds = recoveryDemandIds(cycleId);
-            Number consumed = (Number) em.createNativeQuery("""
-                            SELECT COALESCE(SUM(reservation.consumed_qty), 0)
-                            FROM stock_reservations reservation
-                            WHERE reservation.demand_id IN (:demandIds)
-                              AND reservation.is_deleted = FALSE
-                            """)
-                    .setParameter("demandIds", demandIds)
-                    .getSingleResult();
-            if (decimal(consumed).signum() > 0) {
-                throw conflict("补产物料已实发，请先取消出库或按原领料行退料");
-            }
+            requireUnconsumedRecoveryDemands(demandIds);
             stockAllocation.releaseByDemands(
                     demandIds, "FQC补产授权取消释放未领物料");
             em.createNativeQuery("""
@@ -711,7 +723,7 @@ public class ProductionFqcReplenishmentMaterialService {
         return rows.isEmpty() ? null : rows.getFirst();
     }
 
-    private void reverseUnissuedDraw(UUID cycleId, UUID actorId) {
+    private UUID requireUnissuedDraw(UUID cycleId,boolean lock) {
         List<Object[]> rows = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT document.id, document.status
@@ -721,20 +733,25 @@ public class ProductionFqcReplenishmentMaterialService {
                         WHERE link.cycle_id = :cycleId
                           AND document.is_deleted = FALSE
                         ORDER BY document.id
-                        FOR UPDATE OF document
-                        """).setParameter("cycleId", cycleId));
-        if (rows.isEmpty()) return;
+                        """+(lock?" FOR UPDATE OF document":"")).setParameter("cycleId", cycleId));
+        if (rows.isEmpty()) return null;
         if (rows.size()!=1) throw conflict("补产周期关联多张领料单，请先核对来源");
         UUID drawId = (UUID) rows.getFirst()[0];
         List<?> issued = em.createNativeQuery("""
                 SELECT issued_qty FROM stock_document_items
-                WHERE doc_id=:drawId AND is_deleted=FALSE ORDER BY id FOR UPDATE
-                """).setParameter("drawId",drawId).getResultList();
+                WHERE doc_id=:drawId AND is_deleted=FALSE ORDER BY id
+                """+(lock?" FOR UPDATE":"")).setParameter("drawId",drawId).getResultList();
         for (Object quantity : issued) {
             int sign=decimal(quantity).signum();
             if (sign<0) throw conflict("补产领料实发累计异常，请先核对仓库记录");
             if (sign>0) throw conflict("补产领料单已有实发数量，请先完成取消出库或退料");
         }
+        return drawId;
+    }
+
+    private void reverseUnissuedDraw(UUID cycleId, UUID actorId) {
+        UUID drawId=requireUnissuedDraw(cycleId,true);
+        if(drawId==null)return;
         em.createNativeQuery("""
                         UPDATE stock_documents
                         SET status = -1, updated_at = now(), updated_by = :actorId

@@ -89,6 +89,13 @@ public class SalesOrderFinanceConfirmController {
         return service.review(id);
     }
 
+    @PostMapping("/{id}/finance-confirmation/amend")
+    @PreAuthorize("hasAuthority('sales_order_finance:view') and hasAuthority('sales_order_finance:confirm')")
+    public SalesOrderFinanceReviewDto amend(@PathVariable UUID id,
+            @Valid @RequestBody SalesOrderFinanceConfirmService.FinanceAmendmentRequest request) {
+        return service.amend(id, request);
+    }
+
     @PostMapping("/{id}/finance-confirmation")
     @PreAuthorize("hasAuthority('sales_order_finance:view')"
             + " and hasAuthority('sales_order_finance:confirm')")

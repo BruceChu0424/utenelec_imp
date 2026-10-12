@@ -1,3 +1,7 @@
+import '../../../shared/auth/native_read_view_scope_mixin.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/widgets/reviewed_grid_columns.dart';
+import '../../../shared/models/procurement_source_terms.dart';
 // 委外单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
 // 2026-09 行级商业条款改造起不再服务委外订货单（走专属页 subcontract_order_edit_page.dart：
@@ -85,9 +89,15 @@ import '../../warehouse/repositories/warehouse_place_suggestion_repository.dart'
 import '../../employee/repositories/employee_picker_candidates.dart';
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
-  const SubcontractDocEditPage({super.key, required this.docType, this.id});
+  const SubcontractDocEditPage({
+    super.key,
+    required this.docType,
+    this.id,
+    this.reviewMode = false,
+  });
   final SubcontractDocType docType;
   final String? id; // null=新建
+  final bool reviewMode;
 
   @override
   ConsumerState<SubcontractDocEditPage> createState() =>
@@ -95,7 +105,9 @@ class SubcontractDocEditPage extends ConsumerStatefulWidget {
 }
 
 class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
-    with FormDraftMixin<SubcontractDocEditPage> {
+    with
+        FormDraftMixin<SubcontractDocEditPage>,
+        NativeReadViewScopeMixin<SubcontractDocEditPage> {
   SubcontractDocConfig get _cfg => SubcontractDocConfig.by(widget.docType);
 
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
@@ -122,6 +134,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   String? _supplierId;
   String? _warehouseId;
   String? _currencyId;
+  ProcurementSourceTerms? _sourceTerms;
 
   // 人员字段
   String? _purchaserId;
@@ -140,6 +153,60 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _existingEditable = false;
+  String? _reviewSnapshot;
+  String? _reviewReadError;
+  Map<SubcontractGridRow, Map<String, String?>> _reviewBaseline = {};
+
+  Map<String, String?> _reviewValues(SubcontractGridRow row) => {
+    'qty': row.qty.text,
+
+    'remark': row.remark.text,
+  };
+
+  @override
+  void nativeReadOwnerChanged() {
+    if (!widget.reviewMode) return;
+    setState(() {
+      _existingEditable = false;
+      _reviewSnapshot = null;
+      _reviewReadError = null;
+      _reviewBaseline = {};
+      _grid.replaceAll([]);
+      _saving = false;
+    });
+  }
+
+  @override
+  void nativeReadPermissionChanged() {
+    if (widget.reviewMode && mounted) setState(() => _existingEditable = false);
+  }
+
+  @override
+  Future<void> nativeReadReload() async {
+    if (widget.reviewMode) await _init();
+  }
+
+  List<EditableGridColumn<SubcontractGridRow>> _reviewColumns(
+    List<EditableGridColumn<SubcontractGridRow>> columns,
+  ) => !widget.reviewMode
+      ? columns
+      : reviewedGridColumns(
+          columns: columns,
+          baseline: _reviewBaseline,
+          valuesOf: _reviewValues,
+          listenableOf: (row) =>
+              Listenable.merge(row.draftListenables.toList()),
+          editableKeys: const {'qty', 'remark'},
+          keyPrefix: 'subcontract-review-before',
+        );
+
+  Widget _frozenHeader(Widget child) => !widget.reviewMode
+      ? child
+      : Focus(
+          canRequestFocus: false,
+          descendantsAreFocusable: false,
+          child: AbsorbPointer(child: child),
+        );
   bool _loading = false;
 
   @override
@@ -184,6 +251,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     'supplierId': _supplierId,
     'warehouseId': _warehouseId,
     'currencyId': _currencyId,
+    'sourceTerms': _sourceTerms?.toJson(),
     'purchaserId': _purchaserId,
     'senderId': _senderId,
     'workerId': _workerId,
@@ -203,6 +271,11 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     _supplierId = data['supplierId'] as String?;
     _warehouseId = data['warehouseId'] as String?;
     _currencyId = data['currencyId'] as String?;
+    _sourceTerms = data['sourceTerms'] is Map
+        ? ProcurementSourceTerms.fromJson(
+            (data['sourceTerms'] as Map).cast<String, dynamic>(),
+          )
+        : null;
     _purchaserId = data['purchaserId'] as String?;
     _senderId = data['senderId'] as String?;
     _workerId = data['workerId'] as String?;
@@ -218,6 +291,15 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   @override
   void initState() {
     super.initState();
+    if (widget.reviewMode) initializeNativeReadScope();
+    if (widget.reviewMode) {
+      ref.listenManual(currentPermissionsProvider, (previous, next) {
+        if (!next.contains(_cfg.listPerm) || !next.contains(_cfg.approvePerm)) {
+          invalidateNativeReadAccess();
+          if (mounted) setState(() => _existingEditable = false);
+        }
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -236,7 +318,28 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   }
 
   Future<void> _init() async {
-    setState(() => _loading = true);
+    final accepts = widget.reviewMode
+        ? captureNativeRead(
+            'subcontract:${widget.docType.name}:${widget.id}',
+            () => 'subcontract:${widget.docType.name}:${widget.id}',
+          )
+        : () => mounted;
+    setState(() {
+      _loading = true;
+      _reviewReadError = null;
+    });
+    if (widget.reviewMode &&
+        (widget.id == null ||
+            !const {
+              SubcontractDocType.receipt,
+              SubcontractDocType.returnDoc,
+            }.contains(widget.docType))) {
+      setState(() {
+        _reviewReadError = '此单据请使用对应业务审核入口';
+        _loading = false;
+      });
+      return;
+    }
     await ref.read(mn.masterNameServiceProvider).ensureLoaded();
     if (widget.id == null) {
       // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
@@ -268,9 +371,14 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
     }
     if (widget.id != null) {
       try {
-        final d = await ref
-            .read(subcontractRepositoryProvider(widget.docType))
-            .detail(widget.id!);
+        final repo = ref.read(subcontractRepositoryProvider(widget.docType));
+        if (widget.reviewMode && !accepts()) return;
+        final reviewed = widget.reviewMode
+            ? await repo.review(widget.id!)
+            : null;
+        final d = reviewed?.detail ?? await repo.detail(widget.id!);
+        if (!accepts()) return;
+        _reviewSnapshot = reviewed?.snapshot;
         if (widget.docType == SubcontractDocType.receipt && d.legacyImported) {
           if (!mounted) return;
           context.appWarning(historicalReceiptReadOnlyMessage, force: true);
@@ -279,7 +387,8 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           );
           return;
         }
-        if (widget.docType != SubcontractDocType.application) {
+        if (!widget.reviewMode &&
+            widget.docType != SubcontractDocType.application) {
           final writable =
               d.status == kSubcontractStatusDraft &&
               d.canEdit &&
@@ -315,9 +424,20 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         _supplierId = d.supplierId;
         _warehouseId = d.warehouseId;
         _currencyId = d.currencyId;
-        _rate.text = financeExactTrimmed(d.exchangeRate?.toString()) ?? '1';
-        if (d.taxRate != null) {
-          _taxRate.text = financeExactTrimmed(d.taxRate.toString()) ?? '';
+        final usesSourceTerms =
+            widget.docType == SubcontractDocType.receipt ||
+            widget.docType == SubcontractDocType.returnDoc;
+        final recordedRate = usesSourceTerms && d.priceMasked
+            ? null
+            : d.exchangeRateText ?? d.exchangeRate?.toString();
+        _rate.text =
+            financeExactTrimmed(recordedRate) ?? (usesSourceTerms ? '' : '1');
+        if (usesSourceTerms) {
+          _sourceTerms = d.sourceCommercialTerms(orderSource: false);
+        }
+        if (usesSourceTerms || d.taxRateText != null || d.taxRate != null) {
+          _taxRate.text =
+              financeExactTrimmed(d.taxRateText ?? d.taxRate?.toString()) ?? '';
         }
         if (d.bStyle != null) _bStyle.text = d.bStyle.toString();
         if (d.totalWeight != null) {
@@ -343,23 +463,28 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
               it.materialIssueItemId ??
               it.orderItemId ??
               it.applicationItemId;
-          final row = SubcontractGridRow(sourceLocked: upstreamItemId != null)
-            ..platformFields.sourceRecordId = it.id
-            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
-            ..goods = ref
-                .read(mn.masterNameServiceProvider)
-                .goodsOptionOf(it.goodsId)
-            ..qty.text =
-                financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? ''
-            ..price.text =
-                financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? ''
-            ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
-            ..upstreamItemId = upstreamItemId
-            ..planItemId = it.planItemId
-            ..colorId = it.colorId
-            ..unitId = it.unitId
-            ..unitRate = it.unitRate
-            ..sourceDocNo = it.sourceDocNo;
+          final row =
+              SubcontractGridRow(
+                  sourceLocked: widget.reviewMode || upstreamItemId != null,
+                )
+                ..documentItemId = it.id
+                ..platformFields.sourceRecordId = it.id
+                // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+                ..goods = ref
+                    .read(mn.masterNameServiceProvider)
+                    .goodsOptionOf(it.goodsId)
+                ..qty.text =
+                    financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? ''
+                ..price.text =
+                    financeExactTrimmed(it.priceText ?? it.price?.toString()) ??
+                    ''
+                ..weight.text = financeExactTrimmed(it.weight?.toString()) ?? ''
+                ..upstreamItemId = upstreamItemId
+                ..planItemId = it.planItemId
+                ..colorId = it.colorId
+                ..unitId = it.unitId
+                ..unitRate = it.unitRate
+                ..sourceDocNo = it.sourceDocNo;
           row.recordSourceAmount(it.amountOriginalText);
           row.remark.text = it.remark ?? '';
           row.endingQty.text =
@@ -376,18 +501,28 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         if (_cfg.itemHasStockPlace) {
           await _fillStockPlaces(rows);
         }
+        if (!accepts()) return;
         _grid.replaceAll(rows);
+        if (widget.reviewMode) {
+          _reviewBaseline = {for (final row in rows) row: _reviewValues(row)};
+          acceptNativeRead();
+        }
       } on ApiException catch (e) {
-        if (mounted) context.appError(e.message);
+        if (mounted && accepts()) {
+          _reviewReadError = e.message;
+          context.appError(e.message);
+        }
       } catch (_) {
-        // 静默降级
+        if (accepts() && widget.reviewMode) {
+          _reviewReadError = '审核数据读取失败，请重新打开核对';
+        }
       }
     }
     if (_grid.isEmpty) {
       _grid.addRow(SubcontractGridRow());
     }
     if (mounted && widget.id == null) await initializeFormDraft();
-    if (mounted) setState(() => _loading = false);
+    if (accepts()) setState(() => _loading = false);
   }
 
   DateTime? _parseDate(String? s) =>
@@ -430,7 +565,8 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   }
 
   bool get _commercialTermsInheritedFromSource =>
-      widget.docType == SubcontractDocType.returnDoc &&
+      (widget.docType == SubcontractDocType.receipt ||
+          widget.docType == SubcontractDocType.returnDoc) &&
       _grid.rows.any((row) => row.upstreamItemId != null);
 
   /// 委外商确定后预填结算方式：上游单据带结算方式时优先（进仓/退货沿用来源
@@ -581,6 +717,21 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       context.appError('上游单据委外商与表头委外商不一致，已阻止引入');
       return;
     }
+    final importedTerms = result.sourceTerms;
+    final importsCommercialSource =
+        widget.docType == SubcontractDocType.receipt ||
+        widget.docType == SubcontractDocType.returnDoc;
+    if (importsCommercialSource && importedTerms == null) {
+      context.appError('来源商业信息缺失，请重新引入来源单据');
+      return;
+    }
+    if (importsCommercialSource &&
+        _commercialTermsInheritedFromSource &&
+        _sourceTerms != null &&
+        !_sourceTerms!.compatibleWith(importedTerms!)) {
+      context.appError('来源币种、财审汇率、税率或结算方式不同，请分别开单');
+      return;
+    }
     final goodsIds = result.items
         .map((e) => e.goodsId)
         .where((id) => id.isNotEmpty)
@@ -611,6 +762,16 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           r.pricing.totalAmount.text.trim().isEmpty,
     );
     _grid.addRows(rows);
+    if (importsCommercialSource) {
+      setState(() {
+        _sourceTerms = importedTerms;
+        _currencyId = importedTerms!.currencyId;
+        _rate.text = financeExactTrimmed(importedTerms.exchangeRate) ?? '';
+        _taxRate.text = financeExactTrimmed(importedTerms.taxRate) ?? '';
+        _settlementMethodId = importedTerms.settlementMethodId;
+        _settlementError = null;
+      });
+    }
     // 表头未选委外商 → 以上游单据委外商回填；结算方式未选时按上游单据结算方式
     // （进仓/退货引入订货）或供应商默认（V452）预填。
     final sid = result.supplierId;
@@ -750,6 +911,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         if (remarkText.isNotEmpty) 'remark': remarkText,
       };
       line.addAll(platformRowPayload(r));
+      if (widget.reviewMode) line['sourceItemId'] = r.documentItemId;
       itemsBody.add(line);
     }
     // 单据号后端自动生成（DocNumberService），不再随 body 提交。
@@ -764,7 +926,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
           _currencyId != null)
         'currencyId': _currencyId,
       if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
-        'exchangeRate': double.tryParse(_rate.text) ?? 1,
+        'exchangeRate': _rate.text.trim(),
       if (_cfg.hasTaxRate && !_commercialTermsInheritedFromSource)
         'taxRate': parsedTaxRate,
       if (_cfg.hasPurchaser && _purchaserId != null)
@@ -785,10 +947,32 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         'settlementMethodId': _settlementMethodId,
       'items': itemsBody,
     };
+    final owns = widget.reviewMode ? captureNativeOwnership() : () => mounted;
+    if (widget.reviewMode) {
+      if (!nativeReadCanWrite ||
+          _reviewSnapshot == null ||
+          !ref.read(currentPermissionsProvider).contains(_cfg.approvePerm)) {
+        return;
+      }
+      final confirmed = await showNativeReadReviewerConfirm(
+        context,
+        message: '核对修改后的实际数量和备注。保存后将按本次数量审核并推进下游业务。',
+        actionLabel: '${_cfg.label}修改后审核',
+      );
+      if (!mounted || !confirmed || !owns() || !nativeReadCanWrite) return;
+    }
     setState(() => _saving = true);
     try {
       if (widget.id == null) await saveFormDraftNow();
       final repo = ref.read(subcontractRepositoryProvider(widget.docType));
+      if (widget.reviewMode) {
+        await repo.saveReviewed(widget.id!, body, _reviewSnapshot!);
+        if (!mounted || !owns()) return;
+        context.appSuccess('已保存修改并审核');
+        bumpListRefresh(ref, _cfg.refreshKey);
+        Navigator.of(context).pop();
+        return;
+      }
       final outcome = await runFormDraftSubmission(
         () => saveSubcontractDocument(
           repository: repo,
@@ -832,7 +1016,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         context.replace(SubcontractRoute.detail(_cfg.pathSegment, d.id));
       }
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && owns()) context.appError(e.message);
     } catch (error, stack) {
       // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
       debugPrint('保存委外单据失败: $error\n$stack');
@@ -840,7 +1024,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (owns()) setState(() => _saving = false);
     }
   }
 
@@ -874,13 +1058,30 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   }
 
   @override
-  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+  Widget build(BuildContext context) {
+    if (widget.reviewMode && !nativeReadAccessConfirmed) {
+      return Scaffold(
+        appBar: UtenAppBar(
+          title: '核对审核单据',
+          leading: UtenBackButton(onPressed: () => Navigator.of(context).pop()),
+        ),
+        body: _reviewReadError == null
+            ? nativeReadAccessNotice()
+            : Center(child: Text(_reviewReadError!)),
+      );
+    }
+    return withFormDraft(_buildDraftPage(context));
+  }
 
   Widget _buildDraftPage(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: UtenAppBar(
-        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        title: widget.reviewMode
+            ? '修改后审核${_cfg.label}'
+            : widget.id == null
+            ? '新建${_cfg.label}'
+            : '编辑${_cfg.label}',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/subcontract'),
         ),
@@ -913,13 +1114,13 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                             _materialIssueSafetyBanner(theme),
                             const SizedBox(height: UtenSpacing.s12),
                           ],
-                          _headerCard(theme),
+                          _frozenHeader(_headerCard(theme)),
                           const SizedBox(height: UtenSpacing.s12),
                           // 「明细 (N)」标题行 2026-09-11 撤除（全站同改）：只留右对齐引入入口。
                           Row(
                             children: [
                               const Spacer(),
-                              if (_cfg.hasUpstreamLink)
+                              if (!widget.reviewMode && _cfg.hasUpstreamLink)
                                 UtenImportButton(
                                   label: '从上游引入',
                                   onPressed: _importFromUpstream,
@@ -934,6 +1135,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                               )[widget.docType.name];
                               return UtenEditableGrid<SubcontractGridRow>(
                                 columnEditingEnabled:
+                                    !widget.reviewMode &&
                                     !_loading &&
                                     !_saving &&
                                     _draftCreatedId == null &&
@@ -957,18 +1159,24 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                                           hidden,
                                           pinned,
                                         ),
-                                columns: subcontractGridColumns(
-                                  _pickGoods,
-                                  _cfg,
-                                  context: context,
-                                  unitEntries: ref
-                                      .watch(mn.masterNameServiceProvider)
-                                      .unitEntries,
-                                  // 每行末尾备注列（随行提交 remark）。
-                                  showRemark: true,
+                                columns: _reviewColumns(
+                                  subcontractGridColumns(
+                                    _pickGoods,
+                                    _cfg,
+                                    context: context,
+                                    unitEntries: ref
+                                        .watch(mn.masterNameServiceProvider)
+                                        .unitEntries,
+                                    // 每行末尾备注列（随行提交 remark）。
+                                    showRemark: true,
+                                  ),
                                 ),
                                 createBlankRow: () => SubcontractGridRow(),
-                                cloneRow: (r) => r.clone(),
+                                cloneRow: widget.reviewMode
+                                    ? null
+                                    : (r) => r.clone(),
+                                showAddRow: !widget.reviewMode,
+                                showRemoveRowsAction: !widget.reviewMode,
                                 footer: _gridFooter(theme),
                               );
                             },
@@ -998,10 +1206,12 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
               onSave: _save,
               saving: _saving,
               // 订货已走专属编辑页（含提交财务）；本页各类型统一普通保存文案。
-              saveLabel: subcontractSaveActionLabel(
-                widget.docType,
-                submitFinance: false,
-              ),
+              saveLabel: widget.reviewMode
+                  ? '保存并审核'
+                  : subcontractSaveActionLabel(
+                      widget.docType,
+                      submitFinance: false,
+                    ),
             ),
     );
   }
@@ -1198,7 +1408,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     ),
                     onChanged: (v) => setState(() => _warehouseId = v),
                   ),
-                if (_cfg.hasCurrency && !_commercialTermsInheritedFromSource)
+                if (_cfg.hasCurrency)
                   _dropdown(
                     '币种',
                     _currencyId,
@@ -1210,12 +1420,13 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     required: widget.docType == SubcontractDocType.order,
                     allowClear: widget.docType != SubcontractDocType.order,
                     errorMessage: _currencyError,
+                    enabled: !_commercialTermsInheritedFromSource,
                     info: widget.docType == SubcontractDocType.order
                         ? '财务批准后冻结为委外订单币种快照'
                         : null,
                   ),
                 // 结算方式紧跟币种（与采购订货单表头次序一致）。
-                if (_cfg.hasSettlement && !_commercialTermsInheritedFromSource)
+                if (_cfg.hasSettlement)
                   _dropdown(
                     '结算方式',
                     _settlementMethodId,
@@ -1227,11 +1438,13 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     required: _cfg.settlementRequired,
                     allowClear: !_cfg.settlementRequired,
                     errorMessage: _settlementError,
+                    enabled: !_commercialTermsInheritedFromSource,
                     info: _cfg.settlementRequired ? '财务批准后冻结为委外订单结算快照' : null,
                   ),
-                if (_cfg.hasTaxRate && !_commercialTermsInheritedFromSource)
+                if (_cfg.hasTaxRate)
                   TextField(
                     controller: _taxRate,
+                    readOnly: _commercialTermsInheritedFromSource,
                     onChanged: (_) {
                       if (_taxRateError != null) {
                         setState(() => _taxRateError = null);
@@ -1257,7 +1470,11 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                     ),
                   ),
                 if (_commercialTermsInheritedFromSource)
-                  const Text('币种、税率与结算方式继承来源订货/回厂快照，本页只读且不重复提交。'),
+                  TextField(
+                    controller: _rate,
+                    readOnly: true,
+                    decoration: const InputDecoration(labelText: '汇率'),
+                  ),
                 // 人员字段（按 config 显隐）
                 if (_cfg.hasPurchaser)
                   _employeePicker(

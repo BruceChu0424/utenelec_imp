@@ -92,6 +92,24 @@ public class SalesReturnQualityService {
         }
     }
 
+    @Transactional(readOnly=true, noRollbackFor=ApiException.class)
+    void requireUntouchedReceiptReversible(UUID returnId,int expectedItemCount) {
+        validateUntouchedReceipt(returnId,expectedItemCount,false);
+    }
+
+    private List<Object[]> validateUntouchedReceipt(UUID returnId,int expectedItemCount,boolean lock) {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows=em.createNativeQuery("""
+            SELECT id,received_base_qty,released_base_qty,scrapped_base_qty,rework_base_qty,status
+            FROM sales_return_quality_items WHERE return_id=:id ORDER BY id
+            """+(lock ? " FOR UPDATE" : "")).setParameter("id",returnId).getResultList();
+        if(rows.isEmpty())return rows;
+        if(rows.size()!=expectedItemCount)throw new ApiException(ErrorCode.CONFLICT,"退货质检记录不完整，不能反审，请联系管理员核查");
+        for(Object[] row:rows)if(!PENDING.equals(row[5]) || decimal(row[2]).add(decimal(row[3])).add(decimal(row[4])).signum()!=0)
+            throw new ApiException(ErrorCode.CONFLICT,"退货已发生良品释放、报废或返工处置，不能直接反审原退货单");
+        return rows;
+    }
+
     /**
      * Reverses only an untouched quarantine receipt. Returns false for a
      * historical approved return, whose original stock posting remains on the
@@ -99,30 +117,9 @@ public class SalesReturnQualityService {
      */
     @Transactional(propagation = Propagation.MANDATORY)
     boolean reverseUntouchedReceipt(UUID returnId, int expectedItemCount, OffsetDateTime reversedAt) {
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                        SELECT id, received_base_qty, released_base_qty,
-                               scrapped_base_qty, rework_base_qty, status
-                        FROM sales_return_quality_items
-                        WHERE return_id = :returnId
-                        ORDER BY id
-                        FOR UPDATE
-                        """)
-                .setParameter("returnId", returnId)
-                .getResultList();
-        if (rows.isEmpty()) return false;
-        if (rows.size() != expectedItemCount) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "退货质检记录不完整，不能红冲，请联系管理员核查");
-        }
-        UUID actor = currentUser.requireEmployeeId();
-        for (Object[] row : rows) {
-            BigDecimal disposed = decimal(row[2]).add(decimal(row[3])).add(decimal(row[4]));
-            if (!PENDING.equals(row[5]) || disposed.signum() != 0) {
-                throw new ApiException(ErrorCode.CONFLICT,
-                        "退货已发生良品释放、报废或返工处置，不能直接红冲原退货单");
-            }
-        }
+        List<Object[]> rows=validateUntouchedReceipt(returnId,expectedItemCount,true);
+        if(rows.isEmpty())return false;
+        UUID actor=currentUser.requireEmployeeId();
         for (Object[] row : rows) {
             UUID qualityItemId = (UUID) row[0];
             BigDecimal received = decimal(row[1]);

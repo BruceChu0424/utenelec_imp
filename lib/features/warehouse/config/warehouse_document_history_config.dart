@@ -86,7 +86,7 @@ enum WarehouseDocumentHistoryType {
     WarehouseHistoryStatusFilter(value: null, label: '全部'),
     WarehouseHistoryStatusFilter(value: '0', label: '草稿'),
     WarehouseHistoryStatusFilter(value: '1', label: '已审核'),
-    WarehouseHistoryStatusFilter(value: '-1', label: '已红冲'),
+    WarehouseHistoryStatusFilter(value: '-1', label: '已撤回'),
   ];
 }
 
@@ -107,7 +107,7 @@ String warehouseHistoryStatusLabel(String? raw, {required bool closed}) {
     null || '' => '状态未知',
     '0' || 'DRAFT' || 'PENDING' => '草稿',
     '1' || 'APPROVED' || 'POSTED' => '已审核',
-    '-1' || 'REVERSED' || 'VOIDED' => '已红冲',
+    '-1' || 'REVERSED' || 'VOIDED' => '已撤回',
     'CLOSED' || 'COMPLETED' => '已完成',
     _ => raw!,
   };

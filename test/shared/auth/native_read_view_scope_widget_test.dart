@@ -170,7 +170,10 @@ class _Api extends ApiClient {
         'items': [
           {
             'id': 'line-1',
-            'qty': body['qty'],
+            // Requests carry exact text; the actual DTO returns numeric main
+            // fields plus authoritative exact suffixes.
+            'qty': num.parse(body['qty'].toString()),
+            'qtyExact': body['qty'],
             'rowVersion': (body['expectedVersion'] as int) + 1,
             'orderedQty': 0,
             'pendingQty': 0,
@@ -483,7 +486,7 @@ void main() {
         '/purchase/requests/record-1/items/line-1/qty',
       ]);
       expect(api.puts.single.body, <String, dynamic>{
-        'qty': 37.0,
+        'qty': '37',
         'expectedVersion': 7,
       });
       expect(api.writes, 1);

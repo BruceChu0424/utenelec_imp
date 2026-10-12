@@ -207,4 +207,5 @@ public interface PreplanAnalysisPegPort {
             UUID planId,
             UUID warehouseId,
             List<FinishedInboundSlice> lines);
+    default void requireReceiptReversible(String type,UUID id,Collection<UUID> reversibleFormalReservations){throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对收货分析归属与预留");}
 }

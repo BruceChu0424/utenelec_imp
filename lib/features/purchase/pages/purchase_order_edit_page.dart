@@ -1,3 +1,5 @@
+import '../../../shared/models/procurement_quantity.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
 // 采购订货单专属编辑页（2026-09 行级商业条款改造起从共享单据编辑页拆出）。
 //
 // 与共享页的差异：单头不再录币种/税率/结账方式（供应商此前已在明细行）——
@@ -48,7 +50,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/currency_display.dart';
-import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/widgets/editable_grid_totals_bar.dart';
 import '../../../shared/widgets/order_duplicate_goods_review.dart';
 import '../../basic_data/models/reference_method_option.dart';
@@ -142,7 +143,26 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
 
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
+  Widget get _giftSemanticsConfirmation =>
+      _grid.rows.any(
+        (row) => row.quantitySemantics == procurementLegacyQuantity,
+      )
+      ? CheckboxListTile(
+          key: const Key('purchase-confirm-gift-semantics'),
+          value: _confirmGiftSemantics,
+          title: const Text('重新确认本草稿：收费数量＋额外赠品＝实物数量'),
+          subtitle: const Text('旧记录的赠品标记不会增加原实物数量。勾选后请逐行核对收费量和免费量，再保存新口径。'),
+          onChanged: (value) => setState(() {
+            _confirmGiftSemantics = value == true;
+            for (final row in _grid.rows) {
+              row.giftSemanticsConfirmed.value = _confirmGiftSemantics;
+            }
+          }),
+        )
+      : const SizedBox.shrink();
+
   bool _saving = false;
+  bool _confirmGiftSemantics = false;
   bool _loading = false;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
@@ -187,6 +207,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
 
   @override
   Map<String, dynamic> captureFormDraft() => {
+    'confirmGiftSemantics': _confirmGiftSemantics,
     'text': draftTextValues(_draftHeaderText),
     'billDate': _billDate.toIso8601String(),
     'purchaserId': _purchaserId,
@@ -202,6 +223,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
 
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _confirmGiftSemantics = data['confirmGiftSemantics'] == true;
     restoreDraftTextValues(_draftHeaderText, draftMap(data['text']));
     _billDate =
         DateTime.tryParse(data['billDate'] as String? ?? '') ?? _billDate;
@@ -476,6 +498,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
               ..sourceDocs = it.sourceRequests;
         row.qty.text =
             financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '';
+        row.giftQty.text = it.giftQtyText ?? it.giftQty?.toString() ?? '0';
+        row.quantitySemantics =
+            it.quantitySemantics ?? procurementLegacyQuantity;
         row.weight.text = financeExactTrimmed(it.weight?.toString()) ?? '';
         row.price.text =
             financeExactTrimmed(it.priceText ?? it.price?.toString()) ?? '';
@@ -900,10 +925,19 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
             existing.extraColumnsPreventMerge) {
           continue;
         }
-        final total =
-            (double.tryParse(existing.qty.text) ?? 0) +
-            (double.tryParse(row.qty.text) ?? 0);
-        existing.qty.text = _formatQty(total);
+        existing.qty.text =
+            financeExactTrimmed(
+              financeExactSumTexts([existing.qty.text, row.qty.text]),
+            ) ??
+            existing.qty.text;
+        existing.giftQty.text =
+            financeExactTrimmed(
+              financeExactSumTexts([existing.giftQty.text, row.giftQty.text]),
+            ) ??
+            existing.giftQty.text;
+        existing.maxGiftQtyText = financeExactTrimmed(
+          financeExactSumTexts([existing.maxGiftQtyText, row.maxGiftQtyText]),
+        );
         existing.maxQty = (existing.maxQty ?? 0) + (row.maxQty ?? 0);
         existing.upstreamItemIds = [
           ...existing.upstreamItemIds,
@@ -1068,6 +1102,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       },
       identicalSignature: (r) => [
         financeExactTrimmed(r.qty.text) ?? r.qty.text.trim(),
+        financeExactTrimmed(r.giftQty.text) ?? r.giftQty.text.trim(),
+        r.quantitySemantics,
         financeExactTrimmed(r.price.text) ?? r.price.text.trim(),
         r.weight.text.trim(),
         financeExactTrimmed(r.allowedOverReceiptPct.text) ??
@@ -1096,6 +1132,14 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         keep.qty.text =
             financeExactSumTexts(g.rows.map((r) => r.qty.text)) ??
             keep.qty.text;
+        keep.giftQty.text =
+            financeExactTrimmed(
+              financeExactSumTexts(g.rows.map((r) => r.giftQty.text)),
+            ) ??
+            keep.giftQty.text;
+        keep.maxGiftQtyText = financeExactTrimmed(
+          financeExactSumTexts(g.rows.map((r) => r.maxGiftQtyText)),
+        );
         keep.maxQty = g.rows.fold<double>(0, (sum, r) => sum + (r.maxQty ?? 0));
         keep.upstreamItemIds = [for (final r in g.rows) ...r.upstreamItemIds];
         keep.sourceDocs = [for (final r in g.rows) ...r.sourceDocs];
@@ -1196,9 +1240,20 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       if (rate == null || rate <= 0) badRate.add(label);
       final tax = double.tryParse(taxTextOf(r));
       if (tax == null || tax < 0 || tax > 100) badTax.add(label);
-      final qty = double.tryParse(r.qty.text) ?? 0;
-      if (qty <= 0) badQty.add(label);
+      if (procurementQuantityError(
+            r.qty.text,
+            r.giftQty.text,
+            extraGift: r.hasExtraGift,
+          ) !=
+          null) {
+        badQty.add(label);
+      }
       // 2026-09 起订货允许超过申请剩余量（超采备货）：不再校验 qty ≤ maxQty。
+      if (r.maxGiftQtyText != null &&
+          (financeExactDecimalUnits(r.giftQty.text) ?? BigInt.zero) >
+              (financeExactDecimalUnits(r.maxGiftQtyText) ?? BigInt.zero)) {
+        badQty.add(label);
+      }
       final price = double.tryParse(r.price.text);
       if (price == null || price < 0) badPrice.add(label);
       final weightText = r.weight.text.trim();
@@ -1226,7 +1281,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       if (badTax.isNotEmpty)
         _rowIssueMessage(badTax, '的税率不是 0 至 100 之间的百分比', action: '请改正后再提交'),
       if (badQty.isNotEmpty)
-        _rowIssueMessage(badQty, '的数量不是大于 0 的数字', action: '请改正后再提交'),
+        _rowIssueMessage(badQty, '的收费量、赠品量或实物合计不符合数量要求', action: '请改正后再提交'),
       if (badPrice.isNotEmpty)
         _rowIssueMessage(badPrice, '的采购单价填写有误（需填不小于 0 的数字）', action: '请改正后再提交'),
       if (badWeight.isNotEmpty)
@@ -1278,8 +1333,6 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     for (final r in rows) {
       final weightText = r.weight.text.trim();
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
-      final rate = double.tryParse(rateTextOf(r))!;
-      final tax = double.tryParse(taxTextOf(r))!;
       final pricingError = r.pricing.validate();
       if (pricingError != null) {
         if (!mounted) return;
@@ -1305,6 +1358,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         'extraColumns': r.extraColumnsPayload(),
         if (r.documentItemId != null) 'id': r.documentItemId,
         'qty': r.qty.text.trim(),
+        'giftQty': r.giftQty.text.trim().isEmpty ? '0' : r.giftQty.text.trim(),
         'price': r.price.text.trim(),
         if (r.pricing.totalAmountInput != null)
           'totalAmountInput': r.pricing.totalAmountInput,
@@ -1319,13 +1373,14 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         'supplierId': r.supplierId,
         'settlementMethodId': r.settlementMethodId,
         'currencyId': r.currencyId,
-        'exchangeRate': rate,
-        'taxRate': tax,
+        'exchangeRate': rateTextOf(r).trim(),
+        'taxRate': taxTextOf(r).trim(),
         if (remarkText.isNotEmpty) 'remark': remarkText,
       });
     }
     final comboCount = rows.map(_comboKey).toSet().length;
     final body = <String, dynamic>{
+      if (_confirmGiftSemantics) 'confirmGiftSemantics': true,
       'billDate': _fmt(_billDate),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       'purchaserId': _purchaserId,
@@ -1369,8 +1424,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       body['supplierId'] = first.supplierId;
       body['settlementMethodId'] = first.settlementMethodId;
       body['currencyId'] = first.currencyId;
-      body['exchangeRate'] = double.tryParse(rateTextOf(first));
-      body['taxRate'] = double.tryParse(taxTextOf(first));
+      body['exchangeRate'] = rateTextOf(first).trim();
+      body['taxRate'] = taxTextOf(first).trim();
       var d = await repo.update(widget.id!, body);
       if (!mounted) return;
       if (_canSubmitFinance) {
@@ -1721,6 +1776,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                               ],
                             ),
                           ),
+                          _giftSemanticsConfirmation,
                           // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
                           Builder(
                             builder: (_) {
@@ -1737,7 +1793,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                   // 默认列序 2026-10-10 变更（单位列撤并进数量
                                   // suffix、允许超收% 紧跟数量、汇率列撤）：bump
                                   // tableKey 让旧保存布局不再压住新默认序。
-                                  tableKey: 'purchase.order.items.v2',
+                                  tableKey:
+                                      'purchase.order.items.v2', // gitleaks:allow public UI column-layout persistence identifier.
                                   onAddColumn: (hidden) =>
                                       addBusinessGridColumn(
                                         context,
@@ -1847,7 +1904,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                       'purchase-order-edit-totals',
                                     ),
                                     controller: _grid,
-                                    watchOf: (row) => [row.qty],
+                                    watchOf: (row) => [row.qty, row.giftQty],
                                     entriesBuilder: (rows) {
                                       final currencyIds = rows
                                           .map((row) => row.currencyId)
@@ -1855,21 +1912,67 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                                           .where((id) => id.isNotEmpty)
                                           .toSet();
                                       return [
-                                        utenQuantityTotalEntry(
-                                          rows
-                                              .where((row) => row.goods != null)
-                                              .map(
-                                                (row) => MeasuredAmount(
-                                                  value:
-                                                      double.tryParse(
-                                                        row.qty.text.trim(),
-                                                      ) ??
-                                                      0,
-                                                  unitId: row.unitId,
-                                                  unitName: names
-                                                      .unitEntries[row.unitId],
+                                        UtenTotalEntry(
+                                          '收费量',
+                                          exactMeasurementTotalsText(
+                                            rows
+                                                .where(
+                                                  (row) => row.goods != null,
+                                                )
+                                                .map(
+                                                  (row) => ExactMeasuredAmount(
+                                                    value: row.qty.text,
+                                                    unitId: row.unitId,
+                                                    unitName:
+                                                        names.unitEntries[row
+                                                            .unitId],
+                                                  ),
                                                 ),
-                                              ),
+                                          ),
+                                        ),
+                                        UtenTotalEntry(
+                                          '赠品量',
+                                          exactMeasurementTotalsText(
+                                            rows
+                                                .where(
+                                                  (row) => row.goods != null,
+                                                )
+                                                .map(
+                                                  (row) => ExactMeasuredAmount(
+                                                    value: row.hasExtraGift
+                                                        ? (row.giftQty.text
+                                                                  .trim()
+                                                                  .isEmpty
+                                                              ? '0'
+                                                              : row
+                                                                    .giftQty
+                                                                    .text)
+                                                        : '0',
+                                                    unitId: row.unitId,
+                                                    unitName:
+                                                        names.unitEntries[row
+                                                            .unitId],
+                                                  ),
+                                                ),
+                                          ),
+                                        ),
+                                        UtenTotalEntry(
+                                          '实物量',
+                                          exactMeasurementTotalsText(
+                                            rows
+                                                .where(
+                                                  (row) => row.goods != null,
+                                                )
+                                                .map(
+                                                  (row) => ExactMeasuredAmount(
+                                                    value: row.physicalQtyText,
+                                                    unitId: row.unitId,
+                                                    unitName:
+                                                        names.unitEntries[row
+                                                            .unitId],
+                                                  ),
+                                                ),
+                                          ),
                                         ),
                                         UtenTotalEntry(
                                           utenAmountTotalLabel(

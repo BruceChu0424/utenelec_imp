@@ -504,7 +504,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                               ),
                               UtenFilterSegment<int?>(
                                 value: kFinanceStatusReversed,
-                                label: '红冲',
+                                label: '已反审',
                                 count:
                                     statusCounts?[DocumentStatusBucket
                                         .reversed],

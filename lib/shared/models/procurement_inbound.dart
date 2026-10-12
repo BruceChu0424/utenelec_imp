@@ -1,3 +1,6 @@
+import '../formatters/exact_decimal.dart';
+import 'historical_receipt_facts.dart';
+import 'procurement_quantity.dart';
 import 'inbound_allocation.dart';
 
 /// 到货任务在仓库流水线中的当前步骤（到货登记 → [超量待财务] → 送检 → 品质放行）。
@@ -62,6 +65,11 @@ class InboundExpectationItem {
     this.goodsStockPlace,
     this.unitPrice,
     this.expectedDate,
+    this.registeredQtyText,
+    this.remainingQtyText,
+    this.registeredGiftQtyText,
+    this.remainingGiftQtyText,
+    this.quantitySemantics,
     this.expectedAllocations = const [],
     this.lastReceiptWarehouseId,
     this.lastReceiptWarehouseName,
@@ -97,6 +105,11 @@ class InboundExpectationItem {
   /// 已登记待审核在途量（服务端按草稿未审收货单汇总）：审核通过后转入 acceptedQty。
   final num registeredQty;
   final String? expectedDate;
+  final String? registeredQtyText;
+  final String? remainingQtyText;
+  final String? registeredGiftQtyText;
+  final String? remainingGiftQtyText;
+  final String? quantitySemantics;
   final List<WarehouseInboundAllocation> expectedAllocations;
   final String? lastReceiptWarehouseId;
   final String? lastReceiptWarehouseName;
@@ -122,8 +135,22 @@ class InboundExpectationItem {
     return value > 0 ? value : 0;
   }
 
+  String? get effectiveRemainingQtyText => _recordedRemainder(
+    remainingQtyText ?? remainingQty.toString(),
+    registeredQtyText ?? registeredQty.toString(),
+  );
+  String? get effectiveRemainingGiftQtyText =>
+      quantitySemantics == procurementChargedPlusGiftQuantity
+      ? _recordedRemainder(remainingGiftQtyText, registeredGiftQtyText)
+      : '0';
+
   bool get canReceive =>
-      orderItemId.isNotEmpty && goodsId.isNotEmpty && effectiveRemainingQty > 0;
+      orderItemId.isNotEmpty &&
+      goodsId.isNotEmpty &&
+      (effectiveRemainingQty > 0 ||
+          (financeExactDecimalUnits(effectiveRemainingGiftQtyText) ??
+                  BigInt.zero) >
+              BigInt.zero);
 
   factory InboundExpectationItem.fromJson(Map<String, dynamic> json) {
     return InboundExpectationItem(
@@ -148,6 +175,11 @@ class InboundExpectationItem {
       remainingQty: _number(json['remainingQty']),
       registeredQty: _number(json['registeredQty']),
       expectedDate: _text(json['expectedDate']),
+      quantitySemantics: _text(json['quantitySemantics']),
+      registeredQtyText: receiptRecordedDecimal(json, 'registeredQty'),
+      remainingQtyText: receiptRecordedDecimal(json, 'remainingQty'),
+      registeredGiftQtyText: receiptRecordedDecimal(json, 'registeredGiftQty'),
+      remainingGiftQtyText: receiptRecordedDecimal(json, 'remainingGiftQty'),
       expectedAllocations: _allocationList(json['expectedAllocations']),
       lastReceiptWarehouseId: _text(json['lastReceiptWarehouseId']),
       lastReceiptWarehouseName: _text(json['lastReceiptWarehouseName']),
@@ -300,6 +332,9 @@ class InboundExpectation {
               unitRate: item.unitRate,
               unitPrice: item.unitPrice,
               approvedRemainingQty: item.effectiveRemainingQty,
+              approvedRemainingQtyText: item.effectiveRemainingQtyText,
+              approvedRemainingGiftQtyText: item.effectiveRemainingGiftQtyText,
+              quantitySemantics: item.quantitySemantics,
               expectedAllocations: item.expectedAllocations,
               allowedOverReceiptPct: item.allowedOverReceiptPct,
               maxReceivableQty: item.effectiveMaxReceivableQty,
@@ -385,6 +420,9 @@ class ProcurementReceiptPrefillItem {
     required this.unitRate,
     required this.approvedRemainingQty,
     this.lastReceiptWarehouseId,
+    this.quantitySemantics,
+    this.approvedRemainingGiftQtyText,
+    this.approvedRemainingQtyText,
     this.lastReceiptWarehouseName,
     this.goodsSeries,
     this.goodsStockPlace,
@@ -441,6 +479,9 @@ class ProcurementReceiptPrefillItem {
   /// 服务端审核时仍按订货明细权威重算，防客户端篡改。
   final num? unitPrice;
   final num approvedRemainingQty;
+  final String? quantitySemantics;
+  final String? approvedRemainingGiftQtyText;
+  final String? approvedRemainingQtyText;
   final List<WarehouseInboundAllocation> expectedAllocations;
   final String? lastReceiptWarehouseId;
   final String? lastReceiptWarehouseName;
@@ -896,4 +937,13 @@ Set<String> _actions(Object? value) {
 List<String> _texts(Object? value) {
   if (value is! List) return const <String>[];
   return value.map(_text).whereType<String>().toList(growable: false);
+}
+
+String? _recordedRemainder(String? remaining, String? registered) {
+  final value = financeExactSumTexts([
+    remaining,
+    financeExactMultiplyTexts(['-1', registered]),
+  ]);
+  if (value == null) return null;
+  return value.startsWith('-') ? '0' : financeExactTrimmed(value);
 }

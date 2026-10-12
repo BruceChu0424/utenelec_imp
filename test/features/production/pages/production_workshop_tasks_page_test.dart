@@ -1063,7 +1063,8 @@ void main() {
     expect(repository.calls.single.dateFrom, isNull);
     expect(repository.calls.single.dateTo, isNull);
     expect(find.text('已取消'), findsOneWidget);
-    expect(find.text('已红冲'), findsOneWidget);
+    expect(find.text('已撤回'), findsOneWidget);
+    expect(find.text('已红冲'), findsNothing);
 
     // 切回活动分类：时间门控行消失，请求不带日期。
     await selectFilterSegment(tester, '生产中');

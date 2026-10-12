@@ -146,7 +146,7 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
         // AuthSessionService compares expiry with the injected clock, not database now().
         assertEquals(1, jdbc.update(
                 "UPDATE auth_sessions SET step_up_expires_at=? WHERE step_up_token_hash=?",
-                Timestamp.from(clock.instant().minusSeconds(60)),
+                Timestamp.from(clock.instant().minusSeconds(1)),
                 com.uten.imp.common.util.HashUtil.sha256(proof)));
     }
 

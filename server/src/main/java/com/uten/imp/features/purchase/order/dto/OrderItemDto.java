@@ -10,8 +10,49 @@ import java.util.List;
 import java.util.UUID;
 
 @Getter
-@AllArgsConstructor
+
 public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputResponse {
+    @lombok.Setter private String quantitySemantics = "LEGACY_RECORDED";
+    @lombok.Setter private BigDecimal giftReceivedQty = BigDecimal.ZERO;
+    @lombok.Setter private BigDecimal giftReturnedQty = BigDecimal.ZERO;
+    @lombok.Setter private BigDecimal remainingGiftQty = BigDecimal.ZERO;
+
+    public OrderItemDto(UUID id, Integer lineNo, UUID goodsId, String goodsCodeSnapshot, String goodsNameSnapshot, String goodsSnapshotSource, OffsetDateTime goodsSnapshotLockedAt, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal qty, BigDecimal price, BigDecimal amountOriginal, BigDecimal amountLocal, BigDecimal receivedQty, BigDecimal returnedQty, BigDecimal giftQty, UUID requestItemId, LocalDate deliverDate, BigDecimal weight, String sourceDocNo, String productionPlanNo, String salesOrderNo, String remark, BigDecimal allowedOverReceiptPct, List<SourceRequestDoc> sourceRequests) {
+        this.id = id;
+        this.lineNo = lineNo;
+        this.goodsId = goodsId;
+        this.goodsCodeSnapshot = goodsCodeSnapshot;
+        this.goodsNameSnapshot = goodsNameSnapshot;
+        this.goodsSnapshotSource = goodsSnapshotSource;
+        this.goodsSnapshotLockedAt = goodsSnapshotLockedAt;
+        this.colorId = colorId;
+        this.unitId = unitId;
+        this.unitRate = unitRate;
+        this.qty = qty;
+        this.price = price;
+        this.amountOriginal = amountOriginal;
+        this.amountLocal = amountLocal;
+        this.receivedQty = receivedQty;
+        this.returnedQty = returnedQty;
+        this.giftQty = giftQty;
+        this.requestItemId = requestItemId;
+        this.deliverDate = deliverDate;
+        this.weight = weight;
+        this.sourceDocNo = sourceDocNo;
+        this.productionPlanNo = productionPlanNo;
+        this.salesOrderNo = salesOrderNo;
+        this.remark = remark;
+        this.allowedOverReceiptPct = allowedOverReceiptPct;
+        this.sourceRequests = sourceRequests;
+    }
+    public String getGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftQty);}
+    public String getReceivedQtyExact(){return com.uten.imp.common.util.DecimalText.of(receivedQty);}
+    public String getReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnedQty);}
+    public String getPhysicalQtyExact(){return com.uten.imp.common.finance.ProcurementQuantities.physicalText(quantitySemantics,qty,giftQty);}
+    public String getGiftReceivedQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftReceivedQty);}
+    public String getGiftReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftReturnedQty);}
+    public String getRemainingGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(remainingGiftQty);}
+
     private UUID id;
     private Integer lineNo;
     private UUID goodsId;

@@ -1176,10 +1176,16 @@ public class PreplanStockEntitlementService {
         }
     }
 
-    @Transactional(propagation = Propagation.MANDATORY)
-    public List<Formalization> listActiveFormalizations(
-            Collection<UUID> formalReservationIds, boolean forUpdate) {
-        tx.bind();
+    @Transactional(propagation=Propagation.MANDATORY)
+    public List<Formalization> listActiveFormalizations(Collection<UUID> formalReservationIds,boolean forUpdate){
+        return readActiveFormalizations(formalReservationIds,forUpdate,false);
+    }
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public List<Formalization> previewActiveFormalizationsAfterUnstartedRelease(Collection<UUID> formalReservationIds){
+        return readActiveFormalizations(formalReservationIds,false,true);
+    }
+    private List<Formalization> readActiveFormalizations(Collection<UUID> formalReservationIds,boolean forUpdate,boolean projectedRelease){
+        if(forUpdate)tx.bind();
         List<UUID> ids = formalReservationIds == null
                 ? List.of()
                 : formalReservationIds.stream()
@@ -1226,7 +1232,7 @@ public class PreplanStockEntitlementService {
             if (consumed.signum() > 0) {
                 throw conflict("已转正式的分析库存已经发料，不能恢复");
             }
-            if (released.compareTo(targetQty) < 0) {
+            if (released.compareTo(targetQty) < 0 && !(projectedRelease && released.signum()==0)) {
                 throw conflict("正式需求预留必须先释放，才能恢复库存");
             }
             result.add(new Formalization(

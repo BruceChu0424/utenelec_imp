@@ -36,6 +36,10 @@ class StockCountPolicyTest {
                 ApiException.class,
                 () -> StockCountPolicy.requireCountQuantity(
                         new BigDecimal("-0.0001"), 3));
+        assertThrows(ApiException.class,
+                () -> StockCountPolicy.requireCountQuantity(new BigDecimal("1.00005"), 4));
+        assertThrows(ApiException.class,
+                () -> StockCountPolicy.requireCountQuantity(new BigDecimal("100000000000000"), 5));
     }
 
     @Test

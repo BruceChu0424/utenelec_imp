@@ -14,6 +14,7 @@ import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/models/procurement_source_terms.dart';
 
 class _Doc {
   const _Doc(this.id, this.billNo, this.partyId);
@@ -33,6 +34,8 @@ class _Item {
 UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
   List<_Doc> docs = const [],
   Map<String, List<_Item>> details = const {},
+  Map<String, ProcurementSourceTerms> sourceTerms = const {},
+  Map<String, String>? gifts,
 }) {
   return UtenDocLinkPickerConfig<_Doc, _Item, Null>(
     step1Title: '从测试单引入',
@@ -56,6 +59,8 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
     loadDetail: (ref, docId) async => UtenDocLinkDetail<_Item>(
       partyId: 's1',
       items: details[docId] ?? const [],
+      docId: docId,
+      sourceTerms: sourceTerms[docId],
     ),
     itemFields: UtenDocLinkItemFields<_Item>(
       goodsId: (it) => it.goodsId,
@@ -77,6 +82,8 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
     unitName: (_, _) => '—',
     middleItemColumns: (_) => [],
     remainQty: (it) => it.remain,
+    remainQtyText: gifts == null ? null : (item) => item.remain.toString(),
+    remainGiftQtyText: gifts == null ? null : (item) => gifts[item.id],
     createBlankRow: () => UtenDocLinkItemRow<_Item>(const _Item('', '', 0, 0)),
   );
 }
@@ -132,6 +139,78 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  for (final terms in [
+    const ProcurementSourceTerms(
+      currencyId: 'usd',
+      exchangeRate: '7.123456',
+      taxRate: '13.120001',
+      settlementMethodId: 'monthly',
+    ),
+    const ProcurementSourceTerms(currencyId: 'usd'),
+  ]) {
+    testWidgets(
+      'gift-only source remains selectable after charged capacity reaches zero',
+      (tester) async {
+        final holder = <String, Object?>{};
+        await _openPanel(
+          tester,
+          _config(
+            docs: const [_Doc('gift-doc', 'GIFT-001', 's1')],
+            details: {
+              'gift-doc': const [_Item('gift-source', 'same-goods', 0, 0)],
+            },
+            gifts: const {'gift-source': '1.0001'},
+          ),
+          resultHolder: holder,
+        );
+        await _doubleTapRow(tester, find.text('GIFT-001'));
+        await tester.pump();
+        expect(find.text('货品-same-goods'), findsOneWidget);
+        await tester.tap(find.byType(Checkbox).first);
+        await tester.pump();
+        await tester.tap(find.text('引入'));
+        await tester.pumpAndSettle();
+        final result =
+            await (holder['result']! as Future<UtenDocLinkPickResult<_Item>?>);
+        expect(result!.items.single.qtyText, '0.0');
+        expect(result.items.single.giftQtyText, '1.0001');
+        expect(result.items.single.maxGiftQtyText, '1.0001');
+        expect(result.items.single.upstreamItemId, 'gift-source');
+      },
+    );
+
+    testWidgets(
+      'selected document carries its exact or masked source terms ${terms.exchangeRate}',
+      (tester) async {
+        final holder = <String, Object?>{};
+        await _openPanel(
+          tester,
+          _config(
+            docs: const [_Doc('source-1', 'CG-FX-001', 's1')],
+            details: const {
+              'source-1': [_Item('line-1', 'goods-1', 4, 2)],
+            },
+            sourceTerms: {'source-1': terms},
+          ),
+          resultHolder: holder,
+        );
+        await _doubleTapRow(tester, find.text('CG-FX-001'));
+        await tester.pump();
+        await tester.tap(find.byType(Checkbox).first);
+        await tester.pump();
+        await tester.tap(find.text('引入'));
+        await tester.pumpAndSettle();
+
+        final result =
+            await (holder['result'] as Future<UtenDocLinkPickResult<_Item>?>);
+        expect(result?.sourceDocId, 'source-1');
+        expect(result?.items.single.upstreamItemId, 'line-1');
+        expect(result?.items.single.qty, 2);
+        expect(result?.sourceTerms?.toJson(), terms.toJson());
+      },
+    );
+  }
+
   testWidgets('Step1 渲染单据行，双击进入 Step2 并预填剩余量', (tester) async {
     await _openPanel(
       tester,

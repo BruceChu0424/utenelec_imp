@@ -29,6 +29,8 @@ class AccountFlowLedgerServiceTest {
         Query locked = query();
         Query insertIncomingReversal = query();
         Query insertOutgoingReversal = query();
+        Query activeAccounts = query();
+        when(activeAccounts.getSingleResult()).thenReturn(2L);
         UUID sourceId = UUID.randomUUID();
         UUID incomingPostingId = UUID.randomUUID();
         UUID outgoingPostingId = UUID.randomUUID();
@@ -51,6 +53,7 @@ class AccountFlowLedgerServiceTest {
             String statement = invocation.getArgument(0);
             sql.add(statement);
             if (statement.contains("pg_advisory_xact_lock")) return advisory;
+            if (statement.contains("SELECT COUNT(*) FROM accounts")) return activeAccounts;
             if (statement.contains("UPDATE accounts")) {
                 Query restore = query();
                 when(restore.executeUpdate()).thenReturn(1);

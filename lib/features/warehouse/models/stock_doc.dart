@@ -5,6 +5,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_colors.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 
 enum StockDocType {
@@ -108,19 +110,27 @@ class StockDocItem {
     this.colorId,
     this.unitId,
     this.qty,
+    this.qtyText,
     this.reportedQty,
+    this.reportedQtyText,
     this.baseQty,
+    this.baseQtyText,
     this.price,
     this.amountLocal,
     this.weight,
     this.surplusQty,
+    this.surplusQtyText,
     this.countQty,
+    this.countQtyText,
     this.place,
     this.warehouseId,
     this.remark,
     this.issuedQty,
+    this.issuedQtyText,
     this.requestedQty,
+    this.requestedQtyText,
     this.unitRate,
+    this.unitRateText,
     this.upstreamItemId,
     this.executionSegmentId,
     this.executionSegmentSalesAllocationId,
@@ -138,8 +148,11 @@ class StockDocItem {
   final String? colorId;
   final String? unitId;
   final double? qty;
+  final String? qtyText;
   final double? reportedQty;
+  final String? reportedQtyText;
   final double? baseQty;
+  final String? baseQtyText;
   final double? price;
   final double? amountLocal;
 
@@ -162,13 +175,16 @@ class StockDocItem {
   /// 已出库重量里含估算 (显示「≈」)。
   final bool issuedWeightEstimated;
   final double? surplusQty;
+  final String? surplusQtyText;
   final double? countQty;
+  final String? countQtyText;
   final String? place;
 
   /// 行级仓库（V787 手工出入库单逐行选仓）；null = 沿用表头仓。
   final String? warehouseId;
   final String? remark;
   final double? unitRate;
+  final String? unitRateText;
   final String? upstreamItemId;
   final String? executionSegmentId;
   final String? executionSegmentSalesAllocationId;
@@ -177,13 +193,29 @@ class StockDocItem {
 
   /// 已出库量（仅 DRAW 领料行；qty−issuedQty=剩余可出）
   final double? issuedQty;
+  final String? issuedQtyText;
 
   /// 累计车间申请量，原需求仍保留在 qty。
   final double? requestedQty;
+  final String? requestedQtyText;
 
   /// 剩余可出数量（仅 DRAW）
   double get remainingQty =>
       ((requestedQty ?? qty ?? 0) - (issuedQty ?? 0)).clamp(0, double.infinity);
+
+  String? get remainingQtyText {
+    final requested =
+        requestedQtyText ??
+        requestedQty?.toString() ??
+        qtyText ??
+        qty?.toString();
+    final issued = issuedQtyText ?? issuedQty?.toString();
+    if (requested == null || issued == null) return null;
+    final negativeIssued = financeExactMultiplyTexts(['-1', issued]);
+    final difference = financeExactSumTexts([requested, negativeIssued]);
+    if (difference == null) return null;
+    return difference.startsWith('-') ? '0' : financeExactTrimmed(difference);
+  }
 
   factory StockDocItem.fromJson(Map<String, dynamic> json) => StockDocItem(
     id: json['id'] as String?,
@@ -192,19 +224,27 @@ class StockDocItem {
     colorId: json['colorId'] as String?,
     unitId: json['unitId'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
+    qtyText: receiptRecordedDecimal(json, 'qty'),
     reportedQty: (json['reportedQty'] as num?)?.toDouble(),
+    reportedQtyText: receiptRecordedDecimal(json, 'reportedQty'),
     baseQty: (json['baseQty'] as num?)?.toDouble(),
+    baseQtyText: receiptRecordedDecimal(json, 'baseQty'),
     price: (json['price'] as num?)?.toDouble(),
     amountLocal: (json['amountLocal'] as num?)?.toDouble(),
     weight: (json['weight'] as num?)?.toDouble(),
     surplusQty: (json['surplusQty'] as num?)?.toDouble(),
+    surplusQtyText: receiptRecordedDecimal(json, 'surplusQty'),
     countQty: (json['countQty'] as num?)?.toDouble(),
+    countQtyText: receiptRecordedDecimal(json, 'countQty'),
     place: json['place'] as String?,
     warehouseId: json['warehouseId'] as String?,
     remark: json['remark'] as String?,
     issuedQty: (json['issuedQty'] as num?)?.toDouble(),
+    issuedQtyText: receiptRecordedDecimal(json, 'issuedQty'),
     requestedQty: (json['requestedQty'] as num?)?.toDouble(),
+    requestedQtyText: receiptRecordedDecimal(json, 'requestedQty'),
     unitRate: (json['unitRate'] as num?)?.toDouble(),
+    unitRateText: receiptRecordedDecimal(json, 'unitRate'),
     upstreamItemId: json['upstreamItemId'] as String?,
     sourceDocNo: json['sourceDocNo'] as String?,
     executionSegmentId: json['executionSegmentId'] as String?,
@@ -444,7 +484,8 @@ class FinishedInLot {
 
 // 状态标签/色：0草稿/1已审/-1红冲，取色与采购单据列表同款（docStatusBadgeType：
 // 草稿灰/已审绿/红冲红，ADR-169），在两个列表/任务中心分段的状态列 cellColor 落地。
-String stockStatusLabel(int? s) => const {0: '草稿', 1: '已审', -1: '红冲'}[s] ?? '—';
+String stockStatusLabel(int? s) =>
+    const {0: '草稿', 1: '已审', -1: '已撤回'}[s] ?? '—';
 
 /// DRAW 出库进度标签（部分出库）
 String drawIssueStatusLabel(int? s) =>

@@ -64,7 +64,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.concurrency.verify-nested-footprint=false",
         "uten.workshop-material.auto-close.enabled=false", "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000"})
+})
 @Import(ProductionJdbcMeasurement.Configuration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @TestExecutionListeners(listeners = QualityAndDailyReportPerformancePostgresTest.Cleanup.class,

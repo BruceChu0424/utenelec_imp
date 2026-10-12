@@ -4,15 +4,8 @@
 // 商业条款，必须整套摆在人眼前让他核对，提交时整套校验、整套写进请求体。少一项，
 // 单据落地后就没人说得清这批货按什么价、什么汇率、什么税、什么账期结。
 //
-// 本文件两层断言，守的是同一条契约：
-//  1) 行为层(首选)：pump 编辑页，断言这套字段真的渲染出来、必填的标必填、
-//     不该有商业条款的单据(申请)一个都不给。控件换皮(DropdownButtonFormField
-//     → UtenDropdownField)不影响这层。
-//  2) 源码文本层(兜底)：提交前校验与请求体口径没有 widget 出口——要走完提交得先
-//     造货品明细行，代价过大——只能把源码当文本读。**重构这段代码时必须同步改下面
-//     的锚点**。断言前把空白归一化：换行/缩进变了不会假红，但「谁绑谁」改了会真红。
-import 'dart:io';
-
+// 本文件核对真实表头字段与必填口径。来源条款的只读、精确文本、草稿恢复及
+// 服务端派生请求体由 procurement_source_form_test.dart 的实际保存行为覆盖。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -75,40 +68,6 @@ void main() {
     expect(find.widgetWithText(TextField, '汇率'), findsNothing);
     expect(find.widgetWithText(TextField, '税率(%)'), findsNothing);
   });
-
-  test(
-    'purchase editor validates and submits the reviewed commercial snapshot',
-    () {
-      // 行尾归一化：源码可能被 IDE 以 CRLF 保存(2026-09-12 实遇)，断言按 LF 写。
-      // 再把连续空白压成单空格：断言只钉「谁绑谁」，不钉排版缩进(2026-09-16 实遇：
-      // 商业条款区被多包了一层，缩进从 38 列变 42 列，整条断言假红)。
-      final source = File(
-        'lib/features/purchase/pages/purchase_doc_edit_page.dart',
-      ).readAsStringSync().replaceAll('\r\n', '\n');
-      final flat = source.replaceAll(RegExp(r'\s+'), ' ');
-
-      // 提交前逐项校验：币种必选、汇率为正、税率落在 0..100。
-      expect(source, contains("context.appError('请选择币种')"));
-      expect(source, contains("context.appError('汇率必须大于 0')"));
-      expect(source, contains("context.appError('请选择结账方式')"));
-      expect(
-        flat,
-        contains('parsedTax == null || parsedTax < 0 || parsedTax > 100'),
-      );
-
-      // 请求体：整套条款随单提交；金额由服务端按 数量 × 单价 × 汇率 派生(ADR-112)，请求不带金额。
-      expect(flat, contains("'currencyId': _currencyId"));
-      expect(flat, contains("'exchangeRate': exchangeRate"));
-      expect(flat, contains("'taxRate': taxRate"));
-      expect(flat, contains("'settlementMethodId': _settlementMethodId"));
-      expect(flat, isNot(contains("'amountLocal'")));
-      expect(flat, isNot(contains("'amountOriginal'")));
-
-      // 表单绑定：币种下拉取币种字典、回写 _currencyId(即上面提交的那个字段)。
-      expect(flat, contains("'币种', _currencyId, names.currencyEntries"));
-      expect(source, contains("labelText: '税率(%)'"));
-    },
-  );
 }
 
 Finder _dropdownFinder(String label) => find.byWidgetPredicate(

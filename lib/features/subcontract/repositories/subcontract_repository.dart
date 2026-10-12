@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 委外单据仓库（8 单据统一，按 docType 切端点）。
 //
 // 端点 /api/subcontract/{inquiries|applications|orders|receipts|returns|material-issues|
@@ -71,6 +72,35 @@ class SubcontractRepository {
   String get pathSegment => type.pathSegment;
   String get _base => '/subcontract/$pathSegment';
   String _doc(String id) => '/subcontract/$pathSegment/$id';
+
+  Future<({String snapshot, SubcontractDocDetail detail})> review(
+    String id,
+  ) async {
+    final json = await api.get('${_doc(id)}/review');
+    return (
+      snapshot: json['snapshot'] as String,
+      detail: SubcontractDocDetail.fromJson(
+        json['detail'] as Map<String, dynamic>,
+      ),
+    );
+  }
+
+  Future<SubcontractDocDetail> saveReviewed(
+    String id,
+    Map<String, dynamic> document,
+    String expectedSnapshot, {
+    bool approveNow = true,
+  }) async {
+    final json = await api.post(
+      '${_doc(id)}/review',
+      body: {
+        'expectedSnapshot': expectedSnapshot,
+        'document': document,
+        'approveNow': approveNow,
+      },
+    );
+    return SubcontractDocDetail.fromJson(json);
+  }
 
   Future<PagedResult<SubcontractDocListItem>> list({
     int page = 1,
@@ -189,7 +219,16 @@ class SubcontractRepository {
   }
 
   Future<SubcontractDocDetail> reverse(String id) async {
-    final json = await api.post('${_doc(id)}/reverse');
+    final json = await unapproveDocument(api, switch (type) {
+      SubcontractDocType.order => 'subcontractOrder',
+      SubcontractDocType.receipt => 'subcontractReceipt',
+      SubcontractDocType.returnDoc => 'subcontractReturn',
+      SubcontractDocType.inquiry => 'subcontractInquiry',
+      SubcontractDocType.materialIssue => 'subcontractMaterialIssue',
+      SubcontractDocType.materialReturn => 'subcontractMaterialReturn',
+      SubcontractDocType.waste => 'subcontractWaste',
+      SubcontractDocType.application => 'subcontractApplication',
+    }, id);
     return SubcontractDocDetail.fromJson(json);
   }
 

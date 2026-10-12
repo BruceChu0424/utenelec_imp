@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
         "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
         "uten.workshop-material.auto-close.enabled=false","uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000",
+
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
         "uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",

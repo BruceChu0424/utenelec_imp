@@ -46,7 +46,7 @@ String financeStatusLabel(int? code) {
     case kFinanceStatusApproved:
       return '已审';
     case kFinanceStatusReversed:
-      return '红冲';
+      return '已反审';
     default:
       return '—';
   }
@@ -65,7 +65,7 @@ double? _financeDecimalDouble(Object? value) {
 }
 
 const financeLegacyReadOnlyMessage =
-    '历史资金记录仅供查询，不能编辑、删除、审核、红冲或再次核销；如需更正，请先核对原始凭证。';
+    '历史资金记录仅供查询，不能编辑、删除、审核、反审或再次核销；如需更正，请先核对原始凭证。';
 
 String financeReceiptKindLabel(String? value, {bool historical = false}) {
   final kind = value?.trim().toUpperCase();

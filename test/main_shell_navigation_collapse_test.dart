@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_content_container.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/shell/pages/main_shell_page.dart';
 import 'package:uten_imp/features/shell/widgets/floating_capsule_nav_bar.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
@@ -250,6 +251,10 @@ Future<GoRouter> _pumpShell(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('https://shell-test.invalid/api'),
+        platformBrandingSnapshotProvider.overrideWithValue(
+          PlatformBranding.defaults,
+        ),
         // The real bootstrap provides this before the shell can read branding
         // cached for its current server. Keep navigation tests equally booted.
         sharedPreferencesProvider.overrideWithValue(preferences),

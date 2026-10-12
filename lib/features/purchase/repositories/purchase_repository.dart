@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 采购单据仓库（4 单据统一，按 docType 切端点）。
 //
 // 端点 /api/purchase/{requests|orders|receipts|returns}（CRUD + /{id}/approve + /{id}/reverse）。
@@ -9,6 +10,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/procurement_commercial_terms.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../../shared/repositories/procurement_terms_loader.dart';
 import '../models/purchase_doc.dart';
 
@@ -95,6 +97,35 @@ class PurchaseRepository {
     return PurchaseDocDetail.fromJson(json);
   }
 
+  Future<({String snapshot, PurchaseDocDetail detail})> review(
+    String id,
+  ) async {
+    final json = await api.get('$_base/$id/review');
+    return (
+      snapshot: json['snapshot'] as String,
+      detail: PurchaseDocDetail.fromJson(
+        json['detail'] as Map<String, dynamic>,
+      ),
+    );
+  }
+
+  Future<PurchaseDocDetail> saveReviewed(
+    String id,
+    Map<String, dynamic> document,
+    String expectedSnapshot, {
+    bool approveNow = true,
+  }) async {
+    final json = await api.post(
+      '$_base/$id/review',
+      body: {
+        'expectedSnapshot': expectedSnapshot,
+        'document': document,
+        'approveNow': approveNow,
+      },
+    );
+    return PurchaseDocDetail.fromJson(json);
+  }
+
   Future<List<ProcurementDecompositionLine>> decompositionPreview(
     Iterable<String> itemIds,
   ) async {
@@ -112,12 +143,16 @@ class PurchaseRepository {
   Future<PurchaseDocDetail> adjustRequestItemQty({
     required String requestId,
     required String itemId,
-    required double qty,
+    required String qty,
     required int expectedVersion,
   }) async {
+    final exact = positiveDocumentQuantityText(qty);
+    if (exact == null || expectedVersion < 0) {
+      throw const FormatException('Quantity or expected version is invalid');
+    }
     final json = await api.put(
       '${ApiEndpoints.purchaseBase('requests')}/$requestId/items/$itemId/qty',
-      body: {'qty': qty, 'expectedVersion': expectedVersion},
+      body: {'qty': exact, 'expectedVersion': expectedVersion},
     );
     return PurchaseDocDetail.fromJson(json);
   }
@@ -192,9 +227,12 @@ class PurchaseRepository {
   }
 
   Future<PurchaseDocDetail> reverse(String id) async {
-    final json = await api.post(
-      ApiEndpoints.purchaseReverse(type.pathSegment, id),
-    );
+    final json = await unapproveDocument(api, switch (type) {
+      PurchaseDocType.order => 'purchaseOrder',
+      PurchaseDocType.receipt => 'purchaseReceipt',
+      PurchaseDocType.returnDoc => 'purchaseReturn',
+      PurchaseDocType.request => 'purchaseRequest',
+    }, id);
     return PurchaseDocDetail.fromJson(json);
   }
 }

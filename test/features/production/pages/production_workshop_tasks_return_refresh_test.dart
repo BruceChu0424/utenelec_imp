@@ -460,17 +460,22 @@ void main() {
 
         if (claim < 8000) {
           await openTaskDetail();
+          final remaining = find.byKey(
+            const ValueKey('workshop-detail-quantity-remaining'),
+          );
+          expect(
+            find.descendant(of: remaining, matching: find.text('待报工')),
+            findsOneWidget,
+          );
           expect(
             find.descendant(
-              of: find.byKey(
-                const ValueKey('workshop-detail-quantity-remaining'),
-              ),
+              of: remaining,
               matching: find.text('$expectedRemaining 件'),
             ),
             findsOneWidget,
           );
           expect(
-            find.textContaining('草稿待审核 ${claim.toStringAsFixed(0)}'),
+            find.text('草稿待审核 ${claim.toStringAsFixed(0)} 件'),
             findsOneWidget,
           );
           await tester.tap(find.text('关闭'));

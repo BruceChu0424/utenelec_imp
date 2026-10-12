@@ -216,8 +216,8 @@ class QualityInspectionRecord {
     'PENDING' => '待检',
     'PARTIAL' => '部分已决定',
     'RESOLVED' => '已结案',
-    'REVERSED' => '收货已红冲',
-    'CANCELLED' => '来源已红冲',
+    'REVERSED' => '收货已反审',
+    'CANCELLED' => '来源已撤回',
     _ => currentStatus,
   };
 
@@ -231,9 +231,9 @@ class QualityInspectionRecord {
     'REWORK' => '返工',
     'SCRAP' => '报废',
     'REJECT' => '拒收/退回',
-    'SOURCE_REPORT_REVERSED' => '来源报工红冲',
+    'SOURCE_REPORT_REVERSED' => '来源报工反审',
     'REGISTRATION_REVERSED' => '送检登记撤回',
-    'RECEIPT_REVERSED' => '收货红冲',
+    'RECEIPT_REVERSED' => '收货反审',
     null || '' => '—',
     _ => dispositionCode!,
   };

@@ -97,8 +97,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 || source.failedBase().signum() <= 0
                 || source.failedBase().compareTo(source.receivedBase()) > 0
                 || source.unitRate().signum() <= 0
-                || MoneyPolicy.quantity(source.receiptQty().multiply(source.unitRate()))
-                        .compareTo(MoneyPolicy.quantity(source.receivedBase())) != 0) {
+                || (source.frozenPhysicalBase() == null
+                        ? MoneyPolicy.quantity(source.receiptQty().multiply(source.unitRate()))
+                        : source.frozenPhysicalBase()).compareTo(MoneyPolicy.quantity(source.receivedBase())) != 0) {
             throw conflict("IQC失败数量、收货数量或单位换算对不上，请核对这批收货");
         }
         BigDecimal failedQty = MoneyPolicy.quantityShare(
@@ -243,18 +244,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         mutationLocks.requireReceiptCovered(type(rawReceiptType),receiptId);
         tx.bind();
         String receiptType = type(rawReceiptType);
-        long pendingProjection=((Number)em.createNativeQuery("""
-                SELECT COUNT(*) FROM business_outbox
-                WHERE event_type='PROCUREMENT_IQC_REJECTION_DETECTED'
-                  AND payload->>'receiptType'=:receiptType
-                  AND payload->>'receiptId'=:receiptId
-                  AND status<>1
-                """).setParameter("receiptType",receiptType)
-                .setParameter("receiptId",receiptId.toString())
-                .getSingleResult()).longValue();
-        if(pendingProjection!=0){
-            throw conflict("该收货还有IQC失败的财务记录待处理或待重试，不能红冲");
-        }
+        requireReceiptReversible(receiptType,receiptId);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT id,status,row_version,return_recorded_at
@@ -271,12 +261,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             String status = NativeValueConverters.text(row[1]);
             long version = ((Number) row[2]).longValue();
             if ("REVERSED".equals(status)) continue;
-            if (!Set.of("PENDING_RETURN","FINANCE_EXCEPTION").contains(status)) {
-                throw conflict("IQC不合格已登记实物退回或供应商贷项，请先反向该任务");
-            }
-            if("FINANCE_EXCEPTION".equals(status)&&row[3]!=null){
-                throw conflict("财务异常任务已登记实物退回，请先反向退回/补货事实");
-            }
+            requireReversibleCase(status,row[3]);
             int updated=em.createNativeQuery("""
                     UPDATE procurement_iqc_rejection_cases
                     SET status='REVERSED',row_version=row_version+1,
@@ -293,6 +278,38 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             publish(EVENT_REVERSED, caseId, receiptType, "REVERSED", version + 1,
                     "SOURCE_RECEIPT");
         }
+    }
+
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public void requireReceiptReversible(String rawReceiptType,UUID receiptId){
+        String receiptType=type(rawReceiptType);
+        long pendingProjection=((Number)em.createNativeQuery("""
+                SELECT COUNT(*) FROM business_outbox
+                WHERE event_type='PROCUREMENT_IQC_REJECTION_DETECTED'
+                  AND payload->>'receiptType'=:receiptType
+                  AND payload->>'receiptId'=:receiptId
+                  AND status<>1
+                """).setParameter("receiptType",receiptType)
+                .setParameter("receiptId",receiptId.toString())
+                .getSingleResult()).longValue();
+        if(pendingProjection!=0){
+            throw conflict("该收货还有IQC失败的财务记录待处理或待重试，不能红冲");
+        }
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows=em.createNativeQuery("""
+            SELECT status,return_recorded_at FROM procurement_iqc_rejection_cases
+            WHERE receipt_type=:type AND receipt_id=:id AND COALESCE(is_deleted,FALSE)=FALSE ORDER BY id
+            """).setParameter("type",receiptType).setParameter("id",receiptId).getResultList();
+        for(Object[] row:rows)if(!"REVERSED".equals(row[0]))requireReversibleCase((String)row[0],row[1]);
+    }
+    private static void requireReversibleCase(String status,Object returnRecordedAt){
+            if (!Set.of("PENDING_RETURN","FINANCE_EXCEPTION").contains(status)) {
+                throw conflict("IQC不合格已登记实物退回或供应商贷项，请先反向该任务");
+            }
+            if("FINANCE_EXCEPTION".equals(status)&&returnRecordedAt!=null){
+                throw conflict("财务异常任务已登记实物退回，请先反向退回/补货事实");
+            }
     }
 
     @Transactional(readOnly = true)
@@ -1119,18 +1136,22 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
 
     private Source lockSource(String receiptType, UUID receiptId, UUID inspectionItemId) {
         Tables table = tables(receiptType);
+        boolean purchase="PURCHASE".equals(receiptType);
+        String trancheQty=purchase?"CASE WHEN inspection.quantity_tranche='GIFT' THEN receipt_item.gift_qty ELSE receipt_item.qty END":"receipt_item.qty";
+        String frozenBase=purchase?"CASE WHEN receipt_item.quantity_semantics='CHARGED_PLUS_GIFT_V1' THEN CASE WHEN inspection.quantity_tranche='GIFT' THEN receipt_item.gift_base_qty ELSE receipt_item.charged_base_qty END END":"CAST(NULL AS numeric)";
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT inspection.receipt_item_id,inspection.received_base_qty,
                        inspection.failed_base_qty,inspection.status,
                        receipt_item.order_item_id,receipt_item.goods_id,receipt_item.color_id,
-                       receipt_item.unit_id,receipt_item.unit_rate,receipt_item.qty,
-                       receipt_item.amount_original,receipt_item.amount_local,
+                       receipt_item.unit_id,receipt_item.unit_rate,%s,
+                       CASE WHEN inspection.quantity_tranche='GIFT' THEN 0 ELSE receipt_item.amount_original END,
+                       CASE WHEN inspection.quantity_tranche='GIFT' THEN 0 ELSE receipt_item.amount_local END,
                        receipt_doc.bill_no,receipt_doc.total_original,receipt_doc.total_local,
                        receipt_doc.supplier_id,receipt_doc.currency_id,
                        receipt_doc.exchange_rate,receipt_doc.tax_rate,
                        receipt_doc.settlement_method_id,
-                       order_doc.bill_no,owner_user.id
+                       order_doc.bill_no,owner_user.id,%s,inspection.quantity_tranche
                 FROM procurement_inspection_items inspection
                 JOIN %s receipt_item ON receipt_item.id=inspection.receipt_item_id
                 JOIN %s receipt_doc ON receipt_doc.id=receipt_item.receipt_id
@@ -1150,7 +1171,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                   AND COALESCE(order_doc.is_deleted,FALSE)=FALSE
                 FOR UPDATE OF inspection,receipt_item,receipt_doc,order_item,order_doc
                 """.formatted(
-                        table.receiptItemTable(), table.receiptTable(),
+                        trancheQty,frozenBase,table.receiptItemTable(), table.receiptTable(),
                         table.orderItemTable(), table.orderTable()))
                 .setParameter("inspectionItemId", inspectionItemId)
                 .setParameter("receiptType", receiptType)
@@ -1183,7 +1204,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                 NativeValueConverters.toBigDecimal(row[9]), NativeValueConverters.toBigDecimal(row[10]), NativeValueConverters.toBigDecimal(row[11]), NativeValueConverters.text(row[12]),
                 NativeValueConverters.toBigDecimal(row[13]),NativeValueConverters.toBigDecimal(row[14]),NativeValueConverters.uuid(row[15]),NativeValueConverters.uuid(row[16]),
                 NativeValueConverters.toBigDecimal(row[17]),NativeValueConverters.toBigDecimal(row[18]),NativeValueConverters.uuid(row[19]),NativeValueConverters.text(row[20]),
-                NativeValueConverters.uuid(row[21]),sourceAps);
+                NativeValueConverters.uuid(row[21]),sourceAps,
+                row.length>22 && row[22]!=null?NativeValueConverters.toBigDecimal(row[22]):null,
+                row.length>23?NativeValueConverters.text(row[23]):"LEGACY");
     }
 
     private Projection projection(
@@ -1195,6 +1218,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     "IQC失败原币/本币金额零值形态不一致，需修复权威收货金额");
         }
         if(classified){
+            if("GIFT".equals(source.quantityTranche()) && (failedOriginal.signum()!=0 || failedLocal.signum()!=0))
+                return Projection.exception("GIFT_AMOUNT_NONZERO","赠品品质失败不能产生计价货款或贷项");
             var charge=consideration.payable(receiptType,receiptId);
             boolean chargeable=charge.original().signum()!=0||charge.local().signum()!=0;
             if(source.sourceAps().size()!=(chargeable?1:0)){
@@ -1211,6 +1236,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     return Projection.exception("SOURCE_AP_MISMATCH","应付身份或双币金额与冻结计款份额不一致");
                 }
             }
+            // Free physical stock has zero funding; a sibling charged part's AP
+            // must never be inherited merely because it shares the receipt line.
+            if("GIFT".equals(source.quantityTranche())) return new Projection("PENDING_RETURN",null,null,null);
             List<UUID> fundingAps=consideration.receipt(receiptType,receiptId).stream()
                     .filter(part->part.receiptItemId().equals(source.receiptItemId()))
                     .map(part->part.billingMode()==com.uten.imp.application.port.ProcurementReceiptConsiderationPort.BillingMode.NO_CHARGE
@@ -1765,7 +1793,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             BigDecimal receiptTotalOriginal,BigDecimal receiptTotalLocal,
             UUID supplierId, UUID currencyId, BigDecimal exchangeRate, BigDecimal taxRate,
             UUID settlementMethodId, String orderBillNo, UUID ownerUserId,
-            List<SourceAp> sourceAps) {
+            List<SourceAp> sourceAps,BigDecimal frozenPhysicalBase,String quantityTranche) {
     }
 
     private record Projection(

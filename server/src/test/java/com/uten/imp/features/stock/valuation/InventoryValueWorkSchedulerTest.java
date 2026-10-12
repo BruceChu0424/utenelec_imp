@@ -27,6 +27,33 @@ import static org.mockito.Mockito.when;
 class InventoryValueWorkSchedulerTest {
 
     @Test
+    void explicitlyDisabledPollingKeepsManualWorkAvailable() {
+        context("dev").withPropertyValues("uten.inventory.value-work.enabled=false").run(context -> {
+            assertThat(context).hasSingleBean(InventoryValueWorkService.class)
+                    .doesNotHaveBean(InventoryValueWorkScheduler.class);
+            AtomicInteger polls = context.getBean(AtomicInteger.class);
+            await().during(Duration.ofMillis(150)).atMost(Duration.ofSeconds(2))
+                    .untilAsserted(() -> assertThat(polls.get()).isZero());
+            assertThat(context.getBean(InventoryValueWorkService.class).runBatch()).isZero();
+            assertThat(polls.get()).isEqualTo(1);
+        });
+    }
+
+    @Test
+    void explicitOptInPollingStopsWhenItsOwnedContextCloses() {
+        AtomicInteger[] observed = new AtomicInteger[1];
+        context("dev").withPropertyValues("uten.inventory.value-work.enabled=true").run(context -> {
+            assertThat(context).hasSingleBean(InventoryValueWorkScheduler.class);
+            observed[0] = context.getBean(AtomicInteger.class);
+            await().atMost(Duration.ofSeconds(3))
+                    .untilAsserted(() -> assertThat(observed[0].get()).isPositive());
+        });
+        int pollsAtClose = observed[0].get();
+        await().during(Duration.ofMillis(150)).atMost(Duration.ofSeconds(2))
+                .untilAsserted(() -> assertThat(observed[0].get()).isEqualTo(pollsAtClose));
+    }
+
+    @Test
     void cloudKeepsTheRealWorkServiceInjectableWithoutPolling() {
         context("cloud").run(context -> {
             assertThat(context).hasSingleBean(InventoryValueWorkService.class)

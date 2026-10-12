@@ -433,7 +433,8 @@ public class ProductionExecutionReadinessService
         }
     }
 
-    private void unwindPromotedSegment(UUID segmentId) {
+    private record UnwindPlan(UUID packageId,List<UUID> demandIds,List<Object[]> reservations,List<UUID> drawIds,List<ReceiptAllocationRow> allocations){}
+    private UnwindPlan readUnwindPlan(UUID segmentId,boolean lock){
         List<Object[]> candidates = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT segment.package_id, segment.status
@@ -461,8 +462,8 @@ public class ProductionExecutionReadinessService
                           AND status = 'CONFIRMED'
                           AND execution_model_version = 1
                           AND is_deleted = FALSE
-                        FOR UPDATE
-                        """)
+                        %s
+                        """.formatted(lock?"FOR UPDATE":""))
                 .setParameter("packageId", packageId)
                 .getResultList();
         List<Object[]> segmentRows = NativeQueryResults.objectArrayRows(
@@ -472,8 +473,8 @@ public class ProductionExecutionReadinessService
                                 WHERE id = :segmentId
                                   AND package_id = :packageId
                                   AND is_deleted = FALSE
-                                FOR UPDATE
-                                """)
+                                %s
+                                """.formatted(lock?"FOR UPDATE":""))
                         .setParameter("segmentId", segmentId)
                         .setParameter("packageId", packageId));
         if (packageLock.size() != 1
@@ -483,7 +484,6 @@ public class ProductionExecutionReadinessService
             throw conflict(
                     "收货关联的执行分段已被并发修改或不再就绪");
         }
-        UUID actorId = currentUser.requireId();
 
         List<UUID> demandIds = NativeQueryResults.typedRows(em.createNativeQuery("""
                         SELECT id
@@ -492,8 +492,8 @@ public class ProductionExecutionReadinessService
                           AND is_deleted = FALSE
                           AND status NOT IN ('RELEASED', 'REVERSED')
                         ORDER BY goods_id, color_id NULLS FIRST, id
-                        FOR UPDATE
-                        """, UUID.class)
+                        %s
+                        """.formatted(lock?"FOR UPDATE":""), UUID.class)
                 .setParameter("segmentId", segmentId), UUID.class);
         if (demandIds.isEmpty()) {
             throw conflict(
@@ -511,8 +511,8 @@ public class ProductionExecutionReadinessService
                                 ORDER BY goods_id,
                                          color_id NULLS FIRST,
                                          supply_id, id
-                                FOR UPDATE
-                                """)
+                                %s
+                                """.formatted(lock?"FOR UPDATE":""))
                         .setParameter("demandIds", demandIds));
         if (reservations.isEmpty()
                 || reservations.stream().anyMatch(row ->
@@ -537,8 +537,8 @@ public class ProductionExecutionReadinessService
                                   AND header.execution_segment_id = :segmentId
                                   AND header.document_type = 'DRAW'
                                 ORDER BY header.document_id
-                                FOR UPDATE OF header, document
-                                """)
+                                %s
+                                """.formatted(lock?"FOR UPDATE OF header, document":""))
                         .setParameter("packageId", packageId)
                         .setParameter("segmentId", segmentId));
         if (draws.isEmpty()
@@ -559,8 +559,8 @@ public class ProductionExecutionReadinessService
                                 WHERE item.doc_id IN (:drawIds)
                                   AND item.is_deleted = FALSE
                                 ORDER BY item.id
-                                FOR UPDATE
-                                """)
+                                %s
+                                """.formatted(lock?"FOR UPDATE":""))
                         .setParameter("drawIds", drawIds));
         Object postings = em.createNativeQuery("""
                         SELECT COUNT(*)
@@ -597,8 +597,8 @@ public class ProductionExecutionReadinessService
                                   AND allocation.status = 'EFFECTIVE'
                                 ORDER BY allocation.order_peg_id,
                                          allocation.id
-                                FOR UPDATE OF allocation, peg
-                                """)
+                                %s
+                                """.formatted(lock?"FOR UPDATE OF allocation, peg":""))
                         .setParameter("segmentId", segmentId))
                 .forEach(row -> allocations.add(
                         new ReceiptAllocationRow(
@@ -624,8 +624,8 @@ public class ProductionExecutionReadinessService
                                   AND allocation.status = 'EFFECTIVE'
                                 ORDER BY allocation.order_peg_id,
                                          allocation.id
-                                FOR UPDATE OF allocation, peg
-                                """)
+                                %s
+                                """.formatted(lock?"FOR UPDATE OF allocation, peg":""))
                         .setParameter("segmentId", segmentId))
                 .forEach(row -> allocations.add(
                         new ReceiptAllocationRow(
@@ -651,8 +651,8 @@ public class ProductionExecutionReadinessService
                                   AND allocation.status = 'EFFECTIVE'
                                 ORDER BY allocation.supply_peg_id,
                                          allocation.id
-                                FOR UPDATE OF allocation, peg
-                                """)
+                                %s
+                                """.formatted(lock?"FOR UPDATE OF allocation, peg":""))
                         .setParameter("segmentId", segmentId))
                 .forEach(row -> allocations.add(
                         new ReceiptAllocationRow(
@@ -668,6 +668,35 @@ public class ProductionExecutionReadinessService
                     "收货关联的执行分段溯源信息不完整");
         }
 
+        Map<UUID,BigDecimal> totalByPeg=new LinkedHashMap<>();
+        allocations.forEach(row->totalByPeg.merge(row.pegId(),row.qty(),BigDecimal::add));
+        for(var entry:totalByPeg.entrySet()){
+            var balance=em.createNativeQuery("SELECT consumed_qty FROM production_material_supply_pegs WHERE id=:id")
+                .setParameter("id",entry.getKey()).getResultList();
+            if(balance.size()!=1||decimal(balance.getFirst()).compareTo(entry.getValue())<0)
+                throw conflict("收货关联的采购供给锚点已不足以完整回退");
+        }
+        return new UnwindPlan(packageId,demandIds,reservations,drawIds,allocations);
+    }
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public List<UUID> requireReceiptReversible(String type,UUID receiptId){
+        String table=switch(type){case "PURCHASE"->"production_material_receipt_allocations";case "SUBCONTRACT"->"production_material_subcontract_receipt_allocations";default->throw conflict("收货来源类型无效");};
+        var segments=NativeQueryResults.typedRows(em.createNativeQuery("""
+            SELECT DISTINCT demand.execution_segment_id FROM %s allocation
+            JOIN production_material_demands demand ON demand.id=allocation.demand_id
+            WHERE allocation.receipt_id=:id AND allocation.status='EFFECTIVE' AND demand.execution_segment_id IS NOT NULL
+            ORDER BY demand.execution_segment_id
+            """.formatted(table),UUID.class).setParameter("id",receiptId),UUID.class);
+        List<UUID> reservations=new ArrayList<>();
+        for(UUID segment:segments)reservations.addAll(readUnwindPlan(segment,false).reservations().stream().map(row->uuid(row[0])).toList());
+        return reservations.stream().distinct().sorted().toList();
+    }
+
+    private void unwindPromotedSegment(UUID segmentId) {
+        UnwindPlan plan=readUnwindPlan(segmentId,true);
+        UUID packageId=plan.packageId();List<UUID> demandIds=plan.demandIds();
+        List<Object[]> reservations=plan.reservations();List<UUID> drawIds=plan.drawIds();
+        List<ReceiptAllocationRow> allocations=plan.allocations();UUID actorId=currentUser.requireId();
         int demoted = em.createNativeQuery("""
                         UPDATE production_execution_segments
                         SET status = 'WAITING',

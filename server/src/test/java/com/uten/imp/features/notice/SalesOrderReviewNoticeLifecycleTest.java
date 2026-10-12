@@ -108,9 +108,9 @@ class SalesOrderReviewNoticeLifecycleTest {
                     .thenReturn(List.of(Map.of("bill_no", "XD-REVIEW", "owner_employee_id", employee)));
             when(jdbc.queryForObject(contains("SELECT finance_review_revision"), eq(Long.class), eq(order)))
                     .thenReturn(0L);
-            when(jdbc.queryForObject(contains("SELECT EXISTS(SELECT 1 FROM notices"), eq(Boolean.class),
-                    eq(order), eq(ChainNoticeService.EVENT_ORDER_PENDING_FINANCE), eq(userId)))
-                    .thenAnswer(call -> hasPendingCard);
+            when(jdbc.queryForList(contains("SELECT DISTINCT audience_user_id FROM notices"), eq(UUID.class),
+                    eq(order), eq(ChainNoticeService.EVENT_ORDER_PENDING_FINANCE)))
+                    .thenAnswer(call -> hasPendingCard ? List.of(userId) : List.of());
             when(notices.publishForUser(eq(userId), anyString(), anyString(), eq(ChainNoticeService.TYPE_APPROVAL),
                     anyString(), anyString(), eq(ChainNoticeService.EVENT_ORDER_PENDING_FINANCE), isNull(), eq(order)))
                     .thenAnswer(call -> { hasPendingCard = true; return null; });

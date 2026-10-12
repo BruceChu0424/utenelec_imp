@@ -74,6 +74,10 @@ public class SupplierPeriodIdentityGuard {
                 BusinessTime.today(), action);
     }
 
+    public void requireOpenTodayReadOnly(Identity identity,String action){
+        closedPeriodGuard.requireOpenReadOnly(identity.supplierId(),identity.currencyId(),BusinessTime.today(),action);
+    }
+
     public void requireUnchanged(
             UUID supplierId, UUID currencyId, LocalDate billDate, Identity identity) {
         if (!Objects.equals(supplierId, identity.supplierId())

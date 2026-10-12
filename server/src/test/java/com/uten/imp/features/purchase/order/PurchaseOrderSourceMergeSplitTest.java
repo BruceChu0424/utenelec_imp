@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -117,7 +117,7 @@ class PurchaseOrderSourceMergeSplitTest {
                 sql != null && sql.contains("FROM goods"))))
                 .thenReturn(masterQuery);
         when(masterQuery.setParameter(anyString(), any())).thenReturn(masterQuery);
-        when(masterQuery.getResultList()).thenReturn(List.<Object[]>of());
+        when(masterQuery.getResultList()).thenReturn(List.<Object[]>of(new Object[]{goodsId,goodsId,"G-MASTER","主档货品"}));
 
         // sources INSERT：捕获逐参数写入顺序。
         Query sourceInsert = mock(Query.class);
@@ -249,14 +249,14 @@ class PurchaseOrderSourceMergeSplitTest {
     }
 
     @Test
-    void missingAnchorStillRejectedBeforeSplit() {
+    void independentDepartmentOrderDoesNotInventARequestAllocation() {
         Wiring wiring = wire(BigDecimal.TEN, BigDecimal.TEN);
         OrderSaveRequest req = request(wiring, BigDecimal.TEN, wiring.sourceA());
         req.getItems().getFirst().setRequestItemId(null);
         req.getItems().getFirst().setRequestItemIds(null);
-        var error = assertThrows(
-                com.uten.imp.common.web.ApiException.class,
-                () -> wiring.service.create(req));
-        assertEquals("第 1 行必须关联采购申请明细", error.getMessage());
+        var document = wiring.service.create(req);
+        assertNull(document.getItems().getFirst().getRequestItemId());
+        assertEquals(BigDecimal.TEN, document.getItems().getFirst().getQty());
+        assertEquals(Map.of(), wiring.captured());
     }
 }

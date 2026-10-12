@@ -6,6 +6,7 @@ import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.application.port.PreplanPublicSupplyCapturePort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
+import com.uten.imp.common.finance.ProcurementQuantities;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.application.port.ProductionSupplyTransitionPort;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
@@ -236,7 +237,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public OrderDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -281,7 +282,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         List<Object[]> rows = com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                         SELECT src.order_item_id, src.request_item_id,
-                               request.bill_no, src.alloc_qty, request.id AS request_id
+                               request.bill_no, src.alloc_qty, request.id AS request_id, src.allocated_gift_qty
                         FROM purchase_order_item_sources src
                         JOIN purchase_request_items item ON item.id = src.request_item_id
                         LEFT JOIN purchase_requests request ON request.id = item.request_id
@@ -305,6 +306,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         var mutationGuard=lockOrderRequest(null,req);
         mutationGuard.verifyUnchanged();
         PurchaseOrder o = new PurchaseOrder();
+        o.setQuantitySemantics(ProcurementQuantities.EXTRA_GIFT);
         applyHeader(req, o);
         o.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户（报表按 maker_id 解析制单员）
         o.setStatus(STATUS_DRAFT);
@@ -524,6 +526,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         requireRowsMatchHeaderCommercial(req);
         requireHeaderSettlement(req);
         applyHeader(req, o);
+        if (req.isConfirmGiftSemantics()) o.setQuantitySemantics(ProcurementQuantities.EXTRA_GIFT);
         List<PurchaseOrderItem> previousItems = new ArrayList<>(itemRepo.findByOrderIdOrderByLineNoAsc(id));
         Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns = new java.util.IdentityHashMap<>();
         for (OrderItemLine line : req.getItems()) {
@@ -644,11 +647,6 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货明细不能为空");
         }
-        if (items.stream().anyMatch(item -> item.getRequestItemId() == null)) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "采购订货每一行都必须关联计划下达的采购申请明细");
-        }
         normalizePersistedItemUnits(items);
         requireActiveSettlementMethod(order.getSettlementMethodId(), "采购订货");
         ProcurementCommercialSnapshotPolicy.requireComplete(
@@ -669,13 +667,13 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             if (sources.isEmpty()) {
                 linkedLines.add(new com.uten.imp.common.integrity.LinkedDocumentIntegrityService.QuantityLinkedLine(
                         item.getRequestItemId(), item.getGoodsId(), item.getColorId(),
-                        item.getUnitId(), item.getUnitRate(), item.getQty()));
+                        item.getUnitId(), item.getUnitRate(), item.getQty().add(effectiveGift(item))));
                 continue;
             }
             for (Object[] source : sources) {
                 linkedLines.add(new com.uten.imp.common.integrity.LinkedDocumentIntegrityService.QuantityLinkedLine(
                         (UUID) source[1], item.getGoodsId(), item.getColorId(),
-                        item.getUnitId(), item.getUnitRate(), (BigDecimal) source[3]));
+                        item.getUnitId(), item.getUnitRate(), ((BigDecimal) source[3]).add(sourceGift(source))));
             }
         }
         sourceIntegrity.validatePurchaseOrder(linkedLines);
@@ -709,16 +707,18 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     continue;
                 }
                 sources = List.<Object[]>of(new Object[]{
-                        item.getId(), item.getRequestItemId(), null, item.getQty()});
+                        item.getId(), item.getRequestItemId(), null, item.getQty(), null, effectiveGift(item)});
             }
             for (Object[] source : sources) {
                 UUID requestItemId = (UUID) source[1];
                 em.createNativeQuery("""
                         UPDATE purchase_request_items
-                        SET ordered_qty = COALESCE(ordered_qty, 0) + :qty
+                        SET ordered_qty = COALESCE(ordered_qty, 0) + :qty,
+                            gift_ordered_qty = COALESCE(gift_ordered_qty, 0) + :giftQty
                         WHERE id = :id
                         """)
                         .setParameter("qty", (BigDecimal) source[3])
+                        .setParameter("giftQty", sourceGift(source))
                         .setParameter("id", requestItemId)
                         .executeUpdate();
                 closedRequestItems.add(requestItemId);
@@ -733,6 +733,27 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 PreplanPublicSupplyCapturePort.PURCHASE, id);
     }
 
+    @Transactional(readOnly = true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('purchase_order:view') and hasAuthority('purchase_order:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        PurchaseOrder order=requireOrder(id);
+        access.requireReadable(order.getMakerId(),"订货单不存在");
+        var items=itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        String facts=com.uten.imp.common.integrity.ProcurementOrderReversalPreflight.facts(em,"PURCHASE",id);
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("purchaseOrder",facts,()->{
+            access.requireWritable(order.getMakerId(),"只能操作本人负责的订货单");
+            if(order.getStatus()==null || order.getStatus()!=STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            requireOrderReversalInputs(id,items);
+        });
+    }
+
+    private void requireOrderReversalInputs(UUID id,List<PurchaseOrderItem> items) {
+        if(items.stream().anyMatch(it->positive(it.getReceivedQty()) || positive(it.getReturnedQty()) || positive(it.getGiftReceivedQty()) || positive(it.getGiftReturnedQty())))
+            throw new ApiException(ErrorCode.CONFLICT,"订货单已有收货或退货，请先撤销下游单据");
+
+        com.uten.imp.common.integrity.ProcurementOrderReversalPreflight.require(em,"PURCHASE",id);
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('purchase_order:reverse')")
     public OrderDetail reverse(UUID id) {
@@ -743,12 +764,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED)
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         mutationGuard.verifyUnchanged();
-        reviewCancellation.cancelUnclaimedPending(orderType(),id,"ORDER_REVERSED");
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
-        if (items.stream().anyMatch(it ->
-                positive(it.getReceivedQty()) || positive(it.getReturnedQty()))) {
-            throw new ApiException(ErrorCode.BUSINESS, "采购订货已有收货/退货记录，请先红冲下游单据");
-        }
+        requireOrderReversalInputs(id,items);
+        reviewCancellation.cancelUnclaimedPending(orderType(),id,"ORDER_REVERSED");
         Map<UUID, List<Object[]>> reverseSources = orderItemSources(
                 items.stream().map(PurchaseOrderItem::getId).toList());
         sourceIntegrity.lockPurchaseRequestItemsForReversal(
@@ -764,12 +782,14 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             List<Object[]> sources = reverseSources.getOrDefault(it.getId(), List.of());
             if (sources.isEmpty()) {
                 sources = List.<Object[]>of(new Object[]{
-                        it.getId(), it.getRequestItemId(), null, it.getQty()});
+                        it.getId(), it.getRequestItemId(), null, it.getQty(), null, effectiveGift(it)});
             }
             for (Object[] source : sources) {
                 em.createNativeQuery(
-                        "UPDATE purchase_request_items SET ordered_qty = COALESCE(ordered_qty,0) - :q WHERE id = :id")
+                        "UPDATE purchase_request_items SET ordered_qty = COALESCE(ordered_qty,0) - :q, "
+                                + "gift_ordered_qty = COALESCE(gift_ordered_qty,0) - :giftQty WHERE id = :id")
                         .setParameter("q", (BigDecimal) source[3])
+                        .setParameter("giftQty", sourceGift(source))
                         .setParameter("id", (UUID) source[1])
                         .executeUpdate();
                 reopenedRequestItems.add((UUID) source[1]);
@@ -791,6 +811,36 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     public boolean isFinanceApproved(UUID id) {
         PurchaseOrder order = requireOrderForUpdate(id);
         return order.getStatus() != null && order.getStatus() == STATUS_APPROVED;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public OrderSnapshot amendFinanceReview(UUID id, List<ProcurementOrderApprovalPort.ReviewAmountEdit> edits) {
+        com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireEdits(edits);
+        PurchaseOrder order = requireOrderForUpdate(id);
+        if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.CONFLICT, "仅待生效草稿可在审核中修改金额；已有下游事实请先反审");
+        }
+        List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        Map<UUID, PurchaseOrderItem> byId = items.stream().collect(java.util.stream.Collectors.toMap(PurchaseOrderItem::getId, java.util.function.Function.identity()));
+        for (var edit : edits) {
+            PurchaseOrderItem item = byId.get(edit.itemId());
+            if (item == null) throw new ApiException(ErrorCode.CONFLICT, "审核修改明细不属于当前订货单");
+            com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireSamePricingMode(edit, item.getTotalAmountInput());
+            BigDecimal price = com.uten.imp.common.finance.FinanceReviewAmountPolicy.price(edit, item.getQty());
+            item.setPrice(price);
+            item.setTotalAmountInput(edit.totalAmountInput());
+            BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    MoneyPolicy.orderBaseAmount(item.getQty(), price, edit.totalAmountInput()), item.getExtraColumns());
+            item.setAmountOriginal(original);
+            item.setAmountLocal(MoneyPolicy.local(original, order.getExchangeRate()));
+            itemRepo.save(item);
+        }
+        recalcOrderTotals(order, items);
+        orderRepo.save(order);
+        itemRepo.flush();
+        orderRepo.flush();
+        return lockAndValidateFinanceSubmission(id);
     }
 
     @Override
@@ -1004,7 +1054,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         BigDecimal totalOriginal = BigDecimal.ZERO;
         BigDecimal totalLocal = BigDecimal.ZERO;
         for (PurchaseOrderItem item : items) {
-            if (item.getQty() == null || item.getQty().signum() <= 0
+            ProcurementQuantities.of(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
+            if (!java.util.Objects.equals(order.getQuantitySemantics(),item.getQuantitySemantics()))
+                throw new ApiException(ErrorCode.CONFLICT,"采购订货数量语义与表头不一致");
+            if (item.getQty() == null || item.getQty().signum() < 0
                     || item.getPrice() == null || item.getPrice().signum() < 0
                     || item.getAmountOriginal() == null
                     || item.getAmountOriginal().signum() < 0
@@ -1020,6 +1073,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     && item.getPrice().compareTo(MoneyPolicy.referenceUnitPrice(item.getTotalAmountInput(), item.getQty())) != 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "参考单价与总金额、数量不一致");
             }
+            if(item.getQty().signum()==0 && expectedOriginal.signum()!=0)
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"赠品明细不得产生货款");
             BigDecimal expectedLocal = MoneyPolicy.local(expectedOriginal, rate);
             if (money(item.getAmountOriginal()).compareTo(expectedOriginal) != 0
                     || money(item.getAmountLocal()).compareTo(expectedLocal) != 0) {
@@ -1072,7 +1127,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                                 item.getAmountOriginal(),
                                 item.getAmountLocal(),
                                 item.getDeliverDate(), item.getTotalAmountInput(),
-                                item.getAllowedOverReceiptPct()))
+                                item.getAllowedOverReceiptPct(), effectiveGift(item), item.getQuantitySemantics()))
                         .toList());
     }
 
@@ -1149,16 +1204,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         for (int index = 0; index < lines.size(); index++) {
             OrderItemLine line = lines.get(index);
             int lineNo = line.getLineNo() != null ? line.getLineNo() : index + 1;
-            if (line.getRequestItemId() == null) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED,
-                        "第 " + lineNo + " 行必须关联采购申请明细");
-            }
-            if (line.getQty() == null || line.getQty().signum() <= 0) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED,
-                        "第 " + lineNo + " 行数量必须大于 0");
-            }
+            ProcurementQuantities.of(o.getQuantitySemantics(), line.getQty(), line.getGiftQty(), line.getUnitRate());
+            com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(line.getGiftQty(), "第 " + lineNo + " 行赠品数量");
         }
         // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
         //（末位来源吸收超额），request_item_id 落首来源（主锚点）。
@@ -1190,7 +1237,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     lineUnitPolicy.normalizeAndValidate(
                             l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
             List<SourceSplit> lineSplits = splits.getOrDefault(l, List.of());
-            UUID primarySource = lineSplits.getFirst().requestItemId();
+            UUID primarySource = lineSplits.isEmpty() ? null : lineSplits.getFirst().requestItemId();
             PurchaseOrderItem it = new PurchaseOrderItem();
             it.setOrderId(o.getId());
             it.setBillNo(o.getBillNo());
@@ -1209,9 +1256,15 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
+            it.setQuantitySemantics(o.getQuantitySemantics());
             it.setQty(l.getQty());
             BigDecimal totalInput = MoneyPolicy.totalAmountInput(l.getTotalAmountInput());
-            BigDecimal price = totalInput == null
+            if (l.getQty().signum() == 0) {
+                if ((totalInput != null && totalInput.signum() != 0) || (l.getPrice() != null && l.getPrice().signum() != 0))
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED,"仅赠品明细的单价和总金额必须为零");
+                totalInput = null;
+            }
+            BigDecimal price = l.getQty().signum() == 0 ? BigDecimal.ZERO : totalInput == null
                     ? (l.getPrice() == null ? null : com.uten.imp.common.util.FinancialExactAmount.unitPrice(l.getPrice(), "单价"))
                     : MoneyPolicy.referenceUnitPrice(totalInput, l.getQty());
             it.setTotalAmountInput(totalInput);
@@ -1225,6 +1278,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                     MoneyPolicy.orderBaseAmount(l.getQty(), price, totalInput), it.getExtraColumns());
             MoneyPolicy.LineAmounts amounts = new MoneyPolicy.LineAmounts(original,
                     original == null || headerRate == null ? null : MoneyPolicy.local(original, headerRate));
+            if (l.getQty().signum()==0 && (amounts.original()==null || amounts.original().signum()!=0))
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"仅赠品明细不能产生货款或扩展收费");
             it.setAmountOriginal(amounts.original());
             it.setAmountLocal(amounts.local());
             it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
@@ -1233,7 +1288,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
             // 谱系继承：优先取首来源申请行的计划号/销售单号/需求日（客户端不传也不丢溯源）。
-            Object[] lineage = requestLineage.get(primarySource);
+            Object[] lineage = primarySource == null ? null : requestLineage.get(primarySource);
             if (lineage != null) {
                 if (it.getSourceDocNo() == null || it.getSourceDocNo().isBlank()) {
                     it.setSourceDocNo((String) lineage[0]);
@@ -1248,15 +1303,17 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             itemRepo.save(it);
             itemRepo.flush();
             int sourceLine = 1;
+            List<BigDecimal> giftSplits = allocateGifts(lineSplits, l.getQty(), effectiveGift(it));
             for (SourceSplit split : lineSplits) {
                 em.createNativeQuery("""
                         INSERT INTO purchase_order_item_sources (
-                            order_item_id, request_item_id, alloc_qty, line_no, created_by)
-                        VALUES (:orderItemId, :requestItemId, :allocQty, :lineNo, :actorId)
+                            order_item_id, request_item_id, alloc_qty, allocated_gift_qty, line_no, created_by)
+                        VALUES (:orderItemId, :requestItemId, :allocQty, :giftQty, :lineNo, :actorId)
                         """)
                         .setParameter("orderItemId", it.getId())
                         .setParameter("requestItemId", split.requestItemId())
                         .setParameter("allocQty", split.allocQty())
+                        .setParameter("giftQty", giftSplits.get(sourceLine - 1))
                         .setParameter("lineNo", sourceLine++)
                         .setParameter("actorId", actorId)
                         .executeUpdate();
@@ -1269,6 +1326,30 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
 
     /** V463 合并行来源分配结果：requestItemId + 归属本行的数量份额。 */
     record SourceSplit(UUID requestItemId, BigDecimal allocQty) {}
+
+    private static BigDecimal effectiveGift(PurchaseOrderItem item) {
+        return ProcurementQuantities.isExtraGift(item.getQuantitySemantics())
+                ? (item.getGiftQty()==null?BigDecimal.ZERO:item.getGiftQty()) : BigDecimal.ZERO;
+    }
+
+    private static BigDecimal sourceGift(Object[] source) {
+        return source.length>5 && source[5]!=null ? (BigDecimal)source[5] : BigDecimal.ZERO;
+    }
+
+    /** Per-source free quantity follows the paid allocation; the last source retains every remainder. */
+    static List<BigDecimal> allocateGifts(List<SourceSplit> sources, BigDecimal charged, BigDecimal gift) {
+        if(sources.isEmpty()) return List.of(); // An explicitly manual order owns no upstream shares.
+        BigDecimal remaining=gift;
+        List<BigDecimal> out=new ArrayList<>(sources.size());
+        for(int index=0;index<sources.size();index++) {
+            BigDecimal allocation=index==sources.size()-1 ? remaining
+                    : charged.signum()==0 ? BigDecimal.ZERO
+                    : gift.multiply(sources.get(index).allocQty()).divide(charged,4,java.math.RoundingMode.DOWN);
+            out.add(allocation);
+            remaining=remaining.subtract(allocation);
+        }
+        return List.copyOf(out);
+    }
 
     /**
      * 同货品合并行的来源 FIFO 拆分：按各申请行当前剩余量
@@ -1323,6 +1404,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             stableOrder.add(id);
         }
         for (OrderItemLine line : lines) {
+            if (line.resolvedRequestItemIds().isEmpty()) {
+                result.put(line, List.of());
+                continue;
+            }
             List<UUID> ordered = line.resolvedRequestItemIds().stream()
                     .sorted(java.util.Comparator.comparing(
                             id -> stableOrder.contains(id)
@@ -1349,7 +1434,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             }
             if (splits.isEmpty()) {
                 // 全部来源剩余量为 0 的极端退化：首来源承接全量（超采口径）。
-                splits.add(new SourceSplit(line.getRequestItemId(), line.getQty()));
+                splits.add(new SourceSplit(line.resolvedRequestItemIds().getFirst(), line.getQty()));
             }
             result.put(line, splits);
         }
@@ -1493,6 +1578,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 it.getRequestItemId(), it.getDeliverDate(), it.getWeight(), it.getSourceDocNo(),
                 it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark(),
                 it.getAllowedOverReceiptPct(), sourceRequests);
+        dto.setQuantitySemantics(it.getQuantitySemantics());
+        dto.setGiftReceivedQty(it.getGiftReceivedQty());
+        dto.setGiftReturnedQty(it.getGiftReturnedQty());
+        dto.setRemainingGiftQty(effectiveGift(it).subtract(it.getGiftReceivedQty()).add(it.getGiftReturnedQty()));
         dto.setTotalAmountInput(it.getTotalAmountInput());
         dto.setExtraColumns(it.getExtraColumns());
         return dto;
@@ -1537,7 +1626,9 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 approval,
                 sourceRequest == null ? null : sourceRequest.id(),
                 sourceRequest == null ? null : sourceRequest.billNo(),
-                priceMasked);
+                priceMasked,
+                priceMasked || order.getStatus()!=STATUS_APPROVED || order.getExchangeRate()==null || order.getExchangeRate().signum()<=0 ? null :
+                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(em,"PURCHASE",order.getId(),order.getExchangeRate()).rate());
     }
 
     private boolean purchasePriceMasked() {
@@ -1553,6 +1644,10 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 it.getGiftQty(), it.getRequestItemId(), it.getDeliverDate(), it.getWeight(),
                 it.getSourceDocNo(), it.getProductionPlanNo(), it.getSalesOrderNo(), it.getRemark(),
                 it.getAllowedOverReceiptPct(), it.getSourceRequests());
+        dto.setQuantitySemantics(it.getQuantitySemantics());
+        dto.setGiftReceivedQty(it.getGiftReceivedQty());
+        dto.setGiftReturnedQty(it.getGiftReturnedQty());
+        dto.setRemainingGiftQty(it.getRemainingGiftQty());
         dto.setExtraColumns(com.uten.imp.common.columns.BusinessColumnService.visible(it.getExtraColumns(), true));
         return dto;
     }

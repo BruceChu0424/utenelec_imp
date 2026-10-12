@@ -55,10 +55,14 @@ abstract class InventoryValueLedger {
     }
 
     protected Node requireBefore(Pool pool, BigDecimal expected) {
+        return requireBefore(pool, expected, true);
+    }
+
+    protected Node requireBefore(Pool pool, BigDecimal expected, boolean lock) {
         Balance actual=balance(pool.key());
         if(actual.rows()>1 || actual.qty().compareTo(expected)!=0)throw conflict("库存数量已变化，请按锁内最新数量重新提交");
         if(pool.headId()==null){if(!actual.empty())throw conflict("非空库存缺少已核定价值基准");return null;}
-        Node head=node(pool.headId(),true);
+        Node head=node(pool.headId(),lock);
         if(!head.active() || !"POOL".equals(head.kind()) || head.qty().compareTo(expected)!=0
                 || actual.amount()==null || head.value().compareTo(actual.amount())!=0)
             throw conflict("库存数量/已记录金额与价值池不一致，必须先核对");

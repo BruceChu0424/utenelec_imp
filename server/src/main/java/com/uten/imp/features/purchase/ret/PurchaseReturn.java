@@ -15,6 +15,8 @@ import java.util.UUID;
 /** 采购退货单主表（采购管理）。源 P_Withdraw。审核→库存出库；红冲→入库冲销。 */
 @Getter @Setter @NoArgsConstructor @Entity @Table(name = "purchase_returns")
 public class PurchaseReturn extends SoftDeletableEntity {
+    @jakarta.persistence.Column(name="quantity_semantics")
+    private String quantitySemantics = "LEGACY_RECORDED";
     @Column(name = "legacy_id", unique = true) private Integer legacyId;
     @Column(name = "bill_no", nullable = false) private String billNo;
     @Column(name = "bill_date", nullable = false) private LocalDate billDate;

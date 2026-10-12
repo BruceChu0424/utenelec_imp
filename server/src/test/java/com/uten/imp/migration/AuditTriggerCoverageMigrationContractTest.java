@@ -86,6 +86,8 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** FULL: 整行审计(INSERT/DELETE 存整行, UPDATE 只存变化键)。分组即理由, 分组内每张表同一理由。 */
     static final List<FullGroup> FULL = List.of(
+            new FullGroup("document_unapprovals", "data_change", false,
+                    "反审的原审核与后续草稿关系及原因是永久审计事实", Set.of("document_unapprovals")),
             new FullGroup("authorization", "authorization", false,
                     "账号、权限点、授权覆盖与数据范围: 谁能做什么的唯一事实, 每次变化都要能还原前后值(角色四表已随 V677 删除)",
                     Set.of(
@@ -432,6 +434,7 @@ class AuditTriggerCoverageMigrationContractTest {
                         "procurement_order_source_revision_allocations",
                         "procurement_order_source_revision_peg_changes",
                         "procurement_order_source_revisions",
+                        "purchase_request_qty_revisions",
                         "procurement_receipt_consideration_parts",
                         "production_daily_report_material_release_events",
                         "production_overproduction_rate_decisions", "production_actual_output_supplement_proofs",

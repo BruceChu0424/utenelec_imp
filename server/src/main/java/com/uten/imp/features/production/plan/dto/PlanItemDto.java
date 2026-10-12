@@ -68,4 +68,13 @@ public class PlanItemDto {
     private BigDecimal allowedOverproductionRate;
     /** DEFAULT = 系统按货品默认填写；EXPLICIT = 有人确认过(ADR-129 §2.10)。 */
     private String allowedOverproductionRateSource;
+
+    /** Lossless quantity edit round-trip alongside legacy numeric response values. */
+    public String getQtyExact() { return exactQuantityText(qty); }
+    public String getOqtyExact() { return exactQuantityText(oqty); }
+    public String getUnitRateExact() { return exactQuantityText(unitRate); }
+    private static String exactQuantityText(BigDecimal value) {
+        return value == null ? null : value.stripTrailingZeros().toPlainString();
+    }
+
 }

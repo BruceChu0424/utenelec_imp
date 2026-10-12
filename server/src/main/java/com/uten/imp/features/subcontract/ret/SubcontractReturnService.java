@@ -76,6 +76,12 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SubcontractReturnService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper reviewJson;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<SubcontractReturnService> reviewedDraftProxy;
+
+
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
@@ -95,6 +101,11 @@ public class SubcontractReturnService {
     /** 列排序白名单：前端列 key → JPA 实体属性名（日期/金额/单据号可排序；命中才排序，否则默认 billDate DESC）。
      *  2026-09-25 单号列统一：billNo 进白名单（价格遮蔽分支见 list）。 */
     private static final Map<String, String> ALLOWED_SORT = Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo");
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.InventoryPositionPort unapprovalPositions;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.InventoryValuationPort unapprovalValues;
 
     private final SubcontractReturnRepository returnRepo;
     private final SubcontractReturnItemRepository itemRepo;
@@ -169,7 +180,7 @@ public class SubcontractReturnService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
     public ReturnDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -205,8 +216,10 @@ public class SubcontractReturnService {
 
     /** Preserve the business prefix, header lock and source check before the field snapshot. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    @PreAuthorize("hasAuthority('subcontract_return:edit')")
+    @PreAuthorize("hasAuthority('subcontract_return:edit') or (hasAuthority('subcontract_return:view') and hasAuthority('subcontract_return:approve'))")
     public void lockPlatformColumnSave(UUID id, ReturnSaveRequest request) {
+        if (!access.hasAuthority("subcontract_return:edit") && !com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("subcontract_return_item", id, currentUser.requireId()))
+            throw new ApiException(ErrorCode.FORBIDDEN);
         tx.bind();
         var guard = lockReturnRequest(id, request);
         requireReturnForUpdate(id);
@@ -217,10 +230,57 @@ public class SubcontractReturnService {
     @PreAuthorize("hasAuthority('subcontract_return:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_return_item", requestArgument=1, documentIdArgument=0)
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
+        return updateDraft(id, req, false, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('subcontract_return:view') and hasAuthority('subcontract_return:approve')")
+    public com.uten.imp.common.review.DocumentDraftReview.View<ReturnDetail> review(UUID id) {
+        tx.bind();
+        var guard = mutationLocks.productReturn("SUBCONTRACT", id);
+        SubcontractReturn r = requireReturnForUpdate(id);
+        guard.verifyUnchanged();
+        com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_return");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
+        if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
+            throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
+        return new com.uten.imp.common.review.DocumentDraftReview.View<>(com.uten.imp.common.review.DocumentDraftReview.snapshot(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id), detail(id));
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('subcontract_return:view') and hasAuthority('subcontract_return:approve')")
+    public ReturnDetail updateReviewed(UUID id, ReturnSaveRequest req, String expectedSnapshot, boolean approveNow) {
+        review(id);
+        com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id, expectedSnapshot);
+        com.uten.imp.common.review.ProcurementPhysicalReview.constrain(em, reviewJson, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id, req);
+        ReturnDetail saved;
+        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("subcontract_return_item", id, currentUser.requireId())) {
+            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
+        }
+        if (!approveNow) return saved;
+        return approveReturn(id, true);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('subcontract_return:view') and hasAuthority('subcontract_return:approve')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_return_item", requestArgument=1, documentIdArgument=0)
+    public ReturnDetail saveReviewedDraft(UUID id, ReturnSaveRequest req, String expectedSnapshot) {
+        if (!com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("subcontract_return_item", id, currentUser.requireId()))
+            throw new ApiException(ErrorCode.FORBIDDEN);
+        ReturnDetail result = updateDraft(id, req, true, expectedSnapshot);
+        em.flush();
+        return result;
+    }
+
+    private ReturnDetail updateDraft(UUID id, ReturnSaveRequest req, boolean reviewed, String expectedSnapshot) {
         tx.bind();
         var mutationGuard=lockReturnRequest(id,req);
         SubcontractReturn r = requireReturnForUpdate(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
+        if (reviewed) {
+            com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_return");
+            com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id, expectedSnapshot);
+            com.uten.imp.common.review.ProcurementPhysicalReview.constrain(em, reviewJson, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id, req);
+        } else access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -261,7 +321,9 @@ public class SubcontractReturnService {
      */
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_return:approve')")
-    public ReturnDetail approve(UUID id) {
+    public ReturnDetail approve(UUID id) { return approveReturn(id, false); }
+
+    private ReturnDetail approveReturn(UUID id, boolean reviewed) {
         tx.bind();
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
@@ -272,7 +334,8 @@ public class SubcontractReturnService {
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
+        if (reviewed) com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_return");
+        else access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
@@ -362,6 +425,67 @@ public class SubcontractReturnService {
     }
 
     /** 红冲：1→-1。先 reverseArAp（已核销则抛错）→ 反向 DIR_IN + 回减 returned_qty + ap_posted=false。 */
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('subcontract_return:view')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id){
+        detail(id);var r=requireReturn(id);
+        return com.uten.imp.common.finance.ProcurementUnapprovalPreflight.evaluate(em,"subcontractReturn","subcontract_returns",id,"subcontract_return:reverse",()->unapprovalDependencyFacts(id),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOCUMENT_REVERSE_BLOCKED",()->requireUnapprovalHeader(r)),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("SUPPLIER_PERIOD_CLOSED",()->periodIdentityGuard.requireOpenTodayReadOnly(periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN,id),"委外退货反审")),
+            com.uten.imp.common.finance.ProcurementUnapprovalPreflight.check("DOWNSTREAM_OR_COST_BLOCKED",()->requireReversibleBusiness(r)));
+    }
+    private void requireUnapprovalHeader(SubcontractReturn r){
+        access.requireWritable(r.getMakerId(),"只能操作本人负责的委外退货单");
+        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
+        if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+    }
+    private void requireReversibleBusiness(SubcontractReturn r){UUID id=r.getId();
+        var items=itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        requireReversibleArAp(id,StockService.SRC_SUBCONTRACT_RETURN);
+        arApService.requireReturnCostProjectionReversible(id,StockService.SRC_SUBCONTRACT_RETURN,r.getBillNo(),r.getBillDate());
+        List<com.uten.imp.application.port.InventoryValuationPort.IssueReturnSource> sources=new java.util.ArrayList<>();
+        for(var item:items){
+            var original=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT id,warehouse_id,goods_id,color_id,qty FROM stock_movements
+                WHERE source_doc_type=:type AND source_doc_id=:doc AND source_item_id=:item AND movement_type=:movement AND direction=-1 ORDER BY ledger_seq
+                """).setParameter("type",StockService.SRC_SUBCONTRACT_RETURN).setParameter("doc",id).setParameter("item",item.getId()).setParameter("movement",StockService.TYPE_SUBCONTRACT_RETURN));
+            if(original.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"原退货实物出库来源缺失或重复，请专项核对");
+            var row=original.getFirst();sources.add(new com.uten.imp.application.port.InventoryValuationPort.IssueReturnSource(new com.uten.imp.application.port.InventoryValuationPort.PoolKey((UUID)row[1],(UUID)row[2],(UUID)row[3]),(UUID)row[0],(BigDecimal)row[4]));
+        }
+        unapprovalValues.requireIssueReturnsAvailable(sources);
+        requireReturnCounterBalances(id);
+    }
+    private void requireReversibleArAp(UUID id,String type){
+        try{arApService.requireReversibleSource(id,type);}
+        catch(IllegalStateException denied){throw new ApiException(ErrorCode.CONFLICT,denied.getMessage());}
+    }
+    private void requireReturnCounterBalances(UUID id){
+        var receipt=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT SUM(line.qty),COALESCE(original.returned_qty,0)
+            FROM subcontract_return_items line JOIN subcontract_receipt_items original ON original.id=line.receipt_item_id
+            WHERE line.return_id=:id GROUP BY original.id ORDER BY original.id
+            """).setParameter("id",id));
+        for(Object[] row:receipt)if(((BigDecimal)row[0]).compareTo((BigDecimal)row[1])>0)throw new ApiException(ErrorCode.CONFLICT,"原来源累计已退数量不足以完整反审");
+        var order=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT SUM(line.qty),COALESCE(original.returned_qty,0)
+            FROM subcontract_return_items line JOIN subcontract_order_items original ON original.id=line.order_item_id
+            WHERE line.return_id=:id GROUP BY original.id ORDER BY original.id
+            """).setParameter("id",id));
+        for(Object[] row:order)if(((BigDecimal)row[0]).compareTo((BigDecimal)row[1])>0)throw new ApiException(ErrorCode.CONFLICT,"原来源累计已退数量不足以完整反审");
+    }
+
+    private String unapprovalDependencyFacts(UUID id){return String.valueOf(em.createNativeQuery("""
+        SELECT jsonb_build_object(
+            'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM subcontract_return_items line WHERE line.return_id=:id),
+            'arAp',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger WHERE ledger.source_doc_id=:id),
+            'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
+            'supplierPeriods',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM supplier_settlement_batches batch JOIN subcontract_returns doc ON doc.supplier_id=batch.supplier_id AND doc.currency_id=batch.currency_id WHERE doc.id=:id),
+            'movements',(SELECT jsonb_agg(to_jsonb(movement) ORDER BY movement.id) FROM stock_movements movement WHERE movement.source_doc_id=:id),
+            'inspection',(SELECT jsonb_agg(to_jsonb(inspection) ORDER BY inspection.id) FROM procurement_inspection_items inspection WHERE inspection.receipt_type='SUBCONTRACT' AND inspection.receipt_id=:id),
+            'cases',(SELECT jsonb_agg(to_jsonb(rejection) ORDER BY rejection.id) FROM procurement_iqc_rejection_cases rejection WHERE rejection.receipt_type='SUBCONTRACT' AND rejection.receipt_id=:id),
+            'poolHeads',(SELECT jsonb_agg(to_jsonb(pool) ORDER BY pool.id) FROM stock_value_pools pool WHERE (pool.goods_id,pool.color_id) IN(SELECT goods_id,color_id FROM subcontract_return_items WHERE return_id=:id)))::text
+        """).setParameter("id",id).getSingleResult());}
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_return:reverse')")
     public ReturnDetail reverse(UUID id) {
@@ -375,15 +499,13 @@ public class SubcontractReturnService {
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
+        requireUnapprovalHeader(r);
         List<SubcontractReturnItem> items = itemRepo.findByReturnIdOrderByLineNoAsc(id);
         // KS-P1-2：先取库存锁再锁 AP 行（与 approve 锁序一致）。
         stockService.lockInventory(items.stream()
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
+        arApService.reverseReturnCostProjection(r.getId(),StockService.SRC_SUBCONTRACT_RETURN,r.getBillNo(),r.getBillDate());
         arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。

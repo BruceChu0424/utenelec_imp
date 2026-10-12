@@ -48,6 +48,7 @@ public class ReceiptSaveRequest {
         return purchaserReferencePresent;
     }
     private String remark;
+    private boolean confirmGiftSemantics;
 
     @Valid
     @NotNull

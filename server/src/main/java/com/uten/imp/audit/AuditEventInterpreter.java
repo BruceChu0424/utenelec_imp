@@ -1252,6 +1252,7 @@ public class AuditEventInterpreter {
         values.put("ar_ap_ledger", "应收应付台账");
         values.put("ar_ap_source_refs", "应收应付来源引用");
         values.put("finance_receipts", "收款单");
+        values.put("document_unapprovals", "单据反审记录");
         values.put("finance_receipt_lines", "收款单明细");
         values.put("finance_receipt_source_allocations", "收款单来源核销");
         values.put("finance_payments", "付款单");
@@ -1630,6 +1631,11 @@ public class AuditEventInterpreter {
         reconcileApplies.put("started_at", "开始时间");
         reconcileApplies.put("finished_at", "结束时间");
         Map<String, Map<String, String>> values = new LinkedHashMap<>();
+        values.put("document_unapprovals", Map.ofEntries(
+                Map.entry("family", "单据类别"), Map.entry("original_id", "反审前单据"),
+                Map.entry("draft_id", "后续单据"), Map.entry("draft_bill_no", "后续单号"),
+                Map.entry("reason", "反审原因"), Map.entry("line_id_map", "前后明细关联"),
+                Map.entry("request_key", "提交编号")));
         values.put("platform_branding", Map.ofEntries(
                 Map.entry("company_name", "公司名称"), Map.entry("company_aliases", "公司英文名与简称"), Map.entry("platform_name", "平台名称"),
                 Map.entry("tagline", "品牌标语"), Map.entry("primary_color", "主题色"),

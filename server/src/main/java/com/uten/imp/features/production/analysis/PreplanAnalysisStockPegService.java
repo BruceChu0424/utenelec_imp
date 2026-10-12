@@ -866,6 +866,32 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
     // ============================ 对称释放 ============================
 
     @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public void requireReceiptReversible(String receiptType,UUID receiptId,Collection<UUID> reversibleFormalReservations){
+        if(rootSupply!=null)rootSupply.requireReceiptReversible(receiptType,receiptId);
+        var formalizations=entitlement.previewActiveFormalizationsAfterUnstartedRelease(reversibleFormalReservations);
+        Map<UUID,BigDecimal> restoring=new java.util.HashMap<>();
+        formalizations.forEach(row->restoring.merge(row.sourceStockReservationId(),row.qty(),BigDecimal::add));
+        var rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT r.id,r.qty,r.consumed_qty,r.released_qty,r.status,r.release_reason,%s component_handoff
+            FROM stock_reservations r
+            WHERE r.source_doc_type=:type AND r.source_doc_id=:id AND r.owner_type=:owner AND r.is_deleted=FALSE
+              AND (r.status=:effective OR r.release_reason='TRANSFERRED_TO_PLAN' OR %s)
+            ORDER BY r.id
+            """.formatted(activeComponentHandoff("r.id"),activeComponentHandoff("r.id")))
+            .setParameter("type",receiptType+"_RECEIPT").setParameter("id",receiptId).setParameter("owner",OWNER_TYPE).setParameter("effective",STATUS_EFFECTIVE));
+        requireReservationsReallocationSafe(rows.stream().map(row->(UUID)row[0]).toList(),"库存归属释放",false);
+        for(Object[] row:rows){
+            if(Boolean.TRUE.equals(row[6]))throw new ApiException(ErrorCode.CONFLICT,"该收货的分析归属库存仍有未恢复委外发料转移，请先撤回下游");
+            if("TRANSFERRED_TO_PLAN".equals(row[5])){
+                BigDecimal restores=restoring.getOrDefault((UUID)row[0],BigDecimal.ZERO);
+                if(decimal(row[2]).signum()!=0 || restores.compareTo(decimal(row[3]))!=0)
+                    throw new ApiException(ErrorCode.CONFLICT,"该收货的分析归属库存仍有不能完整恢复的生产转移，请先撤回下游");
+            }
+        }
+    }
+
+    @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseForReceipt(String receiptType, UUID receiptId) {
         tx.bind();
@@ -1894,8 +1920,9 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                 """.formatted(reservationId);
     }
 
+    private void requireReservationsReallocationSafe(Collection<UUID> ids,String label){requireReservationsReallocationSafe(ids,label,true);}
     private void requireReservationsReallocationSafe(
-            Collection<UUID> reservationIds, String operationLabel) {
+            Collection<UUID> reservationIds, String operationLabel,boolean lock) {
         List<UUID> ids = reservationIds == null
                 ? List.of()
                 : reservationIds.stream()
@@ -1911,8 +1938,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                           AND reallocation.status IN (
                               'OPEN', 'PARTIAL', 'FULFILLED')
                         ORDER BY reallocation.id
-                        FOR UPDATE OF reallocation
-                        """).setParameter("reservationIds", ids), UUID.class);
+                        %s
+                        """.formatted(lock?"FOR UPDATE OF reallocation":"")).setParameter("reservationIds", ids), UUID.class);
         if (!relations.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT,
                     operationLabel + "关联库存仍参与跨分析让料/优先补齐；"
@@ -1932,8 +1959,8 @@ public class PreplanAnalysisStockPegService implements PreplanAnalysisPegPort {
                                OR balance.beneficiary_analysis_material_id
                                   <> exact_peg.origin_analysis_material_id)
                         ORDER BY reservation.id
-                        FOR UPDATE OF reservation
-                        """).setParameter("reservationIds", ids), UUID.class);
+                        %s
+                        """.formatted(lock?"FOR UPDATE OF reservation":"")).setParameter("reservationIds", ids), UUID.class);
         if (!foreignBeneficiaries.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT,
                     operationLabel + "会影响其他分析当前受益权益；"

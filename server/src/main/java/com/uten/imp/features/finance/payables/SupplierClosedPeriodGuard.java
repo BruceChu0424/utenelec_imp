@@ -24,6 +24,16 @@ public class SupplierClosedPeriodGuard {
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireOpen(
             UUID supplierId, UUID currencyId, LocalDate businessDate, String action) {
+        requireOpenSnapshot(supplierId,currencyId,businessDate,action,true);
+    }
+
+    /** Read-only counterpart, with the same predicate and messages; final writes retain the supplier lock. */
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true, noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
+    public void requireOpenReadOnly(UUID supplierId,UUID currencyId,LocalDate businessDate,String action) {
+        requireOpenSnapshot(supplierId,currencyId,businessDate,action,false);
+    }
+
+    private void requireOpenSnapshot(UUID supplierId,UUID currencyId,LocalDate businessDate,String action,boolean lock) {
         if (supplierId == null || currencyId == null || businessDate == null) {
             throw conflict(label(action) + "缺少供应商、币种或业务日期，禁止绕过供应商封账");
         }
@@ -31,8 +41,7 @@ public class SupplierClosedPeriodGuard {
         List<UUID> suppliers = em.createNativeQuery("""
                 SELECT id FROM suppliers
                 WHERE id=:supplierId AND COALESCE(is_deleted,FALSE)=FALSE
-                FOR SHARE
-                """).setParameter("supplierId", supplierId).getResultList();
+                """ + (lock ? " FOR SHARE" : "")).setParameter("supplierId", supplierId).getResultList();
         if (suppliers.size() != 1) {
             throw conflict(label(action) + "供应商不存在或已删除，禁止写入");
         }

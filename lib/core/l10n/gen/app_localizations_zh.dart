@@ -5530,9 +5530,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusActionConvert => '转订货单';
 
   @override
-  String get salesQuoteStatusActionReverse => '作废';
-
-  @override
   String get salesQuoteStatusActionEdit => '编辑';
 
   @override
@@ -5560,10 +5557,6 @@ class AppLocalizationsZh extends AppLocalizations {
       '财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?';
 
   @override
-  String get salesQuoteStatusReverseConfirmBody =>
-      '作废后这张报价不能再转订货单, 也不能恢复。确定作废?';
-
-  @override
   String get salesQuoteStatusDeleteConfirmBody => '确定删除这张报价草稿? 删除后不能恢复。';
 
   @override
@@ -5584,9 +5577,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesQuoteStatusReopened => '已回到草稿, 改好后请重新提交财务核价';
-
-  @override
-  String get salesQuoteStatusReversedDone => '报价已作废';
 
   @override
   String get salesQuoteStatusDeleted => '已删除';

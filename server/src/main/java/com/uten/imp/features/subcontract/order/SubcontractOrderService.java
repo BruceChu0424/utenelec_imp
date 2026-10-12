@@ -275,7 +275,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public OrderDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -718,6 +718,43 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
+    public OrderSnapshot amendFinanceReview(UUID id, List<ProcurementOrderApprovalPort.ReviewAmountEdit> edits) {
+        com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireEdits(edits);
+        SubcontractOrder order = requireOrderForUpdate(id);
+        if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
+            throw new ApiException(ErrorCode.CONFLICT, "仅待生效草稿可在审核中修改金额；已有下游事实请先反审");
+        }
+        List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        Map<UUID, SubcontractOrderItem> byId = items.stream().collect(java.util.stream.Collectors.toMap(SubcontractOrderItem::getId, java.util.function.Function.identity()));
+        BigDecimal originalTotal = BigDecimal.ZERO;
+        BigDecimal localTotal = BigDecimal.ZERO;
+        for (var edit : edits) {
+            SubcontractOrderItem item = byId.get(edit.itemId());
+            if (item == null) throw new ApiException(ErrorCode.CONFLICT, "审核修改明细不属于当前订货单");
+            com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireSamePricingMode(edit, item.getTotalAmountInput());
+            BigDecimal price = com.uten.imp.common.finance.FinanceReviewAmountPolicy.price(edit, item.getQty());
+            item.setPrice(price);
+            item.setTotalAmountInput(edit.totalAmountInput());
+            BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
+                    MoneyPolicy.orderBaseAmount(item.getQty(), price, edit.totalAmountInput()), item.getExtraColumns());
+            item.setAmountOriginal(original);
+            item.setAmountLocal(MoneyPolicy.local(original, order.getExchangeRate()));
+            itemRepo.save(item);
+        }
+        for (var item : items) {
+            originalTotal = originalTotal.add(item.getAmountOriginal());
+            localTotal = localTotal.add(item.getAmountLocal());
+        }
+        order.setTotalOriginal(originalTotal);
+        order.setTotalLocal(localTotal);
+        orderRepo.save(order);
+        itemRepo.flush();
+        orderRepo.flush();
+        return lockAndValidateFinanceSubmission(id);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public OrderSnapshot lockFinanceReconfirmationSnapshot(UUID id) {
         SubcontractOrder order = requireOrderForUpdate(id);
         if (order.getStatus() == null || order.getStatus() != STATUS_APPROVED) {
@@ -1089,6 +1126,28 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     }
 
     /** 红冲：1→-1。反向回写 ordered_qty + 重算申请 is_closed（无 ArAp 无库存）。 */
+    @Transactional(readOnly = true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('subcontract_order:view') and hasAuthority('subcontract_order:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        SubcontractOrder order=requireOrder(id);
+        access.requireReadable(order.getMakerId(),"订货单不存在");
+        var items=itemRepo.findByOrderIdOrderByLineNoAsc(id);
+        String facts=com.uten.imp.common.integrity.ProcurementOrderReversalPreflight.facts(em,"SUBCONTRACT",id);
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("subcontractOrder",facts,()->{
+            access.requireWritable(order.getMakerId(),"只能操作本人负责的订货单");
+            if(order.getStatus()==null || order.getStatus()!=STATUS_APPROVED) throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            requireOrderReversalInputs(id,items);
+        });
+    }
+
+    private void requireOrderReversalInputs(UUID id,List<SubcontractOrderItem> items) {
+        if(items.stream().anyMatch(it->positive(it.getReceivedQty()) || positive(it.getReturnedQty())))
+            throw new ApiException(ErrorCode.CONFLICT,"订货单已有收货或退货，请先撤销下游单据");
+        if(hasApprovedMaterialActivity(items.stream().map(SubcontractOrderItem::getId).toList()))
+            throw new ApiException(ErrorCode.CONFLICT,"委外仍有已审核发料、退料或损耗，请先撤销这些下游单据");
+        com.uten.imp.common.integrity.ProcurementOrderReversalPreflight.require(em,"SUBCONTRACT",id);
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:reverse')")
     public OrderDetail reverse(UUID id) {
@@ -1100,21 +1159,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
         }
         mutationGuard.verifyUnchanged();
-        reviewCancellation.cancelUnclaimedPending(orderType(),id,"ORDER_REVERSED");
         List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
-        if (items.stream().anyMatch(it ->
-                positive(it.getReceivedQty())
-                        || positive(it.getReturnedQty()))) {
-            throw new ApiException(
-                    ErrorCode.BUSINESS,
-                    "委外订货已有进仓/成品退货记录，请先红冲下游单据");
-        }
-        if (hasApprovedMaterialActivity(
-                items.stream().map(SubcontractOrderItem::getId).toList())) {
-            throw new ApiException(
-                    ErrorCode.BUSINESS,
-                    "委外订货仍有已审核发料/退料/损耗单，请先红冲下游单据");
-        }
+        requireOrderReversalInputs(id,items);
+        reviewCancellation.cancelUnclaimedPending(orderType(),id,"ORDER_REVERSED");
         // V463：红冲按来源分配份额对称扣回（与审批回写同口径）。
         Map<UUID, List<Object[]>> reverseSources = orderItemSources(
                 items.stream().map(SubcontractOrderItem::getId).toList());
@@ -1636,6 +1683,12 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     private List<OrderItemDto> saveItems(SubcontractOrder r, List<OrderItemLine> lines,Map<OrderItemLine,SubcontractOrderItem> retained,
             Map<OrderItemLine, List<com.uten.imp.common.columns.ExtraColumnSnapshot>> previousColumns) {
         List<OrderItemDto> out = new ArrayList<>(lines.size());
+        for (OrderItemLine line : lines) {
+            if (line.getQty() == null || line.getQty().signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外订货明细数量必须大于 0");
+            }
+            com.uten.imp.common.util.FinancialExactAmount.quantity(line.getQty(), "委外订货明细数量");
+        }
         // V463 同货品合并行：行数量按各申请行剩余量 FIFO 拆分到 sources
         //（末位来源吸收超额）；application_item_id 落首来源（主锚点）。
         Map<OrderItemLine, List<SourceSplit>> splits = planSourceSplits(lines);
@@ -1792,6 +1845,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 throw new ApiException(
                         ErrorCode.VALIDATION_FAILED, "委外订货明细数量必须大于 0");
             }
+            com.uten.imp.common.util.FinancialExactAmount.quantity(line.getQty(), "委外订货明细数量");
             List<UUID> ordered = resolved.stream()
                     .sorted(java.util.Comparator.comparing(
                             id -> stableOrder.contains(id)
@@ -1989,7 +2043,9 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 sourceApplication == null ? null : sourceApplication.id(),
                 sourceApplication == null ? null : sourceApplication.billNo(),
                 priceMasked,
-                shortDeliveryHold);
+                shortDeliveryHold,
+                priceMasked || order.getStatus()!=STATUS_APPROVED || order.getExchangeRate()==null || order.getExchangeRate().signum()<=0 ? null :
+                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(em,"SUBCONTRACT",order.getId(),order.getExchangeRate()).rate());
     }
 
     /** ADR-143 §二.3：草稿上缺 BOM 的委外件逐行标出(提交财务会被拒并通知研发完善)。 */

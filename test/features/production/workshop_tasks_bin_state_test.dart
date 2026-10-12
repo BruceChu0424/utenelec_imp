@@ -705,7 +705,8 @@ void main() {
     await tester.tap(find.text('未配置产品').first);
     await tester.pumpAndSettle();
     expect(find.text('车间任务详情'), findsOneWidget);
-    expect(find.textContaining('若原料会提前整批放在车间使用'), findsNothing);
+    // 缺少线边库时说明可选配置，按单领料仍保持可用。
+    expect(find.textContaining('若原料会提前整批放在车间使用'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('workshop-detail-draw-segment-no-bin')),
       findsOneWidget,

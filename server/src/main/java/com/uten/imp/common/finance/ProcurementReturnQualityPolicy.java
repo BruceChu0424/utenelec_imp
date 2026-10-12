@@ -47,7 +47,7 @@ public final class ProcurementReturnQualityPolicy {
                         SELECT received_base_qty, passed_base_qty, failed_base_qty, status,
                                warehouse_stocked_base_qty, id
                         FROM procurement_inspection_items
-                        WHERE receipt_type=:receiptType AND receipt_item_id=:receiptItemId
+                        WHERE receipt_type=:receiptType AND receipt_item_id=:receiptItemId AND quantity_tranche<>'GIFT'
                         FOR UPDATE
                         """)
                 .setParameter("receiptType", receiptType)
@@ -93,6 +93,20 @@ public final class ProcurementReturnQualityPolicy {
                 stockedShare(receiptOriginal, failed.original(), stockedBase, passedBase),
                 stockedShare(receiptLocal, failed.local(), stockedBase, passedBase),
                 false);
+    }
+
+
+    public static BigDecimal lockGiftAndLimit(EntityManager em,UUID receiptItemId,BigDecimal giftQty,BigDecimal frozenBase) {
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
+            SELECT received_base_qty,passed_base_qty,failed_base_qty,warehouse_stocked_base_qty,status
+            FROM procurement_inspection_items WHERE receipt_type='PURCHASE' AND receipt_item_id=:id AND quantity_tranche='GIFT' FOR UPDATE
+            """).setParameter("id",receiptItemId).getResultList();
+        if(rows.size()!=1)throw conflict("赠品退货缺少原赠品质检实物分量");
+        Object[] row=rows.getFirst();BigDecimal received=decimal(row[0]),passed=decimal(row[1]),failed=decimal(row[2]),stocked=decimal(row[3]);
+        if(!"RESOLVED".equals(row[4]) || frozenBase==null || frozenBase.compareTo(received)!=0 || giftQty==null || giftQty.signum()<=0
+                ||passed.add(failed).compareTo(received)!=0 || stocked.signum()<0 || stocked.compareTo(passed)>0)
+            throw conflict("来源赠品尚未完成质检或实际入库数量不守恒");
+        return MoneyPolicy.quantityShare(giftQty,stocked,received);
     }
 
     private static BigDecimal stockedShare(

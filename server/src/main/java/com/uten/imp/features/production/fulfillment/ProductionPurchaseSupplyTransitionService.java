@@ -661,15 +661,8 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
         materialAnalysisWakeup.afterPurchaseReceiptReversed(receiptId);
     }
 
-    /**
-     * Reverses receipt-created reservations and DRAW items before physical
-     * stock is removed. Any issued downstream DRAW item blocks the reversal.
-     */
-    @Transactional(propagation = Propagation.MANDATORY)
-    public void beforePurchaseReceiptReversed(UUID receiptId) {
-        executionReadiness.beforePurchaseReceiptReversed(receiptId);
-        UUID actorId = currentUser.requireId();
-        List<Object[]> allocations = NativeQueryResults.objectArrayRows(
+    private List<Object[]> readReverseAllocations(UUID receiptId,boolean lock){
+        return NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT a.id, a.demand_id, a.order_peg_id,
                                        a.reservation_id, a.draw_id,
@@ -701,10 +694,42 @@ public class ProductionPurchaseSupplyTransitionService implements ProductionSupp
                                 WHERE a.receipt_id = :receiptId
                                   AND a.status = 'EFFECTIVE'
                                 ORDER BY a.demand_id, a.id
-                                FOR UPDATE OF a, d, p, r, draw, item
-                                """)
+                                %s
+                                """.formatted(lock?"FOR UPDATE OF a, d, p, r, draw, item":""))
                         .setParameter("receiptId", receiptId));
 
+    }
+    private void requireLegacyAllocationsReversible(List<Object[]> allocations){
+        Map<UUID,BigDecimal> total=new HashMap<>();Map<UUID,ReservationState> states=new HashMap<>();
+        for(Object[] row:allocations){
+            UUID id=uuid(row[3]);total.merge(id,decimal(row[6]),BigDecimal::add);
+            states.putIfAbsent(id,new ReservationState(decimal(row[7]),decimal(row[8]),decimal(row[9])));
+            if(decimal(row[10]).signum()>0||decimal(row[11]).signum()>0)
+                throw new ApiException(ErrorCode.CONFLICT,"采购收货已生成的生产领料单存在发料或占用消耗，必须先取消出库");
+        }
+        for(var entry:total.entrySet()){
+            var state=states.get(entry.getKey());
+            if(state.qty().subtract(state.consumedQty()).subtract(state.releasedQty()).compareTo(entry.getValue())<0)
+                throw new ApiException(ErrorCode.CONFLICT,"采购收货对应的生产预留已被下游占用，必须先完成反向处理");
+        }
+    }
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public List<UUID> requirePurchaseReceiptReversible(UUID receiptId){
+        var ids=executionReadiness.requireReceiptReversible("PURCHASE",receiptId);
+        requireLegacyAllocationsReversible(readReverseAllocations(receiptId,false));return ids;
+    }
+
+    /**
+     * Reverses receipt-created reservations and DRAW items before physical
+     * stock is removed. Any issued downstream DRAW item blocks the reversal.
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void beforePurchaseReceiptReversed(UUID receiptId) {
+        executionReadiness.beforePurchaseReceiptReversed(receiptId);
+        UUID actorId = currentUser.requireId();
+        List<Object[]> allocations=readReverseAllocations(receiptId,true);
+        requireLegacyAllocationsReversible(allocations);
         Map<UUID, BigDecimal> reverseByReservation = new HashMap<>();
         Map<UUID, ReservationState> reservationStates = new HashMap<>();
         for (Object[] allocation : allocations) {

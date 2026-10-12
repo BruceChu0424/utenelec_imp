@@ -102,7 +102,10 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         UUID actor = currentUser.requireEmployeeId();
         for (ReceivedLine l : lines) {
             BigDecimal rate = positiveRate(l.unitRate());
-            BigDecimal receivedBase = l.qty().multiply(rate);
+            BigDecimal receivedBase = l.frozenBaseQty()==null ? MoneyPolicy.quantity(l.qty().multiply(rate)) :
+                    com.uten.imp.common.util.FinancialExactAmount.quantity(l.frozenBaseQty(),"收货冻结基本数量");
+            if(receivedBase.signum()<=0 || !java.util.Set.of("LEGACY","CHARGED","GIFT").contains(l.quantityTranche()))
+                throw new ApiException(ErrorCode.CONFLICT,"收货实物分量缺少有效数量或身份");
             BigDecimal amount = l.amountLocal() == null ? BigDecimal.ZERO : l.amountLocal();
             BigDecimal receivedWeight = normalizeOptionalWeight(l.weight());
             UUID inspectionItemId = UUID.randomUUID();
@@ -110,11 +113,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                     INSERT INTO procurement_inspection_items (
                         id, receipt_type, receipt_id, receipt_item_id, warehouse_id, goods_id,
                         color_id, unit_id, unit_rate, received_base_qty, received_amount_local,
-                        received_weight, received_at
+                        received_weight, received_at, quantity_tranche
                     ) VALUES (
                         :id, :receiptType, :receiptId, :receiptItemId, :warehouseId, :goodsId,
                         :colorId, :unitId, :unitRate, :receivedBase, :amount,
-                        :receivedWeight, :receivedAt
+                        :receivedWeight, :receivedAt, :tranche
                     )
                     """)
                     .setParameter("id", inspectionItemId)
@@ -130,6 +133,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                     .setParameter("amount", amount)
                     .setParameter("receivedWeight", receivedWeight)
                     .setParameter("receivedAt", receivedAt)
+                    .setParameter("tranche", l.quantityTranche())
                     .executeUpdate();
             appendEvent(UUID.randomUUID(), inspectionItemId, "RECEIVED", receivedBase, null, actor, receivedAt);
         }
@@ -691,6 +695,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void requireResolvedForReverse(String receiptType, UUID receiptId) {
+        requireInspectionConcluded(receiptType,receiptId);
+        rejectionPort.beforeReceiptReverse(receiptType, receiptId);
+    }
+
+    private void requireInspectionConcluded(String receiptType,UUID receiptId){
         Integer pending = ((Number) em.createNativeQuery("""
                         SELECT COUNT(*) FROM procurement_inspection_items
                         WHERE receipt_type = :rt AND receipt_id = :rid
@@ -703,7 +712,38 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             throw new ApiException(ErrorCode.CONFLICT,
                     "收货单尚有未完成质检结论的明细，请先质检结案再红冲");
         }
-        rejectionPort.beforeReceiptReverse(receiptType, receiptId);
+    }
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public List<com.uten.imp.application.port.InventoryPositionPort.StoreWithdrawal> requireResolvedReversibleReadOnly(String receiptType,UUID receiptId){
+        requireInspectionConcluded(receiptType,receiptId);
+        rejectionPort.requireReceiptReversible(receiptType,receiptId);
+        var rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT id,warehouse_stocked_base_qty FROM procurement_inspection_items
+            WHERE receipt_type=:type AND receipt_id=:receipt ORDER BY id
+            """).setParameter("type",receiptType).setParameter("receipt",receiptId));
+        var stocked=readStockedItems(receiptType,receiptId);
+        requireStockedCompleteness(rows,stocked);
+        return stocked.stream().map(item->new com.uten.imp.application.port.InventoryPositionPort.StoreWithdrawal(
+            new com.uten.imp.application.port.InventoryValuationPort.PoolKey((UUID)item[2],(UUID)item[3],(UUID)item[4]),(UUID)item[8],false)).toList();
+    }
+    private void requireStockedCompleteness(List<Object[]> inspections,List<Object[]> stocked){
+        for(Object[] row:inspections){
+            BigDecimal exact=stocked.stream().filter(item->row[0].equals(item[1])).map(item->dec(item[7])).reduce(BigDecimal.ZERO,BigDecimal::add);
+            if(exact.compareTo(dec(row[row.length==2?1:6]))!=0)throw new ApiException(ErrorCode.CONFLICT,"已入库数量缺少完整的原批次流水，不能猜测撤回来源");
+        }
+    }
+    private List<Object[]> readStockedItems(String receiptType,UUID receiptId){
+        return com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT stocked.id,stocked.inspection_item_id,stocked.warehouse_id,stocked.goods_id,stocked.color_id,
+                inspection.unit_id,inspection.unit_rate,stocked.base_qty,stocked.stock_movement_id
+            FROM procurement_iqc_stock_in_batch_items stocked
+            JOIN procurement_inspection_items inspection ON inspection.id=stocked.inspection_item_id
+            LEFT JOIN stock_value_events value_event ON value_event.movement_id=stocked.stock_movement_id AND value_event.operation='POSITION_STORE'
+            LEFT JOIN stock_value_nodes value_head ON value_head.id=value_event.result_head_id
+            WHERE inspection.receipt_type=:type AND inspection.receipt_id=:receipt
+            ORDER BY value_head.node_sequence DESC NULLS LAST,stocked.created_at DESC,stocked.id DESC
+            """).setParameter("type",receiptType).setParameter("receipt",receiptId));
     }
 
     /**
@@ -731,22 +771,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                 .getResultList();
         if (rows.isEmpty()) return false;
         UUID actor = currentUser.requireEmployeeId();
-        @SuppressWarnings("unchecked")
-        List<Object[]> stockedItems=em.createNativeQuery("""
-                SELECT stocked.id,stocked.inspection_item_id,stocked.warehouse_id,stocked.goods_id,stocked.color_id,
-                    inspection.unit_id,inspection.unit_rate,stocked.base_qty
-                FROM procurement_iqc_stock_in_batch_items stocked
-                JOIN procurement_inspection_items inspection ON inspection.id=stocked.inspection_item_id
-                LEFT JOIN stock_value_events value_event ON value_event.movement_id=stocked.stock_movement_id AND value_event.operation='POSITION_STORE'
-                LEFT JOIN stock_value_nodes value_head ON value_head.id=value_event.result_head_id
-                WHERE inspection.receipt_type=:type AND inspection.receipt_id=:receipt
-                ORDER BY value_head.node_sequence DESC NULLS LAST,stocked.created_at DESC,stocked.id DESC
-                """).setParameter("type",receiptType).setParameter("receipt",receiptId).getResultList();
-        for(Object[] row:rows){
-            BigDecimal exactStocked=stockedItems.stream().filter(item->row[0].equals(item[1]))
-                    .map(item->dec(item[7])).reduce(BigDecimal.ZERO,BigDecimal::add);
-            if(exactStocked.compareTo(dec(row[6]))!=0)throw new ApiException(ErrorCode.CONFLICT,"已入库数量缺少完整的原批次流水，不能猜测撤回来源");
-        }
+        List<Object[]> stockedItems=readStockedItems(receiptType,receiptId);
+        requireStockedCompleteness(rows,stockedItems);
         // 撤回不带重量: 库存账按同一入库批次行的原流水镜像回去(ADR-135)。
         for(Object[] item:stockedItems){
             stockService.recordMovement(new StockService.MovementRequest(now,movementType(receiptType),sourceDocType(receiptType),
@@ -799,7 +825,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                COALESCE(po.bill_no, so.bill_no), i.received_weight,
                                g.unit_id, base_unit.name, source_unit.name,
                                i.pre_stocked_warehouse_id, pre_stocked_warehouse.name,
-                               i.pre_stocked_place, i.pre_stocked_at, pre_stocked_by.full_name
+                               i.pre_stocked_place, i.pre_stocked_at, pre_stocked_by.full_name, i.quantity_tranche
                         FROM procurement_inspection_items i
                         LEFT JOIN warehouses pre_stocked_warehouse
                                ON pre_stocked_warehouse.id = i.pre_stocked_warehouse_id

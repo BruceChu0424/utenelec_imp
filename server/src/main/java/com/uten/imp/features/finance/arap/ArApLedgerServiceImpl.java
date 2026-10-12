@@ -206,14 +206,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
                             + sourceDocType + "/" + sourceDocId);
         }
         for (ArApLedger l : rows) {
-            BigDecimal settled = nz(l.getAmountSettled());
-            BigDecimal offsetOriginal = nz(l.getAmountOffsetOriginal());
-            BigDecimal offsetLocal = nz(l.getAmountOffsetLocal());
-            if (settled.signum() != 0
-                    || offsetOriginal.signum() != 0
-                    || offsetLocal.signum() != 0) {
-                throw new IllegalStateException("此单已经存在收/付款或抵销，请先反向处理");
-            }
+            requireSourceUnsettled(l);
         }
         ArApLedger ledger = rows.getFirst();
         glPosting.removeAutoProjection(
@@ -229,6 +222,38 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
             row.setDeletedAt(reversedAt);
         }
         repo.saveAll(rows);
+    }
+
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
+    public void requireReturnCostProjectionReversible(java.util.UUID id,String sourceDocType,String billNo,LocalDate billDate){
+        glPosting.requireRemovableAutoProjection("PROC_RETURN_VARIANCE",sourceDocType,id,billNo,billDate);
+    }
+
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void reverseReturnCostProjection(java.util.UUID id,String sourceDocType,String billNo,LocalDate billDate) {
+        tx.bind();
+        glPosting.removeProcurementReturnCostProjection(id,sourceDocType,billNo,billDate);
+    }
+
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true, noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
+    public void requireReversibleSource(java.util.UUID sourceDocId,String sourceDocType) {
+        if(sourceDocId==null || sourceDocType==null)throw new IllegalArgumentException("Source identity required");
+        var rows=repo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(sourceDocId,sourceDocType);
+        if(rows.size()!=1)throw new IllegalStateException("来源立账缺失或重复，不能反审");
+        var ledger=rows.getFirst();requireSourceUnsettled(ledger);
+        if("AP".equals(ledger.getDirection()))closedPeriodGuard.requireOpenReadOnly(ledger.getSupplierId(),
+                ledger.getCurrencyId(),BusinessTime.today(),"供应商应付反审");
+        glPosting.requireRemovableAutoProjection(projectionSourceType(ledger.getDirection(),sourceDocType),sourceDocType,
+                sourceDocId,ledger.getBillNo(),ledger.getBillDate());
+    }
+
+    private static void requireSourceUnsettled(ArApLedger ledger) {
+        if(nz(ledger.getAmountSettled()).signum()!=0 || nz(ledger.getAmountOffsetOriginal()).signum()!=0
+                || nz(ledger.getAmountOffsetLocal()).signum()!=0)
+            throw new IllegalStateException("此单已经存在收/付款或抵销，请先反向处理");
     }
 
     private static String projectionSourceType(String direction,String sourceDocType) {

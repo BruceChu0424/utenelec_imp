@@ -49,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000",
+
         // 测试类路径默认打开嵌套足迹诊断(src/test/resources/config/application.yml), 这里按生产配置关掉。
         "uten.concurrency.verify-nested-footprint=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=true",

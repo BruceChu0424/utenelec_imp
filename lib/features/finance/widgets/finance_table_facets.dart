@@ -12,7 +12,7 @@ List<MasterFacetBucket> financeDictionaryFacets(Map<String, String> entries) {
 const financeDocumentStatusFacets = <MasterFacetBucket>[
   MasterFacetBucket(value: '0', label: '草稿', count: 0),
   MasterFacetBucket(value: '1', label: '已审', count: 0),
-  MasterFacetBucket(value: '-1', label: '红冲', count: 0),
+  MasterFacetBucket(value: '-1', label: '已反审', count: 0),
 ];
 
 /// 收款类型固定枚举桶（financeReceiptKindLabel 同口径；计数由列表页动态数据体现，

@@ -67,7 +67,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "spring.profiles.active=dev", "uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000"})
+})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Import(ProductionJdbcMeasurement.Configuration.class)
 @TestExecutionListeners(listeners = ProcurementIqcPreStockInEndToEndTest.Cleanup.class,

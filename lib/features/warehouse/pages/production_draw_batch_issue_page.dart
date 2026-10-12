@@ -555,7 +555,7 @@ class _ProductionDrawBatchIssuePageState
           : '旧草稿里找不到上次提交的编号，请保留草稿并核对上次的提交';
     }
     if (_documents!.any((document) => document.status == -1)) {
-      return '所选单据已红冲，请返回刷新后重新选择';
+      return '所选单据已撤回，请返回刷新后重新选择';
     }
     if ((_documents!.any((document) => document.status == 0) ||
             _discoveryRows.isNotEmpty) &&

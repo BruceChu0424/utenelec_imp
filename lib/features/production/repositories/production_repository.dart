@@ -1,3 +1,4 @@
+import '../../../shared/documents/document_unapproval.dart';
 // 生产模块仓库（生产管理 / production）。
 //
 // 2 个仓库 + 2 个 Provider（底部）：
@@ -110,6 +111,36 @@ class ProductionPlanRepository {
     };
     final json = await api.get('/production/plans', query: query); // ENDPOINT
     return PagedResult.fromJson(json, ProductionPlanListItem.fromJson);
+  }
+
+  Future<
+    ({String snapshot, ProductionPlanDetail detail, bool quantityEditable})
+  >
+  review(String id) async {
+    final json = await api.get('/production/plans/$id/draft-review');
+    return (
+      snapshot: json['snapshot'] as String,
+      detail: ProductionPlanDetail.fromJson(
+        Map<String, dynamic>.from(json['detail'] as Map),
+      ),
+      quantityEditable: json['quantityEditable'] == true,
+    );
+  }
+
+  Future<ProductionPlanDetail> saveReviewed(
+    String id,
+    Map<String, dynamic> body,
+    String expectedSnapshot,
+  ) async {
+    final json = await api.put(
+      '/production/plans/$id/draft-review',
+      body: {
+        'expectedSnapshot': expectedSnapshot,
+        'document': body,
+        'approveNow': true,
+      },
+    );
+    return ProductionPlanDetail.fromJson(json);
   }
 
   Future<ProductionPlanDetail> detail(String id) async {
@@ -325,7 +356,7 @@ class ProductionPlanRepository {
   }
 
   Future<ProductionPlanDetail> reverse(String id) async {
-    final json = await api.post('/production/plans/$id/reverse'); // ENDPOINT
+    final json = await unapproveDocument(api, 'productionPlan', id);
     return ProductionPlanDetail.fromJson(json);
   }
 
@@ -2118,6 +2149,35 @@ class ProductionDailyReportRepository {
     return PagedResult.fromJson(json, ProductionDailyReportListItem.fromJson);
   }
 
+  Future<({String snapshot, ProductionDailyReportDetail detail})> review(
+    String id,
+  ) async {
+    final json = await api.get('/production/daily-reports/$id/draft-review');
+    return (
+      snapshot: json['snapshot'] as String,
+      detail: ProductionDailyReportDetail.fromJson(
+        Map<String, dynamic>.from(json['detail'] as Map),
+      ),
+    );
+  }
+
+  Future<ProductionDailyReportDetail> saveReviewed(
+    String id,
+    Map<String, dynamic> body,
+    String expectedSnapshot, {
+    bool approveNow = true,
+  }) async {
+    final json = await api.put(
+      '/production/daily-reports/$id/draft-review',
+      body: {
+        'expectedSnapshot': expectedSnapshot,
+        'document': body,
+        'approveNow': approveNow,
+      },
+    );
+    return ProductionDailyReportDetail.fromJson(json);
+  }
+
   Future<ProductionDailyReportDetail> detail(String id) async {
     final json = await api.get('/production/daily-reports/$id'); // ENDPOINT
     return ProductionDailyReportDetail.fromJson(json);
@@ -2231,9 +2291,7 @@ class ProductionDailyReportRepository {
   }
 
   Future<ProductionDailyReportDetail> reverse(String id) async {
-    final json = await api.post(
-      '/production/daily-reports/$id/reverse',
-    ); // ENDPOINT
+    final json = await unapproveDocument(api, 'productionDailyReport', id);
     return ProductionDailyReportDetail.fromJson(json);
   }
 }

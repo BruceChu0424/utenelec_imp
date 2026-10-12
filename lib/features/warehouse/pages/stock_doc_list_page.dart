@@ -490,7 +490,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                           ),
                           UtenFilterSegment(
                             value: const _StockDocSeg.stage(-1),
-                            label: '红冲',
+                            label: '已撤回',
                             count: statusCounts?[DocumentStatusBucket.reversed],
                           ),
                           const UtenFilterSegment(

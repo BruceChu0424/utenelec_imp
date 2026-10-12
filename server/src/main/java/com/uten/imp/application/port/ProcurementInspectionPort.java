@@ -32,7 +32,13 @@ public interface ProcurementInspectionPort {
 
     record ReceivedLine(UUID receiptItemId, UUID goodsId, UUID colorId,
                         UUID unitId, BigDecimal unitRate, BigDecimal qty,
-                        BigDecimal amountLocal, BigDecimal weight) {
+                        BigDecimal amountLocal, BigDecimal weight,
+                        String quantityTranche, BigDecimal frozenBaseQty) {
+
+        public ReceivedLine(UUID receiptItemId, UUID goodsId, UUID colorId,
+                UUID unitId, BigDecimal unitRate, BigDecimal qty, BigDecimal amountLocal, BigDecimal weight) {
+            this(receiptItemId,goodsId,colorId,unitId,unitRate,qty,amountLocal,weight,"LEGACY",null);
+        }
 
         /** Historical/test compatibility: omitted actual total weight remains unknown. */
         public ReceivedLine(UUID receiptItemId, UUID goodsId, UUID colorId,
@@ -42,4 +48,6 @@ public interface ProcurementInspectionPort {
                     amountLocal, null);
         }
     }
+    default List<InventoryPositionPort.StoreWithdrawal> requireResolvedReversibleReadOnly(String type,UUID id){throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对收货质检与原入库事实");}
+
 }

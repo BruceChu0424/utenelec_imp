@@ -453,11 +453,47 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
         for (UUID id : eventIds) reverse(id, "来源入库红冲");
     }
 
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={ApiException.class,IllegalStateException.class})
+    public void requireReceiptReversible(String type,UUID receiptId){
+        var eventIds=NativeQueryResults.typedRows(em.createNativeQuery("""
+            SELECT e.id FROM preplan_root_output_events e
+            WHERE e.event_kind='FULFILL' AND e.source_receipt_type=:type AND e.source_receipt_id=:id
+              AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=e.id)
+            ORDER BY e.analysis_item_id,e.id
+            """,UUID.class).setParameter("type",type).setParameter("id",receiptId),UUID.class);
+        for(UUID id:eventIds)requireOutputReversible(id);
+        var insufficient=em.createNativeQuery("""
+            SELECT source.sales_order_item_id FROM preplan_root_output_events source
+            JOIN sales_order_items item ON item.id=source.sales_order_item_id
+            WHERE source.event_kind='FULFILL' AND source.source_receipt_type=:type AND source.source_receipt_id=:id
+              AND NOT EXISTS(SELECT 1 FROM preplan_root_output_events rev WHERE rev.reversed_event_id=source.id)
+            GROUP BY source.sales_order_item_id,item.reserved_qty
+            HAVING item.reserved_qty<SUM(source.qty_base)
+            """).setParameter("type",type).setParameter("id",receiptId).getResultList();
+        if(!insufficient.isEmpty())throw conflict("根产品供给与销售剩余数量不一致，本次操作没有生效");
+    }
+    private void requireOutputReversible(UUID eventId){
+        var facts=rows("""
+            SELECT output.sales_reservation_id,reservation.consumed_qty,reservation.released_qty,reservation.is_deleted
+            FROM preplan_root_output_events output
+            JOIN production_material_analysis_materials root ON root.id=output.root_material_id
+            JOIN production_material_analysis_items item ON item.root_material_id=root.id AND item.id=output.analysis_item_id AND item.is_deleted=FALSE
+            JOIN production_material_analyses analysis ON analysis.id=item.analysis_id AND analysis.is_deleted=FALSE
+            LEFT JOIN stock_reservations reservation ON reservation.id=output.sales_reservation_id
+            WHERE output.id=:id
+            ""","id",eventId);
+        if(facts.size()!=1)throw conflict("根产品交接来源丢失");
+        var row=facts.getFirst();
+        if(row[0]!=null&&(row[1]==null||decimal(row[1]).signum()!=0||decimal(row[2]).signum()!=0||Boolean.TRUE.equals(row[3])))
+            throw conflict("根产品供给已发货或已释放，不能直接反审入库");
+    }
+
     private void reverse(UUID eventId,String reason) {
         Object[] event = rows("""
                 SELECT root_material_id,sales_reservation_id,qty_base FROM preplan_root_output_events
                 WHERE id=:id FOR UPDATE
                 """, "id", eventId).getFirst();
+        requireOutputReversible(eventId);
         Root root = lockRoot((UUID) event[0]);
         if (root == null) throw conflict("根产品交接来源丢失");
         BigDecimal before = fulfilled(root.itemId());

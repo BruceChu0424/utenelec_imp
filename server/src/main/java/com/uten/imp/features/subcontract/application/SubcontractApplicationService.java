@@ -356,6 +356,10 @@ public class SubcontractApplicationService {
                         SubcontractGoodsSnapshot.MASTER_AT_SAVE);
         int autoLine = 1;
         for (ApplicationItemLine l : lines) {
+            BigDecimal quantity = com.uten.imp.common.util.FinancialExactAmount.quantity(l.getQty(), "委外申请数量");
+            if (quantity.signum() <= 0) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "委外申请数量必须大于 0");
+            }
             SubcontractApplicationItem it = new SubcontractApplicationItem();
             it.setApplicationId(r.getId());
             it.setBillNo(r.getBillNo());
@@ -370,7 +374,7 @@ public class SubcontractApplicationService {
             it.setColorId(l.getColorId());
             it.setUnitId(l.getUnitId());
             it.setUnitRate(l.getUnitRate());
-            it.setQty(l.getQty());
+            it.setQty(quantity);
             it.setPrice(l.getPrice());
             // 金额只由服务端派生(ADR-112): 数量 × 单价; 本单据无币种, 按本位币计(汇率 1)。单价空则金额空。
             MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, BigDecimal.ONE);

@@ -57,6 +57,7 @@ public class SalesOrderRevisionService {
                             '扩展列', i.extra_columns,
                             '英文名称', i.goods_name_en_snapshot,
                             '客户编号', i.client_no, '客户型号', i.client_model,
+                            '客户文件品名', i.client_goods_name, '客户文件单价', i.client_price,
                             '交货日期', i.deliver_date, '重量', i.weight,
                             '加工费', i.machining_price, '周长', i.circumference,
                             '来源单号', i.source_doc_no, '备注', i.remark))

@@ -4,16 +4,25 @@
 // 人定的(EXPLICIT)比例照原值回传，来源是系统默认(DEFAULT)且没人改过的送空值——
 // 删行、插行让它换了位置也一样；人改过的按所填值明确提交。
 import 'package:dio/dio.dart';
+import 'dart:async';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import '../../../support/native_detail_reader_overrides.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_goods_identity_cell.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/production/pages/production_plan_edit_page.dart';
 import 'package:uten_imp/features/production/widgets/production_overproduction_rate_field.dart';
+import 'package:uten_imp/features/production/widgets/production_grid_columns.dart';
 import 'package:uten_imp/shared/auth/document_scope_capability.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+part 'production_plan_reviewed_save_cases.dart';
 
 final _rateFields = find.descendant(
   of: find.byType(ProductionOverproductionRateField),
@@ -23,8 +32,22 @@ final _rateFields = find.descendant(
 Future<_PlanApi> _open(
   WidgetTester tester, {
   required double secondRate,
+  String? firstQtyExact,
+  String? firstOqtyExact,
+  String? secondQtyExact,
+  String firstUnitId = 'piece',
+  String secondUnitId = 'piece',
+  bool rejectFiveDecimals = false,
 }) async {
-  final api = _PlanApi(secondRate: secondRate);
+  final api = _PlanApi(
+    secondRate: secondRate,
+    firstQtyExact: firstQtyExact,
+    firstOqtyExact: firstOqtyExact,
+    secondQtyExact: secondQtyExact,
+    firstUnitId: firstUnitId,
+    secondUnitId: secondUnitId,
+    rejectFiveDecimals: rejectFiveDecimals,
+  );
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -57,6 +80,115 @@ Future<List<Map<String, dynamic>>> _save(
 }
 
 void main() {
+  registerPlanReviewedSaveTests();
+  testWidgets(
+    'maximum 14+4 quantity and original quantity load and save every digit',
+    (tester) async {
+      final api = await _open(
+        tester,
+        secondRate: 0,
+        firstQtyExact: '99999999999999.1234',
+        firstOqtyExact: '88888888888888.4321',
+        secondQtyExact: '0.0001',
+      );
+      final grid = tester.widget<UtenEditableGrid<ProductionGridRow>>(
+        find.byType(UtenEditableGrid<ProductionGridRow>),
+      );
+      expect(grid.controller.rows.first.qty.text, '99999999999999.1234');
+      expect(grid.controller.rows.first.oqty.text, '88888888888888.4321');
+      expect(find.text('99999999999999.1235 件'), findsOneWidget);
+
+      final items = await _save(tester, api);
+      expect(items.first['qty'], '99999999999999.1234');
+      expect(items.first['oqty'], '88888888888888.4321');
+      expect(items.first['qty'], isA<String>());
+      expect(items.first['oqty'], isA<String>());
+    },
+  );
+
+  testWidgets(
+    'user reentry preserves exact text and same-unit fractional total',
+    (tester) async {
+      final api = await _open(
+        tester,
+        secondRate: 0,
+        firstQtyExact: '0.1001',
+        secondQtyExact: '0.2002',
+      );
+      final grid = tester.widget<UtenEditableGrid<ProductionGridRow>>(
+        find.byType(UtenEditableGrid<ProductionGridRow>),
+      );
+      expect(find.text('0.3003 件'), findsOneWidget);
+      final qtyField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            identical(widget.controller, grid.controller.rows.first.qty),
+      );
+      await tester.enterText(qtyField, '99999999999999.1234');
+      await tester.pump();
+      expect(find.text('99999999999999.3236 件'), findsOneWidget);
+      final items = await _save(tester, api);
+      expect(items.first['qty'], '99999999999999.1234');
+      expect(items.last['qty'], '0.2002');
+    },
+  );
+
+  testWidgets(
+    'mixed-unit exact totals remain separate and missing quantity is unknown',
+    (tester) async {
+      await _open(
+        tester,
+        secondRate: 0,
+        firstQtyExact: '0.1001',
+        secondQtyExact: '0.2002',
+        secondUnitId: 'box',
+      );
+      expect(find.text('0.2002 箱 · 0.1001 件'), findsOneWidget);
+      final grid = tester.widget<UtenEditableGrid<ProductionGridRow>>(
+        find.byType(UtenEditableGrid<ProductionGridRow>),
+      );
+      final qtyField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            identical(widget.controller, grid.controller.rows.first.qty),
+      );
+      await tester.enterText(qtyField, '');
+      await tester.pump();
+      expect(find.text('0.2002 箱 · 数量未留存 件'), findsOneWidget);
+      expect(find.text('0.2002 箱 · 0 件'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'server four-place guard rejects five-place input without rounding it',
+    (tester) async {
+      final api = await _open(
+        tester,
+        secondRate: 0,
+        firstQtyExact: '1.2345',
+        rejectFiveDecimals: true,
+      );
+      final grid = tester.widget<UtenEditableGrid<ProductionGridRow>>(
+        find.byType(UtenEditableGrid<ProductionGridRow>),
+      );
+      final qtyField = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            identical(widget.controller, grid.controller.rows.first.qty),
+      );
+      await tester.enterText(qtyField, '1.23456');
+      await tester.pump();
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      final attemptedLine = Map<String, dynamic>.from(
+        (api.attempted!['items'] as List).first as Map,
+      );
+      expect(attemptedLine['qty'], '1.23456');
+      expect(api.saved, isNull);
+      expect(grid.controller.rows.first.qty.text, '1.23456');
+    },
+  );
+
   testWidgets('编辑草稿：人定的比例照原值回传，默认比例改过按所填值提交', (tester) async {
     final api = await _open(tester, secondRate: 0);
     expect(_rateFields, findsNWidgets(2));
@@ -105,34 +237,49 @@ class _TestSessionNotifier extends SessionNotifier {
 }
 
 class _PlanApi extends ApiClient {
-  _PlanApi({required double secondRate})
-    : _detail = {
-        'id': 'plan-1',
-        'billNo': 'SJ-1',
-        'billDate': '2026-09-27',
-        'makerId': 'maker-1',
-        'status': 0,
-        'allowedActions': ['EDIT'],
-        'items': [
-          {
-            'id': 'item-1',
-            'goodsId': 'goods-1',
-            'qty': 10,
-            'allowedOverproductionRate': 0.25,
-            'allowedOverproductionRateSource': 'EXPLICIT',
-          },
-          {
-            'id': 'item-2',
-            'goodsId': 'goods-2',
-            'qty': 5,
-            'allowedOverproductionRate': secondRate,
-            'allowedOverproductionRateSource': 'DEFAULT',
-          },
-        ],
-      },
-      super(Dio());
+  _PlanApi({
+    required double secondRate,
+    String? firstQtyExact,
+    String? firstOqtyExact,
+    String? secondQtyExact,
+    String firstUnitId = 'piece',
+    String secondUnitId = 'piece',
+    this.rejectFiveDecimals = false,
+  }) : _detail = {
+         'id': 'plan-1',
+         'billNo': 'SJ-1',
+         'billDate': '2026-09-27',
+         'makerId': 'maker-1',
+         'status': 0,
+         'allowedActions': ['EDIT'],
+         'items': [
+           {
+             'id': 'item-1',
+             'goodsId': 'goods-1',
+             'qty': firstQtyExact == null ? 10 : double.parse(firstQtyExact),
+             'qtyExact': ?firstQtyExact,
+             if (firstOqtyExact != null) 'oqty': double.parse(firstOqtyExact),
+             'oqtyExact': ?firstOqtyExact,
+             'unitId': firstUnitId,
+             'allowedOverproductionRate': 0.25,
+             'allowedOverproductionRateSource': 'EXPLICIT',
+           },
+           {
+             'id': 'item-2',
+             'goodsId': 'goods-2',
+             'qty': secondQtyExact == null ? 5 : double.parse(secondQtyExact),
+             'qtyExact': ?secondQtyExact,
+             'unitId': secondUnitId,
+             'allowedOverproductionRate': secondRate,
+             'allowedOverproductionRateSource': 'DEFAULT',
+           },
+         ],
+       },
+       super(Dio());
 
   Map<String, dynamic>? saved;
+  Map<String, dynamic>? attempted;
+  final bool rejectFiveDecimals;
 
   final Map<String, dynamic> _detail;
 
@@ -155,11 +302,28 @@ class _PlanApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const [];
+  }) async => path.contains('units')
+      ? const [
+          {'id': 'piece', 'name': '件'},
+          {'id': 'box', 'name': '箱'},
+        ]
+      : const [];
 
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
-    saved = (body! as Map).cast<String, dynamic>();
+    attempted = (body! as Map).cast<String, dynamic>();
+    if (rejectFiveDecimals &&
+        (attempted!['items'] as List).any(
+          (item) =>
+              (Map<String, dynamic>.from(item as Map)['qty'] as String)
+                  .split('.')
+                  .last
+                  .length >
+              4,
+        )) {
+      throw ApiException('VALIDATION_FAILED', '生产计划数量小数最多4位，本次未保存');
+    }
+    saved = attempted;
     return _detail;
   }
 }

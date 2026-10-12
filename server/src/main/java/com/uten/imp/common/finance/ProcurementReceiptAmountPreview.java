@@ -45,6 +45,7 @@ public class ProcurementReceiptAmountPreview {
 
     private MoneyPolicy.LineAmounts line(String kind, UUID orderItemId, UUID receiptId,
             BigDecimal qty, BigDecimal price, BigDecimal rate, Map<UUID, Pending> pending) {
+        if (qty != null) com.uten.imp.common.util.FinancialExactAmount.quantity(qty, "收货数量");
         String prefix = switch (kind) {
             case "PURCHASE" -> "purchase";
             case "SUBCONTRACT" -> "subcontract";
@@ -56,21 +57,21 @@ public class ProcurementReceiptAmountPreview {
         @SuppressWarnings("unchecked")
         List<Object[]> sources = em.createNativeQuery("SELECT i.qty,i.price,i.amount_original,i.amount_local,"
                 + "h.exchange_rate,COALESCE(i.arrival_overage_posted_qty,0),i.extra_columns::text,i.total_amount_input,"
-                + tolerancePct + " "
+                + tolerancePct + ",h.id "
                 + "FROM " + prefix + "_order_items i JOIN " + prefix + "_orders h ON h.id=i.order_id "
                 + "WHERE i.id=:id AND NOT i.is_deleted AND NOT h.is_deleted")
                 .setParameter("id", orderItemId).getResultList();
         if (sources.isEmpty()) return MoneyPolicy.line(qty, price, null, rate);
         Object[] source = sources.getFirst();
-        // Ordinary documents retain the established preview behavior. Additional
-        // consideration always comes from the source, never a caller's amount.
-        if (source[7] == null && (source[6] == null || "[]".equals(source[6].toString())))
-            return MoneyPolicy.line(qty, price, null, rate);
         BigDecimal sourceQty = decimal(source[0]);
         BigDecimal sourcePrice = decimal(source[1]);
         BigDecimal sourceOriginal = decimal(source[2]);
         BigDecimal sourceLocal = decimal(source[3]);
         BigDecimal sourceRate = decimal(source[4]);
+        var financialTerms=ProcurementApprovedExchangeRate.read(em,kind,(UUID)source[9],sourceRate);
+        sourceRate=financialTerms.rate();
+        sourceLocal=financialTerms.local(sourceOriginal,sourceLocal);
+        ProcurementApprovedExchangeRate.requireHistoricalReceiptRate(em,kind,orderItemId,receiptId,sourceRate);
         if (sourceQty == null || sourcePrice == null || sourceOriginal == null || sourceLocal == null
                 || sourceRate == null || qty == null || qty.signum() <= 0)
             throw new ApiException(ErrorCode.CONFLICT, "扩展费用来源金额不完整，请先核对订货单");
@@ -86,9 +87,9 @@ public class ProcurementReceiptAmountPreview {
         if (!exactPriceBasis && (released.amountOriginal() == null || released.amountLocal() == null))
             throw new ApiException(ErrorCode.CONFLICT, "扩展费用的退回金额缺失，请先核对历史批次");
         BigDecimal priorQty = decimal(prior[0]).subtract(released.qty());
-        BigDecimal priorOriginal = exactPriceBasis ? MoneyPolicy.exactProduct(priorQty, sourcePrice)
+        BigDecimal priorOriginal = released.amountOriginal()==null ? MoneyPolicy.exactProduct(priorQty, sourcePrice)
                 : decimal(prior[1]).subtract(released.amountOriginal());
-        BigDecimal priorLocal = exactPriceBasis ? MoneyPolicy.local(priorOriginal, sourceRate)
+        BigDecimal priorLocal = released.amountLocal()==null ? MoneyPolicy.local(priorOriginal, sourceRate)
                 : decimal(prior[2]).subtract(released.amountLocal());
         Pending earlier = pending.get(orderItemId);
         if (earlier != null) {

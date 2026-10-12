@@ -16,6 +16,10 @@ import java.util.UUID;
 /** 采购申请明细。源 P_ApplicationItem。ordered_qty 由订货单审核回写。 */
 @Getter @Setter @NoArgsConstructor @Entity @Table(name = "purchase_request_items")
 public class PurchaseRequestItem extends BaseEntity {
+    @jakarta.persistence.Column(name="quantity_semantics")
+    private String quantitySemantics = "LEGACY_RECORDED";
+    @jakarta.persistence.Column(name="gift_ordered_qty")
+    private BigDecimal giftOrderedQty = BigDecimal.ZERO;
     /** Database owns every native/JPA mutation version, including retained-ID reincarnation. */
     @org.hibernate.annotations.Generated(event = {
             org.hibernate.generator.EventType.INSERT, org.hibernate.generator.EventType.UPDATE})

@@ -180,7 +180,7 @@ public class SalesReturnService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     @PreAuthorize("hasAuthority('sales_return:view')")
     public ReturnDetail detail(UUID id) { return readDetail(id, false); }
 
@@ -342,6 +342,41 @@ public class SalesReturnService {
      * 红冲：status 1→-1。未处置的冻结收货受控反向；无质检行的历史单据反向原库存流水。
      * 已有处置时拒绝整单红冲。随后回减 returned_qty、重算订货结案并清除 ar_posted。
      */
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('sales_return:view') and hasAuthority('sales_return:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        SalesReturn value=requireReadableReturn(id);
+        List<SalesReturnItem> items=itemRepo.findByReturnIdOrderByLineNoAsc(id);
+        String facts=String.valueOf(em.createNativeQuery("""
+            SELECT jsonb_build_object('header',to_jsonb(r),'items',COALESCE((SELECT jsonb_agg(to_jsonb(i) ORDER BY i.id) FROM sales_return_items i WHERE i.return_id=r.id),'[]'::jsonb),
+             'quality',COALESCE((SELECT jsonb_agg(to_jsonb(q) ORDER BY q.id) FROM sales_return_quality_items q WHERE q.return_id=r.id),'[]'::jsonb),
+             'ar',COALESCE((SELECT jsonb_agg(to_jsonb(l) ORDER BY l.id) FROM ar_ap_ledger l WHERE l.source_doc_id=r.id),'[]'::jsonb),
+             'orders',COALESCE((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.id) FROM sales_order_items o WHERE o.id IN(SELECT i.order_item_id FROM sales_return_items i WHERE i.return_id=r.id)),'[]'::jsonb),
+             'shipments',COALESCE((SELECT jsonb_agg(to_jsonb(o) ORDER BY o.id) FROM sales_shipment_items o WHERE o.id IN(SELECT i.out_item_id FROM sales_return_items i WHERE i.return_id=r.id)),'[]'::jsonb))::text
+            FROM sales_returns r WHERE r.id=:id
+            """).setParameter("id",id).getSingleResult());
+        return com.uten.imp.common.review.DocumentUnapprovalPreflight.evaluate("salesReturn",facts,()->{
+            accessPolicy.requireWritable(value.getOwnerEmployeeId(),"只能操作本人负责的销售退货单");
+            if(value.getStatus()==null || value.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
+            if(!"PENDING".equals(value.getDispositionStatus()))throw new ApiException(ErrorCode.CONFLICT,"客户处置已确认，请通过原受控补偿流程处理");
+            requireNonNegativeStoredCommercial(value,items);
+            assertStoredSources(value,items,false,true);
+            validateReturnWritebackCapacity(items,-1,false);
+            qualityService.requireUntouchedReceiptReversible(id,items.size());
+            Long quality=((Number)em.createNativeQuery("SELECT count(*) FROM sales_return_quality_items WHERE return_id=:id").setParameter("id",id).getSingleResult()).longValue();
+            if(quality==0)throw new ApiException(ErrorCode.CONFLICT,"历史退货缺少品质冻结事实，需先专项核对原库存路径，不能直接通用反审生成草稿");
+            if(value.isArPosted())requireUnsettledReturnSource(id);
+        });
+    }
+
+    private void requireUnsettledReturnSource(UUID id) {
+        try {
+            arApService.requireReversibleSource(id, StockService.SRC_SALES_RETURN);
+        } catch (IllegalStateException blocked) {
+            throw new ApiException(ErrorCode.CONFLICT, "退货资金来源缺失或已核销，请先核对资金及凭证记录");
+        }
+    }
+
     @Transactional
     @PreAuthorize("hasAuthority('sales_return:reverse')")
     public ReturnDetail reverse(UUID id) {
@@ -939,7 +974,8 @@ public class SalesReturnService {
      * counters change. Aggregation prevents two lines in one document from
      * passing independent capacity checks.
      */
-    private void validateReturnWritebackCapacity(List<SalesReturnItem> items, int sign) {
+    private void validateReturnWritebackCapacity(List<SalesReturnItem> items,int sign) { validateReturnWritebackCapacity(items,sign,true); }
+    private void validateReturnWritebackCapacity(List<SalesReturnItem> items,int sign,boolean lock) {
         Map<UUID, BigDecimal> byShipmentItem = new HashMap<>();
         Map<UUID, BigDecimal> byOrderItem = new HashMap<>();
         for (SalesReturnItem item : items) {
@@ -962,8 +998,7 @@ public class SalesReturnService {
                             FROM sales_shipment_items
                             WHERE id IN (:ids)
                             ORDER BY id
-                            FOR UPDATE
-                            """)
+                            """+(lock ? " FOR UPDATE" : ""))
                     .setParameter("ids", new TreeSet<>(byShipmentItem.keySet()))
                     .getResultList();
             if (rows.size() != byShipmentItem.size()) {
@@ -990,8 +1025,7 @@ public class SalesReturnService {
                             FROM sales_order_items
                             WHERE id IN (:ids)
                             ORDER BY id
-                            FOR UPDATE
-                            """)
+                            """+(lock ? " FOR UPDATE" : ""))
                     .setParameter("ids", new TreeSet<>(byOrderItem.keySet()))
                     .getResultList();
             if (rows.size() != byOrderItem.size()) {
@@ -1037,9 +1071,10 @@ public class SalesReturnService {
         return postOutstanding.compareTo(commitment) >= 0;
     }
 
-    private void assertStoredSources(SalesReturn salesReturn,
-                                     List<SalesReturnItem> items,
-                                     boolean completeMissingOrderLink) {
+    private void assertStoredSources(SalesReturn salesReturn,List<SalesReturnItem> items,boolean completeMissingOrderLink) {
+        assertStoredSources(salesReturn,items,completeMissingOrderLink,false);
+    }
+    private void assertStoredSources(SalesReturn salesReturn,List<SalesReturnItem> items,boolean completeMissingOrderLink,boolean observation) {
         ReturnSaveRequest snapshot = new ReturnSaveRequest();
         snapshot.setClientId(salesReturn.getClientId());
         List<ReturnItemLine> links = new ArrayList<>(items.size());
@@ -1065,6 +1100,7 @@ public class SalesReturnService {
         }
         if (source.sourceShipmentId() != null) {
             if (salesReturn.getSourceShipmentId() == null) {
+                if(observation)throw new ApiException(ErrorCode.CONFLICT,"原退货单头缺少出货来源记录，请先核对来源");
                 applySource(salesReturn, source);
             } else if (!salesReturn.getSourceShipmentId().equals(source.sourceShipmentId())) {
                 throw new ApiException(ErrorCode.CONFLICT, "退货单头来源出货单与明细关联不一致");

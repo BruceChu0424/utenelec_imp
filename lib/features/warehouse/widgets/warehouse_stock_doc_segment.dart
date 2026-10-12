@@ -404,7 +404,7 @@ class _WarehouseStockDocSegmentState
             ? switch (it.status) {
                 0 => '待仓库收料',
                 1 => '仓库已收料',
-                -1 => '已红冲',
+                -1 => '已撤回',
                 _ => stockStatusLabel(it.status),
               }
             : stockStatusLabel(it.status),
@@ -571,7 +571,7 @@ class _WarehouseStockDocSegmentState
                     ),
                     const UtenFilterSegment(
                       value: _StockSegSeg.stage(-1),
-                      label: '红冲',
+                      label: '已撤回',
                     ),
                     const UtenFilterSegment(
                       value: _StockSegSeg.history(),

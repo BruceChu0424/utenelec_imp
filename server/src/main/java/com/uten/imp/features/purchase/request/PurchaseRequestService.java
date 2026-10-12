@@ -241,6 +241,33 @@ public class PurchaseRequestService {
                     "该明细已有待财务审核的订货单（" + pending.stripTrailingZeros().toPlainString()
                             + "），不能修改数量");
         }
+        if (qty.compareTo(item.getQty()) == 0) return detail(requestId);
+        if (!Boolean.TRUE.equals(em.createNativeQuery(
+                "SELECT fn_purchase_request_qty_correction_available(:item)")
+                .setParameter("item", itemId).getSingleResult())) {
+            throw new ApiException(ErrorCode.CONFLICT, "该申请明细已有订货、赠品份额或需求转移，不能直接修正数量");
+        }
+        BigDecimal minimum = (BigDecimal) em.createNativeQuery(
+                "SELECT fn_purchase_request_qty_source_minimum(:item)")
+                .setParameter("item", itemId).getSingleResult();
+        BigDecimal physical = com.uten.imp.common.finance.ProcurementQuantities.of(
+                item.getQuantitySemantics(), qty, item.getGiftQty(), item.getUnitRate()).physicalBase();
+        if (physical.compareTo(minimum) < 0) {
+            throw new ApiException(ErrorCode.CONFLICT, "修正后的实物数量不能小于来源已下达的需求量 " + minimum.toPlainString());
+        }
+        int prepared = em.createNativeQuery("""
+                INSERT INTO purchase_request_qty_revisions(request_id,request_item_id,expected_version,
+                    old_qty,new_qty,before_item,source_minimum_base,actor_user_id,actor_employee_id)
+                SELECT request_id,id,:version,qty,:qty,to_jsonb(item),:minimum,:actor,:employee
+                FROM purchase_request_items item WHERE id=:item AND request_id=:request
+                    AND NOT is_deleted AND row_version=:version
+                """).setParameter("version", expectedVersion).setParameter("qty", qty)
+                .setParameter("minimum", minimum).setParameter("actor", currentUser.requireId())
+                .setParameter("employee", currentUser.requireEmployeeId()).setParameter("item", itemId)
+                .setParameter("request", requestId).executeUpdate();
+        if (prepared != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "申请明细已变化，请刷新后核对再修正数量");
+        }
         List<?> changed = em.createNativeQuery("""
                 UPDATE purchase_request_items SET qty=:qty,updated_at=now(),updated_by=:actor
                 WHERE id=:item AND request_id=:request AND NOT is_deleted AND row_version=:version
@@ -337,6 +364,7 @@ public class PurchaseRequestService {
     public RequestDetail create(RequestSaveRequest req) {
         tx.bind();
         PurchaseRequest r = new PurchaseRequest();
+        r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         applyHeader(req, r);
         r.setMakerId(currentUser.requireEmployeeId()); // 制单=当前登录用户
         r.setStatus(STATUS_DRAFT);
@@ -400,6 +428,7 @@ public class PurchaseRequestService {
     }
 
     private void applyHeader(RequestSaveRequest req, PurchaseRequest r) {
+        if(req.isConfirmGiftSemantics())r.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
@@ -448,6 +477,10 @@ public class PurchaseRequestService {
         int auto = 1;
         for (RequestItemLine l : lines) {
             int lineNo = l.getLineNo() != null ? l.getLineNo() : auto;
+            BigDecimal quantity = com.uten.imp.common.util.FinancialExactAmount.quantity(l.getQty(), "第 " + lineNo + " 行数量");
+            if (quantity.signum() < 0 || (quantity.signum()==0 && (!com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(r.getQuantitySemantics()) || l.getGiftQty()==null || l.getGiftQty().signum()<=0))) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "第 " + lineNo + " 行数量必须大于 0");
+            }
             PurchaseLineUnitPolicy.ResolvedUnit resolvedUnit =
                     lineUnitPolicy.normalizeAndValidate(
                             l.getGoodsId(), l.getUnitId(), l.getUnitRate(), lineNo);
@@ -465,13 +498,15 @@ public class PurchaseRequestService {
             it.setColorId(l.getColorId());
             it.setUnitId(resolvedUnit.unitId());
             it.setUnitRate(resolvedUnit.unitRate());
-            it.setQty(l.getQty());
+            com.uten.imp.common.finance.ProcurementQuantities.of(r.getQuantitySemantics(),quantity,l.getGiftQty(),resolvedUnit.unitRate());
+            it.setQuantitySemantics(r.getQuantitySemantics());
+            it.setQty(quantity);
             it.setPrice(l.getPrice());
             // 金额只由服务端派生(ADR-112): 数量 × 单价; 本单据无币种, 按本位币计(汇率 1)。单价空则金额空。
             MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, BigDecimal.ONE);
             it.setAmountOriginal(amounts.original());
             it.setAmountLocal(amounts.local());
-            it.setGiftQty(l.getGiftQty() != null ? l.getGiftQty() : BigDecimal.ZERO);
+            it.setGiftQty(com.uten.imp.common.util.FinancialExactAmount.optionalNonNegativeQuantity(l.getGiftQty(),"采购申请赠品数量"));
             it.setWeight(l.getWeight());
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
@@ -544,7 +579,7 @@ public class PurchaseRequestService {
     }
 
     private RequestItemDto toItemDto(PurchaseRequestItem it, BigDecimal pendingQty, long rowVersion) {
-        return new RequestItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
+        RequestItemDto dto = new RequestItemDto(it.getId(), it.getLineNo(), it.getGoodsId(),
                 it.getGoodsCodeSnapshot(), it.getGoodsNameSnapshot(), it.getGoodsSnapshotSource(),
                 it.getGoodsSnapshotLockedAt(), it.getColorId(),
                 it.getUnitId(), it.getUnitRate(), it.getQty(), it.getPrice(), it.getAmountOriginal(),
@@ -554,6 +589,9 @@ public class PurchaseRequestService {
                 (it.getQty() == null ? BigDecimal.ZERO : it.getQty())
                         .subtract(it.getOrderedQty() == null ? BigDecimal.ZERO : it.getOrderedQty())
                         .subtract(pendingQty).max(BigDecimal.ZERO), rowVersion);
+        dto.setQuantitySemantics(it.getQuantitySemantics());dto.setGiftOrderedQty(it.getGiftOrderedQty());
+        dto.setRemainingGiftQty(com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(it.getQuantitySemantics())?it.getGiftQty().subtract(it.getGiftOrderedQty()).max(BigDecimal.ZERO):BigDecimal.ZERO);
+        return dto;
     }
 
     private RequestDetail toDetail(PurchaseRequest r, List<RequestItemDto> items) {

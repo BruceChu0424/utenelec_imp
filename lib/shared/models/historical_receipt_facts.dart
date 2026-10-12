@@ -1,6 +1,6 @@
 import '../formatters/exact_decimal.dart';
 
-const historicalReceiptReadOnlyMessage = '历史收货原始记录仅供核对，不能编辑、删除、再次审核入库或红冲。';
+const historicalReceiptReadOnlyMessage = '历史收货原始记录仅供核对，不能编辑、删除、再次审核入库或反审。';
 
 String? receiptRecordedDecimal(Map<String, dynamic> json, String key) {
   final exactKey = '${key}Exact';

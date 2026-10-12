@@ -53,6 +53,7 @@ import '../../../support/memory_cas_storage.dart';
 part 'production_daily_report_review_v2_cases.dart';
 part 'production_daily_report_material_review_cases.dart';
 part 'production_daily_report_material_recovery_cases.dart';
+part 'production_daily_report_review_v3_merge_cases.dart';
 
 final _scope = StateProvider<AuthenticatedScope>(
   (ref) => const AuthenticatedScope(userId: 'daily-report-tester'),
@@ -82,6 +83,26 @@ class _DailyReportApi extends ApiClient {
   final Object? Function(_DailyReportApi server) onApprove;
 
   int serverStatus = 0;
+  String? successorId;
+  int successorStatus = 0;
+  int lineageReads = 0;
+  final unapproveBodies = <Map<String, dynamic>>[];
+
+  void commitUnapproval() {
+    serverStatus = -1;
+    successorId = 'dr-2';
+    successorStatus = 0;
+  }
+
+  Map<String, dynamic> get _successorDetail => {
+    ..._detail,
+    'id': successorId,
+    'unapprovalOriginalId': 'dr-1',
+    'billNo': 'SR20260922000006',
+    'status': successorStatus,
+    'rowVersion': 0,
+    'allowedActions': <String>['EDIT', if (successorStatus == 0) 'APPROVE'],
+  };
   int detailReads = 0;
 
   /// 服务端是否还允许当前账号审核这张草稿(permissions-15：权限码 + 对象范围 +
@@ -116,6 +137,7 @@ class _DailyReportApi extends ApiClient {
   Object? materialReadFailure;
   Completer<void>? materialReadGate;
   int materialReads = 0;
+  void Function(_DailyReportApi)? afterReviewedSave;
 
   Map<String, dynamic> get _materialReview => {
     'reportId': 'dr-1',
@@ -181,6 +203,30 @@ class _DailyReportApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     requestedPaths.add(path);
+    if (path.endsWith('/unapproval-capability')) {
+      return {
+        'supported': true,
+        'permitted': true,
+        'eligible': true,
+        'nextAction': 'UNAPPROVE_TO_DRAFT',
+        'factsSnapshot': 'a' * 64,
+        'reasons': <Object>[],
+      };
+    }
+    if (path.endsWith('/unapproval')) {
+      lineageReads++;
+      return {
+        'links': <Map<String, dynamic>>[
+          if (successorId != null)
+            {
+              'originalId': 'dr-1',
+              'draftId': successorId,
+              'draftBillNo': 'SR20260922000006',
+            },
+        ],
+        'attachmentPolicy': 'ORIGINAL_RETAINED',
+      };
+    }
     if (path.endsWith('/material-review')) {
       materialReads++;
       await materialReadGate?.future;
@@ -211,7 +257,9 @@ class _DailyReportApi extends ApiClient {
     detailReads++;
     await readGate?.future;
     if (readFailure case final failure?) throw failure;
-    return _detail;
+    return successorId != null && path.endsWith('/$successorId')
+        ? _successorDetail
+        : _detail;
   }
 
   @override
@@ -232,15 +280,20 @@ class _DailyReportApi extends ApiClient {
   }) async {
     requestedPaths.add(path);
     final key = (body as Map?)?['idempotencyKey'];
-    if (key is String) approveKeys.add(key);
+    if (key is String && path.endsWith('/approve')) approveKeys.add(key);
     if (path.endsWith('/approve')) {
       approveBodies.add(Map<String, dynamic>.from(body as Map));
+    }
+    if (path.endsWith('/unapprove')) {
+      unapproveBodies.add(Map<String, dynamic>.from(body as Map));
     }
     await commandGate?.future;
     final failure = onApprove(this);
     if (failure != null) throw failure;
     return {
-      ..._detail,
+      ...(path.endsWith('/unapprove') && successorId != null
+          ? _successorDetail
+          : _detail),
       if (includeReceipt && receipt != null) 'approvalReceipt': receipt,
     };
   }
@@ -258,6 +311,7 @@ Future<(_DailyReportApi, List<String>)> _pump(
   required Object? Function(_DailyReportApi server) onApprove,
   bool approvable = true,
   bool fromWorkshop = false,
+  bool routeUnapproval = false,
   int status = 0,
   Object? readFailure,
   Completer<void>? commandGate,
@@ -337,7 +391,7 @@ Future<(_DailyReportApi, List<String>)> _pump(
     api.notifications.addAll(next);
   }, fireImmediately: true);
 
-  final router = fromWorkshop
+  final router = (fromWorkshop || routeUnapproval)
       ? GoRouter(
           routes: [
             GoRoute(
@@ -346,6 +400,10 @@ Future<(_DailyReportApi, List<String>)> _pump(
             ),
             GoRoute(
               path: '/report/:id',
+              builder: ProductionDailyReportDetailPage.route,
+            ),
+            GoRoute(
+              path: '/production/daily-reports/:id',
               builder: ProductionDailyReportDetailPage.route,
             ),
             GoRoute(
@@ -358,7 +416,15 @@ Future<(_DailyReportApi, List<String>)> _pump(
                 body: ElevatedButton(
                   onPressed: () {
                     api.rowVersion++;
-                    context.pop('dr-1');
+                    if (state.uri.queryParameters['review'] == '1') {
+                      final saved = ProductionDailyReportDetail.fromJson(
+                        api._detail,
+                      );
+                      api.afterReviewedSave?.call(api);
+                      context.pop(saved);
+                    } else {
+                      context.pop('dr-1');
+                    }
                   },
                   child: Text('保存编辑 ${state.uri.queryParameters['from']}'),
                 ),
@@ -432,7 +498,11 @@ Future<(_DailyReportApi, List<String>)> _pump(
   );
   await tester.pumpAndSettle();
   if (router != null) {
-    router.push<void>('/report/dr-1?from=workshop-tasks');
+    if (fromWorkshop) {
+      router.push<void>('/report/dr-1?from=workshop-tasks');
+    } else {
+      router.go('/production/daily-reports/dr-1');
+    }
     await tester.pumpAndSettle();
   }
   return (api, notices);
@@ -478,6 +548,7 @@ Future<void> _tapApprove(WidgetTester tester, {bool settle = true}) async {
 }
 
 void main() {
+  registerDailyReviewV3MergeCases();
   registerDailyReportReviewV2Cases();
   registerDailyReportMaterialReviewCases();
   registerDailyReportMaterialRecoveryCases();
@@ -547,7 +618,7 @@ void main() {
   }
 
   testWidgets(
-    'a different authoritative state does not report reversal success',
+    'an unrelated original state without a successor relation cannot claim unapproval success',
     (tester) async {
       final (api, notices) = await _pump(
         tester,
@@ -557,9 +628,9 @@ void main() {
           return NetworkTimeoutException();
         },
       );
-      await tester.tap(find.widgetWithText(UtenButton, '红冲'));
+      await tester.tap(find.widgetWithText(UtenButton, '反审'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(UtenButton, '确认'));
+      await tester.tap(find.widgetWithText(UtenButton, '确认反审'));
       await tester.pumpAndSettle();
       expect(
         api.notifications.where(
@@ -567,30 +638,47 @@ void main() {
         ),
         isEmpty,
       );
-      expect(notices, contains('日报状态已变化，页面已刷新，请核对当前状态。'));
+      expect(notices, contains('日报状态已变化，反审结果仍需核对。'));
       expect(find.widgetWithText(UtenButton, '审核'), findsOneWidget);
+      expect(api.successorId, isNull);
+      expect(
+        api.requestedPaths,
+        contains('/documents/productionDailyReport/dr-1/unapproval'),
+      );
     },
   );
 
-  testWidgets('reversal timeout reports only the verified current state', (
-    tester,
-  ) async {
-    final (_, notices) = await _pump(
-      tester,
-      status: 1,
-      onApprove: (server) {
-        server.serverStatus = -1;
-        return NetworkTimeoutException();
-      },
-    );
-    await tester.tap(find.widgetWithText(UtenButton, '红冲'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(UtenButton, '确认'));
-    await tester.pumpAndSettle();
-    expect(notices, contains('当前已红冲，页面已刷新。'));
-    expect(notices.any((message) => message.contains('本次提交')), isFalse);
-    expect(find.widgetWithText(UtenButton, '红冲'), findsNothing);
-  });
+  testWidgets(
+    'unapproval timeout resolves lineage and opens the verified editable successor',
+    (tester) async {
+      final (api, notices) = await _pump(
+        tester,
+        status: 1,
+        routeUnapproval: true,
+        onApprove: (server) {
+          server.commitUnapproval();
+          return NetworkTimeoutException();
+        },
+      );
+      await tester.tap(find.widgetWithText(UtenButton, '反审'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(UtenButton, '确认反审'));
+      await tester.pumpAndSettle();
+      expect(notices, contains('已核对反审后的草稿'));
+      expect(
+        api.router!.routeInformationProvider.value.uri.path,
+        '/production/daily-reports/dr-2',
+      );
+      expect(api.requestedPaths, contains('/production/daily-reports/dr-2'));
+      expect(find.widgetWithText(UtenButton, '编辑'), findsOneWidget);
+      expect(api.unapproveBodies, hasLength(1));
+      expect(api.unapproveBodies.single.keys.toSet(), {
+        'idempotencyKey',
+        'reason',
+        'expectedSnapshot',
+      });
+    },
+  );
 
   testWidgets(
     'completed action does not pop a new route opened during its final frame',
@@ -618,6 +706,71 @@ void main() {
       expect(find.text('另一个页面'), findsOneWidget);
       expect(find.text('已回车间任务'), findsNothing);
       expect(api.approveKeys, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unapproval reply cannot navigate after account identity changes',
+    (tester) async {
+      final (api, notices) = await _pump(
+        tester,
+        status: 1,
+        routeUnapproval: true,
+        onApprove: (server) {
+          server.commitUnapproval();
+          server.container.read(_scope.notifier).state =
+              const AuthenticatedScope(userId: 'different-reviewer');
+          return null;
+        },
+      );
+      await tester.tap(find.widgetWithText(UtenButton, '反审'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(UtenButton, '确认反审'));
+      await tester.pumpAndSettle();
+      expect(api.unapproveBodies, hasLength(1));
+      expect(
+        api.router!.routeInformationProvider.value.uri.path,
+        '/production/daily-reports/dr-1',
+      );
+      expect(notices.any((message) => message.contains('已反审，进入草稿')), isFalse);
+      expect(
+        api.requestedPaths,
+        isNot(contains('/production/daily-reports/dr-2')),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unapproval resolves a changed successor without claiming it is an editable draft',
+    (tester) async {
+      final (api, notices) = await _pump(
+        tester,
+        status: 1,
+        routeUnapproval: true,
+        onApprove: (server) {
+          server.commitUnapproval();
+          server.successorStatus = 1;
+          return NetworkTimeoutException();
+        },
+      );
+      await tester.tap(find.widgetWithText(UtenButton, '反审'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(UtenButton, '确认反审'));
+      await tester.pumpAndSettle();
+      expect(
+        api.router!.routeInformationProvider.value.uri.path,
+        '/production/daily-reports/dr-2',
+      );
+      expect(notices, contains('原审核已撤回，后续单据已审核，请核对后续单据。'));
+      expect(
+        api.notifications.where(
+          (notice) => notice.kind == AppNotificationKind.success,
+        ),
+        isEmpty,
+      );
+      expect(find.widgetWithText(UtenButton, '审核'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -740,35 +893,41 @@ void main() {
   }
 
   testWidgets(
-    'reversal uses the shared danger confirmation and cancellation writes nothing',
+    'unapproval cancellation writes nothing and confirmed intent opens a new draft',
     (tester) async {
       final (api, _) = await _pump(
         tester,
         status: 1,
+        routeUnapproval: true,
         onApprove: (server) {
-          server.serverStatus = -1;
+          server.commitUnapproval();
           return null;
         },
       );
-      await tester.tap(find.widgetWithText(UtenButton, '红冲'));
+      await tester.tap(find.widgetWithText(UtenButton, '反审'));
       await tester.pumpAndSettle();
-      final confirm = find.widgetWithText(UtenButton, '确认');
+      final confirm = find.widgetWithText(UtenButton, '确认反审');
       expect(tester.widget<UtenButton>(confirm).type, UtenButtonType.danger);
       await tester.tap(find.widgetWithText(UtenButton, '取消'));
       await tester.pumpAndSettle();
       expect(
-        api.requestedPaths.where((path) => path.endsWith('/reverse')),
+        api.requestedPaths.where((path) => path.endsWith('/unapprove')),
         isEmpty,
       );
-      await tester.tap(find.widgetWithText(UtenButton, '红冲'));
+      await tester.tap(find.widgetWithText(UtenButton, '反审'));
       await tester.pumpAndSettle();
       await tester.tap(confirm);
       await tester.pumpAndSettle();
       expect(
-        api.requestedPaths.where((path) => path.endsWith('/reverse')),
+        api.requestedPaths.where((path) => path.endsWith('/unapprove')),
         hasLength(1),
       );
-      expect(find.widgetWithText(UtenButton, '红冲'), findsNothing);
+      expect(find.widgetWithText(UtenButton, '反审'), findsNothing);
+      expect(
+        api.router!.routeInformationProvider.value.uri.path,
+        '/production/daily-reports/dr-2',
+      );
+      expect(find.widgetWithText(UtenButton, '编辑'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -956,7 +1115,7 @@ void main() {
     );
   });
 
-  testWidgets('审核拿到 200：按钮换成红冲，且不再多发一次详情请求', (tester) async {
+  testWidgets('审核拿到 200：显示反审入口，且不再多发一次详情请求', (tester) async {
     final (api, notices) = await _pump(
       tester,
       onApprove: (server) {
@@ -970,7 +1129,7 @@ void main() {
     await _tapApprove(tester);
 
     expect(find.widgetWithText(UtenButton, '审核'), findsNothing);
-    expect(find.widgetWithText(UtenButton, '红冲'), findsOneWidget);
+    expect(find.widgetWithText(UtenButton, '反审'), findsOneWidget);
     expect(api.detailReads, readsAfterLoad, reason: '成功路径不该再回读详情');
     expect(notices, contains('已审核'));
   });
@@ -1133,7 +1292,7 @@ void main() {
     await _tapApprove(tester);
 
     expect(find.widgetWithText(UtenButton, '审核'), findsOneWidget);
-    expect(find.widgetWithText(UtenButton, '红冲'), findsNothing);
+    expect(find.widgetWithText(UtenButton, '反审'), findsNothing);
     expect(api.detailReads, readsAfterLoad + 1);
     expect(notices, contains('明细为空，不可审核'));
   });

@@ -1,3 +1,4 @@
+import '../../../shared/models/procurement_source_terms.dart';
 import '../../../shared/business_columns/business_column.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 // 委外单据模型（8 单据统一超集，对应后端 *ListItem/*Detail/*ItemDto）。
@@ -380,6 +381,8 @@ class SubcontractDocDetail {
     this.currencyId,
     this.exchangeRate,
     this.exchangeRateText,
+    this.effectiveFinanceExchangeRate,
+    this.taxRateText,
     this.taxRate,
     this.purchaserId,
     this.senderId,
@@ -431,6 +434,8 @@ class SubcontractDocDetail {
   final String? currencyId;
   final double? exchangeRate;
   final String? exchangeRateText;
+  final String? effectiveFinanceExchangeRate;
+  final String? taxRateText;
   final double? taxRate;
   final String? purchaserId;
   final String? senderId;
@@ -498,6 +503,11 @@ class SubcontractDocDetail {
         currencyId: json['currencyId'] as String?,
         exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
         exchangeRateText: receiptRecordedDecimal(json, 'exchangeRate'),
+        effectiveFinanceExchangeRate: receiptRecordedDecimal(
+          json,
+          'effectiveFinanceExchangeRate',
+        ),
+        taxRateText: receiptRecordedDecimal(json, 'taxRate'),
         taxRate: (json['taxRate'] as num?)?.toDouble(),
         purchaserId: json['purchaserId'] as String?,
         senderId: json['senderId'] as String?,
@@ -551,6 +561,20 @@ class SubcontractDocDetail {
                 )
                 .toList() ??
             const [],
+      );
+
+  ProcurementSourceTerms sourceCommercialTerms({required bool orderSource}) =>
+      ProcurementSourceTerms(
+        currencyId: currencyId,
+        exchangeRate: priceMasked
+            ? null
+            : orderSource
+            ? effectiveFinanceExchangeRate ??
+                  exchangeRateText ??
+                  exchangeRate?.toString()
+            : exchangeRateText ?? exchangeRate?.toString(),
+        taxRate: taxRateText ?? taxRate?.toString(),
+        settlementMethodId: settlementMethodId,
       );
 }
 

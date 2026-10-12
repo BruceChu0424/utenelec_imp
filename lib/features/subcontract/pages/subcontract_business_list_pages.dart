@@ -847,7 +847,7 @@ class _SubcontractBusinessListPageState
                             ),
                           UtenFilterSegment(
                             value: const _BizSeg.history(-1),
-                            label: '红冲',
+                            label: '已反审',
                             count: bucket(DocumentStatusBucket.reversed),
                           ),
                         ],
@@ -1140,7 +1140,7 @@ List<MasterColumnDef<SubcontractDocListItem>> _orderColumns(
 }
 
 String _orderStatusText(SubcontractDocListItem row) {
-  if (row.status == -1) return '已红冲';
+  if (row.status == -1) return '已反审';
   if (row.status == 1) {
     return row.closed ? '已结案' : '财务已通过 / 执行中';
   }

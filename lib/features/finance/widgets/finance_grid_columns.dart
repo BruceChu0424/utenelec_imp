@@ -9,6 +9,7 @@
 // financeGridColumns(mode, ...)：按模式返回不同列集，每列 cellBuilder 编辑对应行字段。
 // 列宽固定 + 横向滚动（UtenEditableGrid 自带 sticky 表头），全尺寸 Excel（与其它模块一致）。
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_review_input_cell.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 
@@ -212,10 +213,11 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
   bool? accountBaseCurrency,
   bool showReceiptReconciliation = true,
   TextEditingController? bankReferenceController,
+  Map<FinanceGridRow, Map<String, String?>>? reviewBaseline,
 }) {
-  switch (mode) {
-    case ItemMode.settle:
-      return type == FinanceDocType.receipt
+  final columns = switch (mode) {
+    ItemMode.settle =>
+      type == FinanceDocType.receipt
           ? _receiptSettleColumns(
               context,
               names,
@@ -223,13 +225,100 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
               showReconciliation: showReceiptReconciliation,
               bankReferenceController: bankReferenceController,
             )
-          : _settleColumns();
-    case ItemMode.allocate:
-      return _allocateColumns(context, names, type);
-    case ItemMode.transfer:
-      return _transferColumns(names);
-  }
+          : _settleColumns(),
+    ItemMode.allocate => _allocateColumns(context, names, type),
+    ItemMode.transfer => _transferColumns(names),
+  };
+  if (reviewBaseline == null) return columns;
+  return [
+    for (final column in columns)
+      EditableGridColumn<FinanceGridRow>(
+        key: column.key,
+        label: column.label,
+        width: column.width,
+        numeric: column.numeric,
+        defaultVisible: column.defaultVisible,
+        exportDefinition: column.exportDefinition,
+        exactValueOf: column.exactValueOf,
+        exactListenableOf: column.exactListenableOf,
+        required: column.required,
+        headerInfo: column.headerInfo,
+        textOf: column.textOf,
+        listenableOf: column.listenableOf,
+        filterValueOf: column.filterValueOf,
+        frozenTextOf: column.frozenTextOf,
+        chromeWidth: column.chromeWidth,
+        fillsCellHeight: column.fillsCellHeight,
+        cellColor: column.cellColor,
+        cellColorListenableOf: column.cellColorListenableOf,
+        legendOf: column.legendOf,
+        reviewReasonOf: column.reviewReasonOf,
+        aiSensitive: column.aiSensitive,
+        cellBuilder: (context, row) {
+          final before = reviewBaseline[row];
+          if (before == null || !before.containsKey(column.key)) {
+            return column.cellBuilder(context, row);
+          }
+          final listenable = switch (column.key) {
+            'amount' => row.amount,
+            'qty' => row.qty,
+            'price' => row.price,
+            'exchangeRate' => row.exchangeRate,
+            'writeOff' => row.writeOff,
+            'remark' => row.remark,
+            'style' => row.styleIdNotifier,
+            'department' => row.department,
+            'inAccount' => row.inAccountIdNotifier,
+            'occurDate' => row.occurDateNotifier,
+            'bankReference' => bankReferenceController,
+            _ => null,
+          };
+          if (listenable == null) return column.cellBuilder(context, row);
+          return ListenableBuilder(
+            listenable: listenable,
+            builder: (context, _) => UtenReviewInputCell(
+              before: before[column.key],
+              after: financeGridReviewValues(
+                row,
+                names,
+                type,
+                bankReferenceController,
+              )[column.key],
+              beforeKey: ValueKey(
+                'finance-review-before-${column.key}-${row.hashCode}',
+              ),
+              child: column.cellBuilder(context, row),
+            ),
+          );
+        },
+      ),
+  ];
 }
+
+Map<String, String?> financeGridReviewValues(
+  FinanceGridRow row,
+  FinanceNameService names,
+  FinanceDocType type,
+  TextEditingController? bankReference,
+) => {
+  'amount': row.amount.text,
+  'qty': row.qty.text,
+  'price': row.price.text,
+  'exchangeRate': row.exchangeRate.text,
+  'writeOff': row.writeOff.text,
+  'remark': row.remark.text,
+  'style': names.styleName(
+    row.styleId,
+    type == FinanceDocType.otherIncome ? 'INCOME' : 'EXPENSE',
+  ),
+  'department': names.department(
+    row.department.text,
+    referencedName: row.departmentReferenceName,
+  ),
+  'inAccount': names.accountEntries[row.inAccountId],
+  'occurDate': row.occurDate,
+  'bankReference': bankReference?.text,
+};
 
 // ===== settle：核销单据号（只读）+ 本次金额（录入）=====
 List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(

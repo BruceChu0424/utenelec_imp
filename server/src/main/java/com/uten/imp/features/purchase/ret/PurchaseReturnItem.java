@@ -16,6 +16,15 @@ import java.util.UUID;
 /** 采购退货明细。源 P_WithdrawItem。receipt_item_id→收货明细、order_item_id→订货明细（审核回写 returned_qty）。 */
 @Getter @Setter @NoArgsConstructor @Entity @Table(name = "purchase_return_items")
 public class PurchaseReturnItem extends BaseEntity {
+    @jakarta.persistence.Column(name="quantity_semantics")
+    private String quantitySemantics = "LEGACY_RECORDED";
+    @jakarta.persistence.Column(name="gift_qty")
+    private BigDecimal giftQty = BigDecimal.ZERO;
+    @jakarta.persistence.Column(name="charged_base_qty")
+    private BigDecimal chargedBaseQty;
+    @jakarta.persistence.Column(name="gift_base_qty")
+    private BigDecimal giftBaseQty;
+
     private Integer legacyId;
     @Column(name = "bill_no") private String billNo;
     @Column(name = "bill_date") private LocalDate billDate;

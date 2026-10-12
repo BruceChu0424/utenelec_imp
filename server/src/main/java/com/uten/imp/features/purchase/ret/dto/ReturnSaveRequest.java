@@ -26,6 +26,7 @@ public class ReturnSaveRequest {
     private UUID settlementMethodId;
     private Integer settlementStyleLegacy;
     private String remark;
+    private boolean confirmGiftSemantics;
     @Valid
     @NotNull
     @Size(max = RequestLimits.DOCUMENT_LINES)

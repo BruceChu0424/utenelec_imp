@@ -50,7 +50,7 @@ public class GlPostingService {
             "SUPPLIER_CLAIM_LEDGER", "SUPPLIER_CLAIM_OFFSET",
             "SUPPLIER_CLAIM_RECEIVABLE", "SUPPLIER_CLAIM_CASH",
             "CUSTOMER_PREPAYMENT_OFFSET",
-            SubcontractWasteLossGlProjection.SOURCE_TYPE);
+            SubcontractWasteLossGlProjection.SOURCE_TYPE, ProcurementReturnCostGlProjection.SOURCE_TYPE);
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -61,6 +61,20 @@ public class GlPostingService {
     public int generate(String period) {
         tx.bind();
         return generatePeriod(period);
+    }
+
+    @Transactional(propagation=Propagation.MANDATORY)
+    public void removeProcurementReturnCostProjection(UUID id,String family,String billNo,LocalDate billDate) {
+        String table=switch(family) {case "PURCHASE_RETURN"->"purchase_returns";case "SUBCONTRACT_RETURN"->"subcontract_returns";
+            default->throw new IllegalArgumentException("Unknown procurement return family");};
+        var rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT legacy_id,bill_no,bill_date FROM "+table+" WHERE id=:id")
+                .setParameter("id",id));
+        if(rows.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"退货价差反向缺少唯一原单身份");
+        Object[] row=rows.getFirst();
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(row[0]==null?null:((Number)row[0]).intValue());
+        if(!Objects.equals(row[1],billNo)||!Objects.equals(NativeValueConverters.toLocalDate(row[2]),billDate))
+            throw new ApiException(ErrorCode.CONFLICT,"退货价差反向原单身份或日期已变化");
+        removeAutoProjection(ProcurementReturnCostGlProjection.SOURCE_TYPE,ProcurementReturnCostGlProjection.SOURCE_TYPE,id,billNo,billDate);
     }
 
     private int generatePeriod(String period) {
@@ -77,9 +91,11 @@ public class GlPostingService {
         assertPaymentPostingConfiguration(period);
         assertSupplierClaimPostingConfiguration(period);
         SubcontractWasteLossGlProjection.assertConfiguration(em, period);
+        ProcurementReturnCostGlProjection.assertConfiguration(em,period);
         assertSupplierClaimProjectionOwnership(period);
         assertCustomerPrepaymentProjectionOwnership(period);
         SubcontractWasteLossGlProjection.assertProjectionOwnership(em, period);
+        ProcurementReturnCostGlProjection.assertProjectionOwnership(em,period);
         assertBalanceAdjustmentSnapshotStyles(period);
         assertSourceDocumentIdentities(period);
         em.createNativeQuery("DELETE FROM gl_vouchers WHERE source='AUTO' AND period=:p AND source_type IN (:sourceTypes) "
@@ -93,6 +109,7 @@ public class GlPostingService {
         postAr(period);
         postAp(period);
         SubcontractWasteLossGlProjection.post(em, period);
+        ProcurementReturnCostGlProjection.post(em,period);
         postSupplierClaimLedger(period);
         postSupplierClaimOffsets(period);
         postSupplierClaimReceivables(period);
@@ -133,6 +150,7 @@ public class GlPostingService {
         FinancialDocumentGlScope.requireMutable(em, "PAYMENT", paymentId);
         PaymentStyleHierarchyLock.lock(em);
         lockAutoProjectionPeriod(reversedAt.atZoneSameInstant(BusinessTime.ZONE).toLocalDate());
+        requireActualBankPaymentReversalPossible(paymentId);
         return (UUID)em.createNativeQuery("SELECT fn_reverse_payment_v2_gl(:id,:reversedAt)")
                 .setParameter("id",paymentId).setParameter("reversedAt",reversedAt).getSingleResult();
     }
@@ -174,25 +192,49 @@ public class GlPostingService {
             UUID sourceDocId,
             String billNo,
             LocalDate billDate) {
-        if (!REGENERATED_SOURCE_TYPES.contains(sourceType)
-                || entrySourceType == null
-                || entrySourceType.isBlank()
-                || sourceDocId == null
-                || billNo == null
-                || billNo.isBlank()
-                || billDate == null) {
-            throw new ApiException(ErrorCode.CONFLICT, "总账记录的来源信息不完整，不能红冲");
-        }
-        String period = YearMonth.from(billDate).toString();
-        String reversalPeriod = YearMonth.from(BusinessTime.today()).toString();
-        if (!period.equals(reversalPeriod)) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "目前不能跨会计期间红冲：原期间 " + period
-                            + "，当前期间 " + reversalPeriod
-                            + "。请在原期间处理，或等通用会计期间与反向凭证功能上线后再操作");
-        }
-        FinancialDocumentGlScope.requireMutable(em, sourceType, sourceDocId);
+        String period = requireAutoProjectionPeriod(sourceType,entrySourceType,sourceDocId,billNo,billDate);
         lockAutoProjectionPeriod(period);
+        requireRemovableAutoProjection(sourceType,entrySourceType,sourceDocId,billNo,billDate);
+        em.createNativeQuery("""
+                        DELETE FROM gl_vouchers voucher
+                        WHERE voucher.source='AUTO'
+                          AND voucher.source_type=:sourceType
+                          AND voucher.source_doc_id=:sourceDocId
+                          AND voucher.period=:period
+                          AND voucher.status=1
+                          AND COALESCE(voucher.is_deleted,false)=false
+                          AND EXISTS (
+                              SELECT 1 FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                                AND entry.source_doc_type=:entrySourceType
+                                AND entry.source_doc_id=:sourceDocId
+                                AND entry.period=:period
+                          )
+                          AND NOT EXISTS (
+                              SELECT 1 FROM gl_entries entry
+                              WHERE entry.voucher_id=voucher.id
+                                AND COALESCE(entry.is_deleted,false)=false
+                                AND (
+                                    entry.source_doc_type IS DISTINCT FROM :entrySourceType
+                                    OR entry.source_doc_id IS DISTINCT FROM :sourceDocId
+                                    OR entry.period IS DISTINCT FROM :period
+                                )
+                          )
+                        """)
+                .setParameter("sourceType", sourceType)
+                .setParameter("entrySourceType", entrySourceType)
+                .setParameter("period", period)
+                .setParameter("sourceDocId", sourceDocId)
+                .executeUpdate();
+    }
+
+    /** The same non-mutating source/period/ownership guard is used by UI preflight and locked removal. */
+    @Transactional(propagation = Propagation.MANDATORY, noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
+    public void requireRemovableAutoProjection(String sourceType,String entrySourceType,UUID sourceDocId,
+            String billNo,LocalDate billDate) {
+        String period = requireAutoProjectionPeriod(sourceType,entrySourceType,sourceDocId,billNo,billDate);
+        FinancialDocumentGlScope.requireMutable(em, sourceType, sourceDocId);
         if ("EXPENSE".equals(sourceType)) {
             assertExpenseProjectionUnconfirmed(sourceDocId, period);
         }
@@ -237,38 +279,28 @@ public class GlPostingService {
             throw new ApiException(ErrorCode.CONFLICT,
                     "总账记录与业务单据对不上，不能直接删除这条总账记录");
         }
-        em.createNativeQuery("""
-                        DELETE FROM gl_vouchers voucher
-                        WHERE voucher.source='AUTO'
-                          AND voucher.source_type=:sourceType
-                          AND voucher.source_doc_id=:sourceDocId
-                          AND voucher.period=:period
-                          AND voucher.status=1
-                          AND COALESCE(voucher.is_deleted,false)=false
-                          AND EXISTS (
-                              SELECT 1 FROM gl_entries entry
-                              WHERE entry.voucher_id=voucher.id
-                                AND COALESCE(entry.is_deleted,false)=false
-                                AND entry.source_doc_type=:entrySourceType
-                                AND entry.source_doc_id=:sourceDocId
-                                AND entry.period=:period
-                          )
-                          AND NOT EXISTS (
-                              SELECT 1 FROM gl_entries entry
-                              WHERE entry.voucher_id=voucher.id
-                                AND COALESCE(entry.is_deleted,false)=false
-                                AND (
-                                    entry.source_doc_type IS DISTINCT FROM :entrySourceType
-                                    OR entry.source_doc_id IS DISTINCT FROM :sourceDocId
-                                    OR entry.period IS DISTINCT FROM :period
-                                )
-                          )
-                        """)
-                .setParameter("sourceType", sourceType)
-                .setParameter("entrySourceType", entrySourceType)
-                .setParameter("period", period)
-                .setParameter("sourceDocId", sourceDocId)
-                .executeUpdate();
+    }
+
+    private String requireAutoProjectionPeriod(String sourceType,String entrySourceType,UUID sourceDocId,
+            String billNo,LocalDate billDate) {
+        if (!REGENERATED_SOURCE_TYPES.contains(sourceType)
+                || entrySourceType == null
+                || entrySourceType.isBlank()
+                || sourceDocId == null
+                || billNo == null
+                || billNo.isBlank()
+                || billDate == null) {
+            throw new ApiException(ErrorCode.CONFLICT, "总账记录的来源信息不完整，不能红冲");
+        }
+        String period = YearMonth.from(billDate).toString();
+        String reversalPeriod = YearMonth.from(BusinessTime.today()).toString();
+        if (!period.equals(reversalPeriod)) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "目前不能跨会计期间红冲：原期间 " + period
+                            + "，当前期间 " + reversalPeriod
+                            + "。请在原期间处理，或等通用会计期间与反向凭证功能上线后再操作");
+        }
+        return period;
     }
 
     /**
@@ -1706,6 +1738,7 @@ public class GlPostingService {
         String reversalPeriod=YearMonth.from(reversalDate).toString();
         requireCurrentReceiptPostingPeriod(reversalPeriod);
         lockAutoProjectionPeriod(reversalPeriod);
+        requireReceiptReversalPossible(receiptId);
         @SuppressWarnings("unchecked")
         List<Object[]> originals=em.createNativeQuery("""
                 SELECT voucher.id,receipt.bill_no
@@ -1804,6 +1837,45 @@ public class GlPostingService {
                     "收款原始凭证的反向关联保存失败，不能红冲，请重试");
         }
         return reversalId;
+    }
+
+    /** Current-period mirror is allowed even when the original receipt belongs to an earlier month. */
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true, noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
+    public void requireReceiptReversalPossible(UUID receiptId) {
+        FinancialDocumentGlScope.requireMutable(em,"RECEIPT",receiptId);
+        long originals=((Number)em.createNativeQuery("""
+            SELECT COUNT(*) FROM finance_receipts receipt JOIN gl_vouchers voucher ON voucher.source_doc_id=receipt.id
+            WHERE receipt.id=:id AND receipt.status=1 AND NOT receipt.is_deleted
+              AND voucher.source='AUTO' AND voucher.source_type='RECEIPT' AND voucher.status=1
+              AND NOT voucher.is_deleted AND voucher.reversed_by_voucher_id IS NULL
+            """).setParameter("id",receiptId).getSingleResult()).longValue();
+        if(originals!=1)throw new ApiException(ErrorCode.CONFLICT,"收款原始总账凭证缺失、重复或已反审，禁止继续");
+    }
+
+    /** Original bank GL mirror eligibility; the final writer retains its full database terminal assertions. */
+    @Transactional(propagation=Propagation.MANDATORY,readOnly=true, noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
+    public void requireActualBankPaymentReversalPossible(UUID paymentId) {
+        FinancialDocumentGlScope.requireMutable(em,"PAYMENT",paymentId);
+        long originals=((Number)em.createNativeQuery("""
+            SELECT COUNT(*) FROM finance_payments payment JOIN gl_vouchers voucher ON voucher.source_doc_id=payment.id
+            WHERE payment.id=:id AND payment.amount_authority_version=2 AND payment.status=1 AND NOT payment.is_deleted
+              AND voucher.source='AUTO' AND voucher.source_type='PAYMENT' AND voucher.status=1
+              AND NOT voucher.is_deleted AND voucher.reversed_by_voucher_id IS NULL
+            """).setParameter("id",paymentId).getSingleResult()).longValue();
+        if(originals!=1)throw new ApiException(ErrorCode.CONFLICT,"付款原始总账凭证缺失、重复或已反审，禁止继续");
+        boolean different=Boolean.TRUE.equals(em.createNativeQuery("""
+            SELECT EXISTS(
+                (SELECT line_no,style_id,direction,amount FROM v_payment_v2_expected_gl_entries WHERE payment_id=:id
+                 EXCEPT ALL SELECT entry.line_no,entry.style_id,entry.direction,entry.amount FROM gl_entries entry
+                     JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id WHERE voucher.source='AUTO'
+                       AND voucher.source_type='PAYMENT' AND voucher.source_doc_id=:id AND voucher.status=1 AND NOT voucher.is_deleted)
+                UNION ALL
+                (SELECT entry.line_no,entry.style_id,entry.direction,entry.amount FROM gl_entries entry
+                     JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id WHERE voucher.source='AUTO'
+                       AND voucher.source_type='PAYMENT' AND voucher.source_doc_id=:id AND voucher.status=1 AND NOT voucher.is_deleted
+                 EXCEPT ALL SELECT line_no,style_id,direction,amount FROM v_payment_v2_expected_gl_entries WHERE payment_id=:id))
+            """).setParameter("id",paymentId).getSingleResult());
+        if(different)throw new ApiException(ErrorCode.CONFLICT,"付款原始总账金额与冻结的银行及应付事实不一致，禁止继续");
     }
 
     private void requireCurrentReceiptPostingPeriod(String period){

@@ -57,11 +57,61 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
   });
 }
 
+abstract interface class SalesOrderFinanceAmendmentRepository {
+  Future<SalesOrderFinanceReview> amendReview(
+    String orderId, {
+    required int expectedRevision,
+    required String expectedClaimId,
+    required List<Map<String, dynamic>> lines,
+  });
+}
+
+extension SalesFinanceAmendmentAccess
+    on SalesOrderFinanceConfirmationRepository {
+  Future<SalesOrderFinanceReview> amendReview(
+    String orderId, {
+    required int expectedRevision,
+    required String expectedClaimId,
+    required List<Map<String, dynamic>> lines,
+  }) {
+    final repository = this;
+    if (repository is SalesOrderFinanceAmendmentRepository) {
+      return (repository as SalesOrderFinanceAmendmentRepository).amendReview(
+        orderId,
+        expectedRevision: expectedRevision,
+        expectedClaimId: expectedClaimId,
+        lines: lines,
+      );
+    }
+    throw UnsupportedError('当前连接不支持审核修改');
+  }
+}
+
 class DioSalesOrderFinanceConfirmationRepository
-    implements SalesOrderFinanceConfirmationRepository {
+    implements
+        SalesOrderFinanceConfirmationRepository,
+        SalesOrderFinanceAmendmentRepository {
   const DioSalesOrderFinanceConfirmationRepository(this.api);
 
   final ApiClient api;
+
+  @override
+  Future<SalesOrderFinanceReview> amendReview(
+    String orderId, {
+    required int expectedRevision,
+    required String expectedClaimId,
+    required List<Map<String, dynamic>> lines,
+  }) async {
+    final json = await api.post(
+      '${ApiEndpoints.salesOrderFinanceReview(Uri.encodeComponent(orderId)).replaceFirst('/review', '')}/amend',
+      body: {
+        'expectedRevision': expectedRevision,
+        'expectedClaimId': expectedClaimId,
+        'lines': lines,
+      },
+    );
+    return SalesOrderFinanceReview.fromJson(json);
+  }
 
   @override
   Future<SalesOrderFinancePendingPage> pending({

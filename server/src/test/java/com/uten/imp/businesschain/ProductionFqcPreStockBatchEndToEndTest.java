@@ -45,7 +45,7 @@ import static org.mockito.Mockito.*;
         "uten.production.readiness-reconcile.enabled=false", "uten.workshop-material.auto-close.enabled=false",
         "uten.policy-intelligence.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
-        "uten.inventory.value-work-initial-delay-ms=3600000",
+
         "uten.concurrency.verify-nested-footprint=${uten.fqc.batch.verifyNestedFootprint:true}"})
 @Import({ProductionJdbcMeasurement.Configuration.class, ProductionFqcPreStockBatchEndToEndTest.DeadlineProbeConfiguration.class})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)

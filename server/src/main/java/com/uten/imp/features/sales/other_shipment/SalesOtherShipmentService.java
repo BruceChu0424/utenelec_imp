@@ -133,7 +133,7 @@ public class SalesOtherShipmentService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     @PreAuthorize("hasAuthority('sales_other_shipment:view')")
     public OtherShipmentDetail detail(UUID id) { return readDetail(id, false); }
 
@@ -184,6 +184,14 @@ public class SalesOtherShipmentService {
 
     private static ApiException retiredWrite() {
         return new ApiException(ErrorCode.CONFLICT,"历史其它出货单只供查阅。客户发货请新建客户零星发货，经财务确认后由仓库出库；内部领用请使用仓库内部单据");
+    }
+
+    @Transactional(readOnly=true,noRollbackFor=ApiException.class)
+    @PreAuthorize("hasAuthority('sales_other_shipment:view') and hasAuthority('sales_other_shipment:reverse')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id); // Keep the historical reader's actual object scope.
+        return com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility.blocked("UNSUPPORTED_WORKFLOW",
+            "其他发货仅保留历史核对；新出货请通过销售财务与仓库交接流程办理，不能通用反审生成草稿",null);
     }
 
     /** 红冲：status 1→-1，反向入库（无 ar 校验，无回写）。 */

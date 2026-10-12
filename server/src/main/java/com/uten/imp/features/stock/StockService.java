@@ -177,6 +177,31 @@ public class StockService {
         return recordMovementInternal(null,req);
     }
 
+    /** Exact ordinary receipt-withdrawal quantity checks, without inventory locks or writes. */
+    @Transactional(readOnly=true,propagation=org.springframework.transaction.annotation.Propagation.MANDATORY,noRollbackFor=ApiException.class)
+    public void requireOrdinaryInboundReversalQuantity(List<MovementRequest> requests) {
+        java.util.Map<String,BigDecimal> withdrawn=new java.util.HashMap<>();
+        for(var request:requests) {
+            if(request.direction()!=DIR_OUT || (request.movementType()!=7 && request.movementType()!=11 && request.movementType()!=13)
+                    ||!"STOCK_DOC".equals(request.sourceDocType())||request.qty()==null||request.qty().signum()<=0)
+                throw new ApiException(ErrorCode.CONFLICT,"普通入仓撤回核对的来源或基本数量不完整");
+            WarehouseClass classification=requireWarehouseClass(request);
+            String key=request.warehouseId()+"|"+request.goodsId()+"|"+request.colorId();
+            BigDecimal previous=withdrawn.getOrDefault(key,BigDecimal.ZERO);
+            var rows=balanceRepo.readPhysicalSnapshot(request.warehouseId(),request.goodsId(),request.colorId());
+            if(rows.size()>1)throw new ApiException(ErrorCode.CONFLICT,"库存维度存在重复余额，请先核对");
+            BigDecimal physical=rows.isEmpty()?BigDecimal.ZERO:rows.getFirst().getQty();
+            if(physical.subtract(previous).compareTo(request.qty())<0)
+                throw new ApiException(ErrorCode.CONFLICT,"原入库货物数量不足，请先撤回出库或核对库存");
+            if(!classification.defective()&&!classification.quarantineLeg()) {
+                BigDecimal movable=balanceRepo.warehouseAvailableBase(request.warehouseId(),request.goodsId(),request.colorId());
+                if(movable==null||movable.subtract(previous).compareTo(request.qty())<0)
+                    throw new ApiException(ErrorCode.CONFLICT,"原入库货物已有库存预留或安全库存占用，请先处理占用再反审");
+            }
+            withdrawn.put(key,previous.add(request.qty()));
+        }
+    }
+
     /** Reserved for a real IQC item which is inserted before its deferred physical FK is completed. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public PostedMovement recordMovementWithId(UUID reservedMovementId,MovementRequest req){

@@ -510,7 +510,7 @@ void main() {
       tester,
       _quote(
         status: 1,
-        actions: const ['convert', 'reopen', 'reverse'],
+        actions: const ['convert', 'reopen'],
         extra: const {
           'financeConfirmedByName': '王会计',
           'financeConfirmedAt': '2026-09-27T04:00:00Z',
@@ -532,7 +532,6 @@ void main() {
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey('sales-quote-reopen')), findsOneWidget);
-    expect(find.byKey(const ValueKey('sales-quote-reverse')), findsOneWidget);
     // 折扣列(报价与订货同口径)与服务端金额。
     expect(find.text('折扣'), findsOneWidget);
     expect(find.text('190.00'), findsWidgets);
@@ -544,6 +543,27 @@ void main() {
     });
     expect(find.text('order-edit-order-9'), findsOneWidget);
   });
+
+  testWidgets(
+    'obsolete reverse capability cannot bypass quote revision reopen',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _quote(status: 1, actions: const ['reverse', 'reopen']),
+      );
+      expect(find.byKey(const ValueKey('sales-quote-reverse')), findsNothing);
+      expect(api.postPaths, isEmpty);
+      api.afterPost = _quote(status: 0, actions: const ['edit', 'submit']);
+
+      await _tapAndConfirm(tester, 'sales-quote-reopen');
+
+      expect(api.postPaths, ['/sales/quotes/quote-1/reopen']);
+      expect(api.postBodies['/sales/quotes/quote-1/reopen'], {
+        'expectedRevision': 4,
+      });
+      expect(find.byKey(const ValueKey('sales-quote-submit')), findsOneWidget);
+    },
+  );
 
   testWidgets('reopen sends the revision and reloads as draft', (tester) async {
     final api = await _pump(

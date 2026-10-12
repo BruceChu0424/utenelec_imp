@@ -32,12 +32,14 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
     this.onAddAllocation,
     this.onRemoveAllocation,
     this.enabled = true,
+    this.destinationsEditable = true,
     this.leadingInset = 0,
   }) : assert(leadingInset >= 0 && leadingInset < double.infinity);
 
   final DailyGridRow product;
   final List<DailyGridRow> allocationRows, materialRows;
   final bool allocationsExpanded, materialsExpanded, enabled;
+  final bool destinationsEditable;
 
   /// Outer card alignment supplied by the main table's leading selection column.
   final double leadingInset;
@@ -435,7 +437,7 @@ class ProductionDailyProductDetailsCard extends StatelessWidget {
             ? '$fullName\n系统按先急后缓给出的建议去向，请核对'
             : null,
         onChanged: (value) {
-          if (!enabled || value == null) return;
+          if (!enabled || !destinationsEditable || value == null) return;
           onAllocationDestinationChanged?.call(
             row,
             value == outputAllocationWarehouseValue ? null : value,

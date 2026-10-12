@@ -158,6 +158,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _aiAttach();
+    final route = ModalRoute.of(context);
+    if (_overlay != null && route != null && !route.isCurrent) _close();
     if (_overlay != null &&
         (!(_overlayHost?.mounted ?? false) ||
             !identical(
@@ -649,6 +651,28 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
 
     final anchor = _anchorRect();
     if (anchor == null) return const SizedBox.shrink();
+    final host = _overlayHost!.context.findRenderObject() as RenderBox;
+    var visible = Offset.zero & constraints.biggest;
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is ScrollableState) {
+        final viewport = element.findRenderObject();
+        if (viewport is RenderBox && viewport.attached && viewport.hasSize) {
+          visible = visible.intersect(
+            MatrixUtils.transformRect(
+              viewport.getTransformTo(host),
+              Offset.zero & viewport.size,
+            ),
+          );
+        }
+      }
+      return true;
+    });
+    if (!visible.overlaps(anchor)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && identical(_overlay, entry)) _close();
+      });
+      return const SizedBox.shrink();
+    }
     _lastAnchor = anchor;
     final overlaySize = constraints.biggest;
     final theme = Theme.of(ctx);

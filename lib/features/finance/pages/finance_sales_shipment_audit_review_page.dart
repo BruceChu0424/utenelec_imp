@@ -39,6 +39,7 @@ import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/business_columns/business_columns_table.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
@@ -130,10 +131,15 @@ class _FinanceSalesShipmentAuditReviewPageState
 
   /// 按当前汇率框折合本币的参考值(仅预览，权威值由服务端在出库立账时计算)。
   String? _localAmountPreview() {
-    final total = _detail?.totalOriginal;
-    final rate = double.tryParse(_rateController.text.trim());
-    if (total == null || rate == null || rate <= 0) return null;
-    return (total * rate).toStringAsFixed(2);
+    final detail = _detail;
+    if (detail == null) return null;
+    final rate = financeRateUnits(_rateController.text);
+    if (rate == null || rate <= BigInt.zero) return null;
+    final exact = financeExactMultiplyTexts([
+      detail.exactDecimals['totalOriginal'] ?? detail.totalOriginal?.toString(),
+      _rateController.text.trim(),
+    ]);
+    return exact == null ? null : financeMoneyText(exact);
   }
 
   /// 决策可用：待审 + 已销售确认 + 未退回 + 快照完整 + 认领就绪。
@@ -1163,6 +1169,12 @@ class _FinanceSalesShipmentAuditReviewPageState
                 width: 200,
                 value: (it) => salesGoodsNameLabel(it, names.goods(it.goodsId)),
               ),
+              MasterColumnDef<SalesDocItem>(
+                key: 'nameEn',
+                label: '英文名称',
+                width: 180,
+                value: (item) => item.goodsNameEn,
+              ),
               MasterColumnDef(
                 key: 'goodsCode',
                 label: '编号',
@@ -1199,7 +1211,10 @@ class _FinanceSalesShipmentAuditReviewPageState
                 label: '数量',
                 width: 125,
                 type: 'number',
-                value: (it) => formatQtyWithUnit(it.qty, names.unit(it.unitId)),
+                value: (it) => formatExactQtyWithUnit(
+                  it.exactDecimals['qty'] ?? it.qty?.toString(),
+                  names.unit(it.unitId),
+                ),
               ),
               // 金额自动带订单币种后缀（2026-10-10 口径）；价格脱敏时金额打码。
               MasterColumnDef(
@@ -1210,19 +1225,20 @@ class _FinanceSalesShipmentAuditReviewPageState
                 value: (it) => masked
                     ? '***'
                     : financeMoneyWithUnitSuffix(
-                        it.price?.toStringAsFixed(2),
+                        it.exactDecimals['price'] ?? it.price?.toString(),
                         currencyName: names.currency(d.currencyId),
                       ),
               ),
               MasterColumnDef(
                 key: 'amount',
-                label: '金额',
+                label: '总金额',
                 width: 140,
                 type: 'money',
                 value: (it) => masked
                     ? '***'
                     : financeMoneyWithUnitSuffix(
-                        ((it.qty ?? 0) * (it.price ?? 0)).toStringAsFixed(2),
+                        it.exactDecimals['amountOriginal'] ??
+                            it.amountOriginal?.toString(),
                         currencyName: names.currency(d.currencyId),
                       ),
               ),
@@ -1232,6 +1248,10 @@ class _FinanceSalesShipmentAuditReviewPageState
                 width: 160,
                 value: (it) =>
                     (it.remark?.isNotEmpty ?? false) ? it.remark : null,
+              ),
+              ...businessReadOnlyColumns<SalesDocItem>(
+                items,
+                columnsOf: (item) => item.extraColumns,
               ),
             ],
             items: items,

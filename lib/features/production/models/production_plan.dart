@@ -21,7 +21,7 @@ String productionStatusLabel(int? code) {
     case kProductionStatusApproved:
       return '已审';
     case kProductionStatusReversed:
-      return '红冲';
+      return '已反审';
     default:
       return '—';
   }
@@ -144,12 +144,15 @@ class ProductionPlanItem {
     this.mgoodsId,
     this.unitId,
     this.unitRate,
+    this.unitRateText,
     this.salesOrderItemId,
     this.salesOrderNo,
     this.clientName,
     this.clientNo,
     this.oqty,
     this.qty,
+    this.oqtyText,
+    this.qtyText,
     this.allowedOverproductionRate,
     this.allowedOverproductionRateSource,
     this.lqty,
@@ -192,6 +195,7 @@ class ProductionPlanItem {
   final String? mgoodsId;
   final String? unitId;
   final double? unitRate;
+  final String? unitRateText;
   final String? salesOrderItemId;
   final String? salesOrderNo;
   final String? clientName;
@@ -200,6 +204,8 @@ class ProductionPlanItem {
   /// 数量族（12 个，NUMERIC(18,4)；触发器游标回写累计量，本期不重算）。
   final double? oqty; // 销售订货量
   final double? qty; // 本单排产数量
+  final String? oqtyText;
+  final String? qtyText;
   final double? allowedOverproductionRate; // 计划初始比例(服务端权威)；执行段审批另存生效比例
 
   /// 比例来源(ADR-129 §2.10)：DEFAULT = 系统按货品默认填的，EXPLICIT = 人确认过的。
@@ -246,12 +252,15 @@ class ProductionPlanItem {
         mgoodsId: json['mgoodsId'] as String?,
         unitId: json['unitId'] as String?,
         unitRate: _asDouble(json['unitRate']),
+        unitRateText: (json['unitRateExact'] ?? json['unitRate'])?.toString(),
         salesOrderItemId: json['salesOrderItemId'] as String?,
         salesOrderNo: json['salesOrderNo'] as String?,
         clientName: json['clientName'] as String?,
         clientNo: json['clientNo'] as String?,
         oqty: _asDouble(json['oqty']),
         qty: _asDouble(json['qty']),
+        oqtyText: json['oqtyExact']?.toString() ?? json['oqty']?.toString(),
+        qtyText: json['qtyExact']?.toString() ?? json['qty']?.toString(),
         allowedOverproductionRate: _asDouble(json['allowedOverproductionRate']),
         allowedOverproductionRateSource:
             json['allowedOverproductionRateSource'] as String?,

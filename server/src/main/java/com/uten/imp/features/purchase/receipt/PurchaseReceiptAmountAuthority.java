@@ -55,7 +55,7 @@ public class PurchaseReceiptAmountAuthority {
                            COALESCE(source_order.is_stopped,FALSE),
                            COALESCE(source_item.arrival_overage_posted_qty,0),
                            source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input,
-                           source_item.allowed_over_receipt_pct
+                           source_item.allowed_over_receipt_pct, source_order.id,source_item.quantity_semantics,source_item.gift_qty
                     FROM purchase_order_items source_item
                     JOIN purchase_orders source_order ON source_order.id=source_item.order_id
                     WHERE source_item.id=:itemId
@@ -77,10 +77,18 @@ public class PurchaseReceiptAmountAuthority {
             BigDecimal sourceQty = decimal(source[9]);
             BigDecimal sourceOriginal = decimal(source[10]);
             BigDecimal sourceLocal = decimal(source[11]);
+            var financialTerms=com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(
+                    em,"PURCHASE",(UUID)source[14],sourceRate);
+            sourceRate=financialTerms.rate();
+            sourceLocal=financialTerms.local(sourceOriginal,sourceLocal);
+            com.uten.imp.common.finance.ProcurementApprovedExchangeRate.requireHistoricalReceiptRate(
+                    em,"PURCHASE",item.getOrderItemId(),receipt.getId(),sourceRate);
             if (sourceStatus != APPROVED || sourceStopped
                     || sourcePrice == null || sourcePrice.signum() < 0
                     || sourceCurrencyId == null || sourceRate == null || sourceRate.signum() <= 0
-                    || sourceSettlementMethodId == null || sourceQty == null || sourceQty.signum() <= 0
+                    || sourceSettlementMethodId == null || sourceQty == null || sourceQty.signum()<0
+                    || (sourceQty.signum()==0 && (item.getQty().signum()!=0 || !com.uten.imp.common.finance.ProcurementQuantities.isExtraGift((String)source[15])
+                        ||decimal(source[16])==null || decimal(source[16]).signum()<=0 || sourcePrice.signum()!=0 || sourceOriginal.signum()!=0 || sourceLocal.signum()!=0))
                     || sourceTaxRate == null || sourceTaxRate.signum() < 0
                     || sourceTaxRate.compareTo(new BigDecimal("100")) > 0
                     || sourceOriginal == null || sourceOriginal.signum() < 0
@@ -91,6 +99,12 @@ public class PurchaseReceiptAmountAuthority {
                     receipt.getExchangeRate(), receipt.getSettlementMethodId(), receipt.getTaxRate(),
                     sourceSupplierId, sourceCurrencyId, sourceRate, sourceSettlementMethodId,
                     sourceTaxRate);
+            if(item.getQty().signum()==0){
+                item.setPrice(sourcePrice);item.setAmountOriginal(BigDecimal.ZERO);item.setAmountLocal(BigDecimal.ZERO);
+                item.setReplacementIntent("NORMAL");itemRepo.saveAndFlush(item);
+                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.pinReceiptCase(em,"PURCHASE",item.getId(),financialTerms.caseId());
+                continue;
+            }
             @SuppressWarnings("unchecked")
             List<BigDecimal> currentAllowance = em.createNativeQuery("""
                     SELECT approved_excess_qty FROM procurement_arrival_exceptions
@@ -110,7 +124,7 @@ public class PurchaseReceiptAmountAuthority {
                     SELECT COALESCE(SUM(receipt_item.qty),0),
                            COALESCE(SUM(receipt_item.amount_original),0),
                            COALESCE(SUM(receipt_item.amount_local),0),
-                           COUNT(*) FILTER(WHERE receipt_item.qty IS NULL OR receipt_item.qty<=0
+                           COUNT(*) FILTER(WHERE receipt_item.qty IS NULL OR receipt_item.qty<0 OR (receipt_item.qty=0 AND (receipt_item.quantity_semantics<>'CHARGED_PLUS_GIFT_V1' OR receipt_item.gift_qty<=0))
                              OR receipt_item.amount_original IS NULL OR receipt_item.amount_original<0
                              OR receipt_item.amount_local IS NULL OR receipt_item.amount_local<0)
                     FROM purchase_receipt_items receipt_item
@@ -134,10 +148,10 @@ public class PurchaseReceiptAmountAuthority {
                     &&MoneyPolicy.local(sourceOriginal,sourceRate).compareTo(sourceLocal)==0;
             if(!exactPriceBasis&&(released.amountOriginal()==null||released.amountLocal()==null))
                 throw conflict("历史原单金额与单价不一致且退回金额没有有限表示，请保留来源待核对");
-            BigDecimal effectivePriorOriginal=exactPriceBasis
+            BigDecimal effectivePriorOriginal=released.amountOriginal()==null
                     ?MoneyPolicy.exactProduct(effectivePriorQty,sourcePrice)
                     :rawPriorOriginal.subtract(released.amountOriginal());
-            BigDecimal effectivePriorLocal=exactPriceBasis
+            BigDecimal effectivePriorLocal=released.amountLocal()==null
                     ?MoneyPolicy.local(effectivePriorOriginal,sourceRate)
                     :rawPriorLocal.subtract(released.amountLocal());
             if(effectivePriorQty.signum()<0||effectivePriorOriginal.signum()<0
@@ -152,7 +166,8 @@ public class PurchaseReceiptAmountAuthority {
             AuthorizedSource authorized = authorizedSource(
                     sourceQty, sourceOriginal, sourceLocal, sourcePrice, sourceRate,
                     postedOverageQty, currentApproved, decimal(source[12]), toleranceUsedQty);
-            ReceiptAmounts amounts = sourceAmounts(
+            ReceiptAmounts amounts = item.getQty().signum()==0
+                    ?new ReceiptAmounts(BigDecimal.ZERO,BigDecimal.ZERO):sourceAmounts(
                     item.getQty(), sourcePrice, sourceRate,
                     authorized.qty(), authorized.original(), authorized.local(),
                     effectivePriorQty,effectivePriorOriginal,effectivePriorLocal);
@@ -160,7 +175,9 @@ public class PurchaseReceiptAmountAuthority {
             item.setAmountOriginal(amounts.original());
             item.setAmountLocal(amounts.local());
             itemRepo.saveAndFlush(item);
-            item.setReplacementIntent(replacementAllocation.allocateForReceiptItem(
+            com.uten.imp.common.finance.ProcurementApprovedExchangeRate.pinReceiptCase(
+                    em,"PURCHASE",item.getId(),financialTerms.caseId());
+            if(item.getQty().signum()>0) item.setReplacementIntent(replacementAllocation.allocateForReceiptItem(
                     "PURCHASE",receipt.getId(),item.getId(),item.getOrderItemId(),
                     item.getQty(),item.getUnitRate(),amounts.original(),amounts.local(),
                     authorizedBaseQty,toleranceQty,rawPriorQty,item.getReplacementIntent()));

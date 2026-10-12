@@ -1,3 +1,5 @@
+import '../../../shared/documents/document_unapproval_action.dart';
+import '../../../shared/documents/document_unapproval.dart';
 // 生产计划单详情页（全页路由）：摘要主卡 + 执行子计划 + 折叠参考区 + 右下角悬浮操作组。
 //
 // 信息层级（2026-09-11 重排，原因见各区块注释）：本页此前是一条等权重的卡片流，
@@ -10,7 +12,7 @@
 //   ③ 参考区：附件/溯源/执行单据入口/本批次关联单据/自制子计划——查证时才翻，
 //      统一收进默认折叠的 UtenCollapsibleSection，标题带条目数，不展开也知道有没有东西。
 //
-// 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅红冲；红冲(-1)→只读。编辑/删除/审核/红冲分别按对应动作权限控制。
+// 状态机：草稿(0)→可编辑/删除/审核；已审(1)→仅反审；反审(-1)→只读。编辑/删除/审核/反审分别按对应动作权限控制。
 // is_closed（CheckFulfill4 派生：所有明细 qty-iqty≤0）/ is_stopped / is_canceled 经徽章副标体现。
 // 关联销售订单：明细 salesOrderNo（文本占位，销售模块上线后挂真 FK）。
 // 名称解析：货品/颜色/单位经 MasterNameService（跨 feature 复用 purchase 的 provider）。
@@ -317,19 +319,19 @@ class _ProductionPlanDetailPageState
 
   Future<void> _reverse() async {
     if (!_canReverse) {
-      context.appWarning('当前账号没有生产计划红冲权限', force: true);
+      context.appWarning('当前账号没有生产计划反审权限', force: true);
       return;
     }
     await _doAction(
-      '红冲将反向冲销，单据保留不可删，确认？',
+      documentUnapprovalConfirmation,
       (repo) => repo.reverse(widget.id),
-      '已红冲',
+      '已反审，进入草稿',
     );
   }
 
   Future<void> _doAction(
     String confirm,
-    Future<void> Function(ProductionPlanRepository) fn,
+    Future<Object?> Function(ProductionPlanRepository) fn,
     String ok, {
     bool reviewerResponsibility = false,
     Future<void> Function(ProductionPlanRepository)? afterSuccess,
@@ -361,13 +363,18 @@ class _ProductionPlanDetailPageState
     if (c != true) return;
     setState(() => _busy = true);
     try {
-      await fn(ref.read(productionPlanRepositoryProvider));
+      final result = await fn(ref.read(productionPlanRepositoryProvider));
       if (!mounted) return;
-      context.appSuccess(ok);
-      // 审核=下达执行段、红冲=收回执行段：车间任务页/调度台「进行中」的分类
+      // 审核=下达执行段、反审=收回执行段：车间任务页/调度台「进行中」的分类
       // 徽章要即时跟上（此前只有日报详情 _signalExecutionChanged 有此信号，
       // 计划侧漏了，审核完徽章要等下一次任意 bump）。
       refreshAfterProductionPlanGenerated(ref);
+      if (result is ProductionPlanDetail && result.id != widget.id) {
+        showDocumentUnapprovalResult(context, result.status);
+        openUnapprovedDraft(context, RoutePath.productionPlanDetail(result.id));
+        return;
+      }
+      context.appSuccess(ok);
       await _load();
       if (afterSuccess != null) {
         // 结果弹层前先撤遮罩（与下方 _openLatestPlanningResult 同口径）：遮罩是 root
@@ -949,7 +956,7 @@ class _ProductionPlanDetailPageState
     final reversed = sp.status == -1;
     final done = !reversed && sp.closed;
     final statusText = reversed
-        ? '红冲'
+        ? '反审'
         : sp.status == 0
         ? '草稿'
         : done
@@ -1058,7 +1065,7 @@ class _ProductionPlanDetailPageState
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('删除计划单'),
-        content: const Text('确定删除该草稿计划单吗？已审单据请走红冲。'),
+        content: const Text('确定删除该草稿计划单吗？已审单据请走反审。'),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           TextButton(
@@ -1166,6 +1173,11 @@ class _ProductionPlanDetailPageState
                               .refresh(),
                         ),
                         // ① 摘要区。
+                        documentUnapprovalBannerForRoute(
+                          'production',
+                          'plans',
+                          widget.id,
+                        ),
                         _summaryHeroCard(theme, names),
                         // 草稿态额外保留产品明细摘要（含编号/颜色/来源销售订单这些
                         // 主卡放不下的核对信息）；已审计划的权威口径在执行子计划里，
@@ -1192,7 +1204,7 @@ class _ProductionPlanDetailPageState
                         ..._referenceSections(theme),
                       ],
                     ),
-              // 审核/下达/红冲等计划操作网络段的全屏加载遮罩；两个标志都只盖纯网络段，
+              // 审核/下达/反审等计划操作网络段的全屏加载遮罩；两个标志都只盖纯网络段，
               // 结果弹层（下达结果/打印预览/跳单据）之前一律先清位，否则弹层被盖住点不动。
               if (_busy || _executionBusy)
                 UtenBusyOverlay(
@@ -2095,6 +2107,23 @@ class _ProductionPlanDetailPageState
         }
         children.add(
           UtenButton(
+            type: UtenButtonType.secondary,
+            icon: Icons.edit_note_outlined,
+            onPressed: _commandBusy
+                ? null
+                : () => _openLinkedPage(
+                    '/production/plans/${widget.id}/edit?review=1',
+                  ),
+            child: const Text('修改后审核'),
+          ),
+        );
+      }
+      if (_canApprove) {
+        if (children.isNotEmpty) {
+          children.add(const SizedBox(width: UtenSpacing.s8));
+        }
+        children.add(
+          UtenButton(
             icon: Icons.check_circle_outline,
             onPressed: _commandBusy ? null : _approve,
             onDisabledTap: () =>
@@ -2122,13 +2151,12 @@ class _ProductionPlanDetailPageState
       if (_canReverse) {
         children.add(const SizedBox(width: UtenSpacing.s8));
         children.add(
-          UtenButton(
-            type: UtenButtonType.danger,
-            icon: Icons.undo_outlined,
+          DocumentUnapprovalAction(
+            family: 'productionPlan',
+            documentId: widget.id,
+            revision: _detail!,
+            size: UtenButtonSize.medium,
             onPressed: _commandBusy ? null : _reverse,
-            onDisabledTap: () =>
-                context.appWarning('生产计划操作正在处理，请完成后再红冲', force: true),
-            child: const Text('红冲'),
           ),
         );
       }

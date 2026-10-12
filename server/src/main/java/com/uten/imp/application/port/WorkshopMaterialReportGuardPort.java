@@ -31,5 +31,8 @@ public interface WorkshopMaterialReportGuardPort {
      * @param billDate   日报表头业务日期
      * @param segmentIds 明细涉及的任务段; 为空时直接返回
      */
+    default void requireReversibleReadOnly(UUID reportId,LocalDate billDate,Collection<UUID> segmentIds) {
+        throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前无法核对车间材料期间的反审条件");
+    }
     void lockAndCheck(UUID reportId, LocalDate billDate, Collection<UUID> segmentIds, Operation op);
 }

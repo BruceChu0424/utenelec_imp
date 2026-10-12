@@ -131,7 +131,7 @@ class _SubcontractOrderProgressSectionState
         if (p.planStatus == 'CLOSED')
           _hint(theme, '领料计划已关闭${closeReason.isEmpty ? '' : '：$closeReason'}')
         else if (p.planStatus == 'CANCELED')
-          _hint(theme, '订货单已红冲，领料计划已取消'),
+          _hint(theme, '订货单已反审，原领料计划已取消'),
         if (p.items.isEmpty)
           _hint(theme, '订货单还没有明细')
         else
@@ -151,7 +151,7 @@ class _SubcontractOrderProgressSectionState
             statusLabel: (d) => switch (d.status) {
               1 => '已发出',
               0 => '待仓库发料',
-              _ => '已红冲',
+              _ => '已反审',
             },
           ),
         ],
@@ -535,7 +535,7 @@ class _SubcontractOrderProgressSectionState
       switch (doc.status) {
         1 => '已审核',
         0 => '草稿',
-        _ => '已红冲',
+        _ => '已反审',
       };
 
   Widget _ledgerSection(ThemeData theme, SubcontractOrderProgress p) {

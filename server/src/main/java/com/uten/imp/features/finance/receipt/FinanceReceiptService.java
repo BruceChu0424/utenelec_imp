@@ -119,6 +119,8 @@ public class FinanceReceiptService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<FinanceReceiptService> reviewedDraftProxy;
     private final GlPostingService glPosting;
     private final FinanceReceiptSourceAllocationService sourceAllocation;
     private final AccountFlowLedgerService accountFlowLedger;
@@ -189,7 +191,7 @@ public class FinanceReceiptService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=com.uten.imp.common.web.ApiException.class)
     public FinanceReceiptDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -250,10 +252,54 @@ public class FinanceReceiptService {
             + "or (hasAuthority('customer_prepayment:view') and hasAuthority('finance:view:all')))")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_receipt_item", requestArgument=1, documentIdArgument=0)
     public FinanceReceiptDetail update(UUID id, FinanceReceiptSaveRequest req) {
+        return updateDraft(id, req, false, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:view') and hasAuthority('finance_receipt:approve')")
+    public com.uten.imp.features.finance.FinanceDraftReview.View<FinanceReceiptDetail> review(UUID id) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
-        access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
+        com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "finance_receipt");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
+        requirePrepaymentView(r);
+        if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
+        return new com.uten.imp.features.finance.FinanceDraftReview.View<>(
+                com.uten.imp.features.finance.FinanceDraftReview.snapshot(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.RECEIPT, id), detail(id));
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:view') and hasAuthority('finance_receipt:approve')")
+    public FinanceReceiptDetail updateReviewed(UUID id, FinanceReceiptSaveRequest req, String expectedSnapshot, boolean approveNow) {
+        var review = review(id);
+        com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.RECEIPT, id, expectedSnapshot);
+        if (req.getExpectedVersion() == null || !req.getExpectedVersion().equals(review.detail().getVersion()))
+            throw new ApiException(ErrorCode.CONFLICT, "财务草稿版本已变化，请刷新后重试");
+        FinanceReceiptDetail saved;
+        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("finance_receipt_item", id, currentUser.requireId())) {
+            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
+        }
+        return approveNow ? approve(id) : saved;
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_receipt:view') and hasAuthority('finance_receipt:approve')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_receipt_item", requestArgument=1, documentIdArgument=0)
+    public FinanceReceiptDetail saveReviewedDraft(UUID id, FinanceReceiptSaveRequest req, String expectedSnapshot) {
+        FinanceReceiptDetail saved = updateDraft(id, req, true, expectedSnapshot);
+        em.flush();
+        return saved;
+    }
+
+    private FinanceReceiptDetail updateDraft(UUID id, FinanceReceiptSaveRequest req, boolean review, String expectedSnapshot) {
+        tx.bind();
+        PaymentStyleHierarchyLock.lock(em);
+        FinanceReceipt r = lockActive(id);
+        if (review) {
+            com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "finance_receipt");
+            com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.RECEIPT, id, expectedSnapshot);
+        } else access.requireWritable(r.getMakerId(), "只能操作本人负责或已授权的销售收款单");
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
         requirePrepaymentView(r);
         requirePrepaymentView(req.getReceiptKind());
@@ -349,13 +395,7 @@ public class FinanceReceiptService {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinanceReceipt r = lockActive(id);
-        access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
-                "finance_receipt:reverse");
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
-        requirePrepaymentView(r);
-        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
+        requireUnapprovalHeader(r);
         assertCompletePosting(r); // 红冲前确认收款与另付费用流水完整
         OffsetDateTime reversedAt = OffsetDateTime.now();
         glPosting.reverseReceiptDoc(r.getId(), reversedAt);
@@ -368,6 +408,74 @@ public class FinanceReceiptService {
             assertV1ProjectionIntegrity(r.getId());
         }
         return detail(id);
+    }
+
+    private void requireUnapprovalHeader(FinanceReceipt r) {
+        access.requireScopedOperationWritable(r.getMakerId(), "只能操作本人负责或已交接的销售收款单",
+                "finance_receipt:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(r.getLegacyId());
+        requirePrepaymentView(r);
+        if (r.getStatus() == null || r.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        }
+    }
+
+    private void requireDirectPrepaymentReversible(List<ArApLedger> rows) {
+        if (rows.size() != 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "直接预收反立账来源缺失或重复");
+        }
+        ArApLedger led = rows.getFirst();
+        long activeOffsets = ((Number) em.createNativeQuery("""
+                SELECT COUNT(*) FROM customer_open_item_offsets
+                WHERE source_ledger_id=:ledgerId AND status='APPLIED'
+                """).setParameter("ledgerId", led.getId()).getSingleResult()).longValue();
+        if (activeOffsets != 0 || nz(led.getAmountOffsetOriginal()).signum() != 0
+                || nz(led.getAmountOffsetLocal()).signum() != 0) {
+            throw new ApiException(ErrorCode.CONFLICT,
+                    "客户预收已有转销，必须先按后进先出反转全部预收应用后再红冲收款");
+        }
+    }
+
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('finance_receipt:view')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);FinanceReceipt r=require(id);
+        return com.uten.imp.features.finance.FinanceUnapprovalPreflight.evaluate(em,"financeReceipt","finance_receipts",id,"finance_receipt:reverse",()->unapprovalDependencyFacts(id),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("DOCUMENT_REVERSE_BLOCKED",()->requireUnapprovalHeader(r)),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("SETTLEMENT_REVERSE_BLOCKED",()->requireReversibleSettlement(r)),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("GL_PROJECTION_BLOCKED",()->requireReversibleGl(r)));
+    }
+    private void requireReversibleSettlement(FinanceReceipt r) { UUID id=r.getId();
+        assertCompletePosting(r);
+        accountFlowLedger.requireReversible(RECON_SOURCE,id);
+        if(FEE_SEPARATE.equals(r.getFeeSettlementMode()))accountFlowLedger.requireReversible(RECON_FEE_SOURCE,id);
+        var lines=lineRepo.findByReceiptIdOrderByLineNoAsc(id);
+        if(lines.isEmpty())requireDirectPrepaymentReversible(ledgerRepo.findBySourceDocIdAndSourceDocTypeAndDeletedFalse(id,SRC_DIRECT_RECEIPT));
+        else {
+            sourceAllocation.requireReversibleReceiptAllocations(r,lines);
+            var ledgers=readAppliedLedgers(lines);var floors=LegacyOpeningReversalFloor.load(em,ledgers.values(),"AR");
+            for(var line:lines){var ledger=ledgers.get(line.getAppliedLedgerId());calculateReversal(r,line,ledger,floors.getOrDefault(ledger.getId(),LegacyOpeningReversalFloor.ZERO));}
+        }
+    }
+    private void requireReversibleGl(FinanceReceipt r) { UUID id=r.getId();
+        glPosting.requireReceiptReversalPossible(id);
+    }
+    private String unapprovalDependencyFacts(UUID id) {
+        return String.valueOf(em.createNativeQuery("""
+            SELECT jsonb_build_object(
+                'bank',(SELECT jsonb_agg(to_jsonb(flow) ORDER BY flow.id) FROM finance_reconciliations flow WHERE flow.source_doc_id=:id),
+                'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM finance_receipt_lines line WHERE line.receipt_id=:id),
+                'ledgers',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger
+                    WHERE ledger.source_doc_id=:id OR ledger.id IN(SELECT applied_ledger_id FROM finance_receipt_lines WHERE receipt_id=:id)),
+                'allocations',(SELECT jsonb_agg(to_jsonb(allocation) ORDER BY allocation.id) FROM finance_receipt_source_allocations allocation
+                    WHERE allocation.source_ref_id IN(SELECT source_ref_id FROM finance_receipt_source_allocations WHERE receipt_id=:id)),
+                'laterReceipts',(SELECT jsonb_agg(to_jsonb(receipt) ORDER BY receipt.id) FROM finance_receipts receipt
+                    WHERE receipt.id IN(SELECT receipt_id FROM finance_receipt_lines WHERE applied_ledger_id IN(SELECT applied_ledger_id FROM finance_receipt_lines WHERE receipt_id=:id))),
+                'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
+                'offsets',(SELECT jsonb_agg(to_jsonb(offset_row) ORDER BY offset_row.id) FROM customer_open_item_offsets offset_row
+                    WHERE source_ledger_id IN(SELECT id FROM ar_ap_ledger WHERE source_doc_id=:id)
+                        OR target_ledger_id IN(SELECT applied_ledger_id FROM finance_receipt_lines WHERE receipt_id=:id)))::text
+            """).setParameter("id",id).getSingleResult());
     }
 
     // ===================== 核销逻辑 =====================
@@ -564,19 +672,8 @@ public class FinanceReceiptService {
         // Direct prepayment reversal retains the AR history row. Any applications
         // must be reversed first; physical delete would drift history and break FK audit.
         List<ArApLedger> rows = ledgerRepo.findBySourceForUpdate(r.getId(), SRC_DIRECT_RECEIPT);
-        if (rows.size() != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "直接预收反立账来源缺失或重复");
-        }
-        ArApLedger led = rows.getFirst();
-        long activeOffsets = ((Number) em.createNativeQuery("""
-                SELECT COUNT(*) FROM customer_open_item_offsets
-                WHERE source_ledger_id=:ledgerId AND status='APPLIED'
-                """).setParameter("ledgerId", led.getId()).getSingleResult()).longValue();
-        if (activeOffsets != 0 || nz(led.getAmountOffsetOriginal()).signum() != 0
-                || nz(led.getAmountOffsetLocal()).signum() != 0) {
-            throw new ApiException(ErrorCode.CONFLICT,
-                    "客户预收已有转销，必须先按后进先出反转全部预收应用后再红冲收款");
-        }
+        requireDirectPrepaymentReversible(rows);
+        ArApLedger led=rows.getFirst();
         led.setStatus(STATUS_REVERSED);
         led.setDeleted(true);
         led.setDeletedAt(OffsetDateTime.now());
@@ -592,8 +689,21 @@ public class FinanceReceiptService {
             Map<UUID, ArApLedger> lockedLedgers) {
         var floors=LegacyOpeningReversalFloor.load(em,lockedLedgers.values(),"AR");
         for (FinanceReceiptLine line : lines) {
-            ArApLedger ledger = lockedLedgers.get(line.getAppliedLedgerId());
+            ArApLedger ledger=lockedLedgers.get(line.getAppliedLedgerId());
             var floor=floors.getOrDefault(ledger.getId(),LegacyOpeningReversalFloor.ZERO);
+            var calculated=calculateReversal(receipt,line,ledger,floor);
+            ledger.setAmountReceivedOriginal(calculated.receivedOriginal());
+            ledger.setAmountReceivedLocal(calculated.receivedLocal());
+            ledger.setAmountWriteOffOriginal(calculated.writeOffOriginal());
+            ledger.setAmountWriteOffLocal(calculated.writeOffLocal());
+            ledger.setAmountSettled(calculated.settledLocal());
+            refreshBalancesAndSettlement(ledger, receipt.getBillDate());
+            ledgerRepo.save(ledger);
+        }
+    }
+
+    private record ReversalBalances(BigDecimal receivedOriginal,BigDecimal receivedLocal,BigDecimal writeOffOriginal,BigDecimal writeOffLocal,BigDecimal settledLocal){}
+    private ReversalBalances calculateReversal(FinanceReceipt receipt,FinanceReceiptLine line,ArApLedger ledger,LegacyOpeningReversalFloor floor) {
             if (!"AR".equals(ledger.getDirection())
                     || !Objects.equals(receipt.getClientId(), ledger.getClientId())) {
                 throw new ApiException(ErrorCode.CONFLICT, "收款红冲来源与当前应收不一致");
@@ -610,14 +720,7 @@ public class FinanceReceiptService {
                     || newSettledLocal.compareTo(floor.settledLocal()) < 0) {
                 throw new ApiException(ErrorCode.CONFLICT, "应收累计值不足，禁止红冲该收款单");
             }
-            ledger.setAmountReceivedOriginal(newReceivedOriginal);
-            ledger.setAmountReceivedLocal(newReceivedLocal);
-            ledger.setAmountWriteOffOriginal(newWriteOffOriginal);
-            ledger.setAmountWriteOffLocal(newWriteOffLocal);
-            ledger.setAmountSettled(newSettledLocal);
-            refreshBalancesAndSettlement(ledger, receipt.getBillDate());
-            ledgerRepo.save(ledger);
-        }
+        return new ReversalBalances(newReceivedOriginal,newReceivedLocal,newWriteOffOriginal,newWriteOffLocal,newSettledLocal);
     }
 
     /**
@@ -654,6 +757,27 @@ public class FinanceReceiptService {
         }
         List<ArApLedger> locked = ledgerRepo.findAllByIdInForUpdate(
                 ids.stream().sorted().toList());
+        if (locked.size() != ids.size()) {
+            throw new ApiException(ErrorCode.BUSINESS, "核销的应收记录不存在或已删除");
+        }
+        Map<UUID, ArApLedger> byId = new HashMap<>();
+        for (ArApLedger ledger : locked) {
+            byId.put(ledger.getId(), ledger);
+        }
+        return byId;
+    }
+
+    private Map<UUID, ArApLedger> readAppliedLedgers(List<FinanceReceiptLine> lines) {
+        List<UUID> ids = lines.stream()
+                .map(FinanceReceiptLine::getAppliedLedgerId)
+                .toList();
+        if (ids.stream().anyMatch(Objects::isNull)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "收款核销明细必须关联应收台账");
+        }
+        if (new HashSet<>(ids).size() != ids.size()) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一应收台账不能在一张收款单中重复核销");
+        }
+        List<ArApLedger> locked = ledgerRepo.findAllById(ids.stream().sorted().toList()).stream().filter(ledger -> !ledger.isDeleted()).toList();
         if (locked.size() != ids.size()) {
             throw new ApiException(ErrorCode.BUSINESS, "核销的应收记录不存在或已删除");
         }

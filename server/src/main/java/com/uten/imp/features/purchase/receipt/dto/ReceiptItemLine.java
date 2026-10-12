@@ -16,6 +16,8 @@ import java.util.UUID;
 public class ReceiptItemLine extends com.uten.imp.common.platformcolumns.PlatformColumnLineInput implements ServerDerivedAmounts {
 
     private Integer lineNo;
+    /** Retained row identity required only by the dedicated review amendment. */
+    private UUID sourceItemId;
 
     @NotNull
     private UUID goodsId;
@@ -29,8 +31,12 @@ public class ReceiptItemLine extends com.uten.imp.common.platformcolumns.Platfor
 
     @jakarta.validation.constraints.Pattern(regexp = "NORMAL|RETURN_REPLACEMENT")
     private String replacementIntent;
+    @jakarta.validation.constraints.Pattern(regexp="NORMAL|RETURN_REPLACEMENT")
+    private String giftReplacementIntent;
 
     private BigDecimal price;
+    @jakarta.validation.constraints.DecimalMin("0")
+    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
     private BigDecimal giftQty;
 
     /** 关联订货明细（可选；有则审核时回写 received_qty）。 */

@@ -74,6 +74,7 @@ public class ProductionPurchaseRequestFacade {
         }
 
         PurchaseRequest request = new PurchaseRequest();
+        request.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
         request.setBillNo(docNumberService.nextNumber(DocNumberPrefix.PURCHASE_REQUEST));
         request.setBillDate(BusinessTime.today());
         request.setNeedDate(needDate);
@@ -104,6 +105,7 @@ public class ProductionPurchaseRequestFacade {
         for (DraftLine line : lines) {
             lineNo++;
             PurchaseRequestItem item = new PurchaseRequestItem();
+            item.setQuantitySemantics(com.uten.imp.common.finance.ProcurementQuantities.EXTRA_GIFT);
             item.setRequestId(request.getId());
             item.setBillNo(request.getBillNo());
             item.setBillDate(request.getBillDate());

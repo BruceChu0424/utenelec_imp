@@ -16,7 +16,7 @@ String subcontractStatusLabel(int? code) {
     case kSubcontractStatusApproved:
       return '已审';
     case kSubcontractStatusReversed:
-      return '红冲';
+      return '已反审';
     default:
       return '—';
   }

@@ -52,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.production.readiness-reconcile.enabled=false","uten.workshop-material.auto-close.enabled=false",
         "uten.concurrency.verify-nested-footprint=false",
         "uten.policy-intelligence.enabled=false","uten.features.goods-owner-scope-enabled=false",
-        "uten.storage.uploads-enabled=false","uten.inventory.value-work-initial-delay-ms=3600000"})
+        "uten.storage.uploads-enabled=false",})
 @Import(ProductionJdbcMeasurement.Configuration.class)
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
 @TestExecutionListeners(listeners=DailyReportComplexPerformancePostgresTest.Cleanup.class,

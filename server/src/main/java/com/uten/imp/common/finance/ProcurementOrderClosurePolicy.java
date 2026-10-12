@@ -52,7 +52,10 @@ public final class ProcurementOrderClosurePolicy {
                 UPDATE %s order_doc
                 SET is_closed = (
                     SELECT COALESCE(bool_and(
-                        CASE WHEN EXISTS (
+                        CASE WHEN %s THEN
+                            fn_purchase_order_tranche_stocked_qty(order_item.id,'CHARGED')
+                                - COALESCE(order_item.returned_qty,0) >= COALESCE(order_item.qty,0)
+                        WHEN EXISTS (
                             SELECT 1
                             FROM %s receipt_item
                             JOIN %s receipt_doc ON receipt_doc.id=receipt_item.receipt_id
@@ -73,7 +76,7 @@ public final class ProcurementOrderClosurePolicy {
                                 JOIN %s receipt_doc ON receipt_doc.id=receipt_item.receipt_id
                                 LEFT JOIN procurement_inspection_items inspection
                                   ON inspection.receipt_type=:receiptType
-                                 AND inspection.receipt_item_id=receipt_item.id
+                                 AND inspection.receipt_item_id=receipt_item.id AND inspection.quantity_tranche<>'GIFT'
                                 WHERE receipt_item.order_item_id = order_item.id
                                   AND receipt_doc.status=1
                                   AND COALESCE(receipt_doc.is_deleted,FALSE)=FALSE
@@ -87,7 +90,7 @@ public final class ProcurementOrderClosurePolicy {
                             COALESCE(order_item.received_qty,0)
                                 - COALESCE(order_item.returned_qty,0)%s
                                 >= COALESCE(order_item.qty,0)
-                        END
+                        END %s
                     ),TRUE)
                     FROM %s order_item
                     WHERE order_item.order_id = order_doc.id
@@ -96,12 +99,18 @@ public final class ProcurementOrderClosurePolicy {
                 WHERE order_doc.id IN (%s)
                 """.formatted(
                         orderTable,
+                        PURCHASE.equals(orderType) ? "order_item.quantity_semantics='CHARGED_PLUS_GIFT_V1'" : "FALSE",
                         receiptItemTable,
                         receiptTable,
                         receiptItemTable,
                         receiptTable,
                         settledBaseQty,
                         settledOrderQty,
+                        PURCHASE.equals(orderType) ? """
+                            AND (order_item.quantity_semantics='LEGACY_RECORDED' OR
+                                fn_purchase_order_tranche_stocked_qty(order_item.id,'GIFT')
+                                    - order_item.gift_returned_qty >= order_item.gift_qty)
+                            """ : "",
                         orderItemTable,
                         receiptScope ? "SELECT DISTINCT item.order_id FROM " + receiptItemTable + " receipt_item JOIN "
                                 + orderItemTable + " item ON item.id=receipt_item.order_item_id"

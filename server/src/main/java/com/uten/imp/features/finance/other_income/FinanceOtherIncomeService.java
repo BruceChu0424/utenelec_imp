@@ -79,6 +79,8 @@ public class FinanceOtherIncomeService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<FinanceOtherIncomeService> reviewedDraftProxy;
     private final GlPostingService glPosting;
     private final AccountFlowLedgerService accountFlowLedger;
 
@@ -135,7 +137,7 @@ public class FinanceOtherIncomeService {
         };
     }
 
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor=com.uten.imp.common.web.ApiException.class)
     public FinanceOtherIncomeDetail detail(UUID id) { return readDetail(id, false); }
 
 
@@ -176,6 +178,43 @@ public class FinanceOtherIncomeService {
     @PreAuthorize("hasAuthority('finance_other_income:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_other_income_item", requestArgument=1, documentIdArgument=0)
     public FinanceOtherIncomeDetail update(UUID id, FinanceOtherIncomeSaveRequest req) {
+        return updateDraft(id, req, false, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_other_income:view') and hasAuthority('finance_other_income:approve')")
+    public com.uten.imp.features.finance.FinanceDraftReview.View<FinanceOtherIncomeDetail> review(UUID id) {
+        tx.bind(); PaymentStyleHierarchyLock.lock(em);
+        FinanceOtherIncome o = lockActive(id);
+        com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, o.getMakerId(), "finance_other_income");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
+        if (o.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
+        return new com.uten.imp.features.finance.FinanceDraftReview.View<>(
+                com.uten.imp.features.finance.FinanceDraftReview.snapshot(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.INCOME, id), detail(id));
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_other_income:view') and hasAuthority('finance_other_income:approve')")
+    public FinanceOtherIncomeDetail updateReviewed(UUID id, FinanceOtherIncomeSaveRequest req, String expectedSnapshot, boolean approveNow) {
+        var review = review(id);
+        com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.INCOME, id, expectedSnapshot);
+        FinanceOtherIncomeDetail saved;
+        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("finance_other_income_item", id, currentUser.requireId())) {
+            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
+        }
+        return approveNow ? approve(id) : saved;
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_other_income:view') and hasAuthority('finance_other_income:approve')")
+    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_other_income_item", requestArgument=1, documentIdArgument=0)
+    public FinanceOtherIncomeDetail saveReviewedDraft(UUID id, FinanceOtherIncomeSaveRequest req, String expectedSnapshot) {
+        FinanceOtherIncomeDetail saved = updateDraft(id, req, true, expectedSnapshot);
+        em.flush();
+        return saved;
+    }
+
+    private FinanceOtherIncomeDetail updateDraft(UUID id, FinanceOtherIncomeSaveRequest req, boolean review, String expectedSnapshot) {
         tx.bind();
         if ((req.getItems() != null && !req.getItems().isEmpty())
                 || req.getReceiptMethodId() != null
@@ -183,7 +222,10 @@ public class FinanceOtherIncomeService {
             PaymentStyleHierarchyLock.lock(em);
         }
         FinanceOtherIncome o = lockActive(id);
-        access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
+        if (review) {
+            com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, o.getMakerId(), "finance_other_income");
+            com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.INCOME, id, expectedSnapshot);
+        } else access.requireWritable(o.getMakerId(), "只能操作本人负责或已授权的其它收入单");
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
         if (o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -265,18 +307,45 @@ public class FinanceOtherIncomeService {
     public FinanceOtherIncomeDetail reverse(UUID id) {
         tx.bind();
         FinanceOtherIncome o = lockActive(id);
-        access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
-                "finance_other_income:reverse");
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
-        if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
-            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
-        }
+        requireUnapprovalHeader(o);
         glPosting.removeAutoProjection(RECON_SOURCE, o.getId(), o.getBillNo(), o.getBillDate());
         // 账户余额与流水由账本按原始流水一并冲回。
         reverseReconciliation(o.getId());
         o.setStatus(STATUS_REVERSED);
         incomeRepo.save(o);
         return detail(id);
+    }
+
+    private void requireUnapprovalHeader(FinanceOtherIncome o) {
+        access.requireScopedOperationWritable(o.getMakerId(), "只能操作本人负责或已交接的其它收入单",
+                "finance_other_income:reverse");
+        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(o.getLegacyId());
+        if (o.getStatus() == null || o.getStatus() != STATUS_APPROVED) {
+            throw new ApiException(ErrorCode.BUSINESS, "仅已审核单据可红冲");
+        }
+    }
+
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('finance_other_income:view')")
+    public com.uten.imp.application.port.DocumentUnapprovalPort.Eligibility unapprovalEligibility(UUID id) {
+        detail(id);
+        FinanceOtherIncome o=require(id);
+        return com.uten.imp.features.finance.FinanceUnapprovalPreflight.evaluate(em,"financeOtherIncome","finance_other_incomes",id,"finance_other_income:reverse",()->unapprovalDependencyFacts(id),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("DOCUMENT_REVERSE_BLOCKED",()->requireUnapprovalHeader(o)),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("GL_PROJECTION_BLOCKED",()->glPosting.requireRemovableAutoProjection(RECON_SOURCE,RECON_SOURCE,o.getId(),o.getBillNo(),o.getBillDate())),
+            com.uten.imp.features.finance.FinanceUnapprovalPreflight.check("BANK_POSTING_BLOCKED",()->accountFlowLedger.requireReversible(RECON_SOURCE,id)));
+    }
+
+    private String unapprovalDependencyFacts(UUID id) {
+        return String.valueOf(em.createNativeQuery("""
+            SELECT jsonb_build_object(
+                'bank',(SELECT jsonb_agg(to_jsonb(flow) ORDER BY flow.id) FROM finance_reconciliations flow
+                        WHERE flow.source_doc_id=:id),
+                'accounts',(SELECT jsonb_agg(to_jsonb(account) ORDER BY account.id) FROM accounts account
+                        WHERE account.id IN(SELECT account_id FROM finance_reconciliations WHERE source_doc_id=:id)),
+                'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher
+                        WHERE voucher.source_doc_id=:id))::text
+            """).setParameter("id",id).getSingleResult());
     }
 
     // ===================== 账户/流水 =====================

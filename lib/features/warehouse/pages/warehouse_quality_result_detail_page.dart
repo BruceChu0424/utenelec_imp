@@ -20,13 +20,16 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../models/warehouse_iqc_return.dart';
@@ -157,14 +160,21 @@ class _WarehouseQualityResultDetailPageState
   }
 
   bool get _hasConfirmPermission {
-    if (ref.read(isSuperAdminProvider)) return true;
+    if (ref.read(authenticatedScopeProvider)?.readOnly == true) return false;
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.warehouseIqcStockInView) &&
         permissions.contains(Perm.warehouseIqcStockInConfirm);
   }
 
   bool get _canRecordReturn {
-    if (ref.read(isSuperAdminProvider)) return true;
+    if (ref.read(authenticatedScopeProvider)?.readOnly == true) return false;
+    if (!locationAllowedFor(
+      ref.read(currentPermissionsProvider),
+      false,
+      RouteName.warehouseIqcReturns,
+    )) {
+      return false;
+    }
     return ref
         .read(currentPermissionsProvider)
         .contains(Perm.procurementIqcRejectionRecordReturn);
@@ -314,6 +324,8 @@ class _WarehouseQualityResultDetailPageState
     WarehouseIqcStockInConfirmCommand command,
   ) async {
     if (_saving || !_hasConfirmPermission) return;
+    final previousPending = _pendingCommand;
+    var locallyRejected = false;
     _pendingCommand = command;
     setState(() {
       _saving = true;
@@ -322,9 +334,25 @@ class _WarehouseQualityResultDetailPageState
     });
     try {
       final result = await runFormDraftSubmission(
-        () => ref
-            .read(warehouseIqcStockInRepositoryProvider)
-            .confirm(widget.receiptType, widget.receiptId, command),
+        () {
+          if (!_hasConfirmPermission) {
+            locallyRejected = true;
+            _pendingCommand = previousPending;
+            throw ApiException(
+              'FORBIDDEN',
+              '当前账号不能确认入库，请重新核对权限',
+              httpStatus: 403,
+            );
+          }
+          return ref
+              .read(warehouseIqcStockInRepositoryProvider)
+              .confirm(widget.receiptType, widget.receiptId, command);
+        },
+        isDefiniteRejection: (error) =>
+            (locallyRejected && previousPending == null) ||
+            error.httpStatus == 400 ||
+            error.httpStatus == 422 ||
+            (error.httpStatus == 409 && error.code == 'CONFLICT'),
       );
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
@@ -381,20 +409,47 @@ class _WarehouseQualityResultDetailPageState
 
   Future<void> _recordReturn(WarehouseQualityRejectionCase rejection) async {
     if (_saving || !_canRecordReturn || !rejection.canRecordReturn) return;
+    final AuthenticatedRequestScope requestScope;
+    try {
+      requestScope = await captureFormDraftRequestScope();
+    } on ApiException catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(error.message);
+      }
+      return;
+    }
+    if (!mounted || !requestScope.isCurrent || !_canRecordReturn) return;
     final command = await showDialog<WarehouseIqcRecordReturnCommand>(
       context: context,
       builder: (_) => _RecordReturnDialog(rejection: rejection),
     );
-    if (command == null || !mounted) return;
+    if (command == null ||
+        !mounted ||
+        !requestScope.isCurrent ||
+        !formDraftIdentityIsCurrent ||
+        !_canRecordReturn) {
+      return;
+    }
     setState(() {
       _saving = true;
       _busy = (title: '正在登记实物退回', description: '正在写入退回凭证，请勿重复提交或离开本页。');
     });
     try {
-      await ref
-          .read(warehouseIqcReturnRepositoryProvider)
-          .recordReturn(rejection.id, command);
-      if (!mounted) return;
+      await requestScope.run(() {
+        if (!_canRecordReturn || !formDraftIdentityIsCurrent) {
+          throw ApiException(
+            'FORBIDDEN',
+            '当前账号不能登记实物退回，请重新核对权限',
+            httpStatus: 403,
+          );
+        }
+        return ref
+            .read(warehouseIqcReturnRepositoryProvider)
+            .recordReturn(rejection.id, command);
+      });
+      if (!mounted || !requestScope.isCurrent || !formDraftIdentityIsCurrent) {
+        return;
+      }
       context.appSuccess('实物退回凭证已登记');
       // 与同页 _confirmStockIn 口径对齐：登记退回改变品质待办口径，徽章即时重拉。
       refreshBadges(ref);
@@ -417,6 +472,8 @@ class _WarehouseQualityResultDetailPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
     final detail = _detail;
     return withFormDraft(
       Scaffold(

@@ -19,6 +19,7 @@ import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -126,8 +127,6 @@ class _WarehouseQualityResultsPageState
   /// 表格多选：键为「receiptType:receiptId」，跨页保留。
   Set<String> _selectedIds = {};
 
-  bool get _isSuperAdmin => ref.read(isSuperAdminProvider);
-
   bool get _shouldLoad {
     final seg = _statusSeg;
     if (seg == null) return false;
@@ -137,7 +136,7 @@ class _WarehouseQualityResultsPageState
 
   /// 入库确认：与旧 IQC 待入库详情同口径——查看 + 确认双权限。
   bool get _canConfirmStockIn {
-    if (_isSuperAdmin) return true;
+    if (ref.read(authenticatedScopeProvider)?.readOnly == true) return false;
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.warehouseIqcStockInView) &&
         permissions.contains(Perm.warehouseIqcStockInConfirm);
@@ -145,7 +144,14 @@ class _WarehouseQualityResultsPageState
 
   /// 登记实物退回：V440 拒收案件的仓库退回凭证动作权限。
   bool get _canRecordReturn {
-    if (_isSuperAdmin) return true;
+    if (ref.read(authenticatedScopeProvider)?.readOnly == true) return false;
+    if (!locationAllowedFor(
+      ref.read(currentPermissionsProvider),
+      false,
+      RouteName.warehouseIqcReturns,
+    )) {
+      return false;
+    }
     return ref
         .read(currentPermissionsProvider)
         .contains(Perm.procurementIqcRejectionRecordReturn);

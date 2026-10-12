@@ -454,6 +454,16 @@ class ProcurementIqcPreStockInEndToEndTest {
         masters.loginAs(authorized);
         assertTrue(qualityResults.detail("PURCHASE", c.receipt()).allowedActions().contains(TaskDetail.ACTION_PRE_STOCK_IN));
         assertTrue(nativeDetailPreStockCapability(c));
+        masters.loginAs(authorized);
+        var readonly = readonlyWarehouseActor(SecurityContextHolder.getContext().getAuthentication(),
+                c.world().superAdminUserId());
+        var beforeReadonly = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(nativeWarehouseMvc(), "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/pre-stock-in",
+                new PreStockInRequest(List.of(new PreStockInItem(c.rows().getFirst().inspectionId(),
+                        c.leaves().getFirst(), "QA-READONLY-01"))), readonly, 403);
+        assertEquals(beforeReadonly, ordinaryWarehouseFacts(c));
+        SecurityContextHolder.getContext().setAuthentication(readonly);
+        assertFalse(nativeDetailPreStockCapability(c), "readonly actual principal cannot advertise an up-shelf write");
         UUID baseOnly = masters.createUserWithPerms(c.world(), "prestock-base-reader-" + tag,
                 "warehouse_iqc_stock_in:view");
         masters.loginAs(baseOnly);
@@ -479,6 +489,210 @@ class ProcurementIqcPreStockInEndToEndTest {
             if (TaskDetail.ACTION_PRE_STOCK_IN.equals(action.asText())) return true;
         }
         return false;
+    }
+
+    @Test
+    void ordinaryConfirmCapabilityMatchesNativeHttpViewAndCommandAuthorities() throws Exception {
+        Case c = prepareMixedOrdinaryReceipt();
+        var mvc = nativeWarehouseMvc();
+        var masters = new FullChainEndToEndTest();
+        beans.autowireBean(masters);
+        String tag = UUID.randomUUID().toString().substring(0, 8);
+        UUID missingView = masters.createUserWithPerms(c.world(), "iqc-confirm-no-view-" + tag,
+                "warehouse_iqc_return:view", "warehouse_iqc_stock_in:confirm");
+        masters.loginAs(missingView);
+        var deniedActor = SecurityContextHolder.getContext().getAuthentication();
+        var denied = nativeQualityDetail(mvc, c, deniedActor);
+        assertFalse(denied.path("items").isEmpty(), "actual qualified slice is still available");
+        var request = ordinaryConfirmRequest(denied, "iqc-authority-confirm-" + tag);
+        var before = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/confirm",
+                request, deniedActor, 403);
+        assertEquals(before, ordinaryWarehouseFacts(c), "missing base view must write no business facts");
+
+        UUID reader = masters.createUserWithPerms(c.world(), "iqc-confirm-reader-" + tag,
+                "warehouse_iqc_stock_in:view");
+        masters.loginAs(reader);
+        assertFalse(jsonAction(nativeQualityDetail(mvc, c,
+                SecurityContextHolder.getContext().getAuthentication()), "CONFIRM"));
+
+        UUID authorized = masters.createUserWithPerms(c.world(), "iqc-confirm-writer-" + tag,
+                "warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm");
+        masters.loginAs(authorized);
+        var actor = SecurityContextHolder.getContext().getAuthentication();
+        var allowed = nativeQualityDetail(mvc, c, actor);
+        assertTrue(jsonAction(allowed, "CONFIRM"));
+        var readonly = readonlyWarehouseActor(actor, c.world().superAdminUserId());
+        var readOnlyBefore = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/confirm",
+                request, readonly, 403);
+        assertEquals(readOnlyBefore, ordinaryWarehouseFacts(c));
+        var readonlyMerged = nativeQualityDetail(mvc, c, readonly);
+        var readonlyNative = nativeWarehouseGet(mvc,
+                "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt(), readonly);
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertFalse(jsonAction(denied, "CONFIRM"), "return-view cannot advertise a stock-view command"),
+                () -> assertFalse(jsonAction(readonlyMerged, "CONFIRM"), "merged readonly actor cannot advertise confirm"),
+                () -> assertFalse(jsonAction(readonlyNative, "CONFIRM"), "native readonly detail cannot advertise confirm"));
+
+        var successful = ordinaryConfirmRequest(allowed, "iqc-authority-confirm-ok-" + tag);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/confirm",
+                successful, actor, 200);
+        assertEquals(0, new BigDecimal("0.75").compareTo(jdbc.queryForObject(
+                "SELECT warehouse_stocked_base_qty FROM procurement_inspection_items WHERE id=?",
+                BigDecimal.class, c.rows().getFirst().inspectionId())));
+        var committed = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/confirm",
+                successful, actor, 200);
+        assertEquals(committed, ordinaryWarehouseFacts(c), "actual native retry must not post twice");
+    }
+
+    @Test
+    void physicalReturnCapabilityMatchesNativeHttpReturnViewAndCommandAuthorities() throws Exception {
+        Case c = prepareMixedOrdinaryReceipt();
+        var mvc = nativeWarehouseMvc();
+        var masters = new FullChainEndToEndTest();
+        beans.autowireBean(masters);
+        String tag = UUID.randomUUID().toString().substring(0, 8);
+        UUID missingView = masters.createUserWithPerms(c.world(), "iqc-return-no-view-" + tag,
+                "warehouse_iqc_stock_in:view", "procurement_iqc_rejection:record_return");
+        masters.loginAs(missingView);
+        var deniedActor = SecurityContextHolder.getContext().getAuthentication();
+        var denied = nativeQualityDetail(mvc, c, deniedActor);
+        assertEquals(1, denied.path("rejections").size(), "real resolved rejection/outbox projection");
+        var rejection = denied.path("rejections").get(0);
+        UUID caseId = UUID.fromString(rejection.path("id").asText());
+        var request = new com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.RecordReturnRequest(
+                rejection.path("rowVersion").asLong(), UUID.randomUUID(), "QA-RETURN-" + tag,
+                BusinessTime.today(), "actual authority contract");
+        var before = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return",
+                request, deniedActor, 403);
+        assertEquals(before, ordinaryWarehouseFacts(c), "missing return view must write no business facts");
+        UUID sparse = masters.createUserWithPerms(c.world(), "iqc-return-sparse-" + tag,
+                "warehouse_iqc_return:view");
+        masters.loginAs(sparse);
+        var sparseUser = (com.uten.imp.security.AuthUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var sparsePrincipal = new com.uten.imp.security.AuthUser(sparseUser.getId(), sparseUser.getEmployeeId(),
+                sparseUser.getLoginAccount(), sparseUser.getPermissions(), false, true, true);
+        var sparseActor = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                sparsePrincipal, null, sparsePrincipal.getAuthorities());
+        assertTrue(sparsePrincipal.isSuperAdmin());
+        assertFalse(sparsePrincipal.getPermissions().contains("procurement_iqc_rejection:record_return"));
+        var sparseView = nativeWarehouseGet(mvc, "/api/warehouse/iqc-returns/" + caseId, sparseActor);
+        var sparseBefore = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return", request, sparseActor, 403);
+        assertEquals(sparseBefore, ordinaryWarehouseFacts(c));
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertFalse(rejection.path("canRecordReturn").asBoolean(), "stock-view cannot advertise return-view command"),
+                () -> assertFalse(jsonAction(sparseView, "RECORD_RETURN"), "standalone SA flag cannot replace native raw record authority"));
+
+        UUID reader = masters.createUserWithPerms(c.world(), "iqc-return-reader-" + tag,
+                "warehouse_iqc_return:view");
+        masters.loginAs(reader);
+        assertFalse(nativeQualityDetail(mvc, c, SecurityContextHolder.getContext().getAuthentication())
+                .path("rejections").get(0).path("canRecordReturn").asBoolean());
+
+        UUID authorized = masters.createUserWithPerms(c.world(), "iqc-return-writer-" + tag,
+                "warehouse_iqc_return:view", "procurement_iqc_rejection:record_return");
+        masters.loginAs(authorized);
+        var actor = SecurityContextHolder.getContext().getAuthentication();
+        assertTrue(jsonAction(nativeWarehouseGet(mvc, "/api/warehouse/iqc-returns/" + caseId, actor), "RECORD_RETURN"));
+        assertTrue(nativeQualityDetail(mvc, c, actor).path("rejections").get(0)
+                .path("canRecordReturn").asBoolean());
+        var readonly = readonlyWarehouseActor(actor, c.world().superAdminUserId());
+        var readOnlyBefore = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return",
+                request, readonly, 403);
+        assertEquals(readOnlyBefore, ordinaryWarehouseFacts(c));
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertFalse(nativeQualityDetail(mvc, c, readonly).path("rejections").get(0)
+                        .path("canRecordReturn").asBoolean()),
+                () -> assertFalse(jsonAction(nativeWarehouseGet(mvc, "/api/warehouse/iqc-returns/" + caseId, readonly), "RECORD_RETURN")));
+
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return",
+                request, actor, 200);
+        assertNotNull(jdbc.queryForObject("SELECT return_recorded_at FROM procurement_iqc_rejection_cases WHERE id=?",
+                java.sql.Timestamp.class, caseId));
+        var committed = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return",
+                request, actor, 200);
+        assertEquals(committed, ordinaryWarehouseFacts(c), "actual return retry must not repeat effects");
+    }
+
+    private Case prepareMixedOrdinaryReceipt() {
+        Case c = prepare("PURCHASE");
+        inspections.decideBatch(c.type(), c.receipt(), new BatchInspectionDecideRequest(List.of(
+                new BatchInspectionDecideRequest.Item(c.rows().getFirst().inspectionId(), RECEIPT_QTY,
+                        new BigDecimal("0.75"), new BigDecimal("0.50"), "authority-mixed-" + UUID.randomUUID())),
+                "genuine mixed quality conclusion"));
+        drainOutbox();
+        return c;
+    }
+
+    private org.springframework.test.web.servlet.MockMvc nativeWarehouseMvc() {
+        return MockMvcBuilders.webAppContextSetup(web)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode nativeQualityDetail(
+            org.springframework.test.web.servlet.MockMvc mvc, Case c,
+            org.springframework.security.core.Authentication actor) throws Exception {
+        return nativeWarehouseGet(mvc, "/api/warehouse/quality-results/PURCHASE/" + c.receipt(), actor);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode nativeWarehouseGet(
+            org.springframework.test.web.servlet.MockMvc mvc, String path,
+            org.springframework.security.core.Authentication actor) throws Exception {
+        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get(path)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn();
+        return beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class)
+                .readTree(response.getResponse().getContentAsString());
+    }
+
+    private void nativeWarehousePost(org.springframework.test.web.servlet.MockMvc mvc, String path, Object command,
+                                     org.springframework.security.core.Authentication actor, int expectedStatus) throws Exception {
+        var result = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class).writeValueAsString(command)))
+                .andReturn();
+        assertEquals(expectedStatus, result.getResponse().getStatus(),
+                "native " + path + ": " + result.getResponse().getContentAsString());
+    }
+
+    private com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest ordinaryConfirmRequest(
+            com.fasterxml.jackson.databind.JsonNode detail, String key) {
+        var slice = detail.path("items").get(0);
+        return new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest(key, List.of(
+                new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem(
+                        UUID.fromString(slice.path("passEventId").asText()), slice.path("remainingBaseQty").decimalValue(),
+                        slice.path("remainingBaseQty").decimalValue(), "QA-CONFIRM-01",
+                        UUID.fromString(slice.path("warehouseId").asText()))));
+    }
+
+    private static boolean jsonAction(com.fasterxml.jackson.databind.JsonNode detail, String expected) {
+        for (var action : detail.path("allowedActions")) if (expected.equals(action.asText())) return true;
+        return false;
+    }
+
+    private static org.springframework.security.core.Authentication readonlyWarehouseActor(
+            org.springframework.security.core.Authentication actor, UUID impersonator) {
+        var user = (com.uten.imp.security.AuthUser) actor.getPrincipal();
+        var readonly = new com.uten.imp.security.AuthUser(user.getId(), user.getEmployeeId(), user.getLoginAccount(),
+                user.getPermissions(), false, true, user.isSuperAdmin(), false, impersonator);
+        return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(readonly, null, readonly.getAuthorities());
+    }
+
+    private Map<String, Object> ordinaryWarehouseFacts(Case c) {
+        return Map.of(
+                "inspection", jdbc.queryForList("SELECT to_jsonb(item)::text FROM procurement_inspection_items item WHERE receipt_id=? ORDER BY id", String.class, c.receipt()),
+                "stockBatches", jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", Integer.class, c.receipt()),
+                "inspectionEvents", jdbc.queryForObject("SELECT count(*) FROM procurement_inspection_events event JOIN procurement_inspection_items item ON item.id=event.inspection_item_id WHERE item.receipt_id=?", Integer.class, c.receipt()),
+                "rejections", jdbc.queryForList("SELECT to_jsonb(rejection)::text FROM procurement_iqc_rejection_cases rejection WHERE receipt_id=? ORDER BY id", String.class, c.receipt()),
+                "stockQty", balance(c.leaves().getFirst(), c.rows().getFirst().goodsId()));
     }
 
     // ------------------------------------------------------------------ helpers

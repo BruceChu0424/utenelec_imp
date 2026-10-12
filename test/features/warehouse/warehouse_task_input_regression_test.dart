@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,8 @@ import 'outbound_weight_fakes.dart';
 
 class _Storage implements FormDraftStorage {
   final records = <String, String>{};
+  Completer<void>? submissionGate;
+  bool submissionBlocked = false;
   @override
   Future<Map<String, String>> readAll(String prefix) async => {
     for (final entry in records.entries)
@@ -57,6 +60,14 @@ class _Storage implements FormDraftStorage {
     required String? expectedValue,
     required String? value,
   }) async {
+    final decoded = value == null ? null : jsonDecode(value);
+    if (submissionGate != null &&
+        decoded is Map &&
+        decoded['data'] is Map &&
+        (decoded['data'] as Map)['pendingCommand'] is Map) {
+      submissionBlocked = true;
+      await submissionGate!.future;
+    }
     if (records[key] != expectedValue) return false;
     if (value == null) {
       records.remove(key);
@@ -83,6 +94,7 @@ class _InputApi extends ApiClient {
   bool preStockReadback = false;
   Completer<void>? sourceGate;
   bool sourceStarted = false;
+  bool includeRejection = false;
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -176,6 +188,19 @@ class _InputApi extends ApiClient {
               },
             ]
           : <Map<String, dynamic>>[],
+      'rejections': [
+        if (includeRejection)
+          {
+            'id': 'rejection-a',
+            'inspectionItemId': 'inspection-failed',
+            'goodsId': 'goods-a',
+            'goodsName': '材料A',
+            'failedQty': 2,
+            'physicalStatus': 'PENDING_RETURN',
+            'rowVersion': 7,
+            'canRecordReturn': true,
+          },
+      ],
     };
   }
 
@@ -187,6 +212,14 @@ class _InputApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     posts.add((path: path, body: Map<String, dynamic>.from(body as Map)));
+    if (path.endsWith('/record-return')) {
+      return {
+        'id': 'rejection-a',
+        'version': 8,
+        'allowedActions': <String>[],
+        'physicalReturnStatus': 'RETURN_RECORDED',
+      };
+    }
     if (path.startsWith('/warehouse/sales-outbound/')) {
       final id = path.split('/')[3];
       shipped.add(id);
@@ -212,24 +245,29 @@ class _InputApi extends ApiClient {
   }
 }
 
-Future<ProviderContainer> _container(_InputApi api) async {
+Future<ProviderContainer> _container(
+  _InputApi api, {
+  _Storage? storage,
+  Set<String>? permissions,
+  bool superAdmin = false,
+  bool readOnly = false,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   return ProviderContainer(
     overrides: [
+      if (permissions != null) _permissions.overrideWith((_) => permissions),
+      if (readOnly)
+        _owner.overrideWith(
+          (_) => const AuthenticatedScope(userId: 'keeper', readOnly: true),
+        ),
       apiClientProvider.overrideWithValue(api),
-      apiBaseUrlProvider.overrideWithValue('https://input-test.example/api'),
+      apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_owner)),
-      currentPermissionsProvider.overrideWithValue({
-        Perm.warehouseIqcStockInView,
-        Perm.warehouseIqcStockInConfirm,
-        Perm.warehouseIqcStockInBeforeInspection,
-        Perm.warehouseSalesOutboundView,
-        Perm.warehouseSalesOutboundExecute,
-      }),
-      isSuperAdminProvider.overrideWithValue(false),
+      currentPermissionsProvider.overrideWith((ref) => ref.watch(_permissions)),
+      isSuperAdminProvider.overrideWithValue(superAdmin),
       sharedPreferencesProvider.overrideWithValue(preferences),
-      formDraftStorageProvider.overrideWithValue(_Storage()),
+      formDraftStorageProvider.overrideWithValue(storage ?? _Storage()),
       sessionSnapshotProvider.overrideWith(_Snapshot.new),
       fixedBadgeSummaryOverride(),
       fakeWeightRepositoryOverride(),
@@ -239,6 +277,18 @@ Future<ProviderContainer> _container(_InputApi api) async {
 
 final _owner = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'keeper'),
+);
+final _server = StateProvider<String>((_) => 'https://input-test.example/api');
+final _permissions = StateProvider<Set<String>>(
+  (_) => const {
+    Perm.warehouseIqcStockInView,
+    Perm.warehouseIqcStockInConfirm,
+    Perm.warehouseIqcStockInBeforeInspection,
+    Perm.warehouseIqcReturnView,
+    Perm.procurementIqcRejectionRecordReturn,
+    Perm.warehouseSalesOutboundView,
+    Perm.warehouseSalesOutboundExecute,
+  },
 );
 
 Future<void> _pump(
@@ -263,6 +313,267 @@ Future<void> _pump(
 }
 
 void main() {
+  for (final scenario in [
+    for (final kind in ['single', 'batch'])
+      for (final revoke in [false, true]) (kind: kind, revoke: revoke),
+  ]) {
+    final kind = scenario.kind;
+    testWidgets(
+      '$kind confirmation rechecks permission after the real draft checkpoint revoke=${scenario.revoke}',
+      (tester) async {
+        final api = _InputApi()..timeout = false;
+        final storage = _Storage();
+        final container = await _container(api, storage: storage);
+        addTearDown(container.dispose);
+        final location = kind == 'single'
+            ? RouteName.warehouseQualityResultDetail('PURCHASE', 'receipt-a')
+            : RouteName.warehouseQualityBatchStockIn;
+        final router = GoRouter(
+          initialLocation: location,
+          routes: [
+            GoRoute(
+              path: location,
+              builder: (_, _) => kind == 'single'
+                  ? const WarehouseQualityResultDetailPage(
+                      receiptType: 'PURCHASE',
+                      receiptId: 'receipt-a',
+                    )
+                  : const WarehouseQualityBatchStockInPage(
+                      receipts: [
+                        (receiptType: 'PURCHASE', receiptId: 'receipt-a'),
+                      ],
+                    ),
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await _pump(tester, container, router);
+        if (kind == 'single') {
+          await tester.tap(
+            find.byKey(const Key('warehouse-quality-detail-confirm')),
+          );
+          await tester.pumpAndSettle();
+        }
+        storage.submissionGate = Completer<void>();
+        await tester.tap(
+          find.byKey(
+            Key(
+              kind == 'single'
+                  ? 'warehouse-inbound-allocation-confirm'
+                  : 'warehouse-quality-batch-confirm',
+            ),
+          ),
+        );
+        for (var i = 0; i < 30 && !storage.submissionBlocked; i++) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
+        expect(
+          storage.submissionBlocked,
+          isTrue,
+          reason:
+              'The authoritative pre-submit storage checkpoint must really be awaited',
+        );
+        expect(api.posts, isEmpty);
+        if (scenario.revoke) {
+          container.read(_permissions.notifier).state = const {
+            Perm.warehouseIqcStockInView,
+          };
+        }
+        storage.submissionGate!.complete();
+        await tester.pumpAndSettle();
+        expect(
+          api.posts,
+          scenario.revoke ? isEmpty : hasLength(1),
+          reason:
+              'The unchanged complete grant dispatches; revoke stops dispatch',
+        );
+        if (!scenario.revoke) {
+          final body = api.posts.single.body;
+          final actual = kind == 'single'
+              ? body
+              : (body['batches'] as List).single as Map;
+          expect(actual['idempotencyKey'], isNotEmpty);
+          expect((actual['items'] as List).single, containsPair('baseQty', 10));
+          expect(
+            (actual['items'] as List).single,
+            containsPair('expectedRemainingBaseQty', 10),
+          );
+          expect(
+            (actual['items'] as List).single,
+            containsPair('place', '默认库位'),
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final scenario in [
+    (
+      name: 'sparse-superadmin-no-view',
+      permissions: <String>{
+        Perm.warehouseIqcStockInConfirm,
+        Perm.warehouseIqcReturnView,
+      },
+      sa: true,
+      readonly: false,
+    ),
+    (
+      name: 'sparse-superadmin-no-confirm',
+      permissions: <String>{Perm.warehouseIqcStockInView},
+      sa: true,
+      readonly: false,
+    ),
+    (
+      name: 'initial-readonly-full-grants',
+      permissions: <String>{
+        Perm.warehouseIqcStockInView,
+        Perm.warehouseIqcStockInConfirm,
+      },
+      sa: false,
+      readonly: true,
+    ),
+  ]) {
+    testWidgets('batch ordinary confirm fails closed ${scenario.name}', (
+      tester,
+    ) async {
+      final api = _InputApi()..timeout = false;
+      final container = await _container(
+        api,
+        permissions: scenario.permissions,
+        superAdmin: scenario.sa,
+        readOnly: scenario.readonly,
+      );
+      addTearDown(container.dispose);
+      const location = RouteName.warehouseQualityBatchStockIn;
+      final router = GoRouter(
+        initialLocation: location,
+        routes: [
+          GoRoute(
+            path: location,
+            builder: (_, _) => const WarehouseQualityBatchStockInPage(
+              receipts: [(receiptType: 'PURCHASE', receiptId: 'receipt-a')],
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await _pump(tester, container, router);
+      final submit = find.byKey(const Key('warehouse-quality-batch-confirm'));
+      if (submit.evaluate().isNotEmpty) {
+        await tester.tap(submit);
+        await tester.pumpAndSettle();
+      }
+      expect(api.posts, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final boundary in [
+    'permission',
+    'actor',
+    'epoch',
+    'actor-aba',
+    'server',
+    'readonly',
+    'none',
+  ]) {
+    testWidgets('return dialog keeps original action scope across $boundary', (
+      tester,
+    ) async {
+      final api = _InputApi()
+        ..timeout = false
+        ..includeRejection = true;
+      final container = await _container(api);
+      addTearDown(container.dispose);
+      final location = RouteName.warehouseQualityResultDetail(
+        'PURCHASE',
+        'receipt-a',
+      );
+      final router = GoRouter(
+        initialLocation: location,
+        routes: [
+          GoRoute(
+            path: location,
+            builder: (_, _) => const WarehouseQualityResultDetailPage(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-a',
+            ),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await _pump(tester, container, router);
+      final open = find.text('登记退回');
+      await tester.ensureVisible(open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      final dialog = find.byType(AlertDialog);
+      expect(dialog, findsOneWidget);
+      final inputs = find.descendant(
+        of: dialog,
+        matching: find.byType(TextFormField),
+      );
+      await tester.enterText(inputs.first, ' RET-ORIGINAL ');
+      await tester.enterText(inputs.last, '原单实物退回');
+      switch (boundary) {
+        case 'permission':
+          container.read(_permissions.notifier).state = const {
+            Perm.warehouseIqcStockInView,
+            Perm.warehouseIqcReturnView,
+          };
+        case 'actor':
+          container.read(_owner.notifier).state = const AuthenticatedScope(
+            userId: 'new-keeper',
+            epoch: 1,
+          );
+        case 'epoch':
+          container.read(_owner.notifier).state = const AuthenticatedScope(
+            userId: 'keeper',
+            epoch: 1,
+          );
+        case 'actor-aba':
+          container.read(_owner.notifier).state = const AuthenticatedScope(
+            userId: 'new-keeper',
+          );
+          await tester.pump();
+          container.read(_owner.notifier).state = const AuthenticatedScope(
+            userId: 'keeper',
+          );
+        case 'server':
+          container.read(_server.notifier).state =
+              'https://other-input.example/api';
+        case 'readonly':
+          container.read(_owner.notifier).state = const AuthenticatedScope(
+            userId: 'keeper',
+            readOnly: true,
+          );
+      }
+      await tester.pump();
+      await tester.tap(
+        find.descendant(of: dialog, matching: find.text('确认登记')),
+      );
+      await tester.pumpAndSettle();
+      if (boundary == 'none') {
+        expect(api.posts, hasLength(1));
+        expect(
+          api.posts.single.path,
+          '/warehouse/iqc-returns/rejection-a/record-return',
+        );
+        expect(api.posts.single.body['expectedVersion'], 7);
+        expect(api.posts.single.body['returnReference'], 'RET-ORIGINAL');
+        expect(api.posts.single.body['commandId'], isNotEmpty);
+      } else {
+        expect(
+          api.posts,
+          isEmpty,
+          reason:
+              'An old dialog must never adopt a changed identity or permission',
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
   test(
     'a damaged empty original command cannot be treated as proof of completion',
     () {

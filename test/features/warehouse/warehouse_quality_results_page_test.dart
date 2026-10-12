@@ -21,12 +21,86 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_resul
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final scenario in [
+    (
+      name: 'sparse-superadmin',
+      permissions: <String>{Perm.warehouseIqcStockInView},
+      superAdmin: true,
+      readonly: false,
+      record: false,
+    ),
+    (
+      name: 'missing-return-view',
+      permissions: <String>{
+        Perm.warehouseIqcStockInView,
+        Perm.procurementIqcRejectionRecordReturn,
+      },
+      superAdmin: false,
+      readonly: false,
+      record: false,
+    ),
+    (
+      name: 'readonly',
+      permissions: <String>{
+        Perm.warehouseIqcReturnView,
+        Perm.procurementIqcRejectionRecordReturn,
+      },
+      superAdmin: false,
+      readonly: true,
+      record: false,
+    ),
+    (
+      name: 'native-return-grants',
+      permissions: <String>{
+        Perm.warehouseIqcReturnView,
+        Perm.procurementIqcRejectionRecordReturn,
+      },
+      superAdmin: false,
+      readonly: false,
+      record: true,
+    ),
+  ]) {
+    testWidgets(
+      'ordinary quality menu matches warehouse return grants ${scenario.name}',
+      (tester) async {
+        _viewport(tester, const Size(1400, 1000));
+        final preferences = await SharedPreferences.getInstance();
+        final gateway = _QualityGateway([
+          WarehouseQualityResultTask.fromJson(
+            _summaryJson('RETURN_REQUIRED', pendingReturnCount: 1),
+          ),
+        ]);
+        await tester.pumpWidget(
+          _app(
+            const WarehouseQualityResultsPage(),
+            gateway,
+            preferences,
+            superAdmin: scenario.superAdmin,
+            permissions: scenario.permissions,
+            readOnly: scenario.readonly,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final table = tester
+            .widget<MasterDataTableView<WarehouseQualityResultTask>>(
+              find.byType(MasterDataTableView<WarehouseQualityResultTask>),
+            );
+        final labels = table.rowMenuBuilder!(table.items.single)
+            .map((item) => (item as UtenMenuItem).label)
+            .toList();
+        expect(labels.contains('登记实物退回'), scenario.record);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final withExtra in [false, true]) {
     testWidgets(
@@ -715,6 +789,7 @@ Widget _app(
   },
   GoRouter? router,
   bool superAdmin = false,
+  bool readOnly = false,
 }) {
   return ProviderScope(
     overrides: [
@@ -725,6 +800,10 @@ Widget _app(
       sharedPreferencesProvider.overrideWithValue(preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(superAdmin),
+      if (readOnly)
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'keeper', readOnly: true),
+        ),
       // 来源大类两枚计数随徽章汇总带回(ADR-108): 夹具用网关里的同一份数喂汇总事实数。
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(

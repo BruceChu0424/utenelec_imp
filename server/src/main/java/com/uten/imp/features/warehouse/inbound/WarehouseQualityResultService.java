@@ -490,11 +490,12 @@ public class WarehouseQualityResultService {
         // 前端复核提示的标记，不再阻断入库确认。
         boolean containsOwnRelease = actorEmployeeId != null
                 && containsOwnRelease(type, receiptId, actorEmployeeId);
-        boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
+        boolean canConfirm = hasWarehouseWriteAuthority(ProcurementIqcStockInPermissions.VIEW,
+                ProcurementIqcStockInPermissions.CONFIRM)
                 && !slices.isEmpty();
         // 先入库后检(V596)：仍有「等结论且未上架」的行时可先上架；权限独立于确认入库。
-        boolean canPreStockIn = hasAuthority(ProcurementIqcStockInPermissions.VIEW)
-                && hasAuthority(ProcurementIqcStockInPermissions.BEFORE_INSPECTION)
+        boolean canPreStockIn = hasWarehouseWriteAuthority(ProcurementIqcStockInPermissions.VIEW,
+                ProcurementIqcStockInPermissions.BEFORE_INSPECTION)
                 && lines.stream().anyMatch(InspectionLineItem::preStockable);
         List<String> allowedActions = new java.util.ArrayList<>();
         if (canConfirm) allowedActions.add("CONFIRM");
@@ -895,7 +896,8 @@ public class WarehouseQualityResultService {
     /** 检查不合格的实物退回案件（V440 拒收案件在仓库侧的投影）。 */
     @SuppressWarnings("unchecked")
     private List<RejectionCaseItem> rejections(String receiptType, UUID receiptId) {
-        boolean canRecord = hasAuthority(WarehouseQualityResultPermissions.RECORD_RETURN);
+        boolean canRecord = hasWarehouseWriteAuthority(WarehouseQualityResultPermissions.RETURN_VIEW,
+                WarehouseQualityResultPermissions.RECORD_RETURN);
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT rejection.id,
                                rejection.inspection_item_id,
@@ -1048,6 +1050,15 @@ public class WarehouseQualityResultService {
     private static String likePattern(String value) {
         return "%" + value.replace("\\", "\\\\")
                 .replace("%", "\\%").replace("_", "\\_") + "%";
+    }
+
+    private static boolean hasWarehouseWriteAuthority(String viewAuthority, String actionAuthority) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) return false;
+        // Match the native HTTP write guard; read access itself remains unchanged.
+        if (authentication.getPrincipal() instanceof com.uten.imp.security.AuthUser user
+                && user.getImpersonatedBy() != null) return false;
+        return hasAuthority(viewAuthority) && hasAuthority(actionAuthority);
     }
 
     private static boolean hasAuthority(String authority) {

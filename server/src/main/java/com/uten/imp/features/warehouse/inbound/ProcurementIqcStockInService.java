@@ -117,7 +117,11 @@ public class ProcurementIqcStockInService {
         List<StockInHistoryItem> history = history(type, receiptId);
         // 单人维护场景允许同人完成「品质放行 + 仓库确认」：不再阻断；同人复核提示
         // 由合并页详情的 containsOwnRelease 标记承担（WarehouseQualityResultService）。
-        boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        boolean readOnly = authentication != null
+                && authentication.getPrincipal() instanceof com.uten.imp.security.AuthUser user
+                && user.getImpersonatedBy() != null;
+        boolean canConfirm = !readOnly && hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
                 && ProcurementReceiptOriginPolicy.isNative(em,type,receiptId);
         return new TaskDetail(
                 type, receiptId, str(header[0]), NativeValueConverters.toLocalDate(header[1]),

@@ -30,6 +30,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/measurement/weight_prefs.dart';
@@ -166,7 +167,7 @@ class _WarehouseQualityBatchStockInPageState
   }
 
   bool get _canConfirmStockIn {
-    if (ref.read(isSuperAdminProvider)) return true;
+    if (ref.read(authenticatedScopeProvider)?.readOnly == true) return false;
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.warehouseIqcStockInView) &&
         permissions.contains(Perm.warehouseIqcStockInConfirm);
@@ -353,6 +354,8 @@ class _WarehouseQualityBatchStockInPageState
     WarehouseQualityBatchConfirmCommand command,
   ) async {
     if (_saving || !_canConfirmStockIn) return;
+    final previousPending = _pendingCommand;
+    var locallyRejected = false;
     _pendingCommand = command;
     setState(() {
       _saving = true;
@@ -360,9 +363,25 @@ class _WarehouseQualityBatchStockInPageState
     });
     try {
       final result = await runFormDraftSubmission(
-        () => ref
-            .read(warehouseQualityResultRepositoryProvider)
-            .batchConfirm(command),
+        () {
+          if (!_canConfirmStockIn) {
+            locallyRejected = true;
+            _pendingCommand = previousPending;
+            throw ApiException(
+              'FORBIDDEN',
+              '当前账号不能确认批量入库，请重新核对权限',
+              httpStatus: 403,
+            );
+          }
+          return ref
+              .read(warehouseQualityResultRepositoryProvider)
+              .batchConfirm(command);
+        },
+        isDefiniteRejection: (error) =>
+            (locallyRejected && previousPending == null) ||
+            error.httpStatus == 400 ||
+            error.httpStatus == 422 ||
+            (error.httpStatus == 409 && error.code == 'CONFLICT'),
       );
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
@@ -436,6 +455,8 @@ class _WarehouseQualityBatchStockInPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
     final theme = Theme.of(context);
     return withFormDraft(
       PopScope(

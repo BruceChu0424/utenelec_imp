@@ -77,16 +77,8 @@ class SalesFinanceNoticeClaimConcurrencyPostgresTest {
         reviewer=data.account(data.finance,false); revoked=data.account(data.finance,false);
         data.accounts(449,data.finance,false);
         for (UUID id:List.of(reviewer,revoked)) { data.grant(id,data.view); data.grant(id,data.confirm); }
-        jdbc.execute("""
-                CREATE TABLE sales_orders(id uuid PRIMARY KEY,bill_no text NOT NULL,owner_employee_id uuid,seller_id uuid,
-                  status smallint NOT NULL DEFAULT 1,is_deleted boolean NOT NULL DEFAULT false,
-                  finance_confirmed boolean NOT NULL DEFAULT false,finance_rejected boolean NOT NULL DEFAULT false,
-                  is_stopped boolean NOT NULL DEFAULT false,is_closed boolean NOT NULL DEFAULT false,
-                  finance_review_revision bigint NOT NULL DEFAULT 0,requoted_to_id uuid);
-                CREATE TABLE notices(id uuid PRIMARY KEY,aggregate_kind text,aggregate_id uuid,source_event text,
-                  audience_user_id uuid,resolved_at timestamptz);
-                """);
-        order=UUID.randomUUID(); jdbc.update("INSERT INTO sales_orders(id,bill_no) VALUES (?,'XD-BATCH-451')",order);
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,"sales_orders","notices");
+        order=UUID.randomUUID(); jdbc.update("INSERT INTO sales_orders(id,bill_no,status) VALUES (?,'XD-BATCH-451',1)",order);
         var users=mock(UserAccountRepository.class);
         when(users.findById(any())).thenAnswer(call -> account(call.getArgument(0)));
         var recipientPool=new SalesOrderFinanceConfirmerEligibility(jdbc,users,permissions);
@@ -94,7 +86,7 @@ class SalesFinanceNoticeClaimConcurrencyPostgresTest {
         when(publisher.publishForUser(any(),anyString(),anyString(),anyString(),anyString(),anyString(),
                 anyString(),isNull(),any())).thenAnswer(call -> {
             if (published.incrementAndGet()==2 && failSecondRecipient.get()) throw new IllegalStateException("receiver write failed");
-            jdbc.update("INSERT INTO notices VALUES (?,'SALES_ORDER',?,?,?,null)",UUID.randomUUID(),
+            jdbc.update("INSERT INTO notices(id,aggregate_kind,aggregate_id,source_event,audience_user_id,resolved_at) VALUES (?,'SALES_ORDER',?,?,?,null)",UUID.randomUUID(),
                     call.getArgument(8),call.getArgument(6),call.getArgument(0));
             return null;
         });

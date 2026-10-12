@@ -728,7 +728,7 @@ class SubcontractStepDrawEndToEndTest {
         // 退料红冲把 B 4 加回会超过冻结计划量 20(18 + 4) → 409。
         ApiException reverseBlocked = assertThrows(ApiException.class, () -> materialReturns.reverse(returnId));
         assertEquals(ErrorCode.CONFLICT, reverseBlocked.getCode());
-        assertTrue(reverseBlocked.getMessage().contains("退回的料已重新领出"), reverseBlocked.getMessage());
+        assertEquals("原收仓之后已有实际耗用或成本来源变化，请先处理对应后续业务",reverseBlocked.getMessage());
         qty("18", planLines(item).get(b).get("issued_qty"), "红冲被拒不改已发净量");
         qty("6", onHand(b, wh), "红冲被拒库存不动(退回 4 − 再领 2 + 其它入库 4)");
 

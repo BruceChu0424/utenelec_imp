@@ -123,10 +123,11 @@ class WarehouseArrivalRegistrationContractTest {
                 .toList();
         // V596：行级只多一个上架库位(库位语义字段，非金额)。
         // ADR-135：再多一个「数量按称重推算」布尔位(称重计数按称重改数量时为真, 该行不进单重学习)。
+        // V843/V844：赠品是独立实物数量，仍不允许仓库请求携带价格或币族。
         assertThat(lineComponents).containsExactlyInAnyOrder(
                 "goodsId", "qty", "orderItemId", "colorId", "unitId",
                         "unitRate", "weight", "sourceDocNo", "replacementIntent", "preStockPlace",
-                        "qtyFromWeight");
+                        "qtyFromWeight", "giftQty");
     }
 
     @Test
@@ -261,7 +262,7 @@ class WarehouseArrivalRegistrationContractTest {
         // 守恒额度 = 可做套数(逐种物料取短板, 不相加) + 已退回的质检不合格量 + 财务批准的
         // 委外商自带料；否则财务批准完这单仍然审不过去。
         assertThat(capacity)
-                .contains("COALESCE(fn_subcontract_returnable_qty(order_item.id), 0)")
+                .containsPattern("COALESCE\\(fn_subcontract_returnable_qty\\(order_item\\.id\\),\\s*0\\)")
                 .contains("returnableBase.add(returnedFailureBase).add(approvedSupplierOwnBase)")
                 .contains("FOR UPDATE OF order_item")
                 .contains("active_draft_base")
@@ -304,7 +305,9 @@ class WarehouseArrivalRegistrationContractTest {
         String java = Files.readString(source);
 
         assertThat(java)
-                .contains("remainingQty.compareTo(registeredQty) > 0")
+                .contains("boolean canCreateReceipt = \"OPEN\".equals(header.status())")
+                .contains("items.stream().anyMatch(item -> item.remainingQty().compareTo(item.registeredQty()) > 0")
+                .contains("|| item.remainingGiftQty().compareTo(item.registeredGiftQty()) > 0)")
                 .contains("warehouse_inbound:stock_in")
                 .contains("boolean canCreateReceipt")
                 .contains("? List.of(");

@@ -64,8 +64,10 @@ class ProcurementIqcRejectionNoticeTest {
         Set<UUID> first = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 service, "userIdsWithIqcViewAndAnyPermission", (Object) new String[]{CONFIRM});
         assertEquals(1000, first.size());
-        assertEquals(1000, mockingDetails(permissions).getInvocations().size(),
+        assertEquals(1000, mockingDetails(permissions).getInvocations().stream()
+                        .filter(call -> call.getMethod().getName().equals("grantedPermsOf")).count(),
                 "旧的两轮判断调用 2000 次；同一事件必须只完整解析 1000 次");
+        verify(permissions,times(1)).supportsGrantedPermissionBatch();
         verify(users, never()).findById(any());
 
         // Offboard/disabled and deleted accounts remain excluded before permission lookup,
@@ -82,7 +84,9 @@ class ProcurementIqcRejectionNoticeTest {
         verify(permissions, never()).grantedPermsOf(accounts.get(0));
         verify(permissions, never()).grantedPermsOf(accounts.get(1));
         verify(permissions, times(1)).grantedPermsOf(accounts.get(2));
-        assertEquals(998, mockingDetails(permissions).getInvocations().size());
+        assertEquals(998, mockingDetails(permissions).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("grantedPermsOf")).count());
+        verify(permissions,times(1)).supportsGrantedPermissionBatch();
     }
 
     @Test

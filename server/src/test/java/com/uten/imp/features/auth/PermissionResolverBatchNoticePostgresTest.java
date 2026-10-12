@@ -57,7 +57,7 @@ class PermissionResolverBatchNoticePostgresTest {
         UUID primary=data.account(child,false), secondary=data.account(data.other,false);
         UUID revoked=data.account(child,false), outsideAdmin=data.account(data.other,true);
         UUID grantedAdmin=data.account(data.other,true), disabled=data.account(child,false);
-        jdbc.update("INSERT INTO employee_secondary_departments VALUES (?,?)",secondary,child);
+        jdbc.update("INSERT INTO employee_secondary_departments(employee_id,department_id) VALUES (?,?)",secondary,child);
         data.override(revoked,data.confirm,"revoke","SUPER_ADMIN_CONFIRMED");
         data.grant(grantedAdmin,data.view); data.grant(grantedAdmin,data.confirm);
         jdbc.update("UPDATE users SET status='disabled' WHERE id=?",disabled);

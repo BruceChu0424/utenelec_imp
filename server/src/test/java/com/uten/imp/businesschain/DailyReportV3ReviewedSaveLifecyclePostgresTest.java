@@ -198,7 +198,7 @@ class DailyReportV3ReviewedSaveLifecyclePostgresTest {
         var fresh=reports.materialReview(draft.getId());assertThat(fresh.fingerprint()).isNotEqualTo(old.fingerprint());
         qty("9.1256",fresh.rows().getFirst().availableQty());
         var before=ledgerFacts();
-        ApiException blocked=catchThrowableOfType(()->reports.approve(draft.getId(),request(old,"KEEP","v3-stale-material-"+UUID.randomUUID())),ApiException.class);
+        ApiException blocked=catchThrowableOfType(ApiException.class,()->reports.approve(draft.getId(),request(old,"KEEP","v3-stale-material-"+UUID.randomUUID())));
         assertThat(blocked).isNotNull();assertThat(blocked.getCode()).isEqualTo(ErrorCode.DAILY_REPORT_MATERIAL_REVIEW_CONFLICT);
         assertThat(ledgerFacts()).isEqualTo(before);assertThat(reports.detail(draft.getId()).getStatus()).isZero();
         qty("1",finished(task));qty("1",consumed(task));

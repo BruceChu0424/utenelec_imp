@@ -120,7 +120,10 @@ class PurchaseRequestPartialOrderEndToEndTest {
         long before=orderCount(f);
         for(String invalid:List.of("0","-1")) {
             assertThatThrownBy(()->createOrder(f,List.of(orderLine(f,f.second(),"1"),orderLine(f,f.first(),invalid))))
-                    .isInstanceOf(ApiException.class).hasMessageContaining("数量必须大于 0");
+                    .isInstanceOf(ApiException.class)
+                    .satisfies(error->assertThat(((ApiException)error).getCode())
+                            .isEqualTo(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED))
+                    .hasMessage(invalid.equals("0")?"计价量和赠品量不能同时为零":"计价数量不合法");
             assertThat(orderCount(f)).isEqualTo(before);
             assertBalances(f,f.first(),"2","3","5");
             assertBalances(f,f.second(),"0","0","4");

@@ -72,6 +72,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             // Its CREATE TABLE strings are parser input samples only; this
             // read-only migration contract class never creates a database fixture.
             "AuditTriggerCoverageMigrationContractTest.java",
+            // Pure SQL-text assertions (including forbidding CREATE TABLE); no
+            // database fixture or dynamic DDL is executed by this contract.
+            "ProcurementReturnCostVarianceMigrationContractTest.java",
             "MigratedSchemaBaselinePostgresTest.java",
             // Creates complete projections from trusted live Flyway catalog
             // metadata rather than hand-written fixture DDL.

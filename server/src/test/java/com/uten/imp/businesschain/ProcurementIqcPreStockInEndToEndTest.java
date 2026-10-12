@@ -228,6 +228,10 @@ class ProcurementIqcPreStockInEndToEndTest {
         TaskDetail detail = qualityResults.detail("PURCHASE", c.receipt());
         assertEquals(2, detail.lines().size());
         assertTrue(detail.lines().stream().allMatch(line -> line.preStocked() != null));
+        assertTrue(detail.lines().stream().allMatch(line -> "CHARGED".equals(line.quantityTranche())));
+        for(var line:detail.lines())assertEquals(jdbc.queryForObject(
+                "SELECT quantity_tranche FROM procurement_inspection_items WHERE id=? AND receipt_type=? AND receipt_id=?",
+                String.class,line.inspectionItemId(),"PURCHASE",c.receipt()),line.quantityTranche());
         assertEquals("A-01", detail.lines().stream().filter(line -> line.inspectionItemId().equals(line1.inspectionId())).findFirst().orElseThrow().preStocked().place());
         assertTrue(detail.history().stream().allMatch(item -> "PRE_STOCKED_AUTO".equals(item.origin())));
         assertEquals(0, detail.preStockedLineCount(), "全部出结论后不再有等结论的上架行");
@@ -259,6 +263,12 @@ class ProcurementIqcPreStockInEndToEndTest {
         inspections.passBatch("SUBCONTRACT", c.receipt(), request);
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", Integer.class, c.receipt()));
         for (var row : c.rows()) assertEquals(0, RECEIPT_QTY.compareTo(balance(leaf, row.goodsId())));
+        TaskDetail detail=qualityResults.detail("SUBCONTRACT",c.receipt());
+        assertEquals(c.rows().size(),detail.lines().size());
+        assertTrue(detail.lines().stream().allMatch(line -> "LEGACY".equals(line.quantityTranche())));
+        for(var line:detail.lines())assertEquals(jdbc.queryForObject(
+                "SELECT quantity_tranche FROM procurement_inspection_items WHERE id=? AND receipt_type=? AND receipt_id=?",
+                String.class,line.inspectionItemId(),"SUBCONTRACT",c.receipt()),line.quantityTranche());
         drainOutbox();
     }
 

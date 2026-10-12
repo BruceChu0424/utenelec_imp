@@ -487,6 +487,14 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
   }
 
   @override
+  void deactivate() {
+    // A GlobalKey can move this still-mounted field within the same Overlay.
+    // Invalidate the old owner entry and its callbacks before reattachment.
+    _close();
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
     _aiSlot.detach();
     _close();

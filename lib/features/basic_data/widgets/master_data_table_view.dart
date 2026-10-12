@@ -265,6 +265,7 @@ class MasterDataTableView<T> extends StatefulWidget {
   const MasterDataTableView({
     super.key,
     required this.columns,
+    this.requiredLeadingColumnKeys = const [],
     required this.items,
     this.unpagedItems = const [],
     this.rowsController,
@@ -398,6 +399,12 @@ class MasterDataTableView<T> extends StatefulWidget {
   platformCellDecorator;
   final Key? errorKey;
   final List<MasterColumnDef<T>> columns;
+
+  /// Business identity/status columns that must remain visible in this order,
+  /// immediately after the optional selection column. Opt-in only: saved layout
+  /// choices for other columns remain intact. Required columns are pinned and
+  /// cannot be hidden, moved or unpinned, including in the fullscreen view.
+  final List<String> requiredLeadingColumnKeys;
   final List<T> items;
   final Map<String, List<MasterFacetBucket>> facets;
   final Map<String, int> nullCounts;
@@ -1576,11 +1583,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       }
     }
     if (_hiddenKeys.length >= columns.length) _hiddenKeys.clear();
-    _columnOrder = utenNormalizePinnedPrefix(
-      order: _columnOrder,
-      hiddenKeys: _hiddenKeys,
-      pinnedKeys: _pinnedKeys,
-    );
+    _normalizeRequiredLeadingColumns();
     if (_widths.length != columns.length) {
       _widths = [
         for (var i = 0; i < columns.length; i++)
@@ -2110,6 +2113,30 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// （2026-09-25 用户口径「取消固定也要回到对应的地方」）。
   final Map<String, int> _pinOriginIndex = {};
 
+  List<String> get _requiredLeadingKeys {
+    final available = _columns.map((column) => column.key).toSet();
+    return [
+      ...widget.requiredLeadingColumnKeys.where(available.contains).toSet(),
+    ];
+  }
+
+  bool _isRequiredLeading(String key) => _requiredLeadingKeys.contains(key);
+
+  void _normalizeRequiredLeadingColumns() {
+    final required = _requiredLeadingKeys;
+    _hiddenKeys.removeAll(required);
+    _pinnedKeys.addAll(required);
+    final normalized = utenNormalizePinnedPrefix(
+      order: _columnOrder,
+      hiddenKeys: _hiddenKeys,
+      pinnedKeys: _pinnedKeys,
+    );
+    _columnOrder = [
+      ...required,
+      ...normalized.where((key) => !required.contains(key)),
+    ];
+  }
+
   /// 全屏状态：true 时正常树让位成 SizedBox.shrink（ScrollController 只挂全屏路由一棵树），
   /// 表格经 showGeneralDialog 全屏路由渲染——走 Navigator 路由栈，故全屏里再开
   /// 「预览打印 / 下载表格」对话框会正常叠在全屏之上（手动 OverlayEntry 会压住路由弹窗）。
@@ -2138,7 +2165,28 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 该列当前可否拖出隐藏：至少保留一列可见（末列永不 arm，松开 no-op、视觉回弹）。
   @override
-  bool columnCanDragHide(int i) => i < _columns.length && _visibleCount > 1;
+  bool columnCanDragHide(int i) =>
+      i < _columns.length &&
+      !_isRequiredLeading(_columns[i].key) &&
+      _visibleCount > 1;
+
+  @override
+  void columnDragHideStart(int index) {
+    if (index < 0 || index >= _columns.length ||
+        _isRequiredLeading(_columns[index].key)) {
+      return;
+    }
+    super.columnDragHideStart(index);
+  }
+
+  @override
+  void columnReorderStart(int index) {
+    if (index < 0 || index >= _columns.length ||
+        _isRequiredLeading(_columns[index].key)) {
+      return;
+    }
+    super.columnReorderStart(index);
+  }
 
   /// 松手且 armed：复用既有显隐切换守卫（末列不隐）。
   @override
@@ -2159,6 +2207,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   void _reorderColumnInto(int fromOriginalIndex, int slot) {
+    if (fromOriginalIndex < 0 ||
+        fromOriginalIndex >= _columns.length ||
+        _isRequiredLeading(_columns[fromOriginalIndex].key)) {
+      return;
+    }
     final visible = _visibleIndices;
     final fromPos = visible.indexOf(fromOriginalIndex);
     if (fromPos < 0) return;
@@ -2177,6 +2230,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         hiddenKeys: _hiddenKeys,
         pinnedKeys: _pinnedKeys,
       );
+      _normalizeRequiredLeadingColumns();
     });
     _fsTick.value++; // 全屏路由内的表格同步重建。
     _persistPlatformLayout();
@@ -2187,6 +2241,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 越过固定块边界的搬移由规范化收回（固定列恒为可见前缀）。
   void _reorderColumnByKeys(int oldIndex, int newIndex) {
     if (oldIndex < 0 || oldIndex >= _columnOrder.length) return;
+    if (_isRequiredLeading(_columnOrder[oldIndex])) return;
     setState(() {
       final key = _columnOrder.removeAt(oldIndex);
       _columnOrder.insert(newIndex.clamp(0, _columnOrder.length), key);
@@ -2195,6 +2250,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         hiddenKeys: _hiddenKeys,
         pinnedKeys: _pinnedKeys,
       );
+      _normalizeRequiredLeadingColumns();
     });
     _fsTick.value++;
     _persistPlatformLayout();
@@ -2223,6 +2279,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 固定/取消固定一列：固定 = 记录当前下标后搬到固定块末尾；取消固定 =
   /// 放回固定前的位置（2026-09-25 用户口径「取消固定也要回到对应的地方」）。
   void _toggleColumnPin(String key) {
+    if (_isRequiredLeading(key)) return;
     setState(() {
       final origin = _pinOriginIndex[key];
       final wasPinned = _pinnedKeys.contains(key);
@@ -2243,6 +2300,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _pinnedKeys
         ..clear()
         ..addAll(r.pinned);
+      _normalizeRequiredLeadingColumns();
     });
     _fsTick.value++;
     _persistPlatformLayout();
@@ -2250,6 +2308,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 表头右键菜单的移动动作（向左/右一格、放到最前/最后）。
   void _moveColumnTo(String key, UtenColumnHeaderMove move) {
+    if (_isRequiredLeading(key)) return;
     setState(() {
       _columnOrder = utenMoveVisibleColumn(
         order: _columnOrder,
@@ -2258,6 +2317,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         key: key,
         move: move,
       );
+      _normalizeRequiredLeadingColumns();
     });
     _fsTick.value++;
     _persistPlatformLayout();
@@ -2266,6 +2326,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 表头右键菜单条目（能力判定走 kit 纯函数；隐藏复用既有「至少留一列」守卫）。
   List<UtenContextMenuEntry> _headerMenuEntries(int i) {
     final key = _columns[i].key;
+    final required = _isRequiredLeading(key);
     final cap = utenColumnHeaderMenuCapabilities(
       order: _columnOrder,
       hiddenKeys: _hiddenKeys,
@@ -2276,24 +2337,24 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return utenColumnHeaderMenuEntries(
       UtenColumnHeaderMenuSpec(
         pinned: cap.pinned,
-        canPin: cap.canPin,
+        canPin: cap.canPin && !required,
         canHide: cap.canHide,
-        canMoveLeft: cap.canMoveLeft,
-        canMoveRight: cap.canMoveRight,
-        canMoveToFront: cap.canMoveToFront,
-        canMoveToBack: cap.canMoveToBack,
-        onTogglePin: cap.canPin ? () => _toggleColumnPin(key) : null,
+        canMoveLeft: cap.canMoveLeft && !required,
+        canMoveRight: cap.canMoveRight && !required,
+        canMoveToFront: cap.canMoveToFront && !required,
+        canMoveToBack: cap.canMoveToBack && !required,
+        onTogglePin: cap.canPin && !required ? () => _toggleColumnPin(key) : null,
         onHide: cap.canHide ? () => _toggleColumn(key) : null,
-        onMoveLeft: cap.canMoveLeft
+        onMoveLeft: cap.canMoveLeft && !required
             ? () => _moveColumnTo(key, UtenColumnHeaderMove.left)
             : null,
-        onMoveRight: cap.canMoveRight
+        onMoveRight: cap.canMoveRight && !required
             ? () => _moveColumnTo(key, UtenColumnHeaderMove.right)
             : null,
-        onMoveToFront: cap.canMoveToFront
+        onMoveToFront: cap.canMoveToFront && !required
             ? () => _moveColumnTo(key, UtenColumnHeaderMove.front)
             : null,
-        onMoveToBack: cap.canMoveToBack
+        onMoveToBack: cap.canMoveToBack && !required
             ? () => _moveColumnTo(key, UtenColumnHeaderMove.back)
             : null,
       ),
@@ -2348,6 +2409,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     _hiddenKeys.addAll(
       _columns.where((c) => !c.defaultVisible).map((c) => c.key),
     );
+    _normalizeRequiredLeadingColumns();
     _bodyH = ScrollController();
     _bodyV = ScrollController();
     if (widget.scrollToEndRequest != 0) {
@@ -2865,6 +2927,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 切换单列显隐：最后一列不允许隐藏，避免表格没列；隐藏固定列时同时解除固定
   ///（固定列必须在可见序列里，「看不见的固定列」没有意义）。
   void _toggleColumn(String key) {
+    if (_isRequiredLeading(key)) return;
     setState(() {
       if (_hiddenKeys.contains(key)) {
         _hiddenKeys.remove(key);
@@ -2884,10 +2947,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     setState(() {
       _hiddenKeys.clear();
       if (!selectAll && _columns.length > 1) {
-        _hiddenKeys.addAll(_columns.skip(1).map((c) => c.key));
+        final retained = _requiredLeadingKeys.toSet();
+        if (retained.isEmpty) retained.add(_columns.first.key);
+        _hiddenKeys.addAll(
+          _columns.where((column) => !retained.contains(column.key)).map((c) => c.key),
+        );
       }
       _pinnedKeys.removeWhere(_hiddenKeys.contains);
       _pinOriginIndex.removeWhere((k, _) => _hiddenKeys.contains(k));
+      _normalizeRequiredLeadingColumns();
     });
     _fsTick.value++;
     _persistPlatformLayout();
@@ -3863,7 +3931,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               UtenColumnChooserButton(
                 entries: [
                   for (final c in _columns)
-                    UtenColumnChooserEntry(key: c.key, label: c.label),
+                    UtenColumnChooserEntry(
+                      key: c.key,
+                      label: c.label,
+                      required: _isRequiredLeading(c.key),
+                    ),
                 ],
                 hiddenKeys: _hiddenKeys,
                 onToggle: _toggleColumn,

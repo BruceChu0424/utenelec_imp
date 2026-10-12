@@ -9,6 +9,7 @@ import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
@@ -341,6 +342,78 @@ void main() {
     },
   );
 
+  testWidgets('状态表头向服务器过滤全部结果，清除/旧非法值回ALL并清选择', (tester) async {
+    _viewport(tester, const Size(1200, 900));
+    final gateway = _QualityGateway([
+      WarehouseQualityResultTask.fromJson(_summaryJson('ALL_PASSED')),
+      WarehouseQualityResultTask.fromJson(_summaryJson('WAITING_INSPECTION', receiptId: 'waiting')),
+    ]);
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(_app(const WarehouseQualityResultsPage(), gateway, preferences));
+    await tester.pumpAndSettle();
+    MasterDataTableView<WarehouseQualityResultTask> table() => tester.widget(
+      find.byKey(const Key('warehouse-quality-result-table')),
+    );
+    expect(table().requiredLeadingColumnKeys, ['workStatus']);
+    expect(table().columns.first.label, '状态');
+    table().onSelectedIdsChanged!({'PURCHASE:receipt-1'});
+    await tester.pumpAndSettle();
+    table().onFilterChanged('workStatus', 'WAITING_INSPECTION');
+    await tester.pumpAndSettle();
+    expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.waitingInspection);
+    expect(table().items.single.receiptId, 'waiting');
+    expect(table().selectedIds, isEmpty);
+    table().onFilterChanged('workStatus', null);
+    await tester.pumpAndSettle();
+    expect(gateway.lastWorkStatus, isNull);
+    expect(table().items, hasLength(2));
+    table().onFilterChanged('workStatus', 'ALL_PASSED');
+    await tester.pumpAndSettle();
+    table().onFilterChanged('workStatus', 'OLD_UNKNOWN_STATUS');
+    await tester.pumpAndSettle();
+    expect(gateway.lastWorkStatus, isNull);
+    expect(table().filters['workStatus'], isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('历史日期保留，状态表头清空只取消状态条件', (tester) async {
+    _viewport(tester, const Size(1200, 900));
+    final gateway = _QualityGateway([
+      WarehouseQualityResultTask.fromJson(_summaryJson('ALL_PASSED')),
+    ]);
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(_app(const WarehouseQualityResultsPage(), gateway, preferences));
+    await tester.pumpAndSettle();
+    final historyButton = find.ancestor(
+      of: find.descendant(
+        of: find.byKey(const Key('warehouse-quality-result-status')),
+        matching: find.text('历史记录'),
+      ),
+      matching: find.byType(InkWell),
+    ).first;
+    tester.widget<InkWell>(historyButton).onTap!();
+    await tester.pumpAndSettle();
+    tester.widget<UtenHistoryTimeFilter>(
+      find.byKey(const Key('warehouse-quality-result-history-time')),
+    ).onChanged(UtenHistoryTimeValue.range(DateTimeRange(
+      start: DateTime(2026, 10), end: DateTime(2026, 10, 7),
+    )));
+    await tester.pumpAndSettle();
+    MasterDataTableView<WarehouseQualityResultTask> table() => tester.widget(
+      find.byKey(const Key('warehouse-quality-result-table')),
+    );
+    table().onFilterChanged('workStatus', 'ALL_PASSED');
+    await tester.pumpAndSettle();
+    expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.allPassed);
+    table().onFilterChanged('workStatus', null);
+    await tester.pumpAndSettle();
+    expect(gateway.lastWorkStatus, isNull);
+    expect(gateway.lastDateFrom, '2026-10-01');
+    expect(gateway.lastDateTo, '2026-10-07');
+    expect(find.byKey(const Key('warehouse-quality-result-history-time')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('multi-select batch stock-in submits grouped command', (
     tester,
   ) async {
@@ -631,6 +704,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   bool failNextBatch = false;
   int statusCountsCalls = 0;
   WarehouseQualityWorkStatus? lastWorkStatus;
+  String? lastDateFrom;
+  String? lastDateTo;
   final List<WarehouseIqcStockInReceiptType?> listReceiptTypes = [];
   WarehouseQualityBatchConfirmCommand? lastBatchCommand;
 
@@ -683,6 +758,8 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   }) async {
     listReceiptTypes.add(receiptType);
     lastWorkStatus = workStatus;
+    lastDateFrom = dateFrom;
+    lastDateTo = dateTo;
     final filtered = tasks
         .where(
           (task) =>

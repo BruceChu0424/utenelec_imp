@@ -128,7 +128,11 @@ public class WarehouseInboundController {
     /** 到货异常待办数(徽章来源 warehouseArrivalException): 与列表同一仓库范围(ADR-149)。 */
     @GetMapping("/arrival-exceptions/count")
     public Map<String, Long> arrivalExceptionCount(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return Map.of("count", service.countWarehouseExceptions(warehouseScopes.current(scopeWarehouseId)));
+        Map<String,Long> byType=service.countWarehouseExceptionsByType(warehouseScopes.current(scopeWarehouseId));
+        long purchase=byType.getOrDefault(ProcurementArrivalControlPort.PURCHASE,0L);
+        long subcontract=byType.getOrDefault(ProcurementArrivalControlPort.SUBCONTRACT,0L);
+        return Map.of("count",purchase+subcontract,
+                ProcurementArrivalControlPort.PURCHASE,purchase,ProcurementArrivalControlPort.SUBCONTRACT,subcontract);
     }
 
     /**

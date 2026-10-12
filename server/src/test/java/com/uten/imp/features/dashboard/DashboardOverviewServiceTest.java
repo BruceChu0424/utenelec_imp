@@ -73,7 +73,8 @@ class DashboardOverviewServiceTest {
                 Map.of("code", "DEPT_FIN", "name", "财税部", "depth", 0)));
         badgeTodo.putAll(Map.of(
                 "productionSchedule", 4L,
-                "warehouseDrawCenter", 5L,
+                "warehouseOutboundCenter", 14L,
+                "warehouseInboundCenter", 21L,
                 "purchaseTaskCenter", 6L,
                 "subcontractTaskCenter", 7L,
                 "visitorApproval", 2L,
@@ -83,6 +84,8 @@ class DashboardOverviewServiceTest {
                 "productionSchedule.count", 4L,
                 "productionSchedule.overdue", 1L,
                 "productionSchedule.urgent", 2L,
+                "productionDraw.count", 4L,
+                "productionReturn.count", 1L,
                 "expense.pendingApprovalCount", 3L,
                 "expense.pendingPaymentCount", 2L));
         when(badges.entries(any())).thenAnswer(invocation -> {
@@ -191,10 +194,10 @@ class DashboardOverviewServiceTest {
 
         DashboardOverviewDto result = service.overview();
 
-        assertThat(badgeRequests).containsExactly(Set.of("warehouseDrawCenter"));
+        assertThat(badgeRequests).containsExactly(Set.of("warehouseOutboundCenter", "warehouseInboundCenter"));
         assertThat(result.todos())
                 .extracting(DashboardOverviewDto.TodoCard::id)
-                .containsExactly("fulfillment-warehouse");
+                .containsExactly("fulfillment-warehouse-draw", "fulfillment-warehouse-return");
         assertThat(result.departmentName()).isEqualTo("仓库组");
     }
 
@@ -243,7 +246,8 @@ class DashboardOverviewServiceTest {
 
     @ParameterizedTest
     @CsvSource({
-            "SUB_WH,warehouseDrawCenter,fulfillment-warehouse,5,/warehouse/tasks/draw,你有 5 项仓库领料与退料任务待处理",
+            "SUB_WH,warehouseOutboundCenter,fulfillment-warehouse-draw,4,/warehouse/tasks/outbound?section=DRAW,你有 4 项生产领料待出库",
+            "SUB_WH,warehouseInboundCenter,fulfillment-warehouse-return,1,/warehouse/tasks/inbound?section=RETURN,你有 1 项生产退料待收仓",
             "SUB_PURCHASE,purchaseTaskCenter,fulfillment-purchase,6,/operations/workbench/purchase,你有 6 项采购任务待处理",
             "QA_OUT,subcontractTaskCenter,fulfillment-subcontract,7,/operations/workbench/subcontract,你有 7 项委外任务待处理"
     })
@@ -262,6 +266,30 @@ class DashboardOverviewServiceTest {
                     assertThat(todo.route()).isEqualTo(route);
                     assertThat(todo.sourceType()).isEqualTo("FULFILLMENT");
                 });
+    }
+
+    @Test
+    void warehouseDirectionsUseLeafFactsWithoutCountingTheLegacyAliasOrOtherDirectionWork() {
+        configureDepartment("SUB_WH", Set.of("stock_doc:view"));
+        badgeTodo.put("warehouseDrawCenter", 5L);
+        DashboardOverviewDto result = service.overview();
+        assertThat(badgeRequests).containsExactly(Set.of("warehouseOutboundCenter", "warehouseInboundCenter"));
+        assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::id)
+                .containsExactly("fulfillment-warehouse-draw", "fulfillment-warehouse-return");
+        assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::count).containsExactly(4L, 1L);
+        assertThat(result.todos().stream().mapToLong(DashboardOverviewDto.TodoCard::count).sum()).isEqualTo(5);
+        assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::route)
+                .containsExactly("/warehouse/tasks/outbound?section=DRAW", "/warehouse/tasks/inbound?section=RETURN");
+    }
+
+    @Test
+    void legacyAliasCannotSurfaceWarehouseTodosWhenDirectionEntriesWereNotGranted() {
+        configureDepartment("SUB_WH", Set.of());
+        badgeTodo.remove("warehouseOutboundCenter");
+        badgeTodo.remove("warehouseInboundCenter");
+        badgeTodo.put("warehouseDrawCenter", 5L);
+        assertThat(service.overview().todos()).isEmpty();
+        assertThat(badgeRequests).containsExactly(Set.of("warehouseOutboundCenter", "warehouseInboundCenter"));
     }
 
     @Test
@@ -364,7 +392,7 @@ class DashboardOverviewServiceTest {
         assertThat(badgeRequests).containsExactly(Set.of("expenseFinance"));
         assertThat(result.todos()).extracting(DashboardOverviewDto.TodoCard::id)
                 .contains("expense-approval")
-                .doesNotContain("visitor-approval", "production-pending", "fulfillment-warehouse");
+                .doesNotContain("visitor-approval", "production-pending", "fulfillment-warehouse-draw", "fulfillment-warehouse-return");
     }
 
     @Test

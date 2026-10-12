@@ -4,6 +4,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
+import '../../../../components/data_display/uten_status_badge.dart';
+import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../../components/inputs/uten_table_cell_action.dart';
@@ -26,6 +28,7 @@ import '../../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../basic_data/models/goods_issue_method.dart';
 import '../../../basic_data/repositories/goods_issue_method_repository.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
+import '../../../basic_data/models/master_facet.dart';
 import '../../../../shared/warehouse/workshop_material_first_use_impact.dart';
 import '../models/stock_count_request.dart';
 import '../repositories/stock_count_request_repository.dart';
@@ -109,6 +112,8 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
       _sequence++;
       _detail = null;
       _page = null;
+      _selectedRequestIds.clear();
+      _selectedLineIds.clear();
       _load();
     } else if (oldWidget.externalRefreshTick != widget.externalRefreshTick &&
         !_working) {
@@ -144,6 +149,21 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     } finally {
       if (mounted && sequence == _sequence) setState(() => _loading = false);
     }
+  }
+
+  void _selectStatus(String? value) {
+    if (_working) return;
+    final next = const {'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'}.contains(value)
+        ? value!
+        : '';
+    if (_status == next) return;
+    setState(() {
+      _status = next;
+      _page = null;
+      _selectedRequestIds.clear();
+      _selectedLineIds.clear();
+    });
+    _load();
   }
 
   Future<void> _open(String id) async {
@@ -456,7 +476,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     };
     return Column(
       children: [
-        Padding(
+        if (!widget.embedded) Padding(
           padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
           child: UtenFilterToolbar<String>(
             segmentsKey: const Key('stock-count-status-segments'),
@@ -493,24 +513,25 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
                 count: _status.isEmpty ? _page?.total : null,
               ),
             ],
-            onSelectionChanged: (value) {
-              setState(() {
-                _status = value;
-                _page = null;
-              });
-              _load();
-            },
+            onSelectionChanged: _selectStatus,
           ),
         ),
         Expanded(
           child: MasterDataTableView<StockCountRequest>(
             tableKey: 'stock.count-requests',
+            requiredLeadingColumnKeys: const ['status'],
             columns: [
               MasterColumnDef(
                 key: 'status',
                 label: '状态',
                 width: 72,
                 value: (r) => _statusText(r.status),
+                cellColor: (_, r) => utenStatusBadgeCellColor(switch (r.status) {
+                  'PENDING' => UtenStatusBadgeType.accent,
+                  'APPROVED' => UtenStatusBadgeType.success,
+                  'REJECTED' => UtenStatusBadgeType.danger,
+                  _ => UtenStatusBadgeType.neutral,
+                }),
               ),
               MasterColumnDef(
                 key: 'requestNo',
@@ -561,15 +582,26 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
               ),
             ],
             items: _page?.items ?? const [],
-            facets: const {},
+            facets: {
+              if (widget.embedded) 'status': const [
+                MasterFacetBucket(value: 'PENDING', label: '待审核', count: 0),
+                MasterFacetBucket(value: 'APPROVED', label: '已通过', count: 0),
+                MasterFacetBucket(value: 'REJECTED', label: '已驳回', count: 0),
+                MasterFacetBucket(value: 'CANCELLED', label: '已撤回', count: 0),
+              ],
+            },
             nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
+            filters: {
+              if (widget.embedded) 'status': _status.isEmpty ? null : _status,
+            },
+            onFilterChanged: (key, value) {
+              if (widget.embedded && key == 'status') _selectStatus(value);
+            },
             // 行勾选（2026-10-10 审核页防看岔行口径）：纯阅读辅助，单选互斥
-            // （点其他行自动换选、再点取消）。选中态由行高亮表达，不画勾选框
-            // 列也不驻「已选」胶囊。
+            // （点其他行自动换选、再点取消）。嵌入任务中心显示勾选框，独立审核
+            // 页仍只高亮；两种模式都不提供行级批量动作或「已选」胶囊。
             selectable: true,
-            showSelectionColumn: false,
+            showSelectionColumn: widget.embedded,
             singleSelection: true,
             showSelectionSummary: false,
             idOf: (r) => r.id.isEmpty ? null : r.id,

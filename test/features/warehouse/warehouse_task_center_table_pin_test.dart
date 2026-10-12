@@ -1,6 +1,5 @@
 // 仓库任务中心表格置顶回归（2026-09-24 用户口径「表格滑到顶，对齐物料分析页」）：
-// 大字号下滑到头后，大类行/小类行/状态行必须已随页滚走，表头钉在表格自身
-// 工具条之下——三层结构（大类→小类→分段行）全部进同一个折叠头。
+// 大字号下方向/来源两行随页滚走，状态在表格首列；不再有第三层状态分类。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,16 +20,24 @@ class _FakeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/warehouse/sales-outbound') {
+    if (path == '/warehouse/task-center/outbound') {
       final items = <Map<String, dynamic>>[
         for (var i = 0; i < 60; i++)
           {
             'id': 'so-out-$i',
+            'rowKey': 'SALES:SALES_SHIPMENT:so-out-$i',
+            'sourceType': 'SALES',
+            'recordType': 'SALES_SHIPMENT',
             'billNo': 'SO-OUT-$i',
-            'billDate': '2026-09-01',
-            'clientName': '客户$i',
+            'businessDate': '2026-09-01',
+            'partyName': '客户$i',
             'warehouseName': '主仓',
-            'warehouseWorkStatus': 'PENDING',
+            'status': 'SALES_READY',
+            'statusLabel': '销售出库 · 待核对出库',
+            'tone': 'accent',
+            'action': 'SALES_OUTBOUND',
+            'targetId': 'so-out-$i',
+            'canHandle': true,
           },
       ];
       return {
@@ -39,6 +46,8 @@ class _FakeApi extends ApiClient {
         'size': 60,
         'total': 60,
         'totalPages': 1,
+        'facets': {'status': [{'value': 'SALES_READY', 'label': '销售出库 · 待核对出库', 'count': 60}],
+          'billNo': <Map<String, dynamic>>[]},
       };
     }
     if (path.contains('/items') || path.contains('/summary')) {
@@ -61,7 +70,7 @@ class _FakeApi extends ApiClient {
 }
 
 void main() {
-  testWidgets('large font: three header rows scroll away, table pins to top', (
+  testWidgets('large font: two category rows scroll away, status table pins to top', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -92,7 +101,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
 
-    // 大类 → 出库；小类 → 销售出库；状态段 → 待出库（加载表格）。
+    // 方向 → 出库；来源 → 销售出库，直接读取全状态服务端表格。
     await tester.tap(find.text('出库'));
     await tester.pump(const Duration(milliseconds: 300));
     void expectAlignedCategories() {
@@ -109,14 +118,13 @@ void main() {
     expectAlignedCategories();
     await tester.tap(find.text('销售出库'));
     await tester.pump(const Duration(milliseconds: 500));
-    await tester.tap(find.text('待出库'));
-    await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(milliseconds: 500));
 
-    // 滑之前：三层行都在场。
+    // 滑之前：只有两层业务分类，状态在表头与每一行。
     expect(find.text('入库'), findsOneWidget);
     expect(find.text('委外出库'), findsOneWidget);
-    expect(find.text('已出库'), findsOneWidget);
+    expect(find.text('已出库'), findsNothing);
+    expect(find.text('历史单据'), findsNothing);
     expectAlignedCategories();
 
     // 滑到头（外层收完 + 表内滚）。
@@ -126,11 +134,12 @@ void main() {
     }
 
     // 表头在场且贴近顶部（1.5 倍字号下只剩 AppBar + 表格自身工具条）。
-    final header = tester.getRect(find.text('出货单号'));
+    final header = tester.getRect(find.text('单据 / 任务单号').hitTestable().first);
     expect(header.top, lessThan(200));
-    // 三层行（大类/小类/状态）都已随页滚走。
+    // 两层分类都已随页滚走；状态首列仍在表头。
     expect(find.text('入库'), findsNothing);
     expect(find.text('委外出库'), findsNothing);
     expect(find.text('已出库'), findsNothing);
+    expect(find.text('状态').hitTestable(), findsWidgets);
   });
 }

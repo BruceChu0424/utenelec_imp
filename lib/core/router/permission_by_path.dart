@@ -415,6 +415,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [
       Perm.warehouseSalesOutboundView,
       Perm.subcontractOutboundView,
+      Perm.warehouseSubcontractOutboundHistoryView,
       Perm.stockDocView,
     ];
   }
@@ -425,6 +426,8 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       Perm.stockDocView,
       Perm.warehousePurchaseReceiptHistoryView,
       Perm.warehouseSubcontractReceiptHistoryView,
+      Perm.warehouseIqcStockInView,
+      Perm.warehouseIqcReturnView,
     ];
   }
   if (location == RouteName.warehouseDrawTasks ||
@@ -440,6 +443,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       Perm.stockCountWarehouseReview,
       Perm.warehouseSalesOutboundView,
       Perm.subcontractOutboundView,
+      Perm.warehouseSubcontractOutboundHistoryView,
       Perm.stockDocView,
       Perm.warehouseInboundView,
       Perm.warehousePurchaseReceiptHistoryView,
@@ -447,7 +451,6 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       Perm.warehouseIqcStockInView,
       Perm.warehouseIqcReturnView,
       Perm.warehouseSubcontractFinishedReturnHistoryView,
-      Perm.warehouseSubcontractWasteHistoryView,
     ];
   }
   if (location.startsWith('/warehouse/')) {

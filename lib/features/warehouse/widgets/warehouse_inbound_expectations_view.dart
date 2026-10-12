@@ -706,6 +706,7 @@ class _WarehouseInboundExpectationsViewState
         ],
       ),
       body: MasterDataTableView<InboundExpectation>(
+        requiredLeadingColumnKeys: const ['status'],
         rowsController: _tableRows,
         paginationRevision: _result,
         paginationScope: (
@@ -891,8 +892,8 @@ class _WarehouseInboundExpectationsViewState
       value: (expectation) => expectation.items.length.toString(),
     ),
     MasterColumnDef(
-      key: 'step',
-      label: '到货步骤',
+      key: 'status',
+      label: '状态',
       width: 225,
       value: (expectation) {
         final drafts = arrivalTaskDrafts(

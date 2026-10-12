@@ -1331,14 +1331,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: RouteName.warehouseInboundTasks,
             name: 'warehouse-inbound-tasks',
-            builder: (_, _) =>
-                const WarehouseTaskCenterPage(initialGroup: 'inbound'),
+            builder: (_, state) => WarehouseTaskCenterPage(
+              initialGroup: 'inbound',
+              initialSection: state.uri.queryParameters['section'],
+            ),
           ),
           DraftAwareGoRoute(
             path: RouteName.warehouseDrawTasks,
             name: 'warehouse-draw-tasks',
-            builder: (_, _) =>
-                const WarehouseTaskCenterPage(initialGroup: 'draw'),
+            builder: (_, state) => WarehouseTaskCenterPage(
+              initialGroup: 'draw',
+              initialSection: state.uri.queryParameters['section'],
+            ),
           ),
           // 车间内料仓设置 (ADR-131; 静态段须先于 /warehouse/:code/:id, 否则被单据详情吞掉)。
           // ?tab=enable|machines|prep 直达页签。

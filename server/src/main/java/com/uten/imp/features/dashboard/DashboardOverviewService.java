@@ -66,8 +66,10 @@ public class DashboardOverviewService {
     }
 
     private static final List<DepartmentTodo> DEPARTMENT_TODOS = List.of(
-            new DepartmentTodo("WAREHOUSE", "warehouseDrawCenter", null,
-                    "fulfillment-warehouse", "仓库领料与退料任务待处理", "/warehouse/tasks/draw", "FULFILLMENT"),
+            new DepartmentTodo("WAREHOUSE", "warehouseOutboundCenter", "productionDraw.count",
+                    "fulfillment-warehouse-draw", "生产领料待出库", "/warehouse/tasks/outbound?section=DRAW", "FULFILLMENT"),
+            new DepartmentTodo("WAREHOUSE", "warehouseInboundCenter", "productionReturn.count",
+                    "fulfillment-warehouse-return", "生产退料待收仓", "/warehouse/tasks/inbound?section=RETURN", "FULFILLMENT"),
             new DepartmentTodo("PURCHASE", "purchaseTaskCenter", null,
                     "fulfillment-purchase", "采购任务待处理", "/operations/workbench/purchase", "FULFILLMENT"),
             new DepartmentTodo("SUBCONTRACT", "subcontractTaskCenter", null,

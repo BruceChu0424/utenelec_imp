@@ -84,12 +84,14 @@ enum WorkbenchBadgeCatalog {
     /** 出库任务中心: 销售待出库 + 委外出库(委外人员已提交、仓库未发出的领料草稿张数, 按调用者仓库范围)。 */
     warehouseOutboundCenter(Module.warehouse, facts(
             "warehouseSalesOutbound.PENDING_PICK",
-            "subcontractOutbound.count"), none()),
+            "subcontractOutbound.count",
+            "productionDraw.count"), none()),
     /** 入库任务中心: 预计到货 + 到货异常(仓库侧) + 产成品待点收。 */
     warehouseInboundCenter(Module.warehouse, facts(
             "warehouseInboundExpectation.count",
             "warehouseArrivalException.count",
-            "finishedInbound.count"), none()),
+            "finishedInbound.count",
+            "productionReturn.count"), none()),
     /** 生产领料任务中心: 待领任务 + 车间已提交待仓库确认实收的退料。 */
     warehouseDrawCenter(Module.warehouse, facts(
             "productionDraw.count",
@@ -189,6 +191,11 @@ enum WorkbenchBadgeCatalog {
 
     List<String> inProgressFacts() {
         return inProgressFacts;
+    }
+
+    /** The retired draw entry remains an old-client alias, not another module contribution. */
+    boolean contributesToModule() {
+        return this != warehouseDrawCenter;
     }
 
     private static List<String> facts(String... keys) {

@@ -82,7 +82,7 @@ class _QStatusSeg {
   const _QStatusSeg.all() : status = null, history = false;
   const _QStatusSeg.stage(WarehouseQualityWorkStatus this.status)
     : history = false;
-  const _QStatusSeg.history() : status = null, history = true;
+  const _QStatusSeg.history([this.status]) : history = true;
 
   final WarehouseQualityWorkStatus? status;
   final bool history;
@@ -234,9 +234,28 @@ class _WarehouseQualityResultsPageState
     if (seg == _statusSeg) return;
     setState(() {
       _statusSeg = seg;
+      _selectedIds = {};
+      _result = null;
+      ++_requestVersion;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) _load(1);
+  }
+
+  void _selectWorkStatusFilter(String? value) {
+    final normalized = value?.trim().toUpperCase();
+    final status = WarehouseQualityWorkStatus.values
+        .where((status) => status.apiValue == normalized)
+        .firstOrNull;
+    // A cleared/obsolete header value means every work status; never use the
+    // model's unknown-value fallback (completed) as a query filter.
+    _selectStatus(
+      _statusSeg?.history == true
+          ? _QStatusSeg.history(status)
+          : status == null
+          ? const _QStatusSeg.all()
+          : _QStatusSeg.stage(status),
+    );
   }
 
   void _selectType(WarehouseIqcStockInReceiptType? type) {
@@ -281,7 +300,7 @@ class _WarehouseQualityResultsPageState
       final result = await repo.list(
         page: page,
         receiptType: _receiptType,
-        workStatus: seg.history ? null : seg.status,
+        workStatus: seg.status,
         keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
         dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
@@ -350,7 +369,7 @@ class _WarehouseQualityResultsPageState
             .read(warehouseQualityResultRepositoryProvider)
             .billNoFacets(
               receiptType: _receiptType,
-              workStatus: seg.history ? null : seg.status,
+              workStatus: seg.status,
               keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
               dateFrom: range == null
                   ? null
@@ -509,10 +528,19 @@ class _WarehouseQualityResultsPageState
                 // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
                 primary: true,
                 key: const Key('warehouse-quality-result-table'),
+                requiredLeadingColumnKeys: const ['workStatus'],
                 columns: _columns,
                 items: result.items,
                 // 收货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
                 facets: {
+                  'workStatus': [
+                    for (final status in WarehouseQualityWorkStatus.values)
+                      MasterFacetBucket(
+                        value: status.apiValue,
+                        label: status.label,
+                        count: 0,
+                      ),
+                  ],
                   'billNo': _columnFilters.bucketOf('billNo'),
                   'receiptType': [
                     for (final type in WarehouseIqcStockInReceiptType.values)
@@ -525,6 +553,7 @@ class _WarehouseQualityResultsPageState
                 },
                 nullCounts: const {},
                 filters: {
+                  'workStatus': _statusSeg?.status?.apiValue,
                   'billNo': _columnFilters['billNo'],
                   'receiptType': _receiptType?.apiValue,
                 },
@@ -533,6 +562,10 @@ class _WarehouseQualityResultsPageState
                 sortAscending: _columnFilters.sortAscending,
                 onSortChange: _onSortChange,
                 onFilterChanged: (key, value) {
+                  if (key == 'workStatus') {
+                    _selectWorkStatusFilter(value);
+                    return;
+                  }
                   if (key == 'receiptType') {
                     _selectType(WarehouseIqcStockInReceiptType.tryParse(value));
                     return;
@@ -697,7 +730,9 @@ class _WarehouseQualityResultsPageState
               label: '历史记录',
             ),
           ],
-          selected: seg == null ? const {} : {seg},
+          selected: seg == null
+              ? const {}
+              : {seg.history ? const _QStatusSeg.history() : seg},
           onSelectionChanged: _selectStatus,
           searchHint: widget.embedded ? null : '搜索收货单 / 供应商 / 仓库 / 货品',
           initialSearchValue: widget.embedded ? null : _keyword,
@@ -731,7 +766,7 @@ class _WarehouseQualityResultsPageState
   List<MasterColumnDef<WarehouseQualityResultTask>> get _columns => [
     MasterColumnDef(
       key: 'workStatus',
-      label: '作业状态',
+      label: '状态',
       width: 190,
       // 先入库后检(V596)：等待结果时补「已上架 n 行」，仓库一眼看出实物已在库位。
       value: (task) {

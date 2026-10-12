@@ -52,11 +52,48 @@ class _WarehouseDocumentHistoryDetailPageState
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
+  ProviderSubscription<WarehouseDocumentHistoryGateway>?
+  _repositorySubscription;
+
+  void _listenRepository() {
+    _repositorySubscription?.close();
+    _repositorySubscription = ref.listenManual(
+      warehouseDocumentHistoryRepositoryProvider(widget.type),
+      (previous, next) {
+        if (identical(previous, next)) return;
+        ++_requestVersion;
+        if (!mounted) return;
+        setState(() {
+          _detail = null;
+          _error = null;
+          _loading = false;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _load();
+        });
+      },
+    );
+  }
 
   @override
   void initState() {
     super.initState();
+    _listenRepository();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(covariant WarehouseDocumentHistoryDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.type != widget.type || oldWidget.id != widget.id) {
+      ++_requestVersion;
+      _detail = null;
+      _error = null;
+      _listenRepository();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    }
   }
 
   Future<void> _load() async {

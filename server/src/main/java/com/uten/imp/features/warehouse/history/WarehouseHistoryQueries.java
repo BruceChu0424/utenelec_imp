@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.history;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
+
 /** Fixed, enum-selected SQL builders for the amount-free warehouse history projection. */
 final class WarehouseHistoryQueries {
 
@@ -12,7 +14,11 @@ final class WarehouseHistoryQueries {
 
     /** 2026-09-25 单号列统一：列表排序接白名单 ORDER BY（未知/空回落默认单据日期倒序）。 */
     static String listSql(WarehouseHistoryType type, String orderBy) {
-        return headerSelect(type) + searchJoins(type) + where(type, true) + orderBy + "\n" + """
+        return listSql(type, orderBy, WarehouseTaskScope.ALL);
+    }
+
+    static String listSql(WarehouseHistoryType type, String orderBy, WarehouseTaskScope scope) {
+        return headerSelect(type) + searchJoins(type) + where(type, true) + scopeFilter(type, scope) + orderBy + "\n" + """
                 LIMIT :limit OFFSET :offset
                 """;
     }
@@ -37,22 +43,38 @@ final class WarehouseHistoryQueries {
     /** 单号 facets（2026-09-25 单号列统一）：与列表同一 FROM/WHERE（同一过滤基座），
      *  按表达式分组计数；上限 500 桶由调用方 setMaxResults 收口。 */
     static String facetsSql(WarehouseHistoryType type, String expr) {
+        return facetsSql(type, expr, WarehouseTaskScope.ALL);
+    }
+
+    static String facetsSql(WarehouseHistoryType type, String expr, WarehouseTaskScope scope) {
         return "SELECT " + expr + ", COUNT(*) " + searchJoins(type)
-                + where(type, true) + " GROUP BY 1 ORDER BY 1\n";
+                + where(type, true) + scopeFilter(type, scope) + " GROUP BY 1 ORDER BY 1\n";
     }
 
     static String countSql(WarehouseHistoryType type) {
-        return "SELECT COUNT(*) " + searchJoins(type) + where(type, true);
+        return countSql(type, WarehouseTaskScope.ALL);
+    }
+
+    static String countSql(WarehouseHistoryType type, WarehouseTaskScope scope) {
+        return "SELECT COUNT(*) " + searchJoins(type) + where(type, true) + scopeFilter(type, scope);
     }
 
     static String detailHeaderSql(WarehouseHistoryType type) {
+        return detailHeaderSql(type, WarehouseTaskScope.ALL);
+    }
+
+    static String detailHeaderSql(WarehouseHistoryType type, WarehouseTaskScope scope) {
         return headerSelect(type) + searchJoins(type) + """
                 WHERE COALESCE(h.is_deleted, FALSE) = FALSE
                   AND h.id = :id
-                """;
+                """ + scopeFilter(type, scope);
     }
 
     static String detailLinesSql(WarehouseHistoryType type) {
+        return detailLinesSql(type, WarehouseTaskScope.ALL);
+    }
+
+    static String detailLinesSql(WarehouseHistoryType type, WarehouseTaskScope scope) {
         return """
                 SELECT i.id,
                        i.line_no,
@@ -93,6 +115,7 @@ final class WarehouseHistoryQueries {
                 WHERE i.%s = :id
                   AND COALESCE(i.is_deleted, FALSE) = FALSE
                   AND COALESCE(h.is_deleted, FALSE) = FALSE
+                %s
                 ORDER BY i.line_no NULLS LAST, i.id
                 """.formatted(
                 type.returnedQuantityExpression(),
@@ -119,7 +142,8 @@ final class WarehouseHistoryQueries {
                 type.itemForeignKey(),
                 type.parentGoodsJoin(),
                 type.inspectionJoin(),
-                type.itemForeignKey());
+                type.itemForeignKey(),
+                scopeFilter(type, scope));
     }
 
     private static String headerSelect(WarehouseHistoryType type) {
@@ -156,6 +180,35 @@ final class WarehouseHistoryQueries {
                 LEFT JOIN suppliers supplier ON supplier.id = h.supplier_id
                 LEFT JOIN warehouses warehouse ON warehouse.id = h.warehouse_id
                 """.formatted(type.headerTable());
+    }
+
+    private static String scopeFilter(WarehouseHistoryType type, WarehouseTaskScope scope) {
+        if (!scope.active()) return "";
+        return " AND " + scope.predicateAny(warehouseIds(type), ":warehouse_scope") + "\n";
+    }
+
+    /** The physical warehouse relation is source-specific, rather than a goods master guess. */
+    private static String warehouseIds(WarehouseHistoryType type) {
+        return switch (type) {
+            case PURCHASE_RECEIPT, SUBCONTRACT_RECEIPT -> """
+                    ARRAY(SELECT h.warehouse_id
+                          UNION SELECT inspection_scope.warehouse_id
+                          FROM procurement_inspection_items inspection_scope
+                          WHERE inspection_scope.receipt_type='%s' AND inspection_scope.receipt_id=h.id
+                            AND inspection_scope.status<>'REVERSED')
+                    """.formatted(type == WarehouseHistoryType.PURCHASE_RECEIPT ? "PURCHASE" : "SUBCONTRACT");
+            // Supplier loss is traced to each issued material; its header captures only the first source warehouse.
+            case SUBCONTRACT_WASTE -> """
+                    ARRAY(SELECT h.warehouse_id
+                          UNION SELECT issued.warehouse_id
+                          FROM subcontract_waste_items loss
+                          JOIN subcontract_material_issue_items issue_line ON issue_line.id=loss.material_issue_item_id
+                          JOIN subcontract_material_issues issued ON issued.id=issue_line.issue_id
+                          WHERE loss.waste_id=h.id AND NOT COALESCE(loss.is_deleted,FALSE))
+                    """;
+            // Both return commands post physical movement to their own header warehouse.
+            case SUBCONTRACT_RETURN, SUBCONTRACT_MATERIAL_RETURN, SUBCONTRACT_MATERIAL_ISSUE -> "ARRAY[h.warehouse_id]";
+        };
     }
 
     private static String where(WarehouseHistoryType type, boolean includeFilters) {

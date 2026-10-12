@@ -198,11 +198,11 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("productionDrafts", List.of("drafts.productionPlan", "drafts.productionDailyReport"), List.of());
         legacy("productionWorkshop", List.of("workshopTask.preparing"), List.of("workshopTask.inProgress"));
         legacy("rdTaskCenter", List.of("rdTask.open"), List.of("rdTask.inProgress"));
-        // 仓库三张任务中心卡: 原 WarehouseOutbound/Inbound/DrawTaskBadge 对各自来源求和。
+        // 两个实际工作方向含生产领/退料，旧领料入口只保留查询兼容，不再重复贡献模块合计。
         legacy("warehouseOutboundCenter", List.of("warehouseSalesOutbound.PENDING_PICK",
-                "subcontractOutbound.count"), List.of());
+                "subcontractOutbound.count", "productionDraw.count"), List.of());
         legacy("warehouseInboundCenter", List.of("warehouseInboundExpectation.count",
-                "warehouseArrivalException.count", "finishedInbound.count"), List.of());
+                "warehouseArrivalException.count", "finishedInbound.count", "productionReturn.count"), List.of());
         legacy("warehouseDrawCenter", List.of("productionDraw.count", "productionReturn.count"), List.of());
         // ADR-131 车间内料仓: 红 = 待发料 + 待收退回, 黄 = 盘点中 (新入口, 口径即计数端点本身)。
         legacy("warehouseWorkshopMaterial", List.of("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
@@ -488,12 +488,19 @@ class WorkbenchBadgeSummaryPostgresTest {
         assertThat(summary.path("total").path("todo").asLong()).as("总红 = 容器之和").isEqualTo(totalTodo);
         assertThat(summary.path("total").path("inProgress").asLong()).as("总黄 = 容器之和").isEqualTo(totalInProgress);
         long entryTodo = 0, entryInProgress = 0;
-        for (JsonNode entry : summary.path("entries")) {
-            entryTodo += entry.path("todo").asLong();
-            entryInProgress += entry.path("inProgress").asLong();
+        for (var entry : summary.path("entries").properties()) {
+            if (entry.getKey().equals("warehouseDrawCenter")) continue;
+            entryTodo += entry.getValue().path("todo").asLong();
+            entryInProgress += entry.getValue().path("inProgress").asLong();
         }
-        assertThat(entryTodo).as("每个入口恰属一个容器: 入口之和 = 总数").isEqualTo(totalTodo);
+        assertThat(entryTodo).as("实际入口之和 = 总数，旧领料别名不重复计入").isEqualTo(totalTodo);
         assertThat(entryInProgress).isEqualTo(totalInProgress);
+        JsonNode alias = summary.path("entries").path("warehouseDrawCenter");
+        if (!alias.isMissingNode()) {
+            Map<String, Long> facts = facts(summary);
+            assertThat(alias.path("todo").asLong()).as("旧领料入口仍兼容领料和退料事实")
+                    .isEqualTo(facts.getOrDefault("productionDraw.count", 0L) + facts.getOrDefault("productionReturn.count", 0L));
+        }
     }
 
     private Map<String, Long> endpointFacts(String source, String endpoint, Authentication actor) throws Exception {

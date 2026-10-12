@@ -94,6 +94,13 @@ public class WarehouseQualityResultService {
             END
             """;
 
+    /** Shares the actual release/return facts with the unified physical warehouse list. */
+    public static String taskCenterStatusExpression() { return STATUS_CASE; }
+
+    public static String taskCenterFactCtes() {
+        return AGGREGATE_CTE.replaceFirst("^\\s*WITH\\s+", "");
+    }
+
     /**
      * 聚合管线：scope 先按 :type 收窄（两段 UNION 各自判定，只扫需要的收货表），
      * 各事实聚合再 JOIN scope，聚合量随筛选收窄。判定列由 V448 覆盖索引供给。

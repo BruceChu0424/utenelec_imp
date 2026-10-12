@@ -32,6 +32,8 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -193,10 +195,19 @@ class _WarehouseInboundExpectationsViewState
 
   /// 「先入库后质检」批量入口（与批量登记页同款独立权限点，服务端兜底）。
   bool get _canPreStockIn {
-    if (ref.read(isSuperAdminProvider)) return true;
-    return ref
-        .read(currentPermissionsProvider)
-        .contains(Perm.warehouseIqcStockInBeforeInspection);
+    final permissions = ref.read(currentPermissionsProvider);
+    return ref.read(authenticatedScopeProvider)?.readOnly != true &&
+        locationAllowedFor(
+          permissions,
+          false,
+          RouteName.warehouseInboundExpectations,
+        ) &&
+        locationAllowedFor(
+          permissions,
+          false,
+          RouteName.warehouseArrivalRegistration,
+        ) &&
+        permissions.contains(Perm.warehouseIqcStockInBeforeInspection);
   }
 
   String _batchKey(Set<String> ids) {
@@ -334,6 +345,7 @@ class _WarehouseInboundExpectationsViewState
   /// 断点「已登记 · 待送检」草稿单登记时没带库位，不能补走这条通道——跳过
   /// 并提示走「先质检后入库」。
   Future<void> _batchPreStockIn(Set<String> selectedIds) async {
+    if (!_canPreStockIn) return;
     if (_batchSending || selectedIds.isEmpty) {
       if (selectedIds.isEmpty) {
         context.appWarning('请先选择预计到货任务');
@@ -635,6 +647,8 @@ class _WarehouseInboundExpectationsViewState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
     ref.watch(formDraftsProvider);
     final result = _result;
     // 骨架/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间

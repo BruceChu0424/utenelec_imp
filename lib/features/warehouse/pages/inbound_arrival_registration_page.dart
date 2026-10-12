@@ -76,6 +76,7 @@ import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../models/inbound_registration_line.dart';
 import '../providers/inbound_warehouse_fill_memory.dart';
@@ -267,6 +268,10 @@ class _InboundArrivalRegistrationPageState
     final override = widget.canRegister;
     if (override != null) return override;
     if (ref.read(isSuperAdminProvider)) return true;
+    return _hasRegistrationAuthority;
+  }
+
+  bool get _hasRegistrationAuthority {
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.warehouseInboundView) &&
         permissions.contains(Perm.warehouseInboundStockIn);
@@ -274,10 +279,11 @@ class _InboundArrivalRegistrationPageState
 
   /// 「先入库后质检」按钮只对持有独立权限的账号显示(服务端同样兜底)。
   bool get _canStockInBeforeInspection {
-    if (ref.read(isSuperAdminProvider)) return true;
-    return ref
-        .read(currentPermissionsProvider)
-        .contains(Perm.warehouseIqcStockInBeforeInspection);
+    return ref.read(authenticatedScopeProvider)?.readOnly != true &&
+        _hasRegistrationAuthority &&
+        ref
+            .read(currentPermissionsProvider)
+            .contains(Perm.warehouseIqcStockInBeforeInspection);
   }
 
   List<_BatchArrivalLine> get _lines => _lineGrid.rows;
@@ -988,8 +994,23 @@ class _InboundArrivalRegistrationPageState
     final batch = await registerArrivalConfirmingShortDelivery(
       context: context,
       body: body,
-      register: (payload) =>
-          runFormDraftSubmission(() => repo.registerArrivals(payload)),
+      register: (payload) => runFormDraftSubmission(
+        () {
+          if (route.isStockInFirst && !_canStockInBeforeInspection) {
+            throw ApiException(
+              'FORBIDDEN',
+              '当前账号不能先入库后质检，请重新核对权限',
+              httpStatus: 403,
+            );
+          }
+          return repo.registerArrivals(payload);
+        },
+        isDefiniteRejection: (error) =>
+            error.code == 'FORBIDDEN' ||
+            error.httpStatus == 400 ||
+            error.httpStatus == 422 ||
+            (error.httpStatus == 409 && error.code == 'CONFLICT'),
+      ),
       setBusy: _setSaving,
     );
     if (batch == null) return;
@@ -1104,6 +1125,7 @@ class _InboundArrivalRegistrationPageState
     ref.watch(warehouseUnitMassUnitsProvider);
     // 写权限与「先入库后质检」独立权限随会话动态授予/撤销：按钮与勾选列跟着重建。
     ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
     ref.watch(isSuperAdminProvider);
     final theme = Theme.of(context);
     final canRegister = widget.canRegister ?? _canRegisterNow;

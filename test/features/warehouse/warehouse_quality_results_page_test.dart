@@ -10,6 +10,7 @@ import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_quality_result.dart';
@@ -26,6 +27,43 @@ import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final withExtra in [false, true]) {
+    testWidgets(
+      'sparse superadmin quality row offers shelf only with explicit extra ($withExtra)',
+      (tester) async {
+        _viewport(tester, const Size(1400, 1000));
+        final preferences = await SharedPreferences.getInstance();
+        final gateway = _QualityGateway([
+          WarehouseQualityResultTask.fromJson(
+            _summaryJson('WAITING_INSPECTION', openItemCount: 1),
+          ),
+        ]);
+        await tester.pumpWidget(
+          _app(
+            const WarehouseQualityResultsPage(),
+            gateway,
+            preferences,
+            superAdmin: true,
+            permissions: {
+              Perm.warehouseIqcStockInView,
+              if (withExtra) Perm.warehouseIqcStockInBeforeInspection,
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+        final table = tester
+            .widget<MasterDataTableView<WarehouseQualityResultTask>>(
+              find.byType(MasterDataTableView<WarehouseQualityResultTask>),
+            );
+        final labels = table.rowMenuBuilder!(table.items.single)
+            .map((item) => (item as UtenMenuItem).label)
+            .toList();
+        expect(labels.contains('先入库上架(待检)'), withExtra);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   test('work status parses, labels and stays amount-free', () {
     final task = WarehouseQualityResultTask.fromJson(
@@ -676,6 +714,7 @@ Widget _app(
     Perm.warehouseIqcStockInConfirm,
   },
   GoRouter? router,
+  bool superAdmin = false,
 }) {
   return ProviderScope(
     overrides: [
@@ -685,7 +724,7 @@ Widget _app(
       ),
       sharedPreferencesProvider.overrideWithValue(preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
-      isSuperAdminProvider.overrideWithValue(false),
+      isSuperAdminProvider.overrideWithValue(superAdmin),
       // 来源大类两枚计数随徽章汇总带回(ADR-108): 夹具用网关里的同一份数喂汇总事实数。
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(

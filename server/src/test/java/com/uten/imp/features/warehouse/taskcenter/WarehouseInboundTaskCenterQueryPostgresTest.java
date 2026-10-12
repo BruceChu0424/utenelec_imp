@@ -250,6 +250,22 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 .containsEntry("canRegisterBeforeInspection",true);
         assertThat(registrationRow(adminPage,"FINISHED_REGISTER").actionData())
                 .containsEntry("canRegisterBeforeInspection",true);
+        for(String missingBase:List.of("warehouse_inbound:view","warehouse_inbound:stock_in","stock_doc:view","stock_doc:approve")) {
+            var sparseGrants=new java.util.HashSet<>(currentGrants);
+            sparseGrants.remove(missingBase);
+            var missingBaseAdmin=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"admin",sparseGrants,false,true,true);
+            var missingBasePage=service(missingBaseAdmin,WarehouseTaskScope.ALL,true).list(filter("ALL","",1,30));
+            String blockedAction=missingBase.startsWith("warehouse_inbound:")?"ARRIVAL_REGISTER":"FINISHED_REGISTER";
+            Row blocked=registrationRow(missingBasePage,blockedAction);
+            assertThat(blocked.canHandle()).as("General capability retains its original policy for %s",missingBase).isTrue();
+            assertThat(blocked.actionData()).as("Native base authority missing: %s",missingBase)
+                    .containsEntry("canRegisterBeforeInspection",false);
+        }
+        var extraOnlyAdmin=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"admin",Set.of(
+                "warehouse_iqc_return:view",ProductionFinishedArrivalRegistrationService.BEFORE_INSPECTION_AUTHORITY,
+                ProcurementIqcStockInPermissions.BEFORE_INSPECTION),false,true,true);
+        assertThat(service(extraOnlyAdmin,WarehouseTaskScope.ALL,true).list(filter("ALL","",1,30)).items())
+                .isNotEmpty().allSatisfy(row->assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",false));
     }
 
     private static Row registrationRow(WarehouseTaskCenterContracts.Page page,String action) {

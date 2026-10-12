@@ -12,6 +12,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -38,8 +40,235 @@ import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 
 const _ids = ['expectation-batch-1', 'expectation-batch-2'];
+final _liveArrivalPermissions = StateProvider<Set<String>>(
+  (ref) => const {
+    Perm.warehouseInboundView,
+    Perm.warehouseInboundStockIn,
+    Perm.warehouseIqcStockInBeforeInspection,
+  },
+);
+final _liveArrivalScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
+  for (final readOnly in [false, true]) {
+    testWidgets(
+      'arrival confirmation observes current authority or readonly ($readOnly)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1800, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final api = _BatchApi(customPrefills: [_prefills().first]);
+        final router = _router(
+          ids: [_ids.first],
+          route: InboundRoute.stockInFirst,
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              sessionProvider.overrideWith(_TestSessionNotifier.new),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+              isSuperAdminProvider.overrideWithValue(true),
+              currentPermissionsProvider.overrideWith(
+                (ref) => ref.watch(_liveArrivalPermissions),
+              ),
+              authenticatedScopeProvider.overrideWith(
+                (ref) => ref.watch(_liveArrivalScope),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final editor =
+            tester.state(find.byType(InboundArrivalRegistrationPage))
+                as FormDraftMixin<InboundArrivalRegistrationPage>;
+        final input = editor.captureFormDraft();
+        for (final row
+            in (input['rows'] as List).cast<Map<String, dynamic>>()) {
+          row['stockPlace'] = 'SA-A-01';
+        }
+        await editor.restoreFormDraft(input);
+        await tester.pumpAndSettle();
+        tester
+            .widget<UtenButton>(find.byKey(InboundRoute.stockInFirst.submitKey))
+            .onPressed!();
+        await tester.pumpAndSettle();
+        expect(find.text('确认登记并先入库'), findsOneWidget);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(InboundArrivalRegistrationPage)),
+        );
+        if (readOnly) {
+          container
+              .read(_liveArrivalScope.notifier)
+              .state = const AuthenticatedScope(
+            userId: 'arrival-reader',
+            actorId: 'actor',
+            readOnly: true,
+          );
+        } else {
+          container.read(_liveArrivalPermissions.notifier).state = const {
+            Perm.warehouseInboundView,
+            Perm.warehouseInboundStockIn,
+          };
+        }
+        await tester.pump();
+        await tester.tap(find.text('确认登记并先入库'));
+        await tester.pumpAndSettle();
+        expect(api.arrivalPostBodies, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final readOnly in [false, true]) {
+    testWidgets(
+      'expectation stale shelf action observes current authority or readonly ($readOnly)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 1000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        var navigations = 0;
+        final router = GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) =>
+                  const Scaffold(body: WarehouseInboundExpectationsView()),
+            ),
+            GoRoute(
+              path: RouteName.warehouseArrivalRegistration,
+              builder: (_, _) {
+                navigations++;
+                return const Scaffold(body: Text('shelf registration'));
+              },
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(_ExpectationsApi()),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              isSuperAdminProvider.overrideWithValue(true),
+              currentPermissionsProvider.overrideWith(
+                (ref) => ref.watch(_liveArrivalPermissions),
+              ),
+              authenticatedScopeProvider.overrideWith(
+                (ref) => ref.watch(_liveArrivalScope),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(Checkbox).at(1));
+        await tester.pump();
+        final stale = tester
+            .widget<UtenButton>(
+              find.byKey(const Key('inbound-route-batch-stockInFirst')),
+            )
+            .onPressed;
+        expect(stale, isNotNull);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(WarehouseInboundExpectationsView)),
+        );
+        if (readOnly) {
+          container
+              .read(_liveArrivalScope.notifier)
+              .state = const AuthenticatedScope(
+            userId: 'arrival-reader',
+            actorId: 'actor',
+            readOnly: true,
+          );
+        } else {
+          container.read(_liveArrivalPermissions.notifier).state = const {
+            Perm.warehouseInboundView,
+            Perm.warehouseInboundStockIn,
+          };
+        }
+        await tester.pump();
+        stale!();
+        await tester.pumpAndSettle();
+        expect(navigations, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final withExtra in [false, true]) {
+    testWidgets(
+      'sparse superadmin arrival form requires explicit extra ($withExtra)',
+      (tester) async {
+        tester.view.physicalSize = const Size(1800, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final api = _BatchApi(customPrefills: [_prefills().first]);
+        final router = _router(
+          ids: [_ids.first],
+          route: InboundRoute.stockInFirst,
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sessionProvider.overrideWith(_TestSessionNotifier.new),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+              isSuperAdminProvider.overrideWithValue(true),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.warehouseInboundView,
+                Perm.warehouseInboundStockIn,
+                if (withExtra) Perm.warehouseIqcStockInBeforeInspection,
+              }),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final editor =
+            tester.state(find.byType(InboundArrivalRegistrationPage))
+                as FormDraftMixin<InboundArrivalRegistrationPage>;
+        final input = editor.captureFormDraft();
+        for (final row
+            in (input['rows'] as List).cast<Map<String, dynamic>>()) {
+          row['stockPlace'] = 'SA-A-01';
+        }
+        await editor.restoreFormDraft(input);
+        await tester.pumpAndSettle();
+        final button = find.byKey(InboundRoute.stockInFirst.submitKey);
+        if (button.evaluate().isNotEmpty) {
+          tester.widget<UtenButton>(button).onPressed?.call();
+          await tester.pumpAndSettle();
+          final confirm = find.text('确认登记并先入库');
+          if (confirm.evaluate().isNotEmpty) {
+            await tester.tap(confirm);
+            await tester.pumpAndSettle();
+          }
+        }
+        expect(api.arrivalPostBodies, hasLength(withExtra ? 1 : 0));
+        if (withExtra) {
+          expect(
+            api.arrivalPostBodies.single['stockInBeforeInspection'],
+            isTrue,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'gift-only arrival survives source read and draft restore then submits charged0 gift1',
     (tester) async {
@@ -599,6 +828,8 @@ void main() {
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           // 持有「先入库后质检」独立权限，但多选时选的是「先质检后入库」路线。
           currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseInboundView,
+            Perm.warehouseInboundStockIn,
             Perm.warehouseIqcStockInBeforeInspection,
           }),
         ],
@@ -806,6 +1037,7 @@ void main() {
       ProviderScope(
         overrides: [
           apiClientProvider.overrideWithValue(_ExpectationsApi()),
+          isSuperAdminProvider.overrideWithValue(true),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.warehouseInboundView,
             Perm.warehouseInboundStockIn,
@@ -835,6 +1067,8 @@ void main() {
           sessionProvider.overrideWith(_TestSessionNotifier.new),
           masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
           currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseInboundView,
+            Perm.warehouseInboundStockIn,
             Perm.warehouseIqcStockInBeforeInspection,
           }),
         ],

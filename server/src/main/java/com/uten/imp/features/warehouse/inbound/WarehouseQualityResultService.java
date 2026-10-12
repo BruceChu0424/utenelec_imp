@@ -493,7 +493,8 @@ public class WarehouseQualityResultService {
         boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
                 && !slices.isEmpty();
         // 先入库后检(V596)：仍有「等结论且未上架」的行时可先上架；权限独立于确认入库。
-        boolean canPreStockIn = hasAuthority(ProcurementIqcStockInPermissions.BEFORE_INSPECTION)
+        boolean canPreStockIn = hasAuthority(ProcurementIqcStockInPermissions.VIEW)
+                && hasAuthority(ProcurementIqcStockInPermissions.BEFORE_INSPECTION)
                 && lines.stream().anyMatch(InspectionLineItem::preStockable);
         List<String> allowedActions = new java.util.ArrayList<>();
         if (canConfirm) allowedActions.add("CONFIRM");

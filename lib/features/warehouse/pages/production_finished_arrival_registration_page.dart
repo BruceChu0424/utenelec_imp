@@ -39,6 +39,8 @@ import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -123,16 +125,24 @@ class _ProductionFinishedArrivalRegistrationPageState
   bool get _canRegister {
     final override = widget.canRegister;
     if (override != null) return override;
-    return ref.read(isSuperAdminProvider) ||
-        ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove);
+    return ref.read(isSuperAdminProvider) || _hasRegistrationAuthority;
   }
+
+  bool get _hasRegistrationAuthority =>
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove) &&
+      locationAllowedFor(
+        ref.read(currentPermissionsProvider),
+        false,
+        RouteName.warehouseProductionFinishedArrivalRegistration,
+      );
 
   /// 「先入库后质检」需独立权限(服务端同样兜底)。
   bool get _canStockInFirst {
-    if (ref.read(isSuperAdminProvider)) return true;
-    return ref
-        .read(currentPermissionsProvider)
-        .contains(Perm.productionFinishedInBeforeInspection);
+    return ref.read(authenticatedScopeProvider)?.readOnly != true &&
+        _hasRegistrationAuthority &&
+        ref
+            .read(currentPermissionsProvider)
+            .contains(Perm.productionFinishedInBeforeInspection);
   }
 
   List<_FinishedLotLine> get _editableRows =>
@@ -617,29 +627,43 @@ class _ProductionFinishedArrivalRegistrationPageState
     try {
       await saveFormDraftNow();
       result = await runFormDraftSubmission(
-        () => ref
-            .read(productionFinishedInboundTaskRepositoryProvider)
-            .saveArrivalRegistrationBatch({
-              'idempotencyKey': stockInFirst
-                  ? '$_idempotencyKey:prestock$weightSuffix'
-                  : '$_idempotencyKey$weightSuffix',
-              if (stockInFirst) 'stockInBeforeInspection': true,
-              if (_remarkController.text.trim().isNotEmpty)
-                'remark': _remarkController.text.trim(),
-              // 一行一批实物：库位、实点、称重都是整批一个，服务端按「报工 x 实际仓」分组展开到各份。
-              'lots': [
-                for (final row in rows)
-                  {
-                    'lotId': row.lot.lotId,
-                    'warehouseId': row.warehouseId,
-                    'place': row.place.text.trim(),
-                    if (stockInFirst)
-                      'countedQty': double.parse(row.stockInQty.text.trim()),
-                    // 实称净重(千克 4 位)：没称或按重量计的货品不带。
-                    'weight': ?_sentKg(row),
-                  },
-              ],
-            }),
+        () {
+          if (stockInFirst && !_canStockInFirst) {
+            throw ApiException(
+              'FORBIDDEN',
+              '当前账号不能先入库后质检，请重新核对权限',
+              httpStatus: 403,
+            );
+          }
+          return ref
+              .read(productionFinishedInboundTaskRepositoryProvider)
+              .saveArrivalRegistrationBatch({
+                'idempotencyKey': stockInFirst
+                    ? '$_idempotencyKey:prestock$weightSuffix'
+                    : '$_idempotencyKey$weightSuffix',
+                if (stockInFirst) 'stockInBeforeInspection': true,
+                if (_remarkController.text.trim().isNotEmpty)
+                  'remark': _remarkController.text.trim(),
+                // 一行一批实物：库位、实点、称重都是整批一个，服务端按「报工 x 实际仓」分组展开到各份。
+                'lots': [
+                  for (final row in rows)
+                    {
+                      'lotId': row.lot.lotId,
+                      'warehouseId': row.warehouseId,
+                      'place': row.place.text.trim(),
+                      if (stockInFirst)
+                        'countedQty': double.parse(row.stockInQty.text.trim()),
+                      // 实称净重(千克 4 位)：没称或按重量计的货品不带。
+                      'weight': ?_sentKg(row),
+                    },
+                ],
+              });
+        },
+        isDefiniteRejection: (error) =>
+            error.code == 'FORBIDDEN' ||
+            error.httpStatus == 400 ||
+            error.httpStatus == 422 ||
+            (error.httpStatus == 409 && error.code == 'CONFLICT'),
       );
     } catch (error, stack) {
       // 服务端拒绝与本机草稿保护的原因都如实给人看(ADR-151 §2), 不再一律吞成兜底句。
@@ -715,10 +739,9 @@ class _ProductionFinishedArrivalRegistrationPageState
       );
     }
     // 建立权限快照订阅；授权刷新/撤销时整页重建并即时收起写操作。
-    if (widget.canRegister == null) {
-      ref.watch(isSuperAdminProvider);
-      ref.watch(currentPermissionsProvider);
-    }
+    ref.watch(isSuperAdminProvider);
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
     // 单重参数缓存随页面存活。
     ref.watch(weightParamsCacheProvider);
     ref.watch(warehouseUnitMassUnitsProvider);

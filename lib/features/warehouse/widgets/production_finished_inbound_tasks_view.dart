@@ -28,6 +28,8 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -328,10 +330,19 @@ class _ProductionFinishedInboundTasksViewState
 
   /// 「先入库后质检」批量入口(与登记页同款独立权限点，服务端兜底)。
   bool get _canStockInFirst =>
-      ref.read(isSuperAdminProvider) ||
+      ref.read(authenticatedScopeProvider)?.readOnly != true &&
+      _hasCountAuthority &&
+      locationAllowedFor(
+        ref.read(currentPermissionsProvider),
+        false,
+        RouteName.warehouseProductionFinishedArrivalRegistration,
+      ) &&
       ref
           .read(currentPermissionsProvider)
           .contains(Perm.productionFinishedInBeforeInspection);
+
+  bool get _hasCountAuthority =>
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove);
 
   /// 多选「先入库后质检(N)」/「先质检后入库(N)」：带着所选路线进多报工单汇总登记页，
   /// 页面只显示这一条路线的提交按钮(与预计到货批量登记同款)。
@@ -339,6 +350,7 @@ class _ProductionFinishedInboundTasksViewState
     Set<String> selectedIds,
     InboundRoute route,
   ) async {
+    if (route.isStockInFirst && !_canStockInFirst) return;
     final currentItems = _tableRows.items;
     final reportIds = <String>{
       for (final id in selectedIds)
@@ -422,10 +434,9 @@ class _ProductionFinishedInboundTasksViewState
   Widget build(BuildContext context) {
     ref.watch(formDraftsProvider);
     final result = _result;
-    final permissions = ref.watch(currentPermissionsProvider);
-    final canCount =
-        ref.watch(isSuperAdminProvider) ||
-        permissions.contains(Perm.stockDocApprove);
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
+    final canCount = ref.watch(isSuperAdminProvider) || _hasCountAuthority;
     return _buildTable(result, canCount: canCount);
   }
 

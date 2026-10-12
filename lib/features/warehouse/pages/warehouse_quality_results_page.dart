@@ -38,6 +38,7 @@ import '../repositories/warehouse_quality_result_repository.dart';
 import '../widgets/warehouse_quality_slice_table.dart'
     show warehouseQualityDateTime;
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 
 /// 品质部检查结果：原「IQC 合格待入库」+「IQC 不合格实物退回」的合并任务中心。
 /// 与预计到货任务中心同款表格工作台——列表按收货单聚合作业状态（等待检查结果 /
@@ -152,7 +153,7 @@ class _WarehouseQualityResultsPageState
 
   /// 先入库后检(V596)：查看 + 先入库上架双权限(与确认入库相互独立)。
   bool get _canPreStockIn {
-    if (_isSuperAdmin) return true;
+    if (ref.read(authenticatedScopeProvider)?.readOnly == true) return false;
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.warehouseIqcStockInView) &&
         permissions.contains(Perm.warehouseIqcStockInBeforeInspection);
@@ -160,6 +161,7 @@ class _WarehouseQualityResultsPageState
 
   /// 等待检查结果的收货单先落库位：进逐行上架页，回来重拉列表。
   Future<void> _openPreStockIn(WarehouseQualityResultTask task) async {
+    if (!_canPreStockIn || !task.hasPreStockableLines) return;
     final drafts = qualityStockInTaskDrafts(
       ref.read(formDraftsProvider),
       task.receiptTypeValue,
@@ -476,6 +478,8 @@ class _WarehouseQualityResultsPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
     ref.watch(formDraftsProvider);
     final result =
         _result ??

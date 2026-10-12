@@ -273,8 +273,12 @@ public class WarehouseInboundTaskCenterQueryService {
         };
         canHandle=canHandle && rights.actor().getImpersonatedBy()==null;
         data.put("canRegisterBeforeInspection",canHandle && switch(proposed) {
-            case "ARRIVAL_REGISTER" -> rights.explicitAuthority(ProcurementIqcStockInPermissions.BEFORE_INSPECTION);
-            case "FINISHED_REGISTER" -> rights.explicitAuthority(ProductionFinishedArrivalRegistrationService.BEFORE_INSPECTION_AUTHORITY);
+            case "ARRIVAL_REGISTER" -> rights.explicitAuthority("warehouse_inbound:view")
+                    && rights.explicitAuthority("warehouse_inbound:stock_in")
+                    && rights.explicitAuthority(ProcurementIqcStockInPermissions.BEFORE_INSPECTION);
+            case "FINISHED_REGISTER" -> rights.explicitAuthority("stock_doc:view")
+                    && rights.explicitAuthority("stock_doc:approve")
+                    && rights.explicitAuthority(ProductionFinishedArrivalRegistrationService.BEFORE_INSPECTION_AUTHORITY);
             default -> false;
         });
         String rowKey=source+":"+record+":"+id;

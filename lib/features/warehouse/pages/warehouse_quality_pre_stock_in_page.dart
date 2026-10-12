@@ -32,6 +32,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../models/warehouse_iqc_stock_in.dart';
@@ -166,7 +167,7 @@ class _WarehouseQualityPreStockInPageState
   }
 
   bool get _canPreStockIn {
-    if (ref.read(isSuperAdminProvider)) return true;
+    if (ref.read(authenticatedScopeProvider)?.readOnly == true) return false;
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.warehouseIqcStockInView) &&
         permissions.contains(Perm.warehouseIqcStockInBeforeInspection);
@@ -291,9 +292,23 @@ class _WarehouseQualityPreStockInPageState
     });
     try {
       final result = await runFormDraftSubmission(
-        () => ref
-            .read(warehouseIqcStockInRepositoryProvider)
-            .preStockIn(widget.receiptType, widget.receiptId, command),
+        () {
+          if (!_canPreStockIn) {
+            throw ApiException(
+              'FORBIDDEN',
+              '当前账号不能先入库上架，请重新核对权限',
+              httpStatus: 403,
+            );
+          }
+          return ref
+              .read(warehouseIqcStockInRepositoryProvider)
+              .preStockIn(widget.receiptType, widget.receiptId, command);
+        },
+        isDefiniteRejection: (error) =>
+            error.code == 'FORBIDDEN' ||
+            error.httpStatus == 400 ||
+            error.httpStatus == 422 ||
+            (error.httpStatus == 409 && error.code == 'CONFLICT'),
       );
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
@@ -315,6 +330,7 @@ class _WarehouseQualityPreStockInPageState
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.httpStatus == 400 ||
+          error.httpStatus == 403 ||
           error.httpStatus == 422 ||
           error.code == 'CONFLICT') {
         _pendingCommand = null;
@@ -383,6 +399,8 @@ class _WarehouseQualityPreStockInPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
     final theme = Theme.of(context);
     final detail = _detail;
     return withFormDraft(

@@ -38,6 +38,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
@@ -96,6 +98,7 @@ class ProcurementIqcPreStockInEndToEndTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired AutowireCapableBeanFactory beans;
+    @Autowired WebApplicationContext web;
     @Autowired ProcurementInspectionService inspections;
     @Autowired ProcurementIqcPreStockInService preStock;
     @Autowired WarehouseQualityResultService qualityResults;
@@ -432,6 +435,50 @@ class ProcurementIqcPreStockInEndToEndTest {
                                                                           UUID purchaseItem, String qty) {
         return new ProcurementArrivalContracts.BatchArrivalLine("PURCHASE", warehouse, w.employeeId(), w.goodsD(),
                 new BigDecimal(qty), purchaseItem, null, w.unitId(), BigDecimal.ONE, null, "PO-BATCH", null, null, null);
+    }
+
+    @Test
+    void returnedViewAndSpecialWithoutStockViewNeverAdvertisePreStockCapability() throws Exception {
+        Case c = prepare("PURCHASE");
+        var masters = new FullChainEndToEndTest();
+        beans.autowireBean(masters);
+        String tag = UUID.randomUUID().toString().substring(0, 8);
+        UUID returnReader = masters.createUserWithPerms(c.world(), "prestock-return-reader-" + tag,
+                "warehouse_iqc_return:view", "warehouse_iqc_stock_in:before_inspection");
+        masters.loginAs(returnReader);
+        TaskDetail denied = qualityResults.detail("PURCHASE", c.receipt());
+        assertFalse(denied.allowedActions().contains(TaskDetail.ACTION_PRE_STOCK_IN));
+        assertFalse(nativeDetailPreStockCapability(c));
+        UUID authorized = masters.createUserWithPerms(c.world(), "prestock-view-reader-" + tag,
+                "warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:before_inspection");
+        masters.loginAs(authorized);
+        assertTrue(qualityResults.detail("PURCHASE", c.receipt()).allowedActions().contains(TaskDetail.ACTION_PRE_STOCK_IN));
+        assertTrue(nativeDetailPreStockCapability(c));
+        UUID baseOnly = masters.createUserWithPerms(c.world(), "prestock-base-reader-" + tag,
+                "warehouse_iqc_stock_in:view");
+        masters.loginAs(baseOnly);
+        assertFalse(qualityResults.detail("PURCHASE", c.receipt()).allowedActions().contains(TaskDetail.ACTION_PRE_STOCK_IN));
+        assertFalse(nativeDetailPreStockCapability(c));
+    }
+
+    private boolean nativeDetailPreStockCapability(Case c) throws Exception {
+        var mvc = MockMvcBuilders.webAppContextSetup(web)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var result = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/warehouse/quality-results/PURCHASE/" + c.receipt())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn();
+        var json = beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class)
+                .readTree(result.getResponse().getContentAsString());
+        assertEquals(c.receipt().toString(), json.path("receiptId").asText());
+        assertTrue(json.path("lines").size() > 0);
+        for (var action : json.path("allowedActions")) {
+            if (TaskDetail.ACTION_PRE_STOCK_IN.equals(action.asText())) return true;
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------ helpers

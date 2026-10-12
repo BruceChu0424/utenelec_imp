@@ -259,7 +259,9 @@ class _ProductionDailyProductDetailsCardState
     final dark = Theme.of(context).brightness == Brightness.dark;
     final background = group == DailyRowGroup.allocations
         ? Color.alphaBlend(
-            colors.primary.withValues(alpha: dark ? 0.13 : 0.08),
+            (dark ? UtenColors.violetOnDark : UtenColors.violetBg).withValues(
+              alpha: dark ? 0.16 : 0.85,
+            ),
             colors.surface,
           )
         : Color.alphaBlend(

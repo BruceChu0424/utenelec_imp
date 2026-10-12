@@ -790,6 +790,26 @@ void main() {
         expect(material.color, isNot(theme.colorScheme.surface));
         expect(allocation.color!.a, 1);
         expect(material.color!.a, 1);
+        final selectedColor = utenTableSelectedRowColor(theme);
+        final hueDifference =
+            (HSVColor.fromColor(allocation.color!).hue -
+                    HSVColor.fromColor(selectedColor).hue)
+                .abs();
+        final hueDistance = hueDifference > 180
+            ? 360 - hueDifference
+            : hueDifference;
+        expect(
+          hueDistance,
+          greaterThanOrEqualTo(40),
+          reason:
+              'The output card must be visibly separate from row selection.',
+        );
+        final foreground = theme.colorScheme.onSurface.computeLuminance();
+        final background = allocation.color!.computeLuminance();
+        final contrast = foreground > background
+            ? (foreground + 0.05) / (background + 0.05)
+            : (background + 0.05) / (foreground + 0.05);
+        expect(contrast, greaterThanOrEqualTo(4.5));
         final field = find.byWidgetPredicate(
           (widget) =>
               widget is TextField &&

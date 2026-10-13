@@ -254,6 +254,81 @@ class MaterialAnalysisResponseProjectionTest {
         assertTrue(new String(compact, java.nio.charset.StandardCharsets.UTF_8).contains("\"requiredQty\":10.000100"));
     }
 
+    @Test
+    void aggregatePreviewAndSubmitNegotiateTheSameExactProjectionAndMeasureBothWireResponses() throws Exception {
+        AnalysisView view = view(java.util.stream.IntStream.range(0, 1000)
+                .mapToObj(index -> material("aggregate-" + index, stock("0.0000"))).toList());
+        var source = new AggregateMaterialOrderContracts.SourcePreview(view.flatMaterials().getFirst().materialLineId(),
+                analysisId, "original source", 1, null, new BigDecimal("10.0001"), new BigDecimal("10.0001"),
+                new BigDecimal("10.0001"), BigDecimal.ZERO);
+        var group = json.convertValue(Map.of("clientGroupKey", "original-group", "route", "BUY",
+                "publicExtraQty", new BigDecimal("0.0000"), "sources", List.of(source),
+                "sharedBomChildren", List.of()), AggregateMaterialOrderContracts.GroupPreview.class);
+        var preview = new AggregateMaterialOrderContracts.Preview(analysisId, view.version(), view.fingerprint(),
+                "b".repeat(64), List.of(group), view);
+        var submitted = new AggregateMaterialOrderContracts.SubmitResult(view, true,
+                List.of(new AggregateMaterialOrderContracts.BatchResult(UUID.randomUUID(), "original-group", "BUY",
+                        "PURCHASE_REQUEST", UUID.randomUUID(), "PR-001", null, analysisId,
+                        new BigDecimal("10.0001"), BigDecimal.ZERO, List.of(source))),
+                List.of(new AggregateMaterialOrderContracts.MaterialIdentityBridge(List.of(source.materialLineId()),
+                        UUID.randomUUID(), "original/path", new BigDecimal("10.0001"))));
+        var previews = mock(AggregateMaterialOrderPreviewService.class);
+        var writer = mock(AggregateMaterialOrderContracts.Writer.class);
+        when(previews.preview(eq(analysisId), any())).thenReturn(preview);
+        when(writer.submit(eq(analysisId), any())).thenReturn(submitted);
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new AggregateMaterialOrderController(previews, writer))
+                .setControllerAdvice(new MaterialAnalysisResponseProjection())
+                .setMessageConverters(new MappingJackson2HttpMessageConverter(json)).build();
+        ObjectNode request = json.createObjectNode();
+        request.put("version", view.version()).put("fingerprint", view.fingerprint())
+                .put("idempotencyKey", "original-command").put("warehouseId", warehouse.toString())
+                .put("billDate", "2026-10-13").put("approveNow", true);
+        request.set("groups", json.valueToTree(List.of(Map.of("clientGroupKey", "original-group", "route", "BUY",
+                "qty", "10.0001", "materialLineIds", List.of(source.materialLineId())))));
+        for (String action : List.of("preview", "submit")) {
+            Object original = action.equals("preview") ? preview : submitted;
+            JsonNode originalTree = wireTree(original);
+            if (action.equals("submit")) request.put("previewFingerprint", preview.previewFingerprint());
+            byte[] legacy = json.writeValueAsBytes(original);
+            for (String version : List.of("legacy", MaterialAnalysisResponseProjection.VERSION,
+                    MaterialAnalysisResponseProjection.VERSION_V2, "unknown-future-version")) {
+                var http = post("/api/production/material-analyses/" + analysisId + "/aggregate-orders/" + action)
+                        .contentType("application/json").content(json.writeValueAsBytes(request));
+                if (!version.equals("legacy")) http.queryParam("projection", version);
+                if (version.equals("unknown-future-version")) {
+                    http.header("X-Material-Analysis-Projection", MaterialAnalysisResponseProjection.VERSION_V2);
+                }
+                var response = mvc.perform(http).andExpect(status().isOk()).andReturn().getResponse();
+                byte[] body = response.getContentAsByteArray();
+                ObjectNode restored = (ObjectNode) json.readTree(body);
+                boolean compressed = version.equals(MaterialAnalysisResponseProjection.VERSION)
+                        || version.equals(MaterialAnalysisResponseProjection.VERSION_V2);
+                if (compressed) restored.set("analysis", expand(restored.get("analysis")));
+                assertEquals(originalTree, restored, action + " retains every receipt, allocation, fingerprint and bridge");
+                assertTrue(response.getHeaders("Vary").contains("X-Material-Analysis-Projection"));
+                if (version.equals(MaterialAnalysisResponseProjection.VERSION_V2)) {
+                    assertTrue(body.length < legacy.length / 3, action + " must not resend every repeated material field");
+                    System.out.println("AGGREGATE-WIRE " + json.writeValueAsString(Map.of("action", action,
+                            "materials", 1000, "legacyJsonBytes", legacy.length, "projectedJsonBytes", body.length,
+                            "legacyGzipBytes", gzipSize(legacy), "projectedGzipBytes", gzipSize(body))));
+                }
+            }
+            var headerResponse = mvc.perform(post("/api/production/material-analyses/" + analysisId + "/aggregate-orders/" + action)
+                            .header("X-Material-Analysis-Projection", MaterialAnalysisResponseProjection.VERSION_V2)
+                            .contentType("application/json").content(json.writeValueAsBytes(request)))
+                    .andExpect(status().isOk()).andReturn().getResponse();
+            assertEquals(MaterialAnalysisResponseProjection.VERSION_V2,
+                    json.readTree(headerResponse.getContentAsByteArray()).path("analysis").path("projection").asText());
+            assertEquals(originalTree, wireTree(original), "Negotiated projection must never mutate an idempotent domain receipt");
+        }
+    }
+
+    private static int gzipSize(byte[] value) throws java.io.IOException {
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var compressed = new java.util.zip.GZIPOutputStream(bytes)) { compressed.write(value); }
+        return bytes.size();
+    }
+
     private MockMvc controller(MaterialAnalysisService service, MaterialAnalysisCommandService commands) {
         return MockMvcBuilders.standaloneSetup(new MaterialAnalysisController(service, commands,
                         mock(MaterialStockReallocationService.class), mock(ProductionGoodsWorkshopPreferenceService.class),

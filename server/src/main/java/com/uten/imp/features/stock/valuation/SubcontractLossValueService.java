@@ -199,11 +199,8 @@ public class SubcontractLossValueService implements SubcontractMaterialValuePort
             """,Map.of("id",waste));}
     private List<Slice> take(Owner owner,UUID id,BigDecimal qty){
         BigDecimal left=qty;List<Slice> result=new ArrayList<>();
-        for(var row:db.queryForList("""
-                SELECT root.id,head.range_to-head.range_from qty FROM stock_value_nodes root JOIN stock_value_nodes head ON head.id=root.return_head_id
-                WHERE root.root_issue_id=root.id AND head.owner_kind=:owner AND head.owner_id=:id AND head.range_to>head.range_from ORDER BY root.created_at,root.id
-                """,Map.of("owner",owner.name(),"id",id))){
-            if(left.signum()==0)break;BigDecimal take=left.min((BigDecimal)row.get("qty"));result.add(new Slice((UUID)row.get("id"),take,(UUID)row.get("id")));left=left.subtract(take);
+        for(var row:InventoryOwnerPositions.remaining(db,owner,List.of(id))){
+            if(left.signum()==0)break;BigDecimal take=left.min(row.quantity());result.add(new Slice(row.rootId(),take,row.rootId()));left=left.subtract(take);
         }
         if(left.signum()!=0)throw conflict("损耗必须使用原实发尚未耗用的材料位置，缺少历史来源时不得用名义价格猜成本");return result;
     }

@@ -41,6 +41,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false","uten.concurrency.verify-nested-footprint=false",
+        "uten.inventory.value-work.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=true","uten.storage.malware-scan.provider=test-only",
         "uten.jwt.secret=full-chain-harness-jwt-secret-0123456789-test-only",
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789",
@@ -67,6 +68,11 @@ class IqcDecideReportBatchPostgresTest {
                          List<String> billNos,Authentication actor,UUID analysisId){}
 
     @Autowired com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInService preStock;
+    @Autowired com.uten.imp.features.notice.outbox.BusinessOutboxScheduler outboxScheduler;
+
+    private void isolatePerformanceDelivery() {
+        if(Boolean.getBoolean("uten.perf.isolate-outbox"))outboxScheduler.close();
+    }
 
     private Stage prepare(){
         return prepare(2,2);
@@ -168,6 +174,7 @@ class IqcDecideReportBatchPostgresTest {
         assertEquals(4,result.path("receiptCount").asInt());
         assertEquals(8,result.path("lineCount").asInt());
         assertEquals(8,resolvedItemCount(stage));
+        assertQualityValueSources(stage);
     }
 
     /**
@@ -325,14 +332,19 @@ class IqcDecideReportBatchPostgresTest {
      * 普通与全预入库(先入库后检，单张最重形态)各量一遍；20 张上限(全预入库实测 ~30s)的余量依据。
      */
     @Test void twentyReceiptBatchCompletesWithinDeadlineBudget()throws Exception{
+        isolatePerformanceDelivery();
         Stage stage=prepare(20,5);
         var request=report(stage,null);
         Object analysisSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
         org.mockito.Mockito.clearInvocations(analysisSpy);
         long started=System.currentTimeMillis();
-        JsonNode result=call(stage,request,200);
+        JsonNode result;
+        ProductionJdbcMeasurement.Sample measured=ProductionJdbcMeasurement.begin();
+        try { result=call(stage,request,200); }
+        finally { ProductionJdbcMeasurement.end(); }
         long elapsed=System.currentTimeMillis()-started;
         System.out.println("[decide-report] 20 receipts x 5 lines elapsedMs=" + elapsed);
+        System.out.println("[decide-report] breakdown " + json.writeValueAsString(measured.result()));
         assertEquals(20,result.path("receiptCount").asInt());
         assertEquals(100,result.path("lineCount").asInt());
         assertEquals(100,resolvedItemCount(stage));
@@ -341,6 +353,11 @@ class IqcDecideReportBatchPostgresTest {
     }
 
     @Test void preStockedTwentyReceiptBatchAlsoCompletesWithinDeadlineBudget()throws Exception{
+        isolatePerformanceDelivery();
+        boolean allPass=Boolean.getBoolean("uten.perf.iqc-all-pass");
+        int repetitions=Integer.getInteger("uten.perf.iqc-repetitions",1);
+        assertTrue(repetitions>=1&&repetitions<=10);
+        for(int run=0;run<repetitions;run++) {
         Stage stage=prepare(20,5);
         SecurityContextHolder.getContext().setAuthentication(stage.actor());
         for(var entry:stage.byReceipt().entrySet()){
@@ -349,17 +366,110 @@ class IqcDecideReportBatchPostgresTest {
                     rows.stream().map(row->new com.uten.imp.features.warehouse.inbound.ProcurementIqcPreStockInContracts.PreStockInItem(
                             row.inspectionId(),row.warehouseId(),"BUDGET-"+row.inspectionId().toString().substring(0,4))).toList()));
         }
-        var request=report(stage,null);
+        var request=allPass?new BatchInspectionReportRequest(stage.byReceipt().values().stream().map(rows->
+                new BatchInspectionReportRequest.Receipt(rows.getFirst().type(),rows.getFirst().id(),rows.stream().map(row->
+                        new BatchInspectionDecideRequest.Item(row.inspectionId(),new BigDecimal("1.2500"),
+                                new BigDecimal("1.2500"),BigDecimal.ZERO,"iqc-report-key-"+row.inspectionId())).toList())).toList(),null):report(stage,null);
         Object analysisSpy=org.springframework.test.util.AopTestUtils.getUltimateTargetObject(analyses);
         org.mockito.Mockito.clearInvocations(analysisSpy);
+        var resources=CommandResourceMeasurement.begin((org.testcontainers.containers.GenericContainer<?>)
+                org.springframework.test.util.ReflectionTestUtils.getField(FullChainEndToEndTest.class,"POSTGRES"));
         long started=System.currentTimeMillis();
-        JsonNode result=call(stage,request,200);
-        long elapsed=System.currentTimeMillis()-started;
-        System.out.println("[decide-report] pre-stocked 20 receipts x 5 lines elapsedMs=" + elapsed);
+        JsonNode result;
+        ProductionJdbcMeasurement.Sample measured=ProductionJdbcMeasurement.begin();
+        Map<String,Object> resourceMetrics;
+        long finished;
+        try { result=call(stage,request,200); }
+        finally { finished=System.currentTimeMillis();resourceMetrics=resources.finish();ProductionJdbcMeasurement.end(); }
+        long elapsed=finished-started;
+        System.out.println("[decide-report] pre-stocked 20 receipts x 5 lines run="+run+" elapsedMs=" + elapsed
+                + " jdbcCalls="+measured.jdbcCalls+" logicalStatements="+measured.logicalStatements);
+        String reportDirectory=System.getProperty("uten.perf.quality-report-directory");
+        if(reportDirectory!=null){
+            var directory=java.nio.file.Path.of(reportDirectory);java.nio.file.Files.createDirectories(directory);
+            Map<String,Object> sample=new LinkedHashMap<>(measured.result());
+            sample.put("resources",resourceMetrics);
+            sample.put("phase",allPass?"iqc-prestock-20x5-all-pass":"iqc-prestock-20x5-mixed");
+            sample.put("decisionSplit",Map.of("passedPerLine",allPass?"1.2500":"0.7500","failedPerLine",allPass?"0.0000":"0.5000"));
+            sample.put("expectedStockedQuantity",allPass?"125.0000":"75.0000");
+            sample.put("elapsedMillis",elapsed);sample.put("run",run);
+            sample.put("sourceIdentity",System.getProperty("uten.perf.source-identity","unspecified"));
+            sample.put("outboxIsolated",Boolean.getBoolean("uten.perf.isolate-outbox"));
+            sample.put("scope","synthetic 20 receipts x 5 rows, mixed purchase/subcontract, real pre-stock; MockMvc full HTTP filters with injected fixture authentication and both real commits; excludes TCP/TLS/JWT verification and client UI");
+            sample.put("databaseSettings",db.queryForMap("SELECT current_setting('server_version') AS version,current_setting('fsync') AS fsync,current_setting('synchronous_commit') AS synchronous_commit,current_setting('full_page_writes') AS full_page_writes,(SELECT version FROM flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank DESC LIMIT 1) AS schema_head"));
+            json.writerWithDefaultPrettyPrinter().writeValue(directory.resolve("iqc-prestock-20x5-"+run+".json").toFile(),sample);
+        }
         assertEquals(20,result.path("receiptCount").asInt());
         assertEquals(100,resolvedItemCount(stage));
         assertEquals(1,refreshes(stage),"100 physical quality lines must retain one final shared-analysis refresh");
+        assertPhysicalQualityFacts(stage,new BigDecimal(allPass?"125.0000":"75.0000"));
+        Map<String,String> committed=performanceFacts();
+        org.mockito.Mockito.clearInvocations(analysisSpy);
+        assertTrue(call(stage,request,200).path("replay").asBoolean());
+        assertEquals(0,refreshes(stage),"Original-key replay must not refresh analysis again");
+        assertEquals(committed,performanceFacts(),"Original-key replay must leave physical, funding and value facts unchanged");
         assertTrue(elapsed<35_000,"全预入库 20 张单也须低于服务端 40s 命令截止(20 张上限的实测依据)，实测 " + elapsed + "ms");
+        }
+    }
+
+    private void assertQualityValueSources(Stage stage){
+        assertEquals(0,db.queryForObject("""
+                SELECT COUNT(*) FROM procurement_iqc_quality_consideration_parts part
+                JOIN procurement_inspection_events event ON event.id=part.inspection_event_id
+                JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id
+                LEFT JOIN stock_value_events value ON value.source_doc_type='PROCUREMENT_QUALITY'
+                  AND value.source_event_id=part.id AND value.source_item_id=part.id
+                WHERE inspection.receipt_id IN (
+                """+placeholders(stage)+"""
+                ) AND (value.id IS NULL OR value.source_doc_id<>event.id OR value.qty_base<>part.base_qty)
+                """,Integer.class,stage.byReceipt().keySet().toArray()),
+                "Every PASS/FAIL funding slice retains its original quality-event cost source and quantity");
+        assertEquals(0,db.queryForObject("""
+                WITH selected AS (
+                    SELECT DISTINCT part.consideration_part_id FROM procurement_iqc_quality_consideration_parts part
+                    JOIN procurement_inspection_events event ON event.id=part.inspection_event_id
+                    JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id
+                    WHERE inspection.receipt_id IN (
+                """+placeholders(stage)+"""
+                ))
+                SELECT COUNT(*) FROM selected
+                JOIN stock_value_acquisition_sources acquisition ON acquisition.evidence_id=selected.consideration_part_id
+                JOIN stock_value_events acquired ON acquired.id=acquisition.event_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(value.known_value_local) amount,SUM(value.qty_base) qty
+                    FROM procurement_iqc_quality_consideration_parts part
+                    JOIN stock_value_events value ON value.source_doc_type='PROCUREMENT_QUALITY'
+                      AND value.source_event_id=part.id AND value.source_item_id=part.id
+                    WHERE part.consideration_part_id=selected.consideration_part_id
+                ) quality ON TRUE
+                WHERE quality.amount IS DISTINCT FROM acquired.known_value_local OR quality.qty IS DISTINCT FROM acquired.qty_base
+                """,Integer.class,stage.byReceipt().keySet().toArray()),
+                "Fully decided funding keeps the exact acquired quantity and recorded money across PASS/FAIL");
+    }
+
+    private void assertPhysicalQualityFacts(Stage stage,BigDecimal expected){
+        Object[] ids=stage.byReceipt().keySet().toArray();String slots=placeholders(stage);
+        assertEquals(100,db.queryForObject("SELECT COUNT(*) FROM procurement_iqc_stock_in_batch_items item JOIN procurement_iqc_stock_in_batches batch ON batch.id=item.batch_id JOIN stock_movements movement ON movement.id=item.stock_movement_id WHERE batch.receipt_id IN ("+slots+")",Integer.class,ids));
+        assertEquals(0,expected.compareTo(db.queryForObject("SELECT SUM(warehouse_stocked_base_qty) FROM procurement_inspection_items WHERE receipt_id IN ("+slots+")",BigDecimal.class,ids)));
+        assertEquals(0,expected.compareTo(db.queryForObject("SELECT SUM(movement.qty*movement.direction) FROM procurement_iqc_stock_in_batch_items item JOIN procurement_iqc_stock_in_batches batch ON batch.id=item.batch_id JOIN stock_movements movement ON movement.id=item.stock_movement_id WHERE batch.receipt_id IN ("+slots+")",BigDecimal.class,ids)));
+        assertEquals(0,expected.compareTo(db.queryForObject("""
+                SELECT SUM(balance.qty) FROM stock_balances balance WHERE EXISTS(
+                    SELECT 1 FROM procurement_inspection_items inspection
+                    WHERE inspection.receipt_id IN (
+                """+slots+") AND inspection.goods_id=balance.goods_id AND inspection.color_id IS NOT DISTINCT FROM balance.color_id AND inspection.pre_stocked_warehouse_id=balance.warehouse_id)",BigDecimal.class,ids)));
+        assertQualityValueSources(stage);
+    }
+
+    private Map<String,String> performanceFacts(){
+        Map<String,String> result=new LinkedHashMap<>();
+        for(String table:List.of("procurement_inspection_items","procurement_inspection_events",
+                "procurement_iqc_stock_in_batches","procurement_iqc_stock_in_batch_items",
+                "procurement_iqc_quality_consideration_parts","procurement_iqc_stock_consideration_parts",
+                "stock_movements","stock_balances","stock_value_pools","stock_value_events","stock_value_nodes",
+                "stock_value_edges","stock_value_postings","stock_value_position_transfers")){
+            result.put(table,db.queryForObject("SELECT md5(COALESCE(string_agg(to_jsonb(fact)::text,',' ORDER BY fact.id),'')) FROM "+table+" fact",String.class));
+        }
+        return result;
     }
 
     private int resolvedItemCount(Stage stage){

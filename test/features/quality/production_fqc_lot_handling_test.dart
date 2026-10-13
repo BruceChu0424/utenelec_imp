@@ -38,13 +38,19 @@ void main() {
 
     await tester.tap(find.byKey(const Key('fqc-sheet-submit-report')));
     await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('inspection-report-atomic-notice')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('已上架的合格部分自动点收入库'), findsOneWidget);
+    expect(find.textContaining('均不直接增加库存'), findsNothing);
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pump();
     for (var i = 0; i < 12; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(api.lotDecisionPaths, [
-      '/production/quality-inspections/lots/$_lotId/decisions',
+      '/production/quality-inspections/decisions/report',
     ]);
     expect(api.lotDecisionBodies.single['passQty'], 1100);
     expect(api.lotDecisionBodies.single['failQty'], 0);
@@ -237,11 +243,27 @@ class _LotApi extends ApiClient {
     Map<String, dynamic>? query,
     Map<String, dynamic>? headers,
   }) async {
-    if (path == '/production/quality-inspections/lots/$_lotId/decisions') {
+    if (path == '/production/quality-inspections/decisions/report') {
       lotDecisionPaths.add(path);
-      lotDecisionBodies.add(Map<String, dynamic>.from(body! as Map));
+      final item = Map<String, dynamic>.from(
+        ((body! as Map)['items'] as List).single as Map,
+      );
+      expect(item['targetType'], 'LOT');
+      expect(item['targetId'], _lotId);
+      lotDecisionBodies.add(item);
       decided = true;
-      return {'lotCommandId': 'lot-command-1', 'lot': _lot, 'replay': false};
+      return {
+        'items': [
+          {
+            'targetType': 'LOT',
+            'targetId': _lotId,
+            'idempotencyKey': item['idempotencyKey'],
+            'commandId': 'lot-command-1',
+            'lot': _lot,
+            'replay': false,
+          },
+        ],
+      };
     }
     if (path.endsWith('/decisions')) singleDecisionCount++;
     throw ApiException('TEST_UNEXPECTED_POST', path);

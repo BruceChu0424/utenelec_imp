@@ -157,12 +157,13 @@ public class SalesReturnInventoryValueService implements SalesReturnInventoryVal
         parameters.put("goods", target.goodsId()); parameters.put("color", target.colorId());
         var rows = db.queryForList("""
                 SELECT root.id,head.range_to-head.range_from AS available
-                FROM stock_value_nodes root
-                JOIN stock_value_nodes head ON head.id=root.return_head_id
+                FROM stock_value_nodes head JOIN stock_value_nodes root
+                  ON root.id=head.root_issue_id AND root.return_head_id=head.id
                 JOIN stock_value_pools pool ON pool.id=head.pool_id
                 JOIN stock_value_events event ON event.id=root.creation_event_id
                 WHERE root.kind='ISSUE_POSITION' AND root.id=root.root_issue_id
                   AND root.owner_kind=:owner AND root.owner_id=:id
+                  AND head.owner_kind=:owner AND head.owner_id=:id
                   AND head.active AND head.range_to>head.range_from
                   AND pool.goods_id=:goods AND pool.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
                 ORDER BY event.occurred_at,root.id

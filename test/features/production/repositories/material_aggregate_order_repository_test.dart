@@ -102,6 +102,9 @@ void main() {
         requests.single.path,
         '/production/material-analyses/a/aggregate-orders/preview',
       );
+      expect(requests.single.queryParameters, {
+        'projection': 'shared-material-defaults-v2',
+      });
       expect(
         (((requests.single.data as Map)['groups'] as List).single
             as Map)['qty'],
@@ -137,6 +140,9 @@ void main() {
         requests.last.path,
         '/production/material-analyses/a/aggregate-orders/submit',
       );
+      expect(requests.last.queryParameters, {
+        'projection': 'shared-material-defaults-v2',
+      });
       expect(requests.last.data, {
         ...request.toJson(),
         'previewFingerprint': 'reviewed-exact',
@@ -151,6 +157,103 @@ void main() {
         result.materialIdentityBridges.last.toMaterialLineId,
         'extra-responsibility',
       );
+    },
+  );
+
+  test(
+    'aggregate preview and submit hydrate their nested sparse analysis',
+    () async {
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) => handler.resolve(
+            Response(
+              requestOptions: request,
+              data: {
+                'analysisId': 'a',
+                'version': 4,
+                'fingerprint': 'fp',
+                'previewFingerprint': 'reviewed-exact',
+                'groups': <Object>[],
+                'batches': <Object>[],
+                'replayed': true,
+                'analysis': {
+                  ..._analysis,
+                  'projection': 'shared-material-defaults-v2',
+                  'materialDefaults': {
+                    'materialKey': 'g|NONE|unit',
+                    'analysisLineId': 'source',
+                    'requiredQty': 10.0001,
+                    'availableQty': 0,
+                    'allocatedAvailableQty': 0,
+                    'shortageQty': 10.0001,
+                    'additionalSupplyRecommendedQty': 10.0001,
+                    'perProductQty': 1,
+                    'routeConfirmed': true,
+                    'actionable': true,
+                    'level': 1,
+                    'nodeRole': 'MATERIAL',
+                  },
+                  'flatMaterials': [
+                    {'materialLineId': 'm1'},
+                    {
+                      'materialLineId': 'm2',
+                      'requiredQty': 0,
+                      'actionable': false,
+                    },
+                  ],
+                  'warehouseBreakdownsByMaterialKey': {
+                    'g|NONE|unit': [
+                      {
+                        'warehouseId': 'wh',
+                        'onHandQty': 0,
+                        'reservedQty': 0,
+                        'availableQty': 0,
+                        'ownPeggedQty': 0,
+                        'publicAvailableQty': 0,
+                        'openSafetySupplyQty': 0,
+                        'safetyReplenishmentGapQty': 0,
+                        'publicSurplusApprovedInboundQty': 0,
+                        'publicSurplusRemainingQty': 0,
+                      },
+                    ],
+                  },
+                },
+              },
+            ),
+          ),
+        ),
+      );
+      final repository = ProductionPlanRepository(ApiClient(dio));
+      const request = MaterialAggregateOrderRequest(
+        analysisId: 'a',
+        version: 4,
+        fingerprint: 'fp',
+        idempotencyKey: 'original-command',
+        warehouseId: 'wh',
+        billDate: '2026-10-13',
+        groups: [],
+      );
+      final preview = await repository.previewAggregateOrders(request);
+      final result = await repository.submitAggregateOrders(
+        request,
+        previewFingerprint: preview.previewFingerprint,
+      );
+      for (final analysis in [preview.analysis, result.analysis]) {
+        expect(analysis.analysisId, 'a');
+        expect(analysis.version, 4);
+        expect(analysis.materials.map((row) => row.materialLineId), [
+          'm1',
+          'm2',
+        ]);
+        expect(analysis.materials.map((row) => row.requiredQty), [10.0001, 0]);
+        expect(analysis.materials.map((row) => row.actionable), [true, false]);
+        expect(
+          analysis.materials.first.warehouseStocks.single.warehouseId,
+          'wh',
+        );
+      }
+      expect(result.replayed, true);
     },
   );
 }

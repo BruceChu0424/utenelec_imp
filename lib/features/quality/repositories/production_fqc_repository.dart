@@ -139,6 +139,68 @@ class ProductionFqcRepository {
     );
   }
 
+  /// One atomic report using the original row commands. Validate every receipt
+  /// before exposing any success to the draft state machine.
+  Future<List<ProductionFqcDecisionResult>> decideReport({
+    required List<ProductionFqcReportDecisionCommand> items,
+  }) async {
+    final json = await api.post(
+      '${ApiEndpoints.productionQualityInspections}/decisions/report',
+      body: {
+        'items': [for (final item in items) item.toJson()],
+      },
+    );
+    final returned = json['items'];
+    if (returned is! List || returned.length != items.length) {
+      throw StateError('服务器返回的报告结果不完整，无法确认本次是否成功');
+    }
+    final results = <ProductionFqcDecisionResult>[];
+    // LOT commands and inspection events have separate primary-key domains.
+    final commandIds = <(String, String)>{};
+    for (var index = 0; index < items.length; index++) {
+      final requested = items[index];
+      final receipt = returned[index];
+      if (receipt is! Map<String, dynamic> ||
+          receipt['targetType'] != requested.targetType ||
+          receipt['targetId'] != requested.targetId ||
+          receipt['idempotencyKey'] != requested.idempotencyKey ||
+          receipt['commandId'] is! String ||
+          (receipt['commandId'] as String).trim().isEmpty ||
+          receipt['replay'] is! bool) {
+        throw StateError('服务器返回的报告明细不匹配，请继续原提交核对');
+      }
+      if (!commandIds.add((
+        requested.targetType,
+        receipt['commandId'] as String,
+      ))) {
+        throw StateError('服务器返回了重复的报告命令，请继续原提交核对');
+      }
+      final value =
+          receipt[requested.targetType == 'LOT' ? 'lot' : 'inspection'];
+      if (value is! Map<String, dynamic>) {
+        throw StateError('服务器返回的报告明细不完整，请继续原提交核对');
+      }
+      final inspection = requested.targetType == 'LOT'
+          ? ProductionFqcInspection.fromLot(
+              ProductionFqcInspectionLot.fromJson(value),
+              sheetId: requested.sheetId,
+              sheetNo: requested.sheetNo,
+            )
+          : ProductionFqcInspection.fromJson(value);
+      if (inspection.id != requested.targetId) {
+        throw StateError('服务器返回的报告任务不匹配，请继续原提交核对');
+      }
+      results.add(
+        ProductionFqcDecisionResult(
+          decisionEventId: receipt['commandId'] as String,
+          inspection: inspection,
+          replay: receipt['replay'] as bool,
+        ),
+      );
+    }
+    return results;
+  }
+
   Future<
     ({
       int processedCount,

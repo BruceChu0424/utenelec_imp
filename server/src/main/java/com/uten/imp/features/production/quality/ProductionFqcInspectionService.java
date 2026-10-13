@@ -28,6 +28,10 @@ import com.uten.imp.features.production.quality.ProductionFqcContracts.Inspectio
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchItem;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchRequest;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.PassAllBatchResult;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.ReportDecisionItem;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.ReportDecisionItemResult;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.ReportDecisionRequest;
+import com.uten.imp.features.production.quality.ProductionFqcContracts.ReportDecisionResult;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -654,6 +658,179 @@ public class ProductionFqcInspectionService
         for (InspectionView view : detailViews(inspectionIds).values()) publishResolved(view);
         return new LotDecisionResult(write.commandId(), requireLotView(lotId), false);
     }
+
+    /**
+     * One exact inspection report, including original-key retries from older row submissions.
+     * Previously committed rows are replayed; every fresh row and physical release commits
+     * together. No mutable inspection balance is reused across command transactions.
+     */
+    @Transactional
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')"
+            + " and hasAuthority('production_quality_inspection:approve')")
+    public ReportDecisionResult decideReport(ReportDecisionRequest request) {
+        tx.bind();
+        taskAccess.requireQualityPool("当前账号不在品质任务组织范围");
+        List<NormalizedReportDecision> commands = normalizeReport(request);
+        UUID actor = currentUser.requireId();
+        // Same lock namespace as decideLot. Acquire the complete ordered key set before
+        // any inspection/inventory locks, including keys whose old result already exists.
+        for (String key : commands.stream().filter(command -> command.lot() != null)
+                .map(NormalizedReportDecision::idempotencyKey).sorted().toList()) {
+            em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key, 801))")
+                    .setParameter("key", "FQC-LOT-DECISION:" + actor + ':' + key)
+                    .getSingleResult();
+        }
+        Map<UUID, LotCommandRef> replayLots = new LinkedHashMap<>();
+        Map<String, LotCommandRef> commandsByKey = new LinkedHashMap<>();
+        List<String> lotKeys = commands.stream().filter(command -> command.lot() != null)
+                .map(NormalizedReportDecision::idempotencyKey).toList();
+        if (!lotKeys.isEmpty()) {
+            for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT id, lot_id, request_hash, idempotency_key
+                    FROM production_fqc_lot_decision_commands
+                    WHERE created_by=:actor AND idempotency_key IN (:keys)
+                    """).setParameter("actor", actor).setParameter("keys", lotKeys))) {
+                commandsByKey.put(string(row[3]), new LotCommandRef((UUID) row[0], (UUID) row[1], string(row[2]).strip()));
+            }
+        }
+        for (NormalizedReportDecision command : commands) {
+            if (command.lot() == null) continue;
+            LotCommandRef existing = commandsByKey.get(command.idempotencyKey());
+            if (existing == null) continue;
+            if (!existing.lotId().equals(command.targetId())
+                    || !existing.requestHash().equals(command.lot().requestHash())) {
+                throw conflict("同一防重复提交标识已用于不同的批或不同数量，请刷新后重试");
+            }
+            replayLots.put(command.targetId(), existing);
+        }
+
+        List<UUID> singleIds = commands.stream().filter(command -> command.single() != null)
+                .map(NormalizedReportDecision::targetId).toList();
+        LinkedHashSet<UUID> lotIds = new LinkedHashSet<>();
+        commands.stream().filter(command -> command.lot() != null)
+                .map(NormalizedReportDecision::targetId).forEach(lotIds::add);
+        if (!singleIds.isEmpty()) lotIds.addAll(lotsOfInspections(singleIds));
+        Map<UUID, List<LotMemberRef>> lots = lotMembers(lotIds.stream().filter(Objects::nonNull).toList());
+        Map<UUID, UUID> memberLots = new LinkedHashMap<>();
+        lots.forEach((lotId, members) -> members.forEach(member -> memberLots.put(member.inspectionId(), lotId)));
+        LinkedHashSet<UUID> allIds = new LinkedHashSet<>();
+        LinkedHashSet<UUID> writableIds = new LinkedHashSet<>();
+        for (NormalizedReportDecision command : commands) {
+            List<LotMemberRef> members;
+            if (command.lot() != null) {
+                members = lots.get(command.targetId());
+                if (members == null || members.isEmpty()) throw notFound("报告中部分实物批没有待检任务，请刷新后重试");
+            } else {
+                UUID lotId = memberLots.get(command.targetId());
+                if (lotId != null && lots.get(lotId).size() > 1) {
+                    throw validation("分成需求、公共备货或超产多份的实物批必须按整批判定");
+                }
+                members = List.of(new LotMemberRef(command.targetId()));
+            }
+            for (LotMemberRef member : members) {
+                if (!allIds.add(member.inspectionId())) {
+                    throw validation("检验报告不能重复或同时选择同一实物批和批内明细");
+                }
+                // Original decideLot replays its committed command before acquiring a
+                // writable source footprint. Keep that behavior after source closeout.
+                if (command.single() != null || !replayLots.containsKey(command.targetId())) {
+                    writableIds.add(member.inspectionId());
+                }
+            }
+        }
+        if (allIds.size() > 100) throw validation("一次检验报告最多包含 100 份待检明细，请缩小选择范围");
+        List<UUID> inspectionIds = allIds.stream().sorted(UUID_ORDER).toList();
+        Map<UUID, Object[]> locked = Map.of();
+        if (!writableIds.isEmpty()) {
+            List<UUID> writable = writableIds.stream().sorted(UUID_ORDER).toList();
+            var sourceGuard = mutationFootprint.beginInspections(writable);
+            locked = lockPassAllDecisionDimensions(writable);
+            sourceGuard.verifyUnchanged();
+            if (!lots.equals(lotMembers(lotIds.stream().filter(Objects::nonNull).toList()))) {
+                throw conflict("报告中实物批的待检成员已变化，请刷新后重试");
+            }
+        }
+
+        List<ReportDecisionWrite> written = new ArrayList<>(commands.size());
+        List<PendingRelease> releases = new ArrayList<>();
+        LinkedHashSet<UUID> freshInspections = new LinkedHashSet<>();
+        for (NormalizedReportDecision command : commands) {
+            if (command.lot() != null) {
+                NormalizedLotDecision normalized = command.lot();
+                LotCommandRef existing = replayLots.get(command.targetId());
+                if (existing != null) {
+                    written.add(new ReportDecisionWrite(existing.id(), true));
+                    continue;
+                }
+                LotWrite write = writeLotDecisionLocked(command.targetId(), lots.get(command.targetId()), locked,
+                        normalized.passQty(), normalized.failQty(), normalized.dispositionCode(), normalized.reason(),
+                        normalized.idempotencyKey(), normalized.requestHash(), null);
+                written.add(new ReportDecisionWrite(write.commandId(), false));
+                releases.addAll(write.releases());
+                freshInspections.addAll(write.decisions().keySet());
+            } else {
+                DecisionWrite write = writeDecisionLocked(command.targetId(), command.single(),
+                        locked.get(command.targetId()), () -> { /* complete footprint verified before any write */ }, null);
+                written.add(new ReportDecisionWrite(write.decisionEventId(), write.replay()));
+                if (write.release() != null) releases.add(write.release());
+                if (!write.replay()) freshInspections.add(command.targetId());
+            }
+        }
+        if (!releases.isEmpty()) {
+            stockDocs.getObject().withBatch(inboundBatch -> releaseLocked(releases, inboundBatch));
+        }
+        Map<UUID, InspectionView> views = detailViews(inspectionIds);
+        Map<UUID, InspectionLotView> lotViews = new LinkedHashMap<>();
+        lotsOf(new ArrayList<>(views.values())).forEach(view -> lotViews.put(view.lotId(), view));
+        freshInspections.forEach(id -> publishResolved(views.get(id)));
+        List<ReportDecisionItemResult> results = new ArrayList<>(commands.size());
+        for (int index = 0; index < commands.size(); index++) {
+            NormalizedReportDecision command = commands.get(index);
+            ReportDecisionWrite write = written.get(index);
+            results.add(new ReportDecisionItemResult(command.targetType(), command.targetId(),
+                    command.idempotencyKey(), write.commandId(), write.replay(),
+                    command.lot() == null ? null : lotViews.get(command.targetId()),
+                    command.single() == null ? null : views.get(command.targetId())));
+        }
+        return new ReportDecisionResult(results);
+    }
+
+    static List<NormalizedReportDecision> normalizeReport(ReportDecisionRequest request) {
+        if (request == null || request.items() == null || request.items().isEmpty() || request.items().size() > 100) {
+            throw validation("检验报告必须包含 1 到 100 行决定");
+        }
+        List<NormalizedReportDecision> commands = new ArrayList<>();
+        HashSet<String> targets = new HashSet<>();
+        HashSet<String> lotKeys = new HashSet<>();
+        for (ReportDecisionItem item : request.items()) {
+            if (item == null || item.targetId() == null || item.targetType() == null
+                    || !List.of("LOT", "INSPECTION").contains(item.targetType())) {
+                throw validation("检验报告必须指定实物批或待检明细身份");
+            }
+            if (!targets.add(item.targetType() + ':' + item.targetId())) throw validation("检验报告不能重复选择同一行");
+            if ("LOT".equals(item.targetType())) {
+                NormalizedLotDecision lot = normalizeLotDecision(item.targetId(), new LotDecisionRequest(
+                        item.passQty(), item.failQty(), item.dispositionCode(), item.reason(), item.idempotencyKey()));
+                if (item.decision() != null) {
+                    String derived = lot.failQty().signum() == 0 ? "PASS" : lot.passQty().signum() == 0 ? "FAIL" : "PARTIAL";
+                    if (!derived.equals(normalizeDecision(item.decision()))) throw validation("整批决定类型与合格、不合格数量不一致");
+                }
+                if (!lotKeys.add(lot.idempotencyKey())) throw validation("检验报告不能重复使用同一个实物批提交标识");
+                commands.add(new NormalizedReportDecision(item.targetType(), item.targetId(), lot, null));
+            } else {
+                NormalizedRequest single = normalizeRequest(new DecisionRequest(item.decision(), item.passQty(),
+                        item.failQty(), item.dispositionCode(), item.reason(), item.idempotencyKey()));
+                commands.add(new NormalizedReportDecision(item.targetType(), item.targetId(), null, single));
+            }
+        }
+        return List.copyOf(commands);
+    }
+
+    record NormalizedReportDecision(String targetType, UUID targetId, NormalizedLotDecision lot, NormalizedRequest single) {
+        String idempotencyKey() { return lot == null ? single.idempotencyKey() : lot.idempotencyKey(); }
+    }
+
+    private record ReportDecisionWrite(UUID commandId, boolean replay) {}
 
     /** 当前可见的一批实物(检查单页刷新后重读)。 */
     @Transactional(readOnly = true)

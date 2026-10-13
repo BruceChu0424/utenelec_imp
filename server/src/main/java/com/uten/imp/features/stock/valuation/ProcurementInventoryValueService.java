@@ -49,15 +49,74 @@ public class ProcurementInventoryValueService implements ProcurementInventoryVal
         if("SUBCONTRACT".equals(type))subcontractMaterials.receiptApproved(receipt,actor);
     }
     @Override public void qualityRecorded(UUID event,UUID actor){
-        var parts=consideration.quality(event);
-        if(parts.isEmpty())throw conflict("品质事件尚无真实计款切片");
-        for(var part:parts){
-            if(has("PROCUREMENT_QUALITY",part.id()))continue;
-            UUID root=acquisition(part.considerationPartId());var current=positions.position(root);lock(current.pool());
-            positions.move(new Move(context("PROCUREMENT_QUALITY",part.id(),event,actor),current.pool(),
-                    "PASS".equals(part.action())?Owner.QUALITY_PASSED:Owner.REJECTED_HOLD,part.id(),
-                    takeOwner(Owner.QUALITY_PENDING,part.considerationPartId(),part.baseQty(),part.id())));
+        qualityRecordedBatch(List.of(event),actor);
+    }
+    @Override public void qualityRecordedBatch(List<UUID> events,UUID actor){
+        if(events.isEmpty())return;
+        var grouped=new LinkedHashMap<UUID,List<ProcurementReceiptConsiderationPort.QualityPart>>();
+        for(var part:consideration.qualityBatch(events))grouped.computeIfAbsent(part.inspectionEventId(),ignored->new ArrayList<>()).add(part);
+        List<ProcurementReceiptConsiderationPort.QualityPart> parts=new ArrayList<>();
+        for(UUID event:events){
+            var eventParts=grouped.getOrDefault(event,List.of());
+            if(eventParts.isEmpty())throw conflict("品质事件尚无真实计款切片");
+            parts.addAll(eventParts);
         }
+        // Acquisition identity and its pool never change. Read them as a set;
+        // mutable remaining heads are still resolved for each ordered transfer.
+        Map<UUID,PoolKey> pools=new HashMap<>();
+        for(var row:db.queryForList("""
+                SELECT acquisition.evidence_id,pool.warehouse_id,pool.goods_id,pool.color_id
+                FROM stock_value_acquisition_sources acquisition
+                JOIN stock_value_events event ON event.id=acquisition.event_id
+                JOIN stock_value_nodes root ON root.id=event.result_node_id
+                JOIN stock_value_pools pool ON pool.id=root.pool_id
+                WHERE acquisition.evidence_id IN (:ids)
+                  AND root.kind='ISSUE_POSITION' AND root.root_issue_id=root.id
+                  AND root.return_head_id IS NOT NULL
+                """,Map.of("ids",parts.stream().map(ProcurementReceiptConsiderationPort.QualityPart::considerationPartId).distinct().toList()))){
+            UUID id=(UUID)row.get("evidence_id");
+            if(pools.put(id,pool(row))!=null)throw conflict("业务来源尚无唯一已核成本位置");
+        }
+        if(parts.stream().anyMatch(part->!pools.containsKey(part.considerationPartId())))
+            throw conflict("业务来源尚无唯一已核成本位置");
+        mutex.lockAll(pools.values().stream().map(key->new InventoryKey(key.goodsId(),key.colorId())).toList());
+        Set<UUID> recorded=new HashSet<>(db.queryForList("""
+                SELECT source_event_id FROM stock_value_events
+                WHERE source_doc_type='PROCUREMENT_QUALITY' AND source_event_id IN (:ids)
+                """,Map.of("ids",parts.stream().map(ProcurementReceiptConsiderationPort.QualityPart::id).toList()),UUID.class));
+        var first=parts.getFirst();
+        EventContext template=context("PROCUREMENT_QUALITY",first.id(),first.inspectionEventId(),actor);
+        Map<UUID,List<Object[]>> pending=new HashMap<>();
+        for(var row:InventoryOwnerPositions.remaining(db,Owner.QUALITY_PENDING,
+                parts.stream().map(ProcurementReceiptConsiderationPort.QualityPart::considerationPartId).distinct().toList())) {
+            pending.computeIfAbsent(row.ownerId(),ignored->new ArrayList<>())
+                    .add(new Object[]{row.rootId(),row.quantity()});
+        }
+        List<Move> moves=new ArrayList<>();
+        for(var part:parts){
+            if(recorded.contains(part.id()))continue;
+            var context=new EventContext(part.id(),"PROCUREMENT_QUALITY",part.inspectionEventId(),part.id(),1,
+                    template.actorUserId(),template.actorEmployeeId(),"PROCUREMENT_QUALITY:"+part.id(),template.occurredAt());
+            moves.add(new Move(context,pools.get(part.considerationPartId()),
+                    "PASS".equals(part.action())?Owner.QUALITY_PASSED:Owner.REJECTED_HOLD,part.id(),
+                    takePreparedOwner(pending.getOrDefault(part.considerationPartId(),List.of()),part.baseQty(),part.id())));
+            recorded.add(part.id());
+        }
+        positions.moveBatch(moves);
+    }
+
+    /** Current roots were loaded under the inventory locks; only this command consumes this local plan. */
+    private static List<Slice> takePreparedOwner(List<Object[]> roots,BigDecimal qty,UUID fact) {
+        List<Slice> slices=new ArrayList<>();BigDecimal left=qty;
+        for(Object[] row:roots){
+            if(left.signum()==0)break;
+            BigDecimal available=(BigDecimal)row[1],take=left.min(available);
+            if(take.signum()<=0)continue;
+            UUID root=(UUID)row[0];slices.add(new Slice(root,take,root));
+            row[1]=available.subtract(take);left=left.subtract(take);
+        }
+        if(left.signum()!=0)throw conflict("实际来源尚未在对应价值位置，不能猜测补回或冲销成本");
+        return slices.size()==1?List.of(new Slice(slices.getFirst().positionRootId(),qty,fact)):List.copyOf(slices);
     }
     public MovementValue store(UUID item,UUID movement,PoolKey key,BigDecimal before,EventContext context){
         List<Slice> sources=new ArrayList<>();
@@ -189,14 +248,9 @@ public class ProcurementInventoryValueService implements ProcurementInventoryVal
     private List<Map<String,Object>> credit(UUID id){return db.queryForList("SELECT id,funding_slice_id,base_qty FROM procurement_iqc_credit_slices WHERE credit_document_id=:id ORDER BY id",Map.of("id",id));}
     private List<Slice> takeOwner(Owner owner,UUID id,BigDecimal qty,UUID fact){
         List<Slice> result=new ArrayList<>();BigDecimal left=qty;
-        for(var row:db.queryForList("""
-                SELECT root.id,head.range_to-head.range_from qty
-                FROM stock_value_nodes root JOIN stock_value_nodes head ON head.id=root.return_head_id
-                WHERE root.root_issue_id=root.id AND head.owner_kind=:owner AND head.owner_id=:id
-                  AND head.range_to>head.range_from ORDER BY root.created_at,root.id
-                """,Map.of("owner",owner.name(),"id",id))){
-            if(left.signum()==0)break;BigDecimal take=left.min((BigDecimal)row.get("qty"));
-            result.add(new Slice((UUID)row.get("id"),take,(UUID)row.get("id")));left=left.subtract(take);
+        for(var row:InventoryOwnerPositions.remaining(db,owner,List.of(id))){
+            if(left.signum()==0)break;BigDecimal take=left.min(row.quantity());
+            result.add(new Slice(row.rootId(),take,row.rootId()));left=left.subtract(take);
         }
         if(left.signum()!=0)throw conflict("实际来源尚未在对应价值位置，不能猜测补回或冲销成本");
         return result.size()==1?List.of(new Slice(result.getFirst().positionRootId(),qty,fact)):List.copyOf(result);

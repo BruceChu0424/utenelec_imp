@@ -131,6 +131,62 @@ class HotTableTriggerHygieneContractTest {
     }
 
     @Test
+    void inspectionConsiderationKeepsDeferredAlwaysGuardsWithoutRecheckingProjectionUpdates() throws SQLException {
+        assertThat(strings("""
+                SELECT tgname FROM pg_trigger
+                WHERE tgrelid='procurement_inspection_items'::regclass
+                  AND tgname IN ('trg_procurement_inspection_items_consideration','trg_procurement_inspection_items_consideration_upd')
+                  AND tgenabled='A' AND tgdeferrable AND tginitdeferred
+                ORDER BY tgname
+                """)).containsExactly("trg_procurement_inspection_items_consideration","trg_procurement_inspection_items_consideration_upd");
+        // Exercise the actual migrated trigger predicates on the actual migrated
+        // column types, isolating their firing from unrelated row/business guards.
+        // The production financial functions remain unchanged and are covered by
+        // real IQC/funding/reversal workflows. All probe DDL is transaction-local.
+        try(Connection connection=database.openConnection();Statement statement=connection.createStatement()){
+            connection.setAutoCommit(false);
+            try {
+                statement.execute("CREATE TEMP TABLE inspection_gate_probe ON COMMIT DROP AS SELECT * FROM procurement_inspection_items WITH NO DATA");
+                statement.execute("CREATE TEMP TABLE inspection_gate_calls(operation text) ON COMMIT DROP");
+                statement.execute("CREATE FUNCTION pg_temp.record_inspection_gate() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO inspection_gate_calls VALUES(TG_OP); RETURN NULL; END $$");
+                List<String> definitions=new ArrayList<>();
+                try(ResultSet rows=statement.executeQuery("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid='procurement_inspection_items'::regclass AND tgname IN ('trg_procurement_inspection_items_consideration','trg_procurement_inspection_items_consideration_upd')")){
+                    while(rows.next())definitions.add(rows.getString(1));
+                }
+                for(String definition:definitions){
+                    String probe=definition.replace(" ON public.procurement_inspection_items "," ON pg_temp.inspection_gate_probe ");
+                    assertThat(probe).isNotEqualTo(definition);
+                    statement.execute(probe.substring(0,probe.indexOf("EXECUTE FUNCTION"))+"EXECUTE FUNCTION pg_temp.record_inspection_gate()");
+                }
+                statement.execute("ALTER TABLE inspection_gate_probe ENABLE ALWAYS TRIGGER trg_procurement_inspection_items_consideration");
+                statement.execute("ALTER TABLE inspection_gate_probe ENABLE ALWAYS TRIGGER trg_procurement_inspection_items_consideration_upd");
+                statement.execute("SET LOCAL session_replication_role='replica'");
+                statement.execute("INSERT INTO inspection_gate_probe(id,receipt_type,receipt_id,receipt_item_id,quantity_tranche,status) VALUES(gen_random_uuid(),'PURCHASE',gen_random_uuid(),gen_random_uuid(),'CHARGED','PENDING')");
+                statement.execute("SET CONSTRAINTS ALL IMMEDIATE");
+                assertProbeCalls(statement,1);
+                statement.execute("UPDATE inspection_gate_probe SET updated_at=now(),passed_base_qty=1,failed_base_qty=2,warehouse_stocked_base_qty=1,status='PARTIAL'");
+                assertProbeCalls(statement,0);
+                statement.execute("UPDATE inspection_gate_probe SET id=id,receipt_type=receipt_type,receipt_id=receipt_id,receipt_item_id=receipt_item_id,quantity_tranche=quantity_tranche,status=status");
+                assertProbeCalls(statement,0);
+                for(String change:List.of("status='REVERSED'","status='PARTIAL'","id=gen_random_uuid()",
+                        "receipt_type='SUBCONTRACT'","receipt_id=gen_random_uuid()","receipt_item_id=gen_random_uuid()","quantity_tranche='GIFT'")){
+                    statement.execute("UPDATE inspection_gate_probe SET "+change);
+                    assertProbeCalls(statement,1);
+                }
+                statement.execute("DELETE FROM inspection_gate_probe");
+                assertProbeCalls(statement,1);
+            } finally {connection.rollback();}
+        }
+    }
+
+    private static void assertProbeCalls(Statement statement,int expected)throws SQLException{
+        try(ResultSet rows=statement.executeQuery("SELECT count(*) FROM inspection_gate_calls")){
+            assertThat(rows.next()).isTrue();assertThat(rows.getInt(1)).isEqualTo(expected);
+        }
+        statement.execute("TRUNCATE inspection_gate_calls");
+    }
+
+    @Test
     void businessDocumentIdentifierIsReservedOnInsertAndGuardedPerColumnOnUpdate() throws SQLException {
         assertThat(strings("""
                 SELECT c.relname || '.' || t.tgname

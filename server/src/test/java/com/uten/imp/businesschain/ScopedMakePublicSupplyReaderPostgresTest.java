@@ -220,6 +220,71 @@ class ScopedMakePublicSupplyReaderPostgresTest {
         }
     }
 
+    @Test
+    void exactTargetIdsAvoidOtherManufacturingDimensionsInTheSameAnalysis() {
+        var seed=support.create(true,true,"1");List<Supply> supplies=new ArrayList<>();
+        for(int index=0;index<8;index++)supplies.add(createInWorld(seed));
+        UUID root=UUID.randomUUID();var world=seed.world();
+        support.fixture.insertGoods(root,"MAKE-TARGETS-"+root,"多物料制造公共供给接收产品","自制",world.unitId(),world.unitLegacy());
+        supplies.forEach(supply->support.fixture.insertBom(root,supply.c().common(),"1"));
+        var target=analyses.preview(new PreviewRequest(null,null,null,world.warehouseId(),"make-targets-"+root,
+                List.of(new PreviewItem("OTHER",null,root,null,world.unitId(),"make-targets-"+root,
+                        "验证制造公共供给按当前目标物料读取",BusinessTime.today().plusDays(10),new BigDecimal("2")))));
+        assertEquals(8,count(target.analysisId()));
+        Map<UUID,UUID> claims=new HashMap<>();
+        for(Supply supply:supplies)claims.put(supply.item(),claim(new Supply(supply.c(),supply.batch(),supply.item(),target),"1"));
+        Supply selected=supplies.getFirst();UUID material=target.flatMaterials().stream()
+                .filter(row->row.goodsId().equals(selected.c().common())).findFirst().orElseThrow().materialLineId();
+        String expected=scopedRows(target.analysisId(),selected.item());
+        assertEquals(expected,targetRows(target.analysisId(),List.of(material)));
+        assertEquals("[]",targetRows(target.analysisId(),List.of()));
+        assertEquals("[]",targetRows(target.analysisId(),List.of(UUID.randomUUID())));
+        Map<String,String> originals=new LinkedHashMap<>();
+        try {
+            installProbe("fn_preplan_make_public_claim_cancelled_qty","numeric",Set.of(claims.get(selected.item())),originals);
+            installProbe("fn_preplan_make_public_claim_pending_qty","numeric",Set.of(claims.get(selected.item())),originals);
+            assertEquals(expected,targetRows(target.analysisId(),List.of(material)));
+            assertProbeRejects(()->db.queryForList("""
+                    SELECT source.source_plan_item_id,source.available_to_claim_qty
+                    FROM fn_preplan_make_public_supply_sources(?,NULL::uuid) source
+                    JOIN production_material_analysis_materials material ON material.id=?
+                      AND material.goods_id=source.goods_id AND material.color_id IS NOT DISTINCT FROM source.color_id
+                      AND material.unit_id=source.unit_id
+                    """,target.analysisId(),material));
+        } finally {originals.values().forEach(db::execute);}
+        new TransactionTemplate(transactions).executeWithoutResult(status->{
+            var current=analyses.detail(target.analysisId());
+            commands.claimMakePublicSupply(current.analysisId(),new PreplanMakePublicSupplyService.ClaimRequest(current.version(),current.fingerprint(),
+                    "make-target-live-"+UUID.randomUUID(),selected.item(),material,BigDecimal.ONE));
+            amount("2",db.queryForObject("SELECT available_to_claim_qty FROM fn_preplan_make_public_supply_sources(?,NULL::uuid,ARRAY[?]::uuid[])",
+                    BigDecimal.class,target.analysisId(),material));
+            assertEquals(scopedRows(target.analysisId(),selected.item()),targetRows(target.analysisId(),List.of(material)));
+        });
+        System.out.println("MAKE-PUBLIC-TARGET-SCOPE dimensions=8 selectedSources=1 unrelatedClaimEvaluations=0 negativeControl=passed");
+    }
+
+    private String targetRows(UUID analysis,List<UUID> materials) {
+        String ids="{"+String.join(",",materials.stream().map(UUID::toString).toList())+"}";
+        return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(source) ORDER BY source_plan_item_id),'[]'::jsonb)::text "
+                +"FROM fn_preplan_make_public_supply_sources(?,NULL::uuid,CAST(? AS uuid[])) source",String.class,analysis,ids);
+    }
+
+    private Supply createInWorld(AggregateMaterialOrderEndToEndTest.Case seed) {
+        var world=seed.world();UUID common=UUID.randomUUID(),root=UUID.randomUUID();
+        support.fixture.insertGoods(common,"MAKE-DIM-"+common,"同仓制造公共供给物料","自制",world.unitId(),world.unitLegacy());
+        support.fixture.insertGoods(root,"MAKE-DIM-ROOT-"+root,"制造公共供给源产品","自制",world.unitId(),world.unitLegacy());
+        support.fixture.insertBom(common,seed.material(),"1");support.fixture.insertBom(root,common,"1");
+        var view=analyses.preview(new PreviewRequest(null,null,null,world.warehouseId(),"make-dimension-"+root,
+                List.of(new PreviewItem("OTHER",null,root,null,world.unitId(),"make-dimension-"+root,
+                        "多物料制造公共供给来源",BusinessTime.today().plusDays(10),BigDecimal.ONE))));
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"make-dimension-route-"+root,
+                view.flatMaterials().stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(seed.material())?"BUY":"MAKE",null)).toList()));
+        var c=new AggregateMaterialOrderEndToEndTest.Case(world,view.analysisId(),common,null,seed.material(),seed.workshop(),seed.worker());
+        var batch=writer.submit(c.analysis(),support.command(c,List.of(support.input(c,common,"MAKE","5",true)))).batches().getFirst();
+        UUID item=db.queryForObject("SELECT id FROM production_plan_items WHERE plan_id=?",UUID.class,batch.planId());
+        return new Supply(c,batch,item,view);
+    }
+
     private void installProbe(String name, String resultType, Set<UUID> allowed, Map<String, String> originals) {
         String definition = db.queryForObject("SELECT pg_get_functiondef(CAST(? AS regprocedure))", String.class, name + "(uuid)");
         originals.put(name, definition);

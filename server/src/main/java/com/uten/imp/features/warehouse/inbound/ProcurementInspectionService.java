@@ -313,14 +313,19 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
             }
         }
         List<ProcurementIqcStockInService.PreStockedRelease> preStocked = new ArrayList<>();
+        List<UUID> qualityEvents = new ArrayList<>();
         for (var event : command.events()) {
             if (replay) {
                 notifyDispositionReplay(receiptType, receiptId, event.inspectionItemId(), event.id(),
                         event.action(), (Boolean) history.get(event.id())[5]);
             } else {
                 applyDisposition(receiptType, receiptId, rows.get(event.inspectionItemId()), event.id(),
-                        event.action(), event.quantity(), event.reason(), command.requestHash(), preStocked);
+                        event.action(), event.quantity(), event.reason(), command.requestHash(), preStocked, qualityEvents);
             }
+        }
+        if (!qualityEvents.isEmpty()) {
+            consideration.freezeQualityEvents(commandInspectionIds(command), qualityEvents);
+            procurementValue.qualityRecordedBatch(qualityEvents,currentUser.requireId());
         }
         completeReceiptDisposition(receiptType, receiptId, preStocked, followup);
         return replay;
@@ -495,6 +500,13 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
     private void applyDisposition(String receiptType, UUID receiptId, Object[] row, UUID eventId,
                                   String action, BigDecimal requested, String reason, String batchRequestHash,
                                   List<ProcurementIqcStockInService.PreStockedRelease> preStocked) {
+        applyDisposition(receiptType,receiptId,row,eventId,action,requested,reason,batchRequestHash,preStocked,null);
+    }
+
+    private void applyDisposition(String receiptType, UUID receiptId, Object[] row, UUID eventId,
+                                  String action, BigDecimal requested, String reason, String batchRequestHash,
+                                  List<ProcurementIqcStockInService.PreStockedRelease> preStocked,
+                                  List<UUID> qualityEvents) {
         UUID inspectionItemId = (UUID) row[0];
         String currentStatus = (String) row[10];
         if (!PENDING.equals(currentStatus) && !PARTIAL.equals(currentStatus)) {
@@ -554,7 +566,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
         }
         appendEvent(
                 eventId, inspectionItemId, action, requested, reason, actor, now,
-                releasedAmount, releasedWeight, batchRequestHash);
+                releasedAmount, releasedWeight, batchRequestHash,qualityEvents);
         UUID preStockedWarehouseId = (UUID) row[13];
         if ("PASS".equals(action)) {
             if (preStockedWarehouseId != null) {
@@ -1073,10 +1085,19 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                              BigDecimal baseQty, String reason, UUID actor, OffsetDateTime occurredAt,
                              BigDecimal releasedAmountLocal, BigDecimal releasedWeight,
                              String batchRequestHash) {
+        appendEvent(eventId,inspectionItemId,action,baseQty,reason,actor,occurredAt,
+                releasedAmountLocal,releasedWeight,batchRequestHash,null);
+    }
+
+    private void appendEvent(UUID eventId, UUID inspectionItemId, String action,
+                             BigDecimal baseQty, String reason, UUID actor, OffsetDateTime occurredAt,
+                             BigDecimal releasedAmountLocal, BigDecimal releasedWeight,
+                             String batchRequestHash,List<UUID> qualityEvents) {
         ProcurementInspectionEvents.append(em, eventId, inspectionItemId, action, baseQty, reason, actor,
                 occurredAt, releasedAmountLocal, releasedWeight, batchRequestHash,
                 ("PASS".equals(action) || "FAIL".equals(action)) ? currentUser.requireId() : null);
         if("PASS".equals(action)||"FAIL".equals(action)){
+            if(qualityEvents!=null){qualityEvents.add(eventId);return;}
             consideration.freezeQuality(inspectionItemId);
             procurementValue.qualityRecorded(eventId,currentUser.requireId());
         }

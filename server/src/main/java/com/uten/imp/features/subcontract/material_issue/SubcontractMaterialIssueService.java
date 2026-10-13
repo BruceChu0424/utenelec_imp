@@ -538,7 +538,8 @@ public class SubcontractMaterialIssueService {
         for(var item:items) {
             BigDecimal remaining=(BigDecimal)em.createNativeQuery("""
                 SELECT COALESCE(SUM(head.range_to-head.range_from),0)
-                FROM stock_value_nodes root JOIN stock_value_nodes head ON head.id=root.return_head_id
+                FROM stock_value_nodes head JOIN stock_value_nodes root
+                  ON root.id=head.root_issue_id AND root.return_head_id=head.id
                 JOIN stock_value_pools pool ON pool.id=head.pool_id
                 WHERE root.root_issue_id=root.id AND head.owner_kind='SUBCONTRACT_WIP' AND head.owner_id=:id
                   AND head.active AND head.range_to>head.range_from AND pool.goods_id=:goods

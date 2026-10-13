@@ -26,7 +26,7 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
  * of serializing (and decoding) all warehouses for every node. Domain services,
  * command fingerprints, idempotent results and old clients retain their DTOs.
  */
-@RestControllerAdvice(assignableTypes = MaterialAnalysisController.class)
+@RestControllerAdvice(assignableTypes = {MaterialAnalysisController.class, AggregateMaterialOrderController.class})
 public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Object> {
     public static final String VERSION = "shared-warehouses-v1";
     public static final String VERSION_V2 = MaterialAnalysisSparseProjection.VERSION;
@@ -34,7 +34,9 @@ public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Ob
     @Override
     public boolean supports(MethodParameter method, Class<? extends HttpMessageConverter<?>> converter) {
         return MappingJackson2HttpMessageConverter.class.isAssignableFrom(converter)
-                && (method.getParameterType() == AnalysisView.class || method.getParameterType() == GenerateResult.class);
+                && (method.getParameterType() == AnalysisView.class || method.getParameterType() == GenerateResult.class
+                    || method.getParameterType() == AggregateMaterialOrderContracts.Preview.class
+                    || method.getParameterType() == AggregateMaterialOrderContracts.SubmitResult.class);
     }
 
     @Override
@@ -49,11 +51,23 @@ public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Ob
                 return new MaterialAnalysisSparseProjection.SparseGenerateResult(
                         MaterialAnalysisSparseProjection.project(generated.analysis()), generated.replayed(), generated.plans());
             }
+            if (body instanceof AggregateMaterialOrderContracts.Preview preview) {
+                return new AggregatePreviewProjection(preview, MaterialAnalysisSparseProjection.project(preview.analysis()));
+            }
+            if (body instanceof AggregateMaterialOrderContracts.SubmitResult submitted) {
+                return new AggregateSubmitProjection(submitted, MaterialAnalysisSparseProjection.project(submitted.analysis()));
+            }
         }
         if (!VERSION.equals(projection)) return body;
         if (body instanceof AnalysisView analysis) return project(analysis);
         if (body instanceof GenerateResult generated) {
             return new SharedGenerateResult(project(generated.analysis()), generated.replayed(), generated.plans());
+        }
+        if (body instanceof AggregateMaterialOrderContracts.Preview preview) {
+            return new AggregatePreviewProjection(preview, project(preview.analysis()));
+        }
+        if (body instanceof AggregateMaterialOrderContracts.SubmitResult submitted) {
+            return new AggregateSubmitProjection(submitted, project(submitted.analysis()));
         }
         return body;
     }
@@ -89,4 +103,13 @@ public class MaterialAnalysisResponseProjection implements ResponseBodyAdvice<Ob
             @JsonUnwrapped @JsonIgnoreProperties("warehouseBreakdown") MaterialView source) {}
 
     public record SharedGenerateResult(SharedAnalysis analysis, boolean replayed, List<GeneratedPlan> plans) {}
+
+    /** Only the negotiated HTTP analysis changes; stored command receipts retain their original DTOs. */
+    public record AggregatePreviewProjection(
+            @JsonUnwrapped @JsonIgnoreProperties("analysis") AggregateMaterialOrderContracts.Preview source,
+            Object analysis) {}
+
+    public record AggregateSubmitProjection(
+            @JsonUnwrapped @JsonIgnoreProperties("analysis") AggregateMaterialOrderContracts.SubmitResult source,
+            Object analysis) {}
 }

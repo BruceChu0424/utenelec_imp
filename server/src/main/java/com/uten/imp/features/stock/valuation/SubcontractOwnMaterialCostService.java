@@ -371,14 +371,9 @@ public class SubcontractOwnMaterialCostService implements com.uten.imp.applicati
     private void lockSources(List<Map<String,Object>> rows){mutex.lockAll(rows.stream().map(row->new InventoryKey((UUID)row.get("goods_id"),(UUID)row.get("color_id"))).toList());}
     private List<Slice> take(Owner owner,UUID ownerId,BigDecimal qty){
         BigDecimal left=qty;List<Slice> slices=new ArrayList<>();
-        for(var row:db.queryForList("""
-                SELECT root.id,head.range_to-head.range_from qty FROM stock_value_nodes root
-                JOIN stock_value_nodes head ON head.id=root.return_head_id
-                WHERE root.root_issue_id=root.id AND head.owner_kind=:owner AND head.owner_id=:id
-                    AND head.range_to>head.range_from ORDER BY root.created_at,root.id
-                """,Map.of("owner",owner.name(),"id",ownerId))){
-            if(left.signum()==0)break;BigDecimal amount=left.min((BigDecimal)row.get("qty"));
-            slices.add(new Slice((UUID)row.get("id"),amount,(UUID)row.get("id")));left=left.subtract(amount);
+        for(var row:InventoryOwnerPositions.remaining(db,owner,List.of(ownerId))){
+            if(left.signum()==0)break;BigDecimal amount=left.min(row.quantity());
+            slices.add(new Slice(row.rootId(),amount,row.rootId()));left=left.subtract(amount);
         }
         if(left.signum()!=0)throw conflict("原委外材料位置不足，须完成同源成本反向后重试，不能借用其它回厂批次");
         return List.copyOf(slices);

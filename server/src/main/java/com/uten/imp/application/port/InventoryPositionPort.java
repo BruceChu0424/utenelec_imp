@@ -54,6 +54,10 @@ public interface InventoryPositionPort {
 
     PositionValue acquire(Acquire command);
     PositionValue move(Move command);
+    /** Ordered custody moves in one originating transaction, retaining every event and source interval. */
+    default List<PositionValue> moveBatch(List<Move> commands) {
+        return commands.stream().map(this::move).toList();
+    }
     PositionValue restoreUnallocatedConsumed(RestoreConsumed command);
     PositionValue returnConsumed(ReturnConsumed command);
     MovementValue store(Store command);

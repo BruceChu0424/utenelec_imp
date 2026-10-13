@@ -42,6 +42,7 @@ Future<String?> showInspectionReportConfirmDialog(
   required List<InspectionReportConfirmLine> lines,
   int fqcTaskCount = 0,
   bool requireReason = false,
+  bool atomicReport = false,
   String initialReason = '',
   ValueChanged<String>? onReasonChanged,
 }) {
@@ -55,6 +56,7 @@ Future<String?> showInspectionReportConfirmDialog(
       lines: lines,
       fqcTaskCount: fqcTaskCount,
       requireReason: requireReason,
+      atomicReport: atomicReport,
       initialReason: initialReason,
       onReasonChanged: onReasonChanged,
     ),
@@ -69,6 +71,7 @@ class _InspectionReportConfirmDialog extends StatefulWidget {
     required this.lines,
     required this.fqcTaskCount,
     required this.requireReason,
+    required this.atomicReport,
     required this.initialReason,
     this.onReasonChanged,
   });
@@ -79,6 +82,7 @@ class _InspectionReportConfirmDialog extends StatefulWidget {
   final List<InspectionReportConfirmLine> lines;
   final int fqcTaskCount;
   final bool requireReason;
+  final bool atomicReport;
   final String initialReason;
   final ValueChanged<String>? onReasonChanged;
 
@@ -125,10 +129,17 @@ class _InspectionReportConfirmDialogState
               const UtenReviewerResponsibilityNotice(
                 actionLabel: '提交检验报告',
                 description:
-                    '系统将记录检验员、结论数量与时间；合格部分转仓库待入库，'
-                    '不合格部分记质量事实，均不直接增加库存。',
+                    '系统将记录检验员、结论数量与时间；已上架的合格部分自动点收入库，'
+                    '其余合格部分转仓库待入库，不合格部分记质量事实与待处理台账。',
               ),
               const SizedBox(height: UtenSpacing.s12),
+              if (widget.atomicReport) ...[
+                const Text(
+                  '本次勾选行一起提交；任一行失败，本次新增决定全部回滚。已登记的原决定不重复执行。',
+                  key: Key('inspection-report-atomic-notice'),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+              ],
               Text(
                 '共 ${widget.lineCount} 行明细'
                 '${widget.fqcTaskCount > 0 ? '、${widget.fqcTaskCount} 项自制产成品任务全部合格' : ''}，'

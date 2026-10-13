@@ -374,6 +374,60 @@ class InventoryPositionPostgresTest {
         adjust(k,p.fundingSourceNodeId(),"100");drain();balance(k,"10","100");assertThat(values.pool(k).state()).isEqualTo(State.FINAL);
     }
 
+    @Test void batchMovesShareLockedHeadsButKeepEveryTinyValueIntervalAndOriginalReplay(){
+        PoolKey key=key();PositionValue source=acquire(key,"3","0.0002","0",true,List.of());
+        List<Move> commands=List.of(
+                new Move(context(),key,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(source.positionRootId(),"1"))),
+                new Move(context(),key,Owner.REJECTED_HOLD,UUID.randomUUID(),List.of(slice(source.positionRootId(),"1"))),
+                new Move(context(),key,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(source.positionRootId(),"1"))));
+        List<PositionValue> moved=locked(key,()->positions.moveBatch(commands));
+        assertThat(moved).hasSize(3).allMatch(value->!value.replayed());
+        money(moved.get(0).knownValueLocal(),"0.0001");money(moved.get(1).knownValueLocal(),"0");money(moved.get(2).knownValueLocal(),"0.0001");
+        var transfers=db.queryForList("SELECT source_node_id,remaining_node_id,range_from,range_to FROM stock_value_position_transfers WHERE source_root_id=? ORDER BY range_from",source.positionRootId());
+        assertThat(transfers).hasSize(3);
+        assertThat(transfers.get(1).get("source_node_id")).isEqualTo(transfers.get(0).get("remaining_node_id"));
+        assertThat(transfers.get(2).get("source_node_id")).isEqualTo(transfers.get(1).get("remaining_node_id"));
+        List<PositionValue> replay=locked(key,()->positions.moveBatch(commands));
+        assertThat(replay).allMatch(PositionValue::replayed);
+        assertThat(replay.stream().map(PositionValue::eventId)).containsExactlyElementsOf(moved.stream().map(PositionValue::eventId).toList());
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_position_transfers WHERE source_root_id=?",Integer.class,source.positionRootId())).isEqualTo(3);
+        store(key,List.of(slice(moved.get(0).positionRootId(),"1"),slice(moved.get(2).positionRootId(),"1")));balance(key,"2","0.0002");
+    }
+
+    @Test void batchLateOverdrawRollsBackEveryPlannedEventAndNextInvocationRereadsTheHead(){
+        PoolKey key=key();PositionValue source=acquire(key,"5","50","0",true,List.of());
+        Move first=new Move(context(),key,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(source.positionRootId(),"4")));
+        Move excess=new Move(context(),key,Owner.REJECTED_HOLD,UUID.randomUUID(),List.of(slice(source.positionRootId(),"2")));
+        assertThatThrownBy(()->locked(key,()->positions.moveBatch(List.of(first,excess)))).isInstanceOf(ApiException.class).hasMessageContaining("超过剩余数量");
+        money(positions.position(source.positionRootId()).remainingQtyBase(),"5");
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_position_transfers WHERE source_root_id=?",Integer.class,source.positionRootId())).isZero();
+        PositionValue moved=locked(key,()->positions.moveBatch(List.of(first))).getFirst();
+        assertThat(moved.replayed()).isFalse();money(moved.knownValueLocal(),"40");
+        money(positions.position(source.positionRootId()).remainingQtyBase(),"1");
+    }
+
+    @Test void repeatedIdentityWithinBatchReplaysOnceButChangedBodyCannotSpendAgain(){
+        PoolKey key=key();PositionValue source=acquire(key,"5","50","0",true,List.of());
+        Move command=new Move(context(),key,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(source.positionRootId(),"2")));
+        List<PositionValue> results=locked(key,()->positions.moveBatch(List.of(command,command)));
+        assertThat(results.get(0).replayed()).isFalse();assertThat(results.get(1).replayed()).isTrue();
+        assertThat(results.get(1).eventId()).isEqualTo(results.get(0).eventId());
+        money(positions.position(source.positionRootId()).remainingQtyBase(),"3");
+        Move changed=new Move(command.context(),key,Owner.REJECTED_HOLD,command.ownerId(),command.sources());
+        assertThatThrownBy(()->locked(key,()->positions.moveBatch(List.of(command,changed)))).isInstanceOf(ApiException.class).hasMessageContaining("不同的库存价值请求");
+        money(positions.position(source.positionRootId()).remainingQtyBase(),"3");
+    }
+
+    @Test void failureInLaterBoundedWindowRollsBackAlreadyFlushedEarlierWindows(){
+        PoolKey key=key();PositionValue source=acquire(key,"100","100","0",true,List.of());
+        List<Move> commands=new ArrayList<>();
+        for(int i=0;i<101;i++)commands.add(new Move(context(),key,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(source.positionRootId(),"1"))));
+        assertThatThrownBy(()->locked(key,()->positions.moveBatch(commands))).isInstanceOf(ApiException.class).hasMessageContaining("超过剩余数量");
+        money(positions.position(source.positionRootId()).remainingQtyBase(),"100");
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_position_transfers WHERE source_root_id=?",Integer.class,source.positionRootId())).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_events WHERE source_event_id=?",Integer.class,commands.getFirst().context().sourceEventId())).isZero();
+    }
+
     @Test void replayUsesCanonicalMovementAndRejectsAlteredBodyAndReplicaFactTampering(){
         PoolKey k=key();PositionValue p=acquire(k,"5","50","0",true,List.of());
         EventContext c=context();Move command=new Move(c,k,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(p.positionRootId(),"5")));
@@ -655,7 +709,10 @@ class InventoryPositionPostgresTest {
         private ValueWriteProbe(JdbcTemplate jdbc){super(jdbc);}
         @Override public int update(String sql,Map<String,?> params){writes.add(sql.replaceAll("\\s+"," ").trim());return super.update(sql,params);}
         @Override public <T> List<T> query(String sql,Map<String,?> params,org.springframework.jdbc.core.RowMapper<T> mapper){
-            if(sql.startsWith("SELECT n.*,p.warehouse_id,p.goods_id,p.color_id")&&sql.endsWith("FOR UPDATE OF n"))lockedNodeIds.add((UUID)params.get("id"));
+            if(sql.startsWith("SELECT n.*,p.warehouse_id,p.goods_id,p.color_id")&&sql.endsWith("FOR UPDATE OF n")){
+                if(params.get("ids") instanceof Collection<?> ids)ids.stream().map(UUID.class::cast).sorted(Comparator.comparing(UUID::toString)).forEach(lockedNodeIds::add);
+                else lockedNodeIds.add((UUID)params.get("id"));
+            }
             if(sql.startsWith("SELECT * FROM stock_value_pools WHERE id="))poolIdentityReads++;
             return super.query(sql,params,mapper);
         }

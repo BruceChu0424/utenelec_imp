@@ -159,6 +159,75 @@ class ScopedPublicSurplusReaderPostgresTest {
         }
     }
 
+    @Test void oneMaterialNeverEvaluatesOtherDimensionsInsideTheSameLargeAnalysis() {
+        var world=support.fixture.seedWorld("dimension-reader-"+UUID.randomUUID());
+        support.fixture.loginAs(world.superAdminUserId());
+        int dimensions=Integer.getInteger("uten.publicSupply.dimensions",16);
+        assertTrue(dimensions>=8);
+        List<Supply> supplies=new ArrayList<>();
+        for(int index=0;index<dimensions;index++)supplies.add(createInWorld(world,index%2==0?"BUY":"SUBCONTRACT"));
+        UUID product=UUID.randomUUID();support.fixture.insertGoods(product,"DIMENSION-ROOT-"+product,"多物料公共供给接收产品","自制",world.unitId(),world.unitLegacy());
+        supplies.forEach(supply->support.fixture.insertBom(product,supply.goods(),"1"));
+        AnalysisView target=analyses.preview(new PreviewRequest(null,null,null,world.warehouseId(),"dimension-target-"+UUID.randomUUID(),
+                List.of(new PreviewItem("OTHER",null,product,null,world.unitId(),"dimension-target-"+product,
+                        "验证同一分析多种物料的公共来源读取范围",BusinessTime.today().plusDays(10),new BigDecimal("1000")))));
+        assertEquals(dimensions,count(target.analysisId()));
+        Supply selected=supplies.getFirst();
+        Supply scoped=new Supply(world,selected.goods(),selected.source(),target,selected.action(),selected.item());
+        String expected=legacyDimensionRows(target.analysisId(),selected.goods(),null,world.unitId());
+        assertEquals(expected,dimensionRows(target.analysisId(),selected.goods(),null,world.unitId()));
+        assertEquals("[]",dimensionRows(target.analysisId(),selected.goods(),world.colorId(),world.unitId()));
+        assertEquals("[]",dimensionRows(target.analysisId(),selected.goods(),null,UUID.randomUUID()));
+        Set<UUID> allowed=Set.of(selected.action());Map<String,String> originals=new LinkedHashMap<>();
+        try {
+            for(String helper:List.of("fn_preplan_public_source_approved_capacity","fn_preplan_public_source_open_qty",
+                    "fn_preplan_public_source_planning_capacity","fn_preplan_public_source_planning_open_qty"))
+                installProbe(helper,"uuid,uuid",allowed,1,originals);
+            installProbe("fn_preplan_action_received_qty","uuid",allowed,1,originals);
+            assertEquals(expected,dimensionRows(target.analysisId(),selected.goods(),null,world.unitId()));
+            // All sources belong to this analysis and main warehouse. The previous
+            // analysis-wide reader must trip the rejecting probes before outer filtering.
+            RuntimeException rejected=assertThrows(RuntimeException.class,()->legacyDimensionRows(target.analysisId(),selected.goods(),null,world.unitId()));
+            assertTrue(rejected.toString().contains("UNRELATED_PUBLIC_SOURCE_EVALUATED"),rejected.toString());
+        } finally {originals.values().forEach(db::execute);}
+        // The narrower reader remains a live query: the immediately preceding
+        // claim changes its answer, without a cache or a second quantity algorithm.
+        new TransactionTemplate(transactions).executeWithoutResult(status->{
+            claim(scoped,"100");
+            assertEquals(0,new BigDecimal("800").compareTo(db.queryForObject(
+                    "SELECT available_to_claim_qty FROM fn_preplan_public_surplus_sources(?,?,NULL::uuid,?) WHERE source_action_id=?",
+                    BigDecimal.class,target.analysisId(),selected.goods(),world.unitId(),selected.action())));
+            assertEquals(legacyDimensionRows(target.analysisId(),selected.goods(),null,world.unitId()),
+                    dimensionRows(target.analysisId(),selected.goods(),null,world.unitId()));
+        });
+        System.out.println("PUBLIC-SUPPLY-DIMENSION dimensions="+dimensions+" selectedSources=1 unrelatedCapacityEvaluations=0 negativeControl=passed");
+    }
+
+    private String dimensionRows(UUID analysis,UUID goods,UUID color,UUID unit) {
+        return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(source) ORDER BY source_action_id,claim_external_item_id),'[]'::jsonb)::text "
+                +"FROM fn_preplan_public_surplus_sources(?,?,CAST(? AS uuid),?) source",String.class,analysis,goods,color,unit);
+    }
+    private String legacyDimensionRows(UUID analysis,UUID goods,UUID color,UUID unit) {
+        return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(source) ORDER BY source_action_id,claim_external_item_id),'[]'::jsonb)::text "
+                +"FROM fn_preplan_public_surplus_sources(?) source WHERE goods_id=? AND color_id IS NOT DISTINCT FROM CAST(? AS uuid) AND unit_id=?",
+                String.class,analysis,goods,color,unit);
+    }
+
+    private Supply createInWorld(FullChainEndToEndTest.World world,String route) {
+        UUID goods=UUID.randomUUID();support.fixture.insertGoods(goods,"DIMENSION-"+goods,"同仓不同公共物料",route.equals("BUY")?"采购":"委外",world.unitId(),world.unitLegacy());
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",world.supplierId(),goods);
+        if(route.equals("SUBCONTRACT"))support.fixture.addSubcontractDirectMaterial(world,goods,"1");
+        AnalysisView source=ReflectionTestUtils.invokeMethod(support,"target",world,goods,"source");
+        MaterialView row=material(source,goods);
+        if(!route.equals(row.sourceConfirmed()))source=analyses.saveRoutes(source.analysisId(),new RouteRequest(source.version(),source.fingerprint(),"dimension-route-"+source.analysisId(),
+                List.of(new RouteDecision(row.materialLineId(),row.actionGroupKey(),route,null))));
+        row=material(source,goods);
+        commands.notifySupply(source.analysisId(),new NotifyRequest(source.version(),source.fingerprint(),"dimension-source-"+source.analysisId(),route,
+                List.of(row.materialLineId()),List.of(),List.of(new SupplyQuantityInput(null,row.materialLineId(),new BigDecimal("1000"),BigDecimal.ZERO))));
+        Map<String,Object> action=db.queryForMap("SELECT id,public_surplus_external_item_id item FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY'",source.analysisId());
+        return new Supply(world,goods,source,source,(UUID)action.get("id"),(UUID)action.get("item"));
+    }
+
     private void installProbe(String name,String types,Set<UUID> allowed,int sourcePosition,Map<String,String> originals){
         String definition=db.queryForObject("SELECT pg_get_functiondef(CAST(? AS regprocedure))",String.class,name+"("+types+")");
         originals.put(name,definition);

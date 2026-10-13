@@ -311,12 +311,16 @@ class FirstBackupActivationGateTest(unittest.TestCase):
             pins["commissionerSha256"],
             updater.INTERNAL_TEST_FIRST_BACKUP_COMMISSIONER_SHA256,
         )
-        with mock.patch.object(
-            updater,
-            "read_root_controlled_bytes",
-            side_effect=(producer + b"tamper", commissioner),
-        ), self.assertRaisesRegex(updater.UpdaterError, "reviewed bytes"):
-            updater._first_backup_source_pins()
+        for installed in (
+            (producer + b"tamper", commissioner),
+            (producer, commissioner + b"tamper"),
+        ):
+            with self.subTest(installed=installed[0] is producer), mock.patch.object(
+                updater,
+                "read_root_controlled_bytes",
+                side_effect=installed,
+            ), self.assertRaisesRegex(updater.UpdaterError, "reviewed bytes"):
+                updater._first_backup_source_pins()
 
     def test_archived_binding_survives_current_helper_upgrade_but_not_unknown_history(self) -> None:
         binding, archived = self.binding()
@@ -336,17 +340,26 @@ class FirstBackupActivationGateTest(unittest.TestCase):
             "_first_backup_source_pins",
             side_effect=AssertionError("archived authority reopened current helper"),
         ):
-            updater.validate_internal_test_first_backup_binding(
-                binding,
-                live_database_identity=self.IDENTITY,
-                require_archive=True,
-            )
-            changed = copy.deepcopy(binding)
-            changed["producerSha256"] = "f" * 64
-            with self.assertRaisesRegex(updater.UpdaterError, "source/archive"):
-                updater.validate_internal_test_first_backup_binding(
-                    changed, require_archive=True
-                )
+            for commissioner_sha in (
+                updater.INTERNAL_TEST_FIRST_BACKUP_COMMISSIONER_SHA256,
+                "faf144b374384f4f678d6b1b818ad825a7280e80737b7ae732b3487d59f1785c",
+            ):
+                binding["commissionerSha256"] = commissioner_sha
+                with self.subTest(commissioner_sha=commissioner_sha):
+                    updater.validate_internal_test_first_backup_binding(
+                        binding,
+                        live_database_identity=self.IDENTITY,
+                        require_archive=True,
+                    )
+            for key in ("producerSha256", "commissionerSha256"):
+                changed = copy.deepcopy(binding)
+                changed[key] = "f" * 64
+                with self.subTest(unknown_origin=key), self.assertRaisesRegex(
+                    updater.UpdaterError, "source/archive"
+                ):
+                    updater.validate_internal_test_first_backup_binding(
+                        changed, require_archive=True
+                    )
 
     def test_archived_binding_rejects_live_replay_and_terminal_tamper(self) -> None:
         binding, archived = self.binding()

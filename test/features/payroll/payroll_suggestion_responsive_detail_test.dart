@@ -155,7 +155,7 @@ void main() {
         expect(amountRect.top, greaterThanOrEqualTo(-0.05));
         expect(amountRect.bottom, lessThanOrEqualTo(1200 + 0.05));
         final glyphBoxes = paragraph.getBoxesForSelection(
-          TextSelection(baseOffset: 0, extentOffset: exactAmount.length),
+          const TextSelection(baseOffset: 0, extentOffset: exactAmount.length),
         );
         expect(glyphBoxes, isNotEmpty);
         for (final box in glyphBoxes) {

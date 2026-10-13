@@ -15,6 +15,7 @@
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）。
 // 保存组装 body 调 create/update，成功后跳详情。
 // 路由用 SalesRoutePath 字面量（route_names.dart 由上层统一加 sales_*）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/attachments/attachment.dart';
 import '../../../shared/attachments/attachment_service.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
@@ -2309,7 +2310,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
       setState(() => _saving = false);
       final selected = await showDialog<String>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
+          scrollable: false,
           title: Text('已生成 ${_createdShipments.length} 张出货单'),
           content: SizedBox(
             width: 500,
@@ -3094,7 +3096,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         : '「$reRecognizeFile」之前识别的结果已在明细里，要用新结果覆盖现有明细，还是追加在后面？';
     return showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(l10n.salesIntakeReplaceTitle),
         content: Text(message),
         actionsAlignment: MainAxisAlignment.center,
@@ -3563,7 +3565,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                   decoration: BoxDecoration(
                                     color: theme.colorScheme.errorContainer
                                         .withValues(alpha: 0.58),
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(
+                                      UtenRadius.lg,
+                                    ),
                                     border: Border.all(
                                       color: theme.colorScheme.error.withValues(
                                         alpha: 0.36,
@@ -4240,7 +4244,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                   decoration: BoxDecoration(
                                     color: theme.colorScheme.primaryContainer
                                         .withValues(alpha: 0.45),
-                                    borderRadius: BorderRadius.circular(8),
+                                    borderRadius: BorderRadius.circular(
+                                      UtenRadius.md,
+                                    ),
                                   ),
                                   child: Row(
                                     crossAxisAlignment:

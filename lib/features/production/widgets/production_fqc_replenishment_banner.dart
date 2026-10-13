@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -166,7 +167,7 @@ class _ProductionFqcReplenishmentBannerState
     }
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Text('确认建立 FQC 补产物料分析'),
         content: Text(
           '${task.dispositionLabel} ${_qty(task.quantity)}：'
@@ -225,7 +226,7 @@ class _ProductionFqcReplenishmentBannerState
     final isRetry = task.status == 'BLOCKED';
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(isRetry ? '重试补产物料确认' : '确认补产用料'),
         content: Text(
           isRetry

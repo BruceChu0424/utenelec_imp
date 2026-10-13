@@ -11,8 +11,7 @@
 //   UtenImportButton(label: '从上游引入', onPressed: _importFromUpstream)
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_colors.dart';
-import '../../core/theme/brand_theme.dart';
+import 'uten_button.dart';
 import '../../core/theme/uten_tokens.dart';
 
 class UtenImportButton extends StatelessWidget {
@@ -28,33 +27,14 @@ class UtenImportButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final IconData icon;
 
-  /// 控件高度。默认与「表头设置」同高（48）。
+  /// 控件高度。默认与「表头设置」同高（桌面40，触屏至少48）。
   final double height;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return FilledButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20),
-      label: Text(label),
-      style: FilledButton.styleFrom(
-        backgroundColor: brandAccent(theme, UtenColors.teal800),
-        foregroundColor: theme.extension<PlatformBrandTheme>() == null
-            ? Colors.white
-            : theme.colorScheme.onPrimary,
-        disabledBackgroundColor: UtenColors.slate300,
-        disabledForegroundColor: Colors.white70,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        minimumSize: Size(0, height),
-        fixedSize: Size.fromHeight(height),
-        textStyle: theme.textTheme.bodyLarge?.copyWith(
-          fontWeight: FontWeight.w700,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(UtenRadius.control),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => UtenButton(
+    onPressed: onPressed,
+    icon: icon,
+    height: height,
+    child: Text(label),
+  );
 }

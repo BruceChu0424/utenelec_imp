@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -252,7 +253,8 @@ class _SalesQuoteTemplateReviewState extends State<SalesQuoteTemplateReview> {
         : null;
     final otherSheets = (widget.result['otherSheets'] as List? ?? [])
         .whereType<Map<dynamic, dynamic>>();
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text(l10n.quoteTemplateReviewTitle),
       content: SizedBox(
         width: 560,

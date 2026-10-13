@@ -37,6 +37,8 @@ void main() {
         hasSelectedState: true,
         isSelected: true,
         isFocusable: true,
+        hasEnabledState: true,
+        isEnabled: true,
         hasTapAction: true,
         hasFocusAction: true,
       ),
@@ -45,7 +47,7 @@ void main() {
     for (final label in ['All (12)', 'Pending (3)']) {
       final target = find.ancestor(
         of: find.text(label),
-        matching: find.byType(AnimatedContainer),
+        matching: find.byType(InkWell),
       );
       final size = tester.getSize(target);
       expect(size.width, greaterThanOrEqualTo(44));
@@ -64,6 +66,8 @@ void main() {
         hasSelectedState: true,
         isSelected: true,
         isFocusable: true,
+        hasEnabledState: true,
+        isEnabled: true,
         hasTapAction: true,
         hasFocusAction: true,
       ),

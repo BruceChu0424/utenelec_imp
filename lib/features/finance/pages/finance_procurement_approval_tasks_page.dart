@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -457,7 +458,7 @@ class _FinanceProcurementApprovalTasksPageState
     try {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: Text('批量通过($count 笔)'),
           content: SizedBox(
             width: 440,
@@ -523,7 +524,7 @@ class _FinanceProcurementApprovalTasksPageState
         builder: (ctx) {
           var value = '';
           return StatefulBuilder(
-            builder: (ctx, setDialogState) => AlertDialog(
+            builder: (ctx, setDialogState) => UtenAlertDialog(
               title: Text('批量驳回($count 笔)'),
               content: SizedBox(
                 width: 440,

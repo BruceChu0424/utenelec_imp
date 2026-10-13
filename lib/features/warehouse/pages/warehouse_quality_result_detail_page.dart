@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -1149,7 +1150,8 @@ class _RecordReturnDialogState extends State<_RecordReturnDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: const Text('登记实物退回'),
       content: SizedBox(
         width: 460,

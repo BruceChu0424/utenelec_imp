@@ -28,8 +28,8 @@ void main() {
       matching: find.byType(IconButton),
     );
     final helpSize = tester.getSize(helpButton);
-    expect(helpSize.width, greaterThanOrEqualTo(44));
-    expect(helpSize.height, greaterThanOrEqualTo(44));
+    expect(helpSize.width, greaterThanOrEqualTo(40));
+    expect(helpSize.height, greaterThanOrEqualTo(40));
 
     final visibleText = tester.widget<Text>(find.text(longMessage).first);
     expect(visibleText.maxLines, 1);

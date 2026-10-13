@@ -325,7 +325,8 @@ class _SubcontractDocDetailPageState
       context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
-        AlertDialog(
+        UtenAlertDialog(
+          scrollable: false,
           key: const Key('subcontract-order-change-qty-dialog'),
           title: Text(l10n.orderChangeQtyTitle),
           content: SizedBox(
@@ -472,7 +473,7 @@ class _SubcontractDocDetailPageState
             context: context,
             builder: (ctx) => trackNativeReadDialog(
               ctx,
-              AlertDialog(
+              UtenAlertDialog(
                 title: const Text('确认'),
                 content: Text(confirm),
                 actionsAlignment: MainAxisAlignment.center,
@@ -534,7 +535,7 @@ class _SubcontractDocDetailPageState
       context: context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
-        AlertDialog(
+        UtenAlertDialog(
           title: const Text('删除单据'),
           content: const Text('确定删除该草稿单据吗？'),
           actionsAlignment: MainAxisAlignment.center,

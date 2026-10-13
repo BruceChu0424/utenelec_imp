@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -155,10 +156,9 @@ class _AddDestinationDialogState extends State<_AddDestinationDialog> {
     );
     final targetMaximum = productionQuantityWithUnit(maximum, widget.unitName);
     final target = _eligibleTarget(_demandId);
-    return AlertDialog(
+    return UtenAlertDialog(
       key: const ValueKey('daily-add-destination-dialog'),
       title: const Text('添加产出去向'),
-      scrollable: true,
       content: SizedBox(
         width: 480,
         child: Column(

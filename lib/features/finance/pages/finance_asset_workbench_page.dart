@@ -368,7 +368,7 @@ class _MetricCard extends StatelessWidget {
       label: '$label，$value',
       child: Container(
         width: width,
-        height: 96,
+        constraints: const BoxConstraints(minHeight: 96),
         padding: const EdgeInsets.all(UtenSpacing.s12),
         decoration: BoxDecoration(
           color: theme.colorScheme.surface,
@@ -394,22 +394,16 @@ class _MetricCard extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: UtenSpacing.s4),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      value,
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
+                  Text(
+                    value,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
                 ],

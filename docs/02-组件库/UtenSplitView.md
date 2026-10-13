@@ -35,7 +35,11 @@ UtenSplitView 把这套布局下沉为统一组件：**分割线可左右拖动*
 
 ```dart
 UtenSplitView(
-  persistenceKey: 'basicData.goods', // 可选：本地记住用户拖定的宽度
+  persistenceKey: 'basicData.goods', // 保留既有偏好key
+  minTwoPaneWidth: 840,             // 主档页按实际内容宽度回退
+  selectedLeadingLabel: selectedPath,
+  selectedLeadingKey: selectedId,   // 业务ID；不按名称合并节点
+  compactHeader: unifiedSearch,
   leading: _buildTree(...),          // 左面板（分类树 / 列表）
   trailing: selected == null ? 空态 : _DetailPane(...), // 右面板（占满剩余）
 )
@@ -46,7 +50,7 @@ UtenSplitView(
 | `initialLeadingWidth` | 300 | 初始宽，也是双击复位值（对齐旧版固定宽） |
 | `minLeadingWidth` | 220 | 左栏最小宽 |
 | `maxLeadingWidth` | 520 | 左栏最大宽（另受右栏保底约束） |
-| `minTrailingWidth` | 360 | 右栏保底宽：极窄窗口也不会把详情拖没 |
+| `minTrailingWidth` | 360 | 右栏保底宽：不足时切为单内容区和完整目录 |
 | `persistenceKey` | null | 传页面级唯一 key → 宽度存本地 shared_preferences（`uten.splitView.<key>`），下次进页面自动恢复 |
 | `onWidthChanged` | null | 宽度变化回调 |
 
@@ -54,8 +58,14 @@ UtenSplitView(
 
 ## 四、边界与注意
 
-- **compact 断点的抽屉回退仍由页面自己处理**：本组件只替换「分栏分支」，
-  各页面原来的 `if (bp == compact) → endDrawer` 逻辑不动。
+- 回退由共享`UtenAdaptiveHierarchyPane`统一处理，判定使用`LayoutBuilder`实际内容宽度，
+  不是整屏宽度。两栏所需宽度至少为`max(minTwoPaneWidth, minLeadingWidth + 12 + minTrailingWidth)`。
+  主档页使用840；选择器默认600并继续检查左右最低宽度。空间不足不再压窄树或产生负宽度。
+- 窄屏正文显示当前完整路径和目录入口，目录在本面板内全宽打开。
+  树与内容通过稳定key保持挂载；关闭、返回、Escape或明确选树行后回到原内容。
+  搜索自动定位、计数返回、权限刷新不会自动关闭目录；大缩放后按新的有效宽度重排。
+- `leadingNoun`、`selectedLeadingLabel`、`compactHeader`、`openLeadingButtonKey`
+  为窄屏入口的配置；分类、部门、权限资源及事实面板应使用各自准确文案。
 - 依赖父容器给出有界宽度（页面 body 天然有界）。
 - 各页面已使用的 persistenceKey：`basicData.goods`、`basicData.client`、
   `basicData.supplier`、`basicData.mould`、`department.manage`、
@@ -64,3 +74,33 @@ UtenSplitView(
   传全树最长行的 TextPainter 实测宽，实现「默认划分 = 左边最宽内容」）。新页面接入请起新 key。
 - 与 `UtenListTwoPane`（筛选 + 表格）的区别：UtenListTwoPane 自 2026-09-10 起**所有断点都是「筛选在上 / 表格在下」**（列表页表格要横向空间，筛选窄栏会压表格），本组件只服务分类树主档页的「树 + 详情」左右分栏。以下旧描述保留作背景：UtenListTwoPane 曾是断点驱动的
   筛选侧栏布局；UtenSplitView 是「树 + 详情」的可拖分栏。需要拖宽的用本组件。
+
+
+## 五、分类树可读性与验证
+
+全站分类/组织树共用`UtenHierarchyTreeView`。长名称允许换行；缩进最多占行宽12%，
+深层与无缩进模式同时显示层数和父分类，选中项显示完整祖先路径，颜色只作辅助。
+窄行把计数、部门徽标和操作移到下一行；展开和删除图标保留小视觉，触控命中至少48。
+分类默认宽度测量使用实际TextScaler，业务UUID、排序、权限谓词、搜索与上下文操作保持原来源。
+
+验收：160/320/375/600/768/840/960/1440逻辑宽度，100%至200%缩放，10层树、长名称/编码、
+同名不同ID、搜索慢请求、选择后关闭、跨断点展开/内容状态保留、权限撤销、多选确认与取消。
+新增压力回归在`test/components/layout/uten_adaptive_category_layout_test.dart`，
+原刷新/分页/搜索竞态测试继续保留业务断言。
+
+
+## 六、2026-10-13 消费者覆盖
+
+| 层 | 消费者 |
+|---|---|
+| 主档分类壳 | 客户、模具、货品、供应商资料四页 |
+| 其它分类页 | 即时库存、应收应付、收付款类别 |
+| 组织页 | 部门管理、我的部门 |
+| 两栏选择器 | 货品选择、客户/供应商/模具共用主档选择、部门员工选择、共享员工选择、页面权限选人 |
+| 非分类分栏 | 权限资源管理、IQC拒收案件事实/办理；各自声明准确入口文案 |
+| 单树面板与编辑 | 货品分类选择面板、分类编辑、收付款类别父级选择、部门选择与编辑；通过共享树改善长名和深层阅读 |
+
+分类分段覆盖68个`UtenFilterToolbar`消费者文件、10个直接`UtenSegmentRow`消费者文件和14个
+`UtenSegmentedFilter`消费者文件；共享适配无需按业务页复制。销售接单审核原非flex Row已改为
+窄宽上下排布、宽宽给分类真实有界宽度；AppBar分类中央区域由共享AppBar提供真实局部约束。
+未更改仓储调用、业务模型、权限谓词、数量统计、UUID选择和确认流程。

@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 
 import 'uten_colors.dart';
 import 'uten_tokens.dart';
+import 'uten_typography.dart';
 import 'uten_page_transitions.dart';
 import '../../shared/platform_branding/platform_branding.dart';
 import 'brand_theme.dart';
@@ -64,104 +65,10 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
     // Web/桌面轻量淡入、移动端平台默认, 全部登记转场进行态(ADR-108)。
     pageTransitionsTheme: utenPageTransitionsTheme(),
 
-    textTheme: const TextTheme(
-      displayLarge: TextStyle(
-        fontSize: 48,
-        fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary,
-        height: 1.1,
-        letterSpacing: -0.5,
-      ),
-      displayMedium: TextStyle(
-        fontSize: 36,
-        fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary,
-        height: 1.15,
-        letterSpacing: -0.3,
-      ),
-      displaySmall: TextStyle(
-        fontSize: 28,
-        fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary,
-        height: 1.2,
-        letterSpacing: -0.2,
-      ),
-      headlineLarge: TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.w700,
-        color: UtenColors.darkTextPrimary,
-        height: 1.3,
-        letterSpacing: -0.3,
-      ),
-      headlineMedium: TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary,
-        height: 1.35,
-        letterSpacing: -0.2,
-      ),
-      headlineSmall: TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary,
-        height: 1.4,
-        letterSpacing: -0.2,
-      ),
-      titleLarge: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary,
-        height: 1.4,
-        letterSpacing: -0.2,
-      ),
-      titleMedium: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary,
-        height: 1.4,
-      ),
-      titleSmall: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary,
-        height: 1.4,
-      ),
-      bodyLarge: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w400,
-        color: UtenColors.darkTextPrimary,
-        height: 1.5,
-      ),
-      bodyMedium: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w400,
-        color: UtenColors.darkTextPrimary,
-        height: 1.5,
-      ),
-      bodySmall: TextStyle(
-        fontSize: 13,
-        fontWeight: FontWeight.w400,
-        color: UtenColors.darkTextSecondary,
-        height: 1.45,
-      ),
-      labelLarge: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextPrimary,
-        height: 1.4,
-      ),
-      labelMedium: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: UtenColors.darkTextSecondary,
-        height: 1.4,
-      ),
-      labelSmall: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        color: UtenColors.darkTextTertiary,
-        height: 1.4,
-      ),
+    textTheme: buildUtenTextTheme(
+      primary: UtenColors.darkTextPrimary,
+      secondary: UtenColors.darkTextSecondary,
+      tertiary: UtenColors.darkTextTertiary,
     ),
 
     appBarTheme: const AppBarTheme(
@@ -171,6 +78,7 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       scrolledUnderElevation: 0,
       centerTitle: false,
       titleTextStyle: TextStyle(
+        fontFamily: 'NotoSansSC',
         color: UtenColors.darkTextPrimary,
         fontSize: 18,
         fontWeight: FontWeight.w600,
@@ -179,11 +87,12 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
     ),
 
     cardTheme: CardThemeData(
+      clipBehavior: Clip.antiAlias,
       color: UtenColors.darkSurface,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(UtenRadius.card),
         side: const BorderSide(color: UtenColors.darkBorder),
       ),
     ),
@@ -208,7 +117,7 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       ),
       trackBorderColor: WidgetStateProperty.all(Colors.transparent),
       thickness: WidgetStateProperty.all(10),
-      radius: const Radius.circular(6),
+      radius: const Radius.circular(UtenRadius.sm),
     ),
 
     // 叠加态与浅色主题一致：实心叠 teal700，线框/文字叠 teal400（深色下更亮）
@@ -220,12 +129,16 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
         disabledForegroundColor: UtenColors.darkTextTertiary,
         overlayColor: UtenColors.teal700,
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        minimumSize: const Size(0, UtenControlMetrics.standardHeight),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(UtenRadius.control),
         ),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
@@ -236,12 +149,16 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
         disabledForegroundColor: UtenColors.darkTextTertiary,
         overlayColor: UtenColors.teal700,
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        minimumSize: const Size(0, UtenControlMetrics.standardHeight),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(UtenRadius.control),
         ),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -250,13 +167,17 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
         backgroundColor: UtenColors.darkSurface,
         disabledForegroundColor: UtenColors.darkTextTertiary,
         overlayColor: UtenColors.teal400,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        minimumSize: const Size(0, UtenControlMetrics.standardHeight),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(UtenRadius.control),
         ),
         side: const BorderSide(color: UtenColors.darkBorderStrong),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -268,7 +189,11 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(UtenRadius.control),
         ),
-        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(
+          fontFamily: 'NotoSansSC',
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     ),
     iconButtonTheme: IconButtonThemeData(
@@ -310,15 +235,18 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       hintStyle: TextStyle(
+        fontFamily: 'NotoSansSC',
         color: UtenColors.darkTextTertiary.withValues(alpha: 0.7),
         fontSize: 14,
       ),
       labelStyle: const TextStyle(
+        fontFamily: 'NotoSansSC',
         color: UtenColors.darkTextSecondary,
         fontSize: 14,
       ),
       // 2026-10-10 用户口径：单位后缀用正文色（深色=近白），与浅色主题成对。
       suffixStyle: const TextStyle(
+        fontFamily: 'NotoSansSC',
         color: UtenColors.darkTextPrimary,
         fontSize: 14,
       ),
@@ -335,7 +263,8 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         final selected = states.contains(WidgetState.selected);
         return TextStyle(
-          fontSize: 11,
+          fontFamily: 'NotoSansSC',
+          fontSize: 13,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
           color: selected ? UtenColors.teal400 : UtenColors.darkTextTertiary,
         );
@@ -364,13 +293,15 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
         size: 22,
       ),
       selectedLabelTextStyle: const TextStyle(
+        fontFamily: 'NotoSansSC',
         color: UtenColors.teal400,
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
       unselectedLabelTextStyle: const TextStyle(
+        fontFamily: 'NotoSansSC',
         color: UtenColors.darkTextTertiary,
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: FontWeight.w500,
       ),
     ),
@@ -379,7 +310,8 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       backgroundColor: UtenColors.darkSurfaceLow,
       selectedColor: UtenColors.teal900,
       labelStyle: const TextStyle(
-        fontSize: 12,
+        fontFamily: 'NotoSansSC',
+        fontSize: 13,
         fontWeight: FontWeight.w500,
         color: UtenColors.darkTextSecondary,
       ),
@@ -394,38 +326,45 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       backgroundColor: UtenColors.darkSurface,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(UtenRadius.dialog),
         side: const BorderSide(color: UtenColors.darkBorder),
       ),
       titleTextStyle: const TextStyle(
+        fontFamily: 'NotoSansSC',
         fontSize: 16,
         fontWeight: FontWeight.w600,
         color: UtenColors.darkTextPrimary,
       ),
       contentTextStyle: const TextStyle(
-        fontSize: 14,
+        fontFamily: 'NotoSansSC',
+        fontSize: 16,
         color: UtenColors.darkTextSecondary,
       ),
     ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: UtenColors.slate100,
       contentTextStyle: const TextStyle(
+        fontFamily: 'NotoSansSC',
         color: UtenColors.slate900,
         fontSize: 14,
       ),
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(UtenRadius.lg),
+      ),
     ),
 
     listTileTheme: const ListTileThemeData(
       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       titleTextStyle: TextStyle(
+        fontFamily: 'NotoSansSC',
         fontSize: 14,
         fontWeight: FontWeight.w500,
         color: UtenColors.darkTextPrimary,
       ),
       subtitleTextStyle: TextStyle(
-        fontSize: 12,
+        fontFamily: 'NotoSansSC',
+        fontSize: 13,
         color: UtenColors.darkTextSecondary,
       ),
     ),
@@ -445,6 +384,7 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
         borderRadius: BorderRadius.circular(UtenRadius.control),
       ),
       extendedTextStyle: const TextStyle(
+        fontFamily: 'NotoSansSC',
         fontSize: 14,
         fontWeight: FontWeight.w600,
       ),
@@ -469,7 +409,9 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       }),
       checkColor: WidgetStateProperty.all(UtenColors.darkBackground),
       side: const BorderSide(color: UtenColors.darkBorderStrong, width: 1.5),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(3)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(UtenRadius.xs),
+      ),
     ),
 
     radioTheme: RadioThemeData(
@@ -482,8 +424,13 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
     tabBarTheme: const TabBarThemeData(
       labelColor: UtenColors.darkTextPrimary,
       unselectedLabelColor: UtenColors.darkTextSecondary,
-      labelStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+      labelStyle: TextStyle(
+        fontFamily: 'NotoSansSC',
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
       unselectedLabelStyle: TextStyle(
+        fontFamily: 'NotoSansSC',
         fontSize: 14,
         fontWeight: FontWeight.w500,
       ),

@@ -1,6 +1,7 @@
 // UtenPerformanceTierSwitcher - 性能档切换 UI
 // 文档：docs/02-组件库/UtenPerformanceTierSwitcher.md（待写）
 
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -58,7 +59,7 @@ class UtenPerformanceTierSwitcher extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(UtenRadius.md),
           ),
           child: Row(
             children: [

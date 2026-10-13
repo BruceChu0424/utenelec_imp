@@ -17,6 +17,7 @@ import 'package:uten_imp/shared/ai/ai_status_provider.dart';
 
 import 'sales_intake_fixture.dart';
 import 'sales_intake_test_support.dart';
+import '../../../support/filter_segment_tap.dart';
 
 class _Env {
   _Env(this.runner, this.presenter);
@@ -330,6 +331,16 @@ void main() {
       );
       await tapSheetChip(tester, 1);
       expect(find.textContaining('文件里没找到货品明细'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('sales-intake-filter')),
+        200,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('sales-intake-review-scroll')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '全部 (6)');
       expect(find.text('全部 (6)'), findsOneWidget);
       await _importAll(tester);
       expect(env.result!.patch!.jobId, 'job-42');

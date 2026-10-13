@@ -29,6 +29,7 @@ List<EditableGridColumn<T>> reviewedGridColumns<T extends EditableGridRow>({
       filterValueOf: column.filterValueOf,
       frozenTextOf: column.frozenTextOf,
       chromeWidth: column.chromeWidth,
+      chromeWidthOf: column.chromeWidthOf,
       fillsCellHeight: column.fillsCellHeight,
       cellColor: column.cellColor,
       cellColorListenableOf: column.cellColorListenableOf,

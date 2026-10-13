@@ -194,7 +194,7 @@ class _StatusCard extends StatelessWidget {
             height: 56,
             decoration: BoxDecoration(
               color: visitorStatusColor(app.status).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(UtenRadius.card),
             ),
             child: Icon(
               visitorStatusIcon(app.status),

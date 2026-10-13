@@ -2,6 +2,7 @@
 // 提交：POST /api/org/employees/{id}/transfer；后端写 transfer 任职记录并更新部门/岗位。
 // 成功返回 true（调用方负责刷新详情）。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -105,7 +106,7 @@ class _EmployeeTransferDialogState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(l10n.employeeTransferTitle),
       content: SizedBox(
         width: 420,
@@ -138,12 +139,12 @@ class _EmployeeTransferDialogState
             const SizedBox(height: UtenSpacing.s12),
             InkWell(
               onTap: _pickDate,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(UtenRadius.control),
               child: InputDecorator(
                 decoration: InputDecoration(
                   labelText: l10n.employeeTransferFieldDate,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(UtenRadius.control),
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -160,7 +161,7 @@ class _EmployeeTransferDialogState
               decoration: InputDecoration(
                 labelText: l10n.employeeTransferFieldRemark,
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(UtenRadius.control),
                 ),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16,

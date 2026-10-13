@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -489,106 +490,113 @@ class _FinanceSalesOrderConfirmationPageState
 
       setState(() => _batchBusy = false);
       final controller = TextEditingController();
-      final approved = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text('批量确认 ${tasks.length} 笔销售订单'),
-          content: SizedBox(
-            width: 560,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const UtenReviewerResponsibilityNotice(
-                    actionLabel: '销售订单批量财务确认',
-                    description: '本次确认要么全部生效、要么全部不生效；有一笔订单有问题，整批都不会通过。',
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  const Text(
-                    '确认只放行计划部可见与排产，不代表已收款，也不会在此建立正式应收。'
-                    '请确认下列订单已逐笔核对金额、客户应收和发运策略：',
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 220),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Theme.of(
-                            dialogContext,
-                          ).colorScheme.outlineVariant,
+      var remark = '';
+      late final bool? approved;
+      try {
+        approved = await UtenDialog.showAndWaitForExit<bool>(
+          context,
+          onPopped: (_) {
+            remark = controller.text;
+          },
+
+          builder: (dialogContext) => UtenAlertDialog(
+            scrollable: false,
+            title: Text('批量确认 ${tasks.length} 笔销售订单'),
+            content: SizedBox(
+              width: 560,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const UtenReviewerResponsibilityNotice(
+                      actionLabel: '销售订单批量财务确认',
+                      description: '本次确认要么全部生效、要么全部不生效；有一笔订单有问题，整批都不会通过。',
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    const Text(
+                      '确认只放行计划部可见与排产，不代表已收款，也不会在此建立正式应收。'
+                      '请确认下列订单已逐笔核对金额、客户应收和发运策略：',
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: Theme.of(
+                              dialogContext,
+                            ).colorScheme.outlineVariant,
+                          ),
+                          borderRadius: UtenRadius.mdAll,
                         ),
-                        borderRadius: UtenRadius.mdAll,
-                      ),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: tasks.length,
-                        separatorBuilder: (_, _) => Divider(
-                          height: 1,
-                          color: Theme.of(
-                            dialogContext,
-                          ).colorScheme.outlineVariant,
-                        ),
-                        itemBuilder: (context, index) {
-                          final item = tasks[index];
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              item.billNo,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: tasks.length,
+                          separatorBuilder: (_, _) => Divider(
+                            height: 1,
+                            color: Theme.of(
+                              dialogContext,
+                            ).colorScheme.outlineVariant,
+                          ),
+                          itemBuilder: (context, index) {
+                            final item = tasks[index];
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                item.billNo,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                            subtitle: Text(item.clientName ?? '未标注客户'),
-                            trailing: Text(
-                              _orderAmount(item),
-                              textAlign: TextAlign.end,
-                            ),
-                          );
-                        },
+                              subtitle: Text(item.clientName ?? '未标注客户'),
+                              trailing: Text(
+                                _orderAmount(item),
+                                textAlign: TextAlign.end,
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  TextField(
-                    key: const Key('sales-order-finance-batch-remark'),
-                    controller: controller,
-                    maxLength: 500,
-                    maxLines: 2,
-                    decoration: UtenInputDecoration(
-                      const InputDecoration(
-                        labelText: '统一确认备注(选填)',
-                        border: OutlineInputBorder(),
+                    const SizedBox(height: UtenSpacing.s12),
+                    TextField(
+                      key: const Key('sales-order-finance-batch-remark'),
+                      controller: controller,
+                      maxLength: 500,
+                      maxLines: 2,
+                      decoration: UtenInputDecoration(
+                        const InputDecoration(
+                          labelText: '统一确认备注(选填)',
+                          border: OutlineInputBorder(),
+                        ),
+                        info:
+                            '${workflowFieldText(context).workflowFinanceReviewHint} 该备注写入本次选中的每笔订单。',
                       ),
-                      info:
-                          '${workflowFieldText(context).workflowFinanceReviewHint} 该备注写入本次选中的每笔订单。',
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('取消'),
+              ),
+              FinanceReviewClaimButton(
+                key: const Key('sales-order-finance-batch-submit'),
+                claim: claim,
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text('确认通过 ${tasks.length} 笔'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            FinanceReviewClaimButton(
-              key: const Key('sales-order-finance-batch-submit'),
-              claim: claim,
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text('确认通过 ${tasks.length} 笔'),
-            ),
-          ],
-        ),
-      );
-      final remark = controller.text;
-      Future<void>.delayed(
-        const Duration(milliseconds: 300),
-        controller.dispose,
-      );
+        );
+      } finally {
+        controller.dispose();
+      }
+
       if (approved != true || !mounted) return;
 
       setState(() => _batchBusy = true);

@@ -27,8 +27,7 @@
 // - 不要在 onAction 里同步抛错；如果会抛，请包 try/catch。
 import 'package:flutter/material.dart';
 
-import '../../core/theme/uten_colors.dart';
-import '../../core/theme/uten_tokens.dart';
+import 'uten_button.dart';
 
 /// 防连点小工具。状态机：idle → busy → idle。
 ///
@@ -111,136 +110,27 @@ class _UtenActionButtonState extends State<UtenActionButton> {
     }
   }
 
-  EdgeInsetsGeometry get _padding => switch (widget.size) {
-    UtenActionButtonSize.small => const EdgeInsets.symmetric(
-      horizontal: 12,
-      vertical: 6,
-    ),
-    UtenActionButtonSize.medium => const EdgeInsets.symmetric(
-      horizontal: 16,
-      vertical: 10,
-    ),
-    UtenActionButtonSize.large => const EdgeInsets.symmetric(
-      horizontal: 20,
-      vertical: 14,
-    ),
-  };
-
-  double get _minimumHeight => switch (widget.size) {
-    UtenActionButtonSize.small => 44,
-    UtenActionButtonSize.medium => 44,
-    UtenActionButtonSize.large => 52,
-  };
-
-  double get _iconSize => widget.size == UtenActionButtonSize.small
-      ? 14
-      : (widget.size == UtenActionButtonSize.large ? 18 : 16);
-
-  TextStyle get _textStyle => TextStyle(
-    fontSize: widget.size == UtenActionButtonSize.small
-        ? 12
-        : (widget.size == UtenActionButtonSize.large ? 15 : 13),
-    fontWeight: FontWeight.w600,
-    height: 1.2,
-  );
-
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final (bg, fg, borderColor) = _resolveColors(theme, isDark);
-    final disabledBg = isDark ? UtenColors.slate700 : UtenColors.slate200;
-    final disabledFg = isDark ? UtenColors.slate500 : UtenColors.slate400;
-    final enabled = !_guard.isBusy;
-    final radius = BorderRadius.circular(UtenRadius.control);
-
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      child: Material(
-        color: enabled ? bg : disabledBg,
-        shape: RoundedRectangleBorder(
-          borderRadius: radius,
-          side: borderColor == null
-              ? BorderSide.none
-              : BorderSide(color: borderColor),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: enabled ? _runAction : null,
-          borderRadius: radius,
-          child: Container(
-            constraints: BoxConstraints(
-              minWidth: widget.isExpanded ? double.infinity : _minimumHeight,
-              minHeight: _minimumHeight,
-            ),
-            padding: _padding,
-            child: Row(
-              mainAxisSize: widget.isExpanded
-                  ? MainAxisSize.max
-                  : MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (_guard.isBusy)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: SizedBox(
-                      width: _iconSize,
-                      height: _iconSize,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(
-                          enabled ? fg : disabledFg,
-                        ),
-                      ),
-                    ),
-                  )
-                else if (widget.icon != null)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Icon(
-                      widget.icon,
-                      size: _iconSize,
-                      color: enabled ? fg : disabledFg,
-                    ),
-                  ),
-                DefaultTextStyle.merge(
-                  style: _textStyle.copyWith(color: enabled ? fg : disabledFg),
-                  child: _guard.isBusy && widget.loadingLabel != null
-                      ? widget.loadingLabel!
-                      : widget.label,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  (Color, Color, Color?) _resolveColors(ThemeData theme, bool isDark) {
-    return switch (widget.type) {
-      UtenActionButtonType.primary => (
-        theme.colorScheme.primary,
-        theme.colorScheme.onPrimary,
-        null,
-      ),
-      UtenActionButtonType.secondary =>
-        isDark
-            ? (UtenColors.darkSurfaceLow, UtenColors.slate200, null)
-            : (UtenColors.slate100, UtenColors.slate900, null),
-      UtenActionButtonType.ghost => (
-        Colors.transparent,
-        isDark ? UtenColors.slate200 : UtenColors.slate900,
-        isDark ? UtenColors.slate700 : UtenColors.slate300,
-      ),
-      UtenActionButtonType.danger => (
-        theme.colorScheme.error,
-        theme.colorScheme.onError,
-        null,
-      ),
-    };
-  }
+  Widget build(BuildContext context) => UtenButton(
+    onPressed: _guard.isBusy ? null : _runAction,
+    isLoading: _guard.isBusy,
+    isExpanded: widget.isExpanded,
+    icon: widget.icon,
+    type: switch (widget.type) {
+      UtenActionButtonType.primary => UtenButtonType.primary,
+      UtenActionButtonType.secondary => UtenButtonType.secondary,
+      UtenActionButtonType.ghost => UtenButtonType.ghost,
+      UtenActionButtonType.danger => UtenButtonType.danger,
+    },
+    size: switch (widget.size) {
+      UtenActionButtonSize.small => UtenButtonSize.small,
+      UtenActionButtonSize.medium => UtenButtonSize.medium,
+      UtenActionButtonSize.large => UtenButtonSize.large,
+    },
+    child: _guard.isBusy && widget.loadingLabel != null
+        ? widget.loadingLabel!
+        : widget.label,
+  );
 }
 
 enum UtenActionButtonType { primary, secondary, ghost, danger }

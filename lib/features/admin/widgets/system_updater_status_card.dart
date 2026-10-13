@@ -52,7 +52,7 @@ class SystemUpdaterStatusCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.06),
         border: Border.all(color: color.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

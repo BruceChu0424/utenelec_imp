@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/document_status_counts_provider.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -157,6 +158,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            isSuperAdminProvider.overrideWithValue(false),
+            documentStatusCountsProvider.overrideWith(
+              (ref, scope) async => const {},
+            ),
             localServerReachableProvider.overrideWith(
               (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
             ),
@@ -197,6 +202,10 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          isSuperAdminProvider.overrideWithValue(false),
+          documentStatusCountsProvider.overrideWith(
+            (ref, scope) async => const {},
+          ),
           localServerReachableProvider.overrideWith(
             (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
           ),
@@ -308,6 +317,10 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            isSuperAdminProvider.overrideWithValue(false),
+            documentStatusCountsProvider.overrideWith(
+              (ref, scope) async => const {},
+            ),
             localServerReachableProvider.overrideWith(
               (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
             ),

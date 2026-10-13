@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../layout/uten_app_bar_action_scope.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/scale.dart';
 
 /// The shared Uten action button.
 ///
@@ -22,7 +26,7 @@ class UtenButton extends StatelessWidget {
     this.height,
   });
 
-  final VoidCallback? onPressed;
+  final FutureOr<void> Function()? onPressed;
   final Widget child;
   final UtenButtonType type;
   final UtenButtonSize size;
@@ -31,8 +35,8 @@ class UtenButton extends StatelessWidget {
   final IconData? icon;
   final VoidCallback? onLongPress;
 
-  /// 覆盖按钮最小高度（宽度仍按 [_minimumExtent]）。用于把工具条内的按钮
-  /// 对齐到同条其它控件（如筛选 chip 的 48），而不动全站默认 44/52。
+  /// Aligns a compact control with its toolbar. Touch targets retain their
+  /// minimum extent even when the visual desktop height is overridden.
   final double? height;
 
   /// Called when the visually disabled button is tapped.
@@ -41,26 +45,43 @@ class UtenButton extends StatelessWidget {
   /// a disabled or loading button remains non-interactive.
   final VoidCallback? onDisabledTap;
 
-  double get _minimumExtent => switch (size) {
-    UtenButtonSize.small || UtenButtonSize.medium => 44,
-    UtenButtonSize.large => 52,
+  UtenButtonSize get _visualSize =>
+      size == UtenButtonSize.large &&
+          height != null &&
+          height! <= UtenControlMetrics.standardHeight
+      ? UtenButtonSize.medium
+      : size;
+
+  double get _minimumExtent => switch (_visualSize) {
+    UtenButtonSize.small => UtenControlMetrics.compactHeight,
+    UtenButtonSize.medium => UtenControlMetrics.standardHeight,
+    UtenButtonSize.large => UtenControlMetrics.primaryHeight,
   };
 
-  EdgeInsetsGeometry get _padding => switch (size) {
-    UtenButtonSize.small => const EdgeInsets.symmetric(horizontal: 14),
-    UtenButtonSize.medium => const EdgeInsets.symmetric(horizontal: 18),
-    UtenButtonSize.large => const EdgeInsets.symmetric(horizontal: 22),
+  EdgeInsetsGeometry get _padding => switch (_visualSize) {
+    UtenButtonSize.small => const EdgeInsets.symmetric(
+      horizontal: 12,
+      vertical: 8,
+    ),
+    UtenButtonSize.medium => const EdgeInsets.symmetric(
+      horizontal: 16,
+      vertical: 8,
+    ),
+    UtenButtonSize.large => const EdgeInsets.symmetric(
+      horizontal: 20,
+      vertical: 8,
+    ),
   };
 
-  double get _iconSize => switch (size) {
+  double get _iconSize => switch (_visualSize) {
     UtenButtonSize.small => 16,
     UtenButtonSize.medium => 18,
     UtenButtonSize.large => 20,
   };
 
   TextStyle get _textStyle => TextStyle(
-    fontSize: switch (size) {
-      UtenButtonSize.small => 13,
+    fontSize: switch (_visualSize) {
+      UtenButtonSize.small => 14,
       UtenButtonSize.medium => 14,
       UtenButtonSize.large => 16,
     },
@@ -72,7 +93,9 @@ class UtenButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final enabled = onPressed != null && !isLoading;
-    final effectiveOnTap = enabled ? onPressed : onDisabledTap;
+    final effectiveOnTap = enabled
+        ? UtenAppBarActionScope.wrap(context, onPressed)
+        : onDisabledTap;
     final (enabledBackground, enabledForeground, enabledBorder) =
         _resolveColors(colorScheme);
 
@@ -88,6 +111,15 @@ class UtenButton extends StatelessWidget {
         : colorScheme.onSurfaceVariant.withValues(alpha: 0.75);
     final border = enabled ? enabledBorder : colorScheme.outline;
     final radius = BorderRadius.circular(UtenRadius.control);
+    final minimumWidth = UtenControlMetrics.minimumHitExtent(
+      context,
+      desktop: context.scaled(_minimumExtent),
+    );
+    final minimumHeight = UtenControlMetrics.minimumHitExtent(
+      context,
+      desktop: context.scaled(height ?? _minimumExtent),
+    );
+    final iconSize = context.scaled(_iconSize);
     final shape = RoundedRectangleBorder(
       borderRadius: radius,
       side: border == null ? BorderSide.none : BorderSide(color: border),
@@ -123,8 +155,8 @@ class UtenButton extends StatelessWidget {
             ),
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                minWidth: _minimumExtent,
-                minHeight: height ?? _minimumExtent,
+                minWidth: minimumWidth,
+                minHeight: minimumHeight,
               ),
               child: Padding(
                 padding: _padding,
@@ -141,8 +173,8 @@ class UtenButton extends StatelessWidget {
                           padding: const EdgeInsets.only(right: 8),
                           child: ExcludeSemantics(
                             child: SizedBox(
-                              width: _iconSize,
-                              height: _iconSize,
+                              width: iconSize,
+                              height: iconSize,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
                                 color: foreground,
@@ -153,9 +185,9 @@ class UtenButton extends StatelessWidget {
                       else if (icon != null)
                         Padding(
                           padding: const EdgeInsets.only(right: 6),
-                          child: Icon(icon, size: _iconSize, color: foreground),
+                          child: Icon(icon, size: iconSize, color: foreground),
                         ),
-                      child,
+                      child is Flexible ? child : Flexible(child: child),
                     ],
                   ),
                 ),

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -141,7 +142,7 @@ Future<void> openWarehouseTaskRecord(
       if (!context.mounted || !requestScope.isCurrent) return;
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: const Text('继续送检'),
           content: const Text('按原收货单和批准数量继续送品质部检验。超量仍先隔离审核，不代表已增加可用库存。'),
           actions: [

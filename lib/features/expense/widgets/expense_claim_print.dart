@@ -2,6 +2,7 @@
 // 电子文件数与纸质张数分开呈现；付款信息只说明系统已登记事实。
 // 本件不替代原始凭证、税务查验、有效电子签名或法定电子档案。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -232,7 +233,7 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Dialog(
+    return UtenDialogFrame(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
         constraints: BoxConstraints(

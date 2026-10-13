@@ -31,15 +31,15 @@ import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
-import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -704,13 +704,18 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildSearchBox(),
-        ListTile(
-          key: const Key('instant-inventory-category-all'),
-          leading: const Icon(Icons.category_outlined),
-          title: const Text('全部分类'),
-          selected: _categoryId == null,
-          selectedTileColor: theme.colorScheme.primaryContainer,
-          onTap: () => select(null),
+        Builder(
+          builder: (paneContext) => ListTile(
+            key: const Key('instant-inventory-category-all'),
+            leading: const Icon(Icons.category_outlined),
+            title: const Text('全部分类'),
+            selected: _categoryId == null,
+            selectedTileColor: theme.colorScheme.primaryContainer,
+            onTap: () {
+              select(null);
+              UtenHierarchyPanelScope.maybeOf(paneContext)?.onSelection?.call();
+            },
+          ),
         ),
         const Divider(height: 1),
         if (_treeError != null)
@@ -993,7 +998,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final compact = context.breakpoint == UtenBreakpoint.compact;
     // 「含不良品仓」偏好变化（点开关 / 服务端同步到达）→ 回第 1 页重查。
     ref.listen(instantInventoryPrefsProvider, (prev, next) {
       if (prev != null && prev != next && mounted) {
@@ -1016,22 +1020,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             tooltip: '刷新', // TODO(l10n): 补 arb
             onPressed: _refresh,
           ),
-          if (compact)
-            Builder(
-              builder: (scaffoldContext) => IconButton(
-                key: const Key('instant-inventory-open-categories'),
-                icon: const Icon(Icons.account_tree_rounded),
-                tooltip: '分类树',
-                onPressed: () => Scaffold.of(scaffoldContext).openEndDrawer(),
-              ),
-            ),
         ],
       ),
-      endDrawer: compact
-          ? Drawer(
-              child: SafeArea(child: _buildCategoryPane(closeOnSelect: true)),
-            )
-          : null,
       // 盘点入口常驻右下：进入盘点直达独立会话页(带当前仓库)；盘点历史看申请记录。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
@@ -1069,25 +1059,22 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           : null,
       body: SafeArea(
         child: SelectionArea(
-          child: compact
-              ? Column(
-                  children: [
-                    _buildSearchBox(),
-                    Expanded(
-                      child: UtenContentContainer.wide(
-                        child: _buildTablePane(),
-                      ),
-                    ),
-                  ],
-                )
-              : UtenSplitView(
-                  persistenceKey: 'stock.instantInventory',
-                  leading: _buildCategoryPane(),
-                  trailing: Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: _buildTablePane(),
-                  ),
-                ),
+          child: UtenSplitView(
+            persistenceKey: 'stock.instantInventory',
+            minTwoPaneWidth: 840,
+            selectedLeadingLabel:
+                utenTreeSelectionPath(_categoryNodes, _categoryId) ?? '全部分类',
+            selectedLeadingKey: _categoryId,
+            openLeadingButtonKey: const Key(
+              'instant-inventory-open-categories',
+            ),
+            compactHeader: _buildSearchBox(),
+            leading: _buildCategoryPane(),
+            trailing: Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              child: _buildTablePane(),
+            ),
+          ),
         ),
       ),
     );

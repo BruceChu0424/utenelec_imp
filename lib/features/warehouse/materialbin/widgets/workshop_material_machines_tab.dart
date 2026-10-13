@@ -4,6 +4,7 @@
 // 个别机台单独改、停用、删除 (盘点用过的只能停用)。
 // 勾选多行后改任一勾选行的单元格 = 对全部勾选行生效 (编号与名称除外, 它们是每台机自己的);
 // 看到的勾选 = 提交的内容。改完点"保存修改"一次提交。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -641,7 +642,8 @@ class _BatchCreateDialogState extends State<_BatchCreateDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: const Text('批量新增机台'),
       content: SizedBox(
         width: 480,

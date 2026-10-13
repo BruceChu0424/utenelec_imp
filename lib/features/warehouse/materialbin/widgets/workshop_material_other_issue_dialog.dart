@@ -1,6 +1,7 @@
 // 其它耗用登记对话框 (ADR-131 §5.3): 试模、清机、报废料、其它的公斤数和原因。
 //
 // 当场从内料仓出库记车间费用, 不摊给产品, 报表单列。不登记的话差额体现在浪费率里。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -150,7 +151,8 @@ class _WorkshopMaterialOtherIssueDialogState
       canPop: !_saving,
       child: Stack(
         children: [
-          AlertDialog(
+          UtenAlertDialog(
+            scrollable: false,
             title: Text(l10n.wmOtherIssue),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 460),

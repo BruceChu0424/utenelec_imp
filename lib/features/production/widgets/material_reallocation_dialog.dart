@@ -97,7 +97,7 @@ Future<ProductionMaterialAnalysisView?> showMaterialReallocationDialog({
       final height = (MediaQuery.sizeOf(dialogContext).height - 48)
           .clamp(420.0, 800.0)
           .toDouble();
-      return Dialog(
+      return UtenDialogFrame(
         key: const Key('material-cross-reallocation-dialog'),
         insetPadding: utenDialogInsetPadding(dialogContext),
         shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -136,7 +137,7 @@ class _MaterialTransferLauncherDialogState
         : material.additionalSupplyRecommendedQty > 0
         ? '待补 ${widget.qtyText(material.additionalSupplyRecommendedQty)}'
         : null;
-    return AlertDialog(
+    return UtenAlertDialog(
       key: const Key('material-transfer-launcher'),
       title: Text('物料调拨：${material.goodsName ?? material.goodsCode ?? '物料'}'),
       content: SizedBox(

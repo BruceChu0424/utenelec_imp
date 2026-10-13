@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../platform_tables/platform_table_binding.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,7 +44,7 @@ Future<void> deleteFormDrafts(
   final owner = store.ownerKey;
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (dialog) => AlertDialog(
+    builder: (dialog) => UtenAlertDialog(
       title: Text(drafts.length == 1 ? '删除草稿？' : '删除所选 ${drafts.length} 份草稿？'),
       content: const Text('删除后将无法继续填写，原内容仍保留在本机草稿历史。'),
       actions: [

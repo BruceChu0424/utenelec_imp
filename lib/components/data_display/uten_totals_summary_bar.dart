@@ -80,23 +80,19 @@ class UtenTotalsSummaryBar extends StatelessWidget {
         spacing: UtenSpacing.s16,
         runSpacing: UtenSpacing.s4,
         children: [
-          // 标签与数值包成一个不可拆的 Row：窄屏换行只会在项与项之间发生，
-          // 不会把「合计金额」和它的数值拆到两行。
+          // 一个完整段落保留标签与原始格式化值；长币种或金额也可自然换行。
+          // 不固定标签宽、不用 FittedBox 缩小金额。
           for (final e in visible)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.baseline,
-              textBaseline: TextBaseline.alphabetic,
+            Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text('${e.label}: ', style: labelStyle),
-                // 值用 Flexible：窄屏/大字号下在数值内部换行，绝不把 Row 撑溢出
-                // （标签与值仍是同一项，不会被 Wrap 拆到两行）。
-                Flexible(
-                  child: Text(
-                    e.value,
-                    style: valueStyle?.copyWith(
-                      color: e.danger ? theme.colorScheme.error : null,
-                    ),
+                Text(
+                  e.value,
+                  textAlign: TextAlign.end,
+                  style: valueStyle?.copyWith(
+                    color: e.danger ? theme.colorScheme.error : null,
                   ),
                 ),
               ],

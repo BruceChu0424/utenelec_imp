@@ -9,6 +9,7 @@
 //   through PUT /master/goods/{id}/name-en. Prices and every other goods field
 //   are untouched, so a salesperson can keep names current without being able
 //   to change anything else.
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -221,7 +222,8 @@ class _GoodsNameEnDialogState extends ConsumerState<_GoodsNameEnDialog> {
     // showGoodsNameEnDialog).
     return PopScope(
       canPop: !_saving,
-      child: AlertDialog(
+      child: UtenAlertDialog(
+        scrollable: false,
         key: const ValueKey('goods-name-en-dialog'),
         title: Text(l10n.goodsNameEnEdit),
         content: ConstrainedBox(

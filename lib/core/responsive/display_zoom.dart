@@ -1,37 +1,12 @@
-// 整体缩放(display zoom)——把整棵界面树按倍率等比放大/缩小。
-// 文档：docs/00-项目准则/02-响应式与多端适配.md §3.3.1、
-//       docs/00-项目准则/04-字体与字号可调.md §一
-//
-// 解决两件事(2026-09-20 用户反馈)：
-// 1. 宽屏观感一致：窗口逻辑宽超过基准画布 [UtenDisplayZoom.designWidth](1920)时按
-//    「窗口宽 / 1920」整体放大——2560/3440 宽的显示器看到的布局与 1920 完全一样，只是
-//    更大。此前内容区钳在 maxWidth 1600 居中，2560 宽的屏两侧各留 480 空白(用户口径
-//    「右边只占 60% 多」)，分类工具条等固定宽度控件也显得又小又靠左。
-// 2. 字号档 = 整体缩放：文字、图标、内边距、卡片尺寸一起变。此前字号档只乘进
-//    textScaler，文字大了容器不跟着大，放不下就截断(用户口径「卡片也要对应变大」)。
-//
-// 实现：Transform.scale(zoom) + OverflowBox——子树按「窗口尺寸 / zoom」的画布布局，再整体
-// 放大到窗口大小；MediaQuery 的 size / padding / viewPadding / viewInsets /
-// devicePixelRatio 同步换算，页面里的断点、对话框尺寸、SafeArea 都按画布尺寸算。
-// zoom == 1 时不套 Transform(手机、≤1920 宽且标准字号：零开销、零行为差异)。
-// 滚轮 scrollDelta 不随 Transform 换算；缩放分支标记命中路径上的倍率，入口的
-// UtenWidgetsFlutterBinding 在事件分发前统一换算，避免大字号让滚动距离一起放大。
-//
-// 坐标空间约定(写浮层/拖拽代码必读)：Transform 之下 RenderBox.localToGlobal(无 ancestor)
-// 与手势事件的 globalPosition 都是**窗口坐标**(已乘 zoom)；Overlay 里 Positioned 的
-// 坐标是**画布坐标**。两者混用会偏 zoom 倍。定位浮层一律走
-// CompositedTransformFollower(LayerLink)，或 localToGlobal(offset, ancestor: 浮层/视口
-// RenderBox)，或 overlayBox.globalToLocal(全局点)。SDK 的 ReorderableListView 拖影内部
-// 就是混用的，本项目改用 Draggable 版 UtenDragReorderList。
-//
-// 字号档按屏幕容量钳制与自动推荐(2026-09-24)：应用入口用 [UtenDisplayZoomBox.adaptive]，
-// 规则在 display_capacity.dart；生效结果经 [UtenDisplayScale] 发布给设置页、外壳与内容容器。
-//
-// 手机(窗口宽 < [UtenDisplayZoom.minCanvasWidth])不整体缩放：画布本就窄，再压会进入更
-// 窄的布局；字号档沿用只放大文字的老口径。平板等中间宽度：整体缩放不把画布压到 600 以下，
-// 不够的倍率由文字缩放补足(总放大倍数恒等于 自动倍率 × 字号档因子)。
+// 全平台界面大小：按用户倍率布局后等比渲染，手机/平板/桌面保持同一口径。
+// 默认 100%，不按宽屏或 DPR 自动放大/缩小；系统非线性 TextScaler 原样继承。
+// MediaQuery 尺寸、DPR、安全区、键盘、手势区与折叠屏特征同步转成画布坐标。
+// Transform 之下 globalPosition/localToGlobal(无 ancestor) 是窗口坐标；Overlay
+// Positioned 是画布坐标。浮层使用 LayerLink、ancestor 或 globalToLocal 换算。
+// 滚轮只由 UtenWidgetsFlutterBinding 统一换算一次，页面不可再次补偿。
+// 文档：docs/00-项目准则/04-字体与字号可调.md。
 
-import 'dart:math' as math;
+import 'dart:ui' show DisplayFeature;
 
 import 'package:flutter/widgets.dart';
 
@@ -40,22 +15,8 @@ import 'display_zoom_pointer_binding.dart';
 
 /// 整体缩放的倍率计算(纯函数，便于单测)。
 abstract final class UtenDisplayZoom {
-  /// 基准画布宽(逻辑像素)。窗口比它宽就整体放大到「看起来像 1920 宽」。
-  /// 取 1920 = 1080p@100% 与 2K/4K 常见缩放后的主流桌面逻辑宽；≤1920 的窗口不放大，
-  /// 这些机器不触发宽屏自动放大；正文仍按父容器可用宽度布局。
-  static const double designWidth = 1920;
-
-  /// 自动放大上限(3840@100% 的 4K 恰好 2.0；更宽的带鱼屏不再继续放大)。
-  static const double maxAutoZoom = 2.0;
-
-  /// 整体缩放后保留的最小画布宽：不把画布压进手机布局(compact < 600)。
-  static const double minCanvasWidth = 600;
-
-  /// 宽屏自动放大倍率：窗口宽 ≤ 基准宽为 1，否则 宽/基准 并封顶。
-  static double autoZoomForWidth(double windowWidth) {
-    if (windowWidth <= designWidth) return 1;
-    return math.min(windowWidth / designWidth, maxAutoZoom);
-  }
+  /// 标准档不因窗口更宽而自动放大。保留此查询供既有调用方使用。
+  static double autoZoomForWidth(double windowWidth) => 1;
 
   /// 按窗口宽与字号档因子，拆成「整体缩放倍率」与「剩余文字缩放」。
   /// 恒有 zoom × textScale == autoZoomForWidth(windowWidth) × fontFactor。
@@ -63,19 +24,9 @@ abstract final class UtenDisplayZoom {
     required double windowWidth,
     required double fontFactor,
   }) {
-    final total = autoZoomForWidth(windowWidth) * fontFactor;
-    if (windowWidth < minCanvasWidth) {
-      // 手机：画布本就窄，整体缩放只会更窄；沿用只放大文字。
-      return UtenZoomResolution(zoom: 1, textScale: total);
-    }
-    if (total <= 1) {
-      // 缩小档(字号=小)：画布变宽，无需保底。
-      return UtenZoomResolution(zoom: total, textScale: 1);
-    }
-    // 放大档：画布不压到 600 以下，不够的倍率给文字。
-    final budget = windowWidth / minCanvasWidth;
-    final zoom = math.min(total, budget);
-    return UtenZoomResolution(zoom: zoom, textScale: total / zoom);
+    assert(fontFactor > 0 && fontFactor < double.infinity);
+    // 手机、平板、桌面使用同一倍率，变窄的画布由布局换行/换列处理。
+    return UtenZoomResolution(zoom: fontFactor, textScale: 1);
   }
 }
 
@@ -106,7 +57,7 @@ class UtenZoomResolution {
 ///
 /// 把可用尺寸按 [UtenDisplayZoom.resolve] 拆成 zoom 与文字缩放：子树按
 /// 「可用尺寸 / zoom」的画布布局并等比放大到可用尺寸；MediaQuery 同步换算成画布口径。
-/// 子树可经 [UtenDisplayScale.of] 读到本次生效的字号档因子、上限与推荐值。
+/// 子树可经 [UtenDisplayScale.maybeOf] 读到本次界面倍率。
 class UtenDisplayZoomBox extends StatelessWidget {
   /// 按给定因子原样缩放(不做容量钳制)。测试与需要精确倍率的场景用。
   const UtenDisplayZoomBox({
@@ -116,8 +67,7 @@ class UtenDisplayZoomBox extends StatelessWidget {
   }) : adaptive = false,
        autoLadder = const <double>[];
 
-  /// 应用入口用：[fontFactor] 为 null 表示「自动」(按屏幕推荐)；手动档超出本窗口
-  /// 容量([UtenDisplayCapacity.maxFontFactor])时按上限生效，窗口变大后自动恢复。
+  /// 应用入口用：[fontFactor] 为 null 表示「自动」(100%)；手动档原样生效。
   const UtenDisplayZoomBox.adaptive({
     super.key,
     required this.fontFactor,
@@ -128,10 +78,10 @@ class UtenDisplayZoomBox extends StatelessWidget {
   /// 用户字号档因子(FontScale.factor)；1 = 标准；adaptive 下 null = 自动。
   final double? fontFactor;
 
-  /// 是否按屏幕容量钳制并支持自动档。
+  /// 是否支持自动档。
   final bool adaptive;
 
-  /// 自动档从中挑推荐值的因子全集(FontScale 各档)。
+  /// 保留调用兼容性；自动档固定 100%，不再从档位中自动缩小。
   final List<double> autoLadder;
 
   final Widget child;
@@ -149,36 +99,20 @@ class UtenDisplayZoomBox extends StatelessWidget {
               ? constraints.maxHeight
               : mediaQuery.size.height,
         );
-        // 系统无障碍文字缩放(Android 14 起非线性，取正文 14 的倍率作代表)。
-        final systemTextScale = mediaQuery.textScaler.scale(14) / 14;
-        final maxFactor = UtenDisplayCapacity.maxFontFactor(
-          window: window,
-          systemTextScale: systemTextScale,
-        );
+        final maxFactor = UtenDisplayCapacity.maxFontFactor(window: window);
         final recommended = UtenDisplayCapacity.recommendedFontFactor(
           window: window,
           devicePixelRatio: mediaQuery.devicePixelRatio,
           ladder: autoLadder.isEmpty ? const [1.0] : autoLadder,
-          systemTextScale: systemTextScale,
         );
         final requested = fontFactor;
-        final effective = !adaptive
-            ? requested!
-            : requested == null
-            ? recommended
-            : math.min(requested, maxFactor);
+        final effective = !adaptive ? requested! : requested ?? recommended;
         final resolution = UtenDisplayZoom.resolve(
           windowWidth: window.width,
           fontFactor: effective,
         );
         final zoom = resolution.zoom;
         final canvas = Size(window.width / zoom, window.height / zoom);
-        // 剩余文字缩放叠在系统文字缩放之上(保留系统无障碍设置)。
-        final textScaler = resolution.textScale == 1
-            ? mediaQuery.textScaler
-            : TextScaler.linear(
-                mediaQuery.textScaler.scale(1) * resolution.textScale,
-              );
         final content = UtenDisplayScale(
           window: window,
           devicePixelRatio: mediaQuery.devicePixelRatio,
@@ -186,7 +120,7 @@ class UtenDisplayZoomBox extends StatelessWidget {
           effectiveFontFactor: effective,
           maxFontFactor: maxFactor,
           recommendedFontFactor: recommended,
-          fontZoom: zoom / UtenDisplayZoom.autoZoomForWidth(window.width),
+          fontZoom: zoom,
           child: MediaQuery(
             data: mediaQuery.copyWith(
               size: canvas,
@@ -196,23 +130,43 @@ class UtenDisplayZoomBox extends StatelessWidget {
               viewPadding: mediaQuery.viewPadding / zoom,
               viewInsets: mediaQuery.viewInsets / zoom,
               systemGestureInsets: mediaQuery.systemGestureInsets / zoom,
-              textScaler: textScaler,
+              displayFeatures: [
+                for (final feature in mediaQuery.displayFeatures)
+                  DisplayFeature(
+                    bounds: Rect.fromLTRB(
+                      feature.bounds.left / zoom,
+                      feature.bounds.top / zoom,
+                      feature.bounds.right / zoom,
+                      feature.bounds.bottom / zoom,
+                    ),
+                    type: feature.type,
+                    state: feature.state,
+                  ),
+              ],
+              // 保留系统非线性曲线，不从单个字号重建线性倍率。
+              textScaler: mediaQuery.textScaler,
             ),
             child: child,
           ),
         );
         if (zoom == 1) return content;
-        return Transform.scale(
-          scale: zoom,
+        return OverflowBox(
           alignment: Alignment.topLeft,
-          // 子树按画布尺寸布局(OverflowBox 把窗口约束换成画布约束)，再整体放大到窗口。
-          child: OverflowBox(
+          minWidth: canvas.width,
+          maxWidth: canvas.width,
+          minHeight: canvas.height,
+          maxHeight: canvas.height,
+          // 外层先按窗口坐标命中，再由 Transform 逆变换到画布。若把 OverflowBox
+          // 放在 Transform 内，缩小档右/下沿的逆变换坐标会超出其窗口尺寸，
+          // 造成内容看得见却点不到。此处画布布局与整窗绘制仍保持同一倍率。
+          child: Transform.scale(
+            scale: zoom,
             alignment: Alignment.topLeft,
-            minWidth: canvas.width,
-            maxWidth: canvas.width,
-            minHeight: canvas.height,
-            maxHeight: canvas.height,
-            child: UtenDisplayZoomPointerRegion(zoom: zoom, child: content),
+            child: SizedBox(
+              width: canvas.width,
+              height: canvas.height,
+              child: UtenDisplayZoomPointerRegion(zoom: zoom, child: content),
+            ),
           ),
         );
       },
@@ -244,16 +198,16 @@ class UtenDisplayScale extends InheritedWidget {
   /// 用户所选因子；null = 自动。
   final double? requestedFontFactor;
 
-  /// 实际生效因子(自动 = 推荐值；手动超上限时 = 上限)。
+  /// 实际生效因子(自动 = 1；手动 = 用户选择)。
   final double effectiveFontFactor;
 
-  /// 本窗口的因子上限([UtenDisplayCapacity.maxFontFactor])。
+  /// 可选界面倍率上限(所有窗口为 2)。
   final double maxFontFactor;
 
   /// 自动档推荐因子([UtenDisplayCapacity.recommendedFontFactor])。
   final double recommendedFontFactor;
 
-  /// 整体缩放里来自字号档的那部分倍率(不含宽屏自动放大)；手机只放大文字时为 1。
+  /// 用户选择的整体界面倍率，所有屏幕口径相同。
   /// 页面留白、导航宽度等「不该随字号放大」的尺寸除以它，窗口上看保持不变。
   final double fontZoom;
 

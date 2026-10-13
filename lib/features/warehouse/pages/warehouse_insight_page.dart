@@ -14,6 +14,7 @@
 // 只影响按仓统计的两段 (呆滞与库龄、盘点建议); 称重异常与单重学习是货品级口径。
 // 数字全部由服务端算好 (合计也是服务端算), 本页不做加法; 重量按用户显示单位换算,
 // 估算带「≈」, 没称显示「未称」。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -454,7 +455,8 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     Map<String, List<InsightCycleCountRow>> byWarehouse,
   ) => showDialog<String>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => UtenAlertDialog(
+      scrollable: false,
       title: const Text('先为哪个仓库生成盘点单?'),
       // 定宽: AlertDialog 会量内容的固有宽度, 定宽后不必逐个量仓库行。
       content: SizedBox(

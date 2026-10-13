@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -208,7 +209,8 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
     // 明细仍在表格 ⓘ 的「查看去向明细」里，需要核对的人点开看，不塞进确认弹窗。
     // 查看/结果弹窗保留原完整卡片（那里才是看明细的地方）。
     if (_confirming) {
-      return AlertDialog(
+      return UtenAlertDialog(
+        scrollable: false,
         key: const Key('warehouse-inbound-allocation-confirm-dialog'),
         insetPadding: const EdgeInsets.symmetric(
           horizontal: UtenSpacing.s16,
@@ -262,7 +264,7 @@ class _WarehouseInboundAllocationDialog extends StatelessWidget {
       );
     }
     final size = MediaQuery.sizeOf(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       key: Key(
         actual
             ? 'warehouse-inbound-allocation-result-dialog'

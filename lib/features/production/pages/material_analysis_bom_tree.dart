@@ -218,7 +218,7 @@ abstract class _MaterialAnalysisBomTreeState
         color: selected ? scheme.primary : scheme.surface,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(UtenRadius.control),
           side: BorderSide(
             color: selected ? scheme.primary : scheme.outlineVariant,
           ),
@@ -227,8 +227,8 @@ abstract class _MaterialAnalysisBomTreeState
           onTap: onSelected,
           canRequestFocus: onSelected != null,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: UtenTableToolbar.controlHeight,
+            constraints: BoxConstraints(
+              minHeight: UtenControlMetrics.controlHeight(context),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(

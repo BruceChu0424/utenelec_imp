@@ -91,7 +91,7 @@ class SourceDocLink extends StatelessWidget {
                 ? body
                 : InkWell(
                     onTap: onTap,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(UtenRadius.xs),
                     child: body,
                   ),
           ),

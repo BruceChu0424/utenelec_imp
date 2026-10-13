@@ -2,6 +2,7 @@
 // 详情页全断点套默认 UtenContentContainer（正文随可用宽度铺满）。
 // 文档：docs/03-页面/我的页.md（§HR 端：员工修改审批 — 详情）
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -312,7 +313,7 @@ class _HrProfileChangeDetailPageState
         context: context,
         builder: (ctx) => _reviewDialog(
           ctx,
-          AlertDialog(
+          UtenAlertDialog(
             title: Text(l10n.profileChangeApproveDialogTitle),
             content: Text(l10n.profileChangeApproveDialogBody),
             actionsAlignment: MainAxisAlignment.center,

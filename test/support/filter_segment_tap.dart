@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 
 /// 点选工具条上标签为 [label] 的分类分段。
 Future<void> selectFilterSegment(WidgetTester tester, String label) async {
@@ -22,14 +23,29 @@ Future<void> selectFilterSegment(WidgetTester tester, String label) async {
       .descendant(of: toolbars, matching: find.text(label))
       .hitTestable();
   if (tester.any(segment)) {
-    final popup = find.ancestor(
-      of: segment.first,
-      matching: find.byWidgetPredicate((widget) => widget is PopupMenuButton),
+    // 点选可立即触发加载并卸掉原分类行；不要在 await 后再求 segment.first。
+    final opensPopup = tester.any(
+      find.ancestor(
+        of: segment.first,
+        matching: find.byWidgetPredicate((widget) => widget is PopupMenuButton),
+      ),
     );
+    final compactButtons = find.ancestor(
+      of: segment.first,
+      matching: find.byType(OutlinedButton),
+    );
+    final opensPanel =
+        tester.any(compactButtons) &&
+        tester.any(
+          find.descendant(
+            of: compactButtons.first,
+            matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+          ),
+        );
     await tester.tap(segment.first);
     await tester.pump();
     // 下拉按钮会显示当前分类名；选一次相同菜单项以完成真实操作并关闭遮罩。
-    if (tester.any(popup)) {
+    if (opensPopup || opensPanel) {
       await _pumpMenuAnimation(tester);
       await tester.tap(_menuItem(label).last);
       await _pumpMenuAnimation(tester);
@@ -63,7 +79,9 @@ Future<void> selectFilterSegment(WidgetTester tester, String label) async {
 
 Finder _menuItem(String label) => find
     .descendant(
-      of: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
+      of: find.byWidgetPredicate(
+        (widget) => widget is PopupMenuItem || widget is UtenDialogFrame,
+      ),
       matching: find.text(label),
     )
     .hitTestable();

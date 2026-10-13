@@ -9,6 +9,7 @@
 // （未读在前，可逐条打开详情或一键已读）。单条组渲染为普通卡片。
 // 筛选默认「未读」（2026-10-09 用户口径）：进通知页先看没处理过的。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -106,7 +107,7 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
     if (count == 0) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除通知'),
         content: Text('确定删除选中的 $count 条通知吗？删除后将从你的通知列表移除。'),
         actionsAlignment: MainAxisAlignment.center,
@@ -449,7 +450,7 @@ class _NoticeCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: stripColor,
                         borderRadius: const BorderRadius.horizontal(
-                          left: Radius.circular(14),
+                          left: Radius.circular(UtenRadius.card),
                         ),
                       ),
                     ),
@@ -490,7 +491,9 @@ class _NoticeCard extends StatelessWidget {
                                       color: theme
                                           .colorScheme
                                           .surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(999),
+                                      borderRadius: BorderRadius.circular(
+                                        UtenRadius.pill,
+                                      ),
                                     ),
                                     child: Text(
                                       '已办结',
@@ -915,7 +918,7 @@ class _NoticeGroupCard extends StatelessWidget {
                     decoration: ShapeDecoration(
                       color: theme.colorScheme.surfaceContainerHighest,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(UtenRadius.xs),
                         side: BorderSide(
                           color: theme.colorScheme.outlineVariant.withValues(
                             alpha: 0.72,

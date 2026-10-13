@@ -130,11 +130,17 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
               focusNode: _focusNode,
               onPressed: _show,
               padding: EdgeInsets.all(
-                widget.dense ? UtenSpacing.s4 : UtenSpacing.s12,
+                widget.dense ? UtenSpacing.s4 : UtenSpacing.s8,
               ),
               constraints: BoxConstraints.tightFor(
-                width: widget.dense ? 28 : 44,
-                height: widget.dense ? 28 : 44,
+                width: UtenControlMetrics.minimumHitExtent(
+                  context,
+                  desktop: widget.dense ? 32 : 40,
+                ),
+                height: UtenControlMetrics.minimumHitExtent(
+                  context,
+                  desktop: widget.dense ? 32 : 40,
+                ),
               ),
               style: const ButtonStyle(
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,

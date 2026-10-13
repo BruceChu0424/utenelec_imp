@@ -1,3 +1,4 @@
+import '../theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 /// 顶部通知叠放项构建器。
@@ -147,7 +148,7 @@ class _UtenNotificationStackState extends State<UtenNotificationStack> {
                     decoration: ShapeDecoration(
                       color: theme.colorScheme.surfaceContainerHighest,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(UtenRadius.xs),
                         side: BorderSide(
                           color: theme.colorScheme.outlineVariant.withValues(
                             alpha: 0.72,

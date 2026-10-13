@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -384,7 +385,7 @@ class _ProcurementIqcActualCreditDialogState
     );
     return PopScope(
       canPop: !_busy,
-      child: Dialog(
+      child: UtenDialogFrame(
         insetPadding: const EdgeInsets.all(16),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 900, maxHeight: 900),

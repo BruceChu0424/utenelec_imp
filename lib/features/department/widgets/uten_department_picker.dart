@@ -11,6 +11,7 @@
 // 底部「取消/确定」确认（requireConfirm=false 可恢复单选点行即关的历史行为）。
 // 路径显示：从第一个可选组织节点起用「-」连接。
 // 树渲染由全站共享的 UtenDepartmentTreeView 提供。
+import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -390,7 +391,7 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
           children: [
             InkWell(
               onTap: widget.enabled ? _open : null,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(UtenRadius.control),
               child: InputDecorator(
                 isEmpty: display == null,
                 decoration: widget.dense
@@ -501,7 +502,7 @@ InputDecoration utenPickerFieldDecoration(
   Widget? suffixIcon,
 }) {
   final theme = Theme.of(context);
-  final radius = BorderRadius.circular(10);
+  final radius = BorderRadius.circular(UtenRadius.control);
   return UtenInputDecoration(
     InputDecoration(
       labelText: labelText,
@@ -603,7 +604,7 @@ class _DepartmentPickerSheetState extends State<_DepartmentPickerSheet> {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
       child: Text(
         '$badge',

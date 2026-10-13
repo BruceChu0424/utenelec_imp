@@ -7,6 +7,7 @@
 //
 // 按钮显隐只看服务端段级动作 (CHANGE_MATERIAL), 本对话框不在本地判断权限。
 // 提交期间的全屏遮罩由本对话框持有; 关闭前先撤遮罩并等一帧。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -233,7 +234,8 @@ class _SegmentMaterialChangeDialogState
     final task = widget.task;
     return PopScope<bool>(
       canPop: !_busy,
-      child: AlertDialog(
+      child: UtenAlertDialog(
+        scrollable: false,
         key: ValueKey('segment-material-change-${task.segmentId}'),
         title: Text(l10n.wmChangeMaterial),
         content: ConstrainedBox(

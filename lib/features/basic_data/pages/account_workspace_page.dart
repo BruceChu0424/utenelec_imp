@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -496,7 +497,7 @@ class _AccountPageState extends ConsumerState<AccountPage> {
         : (account.code ?? '该账户');
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Text('删除账户'),
         content: Text('确定删除「$label」吗？已有资金往来的账户不能删除。'),
         actions: [

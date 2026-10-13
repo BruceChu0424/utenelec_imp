@@ -53,7 +53,9 @@ Future<T?> showUtenAdaptivePanel<T>({
         final mediaQuery = MediaQuery.of(sheetContext);
         final visibleHeight = math.max(
           0.0,
-          mediaQuery.size.height - mediaQuery.viewInsets.bottom,
+          mediaQuery.size.height -
+              mediaQuery.viewInsets.bottom -
+              mediaQuery.padding.top,
         );
         return Padding(
           padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
@@ -74,19 +76,23 @@ Future<T?> showUtenAdaptivePanel<T>({
     barrierColor: barrierColor,
     transitionDuration: transitionDuration,
     pageBuilder: (dialogContext, _, _) {
+      final mediaQuery = MediaQuery.of(dialogContext);
       Widget content = builder(dialogContext);
       if (useSafeArea) {
         content = SafeArea(left: false, child: content);
       }
-      return Align(
-        alignment: AlignmentDirectional.centerEnd,
-        child: Material(
-          color: Theme.of(dialogContext).colorScheme.surface,
-          elevation: panelElevation,
-          child: SizedBox(
-            width: drawerWidth,
-            height: double.infinity,
-            child: content,
+      return Padding(
+        padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
+        child: Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: Material(
+            color: Theme.of(dialogContext).colorScheme.surface,
+            elevation: panelElevation,
+            child: SizedBox(
+              width: math.min(drawerWidth, mediaQuery.size.width),
+              height: double.infinity,
+              child: content,
+            ),
           ),
         ),
       );

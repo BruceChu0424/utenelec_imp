@@ -8,6 +8,7 @@
 // APPROVED 态「登记付款」；AppBar 打印报销单。
 // 宽度口径：默认 1600 容器。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -598,7 +599,8 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
         options.accounts.isNotEmpty &&
         options.styles.isNotEmpty;
 
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text(AppLocalizations.of(context).expenseFlowPaymentRecord),
       content: SizedBox(
         width: 520,
@@ -734,7 +736,7 @@ class _Hero extends StatelessWidget {
       padding: const EdgeInsets.all(UtenSpacing.s20),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(UtenRadius.card),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -779,16 +781,12 @@ class _Hero extends StatelessWidget {
           const SizedBox(height: UtenSpacing.s4),
           SizedBox(
             width: double.infinity,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${claim.totalAmount.toStringAsFixed(2)} 元',
-                style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.w800,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+            child: Text(
+              '${claim.totalAmount.toStringAsFixed(2)} 元',
+              style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                fontWeight: FontWeight.w800,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),

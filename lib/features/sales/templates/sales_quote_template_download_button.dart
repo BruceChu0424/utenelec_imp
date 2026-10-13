@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -157,66 +158,57 @@ class _SalesQuoteTemplatePickerState extends State<SalesQuoteTemplatePicker> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final size = MediaQuery.sizeOf(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(l10n.quoteTemplateChoose),
+      // The shared shell scrolls the title and list together. Keeping one
+      // scroll region lets long actions reserve their actual height on narrow
+      // canvases without reducing a nested lazy viewport to zero.
       content: SizedBox(
         width: 480,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: size.height * 0.55),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                l10n.quoteTemplateChooseHint,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: widget.templates.length,
-                  itemBuilder: (_, index) {
-                    final template = widget.templates[index];
-                    return CheckboxListTile(
-                      key: ValueKey('quote-template-${template.id}'),
-                      value: _selected.contains(template.id),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: Text(template.name),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (template.sourceName?.trim().isNotEmpty ?? false)
-                            Tooltip(
-                              message: template.sourceName!,
-                              child: Text(
-                                template.sourceName!,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          Text(
-                            l10n.quoteTemplateVersionUsage(
-                              template.version,
-                              template.useCount,
-                            ),
-                          ),
-                        ],
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.quoteTemplateChooseHint,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            for (final template in widget.templates)
+              CheckboxListTile(
+                key: ValueKey('quote-template-${template.id}'),
+                value: _selected.contains(template.id),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: Text(template.name),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (template.sourceName?.trim().isNotEmpty ?? false)
+                      Tooltip(
+                        message: template.sourceName!,
+                        child: Text(
+                          template.sourceName!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      onChanged: (selected) => setState(() {
-                        if (selected == true) {
-                          _selected.add(template.id);
-                        } else {
-                          _selected.remove(template.id);
-                        }
-                      }),
-                    );
-                  },
+                    Text(
+                      l10n.quoteTemplateVersionUsage(
+                        template.version,
+                        template.useCount,
+                      ),
+                    ),
+                  ],
                 ),
+                onChanged: (selected) => setState(() {
+                  if (selected == true) {
+                    _selected.add(template.id);
+                  } else {
+                    _selected.remove(template.id);
+                  }
+                }),
               ),
-            ],
-          ),
+          ],
         ),
       ),
       actionsAlignment: MainAxisAlignment.center,
@@ -260,7 +252,7 @@ class SalesQuoteTemplateMissing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(l10n.quoteTemplateMissingTitle),
       content: SizedBox(width: 480, child: Text(l10n.quoteTemplateMissingHint)),
       actions: [

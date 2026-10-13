@@ -9,6 +9,7 @@
 // - canEdit 按 goods:edit 权限（或超管）自算，不再由调用方传入；
 // - 删除：确认 → 删 → 返回来源页（popOrBackTo，深链兜底回货品资料）。
 // 「出入库流水」按钮 (stock:view) 由主体直接切到「库存与出入库」页签的流水分段。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -112,7 +113,7 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
     if (d == null) return;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除货品'), // TODO(l10n): 补 arb
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该货品')}」吗？', // TODO(l10n): 补 arb

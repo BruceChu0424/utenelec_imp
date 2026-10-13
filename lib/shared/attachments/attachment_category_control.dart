@@ -83,14 +83,23 @@ class AttachmentCategoryControl extends StatelessWidget {
       message: assigned ? '分类：$current，点击修改' : '设置分类（可选）',
       child: InkWell(
         onTap: enabled ? () => _open(context) : null,
-        borderRadius: BorderRadius.circular(999),
-        child: _CategoryChip(
-          label: assigned ? current : '分类',
-          color: color,
-          filled: assigned,
-          icon: dense || assigned ? null : Icons.add_rounded,
-          borderless: dense && !assigned,
-          dense: dense,
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: UtenControlMetrics.minimumHitExtent(context, desktop: 32),
+            minHeight: UtenControlMetrics.minimumHitExtent(
+              context,
+              desktop: 32,
+            ),
+          ),
+          child: _CategoryChip(
+            label: assigned ? current : '分类',
+            color: color,
+            filled: assigned,
+            icon: dense || assigned ? null : Icons.add_rounded,
+            borderless: dense && !assigned,
+            dense: dense,
+          ),
         ),
       ),
     );
@@ -180,7 +189,7 @@ class _CategoryChip extends StatelessWidget {
         border: borderless
             ? null
             : Border.all(color: color.withValues(alpha: filled ? 0 : 0.5)),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

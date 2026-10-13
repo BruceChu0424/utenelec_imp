@@ -28,6 +28,7 @@
 // 「等待财务审核」> 生产阶段。终态必须最先判——整单取消不清 finance_confirmed，
 // 闸门先判会把取消单错显成「等待财务审核」。
 // 打开本页即把完工通知标记已读 → 完工徽章归零（已读语义）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -358,7 +359,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     if (_cancelBusy) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('取消订单'),
         content: Text(
           '订单 ${r.billNo} 已被财务驳回。取消将释放全部库存预留并终止该订单'

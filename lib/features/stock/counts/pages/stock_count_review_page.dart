@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -861,7 +862,9 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     GoodsIssueMethodPreview preview,
   ) => showDialog<void>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => UtenAlertDialog(
+      maxWidth: 640,
+      scrollable: false,
       title: Text('${line.goodsName} · 用途及 BOM 影响'),
       content: SizedBox(
         width: 640,
@@ -999,10 +1002,10 @@ Future<String?> _confirmDecision(
 }) async {
   final input = TextEditingController();
   try {
-    return await showDialog<String>(
-      context: context,
+    return await UtenDialog.showAndWaitForExit<String>(
+      context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
+        builder: (context, setState) => UtenAlertDialog(
           title: Text(
             action == 'approve'
                 ? '审核通过并更新库存'

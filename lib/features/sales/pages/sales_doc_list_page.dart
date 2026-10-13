@@ -14,6 +14,7 @@
 // 本页不重复告警, 见下方分段处注释。
 // 大类未选（订货单）/状态未选（其他单据）时内容区显示引导占位，不发请求。
 // 名称解析（客户/仓库）通过 SalesMasterNameService；编辑按 edit 权限显隐「新建」。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -432,7 +433,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     final l10n = AppLocalizations.of(context);
     final quote = await showDialog<SalesDocListItem>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: Text(l10n.salesQuoteStatusImportTitle),
         content: SizedBox(
           width: 420,

@@ -144,7 +144,7 @@ class UtenHubCard extends StatelessWidget {
     final iconColor = enabled ? tint : theme.colorScheme.outline;
     return Material(
       type: MaterialType.transparency,
-      borderRadius: UtenRadius.lgAll,
+      borderRadius: UtenRadius.cardAll,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: enabled ? onTap : onDisabledTap,
@@ -156,7 +156,7 @@ class UtenHubCard extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
-            borderRadius: UtenRadius.lgAll,
+            borderRadius: UtenRadius.cardAll,
             border: Border.all(color: theme.colorScheme.outlineVariant),
           ),
           child: Column(
@@ -164,9 +164,18 @@ class UtenHubCard extends StatelessWidget {
             children: [
               // 图标与计数徽章同一行: 图标在左, 黄(进行中)/红(待办) 徽章在这一行
               // 最右边与图标垂直居中(2026-09-23 用户口径: 不再浮在卡片右上角)。
-              Row(
-                children: [
-                  Container(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final badgeWidth =
+                      minimumBadgeRowWidth(context, showLabel: badgeShowLabel) -
+                      UtenSpacing.s32;
+                  final hasBadges =
+                      !enabled ||
+                      badgeScope != null ||
+                      badge != null ||
+                      progressBadge != null;
+                  final narrow = hasBadges && constraints.maxWidth < badgeWidth;
+                  final iconBox = Container(
                     width: _iconExtent,
                     height: _iconExtent,
                     decoration: BoxDecoration(
@@ -174,10 +183,26 @@ class UtenHubCard extends StatelessWidget {
                       borderRadius: UtenRadius.mdAll,
                     ),
                     child: Icon(icon, color: iconColor, size: 22),
-                  ),
-                  const Spacer(),
-                  _badges(theme),
-                ],
+                  );
+                  return narrow
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: iconBox,
+                            ),
+                            const SizedBox(height: UtenSpacing.s8),
+                            Align(
+                              alignment: AlignmentDirectional.centerEnd,
+                              child: _badges(theme),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          children: [iconBox, const Spacer(), _badges(theme)],
+                        );
+                },
               ),
               const SizedBox(height: UtenSpacing.s12),
               // 标题与括号数字同一行：标题仍是独立的 Text（不换成 Text.rich——
@@ -261,7 +286,7 @@ class _DisabledChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(UtenRadius.xs),
       ),
       child: Text(
         AppLocalizations.of(context).hubDisabledChip,

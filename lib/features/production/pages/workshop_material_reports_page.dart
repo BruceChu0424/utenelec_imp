@@ -11,6 +11,7 @@
 //   MasterDataTableView。金额列只在服务端下发了金额时出现 (没有看成本权限的人
 //   收到的金额为空，整列隐藏)。缺单重清单点行直接跳到该产品的组装信息 (BOM) 填单重。
 // - 网络写操作期间由本页持有 UtenBusyOverlay；弹原因框前先撤遮罩。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -1533,7 +1534,7 @@ class _ReopenReasonDialogState extends State<_ReopenReasonDialog> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(l10n.wmReopen),
       content: SizedBox(
         width: 440,

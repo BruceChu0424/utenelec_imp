@@ -6,6 +6,8 @@
 //  2) 三视口不溢出：1280x900(桌面) / 390x844(手机竖屏，走紧凑回退) /
 //     844x390(手机横屏，短视口——2026-09-10 表格固定件被压溢出的复现档位)，
 //     统一叠 textScale 1.5 放大字号后仍不得抛异常。
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,6 +108,21 @@ Future<void> expectUtenBodyReachable(
     tester,
     scrollView: find.byType(UtenCollapsingHeaderScrollView),
   );
+  final scrollView = find.byType(UtenCollapsingHeaderScrollView);
+  final viewport = tester.getRect(scrollView);
+  bool bodyIsVisible() {
+    if (bodyAnchor.evaluate().length != 1) return false;
+    final body = tester.getRect(bodyAnchor);
+    if (!body.overlaps(viewport)) return false;
+    return body.intersect(viewport).height >= math.min(80, body.height);
+  }
+
+  // 可读字段会随字号和换行增长；固定720不能代表所有页面的真实头部高度。
+  // 继续用真实滚轮，有界推进至表体进入视口；停滞或不可达仍报错。
+  for (var extra = 0; !bodyIsVisible() && extra < 4800; extra += 120) {
+    await utenScrollPage(tester, scrollView: scrollView, delta: 120);
+  }
   expect(bodyAnchor, findsOneWidget, reason: '头部滚走后表格必须进入视口');
+  expect(bodyIsVisible(), isTrue, reason: '表格必须真实进入滚动视口，不能只在缓存树中存在');
   expect(tester.takeException(), isNull, reason: '头部收起后表格固定件不得溢出');
 }

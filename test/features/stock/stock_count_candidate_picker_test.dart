@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/stock/counts/models/stock_count_request.dart';
@@ -140,7 +141,12 @@ Future<void> _open(
   );
   await tester.tap(find.text('打开'));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('原材料'));
+  final tree = find.byType(UtenCategoryTreeView<ProductCategoryNode>);
+  if (!tester.any(tree)) {
+    await tester.tap(find.byIcon(Icons.account_tree_rounded));
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.descendant(of: tree, matching: find.text('原材料')));
   await tester.pumpAndSettle();
 }
 
@@ -239,7 +245,14 @@ void main() {
       size: const Size(375, 750),
       textScale: 1.3,
     );
-    await tester.tap(find.textContaining('G-PP · 白'));
+    final candidate = find.byWidgetPredicate(
+      (widget) =>
+          widget.key is ValueKey &&
+          (widget.key! as ValueKey).value ==
+              ('pagination-row', ('data', 'pp|白')),
+    );
+    expect(candidate, findsOneWidget);
+    await tester.tap(candidate);
     await tester.pump();
     expect(tester.takeException(), isNull);
     await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));

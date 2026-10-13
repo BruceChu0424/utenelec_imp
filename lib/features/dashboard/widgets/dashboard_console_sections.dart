@@ -103,7 +103,7 @@ class _PanelHeaderBand extends StatelessWidget {
             height: 30,
             decoration: BoxDecoration(
               color: theme.colorScheme.primary,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(UtenRadius.xs),
             ),
           ),
           const SizedBox(width: UtenSpacing.s12),

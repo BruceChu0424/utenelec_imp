@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -57,7 +58,7 @@ showMaterialPriorityReplenishmentDialog({
   return showDialog<ProductionMaterialAnalysisView>(
     context: context,
     barrierDismissible: false,
-    builder: (context) => Dialog(
+    builder: (context) => UtenDialogFrame(
       child: SizedBox(
         width: 680,
         height: (MediaQuery.sizeOf(context).height - 64)

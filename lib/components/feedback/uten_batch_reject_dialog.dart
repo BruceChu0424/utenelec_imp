@@ -13,6 +13,7 @@ import '../../core/theme/uten_tokens.dart';
 import '../inputs/uten_field_message.dart';
 import '../inputs/uten_input_decoration.dart';
 import 'uten_reviewer_responsibility_notice.dart';
+import 'uten_dialog.dart';
 
 /// 弹出批量驳回原因对话框；返回非空原因文本，取消返回 null。
 ///
@@ -96,7 +97,8 @@ class _UtenBatchRejectDialogState extends State<UtenBatchRejectDialog> {
   @override
   Widget build(BuildContext context) {
     final count = widget.count;
-    return AlertDialog(
+    return UtenAlertDialog(
+      maxWidth: 480,
       title: Text(widget.title ?? '批量驳回($count)'),
       content: SizedBox(
         width: 440,

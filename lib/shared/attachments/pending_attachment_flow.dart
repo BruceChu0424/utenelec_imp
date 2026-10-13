@@ -86,7 +86,7 @@ class PendingAttachmentRetryNotice extends StatelessWidget {
         color: dark
             ? UtenColors.warning.withValues(alpha: 0.12)
             : UtenColors.warningBg,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
         border: Border.all(color: UtenColors.warning.withValues(alpha: 0.4)),
       ),
       child: Row(

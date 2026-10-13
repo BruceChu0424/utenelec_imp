@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../components/feedback/uten_context_menu.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../../components/inputs/uten_field_message.dart';
+import '../../core/theme/uten_tokens.dart';
 import 'line_pricing_controller.dart';
 
 const linePricingAmountHeaderHint =
@@ -33,19 +34,27 @@ class LinePricingAmountCell extends StatelessWidget {
           isDense: true,
           hintText: '总金额',
           error: utenFieldError(controller.error.value),
-          suffixIconConstraints: const BoxConstraints(minWidth: 52),
+          suffixIconConstraints: BoxConstraints(
+            minWidth: UtenControlMetrics.minimumHitExtent(context, desktop: 52),
+            minHeight: UtenControlMetrics.minimumHitExtent(
+              context,
+              desktop: 32,
+            ),
+          ),
           suffixIcon: Builder(
             builder: (buttonContext) => Tooltip(
               message: _label(controller.mode),
               child: TextButton(
                 onPressed: enabled ? () => _openMenu(buttonContext) : null,
                 style: TextButton.styleFrom(
-                  // 紧凑格内按钮：高度上限交给输入格（UtenEditableGridCellSpec），
-                  // 最小高 24 只保住可点面积；旧值 40 会把整行撑回旧行高。
-                  minimumSize: const Size(52, 24),
+                  // 桌面格内保持紧凑；触摸目标按窗口口径保证48，缩小档同步补偿。
+                  minimumSize: Size(
+                    UtenControlMetrics.minimumHitExtent(context, desktop: 52),
+                    UtenControlMetrics.minimumHitExtent(context, desktop: 32),
+                  ),
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+                  visualDensity: VisualDensity.standard,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

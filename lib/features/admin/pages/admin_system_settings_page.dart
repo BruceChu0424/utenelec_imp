@@ -10,6 +10,7 @@
 //     被盗也无法改安全策略）；
 //   * 改设置全过审计（action=update_system_setting，审计页可查谁改了哪项 旧→新值）；
 //   * 后端类型/非负校验（前端也提示），防恶意值。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -366,7 +367,7 @@ class _AdminSystemSettingsPageState
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
         color: theme.colorScheme.errorContainer.withValues(alpha: 0.25),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,7 +436,7 @@ class _SettingGroupCard extends StatelessWidget {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         side: BorderSide(color: theme.dividerColor),
       ),
       child: Padding(
@@ -530,7 +531,7 @@ class _AuditRetentionNotice extends ConsumerWidget {
                 color: theme.colorScheme.tertiaryContainer.withValues(
                   alpha: 0.35,
                 ),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(UtenRadius.md),
                 border: Border.all(
                   color: theme.colorScheme.tertiary.withValues(alpha: 0.35),
                 ),
@@ -722,8 +723,7 @@ class _RetentionConfirmDialog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final mode = ref.watch(auditArchivePurgeModeProvider);
-    return AlertDialog(
-      scrollable: true,
+    return UtenAlertDialog(
       icon: const Icon(Icons.warning_amber_rounded),
       title: const Text('确认审计留存修改'),
       content: Text(

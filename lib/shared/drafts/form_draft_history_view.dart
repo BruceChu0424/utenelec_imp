@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../components/layout/uten_app_bar_action_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/data_display/uten_status_badge.dart';
@@ -61,8 +62,14 @@ class FormDraftHistoryButton extends StatelessWidget {
   Widget build(BuildContext context) => TextButton.icon(
     icon: const Icon(Icons.history),
     label: const Text('本机草稿历史'),
-    onPressed: () => Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => _FormDraftHistoryPage(scope: scope)),
+    onPressed: UtenAppBarActionScope.wrapBefore(
+      context,
+      () => Navigator.of(UtenAppBarActionScope.actionContextOf(context))
+          .push<void>(
+            MaterialPageRoute(
+              builder: (_) => _FormDraftHistoryPage(scope: scope),
+            ),
+          ),
     ),
   );
 }

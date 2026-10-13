@@ -16,6 +16,7 @@
 // 2026-09-26 旧宿主（销售订货单详情页）也改走右下悬浮标准形态：scope 改为必传，
 //   面板自带的「全选可发产品/去发货/刷新」工具条与说明文字整体退役——所有宿主
 //   一律经 scope 在右下悬浮组渲染「已选 N 项」胶囊与「去发货(N)」。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -418,7 +419,7 @@ class _ProgressList extends ConsumerWidget {
           children: [
             Expanded(
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(UtenRadius.xs),
                 child: LinearProgressIndicator(
                   value: (line.qty ?? 0) > 0
                       ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
@@ -558,7 +559,9 @@ class _ProgressList extends ConsumerWidget {
     bool canViewPlan,
   ) => showDialog<void>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => UtenAlertDialog(
+      maxWidth: 720,
+      scrollable: false,
       title: Text('${line.goodsName ?? line.goodsCode ?? '产品'} · 进度来源'),
       content: SizedBox(
         width: 720,

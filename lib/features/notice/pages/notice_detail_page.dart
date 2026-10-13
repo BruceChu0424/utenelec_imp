@@ -107,7 +107,9 @@ class _Content extends ConsumerWidget {
         ),
         children: [
           // 类型徽章
-          Row(
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s8,
             children: [
               UtenStatusBadge(
                 label: notice.type.label,
@@ -115,7 +117,6 @@ class _Content extends ConsumerWidget {
                 icon: notice.type.icon,
               ),
               if (notice.type.isWork) ...[
-                const SizedBox(width: UtenSpacing.s8),
                 const UtenStatusBadge(
                   label: '工作',
                   type: UtenStatusBadgeType.accent,
@@ -123,7 +124,6 @@ class _Content extends ConsumerWidget {
                 ),
               ],
               if (notice.kind == NoticeKind.todo) ...[
-                const SizedBox(width: UtenSpacing.s8),
                 UtenStatusBadge(
                   label: notice.taskCompleted ? '待办已完成' : '待办',
                   type: notice.taskCompleted
@@ -135,7 +135,6 @@ class _Content extends ConsumerWidget {
                 ),
               ],
               if (notice.priority.showBadge) ...[
-                const SizedBox(width: UtenSpacing.s8),
                 UtenStatusBadge(
                   label: notice.priority.label,
                   type: notice.priority == NoticePriority.urgent
@@ -147,7 +146,6 @@ class _Content extends ConsumerWidget {
                 ),
               ],
               if (notice.topPriority) ...[
-                const SizedBox(width: UtenSpacing.s8),
                 const UtenStatusBadge(
                   label: '置顶',
                   type: UtenStatusBadgeType.warning,
@@ -184,11 +182,13 @@ class _Content extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    notice.publisher,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurface,
+                  Flexible(
+                    child: Text(
+                      notice.publisher,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface,
+                      ),
                     ),
                   ),
                 ],
@@ -202,10 +202,12 @@ class _Content extends ConsumerWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: UtenSpacing.s4),
-                  Text(
-                    _fmt(notice.publishedAt),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  Flexible(
+                    child: Text(
+                      _fmt(notice.publishedAt),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],
@@ -245,10 +247,12 @@ class _Content extends ConsumerWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  '截止时间：${_fmt(notice.dueAt!)}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                Flexible(
+                  child: Text(
+                    '截止时间：${_fmt(notice.dueAt!)}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -349,10 +353,12 @@ class _Content extends ConsumerWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    '已于 ${_fmt(notice.readAt!)} 阅读',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  Flexible(
+                    child: Text(
+                      '已于 ${_fmt(notice.readAt!)} 阅读',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],

@@ -38,7 +38,7 @@ void main() {
 
     // 选中「成品类」→ 右栏加载详情（第 1 次 detail）+ 客户列表（第 1 次 list）。
     // 树节点渲染为「名称（编码）」。
-    await tester.tap(find.text('成品类(C-FIN)'));
+    await _selectCategory(tester, '成品类(C-FIN)');
     await tester.pumpAndSettle();
     expect(categories.detailCalls('finished'), 1);
     expect(clients.listCalls, greaterThan(0));
@@ -79,7 +79,7 @@ void main() {
     );
     await _pumpPage(tester, categories, clients);
 
-    await tester.tap(find.text('成品类(C-FIN)'));
+    await _selectCategory(tester, '成品类(C-FIN)');
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<ClientListItem>>(
@@ -109,7 +109,7 @@ void main() {
       final clients = _FakeClientRepository(includeLegacy: true);
       await _pumpPage(tester, categories, clients);
 
-      await tester.tap(find.text('成品类(C-FIN)'));
+      await _selectCategory(tester, '成品类(C-FIN)');
       await tester.pumpAndSettle();
       expect(find.text('信用额度 / 旧库 Credit 快照'), findsOneWidget);
 
@@ -157,7 +157,7 @@ void main() {
     final clients = _FakeClientRepository(includeLegacy: true);
     await _pumpPage(tester, categories, clients, locale: const Locale('zh'));
 
-    await tester.tap(find.text('成品类(C-FIN)'));
+    await _selectCategory(tester, '成品类(C-FIN)');
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<ClientListItem>>(
@@ -183,7 +183,7 @@ void main() {
       extraPermissions: const {Perm.clientCreate},
     );
 
-    await tester.tap(find.text('成品类(C-FIN)'));
+    await _selectCategory(tester, '成品类(C-FIN)');
     await tester.pumpAndSettle();
     await tester.tap(find.text('添加客户'));
     await tester.pumpAndSettle();
@@ -511,4 +511,12 @@ class _ReferenceApi extends ApiClient {
   }) async => const [
     {'id': 'settlement-1', 'code': 'MONTHLY', 'name': '月结'},
   ];
+}
+
+Future<void> _selectCategory(WidgetTester tester, String label) async {
+  if (!tester.any(find.text(label).hitTestable())) {
+    await tester.tap(find.byIcon(Icons.account_tree_rounded));
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.text(label));
 }

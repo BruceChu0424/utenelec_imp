@@ -18,6 +18,7 @@
 // 受控内测入口的接收超时 10 分钟；正式网关拒绝测试入口。仍超时则提示「可能仍在后台执行」，
 // 重登后本区回显上次结果。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -494,15 +495,6 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
     final small = theme.textTheme.bodySmall?.copyWith(height: 1.4);
     final muted = small?.copyWith(color: theme.colorScheme.onSurfaceVariant);
     final error = theme.colorScheme.error;
-    final recheck = Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton.icon(
-        key: const Key('system-test-reset-recheck'),
-        onPressed: _running ? null : _checkReset,
-        icon: const Icon(Icons.refresh, size: 18),
-        label: const Text('重新检查'),
-      ),
-    );
     if (_checking) {
       return [
         const LinearProgressIndicator(),
@@ -524,7 +516,6 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
           key: const Key('system-test-reset-preview-error'),
           style: _previewBlocked ? small?.copyWith(color: error) : small,
         ),
-        recheck,
       ];
     }
     final preview = _preview;
@@ -590,9 +581,15 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
           key: const Key('system-test-reset-dead-events'),
           style: muted,
         ),
-      recheck,
     ];
   }
+
+  Widget _recheckAction() => TextButton.icon(
+    key: const Key('system-test-reset-recheck'),
+    onPressed: _running ? null : _checkReset,
+    icon: const Icon(Icons.refresh, size: 18),
+    label: const Text('重新检查'),
+  );
 
   /// 提交后被服务端明确拒绝或中断：原文留在弹窗里(可能含文件名、已删数和下一步)。
   Widget _submitErrorBlock(ThemeData theme) {
@@ -635,7 +632,8 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
         pending.asData?.value != null ||
         pending.hasError ||
         last.asData?.value.retiredPendingReason != null;
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       key: const Key('system-test-clear-confirm-dialog'),
       title: const Text('清空业务数据'),
       content: SingleChildScrollView(
@@ -730,6 +728,8 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
         ),
       ),
       actions: [
+        if (!_checking && (_preview != null || _previewError != null))
+          _recheckAction(),
         UtenButton(
           type: UtenButtonType.ghost,
           onPressed: _running ? null : () => Navigator.of(context).pop(),

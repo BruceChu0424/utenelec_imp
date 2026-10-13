@@ -15,7 +15,10 @@
 // 值对象 [UtenHistoryTimeValue] 不含「取消选择回 none」的入口：胶囊一旦
 // 选中只能互相切换——避免误触把已加载的历史列表清回占位态。
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'uten_app_bar_action_scope.dart';
 
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -80,17 +83,21 @@ class UtenHistoryTimeFilter extends StatelessWidget {
   final String allLabel;
 
   Future<void> _pickRange(BuildContext context) async {
+    final actionContext = UtenAppBarActionScope.actionContextOf(context);
     final today = ChinaDateTime.today();
     final current = value.range;
     final picked = await showDateRangePicker(
-      context: context,
+      context: actionContext,
       firstDate: DateTime.utc(2020),
       lastDate: today,
       initialDateRange: current,
+      initialEntryMode: MediaQuery.sizeOf(actionContext).width < 360
+          ? DatePickerEntryMode.input
+          : DatePickerEntryMode.calendar,
       helpText: helpText,
       saveText: '应用',
     );
-    if (picked == null) return;
+    if (picked == null || !actionContext.mounted) return;
     onChanged(
       UtenHistoryTimeValue.range(
         DateTimeRange(
@@ -108,8 +115,10 @@ class UtenHistoryTimeFilter extends StatelessWidget {
         ? rangeLabel
         : '${ChinaDateTime.formatDate(range.start)} ~ '
               '${ChinaDateTime.formatDate(range.end)}';
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s8,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         _capsule(
           context: context,
@@ -118,7 +127,6 @@ class UtenHistoryTimeFilter extends StatelessWidget {
           label: rangeText,
           onTap: enabled ? () => _pickRange(context) : null,
         ),
-        const SizedBox(width: UtenSpacing.s8),
         _capsule(
           context: context,
           selected: value.all,
@@ -137,7 +145,7 @@ class UtenHistoryTimeFilter extends StatelessWidget {
     required bool selected,
     required IconData icon,
     required String label,
-    required VoidCallback? onTap,
+    required FutureOr<void> Function()? onTap,
   }) {
     final scheme = Theme.of(context).colorScheme;
     final disabled = onTap == null && !enabled;
@@ -152,11 +160,13 @@ class UtenHistoryTimeFilter extends StatelessWidget {
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: onTap,
+          onTap: UtenAppBarActionScope.wrapBefore(context, onTap),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-            child: SizedBox(
-              height: 40,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: UtenControlMetrics.controlHeight(context),
+              ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -168,13 +178,17 @@ class UtenHistoryTimeFilter extends StatelessWidget {
                         : scheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: UtenSpacing.s8),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: selected
-                          ? scheme.onSecondaryContainer
-                          : scheme.onSurface,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: selected
+                            ? scheme.onSecondaryContainer
+                            : scheme.onSurface,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],

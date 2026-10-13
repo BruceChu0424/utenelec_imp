@@ -17,6 +17,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
@@ -4992,6 +4993,7 @@ void main() {
     testWidgets('顶层已下计划办理单行显示且单号不重复：$planNo 查看=$canView', (tester) async {
       await _pump(
         tester,
+        platform: TargetPlatform.windows,
         permissions: {
           ..._permissions,
           if (canView) Perm.productionPlanView,
@@ -5099,7 +5101,134 @@ void main() {
       expect(tester.getSize(handleHeader).width, 48);
       expect(tester.getSize(row).height, lessThanOrEqualTo(64));
       expect(tester.takeException(), isNull, reason: '最窄列也不横向溢出或折成两行');
+      final actions = find.byKey(
+        const ValueKey('material-top-level-view-plan-actions'),
+      );
+      expect(tester.getRect(actions).width, greaterThanOrEqualTo(32));
+      await tester.tap(actions);
+      await tester.pumpAndSettle();
+      expect(
+        viewPlan,
+        canView ? findsOneWidget : findsNothing,
+        reason: '窄列动作面板也不能绕过查看计划权限',
+      );
+      expect(tester.widget<ListTile>(cancelPlan).enabled, isTrue);
+      await tester.tap(cancelPlan);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('整批撤回生产计划'), findsOneWidget);
+      expect(
+        requests.any((r) => r.path.endsWith('/withdraw')),
+        isFalse,
+        reason: '动作面板只进入原确认，不提前执行撤回',
+      );
+      await tester.tap(find.text('取消').last);
+      await tester.pumpAndSettle();
+      expect(requests.any((r) => r.path.endsWith('/withdraw')), isFalse);
     });
+  }
+
+  for (final factor in [0.85, 2.0]) {
+    testWidgets(
+      'touch narrow plan actions preserve target, permission and confirmation at $factor',
+      (tester) async {
+        await _pump(
+          tester,
+          platform: TargetPlatform.android,
+          fontFactor: factor,
+          permissions: {
+            ..._permissions,
+            Perm.productionPlanView,
+            Perm.productionMaterialAnalysisGenerate,
+            Perm.productionPlanReverse,
+          },
+          mutate: (data) {
+            (data['allowedActions'] as List).add('GENERATE_PLAN');
+            final product = (data['products'] as List).single as Map;
+            product.addAll(<String, dynamic>{
+              'issuedPlanQty': 2000,
+              'canSchedule': false,
+              'canIssueSurplus': true,
+              'remainingQty': 0,
+              'latestPlanId': 'plan-1',
+              'latestPlanNo': 'PP-20261013-LONG-NUMBER',
+              'planReferences': [
+                {
+                  'planId': 'plan-1',
+                  'planNo': 'PP-20261013-LONG-NUMBER',
+                  'status': 1,
+                },
+              ],
+            });
+            _fixturePlanAssignment(product);
+            return data;
+          },
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('material-bom-layout-material')),
+        );
+        await tester.pumpAndSettle();
+        final header = find
+            .ancestor(
+              of: find.text('物料办理'),
+              matching: find.byWidgetPredicate(
+                (w) => w is Container && w.constraints?.hasBoundedWidth == true,
+              ),
+            )
+            .first;
+        final grip = tester.widget<GestureDetector>(
+          find.descendant(
+            of: header,
+            matching: find.byWidgetPredicate(
+              (w) =>
+                  w is GestureDetector &&
+                  w.onHorizontalDragUpdate != null &&
+                  w.child is MouseRegion &&
+                  (w.child! as MouseRegion).cursor ==
+                      SystemMouseCursors.resizeColumn,
+            ),
+          ),
+        );
+        grip.onHorizontalDragUpdate!(
+          DragUpdateDetails(
+            delta: Offset(48 - tester.getSize(header).width, 0),
+            globalPosition: tester.getCenter(header),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final actions = find.byKey(
+          const ValueKey('material-top-level-view-plan-actions'),
+        );
+        // Body controls must be below the pinned header and to the right of
+        // the frozen identity column, rather than aligned under that overlay.
+        await Scrollable.ensureVisible(tester.element(actions), alignment: 0.5);
+        await Scrollable.of(
+          tester.element(actions),
+          axis: Axis.horizontal,
+        ).position.ensureVisible(tester.renderObject(actions), alignment: 1);
+        await tester.pumpAndSettle();
+        expect(tester.getRect(actions).width, greaterThanOrEqualTo(48));
+        expect(tester.getRect(actions).height, greaterThanOrEqualTo(48));
+        await tester.tap(actions);
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('material-top-level-view-plan')),
+          findsOneWidget,
+        );
+        final cancel = find.byKey(
+          const ValueKey('material-top-level-cancel-plan'),
+        );
+        expect(tester.widget<ListTile>(cancel).enabled, isTrue);
+        await tester.ensureVisible(cancel);
+        await tester.tap(cancel);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('整批撤回生产计划'), findsOneWidget);
+        expect(requests.where((r) => r.path.endsWith('/withdraw')), isEmpty);
+        await tester.tap(find.text('取消').last);
+        await tester.pumpAndSettle();
+        expect(requests.where((r) => r.path.endsWith('/withdraw')), isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testWidgets('按物料汇总顶层整计划撤回：CAS反向计划并恢复需求，下单及进度不残留', (tester) async {
@@ -7072,6 +7201,8 @@ requests = [];
 /// GET default-workshops 的返回(goodsId → 车间 / 负责人学习记忆)。
 Future<void> _pump(
   WidgetTester tester, {
+  TargetPlatform? platform,
+  double fontFactor = 1,
   Set<String> permissions = _permissions,
   _OrderAuthoritySession? session,
   // 夹具已有十几行物料, 视口给高一点: 页面级滚动下看不见的行不会被建出来,
@@ -7388,7 +7519,10 @@ Future<void> _pump(
         locale: const Locale('zh'),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        theme: buildLightTheme(),
+        theme: buildLightTheme().copyWith(platform: platform),
+        builder: (context, child) => fontFactor == 1
+            ? child!
+            : UtenDisplayZoomBox(fontFactor: fontFactor, child: child!),
         home: const ProductionMaterialAnalysisPage(
           seed: ProductionMaterialAnalysisSeed(
             analysisId: 'analysis-1',

@@ -9,6 +9,7 @@
 // 都不得超过单行文本高度。下拉用 UtenDropdownField(flat)，动作用本组件。
 
 import 'package:flutter/material.dart';
+import '../../core/theme/uten_tokens.dart';
 
 /// 单元格内联文字动作：主色文字（可带 14px 前置图标），高度=单行文本。
 ///
@@ -66,7 +67,9 @@ class UtenTableCellAction extends StatelessWidget {
       // 关掉按钮主题的最小尺寸与内边距：动作高度完全由文本行高决定，
       // 点击区由宿主单元格（约 37 高）提供，不靠按钮自身撑。
       style: TextButton.styleFrom(
-        minimumSize: Size.zero,
+        minimumSize: Size.square(
+          UtenControlMetrics.minimumHitExtent(context, desktop: 0),
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 4),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: VisualDensity.compact,

@@ -8,6 +8,7 @@
 // - 统一入口是 `UtenNotify.alert(...)`（lib/core/ui/uten_notify.dart），
 //   业务侧不要直接 new 本类。
 
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +16,7 @@ import '../../core/performance/performance_tier.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../shared/providers/performance_provider.dart';
 import '../buttons/uten_button.dart';
+import 'uten_dialog.dart';
 
 /// 居中弹窗紧急级别。
 ///
@@ -261,97 +263,65 @@ class _CenterAlertDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final accent = level.accent;
     final isUrgent = level == UtenAlertLevel.urgent;
-
-    return Dialog(
-      insetPadding: EdgeInsets.symmetric(
-        horizontal: MediaQuery.sizeOf(context).width < 600 ? 16 : 40,
-        vertical: 24,
-      ),
+    return UtenAlertDialog(
+      maxWidth: maxWidth,
+      constraints: BoxConstraints(maxHeight: maxHeight),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(UtenRadius.card),
         side: isUrgent
             ? BorderSide(color: accent.withValues(alpha: 0.5), width: 1.5)
             : BorderSide.none,
       ),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth, maxHeight: maxHeight),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 级别图标（圆底）
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon ?? level.icon, color: accent, size: 30),
-              ),
-              const SizedBox(height: 14),
-              // 标题
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 10),
-              // 内容（可滚动，防长文溢出）
-              Flexible(
-                child: SingleChildScrollView(
-                  child:
-                      content ??
-                      Text(
-                        message!,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                          height: 1.5,
-                        ),
-                      ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // 动作区：单确认 / 取消+确认（统一居中）
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (cancelLabel != null) ...[
-                    UtenButton(
-                      type: UtenButtonType.ghost,
-                      onPressed: () {
-                        Navigator.pop(context, false);
-                        onCancel?.call();
-                      },
-                      child: Text(cancelLabel!),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  UtenButton(
-                    type: isUrgent
-                        ? UtenButtonType.danger
-                        : UtenButtonType.primary,
-                    onPressed: () {
-                      Navigator.pop(context, true);
-                      onConfirm?.call();
-                    },
-                    child: Text(confirmLabel ?? (isUrgent ? '已知悉' : '确认')),
-                  ),
-                ],
-              ),
-            ],
+      icon: Center(
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
           ),
+          child: Icon(icon ?? level.icon, color: accent, size: 30),
         ),
       ),
+      title: Text(
+        title,
+        textAlign: TextAlign.center,
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      content:
+          content ??
+          Text(
+            message!,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+          ),
+      actionsAlignment: MainAxisAlignment.center,
+      actions: [
+        if (cancelLabel != null)
+          UtenButton(
+            type: UtenButtonType.ghost,
+            onPressed: () {
+              Navigator.pop(context, false);
+              onCancel?.call();
+            },
+            child: Text(cancelLabel!),
+          ),
+        UtenButton(
+          type: isUrgent ? UtenButtonType.danger : UtenButtonType.primary,
+          onPressed: () {
+            Navigator.pop(context, true);
+            onConfirm?.call();
+          },
+          child: Text(confirmLabel ?? (isUrgent ? '已知悉' : '确认')),
+        ),
+      ],
     );
   }
 }

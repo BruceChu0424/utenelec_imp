@@ -1,3 +1,4 @@
+import '../../../components/data_display/uten_table_surface.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/platform_tables/platform_table_controller.dart';
 import '../../../shared/platform_tables/platform_table_picker.dart';
@@ -80,6 +81,8 @@ class MasterColumnDef<T> {
     required this.label,
     required this.width,
     required this.value,
+    this.minimumWidthOf,
+    this.cellHorizontalPaddingOf,
     this.type = 'text',
     this.sortable = false,
     this.filterFromRows = false,
@@ -115,6 +118,14 @@ class MasterColumnDef<T> {
   final String? Function(T row)? exactValueOf;
   final Listenable? Function(T row)? exactListenableOf;
   final double width;
+
+  /// Optional presentation minimum for interactive cells. The ordinary
+  /// 48-column minimum remains unchanged; this callback never changes data.
+  final double Function(BuildContext context)? minimumWidthOf;
+
+  /// Body-cell padding for compact interactive columns; defaults to 12 per
+  /// side. Header labels retain their existing padding and tooltip behavior.
+  final double Function(BuildContext context)? cellHorizontalPaddingOf;
   final String? Function(T item) value;
 
   /// 表头说明（2026-09-06）：非空时列头标签后渲染 ⓘ——桌面悬停出 Tooltip、
@@ -1587,13 +1598,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     if (_widths.length != columns.length) {
       _widths = [
         for (var i = 0; i < columns.length; i++)
-          i < _widths.length ? _widths[i] : columns[i].width,
+          math.max(
+            _minimumColumnWidth(context, columns[i]),
+            i < _widths.length ? _widths[i] : columns[i].width,
+          ),
       ];
     }
     for (var i = 0; i < columns.length; i++) {
       final width = saved.widths[columns[i].key];
       if (width != null) {
-        _widths[i] = width;
+        _widths[i] = math.max(_minimumColumnWidth(context, columns[i]), width);
         _manualResized.add(i);
       }
     }
@@ -2080,7 +2094,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 上次量宽时生效的字号系数（textScaler.scale(1)）。用户在系统设置改字号档后，
   /// 渲染文字按新字号铺，但列宽缓存不会自动失效——[_ensureWidths] 据此比较触发重算，
   /// 保证字号变大列也跟着变宽（与 floating_capsule_nav_bar 同款 textScaler 处理）。
-  double? _lastScale;
+  TextScaler? _lastScale;
+  List<double> _lastColumnMinimums = const [];
+  List<double> _lastColumnPadding = const [];
 
   /// 当前选中（单击高亮）的行：滚动不刷新数据故高亮常驻，翻页/重查换对象后自然失效。
   T? _selectedItem;
@@ -2142,6 +2158,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 「预览打印 / 下载表格」对话框会正常叠在全屏之上（手动 OverlayEntry 会压住路由弹窗）。
   /// [_fsTick] 驱动全屏内容重建（数据/列宽/显隐变化时 bump）。
   bool _fullscreen = false;
+  final GlobalKey _presentationKey = GlobalKey();
   final ValueNotifier<int> _fsTick = ValueNotifier<int>(0);
 
   /// 当前展开的前导分组 id 集合（点击分组标题行切换）。默认全折叠。
@@ -2157,8 +2174,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _colLinks.putIfAbsent(i, () => LayerLink());
 
   @override
-  double columnDragWidth(int i) =>
-      i < _widths.length ? _widths[i] : _minColWidth;
+  double columnDragWidth(int i) => i < _widths.length
+      ? _widths[i]
+      : i < _columns.length
+      ? _minimumColumnWidth(context, _columns[i])
+      : _minColWidth;
 
   @override
   String columnDragLabel(int i) => i < _columns.length ? _columns[i].label : '';
@@ -2197,7 +2217,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   List<({int index, double width})> get reorderVisibleColumns => [
     for (final i in _visibleIndices)
-      (index: i, width: i < _widths.length ? _widths[i] : _minColWidth),
+      (
+        index: i,
+        width: i < _widths.length
+            ? _widths[i]
+            : _minimumColumnWidth(context, _columns[i]),
+      ),
   ];
 
   /// 横拖换位/弹窗排序/右键菜单移动落位：可见序列内搬移，隐藏列保持原锚位；
@@ -2371,6 +2396,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 列宽下限（自动适配与拖拽收窄共同下限，防止列被拖没）。
   static const double _minColWidth = 48;
+
+  double _minimumColumnWidth(BuildContext context, MasterColumnDef<T> column) {
+    final minimum = column.minimumWidthOf?.call(context) ?? _minColWidth;
+    assert(minimum.isFinite && minimum >= 0);
+    return math.max(_minColWidth, minimum);
+  }
+
+  double _columnHorizontalPadding(
+    BuildContext context,
+    MasterColumnDef<T> column,
+  ) {
+    final padding = column.cellHorizontalPaddingOf?.call(context) ?? _cellPadX;
+    assert(padding.isFinite && padding >= 0);
+    return padding;
+  }
 
   /// 列宽自动适配上限：超长文本（如备注）默认按此截断+省略号，用户可再拖宽。
   static const double _maxColWidth = 480;
@@ -2704,14 +2744,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               child: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.all(UtenSpacing.s12),
-                  child: Column(
-                    children: [
-                      Expanded(child: _buildTableStage(ctx2)),
-                      if (widget.summaryBar != null && !widget.summaryBarInline)
-                        _buildSummaryBar(ctx2),
-                      if (widget.totalPages > 1) _buildPager(ctx2),
-                    ],
-                  ),
+                  child: _buildBoundedPresentation(ctx2),
                 ),
               ),
             );
@@ -2737,7 +2770,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 字号档（textScaler）变化也要重算：渲染时文字按放大字号铺，但量宽用的 TextPainter
     // 必须显式带上同一 textScaler 才量得准（否则按 1.0 量偏窄，大字号下要拖才显示全）。
     final textScaler = MediaQuery.textScalerOf(context);
-    final scale = textScaler.scale(1);
+    final scale = textScaler;
+    final minimums = [
+      for (final column in _columns) _minimumColumnWidth(context, column),
+    ];
+    final padding = [
+      for (final column in _columns) _columnHorizontalPadding(context, column),
+    ];
+    if (!listEquals(minimums, _lastColumnMinimums) ||
+        !listEquals(padding, _lastColumnPadding)) {
+      _widthsDirty = true;
+      _lastColumnMinimums = minimums;
+      _lastColumnPadding = padding;
+    }
     if (_lastScale != null && _lastScale != scale) {
       _widthsDirty = true;
       _textMeasures.clear();
@@ -2757,11 +2802,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     );
     for (var i = 0; i < _columns.length; i++) {
       if (_manualResized.contains(i) && i < _widths.length) {
-        next[i] = _widths[i];
+        next[i] = math.max(minimums[i], _widths[i]);
         continue;
       }
       final def = _columns[i];
       next[i] = _fitColumnWidth(
+        context,
         def,
         _measureColumn(context, def, pool, textScaler),
       );
@@ -2795,7 +2841,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       );
       measure.headerMeasured = true;
     }
-    final bodyStyle = theme.textTheme.bodySmall ?? const TextStyle();
+    final bodyStyle = theme.textTheme.bodyMedium ?? const TextStyle();
     // 状态/进度列渲染带加粗，量宽同步用加粗样式，防止首帧量窄截字。
     final measureStyle = utenIsStatusOrProgressColumn(def.key, def.label)
         ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
@@ -2815,19 +2861,26 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// 量宽结果 → 列宽(加内边距/图标富余，夹在上下限之间；声明宽度作下限)。
-  double _fitColumnWidth(MasterColumnDef<T> def, _ColumnTextMeasure measure) {
+  double _fitColumnWidth(
+    BuildContext context,
+    MasterColumnDef<T> def,
+    _ColumnTextMeasure measure,
+  ) {
+    final minimum = _minimumColumnWidth(context, def);
+    final maximum = math.max(minimum, _maxColWidth);
+    final padding = math.max(_cellPadX, _columnHorizontalPadding(context, def));
     final text = measure.header > measure.body ? measure.header : measure.body;
     final measured =
         (text +
-                _cellPadX * 2 +
+                padding * 2 +
                 _headerIconAllowance +
                 (def.sortable ? _sortIconAllowance : 0) +
                 (def.info != null ? _headerInfoIconAllowance : 0) +
                 // 固定列标签前的图钉（18 图标 + 4 间距）也占标签行宽度。
                 (_pinnedKeys.contains(def.key) ? _pinIconAllowance : 0) +
                 _autoFitBuffer)
-            .clamp(_minColWidth, _maxColWidth);
-    final declared = def.width.clamp(_minColWidth, _maxColWidth);
+            .clamp(minimum, maximum);
+    final declared = def.width.clamp(minimum, maximum);
     // Rich cells may contain buttons/progress/two-line guidance whose width
     // cannot be inferred from [value]. Treat the declared width as a minimum;
     // plain text columns can still auto-grow beyond it.
@@ -2843,8 +2896,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (!mounted || !_widthGrowthPending) return;
       _widthGrowthPending = false;
       final textScaler = MediaQuery.textScalerOf(context);
-      if (_lastScale != textScaler.scale(1) ||
-          _widths.length != _columns.length) {
+      if (_lastScale != textScaler || _widths.length != _columns.length) {
         setState(() => _widthsDirty = true);
         return;
       }
@@ -2855,6 +2907,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         if (_manualResized.contains(i)) continue;
         final def = _columns[i];
         final fitted = _fitColumnWidth(
+          context,
           def,
           _measureColumn(context, def, pool, textScaler),
         );
@@ -3273,25 +3326,56 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ],
       );
       final sticky = _sticky;
-      if (sticky == null) return embeddedColumn;
+      if (sticky == null) return _wrapPresentation(embeddedColumn);
       return UtenStickyWheelGate(
         tracker: sticky,
         onEngage: _onStickyEngage,
-        child: embeddedColumn,
+        child: _wrapPresentation(embeddedColumn),
       );
     }
-    return Column(
-      children: [
-        Expanded(child: _buildTableStage(context)),
-        // 合计条在表体（内部滚动）之外、翻页条之上：滚到哪一行它都在。
-        // summaryBarInline 时改为表内脚注（见 _buildTable 的 ListView 末项），
-        // 不在这里钉住。
-        if (widget.summaryBar != null && !widget.summaryBarInline)
-          _buildSummaryBar(context),
-        if (widget.totalPages > 1) _buildPager(context),
-      ],
-    );
+    return _buildBoundedPresentation(context);
   }
+
+  Widget _wrapPresentation(Widget child) => KeyedSubtree(
+    key: _presentationKey,
+    child: Semantics(
+      container: true,
+      explicitChildNodes: true,
+      child: UtenTableSurface(child: child),
+    ),
+  );
+
+  Widget _buildBoundedPresentation(BuildContext context) => _wrapPresentation(
+    LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final footer = [
+          if (widget.summaryBar != null && !widget.summaryBarInline)
+            _buildSummaryBar(context),
+          if (widget.totalPages > 1) _buildPager(context),
+        ];
+        if (footer.isNotEmpty && constraints.maxHeight < 240 * textScale) {
+          return _ShortTablePresentation(
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 168 * textScale,
+                  child: _buildTableStage(context),
+                ),
+                ...footer,
+              ],
+            ),
+          );
+        }
+        return Column(
+          children: [
+            Expanded(child: _buildTableStage(context)),
+            ...footer,
+          ],
+        );
+      },
+    ),
+  );
 
   /// 表体舞台：横滚区 + 竖向 ListView(+ 表内合计条)。
   ///
@@ -3683,7 +3767,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             filterNote == null
                 ? widget.emptyMessage
                 : '${widget.emptyMessage}（$filterNote）',
-            style: theme.textTheme.bodySmall?.copyWith(
+            style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
@@ -4032,7 +4116,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       Widget? bodyStage;
       double? bodyStageWidth;
       final Widget tableBody = _BodyFlex(
-        embedded: widget.embedded,
+        embedded: widget.embedded && !_fullscreen,
         primary: _usesPrimaryScroll,
         virtualized: widget.virtualized,
         child: _maybeSelectionArea(
@@ -4119,11 +4203,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 顶到视口上沿后钉住（覆盖层），数据行从其下方滚过；表尾推到时随表尾离开
       // （pushed sticky）。流内留同高占位（[_pinnedUnitHeight]，post-frame 实测修正），
       // 整表总高与非吸顶形态一致。普通表原样流内渲染，零结构变化。
-      final sticky = _sticky;
-      return Column(
+      final sticky = _fullscreen ? null : _sticky;
+      Widget compose(Widget visibleToolbar) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          toolbar,
+          visibleToolbar,
           if (sticky == null) ...[
             headerRow,
             headerDivider,
@@ -4162,6 +4246,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             ),
         ],
       );
+      if (widget.embedded && !_fullscreen) return compose(toolbar);
+      return _ResponsiveTableChrome(toolbar: toolbar, compose: compose);
     }
 
     return buildStandardTable();
@@ -4315,7 +4401,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                               group.subtitle!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall?.copyWith(
+                              style: theme.textTheme.bodyMedium?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
@@ -4604,8 +4690,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 拖拽改第 [index] 列宽：按本次横向增量更新，下限 [_minColWidth] 防拖没；
   /// 标记该列已手动调整，后续数据刷新不再自动重算其宽度。
   void _resizeColumn(int index, double dx) {
-    final next = _widths[index] + dx;
-    if (next < _minColWidth) return;
+    final next = math.max(
+      _minimumColumnWidth(context, _columns[index]),
+      _widths[index] + dx,
+    );
     setState(() {
       _widths[index] = next;
       _manualResized.add(index);
@@ -4695,8 +4783,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 ),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
+          padding: EdgeInsets.symmetric(
+            horizontal: _columnHorizontalPadding(context, column),
             vertical: MasterDataTableView.cellVerticalPadding,
           ),
           child: _dataCell(column, item, cellStyle, selected),
@@ -4742,9 +4830,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ? utenTableSelectedRowColor(theme)
         : (base ?? Colors.transparent);
     final lineColor = theme.colorScheme.outline;
-    final textStyle = (theme.textTheme.bodySmall ?? const TextStyle()).copyWith(
-      color: widget.rowForegroundColor?.call(item),
-    );
+    final textStyle = (theme.textTheme.bodyMedium ?? const TextStyle())
+        .copyWith(color: widget.rowForegroundColor?.call(item));
     // 多选前导勾选格（合成单元格，不进列宽机制）。
     // **行内这一份不能自带底色**：它要跟整行同底（选中淡绿/行语义色都由外层
     // ColoredBox 统一给），而且 DecoratedBox 的边框画在子节点之前——自带不透明底会把
@@ -5024,59 +5111,103 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final theme = Theme.of(context);
     final canPrev = !_busy && _currentPage > 1;
     final canNext = !_busy && _currentPage < widget.totalPages;
-    // 「上一页/下一页」带文案时的固有宽度随字号一起放大：窄屏（375px）叠大字号（1.5×）
-    // 就超出可用宽。按可用宽 × 当前字号判断，放不下就收成纯图标按钮——
-    // 翻页条**恒为一行**（改折行会把表体挤到纵向溢出，得不偿失）。
+    // Preserve complete hit targets. When the counter and both controls cannot
+    // share a row, the counter gets its own line; short windows scroll the
+    // complete table presentation instead of clipping controls or row content.
     final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    final hitExtent = UtenControlMetrics.minimumHitExtent(context);
+    final pageInputWidth = math.max(54.0, hitExtent);
+    double widthOf(String text) {
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: theme.textTheme.bodyMedium),
+        textScaler: MediaQuery.textScalerOf(context),
+        textDirection: Directionality.of(context),
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s8),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 250 * textScale + 54;
+          final centerWidth =
+              pageInputWidth + 16 + widthOf('/ ${widget.totalPages}');
+          final compact =
+              constraints.maxWidth <
+              math.max(
+                250 * textScale + 54,
+                2 * hitExtent + centerWidth + 80 * textScale,
+              );
           void goto(int page) => _gotoPage(page);
           // Split pickers can leave less than 190px for the right-hand list.
           // Keep navigation usable there without forcing a fixed-width page
           // input plus total into the same row.
-          if (constraints.maxWidth < 190 * textScale) {
-            final buttonWidth = math.min(48.0, constraints.maxWidth / 3);
-            return Row(
+          if (constraints.maxWidth <
+              math.max(190 * textScale, 2 * hitExtent + centerWidth)) {
+            final previous = IconButton(
+              key: const ValueKey('master-table-page-previous'),
+              constraints: BoxConstraints.tightFor(
+                width: hitExtent,
+                height: hitExtent,
+              ),
+              padding: EdgeInsets.zero,
+              onPressed: canPrev && widget.onPageChange != null
+                  ? () => goto(_currentPage - 1)
+                  : null,
+              tooltip: '上一页',
+              icon: const Icon(Icons.chevron_left_rounded, size: 20),
+            );
+            final next = IconButton(
+              key: const ValueKey('master-table-page-next'),
+              constraints: BoxConstraints.tightFor(
+                width: hitExtent,
+                height: hitExtent,
+              ),
+              padding: EdgeInsets.zero,
+              onPressed: canNext && widget.onPageChange != null
+                  ? () => goto(_currentPage + 1)
+                  : null,
+              tooltip: '下一页',
+              icon: const Icon(Icons.chevron_right_rounded, size: 20),
+            );
+            final counter = Text(
+              '$_currentPage / ${widget.totalPages}',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium,
+            );
+            if (constraints.maxWidth >=
+                2 * hitExtent +
+                    16 +
+                    widthOf('$_currentPage / ${widget.totalPages}')) {
+              return Row(
+                children: [
+                  previous,
+                  Expanded(child: counter),
+                  next,
+                ],
+              );
+            }
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                IconButton(
-                  constraints: BoxConstraints.tightFor(
-                    width: buttonWidth,
-                    height: 48,
+                counter,
+                const SizedBox(height: UtenSpacing.s8),
+                if (constraints.maxWidth >= 2 * hitExtent)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [previous, next],
+                  )
+                else
+                  Column(
+                    children: [
+                      previous,
+                      const SizedBox(height: UtenSpacing.s8),
+                      next,
+                    ],
                   ),
-                  padding: EdgeInsets.zero,
-                  onPressed: canPrev && widget.onPageChange != null
-                      ? () => goto(_currentPage - 1)
-                      : null,
-                  tooltip: '上一页',
-                  icon: const Icon(Icons.chevron_left_rounded, size: 20),
-                ),
-                Expanded(
-                  child: Tooltip(
-                    message: '$_currentPage / ${widget.totalPages}',
-                    child: Text(
-                      '$_currentPage / ${widget.totalPages}',
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  constraints: BoxConstraints.tightFor(
-                    width: buttonWidth,
-                    height: 48,
-                  ),
-                  padding: EdgeInsets.zero,
-                  onPressed: canNext && widget.onPageChange != null
-                      ? () => goto(_currentPage + 1)
-                      : null,
-                  tooltip: '下一页',
-                  icon: const Icon(Icons.chevron_right_rounded, size: 20),
-                ),
               ],
             );
           }
@@ -5085,6 +5216,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             children: [
               if (compact)
                 IconButton(
+                  key: const ValueKey('master-table-page-previous'),
+                  constraints: BoxConstraints.tightFor(
+                    width: hitExtent,
+                    height: hitExtent,
+                  ),
+                  padding: EdgeInsets.zero,
                   onPressed: (canPrev && widget.onPageChange != null)
                       ? () => goto(_currentPage - 1)
                       : null,
@@ -5093,6 +5230,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 )
               else
                 TextButton.icon(
+                  key: const ValueKey('master-table-page-previous'),
+                  style: TextButton.styleFrom(
+                    minimumSize: Size(hitExtent, hitExtent),
+                  ),
                   onPressed: (canPrev && widget.onPageChange != null)
                       ? () => goto(_currentPage - 1)
                       : null,
@@ -5105,7 +5246,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     SizedBox(
-                      width: 54,
+                      width: pageInputWidth,
                       child: TextFormField(
                         errorBuilder: utenTextFieldErrorBuilder,
                         controller: _pageCtrl,
@@ -5113,16 +5254,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                         enabled: !_busy,
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall,
+                        style: theme.textTheme.bodyMedium,
                         decoration: UtenInputDecoration(
                           InputDecoration(
+                            constraints: BoxConstraints(minHeight: hitExtent),
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 4,
                               vertical: 8,
                             ),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(
+                                UtenRadius.control,
+                              ),
                             ),
                           ),
                         ),
@@ -5144,7 +5288,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     const SizedBox(width: UtenSpacing.s8),
                     Text(
                       '/ ${widget.totalPages}', // TODO(l10n): 补 arb
-                      style: theme.textTheme.bodySmall?.copyWith(
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
@@ -5153,6 +5297,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               ),
               if (compact)
                 IconButton(
+                  key: const ValueKey('master-table-page-next'),
+                  constraints: BoxConstraints.tightFor(
+                    width: hitExtent,
+                    height: hitExtent,
+                  ),
+                  padding: EdgeInsets.zero,
                   onPressed: (canNext && widget.onPageChange != null)
                       ? () => goto(_currentPage + 1)
                       : null,
@@ -5161,6 +5311,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 )
               else
                 TextButton.icon(
+                  key: const ValueKey('master-table-page-next'),
+                  style: TextButton.styleFrom(
+                    minimumSize: Size(hitExtent, hitExtent),
+                  ),
                   onPressed: (canNext && widget.onPageChange != null)
                       ? () => goto(_currentPage + 1)
                       : null,
@@ -5450,7 +5604,7 @@ class _FilterCellState extends State<_FilterCell> {
             child: Material(
               color: theme.colorScheme.surfaceContainerHigh,
               elevation: 8,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(UtenRadius.md),
               clipBehavior: Clip.antiAlias,
               child: Container(
                 constraints: const BoxConstraints(
@@ -5504,7 +5658,9 @@ class _FilterCellState extends State<_FilterCell> {
                                         },
                                       ),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(
+                                    UtenRadius.control,
+                                  ),
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: UtenSpacing.s8,
@@ -5593,7 +5749,7 @@ class _FilterCellState extends State<_FilterCell> {
                                     ),
                                     child: Text(
                                       '无匹配项',
-                                      style: theme.textTheme.bodySmall
+                                      style: theme.textTheme.bodyMedium
                                           ?.copyWith(
                                             color: theme
                                                 .colorScheme
@@ -5651,7 +5807,7 @@ class _FilterCellState extends State<_FilterCell> {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
+                style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
                   color: isSelected ? theme.colorScheme.primary : null,
                 ),
@@ -5688,10 +5844,112 @@ class _FullscreenDisposerState extends State<_FullscreenDisposer> {
   Widget build(BuildContext context) => widget.child;
 }
 
-/// 表体高度策略：embedded（详情页 ListView 等无界高度场景）直接按内容收缩——
-/// 不能用 Flexible（flex 在无界约束下会抛 "non-zero flex but incoming height
-/// constraints are unbounded"）；列表页有界场景用 Flexible(loose)，行少收缩、
-/// 行多顶到视口上限转竖向滚动。
+/// Mounted chrome owns its scroll positions; fullscreen transfers the keyed
+/// table surface rather than attaching another viewport to these controllers.
+class _ShortTablePresentation extends StatefulWidget {
+  const _ShortTablePresentation({required this.child});
+  final Widget child;
+  @override
+  State<_ShortTablePresentation> createState() =>
+      _ShortTablePresentationState();
+}
+
+class _ShortTablePresentationState extends State<_ShortTablePresentation> {
+  final _scroll = ScrollController();
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      NotificationListener<ScrollNotification>(
+        onNotification: (notification) => notification.depth == 0,
+        child: Scrollbar(
+          controller: _scroll,
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _scroll,
+            child: widget.child,
+          ),
+        ),
+      );
+}
+
+class _ResponsiveTableChrome extends StatefulWidget {
+  const _ResponsiveTableChrome({required this.toolbar, required this.compose});
+  final Widget toolbar;
+  final Widget Function(Widget toolbar) compose;
+
+  @override
+  State<_ResponsiveTableChrome> createState() => _ResponsiveTableChromeState();
+}
+
+class _ResponsiveTableChromeState extends State<_ResponsiveTableChrome> {
+  final _toolbarV = ScrollController();
+  final _shortStageV = ScrollController();
+
+  @override
+  void dispose() {
+    _toolbarV.dispose();
+    _shortStageV.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+      final minimumHeight = 168.0 * math.max(1.0, textScale);
+      final height = math.max(constraints.maxHeight, minimumHeight);
+      final toolbarHeight = math.min(160.0, math.max(48.0, height * 0.35));
+      final visibleToolbar = NotificationListener<ScrollMetricsNotification>(
+        onNotification: (_) => true,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (_) => true,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: toolbarHeight),
+            child: Semantics(
+              container: true,
+              explicitChildNodes: true,
+              child: Scrollbar(
+                controller: _toolbarV,
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  controller: _toolbarV,
+                  primary: false,
+                  child: widget.toolbar,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      return NotificationListener<ScrollMetricsNotification>(
+        onNotification: (notification) => notification.depth == 0,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (notification) => notification.depth == 0,
+          child: Scrollbar(
+            controller: _shortStageV,
+            thumbVisibility: height > constraints.maxHeight,
+            child: SingleChildScrollView(
+              controller: _shortStageV,
+              primary: false,
+              child: SizedBox(
+                height: height,
+                child: widget.compose(visibleToolbar),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// Embedded tables shrink with their content; bounded and fullscreen tables
+/// retain a flexible row viewport and scrolling capacity.
 class _BodyFlex extends StatelessWidget {
   const _BodyFlex({
     required this.embedded,

@@ -3,6 +3,7 @@
 // - 车辆管理（整体替换：车牌必填，车型/品牌/颜色/备注非必填）
 // - 备用手机号管理（整体替换：号码必填，标签默认「备用」）
 // 文案硬编码中文（与 HR 运维页同惯例）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
@@ -22,10 +23,10 @@ Future<String?> showEmployeeChangePhoneDialog(
   final controller = TextEditingController();
   String? error;
   try {
-    return await showDialog<String>(
-      context: context,
+    return await UtenDialog.showAndWaitForExit<String>(
+      context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
+        builder: (ctx, setState) => UtenAlertDialog(
           title: const Text('更换手机号'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -114,7 +115,8 @@ Future<List<Map<String, dynamic>>?> showEmployeeVehiclesDialog(
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
+      builder: (ctx, setState) => UtenAlertDialog(
+        scrollable: false,
         title: const Text('车辆管理'),
         content: SizedBox(
           width: 480,
@@ -311,7 +313,8 @@ Future<List<Map<String, dynamic>>?> showEmployeePhonesDialog(
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
+      builder: (ctx, setState) => UtenAlertDialog(
+        scrollable: false,
         title: const Text('备用手机号管理'),
         content: SizedBox(
           width: 420,

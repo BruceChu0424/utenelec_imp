@@ -345,7 +345,7 @@ class _ProductionPlanDetailPageState
         ? await showUtenReviewerConfirmDialog(context, message: confirm)
         : await showDialog<bool>(
             context: context,
-            builder: (ctx) => AlertDialog(
+            builder: (ctx) => UtenAlertDialog(
               title: const Text('确认'),
               content: Text(confirm),
               actionsAlignment: MainAxisAlignment.center,
@@ -537,7 +537,7 @@ class _ProductionPlanDetailPageState
     final reason = await UtenDialog.showAndWaitForExit<String>(
       context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+        builder: (context, setDialogState) => UtenAlertDialog(
           title: Text('$verb生产计划包'),
           content: SizedBox(
             width: utenDialogWidth(dialogContext, 460),
@@ -623,7 +623,8 @@ class _ProductionPlanDetailPageState
   ) {
     return showDialog<_PlanningResultSelection>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
+        scrollable: false,
         insetPadding: utenDialogInsetPadding(ctx),
         title: const Text('生产下达结果'),
         content: SizedBox(
@@ -1014,7 +1015,7 @@ class _ProductionPlanDetailPageState
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(UtenRadius.md),
               ),
               child: Text(
                 statusText,
@@ -1061,7 +1062,7 @@ class _ProductionPlanDetailPageState
     }
     final c = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除计划单'),
         content: const Text('确定删除该草稿计划单吗？已审单据请走反审。'),
         actionsAlignment: MainAxisAlignment.center,

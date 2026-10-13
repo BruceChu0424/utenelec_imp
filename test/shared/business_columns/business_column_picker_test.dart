@@ -137,6 +137,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      await tester.ensureVisible(find.text('包装费 (+)'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('包装费 (+)'));
       await tester.pumpAndSettle();
       expect(result!.column!.id, 'fee');
@@ -150,6 +152,8 @@ void main() {
     BusinessColumnChoice? result;
     await open(tester, repo, (v) => result = v, masked: true);
     expect(find.text('包装费 (+)'), findsNothing);
+    await tester.ensureVisible(find.text('客户货号'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('客户货号'));
     await tester.pumpAndSettle();
     expect(result!.column!.id, 'ref');

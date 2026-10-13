@@ -5,6 +5,7 @@
 // showMasterEditDialog + showMasterDetailSheet，CRUD/详情/并发防护流程与货品 _DetailPane 一致。
 // 查看全员可见（路由不设守卫），编辑按 unit:edit 权限显隐。
 // 文档：见 docs/03-页面/基础资料页.md。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -298,7 +299,7 @@ class _UnitPageState extends ConsumerState<UnitPage> {
   Future<void> _delete(UnitDetail d) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除单位'), // TODO(l10n): 补 arb
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该单位')}」吗？', // TODO(l10n): 补 arb

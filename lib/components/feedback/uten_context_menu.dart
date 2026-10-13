@@ -22,6 +22,7 @@
 //     child: 行内容,
 //   )
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
@@ -228,7 +229,6 @@ class _UtenContextMenuOverlay extends StatelessWidget {
   final ValueChanged<UtenMenuItem> onItemSelected;
 
   static const double _menuWidth = 216;
-  static const double _itemHeight = 40;
   static const double _verticalPad = 6;
   static const double _edge = 8;
 
@@ -236,21 +236,35 @@ class _UtenContextMenuOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final size = MediaQuery.sizeOf(context);
-    // 估算菜单高度用于出屏翻转（条目 40 + 分隔线 9 + 上下内边距）。
+    final media = MediaQuery.of(context);
+    final leftEdge =
+        _edge + math.max(media.padding.left, media.viewInsets.left);
+    final rightEdge =
+        _edge + math.max(media.padding.right, media.viewInsets.right);
+    final topEdge = _edge + math.max(media.padding.top, media.viewInsets.top);
+    final bottomEdge =
+        _edge + math.max(media.padding.bottom, media.viewInsets.bottom);
+    final menuWidth = math.min(
+      _menuWidth,
+      math.max(1.0, size.width - leftEdge - rightEdge),
+    );
+    final availableHeight = math.max(1.0, size.height - topEdge - bottomEdge);
+    final itemHeight = UtenControlMetrics.minimumHitExtent(context);
+    // 按最小点击高度估算翻转位置；长标签可增高，剩余视口由菜单滚动处理。
     var height = _verticalPad * 2;
     for (final e in entries) {
-      height += e is UtenMenuDivider ? 9 : _itemHeight;
+      height += e is UtenMenuDivider ? 9 : itemHeight;
     }
+    height = math.min(height, math.min(420, availableHeight));
+    final maxLeft = math.max(leftEdge, size.width - menuWidth - rightEdge);
+    final maxTop = math.max(topEdge, size.height - height - bottomEdge);
     // 水平：右边不够宽就贴到指针左侧；垂直：下边不够高就向上翻。
-    final left = (position.dx + _menuWidth + _edge > size.width)
-        ? (position.dx - _menuWidth).clamp(
-            _edge,
-            size.width - _menuWidth - _edge,
-          )
-        : position.dx.clamp(_edge, size.width - _menuWidth - _edge);
-    final top = (position.dy + height + _edge > size.height)
-        ? (position.dy - height).clamp(_edge, size.height - height - _edge)
-        : position.dy.clamp(_edge, size.height - height - _edge);
+    final left = (position.dx + menuWidth + rightEdge > size.width)
+        ? (position.dx - menuWidth).clamp(leftEdge, maxLeft)
+        : position.dx.clamp(leftEdge, maxLeft);
+    final top = (position.dy + height + bottomEdge > size.height)
+        ? (position.dy - height).clamp(topEdge, maxTop)
+        : position.dy.clamp(topEdge, maxTop);
 
     return Stack(
       children: [
@@ -273,13 +287,16 @@ class _UtenContextMenuOverlay extends StatelessWidget {
           child: Material(
             color: theme.colorScheme.surfaceContainerHigh,
             elevation: 8,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(UtenRadius.md),
             clipBehavior: Clip.antiAlias,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                minWidth: _menuWidth,
-                maxWidth: _menuWidth,
-                maxHeight: 420,
+              constraints: BoxConstraints(
+                minWidth: menuWidth,
+                maxWidth: menuWidth,
+                maxHeight: math.max(
+                  1.0,
+                  math.min(420, size.height - top - bottomEdge),
+                ),
               ),
               child: ListView(
                 shrinkWrap: true,
@@ -291,7 +308,7 @@ class _UtenContextMenuOverlay extends StatelessWidget {
                             padding: EdgeInsets.symmetric(vertical: 4),
                             child: Divider(height: 1, thickness: 1),
                           )
-                        : _buildItem(theme, e as UtenMenuItem),
+                        : _buildItem(context, theme, e as UtenMenuItem),
                 ],
               ),
             ),
@@ -301,7 +318,7 @@ class _UtenContextMenuOverlay extends StatelessWidget {
     );
   }
 
-  Widget _buildItem(ThemeData theme, UtenMenuItem item) {
+  Widget _buildItem(BuildContext context, ThemeData theme, UtenMenuItem item) {
     final color = !item.enabled
         ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
         : item.destructive
@@ -309,10 +326,15 @@ class _UtenContextMenuOverlay extends StatelessWidget {
         : theme.colorScheme.onSurface;
     return InkWell(
       onTap: item.enabled ? () => onItemSelected(item) : null,
-      child: SizedBox(
-        height: _itemHeight,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          minHeight: UtenControlMetrics.minimumHitExtent(context),
+        ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+          padding: const EdgeInsets.symmetric(
+            horizontal: UtenSpacing.s12,
+            vertical: UtenSpacing.s8,
+          ),
           child: Row(
             children: [
               SizedBox(
@@ -325,8 +347,6 @@ class _UtenContextMenuOverlay extends StatelessWidget {
               Expanded(
                 child: Text(
                   item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(color: color),
                 ),
               ),

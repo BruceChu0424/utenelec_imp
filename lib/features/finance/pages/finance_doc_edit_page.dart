@@ -9,6 +9,7 @@
 // 单据号系统自动生成（后端 DocNumberService），本页只读显示（新增态占位"保存后自动生成"）；
 // 发票号（invoiceNo）仍由用户手工录入（未弃用）。日期统一用 UtenDateField。
 // 保存组装 body 调 create/update，成功后跳详情。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -793,7 +794,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     if (_grid.isEmpty) return true;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('更换客户'),
         content: const Text('更换客户会清空已引用的应收明细，是否继续？'),
         actionsAlignment: MainAxisAlignment.center,

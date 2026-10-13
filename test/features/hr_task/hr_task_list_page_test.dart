@@ -33,6 +33,12 @@ class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
 
   HrTaskSummary summaryValue;
   int summaryCalls = 0;
+  final claimed = <(String, String)>[];
+
+  @override
+  Future<void> claim(String taskType, String employeeId) async {
+    claimed.add((taskType, employeeId));
+  }
 
   @override
   Future<HrTaskSummary> summary() async {
@@ -157,6 +163,7 @@ Widget _app({
   Set<String> permissions = const {},
   GoRouter? router,
   FormDraftStorage? draftStorage,
+  double textScale = 1,
 }) => ProviderScope(
   overrides: [
     hrTaskRepositoryProvider.overrideWithValue(hrTasks),
@@ -174,11 +181,23 @@ Widget _app({
   ],
   child: router == null
       ? MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: HrTaskListPage(type: type),
         )
       : MaterialApp.router(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
           routerConfig: router,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -201,6 +220,101 @@ UtenMenuItem _menuItem(WidgetTester tester, HrTaskItem item, String label) =>
     );
 
 void main() {
+  testWidgets('160逻辑画布系统200%生日开关与一键祝福保持可达及精确人员范围', (tester) async {
+    tester.view.physicalSize = const Size(160, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.binding.setSurfaceSize(const Size(160, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final hrTasks = _FakeHrTaskRepository(
+      _summary(
+        birthdayToday: [_item('a'), _item('b', blessed: true)],
+        birthdayUpcoming: [_item('c', days: 5)],
+      ),
+    );
+    final notices = _FakeNoticeRepository();
+    await tester.pumpWidget(
+      _app(
+        type: HrTaskType.birthday,
+        hrTasks: hrTasks,
+        preferences: preferences,
+        notices: notices,
+        permissions: {Perm.employeeView, Perm.noticePublish},
+        textScale: 2,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const Key('hr-task-celebration-auto-switch'));
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
+    final outerScroll = Scrollable.of(
+      tester.element(toggle),
+      axis: Axis.vertical,
+    );
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(notices.autoEnabled, isTrue);
+    // The lazy collapsing header may leave the tree as it scrolls away.
+    outerScroll.position.jumpTo(outerScroll.position.maxScrollExtent);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('一键全部'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('一键全部'));
+    await tester.pumpAndSettle();
+    expect(notices.blessed.single, ['a']);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('160逻辑画布系统200%任务快捷动作分别认领与登记同一员工', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(160, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final hrTasks = _FakeHrTaskRepository(_summary(confirmToday: [_item('a')]));
+    final employees = _FakeEmployeeRepository();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue({Perm.employeeConfirm}),
+          hrTaskRepositoryProvider.overrideWithValue(hrTasks),
+          employeeRepositoryProvider.overrideWithValue(employees),
+        ],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: HrTaskTile(type: HrTaskType.confirm, item: _item('a')),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byTooltip('认领(标记为我在处理)'));
+    await tester.tap(find.byTooltip('认领(标记为我在处理)'));
+    await tester.pumpAndSettle();
+    expect(hrTasks.claimed, [('confirm', 'a')]);
+    await tester.ensureVisible(find.text('登记转正'));
+    await tester.tap(find.text('登记转正'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('确定'));
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(employees.confirmed.single, startsWith('a@'));
+    expect(employees.updated, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'identity draft remains on all original rows and resumes the original whole plan',
     (tester) async {

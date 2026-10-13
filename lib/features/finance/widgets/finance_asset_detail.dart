@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,7 +72,7 @@ Future<bool> showFinanceAssetDetail(
   }
   return await showDialog<bool>(
         context: context,
-        builder: (_) => Dialog(
+        builder: (_) => UtenDialogFrame(
           clipBehavior: Clip.antiAlias,
           shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
           child: SizedBox(
@@ -202,7 +203,7 @@ class _FinanceAssetDetailSurfaceState
             )
           : await showDialog<bool>(
               context: context,
-              builder: (dialogContext) => AlertDialog(
+              builder: (dialogContext) => UtenAlertDialog(
                 title: Text('${_actionLabel(normalized)}确认'),
                 content: Text(message),
                 actionsAlignment: MainAxisAlignment.center,
@@ -905,7 +906,7 @@ Future<FinanceAssetWorkflowRequest?> showFinanceAssetActionInput(
   }
   return showDialog<FinanceAssetWorkflowRequest>(
     context: context,
-    builder: (_) => Dialog(
+    builder: (_) => UtenDialogFrame(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 680, maxHeight: 720),
         child: content,

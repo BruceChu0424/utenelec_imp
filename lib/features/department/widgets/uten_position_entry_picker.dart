@@ -3,6 +3,7 @@
 // 部门未选时禁用；打开后加载该部门全部岗位，可按名称/编码/职级过滤。
 // 所有选择与输入都先保存在弹层草稿，只有点击「确认」才回填；未命中的文本
 // 作为自定义岗位名交给后端按部门复用或创建。
+import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -172,7 +173,7 @@ class _UtenPositionEntryPickerState
       child: InkWell(
         key: const Key('uten-position-entry-field'),
         onTap: enabled ? _open : null,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         child: InputDecorator(
           isEmpty: display == null,
           decoration: utenPickerFieldDecoration(
@@ -398,7 +399,7 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Material(
               color: theme.colorScheme.errorContainer,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(UtenRadius.control),
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(
@@ -477,7 +478,10 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
           ),
           Expanded(child: _listBody(l10n)),
           UtenBottomActionBar(
-            child: Row(
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 TextButton(
                   key: const Key('uten-position-entry-clear'),
@@ -485,14 +489,12 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
                   onPressed: _clearDraft,
                   child: Text(l10n.positionPickerClear),
                 ),
-                const Spacer(),
                 TextButton(
                   key: const Key('uten-position-entry-cancel'),
                   style: _actionStyle,
                   onPressed: () => Navigator.of(context).pop(),
                   child: Text(l10n.commonCancel),
                 ),
-                const SizedBox(width: 8),
                 FilledButton(
                   key: const Key('uten-position-entry-confirm'),
                   style: FilledButton.styleFrom(

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -67,7 +68,7 @@ Future<WhereUsedProductDetailResult?> showWhereUsedProductDetailDialog({
       final height = (MediaQuery.sizeOf(dialogContext).height - 48)
           .clamp(240.0, 760.0)
           .toDouble();
-      return Dialog(
+      return UtenDialogFrame(
         shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
         insetPadding: utenDialogInsetPadding(dialogContext),
         child: ConstrainedBox(

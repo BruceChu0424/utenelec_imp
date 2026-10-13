@@ -5,6 +5,27 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
 
 void main() {
+  test(
+    'both themes retain readable captions on normal and raised surfaces',
+    () {
+      for (final theme in [buildLightTheme(), buildDarkTheme()]) {
+        for (final surface in [
+          theme.colorScheme.surface,
+          theme.colorScheme.surfaceContainerHigh,
+        ]) {
+          for (final style in [
+            theme.textTheme.bodySmall!,
+            theme.textTheme.labelSmall!,
+          ]) {
+            expect(
+              _contrastRatio(style.color!, surface),
+              greaterThanOrEqualTo(4.5),
+            );
+          }
+        }
+      }
+    },
+  );
   test('light theme action color pairs meet WCAG AA contrast', () {
     final colors = buildLightTheme().colorScheme;
 
@@ -34,6 +55,19 @@ void main() {
       _contrastRatio(tabIndicator.borderSide.color, theme.colorScheme.surface),
       greaterThanOrEqualTo(3),
     );
+  });
+  test('unfocused input boundaries remain distinguishable in both themes', () {
+    for (final theme in [buildLightTheme(), buildDarkTheme()]) {
+      final border =
+          theme.inputDecorationTheme.enabledBorder! as OutlineInputBorder;
+      expect(
+        _contrastRatio(
+          border.borderSide.color,
+          theme.inputDecorationTheme.fillColor!,
+        ),
+        greaterThanOrEqualTo(3),
+      );
+    }
   });
   test('legacy primary token remains readable on dark surfaces', () {
     expect(

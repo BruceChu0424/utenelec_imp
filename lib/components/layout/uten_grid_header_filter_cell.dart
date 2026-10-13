@@ -214,7 +214,7 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
             child: Material(
               color: theme.colorScheme.surfaceContainerHigh,
               elevation: 8,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(UtenRadius.md),
               clipBehavior: Clip.antiAlias,
               child: Container(
                 constraints: const BoxConstraints(
@@ -256,7 +256,9 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
                                   minHeight: 32,
                                 ),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(
+                                    UtenRadius.control,
+                                  ),
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: UtenSpacing.s8,

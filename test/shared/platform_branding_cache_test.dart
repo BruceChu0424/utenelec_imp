@@ -59,7 +59,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({
       'themeMode': 'dark',
-      'fontScale': 'giant',
+      FontScalePreferences.keyFor('upgrade-user'): 'giant',
       'locale': 'ko_KR',
       'performancePreference': 'lite',
       'uten.server_mode': 'cloud',
@@ -76,6 +76,7 @@ void main() {
     return ProviderContainer(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
+        fontScaleOwnerProvider.overrideWithValue('upgrade-user'),
         apiBaseUrlProvider.overrideWithValue(_a),
         connectionRecoveryProvider.overrideWith(
           (ref) => ConnectionRecoveryController(probe: () async => true),

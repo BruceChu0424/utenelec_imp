@@ -16,6 +16,7 @@
 // 与旧 sales_goods_picker / goods_picker_dialog（居中搜索框）的区别：带分类树浏览、
 // 返回完整 GoodsListItem（含 colorId/unitId 及展示名称；legacy 字段仅供历史只读显示），供调用方
 // 自动回填颜色/单位。
+import '../../../core/theme/uten_tokens.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -30,6 +31,7 @@ import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
 import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
@@ -411,6 +413,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     return _naturalTreeWidth ??= measureCategoryTreeNaturalWidth(
       widget.tree,
       theme.textTheme.bodyMedium,
+      textScaler: MediaQuery.textScalerOf(context),
     );
   }
 
@@ -742,26 +745,18 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       flatLevelColors: true,
       onToggleSelect: _onCategoryTap,
     );
-    Widget body;
-    if (context.breakpoint.isCompact) {
-      body = Row(
-        children: [
-          SizedBox(width: 176, child: treePane),
-          const VerticalDivider(width: 1),
-          Expanded(child: _buildRightPane(theme)),
-        ],
-      );
-    } else {
-      // medium+：可拖分割线（货品资料页同款），默认宽度 = 左树最长行实测宽。
-      body = UtenSplitView(
-        persistenceKey: 'goodsPicker.categoryTree',
-        initialLeadingWidth: _treeNaturalWidth(theme),
-        minLeadingWidth: 200,
-        maxLeadingWidth: 560,
-        leading: treePane,
-        trailing: _buildRightPane(theme),
-      );
-    }
+    final body = UtenSplitView(
+      persistenceKey: 'goodsPicker.categoryTree',
+      initialLeadingWidth: _treeNaturalWidth(theme),
+      minLeadingWidth: 200,
+      maxLeadingWidth: 560,
+      selectedLeadingLabel:
+          utenTreeSelectionPath(widget.tree, _selectedCategoryId) ?? '全部分类',
+      selectedLeadingKey: _selectedCategoryId,
+      compactHeader: treePane.header,
+      leading: treePane,
+      trailing: _buildRightPane(theme),
+    );
     return Stack(
       children: [
         Column(
@@ -813,7 +808,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     final count = _selected.length;
     final summary = InkWell(
       key: const Key('goods-picker-selected-summary'),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(UtenRadius.md),
       onTap: count == 0
           ? null
           : () => setState(() => _selectedPanelOpen = true),
@@ -823,7 +818,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           color: count > 0
               ? theme.colorScheme.primaryContainer.withValues(alpha: 0.55)
               : theme.colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(UtenRadius.md),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

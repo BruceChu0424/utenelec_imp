@@ -436,11 +436,14 @@ void main() {
       expect(find.text(l10n.aiAuditTitle), findsOneWidget);
       expect(find.text(l10n.aiRecordsStatUnknownFooter(1)), findsOneWidget);
       expect(find.text('使用记录与费用'), findsNothing);
+      await tester.tap(find.byKey(const Key('uten-app-bar-more-actions')));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text(l10n.aiRecordsBillingOpen));
       await tester.tap(find.text(l10n.aiRecordsBillingOpen));
       await tester.pumpAndSettle();
       expect(find.text(l10n.aiAuditInputPrice), findsOneWidget);
       expect(find.text(l10n.aiAuditSaveBilling), findsOneWidget);
+      expect(find.byTooltip('关闭操作面板'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
@@ -726,6 +729,11 @@ Future<void> _select(WidgetTester tester, String label, String choice) async {
 /// 用固定时长泵帧: 页面可能在途读取(不确定进度条), pumpAndSettle 永不落定。
 Future<void> _openBilling(WidgetTester tester) async {
   final button = find.byKey(const ValueKey('ai-records-billing-open'));
+  if (!tester.any(button)) {
+    await tester.tap(find.byKey(const Key('uten-app-bar-more-actions')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+  }
   await tester.ensureVisible(button);
   await tester.tap(button);
   await tester.pump();

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -176,7 +177,7 @@ class _AccountBalanceReconciliationDialogState
       final overwrite =
           await showDialog<bool>(
             context: context,
-            builder: (dialogContext) => AlertDialog(
+            builder: (dialogContext) => UtenAlertDialog(
               title: const Text('覆盖现有金额输入？'),
               content: const Text(
                 '“全部使用中账户目标填 0”会覆盖已输入的目标余额，并清空已填的外币本位币调账额。'
@@ -486,7 +487,8 @@ class _AccountBalanceReconciliationDialogState
     }
     return await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
+          builder: (dialogContext) => UtenAlertDialog(
+            scrollable: false,
             title: const Text('确认提交余额核对'),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
@@ -621,7 +623,7 @@ class _AccountBalanceReconciliationDialogState
     if (compact) {
       return Dialog.fullscreen(child: Material(child: content));
     }
-    return Dialog(
+    return UtenDialogFrame(
       insetPadding: const EdgeInsets.all(UtenSpacing.s24),
       child: SizedBox(
         width: 1120,

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -33,7 +34,7 @@ class ColumnEditorDialog extends StatelessWidget {
           media.padding.vertical -
           32,
     );
-    return Dialog(
+    return UtenDialogFrame(
       insetPadding: const EdgeInsets.all(UtenSpacing.s16),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(

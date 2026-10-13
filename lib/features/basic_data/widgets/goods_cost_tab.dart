@@ -673,7 +673,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     final ready = await _dialogWhenRemoved<bool>(
       context: context,
       builder: (dialog) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
+        builder: (context, update) => UtenAlertDialog(
           title: Text(_l.costDownload),
           content: SizedBox(
             width: 480,
@@ -1058,7 +1058,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     ];
     final selected = await _dialogWhenRemoved<int>(
       context: context,
-      builder: (dialog) => AlertDialog(
+      builder: (dialog) => UtenAlertDialog(
+        scrollable: false,
         title: Text(_l.costMoreActions),
         content: SizedBox(
           width: 440,
@@ -1099,7 +1100,8 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     ];
     final selected = await _dialogWhenRemoved<Map<String, dynamic>>(
       context: context,
-      builder: (dialog) => AlertDialog(
+      builder: (dialog) => UtenAlertDialog(
+        maxWidth: 1000,
         title: Text(_l.costNeedsReviewCount(rows.length)),
         content: SizedBox(
           width: 1000,

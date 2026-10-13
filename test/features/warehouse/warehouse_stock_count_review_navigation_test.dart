@@ -342,6 +342,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('stock-count-review-confirm')));
     await tester.pump();
+    // The controller-backed confirmation remains mounted through its exit.
+    // Start checking the pending business request only after that route exits.
+    await tester.pump(const Duration(milliseconds: 400));
     expect(repo.approvals, 1);
     expect(find.byType(LinearProgressIndicator), findsNothing);
     repo.pendingApproval!.complete(repo.request('APPROVED'));
@@ -395,6 +398,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('stock-count-review-confirm')));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(repo.approvals, 1);
     container.read(_scope.notifier).state = const WarehouseTaskScope.warehouse(
       'other-main',

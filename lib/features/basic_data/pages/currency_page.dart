@@ -3,6 +3,7 @@
 // 与颜色/单位同级扁平字典（编号/名称/参考汇率/状态）。复刻 color_page：
 // 标题行(Icon+Text+(N)+搜索+添加) + MasterDataTableView + showMasterEditDialog/DetailSheet。
 // 查看全员可见（路由不设守卫），编辑按 currency:edit 显隐。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -240,7 +241,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage> {
   Future<void> _delete(CurrencyDetail d) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除币种'),
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该币种')}」吗？',

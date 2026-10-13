@@ -5,6 +5,7 @@
 // 写明原因。原 8 步流程时间线退役：下单后的全链路进度（领料发外 → 加工回厂 →
 // 品质检验 → 仓库确认入仓 → 结案核销）在「委外订货与全链路」双击订货单查看。
 // 可经「查看申请单」深链只读申请详情（经路由权限与服务端对象门禁）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -36,7 +37,7 @@ Future<void> showSubcontractApplicationDetailDialog(
   required bool locked,
 }) => showDialog<void>(
   context: context,
-  builder: (_) => Dialog(
+  builder: (_) => UtenDialogFrame(
     child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 560),
       child: SingleChildScrollView(

@@ -17,6 +17,7 @@
 // 页面骨架与「销售出库详情」统一(仓库作业页同一长相): 顶栏 title + 刷新;
 // 正文 = 折叠头(状态横幅 / 事实卡 / 可编辑时的出仓表单卡) + 明细表内滚;
 // 动作全部收进右下悬浮动作组(保存拣货 / 审核出仓), 跑批遮罩 UtenBusyOverlay。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -1199,7 +1200,7 @@ class _ReturnToDrawReasonDialogState extends State<_ReturnToDrawReasonDialog> {
   @override
   Widget build(BuildContext context) {
     final billNo = widget.billNo.trim();
-    return AlertDialog(
+    return UtenAlertDialog(
       title: const Text('退回委外(不发)'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),

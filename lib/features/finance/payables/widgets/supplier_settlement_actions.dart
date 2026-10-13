@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -50,9 +51,9 @@ Future<SupplierSettlementConfirmDraft?> showSupplierSettlementConfirmDialog({
   final reference = TextEditingController();
   final note = TextEditingController();
   try {
-    return await showDialog<SupplierSettlementConfirmDraft>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
+    return await UtenDialog.showAndWaitForExit<SupplierSettlementConfirmDraft>(
+      context,
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(supplier ? '登记供应商确认' : '执行公司内部确认'),
         content: SizedBox(
           width: 480,
@@ -108,9 +109,9 @@ Future<String?> showSupplierSettlementReasonDialog({
 }) async {
   final controller = TextEditingController();
   try {
-    return await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
+    return await UtenDialog.showAndWaitForExit<String>(
+      context,
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(title),
         content: TextField(
           controller: controller,

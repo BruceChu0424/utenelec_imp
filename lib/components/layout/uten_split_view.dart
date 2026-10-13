@@ -30,14 +30,16 @@
 //     trailing: selected == null ? 空态 : _DetailPane(...),
 //   )
 //
-// 注意：compact 断点的抽屉回退仍由页面自己处理（本组件只管分栏分支）；
+// 空间不足时由 UtenAdaptiveHierarchyPane 显示全宽目录，正文保留当前路径入口；
 // 本组件依赖父容器给出有界宽度（页面 body 天然有界）。
 
+import '../../core/theme/uten_tokens.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'uten_adaptive_hierarchy_pane.dart';
 
 /// 左右分栏布局：左面板固定宽（可拖调），右面板占满剩余。
 class UtenSplitView extends StatefulWidget {
@@ -51,6 +53,12 @@ class UtenSplitView extends StatefulWidget {
     this.minTrailingWidth = 360,
     this.persistenceKey,
     this.onWidthChanged,
+    this.selectedLeadingLabel,
+    this.selectedLeadingKey,
+    this.leadingNoun = '分类',
+    this.compactHeader,
+    this.openLeadingButtonKey,
+    this.minTwoPaneWidth = 600,
   });
 
   /// 左侧面板（通常是分类树 / 列表）。
@@ -76,6 +84,16 @@ class UtenSplitView extends StatefulWidget {
 
   /// 宽度变化回调（拖动结束 / 双击复位 / 键盘调整后触发）。
   final ValueChanged<double>? onWidthChanged;
+
+  final String? selectedLeadingLabel;
+  final Object? selectedLeadingKey;
+  final String leadingNoun;
+  final Widget? compactHeader;
+  final Key? openLeadingButtonKey;
+
+  /// Actual content width required for two readable panes, after surrounding
+  /// navigation and UI scaling. Space never comes from squeezing a tree away.
+  final double minTwoPaneWidth;
 
   /// 分割线命中区总宽（视觉线居中，两侧各留 (hitWidth-1)/2 的可点区）。
   static const double gutterWidth = 12;
@@ -131,8 +149,8 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   double _clamp(double width) {
     final maxBySpace =
         _totalWidth - UtenSplitView.gutterWidth - widget.minTrailingWidth;
-    final upper = math.min(widget.maxLeadingWidth, maxBySpace);
-    // 极窄窗口：下限让位上限，保证 clamp 区间合法（宁可左栏略小也不拖没右栏）。
+    final upper = math.max(0.0, math.min(widget.maxLeadingWidth, maxBySpace));
+    // 计算始终合法；真正空间不足时build切为完整目录，不压窄左栏。
     final lower = math.min(widget.minLeadingWidth, upper);
     return width.clamp(lower, upper);
   }
@@ -169,13 +187,30 @@ class _UtenSplitViewState extends State<UtenSplitView> {
       builder: (context, constraints) {
         _totalWidth = constraints.maxWidth;
         final width = _clamp(_width);
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(width: width, child: widget.leading),
-            _buildGutter(context),
-            Expanded(child: widget.trailing),
-          ],
+        return UtenAdaptiveHierarchyPane(
+          leading: widget.leading,
+          trailing: widget.trailing,
+          selectedLabel: widget.selectedLeadingLabel,
+          selectionKey: widget.selectedLeadingKey,
+          noun: widget.leadingNoun,
+          compactHeader: widget.compactHeader,
+          openButtonKey: widget.openLeadingButtonKey,
+          canSplit:
+              constraints.maxWidth >=
+              math.max(
+                widget.minTwoPaneWidth,
+                widget.minLeadingWidth +
+                    widget.minTrailingWidth +
+                    UtenSplitView.gutterWidth,
+              ),
+          splitBuilder: (leading, trailing) => Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(width: width, child: leading),
+              _buildGutter(context),
+              Expanded(child: trailing),
+            ],
+          ),
         );
       },
     );
@@ -188,7 +223,7 @@ class _UtenSplitViewState extends State<UtenSplitView> {
       height: 3,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(1.5),
+        borderRadius: BorderRadius.circular(UtenRadius.xs),
       ),
     );
     return Column(
@@ -263,7 +298,7 @@ class _UtenSplitViewState extends State<UtenSplitView> {
                           color: active
                               ? theme.colorScheme.primaryContainer
                               : theme.colorScheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(UtenRadius.sm),
                           border: Border.all(
                             color: active
                                 ? theme.colorScheme.primary

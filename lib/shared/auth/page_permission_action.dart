@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../components/buttons/uten_app_bar_action_button.dart';
+import '../../components/layout/uten_app_bar_action_scope.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../features/admin/widgets/page_permission_drawer.dart';
 import 'session_snapshot_provider.dart';
@@ -24,7 +25,7 @@ class PagePermissionAction extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final resolved = scope ?? _scopeFromRouter(context);
+    final resolved = scope ?? pagePermissionScopeFromContext(context);
     if (resolved == null) return const SizedBox.shrink();
 
     final canManage = ref.watch(
@@ -51,22 +52,27 @@ class _PagePermissionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tooltip = '设置「${scope.title}」页面权限';
-    void open() => showPagePermissionDrawer(context, scope: scope);
+    final actionContext = UtenAppBarActionScope.actionContextOf(context);
+    void open() => showPagePermissionDrawer(actionContext, scope: scope);
 
     // 顶栏动作统一形态（深绿实心白字、固定 36 高），与「草稿(N)」同款；
     // 窄屏只收文案不改形态（此前宽屏 TextButton、窄屏 IconButton 是两种长相）。
-    return UtenAppBarActionButton(
-      key: const ValueKey('page-permission-action'),
-      icon: Icons.admin_panel_settings_outlined,
-      label: label,
-      tooltip: tooltip,
-      compact: !context.breakpoint.isExpanded,
-      onPressed: open,
+    return UtenAppBarActionScope.withCloseBeforeAction(
+      context,
+      child: UtenAppBarActionButton(
+        key: const ValueKey('page-permission-action'),
+        icon: Icons.admin_panel_settings_outlined,
+        label: label,
+        tooltip: tooltip,
+        compact: !context.breakpoint.isExpanded,
+        onPressed: open,
+      ),
     );
   }
 }
 
-PagePermissionScope? _scopeFromRouter(BuildContext context) {
+/// Capture before moving an existing action into a modal presentation route.
+PagePermissionScope? pagePermissionScopeFromContext(BuildContext context) {
   try {
     // 只认「直接挂载本组件的 go_router 页路由」。命令式 Navigator.push 的
     // 子弹层（分桶详情、向导、抽屉页等）没有独立路由 scope，必须 fail-closed：

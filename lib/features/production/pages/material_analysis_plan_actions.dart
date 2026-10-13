@@ -125,7 +125,7 @@ abstract class _MaterialAnalysisPlanActionsState
           final plan = valid.single;
           final approved = plan.status == 'APPROVED';
           final printable = _isGeneratedPlanPrintable(plan);
-          return AlertDialog(
+          return UtenAlertDialog(
             title: Text(
               plan.mergedIntoExisting
                   ? '追加已并入原生产计划'
@@ -244,119 +244,122 @@ abstract class _MaterialAnalysisPlanActionsState
       if (!mounted) return;
       final action = await showDialog<_GeneratedPlanDialogAction>(
         context: context,
-        builder: (dialogContext) => SimpleDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: const Text('已生成生产计划'),
-          children: [
-            for (final plan in valid)
-              ListTile(
-                key: ValueKey('generated-plan-row-${plan.planId}'),
-                onTap: () => Navigator.pop(
-                  dialogContext,
-                  _GeneratedPlanDialogAction.view(plan),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final plan in valid)
+                ListTile(
+                  key: ValueKey('generated-plan-row-${plan.planId}'),
+                  onTap: () => Navigator.pop(
+                    dialogContext,
+                    _GeneratedPlanDialogAction.view(plan),
+                  ),
+                  leading: const Icon(Icons.assignment_turned_in_outlined),
+                  title: Text(plan.planNo ?? plan.planId),
+                  subtitle: Text(
+                    plan.mergedIntoExisting
+                        ? '${plan.status == 'APPROVED' ? '已审核下达' : '待审核'}'
+                              '${_mergedPlanNote(plan)}'
+                        : plan.status == 'APPROVED'
+                        ? plan.drawDocuments.isNotEmpty
+                              ? '已审核下达 · 提货单 ${plan.drawDocuments.length} 张'
+                              : '已审核下达 · 本批无需领料'
+                        : '待审核 · 审核下达后按需生成提货单',
+                  ),
+                  trailing:
+                      plan.status == 'APPROVED' &&
+                          plan.packageId?.trim().isNotEmpty == true
+                      ? IconButton(
+                          key: ValueKey('generated-plan-print-${plan.planId}'),
+                          tooltip: '打印生产计划单',
+                          onPressed: () => Navigator.pop(
+                            dialogContext,
+                            _GeneratedPlanDialogAction.print(plan),
+                          ),
+                          icon: const Icon(Icons.print_outlined),
+                        )
+                      : const Icon(Icons.chevron_right_rounded),
                 ),
-                leading: const Icon(Icons.assignment_turned_in_outlined),
-                title: Text(plan.planNo ?? plan.planId),
-                subtitle: Text(
-                  plan.mergedIntoExisting
-                      ? '${plan.status == 'APPROVED' ? '已审核下达' : '待审核'}'
-                            '${_mergedPlanNote(plan)}'
-                      : plan.status == 'APPROVED'
-                      ? plan.drawDocuments.isNotEmpty
-                            ? '已审核下达 · 提货单 ${plan.drawDocuments.length} 张'
-                            : '已审核下达 · 本批无需领料'
-                      : '待审核 · 审核下达后按需生成提货单',
-                ),
-                trailing:
-                    plan.status == 'APPROVED' &&
-                        plan.packageId?.trim().isNotEmpty == true
-                    ? IconButton(
-                        key: ValueKey('generated-plan-print-${plan.planId}'),
-                        tooltip: '打印生产计划单',
-                        onPressed: () => Navigator.pop(
-                          dialogContext,
-                          _GeneratedPlanDialogAction.print(plan),
-                        ),
-                        icon: const Icon(Icons.print_outlined),
-                      )
-                    : const Icon(Icons.chevron_right_rounded),
-              ),
-            if (printablePlans.length >= 2)
-              Padding(
-                key: const Key('generated-plans-print-batch-section'),
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16,
-                  UtenSpacing.s8,
-                  UtenSpacing.s16,
-                  UtenSpacing.s12,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      '批量打印 · 每次最多 $_MaterialAnalysisPageBase._maxPlansPerPrintJob 张计划',
-                      style: Theme.of(dialogContext).textTheme.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    for (
-                      var batchIndex = 0;
-                      batchIndex < printBatches.length;
-                      batchIndex++
-                    ) ...[
-                      UtenButton(
-                        key: printBatches.length == 1
-                            ? const Key('generated-plans-print-all')
-                            : ValueKey(
-                                'generated-plans-print-batch-$batchIndex',
-                              ),
-                        type: UtenButtonType.tonal,
-                        icon: Icons.print_outlined,
-                        onPressed: () => Navigator.pop(
-                          dialogContext,
-                          _GeneratedPlanDialogAction.printAll(
-                            printBatches[batchIndex],
+              if (printablePlans.length >= 2)
+                Padding(
+                  key: const Key('generated-plans-print-batch-section'),
+                  padding: const EdgeInsets.fromLTRB(
+                    UtenSpacing.s16,
+                    UtenSpacing.s8,
+                    UtenSpacing.s16,
+                    UtenSpacing.s12,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        '批量打印 · 每次最多 $_MaterialAnalysisPageBase._maxPlansPerPrintJob 张计划',
+                        style: Theme.of(dialogContext).textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      for (
+                        var batchIndex = 0;
+                        batchIndex < printBatches.length;
+                        batchIndex++
+                      ) ...[
+                        UtenButton(
+                          key: printBatches.length == 1
+                              ? const Key('generated-plans-print-all')
+                              : ValueKey(
+                                  'generated-plans-print-batch-$batchIndex',
+                                ),
+                          type: UtenButtonType.tonal,
+                          icon: Icons.print_outlined,
+                          onPressed: () => Navigator.pop(
+                            dialogContext,
+                            _GeneratedPlanDialogAction.printAll(
+                              printBatches[batchIndex],
+                            ),
+                          ),
+                          child: Text(
+                            printBatches.length == 1
+                                ? '打印全部已审核计划（${printablePlans.length}）'
+                                : '打印第 '
+                                      '${batchIndex * _MaterialAnalysisPageBase._maxPlansPerPrintJob + 1}-'
+                                      '${batchIndex * _MaterialAnalysisPageBase._maxPlansPerPrintJob + printBatches[batchIndex].length} '
+                                      '张已审核计划',
                           ),
                         ),
-                        child: Text(
-                          printBatches.length == 1
-                              ? '打印全部已审核计划（${printablePlans.length}）'
-                              : '打印第 '
-                                    '${batchIndex * _MaterialAnalysisPageBase._maxPlansPerPrintJob + 1}-'
-                                    '${batchIndex * _MaterialAnalysisPageBase._maxPlansPerPrintJob + printBatches[batchIndex].length} '
-                                    '张已审核计划',
-                        ),
-                      ),
-                      if (batchIndex < printBatches.length - 1)
+                        if (batchIndex < printBatches.length - 1)
+                          const SizedBox(height: UtenSpacing.s8),
+                      ],
+                      if (pendingCount > 0 || missingPackageCount > 0) ...[
                         const SizedBox(height: UtenSpacing.s8),
+                        Text(
+                          [
+                            '仅合并已审核且已有确认计划包的计划',
+                            if (pendingCount > 0) '$pendingCount 张待审核不包含',
+                            if (missingPackageCount > 0)
+                              '$missingPackageCount 张缺确认包不包含',
+                          ].join('；'),
+                          style: Theme.of(dialogContext).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  dialogContext,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
                     ],
-                    if (pendingCount > 0 || missingPackageCount > 0) ...[
-                      const SizedBox(height: UtenSpacing.s8),
-                      Text(
-                        [
-                          '仅合并已审核且已有确认计划包的计划',
-                          if (pendingCount > 0) '$pendingCount 张待审核不包含',
-                          if (missingPackageCount > 0)
-                            '$missingPackageCount 张缺确认包不包含',
-                        ].join('；'),
-                        style: Theme.of(dialogContext).textTheme.bodySmall
-                            ?.copyWith(
-                              color: Theme.of(
-                                dialogContext,
-                              ).colorScheme.onSurfaceVariant,
-                            ),
-                      ),
-                    ],
-                  ],
+                  ),
+                ),
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const ListTile(
+                  leading: Icon(Icons.arrow_back_rounded),
+                  title: Text('留在物料分析'),
                 ),
               ),
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const ListTile(
-                leading: Icon(Icons.arrow_back_rounded),
-                title: Text('留在物料分析'),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
       if (!mounted || action == null) return;

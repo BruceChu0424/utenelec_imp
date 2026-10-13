@@ -142,8 +142,8 @@ void main() {
     expect(small.height, greaterThanOrEqualTo(44));
     expect(medium.width, greaterThanOrEqualTo(44));
     expect(medium.height, greaterThanOrEqualTo(44));
-    expect(large.width, greaterThanOrEqualTo(52));
-    expect(large.height, greaterThanOrEqualTo(52));
+    expect(large.width, greaterThanOrEqualTo(48));
+    expect(large.height, greaterThanOrEqualTo(48));
     expect(expanded.width, 280);
   });
 

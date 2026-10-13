@@ -262,7 +262,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     await showDialog<void>(
       context: context,
       builder: (dialog) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
+        builder: (context, update) => UtenAlertDialog(
+          maxWidth: 1400,
           title: Text(_l.costCompare),
           content: SizedBox(
             width: 1400,
@@ -363,7 +364,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         positiveCostRate(value) ? null : _l.costExchangeRateRequired;
     final accepted = await _dialogWhenRemoved<bool>(
       context: context,
-      builder: (dialog) => AlertDialog(
+      builder: (dialog) => UtenAlertDialog(
         title: Text(_l.costConvertCurrency),
         content: SizedBox(
           width: 520,
@@ -887,7 +888,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       MasterColumnDef(
         key: 'goodsName',
         label: _l.costGoodsName,
-        width: 200,
+        width: 200 + UtenTreeTableCell.toggleExtentOf(context) - 48,
         value: (r) => costText(r['goodsName']),
         fillsCellHeight: true,
         cellBuilderHandlesSemantics: true,
@@ -1320,7 +1321,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     return _dialogWhenRemoved<List<String>>(
       context: context,
       builder: (dialog) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
+        builder: (context, update) => UtenAlertDialog(
+          scrollable: false,
           title: Text(_l.costFeeBase),
           content: SizedBox(
             width: 480,
@@ -1382,7 +1384,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     final saved = await _dialogWhenRemoved<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
+        builder: (context, update) => UtenAlertDialog(
+          scrollable: false,
           title: Text(_l.costAddPriceColumn),
           content: SizedBox(
             width: 480,
@@ -1773,7 +1776,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     ];
     await showDialog<void>(
       context: context,
-      builder: (dialog) => AlertDialog(
+      builder: (dialog) => UtenAlertDialog(
+        maxWidth: 760,
         title: Text(_l.costExplanation),
         content: SizedBox(
           width: 760,
@@ -1829,7 +1833,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     final accepted = await _dialogWhenRemoved<bool>(
       context: context,
       builder: (dialog) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
+        builder: (context, update) => UtenAlertDialog(
           title: Text(_l.costTaxMode),
           content: SizedBox(
             width: 500,
@@ -1944,7 +1948,8 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     if (!mounted) return;
     final selected = await showDialog<String>(
       context: context,
-      builder: (dialog) => AlertDialog(
+      builder: (dialog) => UtenAlertDialog(
+        maxWidth: 800,
         title: Text(_l.costHistory),
         content: SizedBox(
           width: 800,
@@ -2008,7 +2013,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     );
     final result = await _dialogWhenRemoved<String>(
       context: context,
-      builder: (dialog) => AlertDialog(
+      builder: (dialog) => UtenAlertDialog(
         title: Text(_l.costLossPolicy),
         content: Form(
           key: form,

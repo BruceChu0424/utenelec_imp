@@ -13,6 +13,7 @@
 // 本弹窗**不调用任何库存过账接口**: 只返回 [WeighCountResult] 让页面回填;
 // 唯一的写是「本批抽样」-> POST samples (SAMPLE 记录, 自动带上到货供应商) 与
 // 有管理权限时「记住为本货品皮重」-> PUT profile。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -169,7 +170,7 @@ Future<WeighCountResult?> showWeighCountDialog(
 }) => showDialog<WeighCountResult>(
   context: context,
   barrierDismissible: false,
-  builder: (dialogContext) => AlertDialog(
+  builder: (dialogContext) => UtenAlertDialog(
     title: Text(
       '${request.mode == WeighCountContext.outbound ? '出库称重核对' : '称重算数量'} · ${request.goodsTitle}',
     ),

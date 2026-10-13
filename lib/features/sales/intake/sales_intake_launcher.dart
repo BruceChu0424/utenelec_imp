@@ -628,7 +628,8 @@ class _CreateClientDialogState extends State<_CreateClientDialog> {
       (l10n.salesIntakeFieldTaxId, p.taxId),
       (l10n.salesIntakeFieldPlace, p.placeId),
     ];
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text(l10n.salesIntakeCreateClientTitle),
       content: ConstrainedBox(
         constraints: BoxConstraints(

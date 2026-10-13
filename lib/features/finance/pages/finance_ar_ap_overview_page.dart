@@ -25,7 +25,6 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -553,7 +552,6 @@ class _FinanceArApOverviewPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bp = context.breakpoint;
     // 服务端偏好同步晚到：仅在用户未动手时回灌并重查（避免覆盖在输状态）。
     ref.listen(financeArApOverviewReportPrefsProvider, (prev, next) {
       if (!_dirty &&
@@ -627,29 +625,23 @@ class _FinanceArApOverviewPageState
       );
     }
 
-    Widget body;
-    if (bp == UtenBreakpoint.compact) {
-      body = Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: UtenSearchBar(
-              key: const ValueKey('finance-ar-ap-compact-search'),
-              controller: _searchController,
-              hint: '搜索分类/往来单位名称或编号',
-              onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
-            ),
-          ),
-          Expanded(child: _buildRightPane(theme, selectedLabel)),
-        ],
-      );
-    } else {
-      body = UtenSplitView(
-        persistenceKey: 'finance.arAp',
-        leading: treeWidget,
-        trailing: _buildRightPane(theme, selectedLabel),
-      );
-    }
+    final body = UtenSplitView(
+      persistenceKey: 'finance.arAp',
+      minTwoPaneWidth: 840,
+      selectedLeadingLabel: selectedLabel,
+      selectedLeadingKey: (_categoryType, _categoryId),
+      compactHeader: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+        child: UtenSearchBar(
+          key: const ValueKey('finance-ar-ap-compact-search'),
+          controller: _searchController,
+          hint: '搜索分类/往来单位名称或编号',
+          onSubmitted: (_) => _queueUnifiedSearch(immediate: true),
+        ),
+      ),
+      leading: treeWidget,
+      trailing: _buildRightPane(theme, selectedLabel),
+    );
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -667,19 +659,8 @@ class _FinanceArApOverviewPageState
               _load();
             },
           ),
-          if (bp == UtenBreakpoint.compact)
-            Builder(
-              builder: (sctx) => IconButton(
-                icon: const Icon(Icons.account_tree_rounded),
-                tooltip: '分类树',
-                onPressed: () => Scaffold.of(sctx).openEndDrawer(),
-              ),
-            ),
         ],
       ),
-      endDrawer: bp == UtenBreakpoint.compact
-          ? Drawer(child: SafeArea(child: treeWidget))
-          : null,
       body: SafeArea(child: body),
     );
   }

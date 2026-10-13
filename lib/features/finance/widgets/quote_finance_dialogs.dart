@@ -2,6 +2,7 @@
 //
 // 退回原因必填：点快捷选项把原因填进输入框(可再补充)，空着提交就地提示，不发请求。
 // 两个弹窗都只收集输入，网络请求与遮罩由页面负责(防止弹窗持有异步态)。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -92,7 +93,8 @@ class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
       l10n.quoteFinanceReturnChipGoods,
       l10n.quoteFinanceReturnChipPrice,
     ];
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text(l10n.quoteFinanceReturnTitle(widget.billNo)),
       content: SizedBox(
         width: 480,
@@ -214,7 +216,7 @@ class _QuoteFinanceBatchDiscountDialogState
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(l10n.quoteFinanceBatchDiscountTitle(widget.count)),
       content: SizedBox(
         width: 400,

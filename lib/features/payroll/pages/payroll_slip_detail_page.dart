@@ -15,6 +15,7 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/io/file_saver.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -331,8 +332,9 @@ class _DetailContent extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 期间 + 状态
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
             children: [
               Text(
                 slip.periodLabelZh,
@@ -360,54 +362,46 @@ class _DetailContent extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                '¥',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1,
+          Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: '¥ ',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    height: 1,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                slip.netIncome.toStringAsFixed(2),
-                style: theme.textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.primary,
-                  height: 1,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+                TextSpan(
+                  text: slip.netIncome.toStringAsFixed(2),
+                  style: theme.textTheme.displayMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                    height: 1,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: UtenSpacing.s16),
           const Divider(),
           const SizedBox(height: UtenSpacing.s16),
           // 应发 / 扣除
-          Row(
+          UtenFormGrid(
+            columns: 2,
+            minFieldWidth: 160,
             children: [
-              Expanded(
-                child: _SummaryItem(
-                  label: '应发',
-                  value: slip.grossIncome,
-                  color: UtenColors.success,
-                ),
+              _SummaryItem(
+                label: '应发',
+                value: slip.grossIncome,
+                color: UtenColors.success,
               ),
-              Container(
-                width: 1,
-                height: 40,
-                color: theme.colorScheme.outlineVariant,
-              ),
-              Expanded(
-                child: _SummaryItem(
-                  label: '扣除',
-                  value: -slip.totalDeduction,
-                  color: UtenColors.error,
-                ),
+              _SummaryItem(
+                label: '扣除',
+                value: -slip.totalDeduction,
+                color: UtenColors.error,
               ),
             ],
           ),

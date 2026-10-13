@@ -3,6 +3,7 @@
 // 2026-09-01 起「入库任务中心 · 采购入库」到货异常分段内嵌本组件（embedded=true
 // 时搜索框由任务中心页级工具条接管）；独立路由 /warehouse/inbound/arrival-exceptions
 // 由对应页面以 embedded=false 包一层继续承接（采购/委外单据详情深链依赖它）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -181,7 +182,7 @@ class _WarehouseArrivalExceptionsViewState
     }
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text('批量按批准量处理 ${selected.length} 条'),
         content: const Text(
           '系统将按财务批准量审核对应收货单，进入 IQC 待检隔离，并按现有收货链路回写到货与应付事实。'
@@ -285,7 +286,7 @@ class _WarehouseArrivalExceptionsViewState
     if (_stockingId != null || !task.canStockIn) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('确认按批准量处理'),
         content: Text(
           '将按财务批准的 ${procurementQty(task.acceptedQty)} ${task.unitName ?? ''} '
@@ -863,7 +864,9 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
         : '';
     // 到货异常详情弹窗：文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
     return SelectionArea(
-      child: AlertDialog(
+      child: UtenAlertDialog(
+        maxWidth: 920,
+        scrollable: false,
         title: Row(
           children: [
             UtenStatusBadge(

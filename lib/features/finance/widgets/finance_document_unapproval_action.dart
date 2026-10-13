@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -60,7 +61,7 @@ class _FinanceDocumentUnapprovalActionState
       if (!mounted || !isCurrent()) return;
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: const Text('确认反审'),
           content: const Text(documentUnapprovalConfirmation),
           actions: [

@@ -9,6 +9,7 @@
 // - 受控：传入 expanded + onExpandedChanged，由外部状态（如工作台布局
 //   Provider）驱动，可持久化。admin 页权限矩阵等旧用法不受影响。
 
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_anim.dart';
@@ -84,7 +85,7 @@ class _UtenCollapsibleSectionState extends State<UtenCollapsibleSection> {
         // 标题行（整行可点）
         Material(
           type: MaterialType.transparency,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(UtenRadius.md),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: _toggle,
@@ -98,7 +99,7 @@ class _UtenCollapsibleSectionState extends State<UtenCollapsibleSection> {
                       height: 16,
                       decoration: BoxDecoration(
                         color: widget.accentColor,
-                        borderRadius: BorderRadius.circular(2),
+                        borderRadius: BorderRadius.circular(UtenRadius.xs),
                       ),
                     ),
                     const SizedBox(width: 8),

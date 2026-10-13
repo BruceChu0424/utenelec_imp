@@ -1,6 +1,7 @@
 // 报销明细添加/编辑对话框（V608 从新建页内嵌对话框升位为共享组件：新建与编辑共用，
 // initial 非空 = 修改现有明细行）。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
@@ -113,7 +114,7 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
       }
       final decision = await showDialog<String>(
         context: context,
-        builder: (ctx) => AlertDialog(
+        builder: (ctx) => UtenAlertDialog(
           title: const Text('是否保存未完成的明细？'),
           content: const Text('可随报销草稿保留金额、日期和说明，之后继续填写。'),
           actions: [
@@ -149,7 +150,8 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
   }
 
   Widget _buildDialog(BuildContext context) {
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text(widget.initial == null ? '添加报销明细' : '修改报销明细'),
       content: SizedBox(
         width: double.maxFinite,

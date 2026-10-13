@@ -265,7 +265,7 @@ class _PickerRow extends StatelessWidget {
     final hasValue = value != null && value!.isNotEmpty;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(UtenRadius.sm),
       child: InputDecorator(
         decoration: InputDecoration(
           labelText: label,

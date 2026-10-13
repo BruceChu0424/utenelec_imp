@@ -8,6 +8,7 @@
 //
 // 提交通过 onSubmit 回调上抛，由页面执行真正的仓储调用并返回是否成功；
 // 成功时对话框自行关闭。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -256,7 +257,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded),
@@ -370,7 +371,8 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
 
   Widget _buildDialog(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text(
         _isEdit ? '编辑分类' : '新增分类', // TODO(l10n): 补 arb
       ),

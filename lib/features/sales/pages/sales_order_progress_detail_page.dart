@@ -20,6 +20,7 @@
 //   （去发货为红色大按钮，与所选行数联动；面板经 SalesShipmentActionScope 上报）；
 // - 刷新收进 AppBar 右上（UtenAppBarActionButton，整页口径：三段全部重读），
 //   产品进度不再有面板内刷新按钮；下拉刷新保留。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -171,7 +172,7 @@ class _SalesOrderProgressDetailPageState
     if (d == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('取消订单'),
         content: Text(
           '订单 ${d.billNo ?? ''} 已被财务驳回。取消将释放全部库存预留并终止该订单'
@@ -381,7 +382,7 @@ class _SalesOrderProgressDetailPageState
                   color: theme.colorScheme.errorContainer.withValues(
                     alpha: 0.55,
                   ),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(UtenRadius.lg),
                   border: Border.all(
                     color: theme.colorScheme.error.withValues(alpha: 0.35),
                   ),
@@ -466,7 +467,7 @@ class _SalesOrderProgressDetailPageState
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
       child: Text(
         label,
@@ -564,7 +565,7 @@ class _SalesOrderProgressDetailPageState
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
       child: Text(
         text,

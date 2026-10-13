@@ -939,43 +939,60 @@ abstract class _MaterialAnalysisCandidatesState
       borderRadius: UtenRadius.mdAll,
       border: Border.all(color: theme.colorScheme.outlineVariant),
     ),
-    child: Row(
-      children: [
-        Icon(Icons.checklist_rounded, color: theme.colorScheme.primary),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '已选 ${_sourceQtyControllers.length} 个销售产品',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final summary = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '已选 ${_sourceQtyControllers.length} 个销售产品',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
-              Text(
-                '数量已按待排量预填，只需核对例外。',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+            ),
+            Text(
+              '数量已按待排量预填，只需核对例外。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        OutlinedButton(
+            ),
+          ],
+        );
+        final action = OutlinedButton(
           key: const Key('material-compact-edit-selected-qty'),
           style: OutlinedButton.styleFrom(
-            minimumSize: const Size(88, 52),
+            minimumSize: Size(
+              88,
+              UtenControlMetrics.minimumHitExtent(context, desktop: 52),
+            ),
             textStyle: theme.textTheme.bodyMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           onPressed: _showCompactSelectedSourceEditor,
           child: const Text('核对数量'),
-        ),
-      ],
+        );
+        if (constraints.maxWidth < 360) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              summary,
+              const SizedBox(height: UtenSpacing.s8),
+              action,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Icon(Icons.checklist_rounded, color: theme.colorScheme.primary),
+            const SizedBox(width: UtenSpacing.s8),
+            Expanded(child: summary),
+            const SizedBox(width: UtenSpacing.s8),
+            action,
+          ],
+        );
+      },
     ),
   );
 
@@ -1016,9 +1033,15 @@ abstract class _MaterialAnalysisCandidatesState
                       ),
                     ),
                     IconButton(
-                      constraints: const BoxConstraints.tightFor(
-                        width: 48,
-                        height: 48,
+                      constraints: BoxConstraints.tightFor(
+                        width: UtenControlMetrics.minimumHitExtent(
+                          sheetContext,
+                          desktop: 48,
+                        ),
+                        height: UtenControlMetrics.minimumHitExtent(
+                          sheetContext,
+                          desktop: 48,
+                        ),
                       ),
                       tooltip: '关闭',
                       onPressed: () => Navigator.of(sheetContext).pop(),
@@ -1061,7 +1084,12 @@ abstract class _MaterialAnalysisCandidatesState
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 child: FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
+                    minimumSize: Size.fromHeight(
+                      UtenControlMetrics.minimumHitExtent(
+                        sheetContext,
+                        desktop: 52,
+                      ),
+                    ),
                   ),
                   onPressed: () => Navigator.of(sheetContext).pop(),
                   icon: const Icon(Icons.check_rounded),
@@ -1332,22 +1360,22 @@ abstract class _MaterialAnalysisCandidatesState
         borderRadius: UtenRadius.mdAll,
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextButton.icon(
-              key: const Key('material-candidate-prev-page'),
-              style: TextButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-              ),
-              onPressed: _loadingCandidates || currentPage <= 1
-                  ? null
-                  : () => _loadCandidates(page: currentPage - 1),
-              icon: const Icon(Icons.chevron_left_rounded),
-              label: const Text('上一页'),
-            ),
-          ),
-          Padding(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final extent = UtenControlMetrics.minimumHitExtent(
+            context,
+            desktop: 48,
+          );
+          final previous = TextButton.icon(
+            key: const Key('material-candidate-prev-page'),
+            style: TextButton.styleFrom(minimumSize: Size(extent, extent)),
+            onPressed: _loadingCandidates || currentPage <= 1
+                ? null
+                : () => _loadCandidates(page: currentPage - 1),
+            icon: const Icon(Icons.chevron_left_rounded),
+            label: const Text('上一页'),
+          );
+          final summary = Padding(
             padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
             child: Text(
               '第 $currentPage / $totalPages 页\n共 ${page.total} 项',
@@ -1356,22 +1384,31 @@ abstract class _MaterialAnalysisCandidatesState
                 fontWeight: FontWeight.w700,
               ),
             ),
-          ),
-          Expanded(
-            child: TextButton.icon(
-              key: const Key('material-candidate-next-page'),
-              style: TextButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-              ),
-              onPressed: _loadingCandidates || currentPage >= totalPages
-                  ? null
-                  : () => _loadCandidates(page: currentPage + 1),
-              iconAlignment: IconAlignment.end,
-              icon: const Icon(Icons.chevron_right_rounded),
-              label: const Text('下一页'),
-            ),
-          ),
-        ],
+          );
+          final next = TextButton.icon(
+            key: const Key('material-candidate-next-page'),
+            style: TextButton.styleFrom(minimumSize: Size(extent, extent)),
+            onPressed: _loadingCandidates || currentPage >= totalPages
+                ? null
+                : () => _loadCandidates(page: currentPage + 1),
+            iconAlignment: IconAlignment.end,
+            icon: const Icon(Icons.chevron_right_rounded),
+            label: const Text('下一页'),
+          );
+          if (constraints.maxWidth < 360) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [summary, previous, next],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: previous),
+              summary,
+              Expanded(child: next),
+            ],
+          );
+        },
       ),
     );
   }

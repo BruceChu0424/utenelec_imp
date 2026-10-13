@@ -550,7 +550,7 @@ class _DistributionCard extends StatelessWidget {
               ),
               const SizedBox(height: UtenSpacing.s4),
               ClipRRect(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(UtenRadius.pill),
                 child: LinearProgressIndicator(
                   minHeight: 6,
                   value: peak > 0 ? (row.tokens / peak).clamp(0.0, 1.0) : 0,

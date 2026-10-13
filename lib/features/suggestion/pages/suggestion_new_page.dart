@@ -12,6 +12,7 @@ import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/human_error_message.dart';
@@ -150,24 +151,23 @@ class _SuggestionNewPageState extends ConsumerState<SuggestionNewPage>
                     ),
                     child: Material(
                       color: Colors.transparent,
-                      child: SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Row(
-                          children: [
-                            Icon(
-                              _isAnonymous
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              size: 20,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          UtenSectionHeader(
+                            title: '匿名提交',
+                            icon: _isAnonymous
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            trailing: Switch(
+                              value: _isAnonymous,
+                              onChanged: (v) =>
+                                  setState(() => _isAnonymous = v),
+                              activeTrackColor: theme.colorScheme.primary,
                             ),
-                            const SizedBox(width: UtenSpacing.s12),
-                            const Text('匿名提交'),
-                          ],
-                        ),
-                        subtitle: const Text('开启后，其他同事看不到你的姓名'),
-                        value: _isAnonymous,
-                        onChanged: (v) => setState(() => _isAnonymous = v),
-                        activeTrackColor: theme.colorScheme.primary,
+                          ),
+                          const Text('开启后，其他同事看不到你的姓名'),
+                        ],
                       ),
                     ),
                   ),

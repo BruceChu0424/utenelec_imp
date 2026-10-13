@@ -3618,7 +3618,9 @@ class _ProductionDailyReportEditPageState
                 permissions.contains('production_plan:create')));
     final action = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => UtenAlertDialog(
+        maxWidth: 680,
+        scrollable: false,
         title: const Text('需要追加生产计划'),
         content: SizedBox(
           width: 680,
@@ -4080,7 +4082,9 @@ class _ProductionDailyReportEditPageState
                                 padding: const EdgeInsets.all(UtenSpacing.s12),
                                 decoration: BoxDecoration(
                                   color: theme.colorScheme.tertiaryContainer,
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(
+                                    UtenRadius.control,
+                                  ),
                                 ),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,

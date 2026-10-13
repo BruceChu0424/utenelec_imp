@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -128,7 +129,7 @@ class MaterialSupplySubmitConfirmDialog extends StatelessWidget {
     final theme = Theme.of(context);
     final mediaSize = MediaQuery.sizeOf(context);
     final isBuy = route == MaterialSupplyRoute.buy;
-    return AlertDialog(
+    return UtenAlertDialog(
       key: const Key('supply-submit-confirm-dialog'),
       insetPadding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s16,
@@ -136,94 +137,85 @@ class MaterialSupplySubmitConfirmDialog extends StatelessWidget {
       ),
       title: Text('确认下达${route.label}'),
       content: SizedBox(
-        width: (mediaSize.width - 64).clamp(280.0, 560.0),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 480),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '共 ${entries.length} 个品种，合计 ${qtyText(_grandTotal)}。',
-                key: const Key('supply-submit-confirm-total'),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
+        width: (mediaSize.width - 64).clamp(0.0, 560.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '共 ${entries.length} 个品种，合计 ${qtyText(_grandTotal)}。',
+              key: const Key('supply-submit-confirm-total'),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
               ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                [
-                  '本批需求 ${qtyText(_demandTotal)}',
-                  if (_publicExtraTotal > 0)
-                    '公共超量备货 ${qtyText(_publicExtraTotal)}',
-                  if (_safetyTotal > 0) '公共安全补库 ${qtyText(_safetyTotal)}',
-                ].join(' + '),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              [
+                '本批需求 ${qtyText(_demandTotal)}',
+                if (_publicExtraTotal > 0)
+                  '公共超量备货 ${qtyText(_publicExtraTotal)}',
+                if (_safetyTotal > 0) '公共安全补库 ${qtyText(_safetyTotal)}',
+              ].join(' + '),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                isBuy
-                    ? '确认后合并为采购需求单并通知采购部；需要改数量请先在表格中修改。'
-                    : '确认后合并为委外申请并通知委外部；有直属物料的委外件下单后在委外任务中心领料发外。'
-                          '需要改数量请先在表格中修改。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.4,
-                ),
+            ),
+            const SizedBox(height: UtenSpacing.s4),
+            Text(
+              isBuy
+                  ? '确认后合并为采购需求单并通知采购部；需要改数量请先在表格中修改。'
+                  : '确认后合并为委外申请并通知委外部；有直属物料的委外件下单后在委外任务中心领料发外。'
+                        '需要改数量请先在表格中修改。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.4,
               ),
-              // 根供料（顶层 BUY）：有已分配现货时服务端优先交接现货，
-              // 行内/合计数量只是追加供料部分——必须在确认前说清。
-              for (final entry in entries)
-                if (entry.rootAllocatedStockQty > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(top: UtenSpacing.s4),
-                    child: Text(
-                      '${entry.label}：将优先交接已分配现货 '
-                      '${qtyText(entry.rootAllocatedStockQty)}'
-                      '${entry.unitName == null ? '' : ' ${entry.unitName}'}，'
-                      '合计只含追加供料数量。',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w700,
-                        height: 1.4,
-                      ),
+            ),
+            // 根供料（顶层 BUY）：有已分配现货时服务端优先交接现货，
+            // 行内/合计数量只是追加供料部分——必须在确认前说清。
+            for (final entry in entries)
+              if (entry.rootAllocatedStockQty > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: UtenSpacing.s4),
+                  child: Text(
+                    '${entry.label}：将优先交接已分配现货 '
+                    '${qtyText(entry.rootAllocatedStockQty)}'
+                    '${entry.unitName == null ? '' : ' ${entry.unitName}'}，'
+                    '合计只含追加供料数量。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
                     ),
                   ),
-              if (entries.isNotEmpty) ...[
-                const Divider(height: UtenSpacing.s16),
-                // 明细清单可滚动核对（品种多时不撑爆弹窗）。
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: entries.length,
-                    itemBuilder: (context, index) {
-                      final entry = entries[index];
-                      final qty = quantities[index];
-                      final unit = entry.unitName ?? '件';
-                      return ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          entry.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodyMedium,
+                ),
+            if (entries.isNotEmpty) ...[
+              const Divider(height: UtenSpacing.s16),
+              // The common dialog scrolls the entire summary and detail
+              // together, including long labels on narrow/short canvases.
+              for (var index = 0; index < entries.length; index++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        entries[index].label,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                      Text(
+                        '${qtyText(entries[index].totalQty(quantities[index]))} '
+                        '${entries[index].unitName ?? '件'}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
                         ),
-                        trailing: Text(
-                          '${qtyText(entry.totalQty(qty))} $unit',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
       actions: [

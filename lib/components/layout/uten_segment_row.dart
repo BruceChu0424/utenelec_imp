@@ -19,12 +19,15 @@
 //
 // 计数徽章走 label 槽位（UtenSegmentBadgeLabel），文字颜色经 DefaultTextStyle
 // 自动继承本组件的三态前景色。
-// 文档：docs-02-组件库/UtenSegmentRow.md（待写）
+// 文档：docs/02-组件库/UtenSegmentRow.md
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../feedback/uten_dialog.dart';
 
 import '../../../core/theme/uten_tokens.dart';
+import '../feedback/uten_segment_badge_label.dart';
+import 'uten_fit_or_compact.dart';
 
 /// 自适应分段行：每格宽度跟随自身内容，整条按内容总宽收缩。
 class UtenSegmentRow<T> extends StatelessWidget {
@@ -39,6 +42,7 @@ class UtenSegmentRow<T> extends StatelessWidget {
     this.multiSelectionEnabled = false,
     this.minCellWidth,
     this.minCellHeight = UtenFilterRow.minHeight,
+    this.compactSummary,
   });
 
   /// 分段定义（复用 Material 的 ButtonSegment：value/label/icon/enabled）。
@@ -72,6 +76,10 @@ class UtenSegmentRow<T> extends StatelessWidget {
   /// IntrinsicHeight 拉齐搜索框。
   final double minCellHeight;
 
+  /// Counts that remain visible when the complete category list moves into a
+  /// vertical panel. Selection labels never shrink to make room for these.
+  final Widget? compactSummary;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -80,7 +88,7 @@ class UtenSegmentRow<T> extends StatelessWidget {
     final borderColor = anyEnabled
         ? colors.outline
         : colors.onSurface.withValues(alpha: 0.12);
-    return Material(
+    final horizontal = Material(
       color: Colors.transparent,
       shape: StadiumBorder(side: BorderSide(color: borderColor)),
       clipBehavior: Clip.antiAlias,
@@ -107,6 +115,164 @@ class UtenSegmentRow<T> extends StatelessWidget {
         ),
       ),
     );
+    return UtenFitOrCompact(
+      expanded: horizontal,
+      compact: _compactField(context, anyEnabled),
+    );
+  }
+
+  String _labelText(ButtonSegment<T> segment) {
+    final label = segment.label;
+    if (label is Text) {
+      return label.data ?? label.textSpan?.toPlainText() ?? '分类';
+    }
+    if (label is UtenSegmentBadgeLabel) return label.label;
+    return segment.tooltip ?? '分类';
+  }
+
+  Widget _compactField(BuildContext context, bool enabled) {
+    final picked = segments.where(
+      (segment) => selected.contains(segment.value),
+    );
+    final label = picked.isEmpty
+        ? '选择分类'
+        : picked.length == 1
+        ? _labelText(picked.single)
+        : '已选择 ${picked.length} 项';
+    return OutlinedButton(
+      onPressed: enabled ? () => _showCategories(context) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(label, softWrap: true)),
+                const SizedBox(width: 8),
+                const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+              ],
+            ),
+            if (compactSummary != null) ...[
+              const SizedBox(height: 4),
+              compactSummary!,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showCategories(BuildContext context) async {
+    final value = await showDialog<_SegmentChoice<T>>(
+      context: context,
+      builder: (panelContext) => UtenDialogFrame(
+        insetPadding: const EdgeInsets.all(12),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 480,
+            maxHeight: MediaQuery.sizeOf(panelContext).height * 0.85,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '选择分类',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '关闭',
+                      onPressed: () => Navigator.of(panelContext).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  children: [
+                    for (final segment in segments)
+                      Semantics(
+                        selected: selected.contains(segment.value),
+                        button: true,
+                        enabled: segment.enabled,
+                        child: InkWell(
+                          onTap: segment.enabled
+                              ? () => Navigator.of(
+                                  panelContext,
+                                ).pop(_SegmentChoice(segment.value))
+                              : null,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 48),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    width: 24,
+                                    child: selected.contains(segment.value)
+                                        ? const Icon(
+                                            Icons.check_rounded,
+                                            size: 18,
+                                          )
+                                        : segment.icon,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: _panelLabel(segment)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (value == null || !context.mounted) return;
+    // A panel can outlive its owner's selection, scope or permissions. Dispatch
+    // only through the current element and a value that is still enabled.
+    final current = context.widget;
+    if (current is UtenSegmentRow<T> &&
+        current.onSelectionChanged != null &&
+        current.segments.any(
+          (segment) => segment.enabled && segment.value == value.value,
+        )) {
+      current._handlePressed(value.value);
+    }
+  }
+
+  Widget _panelLabel(ButtonSegment<T> segment) {
+    final label = segment.label;
+    if (label is UtenSegmentBadgeLabel) {
+      return UtenSegmentBadgeLabel(
+        label: label.label,
+        count: label.count,
+        countForm: label.countForm,
+        inProgressCount: label.inProgressCount,
+        badgeSize: label.badgeSize,
+        stacked: true,
+      );
+    }
+    return label ?? Text(_labelText(segment));
   }
 
   /// 点选语义照抄 SDK SegmentedButton._handleOnPressed：
@@ -132,6 +298,11 @@ class UtenSegmentRow<T> extends StatelessWidget {
       onChanged(updated);
     }
   }
+}
+
+class _SegmentChoice<T> {
+  const _SegmentChoice(this.value);
+  final T value;
 }
 
 class _SegmentCell<T> extends StatelessWidget {
@@ -210,7 +381,10 @@ class _SegmentCell<T> extends StatelessWidget {
           child: Container(
             constraints: BoxConstraints(
               minWidth: minCellWidth ?? 0,
-              minHeight: minCellHeight,
+              minHeight: UtenControlMetrics.controlHeight(
+                context,
+                desktop: minCellHeight,
+              ),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 16),
             alignment: Alignment.center,

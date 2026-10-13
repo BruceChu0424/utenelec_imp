@@ -232,7 +232,7 @@ class _ColorPageState extends ConsumerState<ColorPage> {
   Future<void> _delete(ColorDetail d) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除颜色'), // TODO(l10n): 补 arb
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该颜色')}」吗？', // TODO(l10n): 补 arb

@@ -56,11 +56,11 @@
   钉在视口左缘不滚走（跟行首勾选框列同一机制），表头标签前显图钉（18px、与标签
   垂直居中）；固定集为会话态
   （与 `_hiddenKeys`/列序同生命周期）。右击表头不再弹页面级 SelectionArea 的系统「全选/复制」工具条。
-- **工具条控件统一高度 48（2026-09-05 起）**：表头上方工具条内的全部组件级控件——「表头设置」「全屏」
-  「已选 N 项」摘要条——统一为 `UtenTableToolbar.controlHeight = 48`，与调用方挂进
-  `toolbarActions` 的筛选 chip（如物料分析「全部 BOM」minHeight:48）等高对齐；`UtenButton`
-  新增可选 `height:` 覆盖最小高度参与对齐（全站默认 44/52 不变，弹窗/页面主按钮不受影响）。
-  调用方往工具条放按钮时也应传 `height: UtenTableToolbar.controlHeight` 保持同条等高。
+- **工具条控件共用尺度（2026-10-13）**：`UtenTableToolbar.controlHeight = 40` 是桌面标准最小高度。
+  「表头设置」「全屏」及普通工具栏动作共用此目标；触屏经 `UtenControlMetrics` 保底48，
+  系统文字放大时允许内容撑高。调用方挂进 `toolbarActions` 的按钮应传
+  `height: UtenTableToolbar.controlHeight`，同组控件不要另留旧48硬高。
+  页面主要动作最小48、普通动作桌面40；`UtenButton.height` 只覆盖最小高度，不裁剪长标签。
 - **单击选中、双击打开（全 App 列表页统一交互契约，2026-08-12）**：单击行 = 只选中
   （该行青绿高亮 = `utenTableSelectedRowColor`：浅色低饱和青灰绿 #CFE4E2（teal700 叠 20% 到白底）/ 深色 teal900，2026-09-22 用户口径「看不清是否选中」从 primaryContainer 35% 加深、再按「太亮晃眼」从 teal200 收回一档；2026-09-13 起全站表格统一选中色，与 UtenEditableGrid 同款；滚动时常驻，翻页/重查换对象后自然失效），**绝不打开**；
   双击行 = 触发 `onRowTap`（报表→跳源头单据；主档→详情：货品为整页路由 `/basicinfo/goods/:id`，
@@ -119,8 +119,14 @@
   `SelectionContainer.disabled`**——表头有「按住拖拽隐藏列/拖拽调宽」手势，与拖选隔离，
   且挡住页面级 SelectionArea 渗入。自动刷新或同时具有横向同步、纵向滚动、分页、行手势的
   重交互大表应传 `enableTextSelection:false`，显式隔离整个表格；这不改变行多选语义。
-- **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。窄屏叠大字号（375px × 1.5×）
-  放不下文案时翻页按钮自动收成纯图标，**恒为一行**（改折行会把表体挤到纵向溢出）。
+- **分页**：上一页/下一页 + 跳页输入框；翻页后表体竖向回顶。窄屏与大字号下按钮使用
+  纯图标，仍保留桌面至少 40、触屏至少 48 个显示逻辑像素的完整命中区；85% 缩小时补足尺寸。
+  计数与两个按钮放不下一行时，完整页数独占一行，按钮另行排列；再窄时两个按钮纵向排列。
+  短窗口会滚动完整表格工作区，保留工具栏、可用行区、完整合计与分页操作，滚动工作区不会触发追加分页。
+- **列级呈现下限**：`MasterColumnDef.minimumWidthOf(context)` 可按设备与缩放指定本列
+  最小宽度；`cellHorizontalPaddingOf(context)` 可指定本列正文左右内边距。未设置时仍为
+  最小列宽 48、正文左右各 12。度量、手动拖宽、布局恢复及设备切换都使用同一下限；表头保留
+  原有内边距，避免正文的紧凑操作单元改变标题可读性。这两个接口仅控制呈现，不改变字段、权限或操作回调。
 - **追加后定位末行（2026-09-30）**：调用方完成目标页加载后递增 `scrollToEndRequest`，
   表格在布局完成后滚到列表末尾，适用于货品粘贴/批量粘贴后的自动定位。
   同一个请求号不会因重建重复滚动；普通翻页仍从页首开始，普通、联动折叠和全屏视图共用此入口。
@@ -473,3 +479,10 @@ return MasterDataTableView<Map<String, dynamic>>(
   - 2026-10-06 的「输入控件 39 / 编辑表行 ≈55」数字已失真(输入格 ~48 高变 ~38 高, 含输入格的行随内容下移约 8-12 逻辑像素), 以紧凑口径为准; 全局 inputDecorationTheme(表单/弹窗 14·12)不变——本口径只管表格格内。
 - **例外**: 树形列 `UtenTreeTableCell` 的 48dp 展开按钮是成文设计(触控目标), 树表行高不受本口径约束。
 - 行为锁: [`test/components/layout/master_table_row_height_uniformity_test.dart`](../../test/components/layout/master_table_row_height_uniformity_test.dart) 量各类读格内容高度, 超过单行基准即红。
+
+
+## 2026-10-13 窗口容量与表格表面
+
+normal/fullscreen共用表面圆角12，嵌入表也使用同一外框；装饰不增加列宽/padding，内部列与冻结边界保持直线。正文密集数据14，列宽测量采用完整TextScaler并缓存其策略，非线性变化不能只比较scale(1)。
+
+短视口工具栏独立受限且可纵向滚动，极短窗口保留表头/可用行区并允许舞台滚动。工具栏与舞台chrome滚动不触发业务翻页；实际数据行的分页、主滚动和吸顶契约保持。每个presentation的chrome拥有自己的controller，正常页与全屏过渡不能把同一ScrollController同时挂到两棵树。业务表体controllers和工具栏输入GlobalKey仍保留状态。

@@ -353,7 +353,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       context: context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
-        AlertDialog(
+        UtenAlertDialog(
+          scrollable: false,
           title: const Text('核对数量变化'),
           content: SingleChildScrollView(
             child: Text(
@@ -729,7 +730,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
-        AlertDialog(
+        UtenAlertDialog(
+          scrollable: false,
           key: const Key('purchase-order-change-qty-dialog'),
           title: Text(l10n.orderChangeQtyTitle),
           content: SizedBox(
@@ -884,7 +886,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
             context: context,
             builder: (ctx) => trackNativeReadDialog(
               ctx,
-              AlertDialog(
+              UtenAlertDialog(
                 title: const Text('确认'),
                 content: Text(confirm),
                 actionsAlignment: MainAxisAlignment.center,
@@ -946,7 +948,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       context: context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
-        AlertDialog(
+        UtenAlertDialog(
           title: const Text('删除单据'),
           content: const Text('确定删除该草稿单据吗？'),
           actionsAlignment: MainAxisAlignment.center,

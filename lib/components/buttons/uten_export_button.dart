@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../layout/uten_app_bar_action_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:collection/collection.dart';
 
@@ -15,6 +16,7 @@ import '../../shared/auth/permissions.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
 import '../../shared/providers/export_context_epoch_provider.dart';
 import 'uten_button.dart';
+import '../feedback/uten_dialog.dart';
 
 /// A business export may select a template or a group of files before the
 /// shared password dialog. Cancellation never starts an export request.
@@ -128,6 +130,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   Future<void> _onTap() async {
     if (!widget.enabled || !_authorized || _loading || _preparing) return;
     final operation = ++_operation;
+    final actionContext = UtenAppBarActionScope.actionContextOf(context);
     final epoch = ref.read(exportContextEpochProvider);
     UtenExportSelection? selection;
     bool current() =>
@@ -141,9 +144,14 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
       selection = widget.prepareExport == null
           ? const UtenExportSelection()
           : await widget.prepareExport!();
-      if (selection == null || !mounted || !current()) return;
+      if (selection == null ||
+          !mounted ||
+          !actionContext.mounted ||
+          !current()) {
+        return;
+      }
       final password = await showDialog<String>(
-        context: context,
+        context: actionContext,
         builder: (_) => const _ExportPasswordDialog(),
       );
       if (password == null || !mounted || !current()) return;
@@ -171,15 +179,16 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
   ) async {
     if (!mounted || !widget.enabled || !current()) return;
     setState(() => _loading = true);
+    final actionContext = UtenAppBarActionScope.actionContextOf(context);
     final projection = TableColumnProjectionScope.resolve(
-      context,
+      actionContext,
       widget.tableKey,
     );
-    final host = TableColumnProjectionScope.read(context);
+    final host = TableColumnProjectionScope.read(actionContext);
     if (host != null &&
         projection == null &&
         (widget.tableKey != null ||
-            TableColumnProjectionScope.hasCurrentTables(context))) {
+            TableColumnProjectionScope.hasCurrentTables(actionContext))) {
       context.appError('无法确定要导出的表头，请返回对应表格后重试');
       return;
     }
@@ -282,7 +291,7 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final hasPassword = _pwd.text.isNotEmpty;
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(l10n.exportDialogTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -339,13 +348,9 @@ class _ExportPasswordDialogState extends State<_ExportPasswordDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(l10n.commonCancel),
         ),
-        FilledButton.icon(
+        FilledButton(
           onPressed: _submit,
-          icon: Icon(
-            hasPassword ? Icons.lock_outline_rounded : Icons.download_rounded,
-            size: 18,
-          ),
-          label: Text(
+          child: Text(
             hasPassword
                 ? l10n.exportDownloadEncrypted
                 : l10n.exportDownloadPlain,

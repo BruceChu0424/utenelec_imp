@@ -13,6 +13,7 @@
 //    跳回出错的那张表单所在 Tab。供应商沿用 showSupplierMasterEdit 弹窗。
 //  - 联系方式/地址为多值子表（party_contact_methods / party_addresses），跟进记录
 //    （party_activity_records）客户行为/投诉/违约扣信誉分等；信誉分首条按 100±delta 起算。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -1207,84 +1208,97 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     final valueCtl = TextEditingController();
     final remarkCtl = TextEditingController();
     bool primary = false;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('添加联系方式'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                UtenDropdownField(
-                  label: '类型',
-                  value: kind,
-                  allowClear: false,
-                  searchable: false,
-                  items: [
-                    for (final entry in PartyContactMethod.kindLabels.entries)
-                      UtenDropdownItem(value: entry.key, label: entry.value),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setDialogState(() => kind = value);
-                  },
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  controller: valueCtl,
-                  autofocus: true,
-                  decoration: const InputDecoration(labelText: '内容(必填)'),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  controller: remarkCtl,
-                  decoration: const InputDecoration(labelText: '备注(选填)'),
-                ),
-                CheckboxListTile(
-                  value: primary,
-                  dense: true,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text('设为主选（同步回单据与列表显示列）'),
-                  onChanged: (value) =>
-                      setDialogState(() => primary = value ?? false),
-                ),
-              ],
+    var confirmedValue = '';
+    var confirmedRemark = '';
+    var confirmedKind = kind;
+    var confirmedPrimary = primary;
+    late final bool? ok;
+    try {
+      ok = await UtenDialog.showAndWaitForExit<bool>(
+        context,
+        onPopped: (_) {
+          confirmedValue = valueCtl.text;
+          confirmedRemark = remarkCtl.text;
+          confirmedKind = kind;
+          confirmedPrimary = primary;
+        },
+
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => UtenAlertDialog(
+            title: const Text('添加联系方式'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  UtenDropdownField(
+                    label: '类型',
+                    value: kind,
+                    allowClear: false,
+                    searchable: false,
+                    items: [
+                      for (final entry in PartyContactMethod.kindLabels.entries)
+                        UtenDropdownItem(value: entry.key, label: entry.value),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => kind = value);
+                    },
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    controller: valueCtl,
+                    autofocus: true,
+                    decoration: const InputDecoration(labelText: '内容(必填)'),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    controller: remarkCtl,
+                    decoration: const InputDecoration(labelText: '备注(选填)'),
+                  ),
+                  CheckboxListTile(
+                    value: primary,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('设为主选（同步回单据与列表显示列）'),
+                    onChanged: (value) =>
+                        setDialogState(() => primary = value ?? false),
+                  ),
+                ],
+              ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (valueCtl.text.trim().isEmpty) {
+                    ctx.appError('请填写联系方式内容');
+                    return;
+                  }
+                  Navigator.pop(ctx, true);
+                },
+                child: const Text('保存'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (valueCtl.text.trim().isEmpty) {
-                  ctx.appError('请填写联系方式内容');
-                  return;
-                }
-                Navigator.pop(ctx, true);
-              },
-              child: const Text('保存'),
-            ),
-          ],
         ),
-      ),
-    );
-    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      );
+    } finally {
       valueCtl.dispose();
       remarkCtl.dispose();
-    });
+    }
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
       await _directoryRepo.addContactMethod(
         widget.id,
-        kind: kind,
-        value: valueCtl.text.trim(),
-        primary: primary,
-        remark: remarkCtl.text.trim(),
+        kind: confirmedKind,
+        value: confirmedValue.trim(),
+        primary: confirmedPrimary,
+        remark: confirmedRemark.trim(),
       );
       if (!mounted) return;
       context.appSuccess('联系方式已添加');
@@ -1301,7 +1315,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   Future<void> _deleteContact(PartyContactMethod contact) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除联系方式'),
         content: Text('确定删除「${contact.kindLabel} ${contact.value}」吗？'),
         actionsAlignment: MainAxisAlignment.center,
@@ -1400,76 +1414,89 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     String kind = 'SHIPPING';
     final addressCtl = TextEditingController();
     bool defaultAddress = false;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('添加地址'),
-          content: SizedBox(
-            width: 460,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                UtenDropdownField(
-                  label: '类型',
-                  value: kind,
-                  allowClear: false,
-                  searchable: false,
-                  items: [
-                    for (final entry in PartyAddress.kindLabels.entries)
-                      UtenDropdownItem(value: entry.key, label: entry.value),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setDialogState(() => kind = value);
-                  },
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  controller: addressCtl,
-                  autofocus: true,
-                  maxLines: 2,
-                  decoration: const InputDecoration(labelText: '地址(必填)'),
-                ),
-                CheckboxListTile(
-                  value: defaultAddress,
-                  dense: true,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text('设为默认地址'),
-                  onChanged: (value) =>
-                      setDialogState(() => defaultAddress = value ?? false),
-                ),
-              ],
+    var confirmedAddress = '';
+    var confirmedKind = kind;
+    var confirmedDefaultAddress = defaultAddress;
+    late final bool? ok;
+    try {
+      ok = await UtenDialog.showAndWaitForExit<bool>(
+        context,
+        onPopped: (_) {
+          confirmedAddress = addressCtl.text;
+          confirmedKind = kind;
+          confirmedDefaultAddress = defaultAddress;
+        },
+
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => UtenAlertDialog(
+            title: const Text('添加地址'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  UtenDropdownField(
+                    label: '类型',
+                    value: kind,
+                    allowClear: false,
+                    searchable: false,
+                    items: [
+                      for (final entry in PartyAddress.kindLabels.entries)
+                        UtenDropdownItem(value: entry.key, label: entry.value),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => kind = value);
+                    },
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    controller: addressCtl,
+                    autofocus: true,
+                    maxLines: 2,
+                    decoration: const InputDecoration(labelText: '地址(必填)'),
+                  ),
+                  CheckboxListTile(
+                    value: defaultAddress,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('设为默认地址'),
+                    onChanged: (value) =>
+                        setDialogState(() => defaultAddress = value ?? false),
+                  ),
+                ],
+              ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (addressCtl.text.trim().isEmpty) {
+                    ctx.appError('请填写地址');
+                    return;
+                  }
+                  Navigator.pop(ctx, true);
+                },
+                child: const Text('保存'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (addressCtl.text.trim().isEmpty) {
-                  ctx.appError('请填写地址');
-                  return;
-                }
-                Navigator.pop(ctx, true);
-              },
-              child: const Text('保存'),
-            ),
-          ],
         ),
-      ),
-    );
-    Future<void>.delayed(const Duration(milliseconds: 300), addressCtl.dispose);
+      );
+    } finally {
+      addressCtl.dispose();
+    }
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
       await _directoryRepo.addAddress(
         widget.id,
-        kind: kind,
-        address: addressCtl.text.trim(),
-        defaultAddress: defaultAddress,
+        kind: confirmedKind,
+        address: confirmedAddress.trim(),
+        defaultAddress: confirmedDefaultAddress,
       );
       if (!mounted) return;
       context.appSuccess('地址已添加');
@@ -1486,7 +1513,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
   Future<void> _deleteAddress(PartyAddress address) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除地址'),
         content: Text('确定删除「${address.kindLabel}」这条地址吗？'),
         actionsAlignment: MainAxisAlignment.center,
@@ -1604,85 +1631,97 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     String kind = 'FOLLOW_UP';
     final contentCtl = TextEditingController();
     final scoreCtl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('添加记录'),
-          content: SizedBox(
-            width: 460,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                UtenDropdownField(
-                  label: '类型',
-                  value: kind,
-                  allowClear: false,
-                  searchable: false,
-                  items: [
-                    for (final entry in PartyActivityRecord.kindLabels.entries)
-                      UtenDropdownItem(value: entry.key, label: entry.value),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) setDialogState(() => kind = value);
-                  },
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  controller: contentCtl,
-                  autofocus: true,
-                  maxLines: 3,
-                  maxLength: 2000,
-                  decoration: const InputDecoration(labelText: '内容(必填)'),
-                ),
-                if (_isClient) ...[
-                  const SizedBox(height: UtenSpacing.s4),
-                  TextField(
-                    controller: scoreCtl,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      signed: true,
-                    ),
-                    decoration: const UtenInputDecoration(
-                      InputDecoration(labelText: '信誉分变动(选填，如 -10 / +5)'),
-                      info: '留空或 0 表示不调整；首条评分记录按 100 分起算，累计夹在 0-200。',
-                    ),
+    var confirmedContent = '';
+    var confirmedScore = '';
+    var confirmedKind = kind;
+    late final bool? ok;
+    try {
+      ok = await UtenDialog.showAndWaitForExit<bool>(
+        context,
+        onPopped: (_) {
+          confirmedContent = contentCtl.text;
+          confirmedScore = scoreCtl.text;
+          confirmedKind = kind;
+        },
+
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => UtenAlertDialog(
+            title: const Text('添加记录'),
+            content: SizedBox(
+              width: 460,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  UtenDropdownField(
+                    label: '类型',
+                    value: kind,
+                    allowClear: false,
+                    searchable: false,
+                    items: [
+                      for (final entry
+                          in PartyActivityRecord.kindLabels.entries)
+                        UtenDropdownItem(value: entry.key, label: entry.value),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => kind = value);
+                    },
                   ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    controller: contentCtl,
+                    autofocus: true,
+                    maxLines: 3,
+                    maxLength: 2000,
+                    decoration: const InputDecoration(labelText: '内容(必填)'),
+                  ),
+                  if (_isClient) ...[
+                    const SizedBox(height: UtenSpacing.s4),
+                    TextField(
+                      controller: scoreCtl,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        signed: true,
+                      ),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '信誉分变动(选填，如 -10 / +5)'),
+                        info: '留空或 0 表示不调整；首条评分记录按 100 分起算，累计夹在 0-200。',
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (contentCtl.text.trim().isEmpty) {
+                    ctx.appError('请填写记录内容');
+                    return;
+                  }
+                  Navigator.pop(ctx, true);
+                },
+                child: const Text('保存'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (contentCtl.text.trim().isEmpty) {
-                  ctx.appError('请填写记录内容');
-                  return;
-                }
-                Navigator.pop(ctx, true);
-              },
-              child: const Text('保存'),
-            ),
-          ],
         ),
-      ),
-    );
-    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      );
+    } finally {
       contentCtl.dispose();
       scoreCtl.dispose();
-    });
+    }
     if (ok != true || !mounted) return;
-    final delta = _isClient ? (int.tryParse(scoreCtl.text.trim()) ?? 0) : 0;
+    final delta = _isClient ? (int.tryParse(confirmedScore.trim()) ?? 0) : 0;
     setState(() => _busy = true);
     try {
       await _directoryRepo.addActivityRecord(
         widget.id,
-        kind: kind,
-        content: contentCtl.text.trim(),
+        kind: confirmedKind,
+        content: confirmedContent.trim(),
         scoreDelta: delta,
       );
       if (!mounted) return;
@@ -1842,7 +1881,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     final name = _title ?? '';
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: Text(_isClient ? '删除客户' : '删除供应商'),
         content: Text('确定删除「$name」吗？'),
         actionsAlignment: MainAxisAlignment.center,
@@ -1896,7 +1935,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     height: 38,
     decoration: BoxDecoration(
       color: color.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(UtenRadius.control),
     ),
     child: Icon(icon, size: 20, color: color),
   );

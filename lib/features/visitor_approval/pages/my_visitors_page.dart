@@ -11,6 +11,7 @@
 //
 // 响应式：compact 自套 UtenContentContainer 收敛；medium+ 外壳已收敛；
 // 窄屏表格横向滚动即可。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
@@ -155,7 +156,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
     final count = confirmable.length;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(l10n.myVisitorsBatchTitle(count)),
         content: SizedBox(
           width: 440,

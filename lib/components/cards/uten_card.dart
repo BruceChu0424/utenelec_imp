@@ -22,11 +22,11 @@ class UtenCard extends ConsumerWidget {
     super.key,
     required this.child,
     this.variant = UtenCardVariant.solid,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(UtenSpacing.s16),
     this.margin,
     this.onTap,
     this.onLongPress,
-    this.borderRadius = 14,
+    this.borderRadius = UtenRadius.card,
     this.showBorder = true,
     this.elevation = UtenCardElevation.none,
   });

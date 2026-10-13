@@ -2,6 +2,7 @@
 //
 // 控制器由弹窗自身持有并在其 dispose 时释放（不能在 showDialog 返回后立刻 dispose，
 // 关闭动画期间 TextField 仍会重建）。返回 trim 后的库位号；取消返回 null。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -47,7 +48,7 @@ class _BatchPlaceFillDialogState extends State<_BatchPlaceFillDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text('批量设置库位号(${widget.rowCount} 行)'),
       content: TextField(
         key: widget.inputKey,

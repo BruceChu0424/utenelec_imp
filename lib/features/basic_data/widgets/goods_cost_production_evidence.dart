@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -163,7 +164,7 @@ class _GoodsCostProductionEvidenceState
       builder: (dialog) => Consumer(
         builder: (context, ref, _) {
           if (!mounted || !ref.watch(costWorkbenchCapabilityProvider).canRead) {
-            return AlertDialog(
+            return UtenAlertDialog(
               content: Text(AppLocalizations.of(context).costNoPermission),
               actions: [
                 TextButton(
@@ -173,7 +174,8 @@ class _GoodsCostProductionEvidenceState
               ],
             );
           }
-          return AlertDialog(
+          return UtenAlertDialog(
+            maxWidth: 820,
             title: Text(_l.costProductionEvidence),
             content: SizedBox(
               width: 820,

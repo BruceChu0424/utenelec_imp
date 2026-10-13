@@ -7,6 +7,7 @@
 // 变更原因必填（与单客户同口径）：负责人变更会改写整批客户的单据归属，审计事件
 // 里必须留下为什么。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -129,7 +130,8 @@ class _ClientAccessBatchDialogState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final title = widget.assignOwner ? '批量设置负责人' : '批量设置可见人';
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text('$title（${widget.clientCount} 个客户）'),
       content: SizedBox(
         width: 420,

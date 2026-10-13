@@ -2230,7 +2230,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
       child: Text(
         label,

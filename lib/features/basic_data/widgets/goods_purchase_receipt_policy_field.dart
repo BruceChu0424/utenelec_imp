@@ -8,6 +8,7 @@
 //
 // 记忆的用法：新开采购订货单选这个货品时按它预填「允许超收%」(黄框提醒核对)；
 // 每次保存订货单会自动记住最后填写的非空值。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -203,7 +204,8 @@ class _GoodsPurchaseReceiptPolicyDialogState
     final label = _goodsLabel;
     return PopScope(
       canPop: !_saving,
-      child: AlertDialog(
+      child: UtenAlertDialog(
+        scrollable: false,
         key: const ValueKey('goods-purchase-over-receipt-dialog'),
         title: const Text('采购允许超收%'),
         content: ConstrainedBox(

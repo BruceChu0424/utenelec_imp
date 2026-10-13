@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -243,7 +244,7 @@ class _ProductionExecutionCardPrintDialogState
     final theme = Theme.of(context);
     final size = MediaQuery.sizeOf(context);
     final compact = size.width < 600;
-    final dialog = Dialog(
+    final dialog = UtenDialogFrame(
       insetPadding: EdgeInsets.all(compact ? UtenSpacing.s8 : UtenSpacing.s24),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(

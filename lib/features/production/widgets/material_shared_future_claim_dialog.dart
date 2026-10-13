@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -153,7 +154,9 @@ class _MaterialSharedFutureClaimDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
+      maxWidth: 640,
+      scrollable: false,
       title: const Text('从公共在途中调入'),
       content: SizedBox(
         width: 640,

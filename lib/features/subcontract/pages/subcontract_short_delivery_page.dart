@@ -6,6 +6,7 @@
 // 分段：待判定（红徽章；含分批等待已过预计到齐日）/ 分批等待中（中性括号）/
 // 历史记录（时间门控，ADR-066）。严重短交置顶并加「严重」标签。
 // 入口：委外 hub 卡片、任务中心状态列「回厂短交待判定」（?orderId=）、通知卡片（?caseId=）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -756,7 +757,8 @@ class _CaseDetailDialog extends StatelessWidget {
     final row = detail.row;
     final unit = row.unitName;
     final canAct = row.canDecide && row.isOpen;
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text('短交案件 · ${row.orderBillNo}'),
       content: ConstrainedBox(
         constraints: BoxConstraints(

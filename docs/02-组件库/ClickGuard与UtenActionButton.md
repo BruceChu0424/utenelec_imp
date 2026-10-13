@@ -384,3 +384,8 @@ UtenActionButton(
 ---
 
 **最后更新**：2026-07-23 · **位置**：`lib/components/buttons/click_guard.dart`
+
+
+## 2026-10-13 视觉收口
+
+ClickGuard的防重入、同步异常与finally解锁保持原协议；UtenActionButton删去独立颜色/尺寸/Material/InkWell实现，仅持有busy状态并委托UtenButton。默认尺寸、文字、禁用和键盘语义与普通按钮同源，不再维护第二份44/52与12/13/15字号表。状态型异步顶栏动作在操作面板内完成或取消之后才关闭所属面板，不能提前卸载WidgetRef/控制器。

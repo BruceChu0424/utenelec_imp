@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -159,7 +160,9 @@ class _WarehouseTaskPhysicalDetailDialogState
             ]
             .where((field) => lines.any((line) => line[field.$1] != null))
             .toList(growable: false);
-    return AlertDialog(
+    return UtenAlertDialog(
+      maxWidth: 920,
+      scrollable: false,
       title: Text(_invalidated ? '单据详情' : row.statusLabel),
       content: SizedBox(
         width: 920,

@@ -23,6 +23,8 @@ import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
 import '../buttons/uten_button.dart';
 import '../buttons/uten_export_button.dart';
+import '../feedback/uten_dialog.dart';
+import '../layout/uten_app_bar_action_scope.dart';
 
 /// 打印表格数据：表头 + 行（均为显示就绪字符串）。
 class UtenPrintTable {
@@ -224,6 +226,7 @@ Future<void> showUtenPrintPreview({
   String? tableKey,
   bool applyTableProjection = true,
 }) {
+  context = UtenAppBarActionScope.actionContextOf(context);
   final projection = applyTableProjection
       ? TableColumnProjectionScope.resolve(context, tableKey)
       : null;
@@ -484,99 +487,99 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     );
   }
 
-  // ---- 渲染 ---------------------------------------------------------------
-
+  // 屏幕预览的工具条与纸面可以滚动；PDF 的纸张、字号和分页保持原契约。
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final t = _table;
-    return Dialog(
+    final table = _table;
+    return UtenDialogFrame(
+      maxWidth: 1080,
+      fillHeight: true,
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 1080,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.92,
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 头部：标题 + 操作
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  UtenSpacing.s16,
-                  UtenSpacing.s12,
-                  UtenSpacing.s8,
-                  UtenSpacing.s12,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '预览 · ${widget.title}', // TODO(l10n): 补 arb
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '预览 · ${widget.title}',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: UtenSpacing.s8,
+                    runSpacing: UtenSpacing.s4,
+                    children: [
+                      UtenButton(
+                        type: UtenButtonType.tonal,
+                        size: UtenButtonSize.small,
+                        icon: Icons.print_outlined,
+                        onPressed: (table == null || table.rows.isEmpty)
+                            ? null
+                            : _print,
+                        child: const Text('打印'),
                       ),
-                    ),
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      size: UtenButtonSize.small,
-                      icon: Icons.print_outlined,
-                      onPressed: (t == null || t.rows.isEmpty) ? null : _print,
-                      child: const Text('打印'), // TODO(l10n): 补 arb
-                    ),
-                    if (widget.exportEndpoint != null) ...[
-                      const SizedBox(width: UtenSpacing.s8),
-                      UtenExportButton(
-                        endpoint: widget.exportEndpoint!,
-                        report: widget.exportReport ?? '',
-                        queryParams: widget.exportQuery ?? const {},
-                        bodyParams: {
-                          ...?widget.exportBody,
-                          if (widget.projection != null)
-                            'columnProjection': widget.projection!.toJson(),
-                        },
-                        filename: widget.exportFilename ?? widget.title,
-                        requiredPermission: widget.exportPermission,
-                        label: '下载Excel', // TODO(l10n): 补 arb
+                      if (widget.exportEndpoint != null)
+                        UtenExportButton(
+                          endpoint: widget.exportEndpoint!,
+                          report: widget.exportReport ?? '',
+                          queryParams: widget.exportQuery ?? const {},
+                          bodyParams: {
+                            ...?widget.exportBody,
+                            if (widget.projection != null)
+                              'columnProjection': widget.projection!.toJson(),
+                          },
+                          filename: widget.exportFilename ?? widget.title,
+                          requiredPermission: widget.exportPermission,
+                          label: '下载Excel',
+                        ),
+                      UtenButton(
+                        type: UtenButtonType.tonal,
+                        icon: Icons.close_rounded,
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('关闭'),
                       ),
                     ],
-                    const SizedBox(width: UtenSpacing.s8),
-                    UtenButton(
-                      type: UtenButtonType.tonal,
-                      icon: Icons.close_rounded,
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('关闭'),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Container(
+              color: theme.colorScheme.surfaceContainerHighest,
+              child: _error != null
+                  ? Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s16),
+                      child: Text(_error!),
+                    )
+                  : table == null
+                  ? const SizedBox(
+                      height: 160,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s16),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: _a4Pages(theme, table),
+                      ),
                     ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              // A4 纸面（灰底 + 白纸卡片，横向可滚动保证窄屏可看全）
-              Expanded(
-                child: Container(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  child: _error != null
-                      ? Center(child: Text(_error!))
-                      : t == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : SingleChildScrollView(
-                          padding: const EdgeInsets.all(UtenSpacing.s16),
-                          child: Center(child: _a4Pages(theme, t)),
-                        ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  /// A4 横版分页纸面（宽 1000，297:210 横版比例）：
-  /// - 行多一页放不下 → 自动分多页，每页重复表头、右下角页码；
-  /// - 表格列等宽撑满纸宽、文字自动换行 → 横向也显示全，无需左右滚动。
+  // 纸面保留 1000 宽及原分页；横向查看属于纸面预览的二维内容。
   static const int _rowsPerPage = 20;
 
   Widget _a4Pages(ThemeData theme, UtenPrintTable t) {

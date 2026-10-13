@@ -3,6 +3,7 @@
 // 使用方：员工资料核对更正页(HrReconcilePage，ADR-160)在表格单元格内对照单字段旧/新值；
 // 表头级字段对照仍用 UtenRevisionFields(带 −/+ 前缀容器)，整行快照对照用 UtenRevisionTable。
 // 只负责显示，不读业务接口，不决定两个版本如何配对。
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import 'uten_revision_table.dart';
@@ -66,7 +67,7 @@ class UtenRevisionCell extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: utenRevisionBackground(context, UtenRevisionKind.added),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(UtenRadius.xs),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,

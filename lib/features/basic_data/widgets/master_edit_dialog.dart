@@ -10,6 +10,7 @@
 //
 // 容器自适应（参照 showMasterEditDialog）：compact 底部抽屉 / medium+ 居中面板。
 // 字段双列分组（compact 退单列），底部按钮居中。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -707,7 +708,7 @@ Future<void> showMasterEditDialog({
   return showDialog<void>(
     context: context,
     barrierDismissible: draftSpec == null,
-    builder: (ctx) => Dialog(
+    builder: (ctx) => UtenDialogFrame(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
         // 2026-09-14：弹窗宽度随屏幕放缩（原固定 560 太小，一行固定两列）；

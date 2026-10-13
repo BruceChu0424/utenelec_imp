@@ -44,7 +44,7 @@ class UtenResponsiveGrid extends StatelessWidget {
     this.columns,
     this.maxColumns = 6,
     this.minColumns = 1,
-    this.minItemWidth,
+    this.minItemWidth = 220,
   }) : assert(minItemWidth == null || minItemWidth > 0);
 
   /// 子项总数
@@ -64,7 +64,7 @@ class UtenResponsiveGrid extends StatelessWidget {
   /// 外边距
   final EdgeInsetsGeometry? padding;
 
-  /// 强制列数配置（优先级最高，设了就用这个）
+  /// 期望列数配置（覆盖默认断点；内容最小可读宽仍优先）。
   final UtenResponsiveColumns? columns;
 
   /// 最大列数（避免超宽屏列数过多）
@@ -89,7 +89,10 @@ class UtenResponsiveGrid extends StatelessWidget {
                         0))
                 .clamp(0.0, double.infinity);
         var cols = _resolveColumns(width).clamp(minColumns, maxColumns);
-        final minimum = minItemWidth;
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final minimum = minItemWidth == null
+            ? null
+            : minItemWidth! * (textScale < 1 ? 1 : textScale);
         if (minimum != null) {
           final fittingColumns = ((width + spacing) / (minimum + spacing))
               .floor()

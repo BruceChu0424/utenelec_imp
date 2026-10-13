@@ -152,6 +152,7 @@ Future<GoRouter> _mount(
   WidgetTester tester,
   _SessionRepo repo, {
   String? warehouseId,
+  TargetPlatform platform = TargetPlatform.android,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -195,6 +196,7 @@ Future<GoRouter> _mount(
         stockCountRequestRepositoryProvider.overrideWithValue(repo),
       ],
       child: MaterialApp.router(
+        theme: ThemeData(platform: platform),
         routerConfig: router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -276,7 +278,12 @@ void main() {
     final repo = _SessionRepo({
       'leaf-a': [_row(_screw, qty: '10', weight: '1.5'), _row(_nut)],
     });
-    await _mount(tester, repo, warehouseId: 'leaf-a');
+    await _mount(
+      tester,
+      repo,
+      warehouseId: 'leaf-a',
+      platform: TargetPlatform.windows,
+    );
     expect(find.text('盘点仓库'), findsNothing, reason: '带仓库直达不再弹选仓窗');
     expect(repo.candidateQueries.first, (
       warehouse: 'leaf-a',
@@ -305,8 +312,8 @@ void main() {
         'delta',
       ]),
     );
-    // 实盘格默认就是输入框（2026-10-08 用户口径：不再点按切换），行距=编辑表
-    // 口径(~52, ADR-161)。
+    // 实盘格默认就是输入框（2026-10-08 用户口径：不再点按切换），桌面行距=编辑表
+    // 紧凑口径(~52, ADR-161)；触屏48输入目标另由触控测试锁定。
     final screwCell = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
     final nutCell = find.byKey(const ValueKey('stock-count-qty-$_nut|'));
     expect(

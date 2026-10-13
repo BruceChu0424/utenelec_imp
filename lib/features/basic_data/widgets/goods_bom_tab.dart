@@ -46,6 +46,7 @@
 // 没有数据或不适用显示「—」，悬停说明原因、有效批次和累计产量)。系统学出的
 // 组件在身份格带「系统学习」标记；编辑它只在改了设计使用数量时才提交数量
 // (改了即转为人工维护)，删除它后系统不再自动加回。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -629,7 +630,8 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       context: context,
       builder: (ctx) {
         final theme = Theme.of(ctx);
-        return AlertDialog(
+        return UtenAlertDialog(
+          scrollable: false,
           title: Text(dialogTitle),
           content: SizedBox(
             width: 420,
@@ -896,7 +898,7 @@ class _GoodsBomTabState extends ConsumerState<GoodsBomTab>
       MasterColumnDef(
         key: 'treeIdentity',
         label: '层级 / 组件',
-        width: 340,
+        width: 340 + UtenTreeTableCell.toggleExtentOf(context) - 48,
         value: (r) =>
             '${r.seq} 组件 ${r.depth + 1} 级 ${r.node.item.componentName ?? ''}',
         cellBuilderHandlesSemantics: true,
@@ -1386,7 +1388,7 @@ Future<bool> _confirmUnusualGrams(
 ) async {
   final ok = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => UtenAlertDialog(
       title: const Text('请核对单个重量'),
       content: SizedBox(
         width: 420,
@@ -1437,7 +1439,7 @@ Future<bool> _confirmSecondPeriodicMaterial(BuildContext context) async {
       '这个产品要同时用两种料吗 (双色 / 双料)? 如果只是换料, 请改原来那一行';
   final ok = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => UtenAlertDialog(
       title: const Text('再加一种料'),
       content: SizedBox(width: 420, child: Text(message)),
       actionsAlignment: MainAxisAlignment.center,
@@ -1709,7 +1711,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Dialog(
+    return UtenDialogFrame(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560, maxHeight: 640),
@@ -2072,7 +2074,7 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final e = widget.editing;
-    return Dialog(
+    return UtenDialogFrame(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 520, maxHeight: 600),

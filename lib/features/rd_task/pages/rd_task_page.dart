@@ -18,6 +18,7 @@
 //    已按 2026-10-01 用户口径删除（分段徽章计数已给同口径数字）。
 //
 // 路由：/rd/tasks → RouteName.rdTaskCenter。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -330,7 +331,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     if (!_resolveEligible(row) || _resolving) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('标记任务完成'),
         content: Text('确认将任务 ${row.taskNo}「${row.title}」标记为已完成？'),
         actionsAlignment: MainAxisAlignment.center,
@@ -718,29 +719,59 @@ class _ResolveBar extends StatelessWidget {
           color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
           borderRadius: UtenRadius.mdAll,
         ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.task_alt_rounded,
-              size: 18,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                '已选中 ${task.taskNo} · ${task.title}',
-                style: theme.textTheme.bodySmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            UtenButton(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 360;
+            final summary = Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.task_alt_rounded,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Expanded(
+                  child: Text(
+                    '已选中 ${task.taskNo} · ${task.title}',
+                    style: theme.textTheme.bodySmall,
+                    maxLines: compact ? null : 1,
+                    overflow: compact ? null : TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            );
+            final action = UtenButton(
               size: UtenButtonSize.small,
+              isExpanded: compact,
               onPressed: resolving ? null : onResolve,
               icon: Icons.check_circle_outline_rounded,
               child: Text(resolving ? '处理中…' : '标记完成'),
-            ),
-          ],
+            );
+            if (compact) {
+              return ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.35,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      summary,
+                      const SizedBox(height: UtenSpacing.s8),
+                      action,
+                    ],
+                  ),
+                ),
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: summary),
+                action,
+              ],
+            );
+          },
         ),
       ),
     );

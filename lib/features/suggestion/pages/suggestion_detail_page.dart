@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -70,7 +71,9 @@ class _Content extends ConsumerWidget {
         ),
         children: [
           // 类别 + 状态
-          Row(
+          Wrap(
+            spacing: UtenSpacing.s12,
+            runSpacing: UtenSpacing.s8,
             children: [
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -90,16 +93,17 @@ class _Content extends ConsumerWidget {
                       color: suggestion.category.color,
                     ),
                     const SizedBox(width: UtenSpacing.s4),
-                    Text(
-                      suggestion.category.label,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: suggestion.category.color,
+                    Flexible(
+                      child: Text(
+                        suggestion.category.label,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: suggestion.category.color,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const Spacer(),
               UtenStatusBadge(
                 label: suggestion.status.label,
                 type: _statusBadge(suggestion.status),
@@ -117,29 +121,8 @@ class _Content extends ConsumerWidget {
           ),
           const SizedBox(height: UtenSpacing.s12),
           // 提交人
-          Row(
-            children: [
-              Icon(
-                Icons.account_circle_rounded,
-                size: 18,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: UtenSpacing.s4),
-              Text(
-                suggestion.displayName,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Text(
-                _fmt(suggestion.submittedAt),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
+          UtenInfoRow(label: '提交人', value: suggestion.displayName),
+          UtenInfoRow(label: '提交时间', value: _fmt(suggestion.submittedAt)),
           const SizedBox(height: UtenSpacing.s16),
           // 正文
           UtenCard(
@@ -217,13 +200,15 @@ class _Content extends ConsumerWidget {
                             : theme.colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: UtenSpacing.s8),
-                      Text(
-                        '${suggestion.likes} 人赞同',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: suggestion.likedByMe
-                              ? UtenColors.error
-                              : theme.colorScheme.onSurface,
+                      Flexible(
+                        child: Text(
+                          '${suggestion.likes} 人赞同',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: suggestion.likedByMe
+                                ? UtenColors.error
+                                : theme.colorScheme.onSurface,
+                          ),
                         ),
                       ),
                     ],
@@ -417,7 +402,6 @@ class _ReplyCard extends StatelessWidget {
                     Text(
                       _fmt(reply.repliedAt),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        fontSize: 11,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),

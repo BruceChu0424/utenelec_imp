@@ -27,7 +27,7 @@ import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
-import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../models/managed_permission_department_forest.dart';
 import '../widgets/permission_action_badge.dart';
 import '../../../shared/auth/page_permission_delegation_models.dart';
@@ -680,20 +680,14 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         Expanded(child: _staffList()),
       ],
     );
-    if (context.breakpoint.isCompact) {
-      return Row(
-        children: [
-          SizedBox(
-            width: math.min(176, MediaQuery.sizeOf(context).width * 0.42),
-            child: tree,
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(child: people),
-        ],
-      );
-    }
     return UtenSplitView(
       persistenceKey: 'pagePermission.staffDepartments',
+      leadingNoun: '部门',
+      selectedLeadingLabel:
+          utenTreeSelectionPath(_departmentForest.roots, _departmentId) ??
+          '全部可管理部门',
+      selectedLeadingKey: _departmentId,
+      compactHeader: tree.header,
       initialLeadingWidth: 240,
       minLeadingWidth: 200,
       maxLeadingWidth: 560,
@@ -806,7 +800,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         ),
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(UtenRadius.pill),
         ),
         child: Text(
           label,
@@ -1026,7 +1020,7 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
         Material(
           type: MaterialType.transparency,
           child: InkWell(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(UtenRadius.md),
             onTap: () => setState(() {
               if (!expanded) {
                 _expandedFamilies.add(familyKey);

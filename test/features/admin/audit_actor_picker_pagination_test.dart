@@ -89,11 +89,32 @@ void main() {
       await _pump(tester, repository, onSelected: (actor) => selected = actor);
       expect(find.byType(UtenSplitView), findsOneWidget);
       expect(repository.calls.map((call) => call.$1), [1, 2, 3]);
-      await tester.tap(find.text('财务部').first);
+      final departments = find.byKey(
+        const Key('uten-employee-picker-departments'),
+      );
+      if (!tester.any(departments)) {
+        await tester.tap(find.byIcon(Icons.account_tree_rounded));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(
+        find.descendant(of: departments, matching: find.text('财务部')),
+      );
       await tester.pumpAndSettle();
-      expect(find.text('人员1'), findsNothing);
-      expect(find.text('人员2'), findsOneWidget);
-      await tester.tap(find.text('人员2'));
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-actor-1')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-actor-2')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-actor-3')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('employee-picker-item-actor-2')),
+      );
       await tester.pumpAndSettle();
       expect(selected, isNull);
       await tester.tap(find.widgetWithText(FilledButton, '确定'));

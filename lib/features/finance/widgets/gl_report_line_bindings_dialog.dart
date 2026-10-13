@@ -6,6 +6,7 @@
 //
 // 没有绑定的行在报表上标注「未配置科目 / 未配置部门」且不计入合计。同一张表里一个科目只能归一行、
 // 直接人工与间接人工的部门不能重叠——这些由服务端校验, 这里把原因原样告诉用户。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -233,7 +234,7 @@ class _GlReportLineBindingsDialogState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final lines = _lines;
-    return Dialog(
+    return UtenDialogFrame(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: SizedBox(
         width: 720,
@@ -305,8 +306,10 @@ class _GlReportLineBindingsDialogState
                           ),
                   ),
                   const SizedBox(height: UtenSpacing.s12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: UtenSpacing.s12,
+                    runSpacing: UtenSpacing.s8,
                     children: [
                       if (widget.canEdit) ...[
                         OutlinedButton(
@@ -316,7 +319,6 @@ class _GlReportLineBindingsDialogState
                               : _seedDefaults,
                           child: const Text('按默认名单补齐'),
                         ),
-                        const SizedBox(width: UtenSpacing.s12),
                       ],
                       FilledButton(
                         onPressed: () => Navigator.pop(context, _changed),
@@ -432,7 +434,7 @@ class _TargetPickerDialogState extends State<_TargetPickerDialog> {
         : widget.candidates
               .where((item) => item.label.toLowerCase().contains(keyword))
               .toList();
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(widget.title),
       content: SizedBox(
         width: 560,

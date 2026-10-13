@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -494,7 +495,9 @@ class _FinanceArrivalExceptionDetailPageState
     };
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
+        maxWidth: 920,
+        scrollable: false,
         title: const Text('再次确认财务决定'),
         content: SizedBox(
           width: 920,

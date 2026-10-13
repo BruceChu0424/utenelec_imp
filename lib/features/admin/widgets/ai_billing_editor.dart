@@ -484,7 +484,7 @@ class _QuotaUsage extends StatelessWidget {
           if (ratio != null) ...[
             const SizedBox(height: UtenSpacing.s4),
             ClipRRect(
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(UtenRadius.pill),
               child: LinearProgressIndicator(
                 minHeight: 6,
                 value: ratio.clamp(0.0, 1.0),

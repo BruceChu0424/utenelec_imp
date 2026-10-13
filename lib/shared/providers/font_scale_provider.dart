@@ -1,21 +1,20 @@
-// 字号档位 Provider（自动 + 更小/小/标准/大/超大/特大/巨大/极大）
-// 文档：docs/00-项目准则/04-字体与字号可调.md
-//
-// 2026-09-20 起档位因子是**整体缩放**倍率（core/responsive/display_zoom.dart）：
-// 文字、图标、卡片、间距一起等比变化，不再只乘 textScaler（文字大了容器不跟）。
-// 手机（窗口宽 < 600）沿用只放大文字。
-//
-// 2026-09-24 起档位按屏幕容量动态提供（core/responsive/display_capacity.dart）：
-// 放得下才出现，每台机器选项数不同；默认「自动」，系统缩放开得大时自动收小一档。
+// 个人界面大小：所有设备整体缩放，默认 100%，本机按真实操作者记忆。
+// 文档：docs/00-项目准则/04-字体与字号可调.md。
 
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import 'session_provider.dart';
 import 'shared_providers.dart';
 
 /// 字号档位
 ///
-/// 因子经 UtenDisplayZoomBox 作为整体缩放倍率生效（≥600 宽）；设置页只列出
-/// 当前窗口放得下的档（UtenDisplayCapacity.maxFontFactor），手动档超出上限时按上限生效。
+/// 因子经 UtenDisplayZoomBox 在所有屏幕作为整体缩放倍率生效；设置页提供
+/// 85%～200%，旧 75% 只保留兼容恢复，窗口变化不降低用户选择。
 /// 老版本持久化的 small/medium/large/xLarge/xxLarge 键与因子保持不变。
 enum FontScale {
   xSmall(0.75, 'xSmall', '更小'),
@@ -41,6 +40,12 @@ enum FontScale {
   /// 全部档位因子（自动档从中挑推荐值）
   static final List<double> ladder = [for (final s in values) s.factor];
 
+  /// 新选择从 85% 起；旧 75% 仍能恢复且可显示为兼容档。
+  static final List<FontScale> selectable = [
+    for (final s in values)
+      if (s != xSmall) s,
+  ];
+
   /// 因子对应的档位（找不到返回 null）。
   static FontScale? ofFactor(double factor) {
     for (final s in values) {
@@ -50,7 +55,7 @@ enum FontScale {
   }
 }
 
-/// 用户的字号选择：自动（按屏幕推荐）或手动档位。
+/// 用户的界面大小：自动(标准 100%)或手动档位。
 class FontScaleChoice {
   const FontScaleChoice.auto() : manual = null;
   const FontScaleChoice.manual(FontScale this.manual);
@@ -63,6 +68,14 @@ class FontScaleChoice {
   /// 交给整体缩放容器的因子；null = 自动。
   double? get factor => manual?.factor;
 
+  static FontScaleChoice? fromPersistKey(String? key) {
+    if (key == 'auto') return const FontScaleChoice.auto();
+    for (final scale in FontScale.values) {
+      if (scale.persistKey == key) return FontScaleChoice.manual(scale);
+    }
+    return null;
+  }
+
   @override
   bool operator ==(Object other) =>
       other is FontScaleChoice && other.manual == manual;
@@ -71,26 +84,125 @@ class FontScaleChoice {
   int get hashCode => manual.hashCode;
 }
 
-class FontScaleNotifier extends Notifier<FontScaleChoice> {
-  static const _key = 'fontScale';
-  static const _autoKey = 'auto';
+/// 个人偏好归属真实操作者，代操作不改变被模拟员工的设置。
+/// 可单独 override，独立组件测试不需要启动登录/令牌恢复链路。
+final fontScaleOwnerProvider = Provider<String?>((ref) {
+  return ref.watch(
+    sessionProvider.select(
+      (session) => session.status == AuthStatus.authenticated
+          ? (session.actor ?? session.user)?.id
+          : null,
+    ),
+  );
+});
 
-  @override
-  FontScaleChoice build() {
-    final prefs = ref.read(sharedPreferencesProvider);
-    final saved = prefs.getString(_key);
-    for (final s in FontScale.values) {
-      if (s.persistKey == saved) return FontScaleChoice.manual(s);
+/// 本机按账号隔离；旧无主键只迁移给第一个真实登录账号。
+class FontScalePreferences {
+  FontScalePreferences(this.preferences);
+
+  final SharedPreferences preferences;
+  static const legacyKey = 'fontScale';
+  static const migrationKey = 'fontScale.legacyMigration';
+  String? _claimedMigration;
+  Future<void> _pendingWrites = Future<void>.value();
+
+  static String keyFor(String userId) => 'fontScale.user.$userId';
+
+  FontScaleChoice read(String userId) {
+    final saved = FontScaleChoice.fromPersistKey(
+      preferences.getString(keyFor(userId)),
+    );
+    var record = preferences.getString(migrationKey) ?? _claimedMigration;
+    if (record == null) {
+      final legacy = preferences.getString(legacyKey);
+      if (FontScaleChoice.fromPersistKey(legacy) == null) {
+        return saved ?? const FontScaleChoice.auto();
+      }
+      // 同一条记录同时保存归属和初值，避免部分迁移后把旧值分给第二人。
+      record = jsonEncode({'owner': userId, 'choice': legacy});
+      _claimedMigration = record;
+      unawaited(_persistMigration(record));
     }
-    // 未设置过（或存的是 auto）：按屏幕自动。
+    if (saved != null) return saved;
+    try {
+      final decoded = jsonDecode(record);
+      if (decoded is Map && decoded['owner'] == userId) {
+        return FontScaleChoice.fromPersistKey(decoded['choice'] as String?) ??
+            const FontScaleChoice.auto();
+      }
+    } on FormatException {
+      // 损坏的迁移记录也不回读全局值，避免其他账号继承旧人的偏好。
+    } on TypeError {
+      // 同上。
+    }
     return const FontScaleChoice.auto();
   }
 
+  Future<void> _persistMigration(String record) async {
+    try {
+      if (!await preferences.setString(migrationKey, record)) {
+        debugPrint('界面大小偏好迁移未保存；本次仍按账号隔离。');
+      }
+    } catch (_) {
+      debugPrint('界面大小偏好迁移未保存；本次仍按账号隔离。');
+    }
+  }
+
+  /// 按选择次序落盘，旧写入不能在新选择之后覆盖持久化值。
+  Future<void> write(String userId, FontScaleChoice choice) {
+    final write = _pendingWrites.then((_) async {
+      final saved = await persistChoice(
+        keyFor(userId),
+        choice.manual?.persistKey ?? 'auto',
+      );
+      if (!saved) throw StateError('界面大小偏好未能保存');
+    });
+    _pendingWrites = write.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return write;
+  }
+
+  @protected
+  Future<bool> persistChoice(String key, String value) =>
+      preferences.setString(key, value);
+}
+
+final fontScalePreferencesProvider = Provider<FontScalePreferences>((ref) {
+  return FontScalePreferences(ref.watch(sharedPreferencesProvider));
+});
+
+class FontScaleNotifier extends Notifier<FontScaleChoice> {
+  var _revision = 0;
+  var _disposed = false;
+
+  @override
+  FontScaleChoice build() {
+    _revision++;
+    _disposed = false;
+    ref.onDispose(() {
+      _disposed = true;
+      _revision++;
+    });
+    final owner = ref.watch(fontScaleOwnerProvider);
+    final preferences = ref.watch(fontScalePreferencesProvider);
+    return owner == null
+        ? const FontScaleChoice.auto()
+        : preferences.read(owner);
+  }
+
   Future<void> set(FontScaleChoice choice) async {
-    await ref
-        .read(sharedPreferencesProvider)
-        .setString(_key, choice.manual?.persistKey ?? _autoKey);
-    state = choice;
+    final owner = ref.read(fontScaleOwnerProvider);
+    if (owner == null) return;
+    final revision = ++_revision;
+    await ref.read(fontScalePreferencesProvider).write(owner, choice);
+    // 写入只属于开始操作的账号；换账号/登出/更新选择后的迟到结果不覆盖界面。
+    if (!_disposed &&
+        revision == _revision &&
+        ref.read(fontScaleOwnerProvider) == owner) {
+      state = choice;
+    }
   }
 }
 

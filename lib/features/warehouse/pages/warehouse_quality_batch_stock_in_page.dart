@@ -7,6 +7,7 @@
 // 提交失败保留原表单与幂等键，原地重试。
 // 「本次实收」后只读「放行重量」(ADR-135)：按到货实称分摊，入库时就按它记库存重量；
 // 本页不录重量(重量在到货登记时称)。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -435,7 +436,7 @@ class _WarehouseQualityBatchStockInPageState
     setState(() => _saving = false);
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Text('批量入库失败'),
         content: _MessagePanel(
           message: message,

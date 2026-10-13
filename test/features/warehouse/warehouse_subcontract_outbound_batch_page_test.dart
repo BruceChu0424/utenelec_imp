@@ -507,9 +507,19 @@ void main() {
     // 2026-10-10 口径：「单据信息」折叠标题已删，单据卡直接渲染(不再折叠占位)；
     // 窄屏下卡片占满首屏，滚到明细表再断言它仍可横向滚动。
     expect(find.text('单据信息'), findsNothing);
+    final pageScroll = Scrollable.of(
+      tester.element(
+        find.byKey(const Key('subcontract-outbound-document-cards')),
+      ),
+      axis: Axis.vertical,
+    );
     await tester.scrollUntilVisible(
       find.byType(SubcontractOutboundDetailTable),
       240,
+      scrollable: find.byElementPredicate(
+        (element) =>
+            element is StatefulElement && identical(element.state, pageScroll),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.byType(SubcontractOutboundDetailTable), findsOneWidget);

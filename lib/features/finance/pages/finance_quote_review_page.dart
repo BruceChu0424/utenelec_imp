@@ -633,7 +633,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       context: context,
       builder: (dialogContext) => _trackDialog(
         dialogContext,
-        AlertDialog(
+        UtenAlertDialog(
           title: Text(l10n.quoteFinanceConfirmTitle(review.billNo)),
           content: SizedBox(
             width: 460,

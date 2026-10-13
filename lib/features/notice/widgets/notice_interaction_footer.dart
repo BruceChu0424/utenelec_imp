@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/notice.dart';
@@ -46,28 +47,40 @@ class _AckRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    return Row(
+    return Wrap(
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s8,
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Icon(
-          Icons.how_to_reg_outlined,
-          size: 16,
-          color: theme.colorScheme.onSurfaceVariant,
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.how_to_reg_outlined,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: UtenSpacing.s4),
+            Flexible(
+              child: Text(
+                l10n.noticeAckCount(notice.ackCount),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: UtenSpacing.s4),
-        Text(
-          l10n.noticeAckCount(notice.ackCount),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const Spacer(),
         if (notice.myAcked || onAcknowledge == null)
           _DoneChip(label: l10n.noticeInteractionReceived)
         else
-          ActionChip(
-            label: Text(l10n.noticeInteractionReceive),
-            avatar: const Icon(Icons.check_rounded, size: 16),
+          UtenButton(
+            type: UtenButtonType.secondary,
+            size: UtenButtonSize.small,
+            icon: Icons.check_rounded,
             onPressed: onAcknowledge,
+            child: Text(l10n.noticeInteractionReceive),
           ),
       ],
     );
@@ -85,24 +98,33 @@ class _BlessRow extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final sent = notice.myBlessing != null;
-    return Row(
+    return Wrap(
+      spacing: UtenSpacing.s8,
+      runSpacing: UtenSpacing.s8,
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Icon(Icons.favorite_rounded, size: 16, color: notice.type.color),
-        const SizedBox(width: UtenSpacing.s4),
-        Text(
-          l10n.noticeBlessingCount(notice.blessingCount),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.favorite_rounded, size: 16, color: notice.type.color),
+            const SizedBox(width: UtenSpacing.s4),
+            Flexible(
+              child: Text(
+                l10n.noticeBlessingCount(notice.blessingCount),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
         ),
-        const Spacer(),
-        ActionChip(
-          label: Text(sent ? l10n.noticeBlessingSent : l10n.noticeSendBlessing),
-          avatar: Icon(
-            sent ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-            size: 16,
-          ),
+        UtenButton(
+          type: UtenButtonType.secondary,
+          size: UtenButtonSize.small,
+          icon: sent ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
           onPressed: onOpenDetail,
+          child: Text(sent ? l10n.noticeBlessingSent : l10n.noticeSendBlessing),
         ),
       ],
     );
@@ -135,10 +157,12 @@ class _DoneChip extends StatelessWidget {
             color: theme.colorScheme.onPrimaryContainer,
           ),
           const SizedBox(width: UtenSpacing.s4),
-          Text(
-            label,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onPrimaryContainer,
+          Flexible(
+            child: Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
             ),
           ),
         ],

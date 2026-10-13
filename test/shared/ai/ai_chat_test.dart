@@ -20,6 +20,7 @@ import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/dashboard/models/dashboard_overview.dart';
 import 'package:uten_imp/features/dashboard/pages/dashboard_page.dart';
@@ -41,6 +42,8 @@ import 'package:uten_imp/shared/ai/chat/ai_chat_repository.dart';
 import 'package:uten_imp/shared/ai/guided/ai_guided_file_plan.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+
+import '../../support/filter_segment_tap.dart';
 
 const _p1 = '39a3c832-b0e5-4fe2-8040-7cb4247741b9';
 const _p2 = '5f0c7a3e-2b1d-4c8e-9a6f-0d1e2f3a4b5c';
@@ -1370,10 +1373,17 @@ void main() {
           },
           _en.aiChatSettingsSendCtrlEnter: {'sendKey': 'CTRL_ENTER'},
         }.entries) {
-          final choice = find.text(entry.key);
-          await tester.ensureVisible(choice);
-          await tester.tap(choice);
+          final savesBefore = repository.settingChanges.length;
+          // A choice may be in the compact category panel rather than inline.
+          // The settings row itself is always built and owns the scroll anchor.
+          final row = find.byKey(
+            ValueKey('ai-settings-${entry.value.keys.single}'),
+          );
+          await tester.ensureVisible(row);
           await tester.pumpAndSettle();
+          await selectFilterSegment(tester, entry.key);
+          await tester.pumpAndSettle();
+          expect(repository.settingChanges, hasLength(savesBefore + 1));
           expect(repository.settingChanges.last, entry.value);
         }
         for (final field in ['showSources', 'showSuggestions']) {
@@ -2074,6 +2084,189 @@ void main() {
       await tester.pumpAndSettle();
       alignedControls();
       expect(find.byTooltip(_en.aiChatSend), findsOneWidget);
+    });
+  }
+
+  for (final systemText in [1.0, 2.0]) {
+    testWidgets(
+      '200% narrow composer keeps controls, payload and stop system=$systemText',
+      (tester) async {
+        final pending = Completer<AiJobSnapshot>();
+        final repository = _FakeChatRepository()..pending = pending;
+        await _pump(
+          tester,
+          size: const Size(320, 1000),
+          interfaceZoom: 2,
+          theme: buildLightTheme(),
+          textScaler: TextScaler.linear(systemText),
+          repository: repository,
+        );
+        await _open(tester);
+        for (final key in [
+          'ai-chat-settings',
+          'ai-chat-info',
+          'ai-chat-new',
+          'ai-chat-close',
+        ]) {
+          expect(find.byKey(ValueKey(key)), findsOneWidget);
+        }
+        Future<void> reachSend() async {
+          final wholeScroll = find.byKey(
+            const ValueKey('ai-chat-accessible-scroll'),
+          );
+          if (tester.any(wholeScroll)) {
+            await tester.scrollUntilVisible(
+              find.byKey(const ValueKey('ai-chat-send')).hitTestable(),
+              120,
+              scrollable: find
+                  .descendant(
+                    of: wholeScroll,
+                    matching: find.byType(Scrollable),
+                  )
+                  .first,
+            );
+          }
+          await tester.pump();
+        }
+
+        await reachSend();
+        final panel = tester.getRect(
+          find.byKey(const ValueKey('ai-chat-panel')),
+        );
+        final input = tester.getRect(
+          find.byKey(const ValueKey('ai-chat-input-surface')),
+        );
+        final attach = tester.getRect(
+          find.byKey(const ValueKey('ai-chat-attach')),
+        );
+        final send = tester.getRect(find.byKey(const ValueKey('ai-chat-send')));
+        expect(input.left, greaterThan(panel.left));
+        expect(input.right, lessThan(panel.right));
+        expect(attach.top, greaterThanOrEqualTo(input.bottom));
+        expect(send.top, closeTo(attach.top, 0.1));
+        expect(send.right, lessThan(panel.right));
+        const message =
+            'A quotation request with original quantities and a long customer name';
+        await tester.enterText(
+          find.byKey(const ValueKey('ai-chat-input')),
+          message,
+        );
+        await tester.pump();
+        final editable = find.descendant(
+          of: find.byKey(const ValueKey('ai-chat-input')),
+          matching: find.byType(EditableText),
+        );
+        final editingState = tester.state<EditableTextState>(editable);
+        final editing = tester.widget<EditableText>(editable);
+        const selection = TextSelection(baseOffset: 2, extentOffset: 12);
+        const composing = TextRange(start: 0, end: 4);
+        editing.controller.value = editing.controller.value.copyWith(
+          selection: selection,
+          composing: composing,
+        );
+        for (final width in [1000.0, 320.0]) {
+          tester.view.physicalSize = Size(width, 1000);
+          await tester.pumpAndSettle();
+          expect(tester.state<EditableTextState>(editable), same(editingState));
+          expect(editing.controller.text, message);
+          expect(editing.controller.selection, selection);
+          expect(editing.controller.value.composing, composing);
+          expect(editing.focusNode.hasFocus, isTrue);
+        }
+        await reachSend();
+        await tester.tap(
+          find.byKey(const ValueKey('ai-chat-send')).hitTestable(),
+        );
+        await tester.pump();
+        expect(repository.messages.single['message'], message);
+        expect(
+          tester
+              .widget<IconButton>(find.byKey(const ValueKey('ai-chat-attach')))
+              .onPressed,
+          isNull,
+        );
+        expect(
+          tester
+              .widget<IconButton>(find.byKey(const ValueKey('ai-chat-new')))
+              .onPressed,
+          isNull,
+        );
+        expect(find.byTooltip(_en.aiChatStop), findsOneWidget);
+        await reachSend();
+        await tester.tap(
+          find.byKey(const ValueKey('ai-chat-send')).hitTestable(),
+        );
+        await tester.pump();
+        pending.complete(_success('Late reply must stay ignored'));
+        await tester.pumpAndSettle();
+        expect(repository.messages, hasLength(1));
+        expect(find.text('Late reply must stay ignored'), findsNothing);
+        expect(find.byTooltip(_en.aiChatSend), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final (zoom, systemText) in [(0.85, 1.0), (2.0, 2.0)]) {
+    testWidgets('attachment removal preserves touch target and payload zoom=$zoom', (tester) async {
+      final file = PlatformFile(name: 'a-long-original-customer-quotation-name.xlsx',
+        size: 4, bytes: Uint8List.fromList([1, 2, 3, 4]));
+      FilePicker.platform = _Picker(file);
+      addTearDown(() => FilePicker.platform = _Picker(null));
+      final jobs = _FakeJobRepository();
+      final repository = _FakeChatRepository();
+      await _pump(tester, size: const Size(390, 1000), interfaceZoom: zoom,
+        textScaler: TextScaler.linear(systemText), theme: buildLightTheme(),
+        repository: repository, jobs: jobs);
+      await _open(tester);
+      Future<void> reach(Finder finder) async {
+        final whole = find.byKey(const ValueKey('ai-chat-accessible-scroll'));
+        if (tester.any(whole)) {
+          await tester.scrollUntilVisible(finder.hitTestable(), 100,
+            scrollable: find.descendant(of: whole, matching: find.byType(Scrollable)).first);
+        } else {
+          await tester.ensureVisible(finder);
+        }
+        await tester.pump();
+      }
+      final attach = find.byKey(const ValueKey('ai-chat-attach'));
+      await reach(attach);
+      await tester.tap(attach.hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.byTooltip(file.name), findsOneWidget);
+      final remove = find.byKey(const ValueKey('ai-chat-remove-attachment'));
+      await reach(remove);
+      final hit = tester.getRect(remove);
+      expect(hit.width, greaterThanOrEqualTo(47.9));
+      expect(hit.height, greaterThanOrEqualTo(47.9));
+      const ordinary = 'Keep the original request after removing the file';
+      await tester.enterText(find.byKey(const ValueKey('ai-chat-input')), ordinary);
+      await tester.pumpAndSettle();
+      await reach(remove);
+      await tester.tap(remove.hitTestable());
+      await tester.pumpAndSettle();
+      expect(find.text(file.name), findsNothing);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('ai-chat-input'))).controller!.text, ordinary);
+      final send = find.byKey(const ValueKey('ai-chat-send'));
+      await reach(send);
+      await tester.tap(send.hitTestable());
+      await tester.pumpAndSettle();
+      expect(repository.messages.single['message'], ordinary);
+      expect(jobs.requests, isEmpty, reason: 'removed attachments cannot start document work');
+      await reach(attach);
+      await tester.tap(attach.hitTestable());
+      await tester.pumpAndSettle();
+      const fileMessage = 'Prepare an order from the original file';
+      await tester.enterText(find.byKey(const ValueKey('ai-chat-input')), fileMessage);
+      await tester.pumpAndSettle();
+      await reach(send);
+      await tester.tap(send.hitTestable());
+      await tester.pumpAndSettle();
+      expect(jobs.requests.single.kind, 'ERP_DOCUMENT_ROUTE');
+      expect(jobs.requests.single.params, {'message': fileMessage, 'pageRoute': '/sales/orders/new'});
+      expect(jobs.requests.single.bytes, file.bytes);
+      expect(repository.messages, hasLength(1));
+      expect(tester.takeException(), isNull);
     });
   }
 
@@ -3298,6 +3491,7 @@ Future<_Harness> _pump(
   Size size = const Size(1000, 850),
   ThemeData? theme,
   TextScaler? textScaler,
+  double interfaceZoom = 1,
   Widget page = const SizedBox(key: ValueKey('business-surface')),
 }) async {
   tester.view.physicalSize = size;
@@ -3344,7 +3538,12 @@ Future<_Harness> _pump(
   );
   Widget scoped(BuildContext context, Widget? child) => MediaQuery(
     data: MediaQuery.of(context).copyWith(textScaler: textScaler),
-    child: AiPageContextScope(controller: pageContext, child: child!),
+    child: interfaceZoom == 1
+        ? AiPageContextScope(controller: pageContext, child: child!)
+        : UtenDisplayZoomBox(
+            fontFactor: interfaceZoom,
+            child: AiPageContextScope(controller: pageContext, child: child!),
+          ),
   );
   final router = onDraftOpened == null
       ? null

@@ -342,7 +342,7 @@ class _WarehouseSalesOutboundDetailPageState
     final controller = TextEditingController();
     final result = await UtenDialog.showAndWaitForExit<String?>(
       context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(action.label),
         content: SizedBox(
           width: 440,

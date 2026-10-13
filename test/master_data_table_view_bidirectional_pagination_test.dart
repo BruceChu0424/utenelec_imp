@@ -202,9 +202,19 @@ class _HarnessState extends State<_Harness> {
   }
 }
 
-ScrollableState _vertical(WidgetTester tester) => tester
-    .stateList<ScrollableState>(find.byType(Scrollable))
-    .firstWhere((state) => state.position.axis == Axis.vertical);
+ScrollableState _vertical(WidgetTester tester) => tester.state<ScrollableState>(
+  find
+      .descendant(
+        of: find.byType(ListView).first,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              (widget.axisDirection == AxisDirection.down ||
+                  widget.axisDirection == AxisDirection.up),
+        ),
+      )
+      .first,
+);
 
 Future<void> _wheel(WidgetTester tester, double dy, {double dx = 0}) async {
   final list = find.byType(ListView).first;

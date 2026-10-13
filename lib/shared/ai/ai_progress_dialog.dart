@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -292,7 +293,7 @@ class _AiProgressDialogState extends State<_AiProgressDialog> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _cancel();
       },
-      child: Dialog(
+      child: UtenDialogFrame(
         insetPadding: const EdgeInsets.all(UtenSpacing.s24),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 440),

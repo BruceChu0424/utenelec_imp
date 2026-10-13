@@ -3,6 +3,7 @@
 // 2026-10-05 新增「证件核对」(identity)：证件号码缺失 / 校验未通过 / 尚未校验的在职员工，
 // 只给能修改证件的人看(服务端已按权限过滤)，行操作「修改证件信息」；
 // 具体原因在副标题下单独一行红字完整显示(key hr-task-identity-reason)。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -340,8 +341,10 @@ class HrTaskTile extends ConsumerWidget {
   ) {
     final theme = Theme.of(context);
     final blocked = item.claimedByOther;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Wrap(
+      spacing: UtenSpacing.s4,
+      runSpacing: UtenSpacing.s4,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         // 认领 / 释放 / 接管
         if (item.claimedByName == null)
@@ -463,7 +466,7 @@ class _Chip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -472,11 +475,13 @@ class _Chip extends StatelessWidget {
             Icon(icon, size: 12, color: fg),
             const SizedBox(width: 3),
           ],
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: fg,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: fg,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -496,7 +501,7 @@ Future<void> showHrConfirmDialog(
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
+      builder: (ctx, setState) => UtenAlertDialog(
         title: Text('登记转正 · ${item.name}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,

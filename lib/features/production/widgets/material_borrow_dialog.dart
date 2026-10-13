@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/required_field_decoration.dart';
@@ -126,7 +127,8 @@ class _MaterialBorrowDialogState extends State<MaterialBorrowDialog> {
         ? null
         : widget.productsById[target.analysisLineId];
     final qty = double.tryParse(_qtyController.text.trim());
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       key: const Key('material-borrow-dialog'),
       title: const Text('分析内调给产品'),
       content: ConstrainedBox(

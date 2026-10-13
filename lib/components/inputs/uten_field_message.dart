@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 import 'uten_table_cell_hints.dart';
 
 /// A compact message that discloses its full text only when it really overflows.
 ///
 /// The visible text stays on [maxLines]. When it no longer fits, an anchored
 /// help button is appended. Mouse hover, touch/click and keyboard focus all
-/// reveal the same full-text tooltip; the button keeps a 44dp hit target even
+/// reveal the same full-text tooltip; the button follows the shared hit target even
 /// though the visual icon remains small enough for dense ERP forms.
 class UtenOverflowMessage extends StatefulWidget {
   const UtenOverflowMessage({
@@ -126,6 +127,7 @@ class _UtenOverflowMessageState extends State<UtenOverflowMessage> {
             widget.iconColor ??
             style.color ??
             Theme.of(context).colorScheme.primary;
+        final hitExtent = UtenControlMetrics.minimumHitExtent(context);
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -149,9 +151,13 @@ class _UtenOverflowMessageState extends State<UtenOverflowMessage> {
                 child: IconButton(
                   focusNode: _disclosureFocus,
                   onPressed: _showFullMessage,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 44,
-                    height: 44,
+                  constraints: BoxConstraints.tightFor(
+                    width: hitExtent,
+                    height: hitExtent,
+                  ),
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.standard,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   padding: const EdgeInsets.all(12),
                   splashRadius: 22,

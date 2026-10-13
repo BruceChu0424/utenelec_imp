@@ -113,47 +113,51 @@ class VisitorApprovalDetailPage extends ConsumerWidget {
     AppLocalizations l10n,
   ) async {
     final ctl = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(l10n.visitorApprovalReject),
-          content: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                UtenReviewerResponsibilityNotice(
-                  actionLabel: l10n.visitorApprovalRejectNoticeLabel,
-                  description: l10n.visitorApprovalRejectNoticeDesc,
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                UtenInput(
-                  controller: ctl,
-                  label: l10n.visitorApprovalRejectReasonHint,
-                  maxLines: 2,
-                ),
-              ],
+    late final String? reason;
+    try {
+      reason = await UtenDialog.showAndWaitForExit<String>(
+        context,
+        builder: (ctx) {
+          return UtenAlertDialog(
+            title: Text(l10n.visitorApprovalReject),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  UtenReviewerResponsibilityNotice(
+                    actionLabel: l10n.visitorApprovalRejectNoticeLabel,
+                    description: l10n.visitorApprovalRejectNoticeDesc,
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  UtenInput(
+                    controller: ctl,
+                    label: l10n.visitorApprovalRejectReasonHint,
+                    maxLines: 2,
+                  ),
+                ],
+              ),
             ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            UtenButton(
-              type: UtenButtonType.ghost,
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(l10n.commonCancel),
-            ),
-            UtenButton(
-              type: UtenButtonType.danger,
-              onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
-              child: Text(l10n.visitorApprovalReject),
-            ),
-          ],
-        );
-      },
-    );
-    ctl.dispose();
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              UtenButton(
+                type: UtenButtonType.ghost,
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(l10n.commonCancel),
+              ),
+              UtenButton(
+                type: UtenButtonType.danger,
+                onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
+                child: Text(l10n.visitorApprovalReject),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      ctl.dispose();
+    }
     if (reason != null && context.mounted) {
       await _action(
         context,

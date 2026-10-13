@@ -12,6 +12,7 @@
 // 花名册：负责人/管理人排最前；仅安全联系字段；明确负责人看到“去业务页使用本页权限”的说明，
 // 不再在此处维护全目录或中央个人覆盖。
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -20,10 +21,10 @@ import '../../../components/cards/uten_person_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -168,7 +169,6 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
 
   @override
   Widget build(BuildContext context) {
-    final useSplit = context.breakpoint.isExpanded;
     final treeAsync = ref.watch(myDepartmentTreeProvider);
     final tree = treeAsync.valueOrNull ?? const <DepartmentNode>[];
     final selectedId = tree.isNotEmpty ? (_selectedId ?? tree.first.id) : null;
@@ -195,28 +195,24 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
           employeeFilter: _employeeSearchKeyword ?? '',
         );
 
-        if (useSplit) {
-          return UtenSplitView(
-            persistenceKey: 'department.mine',
-            leading: _buildTree(tree, node.id, onSelect: _selectDepartment),
-            trailing: detail,
-          );
-        }
-        // compact/medium：树进抽屉，详情单列收敛宽度。
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-              child: UtenSearchBar(
-                key: const ValueKey('my-department-compact-search'),
-                initialValue: _searchQuery,
-                hint: '搜索部门名称/编号、员工姓名/工号',
-                onInputChanged: _onSearchInput,
-                onChanged: _onSearchChanged,
-              ),
+        return UtenSplitView(
+          persistenceKey: 'department.mine',
+          minTwoPaneWidth: 840,
+          leadingNoun: '部门',
+          selectedLeadingLabel: utenTreeSelectionPath(tree, node.id),
+          selectedLeadingKey: node.id,
+          compactHeader: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            child: UtenSearchBar(
+              key: const ValueKey('my-department-compact-search'),
+              initialValue: _searchQuery,
+              hint: '搜索部门名称/编号、员工姓名/工号',
+              onInputChanged: _onSearchInput,
+              onChanged: _onSearchChanged,
             ),
-            Expanded(child: UtenContentContainer(child: detail)),
-          ],
+          ),
+          leading: _buildTree(tree, node.id, onSelect: _selectDepartment),
+          trailing: detail,
         );
       },
     );
@@ -235,28 +231,8 @@ class _MyDepartmentPageState extends ConsumerState<MyDepartmentPage> {
             tooltip: '刷新',
             onPressed: _refresh,
           ),
-          if (!useSplit && selectedId != null)
-            IconButton(
-              icon: const Icon(Icons.account_tree_rounded),
-              tooltip: '部门列表',
-              onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
-            ),
         ],
       ),
-      endDrawer: (!useSplit && selectedId != null)
-          ? Drawer(
-              child: SafeArea(
-                child: _buildTree(
-                  tree,
-                  selectedId,
-                  onSelect: (id) {
-                    _selectDepartment(id);
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ),
-            )
-          : null,
       body: SafeArea(child: body),
     );
   }
@@ -628,7 +604,7 @@ Future<void> _showContactCard(
   } else {
     await showDialog<void>(
       context: context,
-      builder: (_) => Dialog(
+      builder: (_) => UtenDialogFrame(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),
           child: content,

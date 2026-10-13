@@ -107,6 +107,44 @@ class UtenGaugeRing extends ConsumerWidget {
         : utenGaugeStatusColor(context, status);
     final textColor = utenGaugeStatusColor(context, status);
     final display = valueText ?? _format(value, placeholder);
+    final readoutStyle = theme.textTheme.headlineMedium?.copyWith(
+      fontWeight: FontWeight.w700,
+      color: textColor,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final measure = TextPainter(
+      text: TextSpan(text: display, style: readoutStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    // 小画布、无障碍大字或长数值使用环下读数，避免 FittedBox 抵消放大。
+    final outside =
+        MediaQuery.sizeOf(context).width < 600 ||
+        scale > 1.3 ||
+        measure.width > preferred * 0.62;
+    measure.dispose();
+    final readout = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (valueText != null)
+          Text(valueText!, textAlign: TextAlign.center, style: readoutStyle)
+        else
+          UtenAnimatedNumber(
+            value: value,
+            placeholder: placeholder,
+            textAlign: TextAlign.center,
+            style: readoutStyle,
+          ),
+        if (unit.isNotEmpty)
+          Text(
+            unit,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    );
     final semanticsLabel = statusText == null
         ? '$label $display$unit'
         : '$label $display$unit,$statusText';
@@ -140,66 +178,40 @@ class UtenGaugeRing extends ConsumerWidget {
             ),
             child: child,
           ),
-          child: Center(
-            child: FractionallySizedBox(
-              widthFactor: 0.62,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (valueText != null)
-                      Text(
-                        valueText!,
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: textColor,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      )
-                    else
-                      UtenAnimatedNumber(
-                        value: value,
-                        placeholder: placeholder,
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: textColor,
-                        ),
-                      ),
-                    if (unit.isNotEmpty)
-                      Text(
-                        unit,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                  ],
+          child: outside
+              ? const SizedBox.expand()
+              : Center(
+                  child: FractionallySizedBox(
+                    widthFactor: 0.62,
+                    child: readout,
+                  ),
                 ),
-              ),
-            ),
-          ),
         ),
       ),
     );
     return Semantics(
       label: semanticsLabel,
       excludeSemantics: true,
-      child: caption == null || caption!.isEmpty
+      child: !outside && (caption == null || caption!.isEmpty)
           ? ring
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 ring,
-                const SizedBox(height: UtenSpacing.s4),
-                Text(
-                  caption!,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                if (outside) ...[
+                  const SizedBox(height: UtenSpacing.s4),
+                  readout,
+                ],
+                if (caption != null && caption!.isNotEmpty) ...[
+                  const SizedBox(height: UtenSpacing.s4),
+                  Text(
+                    caption!,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
     );

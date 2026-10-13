@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -82,7 +83,9 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => UtenAlertDialog(
+    maxWidth: 1450,
+    scrollable: false,
     title: Text(_l.costImport),
     content: SizedBox(
       width: 1450,

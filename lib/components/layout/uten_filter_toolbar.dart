@@ -35,9 +35,8 @@
 // - 搜索框：全平台唯一组件 UtenSearchBar（胶囊圆角 + 清除 + 300ms 防抖），
 //   药丸描边与分类栏共用 40 下限恒同高；宽度 2026-10-07 起减半为 180
 //   （用户口径「搜索栏长度缩小一半」）；
-// - 响应式：宽屏一行（分段 | 搜索 | 行尾有界右对齐，超宽自动换行），窄屏
-//   （< [compactBreakpoint]）分段放得下照常显示、放不下自动收成一颗「分类」
-//   下拉按钮（带待办红徽章总量，点开下拉选分类——2026-09-14 起小屏不再左右拖）；
+// - 响应式：搜索和行尾按局部宽度换行；所有宽度下分段均按真实内容测量。
+//   放不下时显示当前分类入口，打开完整纵向面板；长名与计数不缩字、不横滚。
 // - 纯分类无搜索的页面只传 [segments]（searchHint 不传即不渲染搜索框）；
 // - 纯搜索+行尾的页面（筛选下沉到列头/下拉，如即时库存）不传 [segments]
 //   （2026-09-10 起 segments/selected/onSelectionChanged 均可省略）。
@@ -149,7 +148,7 @@ class UtenFilterToolbar<T> extends StatefulWidget {
   /// 宽屏行尾内容（如「共 N 条」统计文案）。
   final Widget? trailing;
 
-  /// 低于该宽度切窄屏布局（分段横滚 + 搜索换行）。
+  /// 低于该宽度切窄屏布局（分类自适应 + 搜索换行）。
   final double compactBreakpoint;
 
   /// 宽屏搜索框宽度；2026-10-07 用户口径「搜索栏长度缩小一半」：360 → 180。
@@ -238,6 +237,22 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
         ? null
         : UtenSegmentRow<T>(
             key: widget.segmentsKey,
+            compactSummary: _inProgressTotal == 0 && _actionableTotal == 0
+                ? null
+                : Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (_inProgressTotal > 0)
+                        IntrinsicWidth(
+                          child: UtenInProgressBadge(count: _inProgressTotal),
+                        ),
+                      if (_actionableTotal > 0)
+                        IntrinsicWidth(
+                          child: UtenNotificationBadge(count: _actionableTotal),
+                        ),
+                    ],
+                  ),
             // 统一范式：选中只变背景色，不出现 ✓ 图标。高度不设参数——分类栏与
             // 搜索框药丸的「严格同高」靠两侧共用同一枚下限令牌（见 UtenFilterRow
             // 注释）：InputDecorator 描边只按内容高绘制、不吃 minHeight 约束，
@@ -288,23 +303,14 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < widget.compactBreakpoint) {
-          // 2026-09-14 小屏口径：分段条放不下时不再左右拖动（小屏拖分类太
-          // 不合适），收成一颗「分类」下拉按钮——带待办红徽章总量，点开下拉
-          // 选分类；放得下仍显示分段（小屏两三段的页面不受影响）。
-          final collapse =
-              button != null && !_segmentsFit(context, constraints.maxWidth);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (collapse)
-                _CompactCategoryField<T>(
-                  segments: widget.segments,
-                  selected: selected,
-                  enabled: enabled,
-                  onSelected: widget.onSelectionChanged,
+              if (button != null)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: button,
                 ),
-              if (!collapse && button != null)
-                _SegmentsScrollArea(child: button),
               if (search != null) ...[
                 if (button != null) const SizedBox(height: UtenSpacing.s8),
                 search,
@@ -339,9 +345,8 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // 分类少时按自然宽度贴着搜索框；多时收进有界横滚区。
-                      if (button != null)
-                        Flexible(child: _SegmentsScrollArea(child: button)),
+                      // 分类少时按自然宽度贴着搜索框；放不下时收为完整分类面板。
+                      if (button != null) Flexible(child: button),
                       if (search != null) ...[
                         if (button != null)
                           const SizedBox(width: UtenSpacing.s12),
@@ -366,199 +371,19 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
     );
   }
 
-  /// 估算分段条按自然宽度铺开是否放得下（小屏是否收成「分类」下拉的判定）。
-  ///
-  /// 文字宽度用 TextPainter 实测（含字号缩放）；分段内边距/徽章/容器留白取
-  /// 常量近似——刻意略偏高估：宁可早一步收下拉，也不能让分段条溢出黄黑条。
-  bool _segmentsFit(BuildContext context, double maxWidth) {
-    final theme = Theme.of(context);
-    final style = theme.textTheme.titleSmall ?? const TextStyle();
-    final scaler = MediaQuery.textScalerOf(context);
-    var total = 12.0; // 容器 padding 4×2 + 分段间隔线 + 余量
-    for (final segment in widget.segments) {
-      final label = TextPainter(
-        text: TextSpan(text: segment.label, style: style),
-        textScaler: scaler,
-        textDirection: TextDirection.ltr,
-      )..layout();
-      var width = label.width + 36; // 内边距 16×2 + 分隔线，取偏高
-      final count = segment.count;
-      if (count != null) {
-        if (segment.countForm == UtenSegmentCountForm.browsing) {
-          final digits = TextPainter(
-            text: TextSpan(text: ' ($count)', style: style),
-            textScaler: scaler,
-            textDirection: TextDirection.ltr,
-          )..layout();
-          width += digits.width;
-        } else if (count > 0) {
-          width += 34; // 红/黄徽章 + 与文字的间距
-        }
-      }
-      // 大类分段可能再挂一枚黄徽章(黄左红右), 估宽要把它算上, 否则小屏该收下拉
-      // 却没收, 分段条顶出黄黑溢出条。
-      final inProgress = segment.inProgressCount;
-      if (inProgress != null && inProgress > 0) width += 34;
-      total += width;
-    }
-    return total <= maxWidth;
-  }
-}
+  int get _actionableTotal => widget.segments
+      .where((segment) => segment.countForm == UtenSegmentCountForm.actionable)
+      .fold(0, (sum, segment) => sum + (segment.count ?? 0));
 
-/// 小屏「分类」下拉按钮：分段条放不下时的替位形态（2026-09-14 用户口径，
-/// 小屏左右拖分类不合适）。按钮文案显示当前选中的分类（未选显示「分类」），
-/// 右侧带待办红徽章总量（所有 actionable 分段计数之和，无则不渲染）；
-/// 点开下拉逐项展示分类与计数（复用 UtenSegmentBadgeLabel 的计数口径），
-/// 选中项打勾。
-class _CompactCategoryField<T> extends StatelessWidget {
-  const _CompactCategoryField({
-    required this.segments,
-    required this.selected,
-    required this.enabled,
-    this.onSelected,
-  });
-
-  final List<UtenFilterSegment<T>> segments;
-  final Set<T> selected;
-  final bool enabled;
-  final ValueChanged<T>? onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final selectedSegments = segments
-        .where((segment) => selected.contains(segment.value))
-        .toList();
-    final label = selectedSegments.length == 1
-        ? selectedSegments.single.label
-        : '分类';
-    int totalOf(UtenSegmentCountForm form) => segments
-        .where((segment) => segment.countForm == form)
-        .fold<int>(0, (sum, segment) => sum + (segment.count ?? 0));
-    final actionableTotal = totalOf(UtenSegmentCountForm.actionable);
-    // 小屏收起后分段各自的数字看不见了，两种徽章都要在按钮上留个总量，
-    // 否则「进行中」那批在小屏直接消失(2026-09-21 ADR-100)。
-    // 大类分段挂的第二枚黄数(inProgressCount)也要并进来, 它同样是在办量。
-    final inProgressTotal =
-        totalOf(UtenSegmentCountForm.inProgress) +
-        segments.fold<int>(0, (sum, s) => sum + (s.inProgressCount ?? 0));
-    return PopupMenuButton<T>(
-      enabled: enabled && onSelected != null,
-      initialValue: selectedSegments.length == 1
-          ? selectedSegments.single.value
-          : null,
-      position: PopupMenuPosition.under,
-      constraints: const BoxConstraints(minWidth: 260),
-      onSelected: onSelected,
-      itemBuilder: (context) => [
-        for (final segment in segments)
-          PopupMenuItem<T>(
-            value: segment.value,
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 26,
-                  child: selected.contains(segment.value)
-                      ? Icon(
-                          Icons.check_rounded,
-                          size: 18,
-                          color: theme.colorScheme.primary,
-                        )
-                      : null,
-                ),
-                Expanded(
-                  child: UtenSegmentBadgeLabel(
-                    label: segment.label,
-                    count: segment.count,
-                    countForm: segment.countForm,
-                    inProgressCount: segment.inProgressCount,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-      child: Opacity(
-        opacity: enabled ? 1 : 0.55,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 44),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.category_outlined,
-                size: 18,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-              ),
-              // 黄在左、红在右，与 hub 卡 / 工作台模块卡同序。
-              if (inProgressTotal > 0) ...[
-                UtenInProgressBadge(count: inProgressTotal),
-                const SizedBox(width: UtenSpacing.s8),
-              ],
-              if (actionableTotal > 0) ...[
-                UtenNotificationBadge(count: actionableTotal),
-                const SizedBox(width: UtenSpacing.s8),
-              ],
-              Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 20,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 分段条的横向滚动区：内容超宽时可横滚，并常驻一条细滚动条作为「右边还有」的
-/// 明示（滚动条是覆盖层，不占布局高度，分段与搜索框的同高结构不受影响）。
-class _SegmentsScrollArea extends StatefulWidget {
-  const _SegmentsScrollArea({required this.child});
-
-  final Widget child;
-
-  @override
-  State<_SegmentsScrollArea> createState() => _SegmentsScrollAreaState();
-}
-
-class _SegmentsScrollAreaState extends State<_SegmentsScrollArea> {
-  final ScrollController _controller = ScrollController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scrollbar(
-      controller: _controller,
-      thumbVisibility: true,
-      child: SingleChildScrollView(
-        controller: _controller,
-        scrollDirection: Axis.horizontal,
-        child: widget.child,
-      ),
-    );
-  }
+  int get _inProgressTotal => widget.segments.fold(
+    0,
+    (sum, segment) =>
+        sum +
+        (segment.inProgressCount ?? 0) +
+        (segment.countForm == UtenSegmentCountForm.inProgress
+            ? segment.count ?? 0
+            : 0),
+  );
 }
 
 /// 分类未选时的内容区引导占位（任务中心「在上方选择分类后开始办理」的通用版；

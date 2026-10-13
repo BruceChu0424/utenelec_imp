@@ -416,6 +416,7 @@ class _ProductionExecutionBatchPageState
           LayoutBuilder(
             builder: (context, constraints) => UtenFormGrid(
               columns: constraints.maxWidth >= 1050 ? 4 : 2,
+              minFieldWidth: 140,
               spacing: UtenSpacing.s8,
               runSpacing: UtenSpacing.s8,
               children: [
@@ -664,17 +665,13 @@ class _ProductionExecutionBatchPageState
           const SizedBox(height: UtenSpacing.s8),
           SizedBox(
             width: double.infinity,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                _number(value),
-                key: Key('execution-batch-$name-value'),
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w700,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+            child: Text(
+              _number(value),
+              key: Key('execution-batch-$name-value'),
+              style: theme.textTheme.headlineMedium?.copyWith(
+                color: foreground,
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
           ),
@@ -748,11 +745,15 @@ class _ProductionExecutionBatchPageState
         children: [
           Icon(Icons.sync_alt_rounded, size: 12, color: colors.primary),
           const SizedBox(width: UtenSpacing.s4),
-          Text(
-            l10n.productionBatchDirectTransferBadge,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: colors.primary,
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              l10n.productionBatchDirectTransferBadge,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colors.primary,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -846,11 +847,7 @@ class _ProductionExecutionBatchPageState
                       ),
                     );
                     if (!compact) return quantity;
-                    return FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: quantity,
-                    );
+                    return quantity;
                   },
                 ),
                 MasterColumnDef(
@@ -882,7 +879,7 @@ class _ProductionExecutionBatchPageState
                           ),
                           if (lineSide) ...[
                             const SizedBox(width: UtenSpacing.s4),
-                            _directTransferBadge(context),
+                            Flexible(child: _directTransferBadge(context)),
                           ],
                         ],
                       ),

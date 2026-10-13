@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
 // 订货审批审核详情页（财务专用视图，与采购/委外业务订货详情页分离）。
 //
@@ -422,7 +423,7 @@ class _FinanceProcurementApprovalReviewPageState
     final controller = _approveRemark;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
+      builder: (dialogCtx) => UtenAlertDialog(
         title: Text('通过 $widgetSafeBillNo'),
         content: SizedBox(
           width: 440,
@@ -535,7 +536,7 @@ class _FinanceProcurementApprovalReviewPageState
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => AlertDialog(
+        builder: (dialogCtx, setDialogState) => UtenAlertDialog(
           title: Text('驳回 $widgetSafeBillNo'),
           content: SizedBox(
             width: 440,

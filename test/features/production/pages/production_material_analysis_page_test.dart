@@ -12,6 +12,7 @@ import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../support/filter_segment_tap.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -9007,8 +9008,47 @@ Future<Finder> _materialTableRowVisible(
     matching: _verticalScrollable(),
   );
   if (row.evaluate().isEmpty && tableScroll.evaluate().isNotEmpty) {
-    final state = tester.state<ScrollableState>(tableScroll.last);
-    state.position.jumpTo(0);
+    // 详情格、工具条和表体均可有竖向 Scrollable；最后一个可能只是50高文字格。
+    // 优先跟随已挂载业务行的最近滚动祖先，不依赖控件树排列。
+    final mountedRows = find.descendant(
+      of: region,
+      matching: find.byWidgetPredicate((widget) {
+        final key = widget.key;
+        final value = key is ValueKey ? key.value : null;
+        return value is String &&
+            (value.startsWith('material-table-row-') ||
+                value.startsWith('material-bom-product-') ||
+                value.startsWith('material-aggregate-'));
+      }),
+    );
+    final candidates = <ScrollableState>[
+      if (tester.any(mountedRows))
+        ...tester.stateList<ScrollableState>(
+          find.ancestor(of: mountedRows.first, matching: _verticalScrollable()),
+        ),
+    ];
+    final fallback =
+        tester
+            .stateList<ScrollableState>(tableScroll)
+            .where(
+              (state) =>
+                  state.position.hasContentDimensions &&
+                  state.position.maxScrollExtent >
+                      state.position.minScrollExtent,
+            )
+            .toList()
+          ..sort(
+            (a, b) => b.position.viewportDimension.compareTo(
+              a.position.viewportDimension,
+            ),
+          );
+    candidates.addAll(fallback);
+    final state = candidates.firstWhere(
+      (state) =>
+          state.position.hasContentDimensions &&
+          state.position.maxScrollExtent > state.position.minScrollExtent,
+    );
+    state.position.jumpTo(state.position.minScrollExtent);
     await tester.pump();
     for (var attempt = 0; attempt < 20 && row.evaluate().isEmpty; attempt++) {
       final next = (state.position.pixels + 180).clamp(
@@ -9164,24 +9204,10 @@ Future<void> _openBucketDetail(
   await tester.tap(entry);
   await tester.pumpAndSettle();
   if (stateFilter != null) {
-    var target = find.descendant(
-      of: find.byKey(const Key('material-analysis-task-state')),
-      matching: find.text(stateFilter == '已下达' ? '进行中' : stateFilter),
+    await selectFilterSegment(
+      tester,
+      stateFilter == '已下达' ? '进行中' : stateFilter,
     );
-    if (target.evaluate().isEmpty) {
-      // 窄屏的统一分类工具条收为菜单，先打开再选择同一状态。
-      await tester.tap(
-        find.byWidgetPredicate((widget) => widget is PopupMenuButton),
-      );
-      await tester.pumpAndSettle();
-      target = find.descendant(
-        of: find.byWidgetPredicate((widget) => widget is PopupMenuItem),
-        matching: find.text(stateFilter == '已下达' ? '进行中' : stateFilter),
-      );
-    }
-    await tester.ensureVisible(target);
-    await tester.pumpAndSettle();
-    await tester.tap(target);
     await tester.pumpAndSettle();
   }
 }

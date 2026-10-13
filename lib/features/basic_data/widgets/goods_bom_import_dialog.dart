@@ -8,6 +8,7 @@
 // - 提交方式二选一：按文件为准（替换各级现有组件，与「粘贴-替换」同语义，需
 //   goods:bom:delete）/ 在现有组件后追加（与「粘贴-同级追加」同语义）；
 // - 检测报告列出逐行错误（第几行/哪列/为什么）与提醒（名称不一致等，不拦提交）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -210,7 +211,8 @@ class _GoodsBomImportDialogState extends ConsumerState<_GoodsBomImportDialog> {
         enabled: !_detecting && !_committing,
         hint: '松开鼠标检测 Excel',
         onFiles: (files) => _detectFile(files.first),
-        child: AlertDialog(
+        child: UtenAlertDialog(
+          scrollable: false,
           title: const Text('导入组件'), // TODO(l10n): 补 arb
           content: SizedBox(
             width: 520,

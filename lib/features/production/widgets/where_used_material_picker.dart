@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -44,7 +45,7 @@ Future<GoodsListItem?> showWhereUsedMaterialPicker(
     context: context,
     builder: (dialogContext) {
       final viewport = MediaQuery.sizeOf(dialogContext);
-      return Dialog(
+      return UtenDialogFrame(
         insetPadding: const EdgeInsets.all(UtenSpacing.s24),
         clipBehavior: Clip.antiAlias,
         shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),

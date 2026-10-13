@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -436,7 +437,7 @@ class _SalesShipmentTaskWorkbenchState
     try {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: Text('批量放行($count 笔)'),
           content: SizedBox(
             width: 440,
@@ -495,75 +496,82 @@ class _SalesShipmentTaskWorkbenchState
     try {
       final controller = TextEditingController();
       String? errorText;
-      final reason = await showDialog<String>(
-        context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            title: Text('批量退回($count 笔)'),
-            content: SizedBox(
-              width: 440,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const UtenReviewerResponsibilityNotice(
-                    actionLabel: '批量退回出货财务审核',
-                    description: '确认后，系统将以此登录员工记录整批退回责任。',
-                    compact: true,
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  Text('${_selectedBillSummary()}将使用同一个退回原因，整批一起提交。'),
-                  const SizedBox(height: UtenSpacing.s12),
-                  TextField(
-                    key: const Key('finance-shipment-batch-reject-reason'),
-                    controller: controller,
-                    autofocus: true,
-                    maxLength: 500,
-                    maxLines: 3,
-                    decoration: UtenInputDecoration(
-                      InputDecoration(
-                        labelText: '退回原因(必填)',
-                        border: const OutlineInputBorder(),
-                        error: utenFieldError(errorText),
-                      ),
-                      info: '写明需要销售修改的内容；整批共用同一原因。',
+      late final String? reason;
+      try {
+        reason = await UtenDialog.showAndWaitForExit<String>(
+          context,
+          builder: (ctx) => StatefulBuilder(
+            builder: (ctx, setDialogState) => UtenAlertDialog(
+              title: Text('批量退回($count 笔)'),
+              content: SizedBox(
+                width: 440,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const UtenReviewerResponsibilityNotice(
+                      actionLabel: '批量退回出货财务审核',
+                      description: '确认后，系统将以此登录员工记录整批退回责任。',
+                      compact: true,
                     ),
-                  ),
-                ],
-              ),
-            ),
-            actionsAlignment: MainAxisAlignment.center,
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('取消'),
-              ),
-              FinanceReviewClaimButton(
-                claim: claim,
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(ctx).colorScheme.error,
-                  foregroundColor: Theme.of(ctx).colorScheme.onError,
+                    const SizedBox(height: UtenSpacing.s12),
+                    Text('${_selectedBillSummary()}将使用同一个退回原因，整批一起提交。'),
+                    const SizedBox(height: UtenSpacing.s12),
+                    TextField(
+                      key: const Key('finance-shipment-batch-reject-reason'),
+                      controller: controller,
+                      autofocus: true,
+                      maxLength: 500,
+                      maxLines: 3,
+                      decoration: UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '退回原因(必填)',
+                          border: const OutlineInputBorder(),
+                          error: utenFieldError(errorText),
+                        ),
+                        info: '写明需要销售修改的内容；整批共用同一原因。',
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () {
-                  final value = controller.text.trim();
-                  if (value.isEmpty) {
-                    setDialogState(() => errorText = '请填写退回原因');
-                    return;
-                  }
-                  Navigator.pop(ctx, value);
-                },
-                child: const Text('确认批量退回'),
               ),
-            ],
+              actionsAlignment: MainAxisAlignment.center,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('取消'),
+                ),
+                FinanceReviewClaimButton(
+                  claim: claim,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(ctx).colorScheme.error,
+                    foregroundColor: Theme.of(ctx).colorScheme.onError,
+                  ),
+                  onPressed: () {
+                    final value = controller.text.trim();
+                    if (value.isEmpty) {
+                      setDialogState(() => errorText = '请填写退回原因');
+                      return;
+                    }
+                    Navigator.pop(ctx, value);
+                  },
+                  child: const Text('确认批量退回'),
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-      controller.dispose();
-      if (reason == null || reason.isEmpty || !mounted) return;
+        );
+      } finally {
+        controller.dispose();
+      }
+      final confirmedReason = reason;
+      if (confirmedReason == null || confirmedReason.isEmpty || !mounted) {
+        return;
+      }
       await _runBatch(
         (decisions) => ref
             .read(salesRepositoryProvider(SalesDocType.shipment))
-            .rejectShipmentFinanceBatch(decisions, reason),
+            .rejectShipmentFinanceBatch(decisions, confirmedReason),
         claim,
         '已批量退回 $count 笔出货',
       );

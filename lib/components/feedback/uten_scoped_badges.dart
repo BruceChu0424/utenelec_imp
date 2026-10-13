@@ -39,18 +39,17 @@ class UtenScopedBadges extends ConsumerWidget {
               )
             : null);
     if (todo == null && inProgress == null) return const SizedBox.shrink();
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ?inProgress,
-        // 专用组件可能保留零值读屏节点；计数为零时仍不留下颜色间距。
-        if (inProgress != null &&
-            todo != null &&
-            counts.inProgress > 0 &&
-            counts.todo > 0)
-          const SizedBox(width: UtenSpacing.s6),
-        ?todo,
-      ],
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      runSpacing: UtenSpacing.s4,
+      spacing:
+          inProgress != null &&
+              todo != null &&
+              counts.inProgress > 0 &&
+              counts.todo > 0
+          ? UtenSpacing.s6
+          : 0,
+      children: [?inProgress, ?todo],
     );
   }
 }

@@ -12,6 +12,9 @@ import 'package:uten_imp/components/data_display/uten_revision_cell.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_paged_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
+import 'package:uten_imp/core/theme/uten_control_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -335,6 +338,8 @@ Future<GoRouter> _pump(
   StateProvider<Set<String>>? permissionState,
   StateProvider<String>? recordSessionState,
   FormDraftStorage? draftStorage,
+  double? displayFactor,
+  double systemFactor = 1,
 }) async {
   bool? pushed;
   final router = GoRouter(
@@ -389,6 +394,18 @@ Future<GoRouter> _pump(
           ),
       ],
       child: MaterialApp.router(
+        theme: displayFactor == null ? null : buildLightTheme(),
+        builder: (context, child) => displayFactor == null
+            ? child!
+            : MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(systemFactor)),
+                child: UtenDisplayZoomBox(
+                  fontFactor: displayFactor,
+                  child: UtenControlTheme(child: child!),
+                ),
+              ),
         routerConfig: router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -478,6 +495,39 @@ Future<FormDraft> _seedUnknown(
 }
 
 void main() {
+  for (final systemFactor in [1.0, 2.0]) {
+    testWidgets('closed reconcile summary at 200% keeps counts $systemFactor', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(
+          _planJson(
+            status: 'CLOSED',
+            canApply: false,
+            closedReason: 'EXPIRED',
+            rows: [_rowJson(kind: 'SAME')],
+          ),
+        ),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+        displayFactor: 2,
+        systemFactor: systemFactor,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('核对记录 ·'), findsOneWidget);
+      expect(find.byKey(const Key('hr-reconcile-apply')), findsNothing);
+      expect(repo.applies, isEmpty);
+      expect(repo.created, isEmpty);
+    });
+  }
+
   testWidgets(
     'interrupted receipt shows real outcomes and explicitly rebuilds without old input',
     (tester) async {

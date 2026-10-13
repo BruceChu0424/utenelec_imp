@@ -416,7 +416,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           )
         : await showDialog<bool>(
             context: context,
-            builder: (ctx) => AlertDialog(
+            builder: (ctx) => UtenAlertDialog(
               title: const Text('确认'),
               content: Text(confirm),
               actionsAlignment: MainAxisAlignment.center,
@@ -817,7 +817,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
+        builder: (context, setDialogState) => UtenAlertDialog(
+          scrollable: false,
           title: const Text('确认成品实收数量'),
           content: SizedBox(
             width: 520,
@@ -1020,7 +1021,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     if (_busy) return;
     final c = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除'),
         content: const Text('确定删除该草稿单据吗？'),
         actionsAlignment: MainAxisAlignment.center,
@@ -1925,7 +1926,8 @@ class _CancelIssueDialogState extends State<_CancelIssueDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: const Text('取消出库'),
       content: SizedBox(
         width: 420,

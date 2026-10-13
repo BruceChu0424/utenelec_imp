@@ -4,6 +4,8 @@
 // 索引兜底，本区的前端预检只是提示层。
 // 文档：docs/03-页面/报销详情页.md §发票登记
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/components/layout/uten_form_grid.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -277,7 +279,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Text('删除发票登记？'),
         content: Text(
           '将删除第 ${invoice.lineNo} 行（号码 ${invoice.invoiceNo}）的票面要素，'
@@ -804,7 +806,9 @@ class _ExpenseInvoiceFormDialogState
           enabled: widget.existing == null && !_recognizing && !_busy,
           hint: '松开鼠标识别发票图',
           onFiles: (files) => _recognizeFile(files.first),
-          child: AlertDialog(
+          child: UtenAlertDialog(
+            maxWidth: 640,
+            scrollable: false,
             title: Text(widget.existing == null ? '登记发票' : '编辑发票'),
             content: AbsorbPointer(
               absorbing: _busy,
@@ -820,17 +824,15 @@ class _ExpenseInvoiceFormDialogState
                           padding: const EdgeInsets.only(
                             bottom: UtenSpacing.s12,
                           ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  l10n.expenseFlowOcrGuide,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurfaceVariant,
-                                  ),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final guide = Text(
+                                l10n.expenseFlowOcrGuide,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
                                 ),
-                              ),
-                              UtenButton(
+                              );
+                              final recognize = UtenButton(
                                 key: const Key('expense-invoice-recognize'),
                                 type: UtenButtonType.tonal,
                                 size: UtenButtonSize.small,
@@ -838,8 +840,26 @@ class _ExpenseInvoiceFormDialogState
                                 isLoading: _recognizing,
                                 onPressed: _recognizing ? null : _recognize,
                                 child: const Text('识别发票图片'),
-                              ),
-                            ],
+                              );
+                              if (constraints.maxWidth < 520) {
+                                return Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    guide,
+                                    const SizedBox(height: 8),
+                                    recognize,
+                                  ],
+                                );
+                              }
+                              return Row(
+                                children: [
+                                  Expanded(child: guide),
+                                  const SizedBox(width: 12),
+                                  recognize,
+                                ],
+                              );
+                            },
                           ),
                         ),
                       _invoiceFields(
@@ -915,7 +935,9 @@ class _ExpenseInvoiceFormDialogState
                           Expanded(
                             child: InkWell(
                               onTap: _pickIssueDate,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(
+                                UtenRadius.md,
+                              ),
                               child: InputDecorator(
                                 decoration: const InputDecoration(
                                   labelText: '开票日期',
@@ -1118,23 +1140,9 @@ String? _blankToNull(String value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-Widget _invoiceFields({required List<Widget> children}) => LayoutBuilder(
-  builder: (context, constraints) {
-    final fields = children
-        .whereType<Expanded>()
-        .map((field) => field.child)
-        .toList();
-    final columns = constraints.maxWidth < 500 ? 1 : fields.length;
-    final width =
-        (constraints.maxWidth - (columns - 1) * UtenSpacing.s12) / columns;
-    return Wrap(
-      spacing: UtenSpacing.s12,
-      runSpacing: UtenSpacing.s12,
-      children: [
-        for (final field in fields) SizedBox(width: width, child: field),
-      ],
-    );
-  },
+Widget _invoiceFields({required List<Widget> children}) => UtenFormGrid(
+  maxColumns: children.whereType<Expanded>().length.clamp(1, 6),
+  children: [for (final field in children.whereType<Expanded>()) field.child],
 );
 
 class _InvoiceVerifyDialog extends ConsumerStatefulWidget {
@@ -1187,7 +1195,8 @@ class _InvoiceVerifyDialogState extends ConsumerState<_InvoiceVerifyDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text(l10n.expenseFlowVerifyTitle),
       content: SizedBox(
         width: 560,

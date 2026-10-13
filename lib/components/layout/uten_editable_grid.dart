@@ -1,3 +1,4 @@
+import '../data_display/uten_table_surface.dart';
 import '../../shared/platform_tables/platform_table_binding.dart';
 import '../../shared/platform_tables/platform_table_controller.dart';
 import '../../shared/platform_tables/platform_table_picker.dart';
@@ -138,6 +139,7 @@ class EditableGridColumn<T extends EditableGridRow> {
     this.filterValueOf,
     this.frozenTextOf,
     this.chromeWidth = 0,
+    this.chromeWidthOf,
     this.fillsCellHeight = false,
     this.cellColor,
     this.cellColorListenableOf,
@@ -227,6 +229,9 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 单元内部业务装饰占宽，如下拉箭头（20）。自动量宽时叠加到文本宽度；
   /// 说明统一放在表头，单元格提示不再占用图标位。
   final double chromeWidth;
+
+  /// 响应式业务动作槽占宽。非空时覆盖[chromeWidth]，与实际触摸目标使用同一口径。
+  final double Function(BuildContext context)? chromeWidthOf;
 }
 
 /// 必填单元的**实时**红框：订阅 [listenable]，当 [isEmpty] 为真时给 [child] 描红边，
@@ -322,7 +327,7 @@ class _RequiredCellFrameState extends State<RequiredCellFrame> {
           OutlineInputBorder(
             // 2026-09-09 统一口径：红框圆角与全局主题 UtenRadius.control(10) 一致，
             // 不再自带 6——同一格里红/常态切换圆角跳变。
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(UtenRadius.control),
             borderSide: BorderSide(color: errorColor, width: focused ? 2 : 1.5),
           );
       idt = theme.inputDecorationTheme.copyWith(
@@ -1498,6 +1503,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 上次量宽的字号系数与文字样式快照：敲字监听回调里拿不到 BuildContext，
   /// 复用 build 时捕获的（bodyLarge + tabular 数字，覆盖 TextField/Text 两种单元）。
   TextScaler? _lastScaler;
+  List<double>? _lastChromeWidths;
   TextStyle _measureStyle = const TextStyle();
 
   /// 已挂自动加宽监听的行快照：按对象身份比对，行集变化才拆线重挂
@@ -2066,7 +2072,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _widths[index],
       _measureText(textOf(row), _measureStyle, scaler) +
           _cellChromeX +
-          col.chromeWidth +
+          (col.chromeWidthOf?.call(context) ?? col.chromeWidth) +
           _autoGrowBuffer,
     );
     if (next > _widths[index]) {
@@ -2081,10 +2087,18 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// （与 MasterDataTableView._ensureWidths 同款做法，不经 setState）。
   void _ensureAutoFit(BuildContext context) {
     final scaler = MediaQuery.textScalerOf(context);
+    final chromeWidths = [
+      for (final column in _columns)
+        column.chromeWidthOf?.call(context) ?? column.chromeWidth,
+    ];
+    final chromeChanged =
+        _lastChromeWidths != null &&
+        !listEquals(_lastChromeWidths, chromeWidths);
     final scaleChanged =
-        _lastScaler != null && _lastScaler!.scale(1) != scaler.scale(1);
+        (_lastScaler != null && _lastScaler != scaler) || chromeChanged;
     if (_lastScaler == null || scaleChanged) _autoGrowDirty = true;
     _lastScaler = scaler;
+    _lastChromeWidths = chromeWidths;
     // TextField 单元默认 bodyLarge（16px），只读 Text 单元为 bodyMedium（14px）；
     // 统一按 bodyLarge + tabular 数字量（偏宽不超过一档，只增不减下无害）。
     _measureStyle = (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
@@ -2111,7 +2125,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
             w,
             _measureText(textOf(rows[r]), _measureStyle, scaler) +
                 _cellChromeX +
-                col.chromeWidth +
+                (col.chromeWidthOf?.call(context) ?? col.chromeWidth) +
                 _autoGrowBuffer,
           );
         }
@@ -2678,13 +2692,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
 
     if (actionsBar == null) {
-      return resolve(bodyWithMenu);
+      return resolve(UtenTableSurface(child: bodyWithMenu));
     }
     return resolve(
       Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [actionsBar, bodyWithMenu],
+        children: [
+          actionsBar,
+          UtenTableSurface(child: bodyWithMenu),
+        ],
       ),
     );
   }
@@ -3030,8 +3047,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
       style: TextButton.styleFrom(
         foregroundColor: color,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-        minimumSize: const Size(0, 36),
+        minimumSize: Size(
+          UtenControlMetrics.minimumHitExtent(context, desktop: 36),
+          UtenControlMetrics.minimumHitExtent(context, desktop: 36),
+        ),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: VisualDensity.standard,
         textStyle: theme.textTheme.titleSmall,
       ),
       child: Text(label),
@@ -3076,37 +3097,41 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (n != null && n > 0) widget.controller.paste(clone, count: n);
   }
 
-  Future<int?> _showCountDialog(BuildContext context) {
+  Future<int?> _showCountDialog(BuildContext context) async {
     final ctrl = TextEditingController(text: '1');
-    return showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('粘贴多行'),
-        content: TextField(
-          controller: ctrl,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: '粘贴份数',
-            hintText: '1 - 50',
+    try {
+      return await UtenDialog.showAndWaitForExit<int>(
+        context,
+        builder: (ctx) => UtenAlertDialog(
+          title: const Text('粘贴多行'),
+          content: TextField(
+            controller: ctrl,
+            keyboardType: TextInputType.number,
+            autofocus: true,
+            decoration: const InputDecoration(
+              labelText: '粘贴份数',
+              hintText: '1 - 50',
+            ),
           ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final n = int.tryParse(ctrl.text.trim()) ?? 0;
+                Navigator.pop(ctx, n.clamp(1, 50));
+              },
+              child: const Text('确定'),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final n = int.tryParse(ctrl.text.trim()) ?? 0;
-              Navigator.pop(ctx, n.clamp(1, 50));
-            },
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   /// 表头单元（表头行 + 下分隔线）：常驻 Stack 覆盖层，横向跟随表体同步；
@@ -3342,40 +3367,44 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
   }
 
-  Future<int?> _showAddRowsDialog(BuildContext context) {
+  Future<int?> _showAddRowsDialog(BuildContext context) async {
     final ctrl = TextEditingController(text: '5');
-    return showDialog<int>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('添加多行'),
-          content: TextField(
-            controller: ctrl,
-            keyboardType: TextInputType.number,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: '行数',
-              hintText: '1 - 50',
-              suffixText: '行',
+    try {
+      return await UtenDialog.showAndWaitForExit<int>(
+        context,
+        builder: (ctx) {
+          return UtenAlertDialog(
+            title: const Text('添加多行'),
+            content: TextField(
+              controller: ctrl,
+              keyboardType: TextInputType.number,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '行数',
+                hintText: '1 - 50',
+                suffixText: '行',
+              ),
             ),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final n = int.tryParse(ctrl.text.trim()) ?? 0;
-                Navigator.pop(ctx, n.clamp(1, 50));
-              },
-              child: const Text('添加'),
-            ),
-          ],
-        );
-      },
-    );
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final n = int.tryParse(ctrl.text.trim()) ?? 0;
+                  Navigator.pop(ctx, n.clamp(1, 50));
+                },
+                child: const Text('添加'),
+              ),
+            ],
+          );
+        },
+      );
+    } finally {
+      ctrl.dispose();
+    }
   }
 }
 
@@ -3818,14 +3847,17 @@ class _AddRowBar extends StatelessWidget {
   final String addRowsLabel;
 
   // 深色实心 + 白字白图标，紧凑不抢空间——旧版 TextButton 太淡，用户反馈"看不见"。
-  static final ButtonStyle _btnStyle = FilledButton.styleFrom(
+  ButtonStyle _buttonStyle(BuildContext context) => FilledButton.styleFrom(
     padding: const EdgeInsets.symmetric(
       horizontal: UtenSpacing.s12,
       vertical: UtenSpacing.s4,
     ),
-    minimumSize: const Size(0, 36),
+    minimumSize: Size(
+      UtenControlMetrics.minimumHitExtent(context, desktop: 36),
+      UtenControlMetrics.minimumHitExtent(context, desktop: 36),
+    ),
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    visualDensity: VisualDensity.compact,
+    visualDensity: VisualDensity.standard,
   );
 
   @override
@@ -3841,13 +3873,13 @@ class _AddRowBar extends StatelessWidget {
           onPressed: onAddOne,
           icon: const Icon(Icons.add_circle_outline, size: 18),
           label: Text(addRowLabel),
-          style: _btnStyle,
+          style: _buttonStyle(context),
         ),
         FilledButton.icon(
           onPressed: onAddMany,
           icon: const Icon(Icons.playlist_add, size: 18),
           label: Text(addRowsLabel),
-          style: _btnStyle,
+          style: _buttonStyle(context),
         ),
       ],
     );

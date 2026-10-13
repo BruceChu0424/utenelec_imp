@@ -8,6 +8,7 @@
 // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组；2026-09-18 收口：截止日期改
 // UtenDateField（与其它编辑页 outlined 日期同款）。
 // 文档：docs/03-页面/通知发布页.md
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -434,7 +435,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
           );
     return showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         icon: Icon(
           _type == NoticeType.urgent
               ? Icons.notification_important_outlined

@@ -13,6 +13,7 @@
 // 注册表以路由段 `:categoryId` 为键：按钮只报 id，落点页按 id 找 scope——
 // scope 带 BadgeModule 枚举与集合，不适合整份塞进 URL。
 import 'package:flutter/material.dart';
+import '../../components/layout/uten_app_bar_action_scope.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_app_bar_action_button.dart';
@@ -157,15 +158,20 @@ class FormDraftsAppBarButton extends ConsumerWidget {
     final category = formDraftsPageCategories[categoryId];
     if (category == null) return const SizedBox.shrink();
     final count = ref.watch(formDraftsPageCountProvider(categoryId));
-    return UtenAppBarActionButton(
-      key: ValueKey('form-drafts-button-$categoryId'),
-      icon: Icons.drafts_outlined,
-      label: label,
-      compact: MediaQuery.sizeOf(context).width < 600,
-      badge: UtenNotificationBadge(count: count),
-      tooltip: '「${category.hubTitle}」未完成草稿 $count 份，点击查看',
-      onPressed: () =>
-          goFrom(context, RouteName.formDraftsLocation(categoryId)),
+    return UtenAppBarActionScope.withCloseBeforeAction(
+      context,
+      child: UtenAppBarActionButton(
+        key: ValueKey('form-drafts-button-$categoryId'),
+        icon: Icons.drafts_outlined,
+        label: label,
+        compact: MediaQuery.sizeOf(context).width < 600,
+        badge: UtenNotificationBadge(count: count),
+        tooltip: '「${category.hubTitle}」未完成草稿 $count 份，点击查看',
+        onPressed: () => goFrom(
+          UtenAppBarActionScope.actionContextOf(context),
+          RouteName.formDraftsLocation(categoryId),
+        ),
+      ),
     );
   }
 }

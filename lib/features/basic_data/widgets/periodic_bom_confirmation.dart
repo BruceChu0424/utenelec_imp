@@ -6,6 +6,7 @@
 // 页面据此弹确认框; 确认后把对应字段置 true, 原样重发。BOM 行编辑、添加组件、粘贴组件、
 // 车间内料仓上线准备都走这一套。页面自己事先能判断的 (如单重超范围) 可以先问, 服务端仍会再核一遍,
 // 漏问的由这里兜住。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/network/api_error.dart';
@@ -45,7 +46,8 @@ Future<Set<String>?> askPeriodicConfirmations(
   );
   final ok = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => UtenAlertDialog(
+      scrollable: false,
       title: const Text('保存前请确认'),
       content: SizedBox(
         width: 460,

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -699,7 +700,7 @@ class _AuditRequestIdDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Row(
         children: [
           Icon(Icons.account_tree_outlined, color: theme.colorScheme.primary),

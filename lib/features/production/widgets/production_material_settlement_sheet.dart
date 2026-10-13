@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -358,7 +359,7 @@ class _MaterialSettlementSheetState
     final reason = TextEditingController();
     final dialog = DialogRoute<(double, String)>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Text('冲销用料登记'),
         content: SizedBox(
           width: 420,
@@ -470,7 +471,7 @@ class _MaterialSettlementSheetState
     if (_busy || !_allCleared) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Text('完成生产任务'),
         content: const Text(
           '系统将再次检查成品完工数量和每种材料的消耗、退库、批准损耗或在制占用。'
@@ -527,17 +528,20 @@ class _MaterialSettlementSheetState
           ? candidates.keys.first
           : await showDialog<String>(
               context: context,
-              builder: (context) => SimpleDialog(
+              builder: (context) => UtenAlertDialog(
                 title: const Text('选择退料车间任务'),
-                children: [
-                  for (final entry in candidates.entries)
-                    SimpleDialogOption(
-                      onPressed: () => Navigator.pop(context, entry.key),
-                      child: Text(
-                        entry.value.executionSegmentCode ?? entry.key,
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final entry in candidates.entries)
+                      SimpleDialogOption(
+                        onPressed: () => Navigator.pop(context, entry.key),
+                        child: Text(
+                          entry.value.executionSegmentCode ?? entry.key,
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             );
       if (!mounted || segmentId == null) return;
@@ -559,7 +563,8 @@ class _MaterialSettlementSheetState
     if (remaining.isEmpty) return;
     final requestReturn = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => UtenAlertDialog(
+        scrollable: false,
         title: const Text('本次剩余物料'),
         content: SizedBox(
           width: 560,
@@ -602,7 +607,7 @@ class _MaterialSettlementSheetState
     var reasonText = '';
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => UtenAlertDialog(
         title: Text('撤回 ${document.documentNo}'),
         content: SizedBox(
           width: 420,

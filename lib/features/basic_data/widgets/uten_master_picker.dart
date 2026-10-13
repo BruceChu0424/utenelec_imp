@@ -26,6 +26,7 @@ import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
 import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../models/product_category_node.dart';
@@ -415,6 +416,7 @@ class _MasterPickerSheetState<TItem>
     return _naturalTreeWidth ??= measureCategoryTreeNaturalWidth(
       widget.tree,
       theme.textTheme.bodyMedium,
+      textScaler: MediaQuery.textScalerOf(context),
     );
   }
 
@@ -440,27 +442,18 @@ class _MasterPickerSheetState<TItem>
       flatLevelColors: true,
       onToggleSelect: _onCategoryTap,
     );
-    Widget body;
-    if (context.breakpoint.isCompact) {
-      body = Row(
-        children: [
-          SizedBox(width: 176, child: treePane),
-          const VerticalDivider(width: 1),
-          Expanded(child: _buildRightPane(theme)),
-        ],
-      );
-    } else {
-      // medium+：可拖分割线（与货品选择滑窗/货品资料页同款），
-      // 默认左栏宽 = 最长一行实测宽。
-      body = UtenSplitView(
-        persistenceKey: 'masterPicker.categoryTree',
-        initialLeadingWidth: _treeNaturalWidth(theme),
-        minLeadingWidth: 200,
-        maxLeadingWidth: 560,
-        leading: treePane,
-        trailing: _buildRightPane(theme),
-      );
-    }
+    final body = UtenSplitView(
+      persistenceKey: 'masterPicker.categoryTree',
+      initialLeadingWidth: _treeNaturalWidth(theme),
+      minLeadingWidth: 200,
+      maxLeadingWidth: 560,
+      selectedLeadingLabel:
+          utenTreeSelectionPath(widget.tree, _selectedCategoryId) ?? '全部分类',
+      selectedLeadingKey: _selectedCategoryId,
+      compactHeader: treePane.header,
+      leading: treePane,
+      trailing: _buildRightPane(theme),
+    );
     return Column(
       children: [
         Padding(

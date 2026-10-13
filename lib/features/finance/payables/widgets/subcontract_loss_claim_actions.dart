@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -88,9 +89,9 @@ Future<String?> showSubcontractLossReasonDialog({
 }) async {
   final controller = TextEditingController();
   try {
-    return await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
+    return await UtenDialog.showAndWaitForExit<String>(
+      context,
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(title),
         content: TextField(
           controller: controller,

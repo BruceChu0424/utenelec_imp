@@ -1,3 +1,4 @@
+import '../../core/theme/uten_tokens.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -310,7 +311,7 @@ class _DocumentUnapprovalBannerState
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(UtenRadius.lg),
       ),
       child: Wrap(
         spacing: 12,

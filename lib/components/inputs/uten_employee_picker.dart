@@ -9,6 +9,7 @@
 // 抽屉内：标题行 + 关闭、UtenSearchBar（内置 300ms 防抖）调 loader、
 // 可滚动结果列表（姓名(工号) + 部门副标题），点选后确认。
 // 数据由调用方通过 loader 提供，本组件不关心 token / 接口来源。
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import 'required_field_decoration.dart';
@@ -289,7 +290,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
         children: [
           InkWell(
             onTap: widget.enabled ? _open : null,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(UtenRadius.control),
             child: InputDecorator(
               isEmpty: display == null,
               decoration: applyRequiredEmpty(
@@ -320,15 +321,15 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(UtenRadius.control),
                       borderSide: BorderSide(color: theme.colorScheme.outline),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(UtenRadius.control),
                       borderSide: BorderSide(color: theme.colorScheme.outline),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(UtenRadius.control),
                       borderSide: BorderSide(
                         color: theme.colorScheme.primary,
                         width: 2,

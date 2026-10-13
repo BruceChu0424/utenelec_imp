@@ -7,6 +7,7 @@
 // (GET /org/employees/{id}/account/readiness)。没有手机号 → 红色提醒 + 确认置灰
 // (服务端照样兜底拦)；证件号码有问题 → 红/黄提醒，确认照常可点；就绪检查失败 →
 // 不额外提醒，照常可确认，以服务端最终结果为准。三个开号入口都走这里，调用参数不变。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -158,9 +159,8 @@ class _SelectedEmployeeProvisionDialogState
     final busy = _submitting || _checking;
     return PopScope<void>(
       canPop: !_submitting,
-      child: AlertDialog(
+      child: UtenAlertDialog(
         key: const ValueKey('provision-selected-employee-dialog'),
-        scrollable: true,
         title: Row(
           children: [
             const Icon(Icons.person_add_alt_1_rounded),

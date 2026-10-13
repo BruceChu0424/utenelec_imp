@@ -11,6 +11,7 @@ import 'package:uten_imp/features/production/repositories/production_execution_w
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../../support/filter_segment_tap.dart';
 
 // 2026-09-05 起「进行中」= 计划统筹视角：双击批次直达物料分析页（不再弹滑窗、
 // 不再看板直报）；子计划逐层下钻的导航合同保留在「历史记录」段的计划卡上。
@@ -136,9 +137,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     // Four categories collapse to the shared menu at this width and scale.
-    await tester.tap(find.text('分类'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('历史记录'));
+    await selectFilterSegment(tester, '历史记录');
     await tester.pumpAndSettle();
     await tester.tap(find.text('全部'));
     await tester.pumpAndSettle();

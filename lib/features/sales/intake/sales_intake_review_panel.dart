@@ -7,6 +7,7 @@
 //     (名称(编号) · 颜色 · 系列 + 理由)、「从货品资料选择…」、组合件「拆成 N 行」、
 //     「设为货品英文名」; 底部固定一行汇总 + 一个大按钮「全部导入 (N 行)」。
 // 界面不出现置信度数字、识别方式、服务商/模型等技术词。行多时按需构建(SliverList)。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -176,7 +177,7 @@ Future<SalesIntakeReviewOutcome?> showSalesIntakeReviewPanel(
       }
       if (size.width < 700) return Dialog.fullscreen(child: panel);
       // 圆角沿用主题 dialogTheme(全站弹窗 18)。
-      return Dialog(
+      return UtenDialogFrame(
         insetPadding: const EdgeInsets.all(UtenSpacing.s24),
         clipBehavior: Clip.antiAlias,
         child: SizedBox(
@@ -1062,7 +1063,7 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
 
   Widget _buildGoodsHeader(BuildContext context, AppLocalizations l10n) {
     final theme = Theme.of(context);
-    return Row(
+    final title = Row(
       children: [
         const _StepBadge(step: 2),
         const SizedBox(width: UtenSpacing.s8),
@@ -1074,23 +1075,44 @@ class _SalesIntakeReviewPanelState extends State<SalesIntakeReviewPanel> {
             ),
           ),
         ),
-        UtenSegmentRow<_LineFilter>(
-          key: const ValueKey('sales-intake-filter'),
-          showSelectedIcon: false,
-          segments: [
-            ButtonSegment(
-              value: _LineFilter.review,
-              label: Text(l10n.salesIntakeFilterReview(_reviewLines.length)),
-            ),
-            ButtonSegment(
-              value: _LineFilter.all,
-              label: Text(l10n.salesIntakeFilterAll(_result.lines.length)),
-            ),
-          ],
-          selected: {_filter},
-          onSelectionChanged: (s) => setState(() => _filter = s.first),
+      ],
+    );
+    final filters = UtenSegmentRow<_LineFilter>(
+      key: const ValueKey('sales-intake-filter'),
+      showSelectedIcon: false,
+      segments: [
+        ButtonSegment(
+          value: _LineFilter.review,
+          label: Text(l10n.salesIntakeFilterReview(_reviewLines.length)),
+        ),
+        ButtonSegment(
+          value: _LineFilter.all,
+          label: Text(l10n.salesIntakeFilterAll(_result.lines.length)),
         ),
       ],
+      selected: {_filter},
+      onSelectionChanged: (s) => setState(() => _filter = s.first),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 600) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              title,
+              const SizedBox(height: UtenSpacing.s8),
+              filters,
+            ],
+          );
+        }
+        return Row(
+          children: [
+            Expanded(child: title),
+            const SizedBox(width: UtenSpacing.s12),
+            Flexible(child: filters),
+          ],
+        );
+      },
     );
   }
 

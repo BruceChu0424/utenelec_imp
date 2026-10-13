@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -159,7 +160,7 @@ class _DocumentUnapprovalActionState
       context: context,
       builder: (dialogContext) => trackNativeReadDialog(
         dialogContext,
-        AlertDialog(
+        UtenAlertDialog(
           title: const Text('暂不能反审'),
           content: Text(_capability!.blockReason),
           actions: [

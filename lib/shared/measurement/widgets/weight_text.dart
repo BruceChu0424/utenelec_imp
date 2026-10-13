@@ -422,7 +422,7 @@ class _WeightUnitMenuButtonState<V> extends State<WeightUnitMenuButton<V>> {
             child: Material(
               color: theme.colorScheme.surfaceContainerHigh,
               elevation: 8,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(UtenRadius.md),
               clipBehavior: Clip.antiAlias,
               child: SizedBox(
                 width: _width,

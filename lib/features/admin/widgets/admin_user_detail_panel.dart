@@ -902,7 +902,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         color: danger
             ? UtenColors.error.withValues(alpha: 0.1)
             : theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(UtenRadius.xs),
       ),
       child: Text(
         label,
@@ -1022,7 +1022,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         border: Border.all(
           color: remoteAccess
               ? theme.colorScheme.primary.withValues(alpha: 0.5)
@@ -1296,7 +1296,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1367,7 +1367,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         border: Border.all(
           color: isSuperAdmin
               ? UtenColors.warning.withValues(alpha: 0.6)
@@ -1547,7 +1547,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     return showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Row(
           children: [
             Icon(Icons.key_rounded),
@@ -1570,7 +1570,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 color: Theme.of(
                   dialogContext,
                 ).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(UtenRadius.control),
               ),
               child: SelectableText(
                 temporaryPassword,

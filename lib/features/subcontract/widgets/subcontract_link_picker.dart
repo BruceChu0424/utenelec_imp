@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/procurement_source_terms.dart';
 // 委外上游单据明细引入面板（编辑页"从上游引入"用）。
 //
@@ -134,7 +135,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
   if (cfg.type == SubcontractDocType.materialIssue && !cfg.approvalEnabled) {
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         icon: const Icon(Icons.lock_outline_rounded),
         title: const Text('新增发料审核暂不可用'),
         content: Text(

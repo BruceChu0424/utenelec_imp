@@ -1726,11 +1726,14 @@ void routeConfirmationTests() {
       await tester.pumpAndSettle();
       expect(find.text('等自制子件完成'), findsOneWidget);
       expect(find.textContaining('ZX00000351 生产中'), findsNothing);
-      await tester.tap(
-        find.byKey(
-          const ValueKey('workshop-task-material-details-demand-make'),
-        ),
+      final materialDetails = find.byKey(
+        const ValueKey('workshop-task-material-details-demand-make'),
       );
+      await tester.ensureVisible(materialDetails);
+      await tester.pumpAndSettle();
+      await tester.tap(materialDetails);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('子件工单 ZX00000351 生产中'));
       await tester.pumpAndSettle();
       expect(find.text('子件工单 ZX00000351 生产中'), findsOneWidget);
       expect(find.text('已领到车间'), findsWidgets);

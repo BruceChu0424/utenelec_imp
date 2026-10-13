@@ -3,6 +3,7 @@
 // 输入 departmentId；未选部门时禁用并提示「请先选择部门」。
 // 数据：GET /org/departments/{deptId}/positions，点击时按需拉取。
 // 选项按 level 分组（「领导层」组排最前，带分区标题）；空数据提示联系 HR。
+import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -96,7 +97,7 @@ class _UtenPositionPickerState extends ConsumerState<UtenPositionPicker> {
     final hint = _hasDept ? '请选择岗位' : '请先选择部门';
     return InkWell(
       onTap: enabled ? _open : null,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(UtenRadius.control),
       child: InputDecorator(
         isEmpty: display == null,
         decoration: InputDecoration(
@@ -108,15 +109,15 @@ class _UtenPositionPickerState extends ConsumerState<UtenPositionPicker> {
             color: theme.colorScheme.onSurfaceVariant,
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(UtenRadius.control),
             borderSide: BorderSide(color: theme.colorScheme.outline),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(UtenRadius.control),
             borderSide: BorderSide(color: theme.colorScheme.outline),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(UtenRadius.control),
             borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
           ),
           contentPadding: const EdgeInsets.symmetric(

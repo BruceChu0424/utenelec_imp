@@ -157,9 +157,15 @@ class _HarnessState extends State<_Harness> {
   }
 }
 
-ScrollableState _vertical(WidgetTester tester) => tester
-    .stateList<ScrollableState>(find.byType(Scrollable))
-    .firstWhere((state) => state.position.axis == Axis.vertical);
+ScrollableState _vertical(WidgetTester tester) {
+  final row = find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return key is ValueKey<String> && key.value.startsWith('anchor-');
+  }).first;
+  // The chrome may scroll independently on short canvases. Page tracking is
+  // always driven by the viewport that actually owns the business rows.
+  return Scrollable.of(tester.element(row), axis: Axis.vertical);
+}
 
 Future<void> _wheel(WidgetTester tester, double dy) async {
   final scrollable = _vertical(tester);

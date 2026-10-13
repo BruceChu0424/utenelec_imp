@@ -158,7 +158,7 @@ void main() {
         expect(amount.style!.color, theme.colorScheme.error);
         expect(amount.style!.fontWeight, FontWeight.w700);
         expect(
-          tester.widget<Wrap>(find.byType(Wrap)).alignment,
+          tester.widget<Wrap>(find.byType(Wrap).first).alignment,
           WrapAlignment.end,
         );
         expect(find.byType(TextField), findsNothing);

@@ -22,7 +22,7 @@
   **读不到的值永远不画成 0，也不保留上一次的绿色**。
 - 预警/告警阈值在环外画短刻度；阈值为空或超出满量程时不画，不编造刻度位置。
 - 中心：`headlineMedium` + `tabularFigures` 数字（走 `UtenAnimatedNumber`）+ 单位小字；
-  超大字号时中心整体 `FittedBox(scaleDown)`，不截断也不溢出。
+  小画布、系统大字或长数值移到环下读数区自然换行，不通过 `FittedBox(scaleDown)` 抵消用户字号。说明文字完整换行；圆弧、阈值、未知占位与动画策略保持。
 - 尺寸 = `min(父约束宽, (size ?? 140) × 字号倍率.clamp(1, 1.6))`，正方形。
   内部用 `ConstrainedBox + AspectRatio` 而不是 `LayoutBuilder`——`LayoutBuilder`
   不支持 intrinsic 测量，会让外层等高卡片行（`IntrinsicHeight`）直接抛断言。

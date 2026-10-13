@@ -8,6 +8,7 @@
 // 两个使用场景：
 // - 选择器抽屉：mode=single/multi + showCompanyRoot=false + 默认可选层级谓词
 // - 部门管理页：mode=none + showCompanyRoot=true + 全部可点 + trailingBuilder
+import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../../../shared/widgets/uten_hierarchy_tree_view.dart';
@@ -148,7 +149,7 @@ class _LevelTag extends StatelessWidget {
         color: enabled
             ? theme.colorScheme.primary.withValues(alpha: 0.1)
             : theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(UtenRadius.xs),
       ),
       child: Text(
         departmentLevelTag(level),

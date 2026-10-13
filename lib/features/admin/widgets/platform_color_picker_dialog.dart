@@ -1,3 +1,5 @@
+import '../../../core/theme/uten_tokens.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 /// Local, reversible color selection; nothing is published until platform save.
@@ -25,7 +27,8 @@ class _PlatformColorPickerState extends State<PlatformColorPickerDialog> {
       '#${(_color.toColor().toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => UtenAlertDialog(
+    scrollable: false,
     title: Text('选择${widget.title}'),
     content: SizedBox(
       width: 340,
@@ -39,7 +42,7 @@ class _PlatformColorPickerState extends State<PlatformColorPickerDialog> {
               width: double.infinity,
               decoration: BoxDecoration(
                 color: _color.toColor(),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(UtenRadius.lg),
                 border: Border.all(
                   color: Theme.of(context).colorScheme.outline,
                 ),

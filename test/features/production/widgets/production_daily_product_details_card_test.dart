@@ -13,6 +13,7 @@ import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/features/production/models/production_direct_transfer_candidate.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
@@ -238,6 +239,7 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
   ValueChanged<DailyGridRow>? onRemoveAllocation,
   bool dark = false,
   double textScale = 1,
+  double fontFactor = 1,
   GlobalKey? capture,
   GlobalKey? overlayCapture,
 }) async {
@@ -248,7 +250,11 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
   final preferences = await SharedPreferences.getInstance();
   final events = _Events();
   final key = GlobalKey<_CardHostState>();
-  var theme = dark ? buildDarkTheme() : buildLightTheme();
+  // Desktop density is explicit; narrow viewports still receive touch targets
+  // from the shared control metrics, and are tested separately below.
+  var theme = (dark ? buildDarkTheme() : buildLightTheme()).copyWith(
+    platform: TargetPlatform.windows,
+  );
   if (capture != null || overlayCapture != null) {
     theme = auditScreenshotTheme(theme);
   }
@@ -267,9 +273,12 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
             ).copyWith(textScaler: TextScaler.linear(textScale)),
             child: child!,
           );
-          return overlayCapture == null
+          final surface = overlayCapture == null
               ? content
               : RepaintBoundary(key: overlayCapture, child: content);
+          return fontFactor == 1
+              ? surface
+              : UtenDisplayZoomBox(fontFactor: fontFactor, child: surface);
         },
         home: Scaffold(
           appBar: AppBar(title: const Text('新建生产日报')),
@@ -316,6 +325,67 @@ Future<(_Events, GlobalKey<_CardHostState>)> _pump(
 }
 
 void main() {
+  for (final (factor, textScale) in [(0.85, 1.0), (1.0, 2.0), (2.0, 2.0)]) {
+    testWidgets(
+      'touch removal preserves window target and slot at zoom $factor text $textScale',
+      (tester) async {
+        final data = _DetailsData();
+        final removed = <DailyGridRow>[];
+        final first = data.allocations.first;
+        await _pump(
+          tester,
+          data,
+          size: const Size(320, 900),
+          fontFactor: factor,
+          textScale: textScale,
+          onRemoveAllocation: removed.add,
+        );
+        final button = find.byKey(
+          ValueKey('daily-remove-allocation-${first.localRowId}'),
+        );
+        // The main grid header stays pinned; center the body control below it.
+        await Scrollable.ensureVisible(tester.element(button), alignment: 0.5);
+        await tester.pumpAndSettle();
+        final target = tester.getRect(button);
+        expect(target.left, greaterThanOrEqualTo(0));
+        expect(target.right, lessThanOrEqualTo(tester.view.physicalSize.width));
+        final pinned = find
+            .byKey(const Key('editable-grid-add-column'))
+            .hitTestable();
+        if (tester.any(pinned)) {
+          expect(
+            target.top,
+            greaterThanOrEqualTo(tester.getRect(pinned.first).bottom),
+          );
+        }
+        expect(target.width, greaterThanOrEqualTo(48));
+        expect(target.height, greaterThanOrEqualTo(48));
+        final table = tester.widget<Table>(
+          find.descendant(
+            of: find.byKey(
+              const ValueKey('daily-product-allocation-table-product'),
+            ),
+            matching: find.byType(Table),
+          ),
+        );
+        expect(
+          (table.columnWidths![5] as FixedColumnWidth).value,
+          greaterThanOrEqualTo(tester.getSize(button).width + 4),
+        );
+        // Hit near the edge, where the old36 target did not cover the row slot.
+        await tester.tapAt(Offset(target.right - 2, target.center.dy));
+        await tester.pump();
+        expect(removed, [first]);
+        expect(data.allocations, hasLength(3));
+        expect(
+          data.allocations.every((row) => row.allocationQty.text == '1000'),
+          isTrue,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   _registerProductDetailsResizeTests();
   testWidgets(
     'full-name menu and compact folded cards preserve entered quantities',

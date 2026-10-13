@@ -68,71 +68,69 @@ class _AckSection extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     return UtenCard(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.how_to_reg_rounded,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.how_to_reg_rounded, color: theme.colorScheme.primary),
+              const SizedBox(width: UtenSpacing.s8),
+              Flexible(
+                child: Text(
                   notice.myAcked
                       ? l10n.noticeAckYouAndCount(notice.ackCount)
                       : l10n.noticeAckCount(notice.ackCount),
                   style: theme.textTheme.titleSmall,
                 ),
-              ],
-            ),
-            if (notice.recentAckers.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  for (final name in notice.recentAckers)
-                    Chip(
-                      avatar: const Icon(Icons.person_rounded, size: 16),
-                      label: Text(name),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                ],
               ),
             ],
-            const SizedBox(height: UtenSpacing.s16),
-            if (notice.myAcked)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: theme.colorScheme.primary,
+          ),
+          if (notice.recentAckers.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                for (final name in notice.recentAckers)
+                  Chip(
+                    avatar: const Icon(Icons.person_rounded, size: 16),
+                    label: Text(name),
+                    visualDensity: VisualDensity.compact,
                   ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Text(
+              ],
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s16),
+          if (notice.myAcked)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: UtenSpacing.s8),
+                Flexible(
+                  child: Text(
                     l10n.noticeInteractionReceived,
                     style: theme.textTheme.bodyMedium,
                   ),
-                ],
-              )
-            else
-              UtenActionButton(
-                isExpanded: true,
-                icon: Icons.check_circle_outline_rounded,
-                label: Text(l10n.noticeClickToReceive),
-                onAction: () async {
-                  await acknowledgeNotice(ref, notice.id);
-                  if (context.mounted) {
-                    context.appSuccess(l10n.noticeInteractionReceived);
-                  }
-                },
-              ),
-          ],
-        ),
+                ),
+              ],
+            )
+          else
+            UtenActionButton(
+              isExpanded: true,
+              icon: Icons.check_circle_outline_rounded,
+              label: Text(l10n.noticeClickToReceive),
+              onAction: () async {
+                await acknowledgeNotice(ref, notice.id);
+                if (context.mounted) {
+                  context.appSuccess(l10n.noticeInteractionReceived);
+                }
+              },
+            ),
+        ],
       ),
     );
   }
@@ -181,114 +179,102 @@ class _BlessSectionState extends ConsumerState<_BlessSection> {
     final theme = Theme.of(context);
     final notice = widget.notice;
     return UtenCard(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.favorite_rounded, color: notice.type.color),
-                const SizedBox(width: UtenSpacing.s8),
-                Text(
-                  l10n.noticeBlessingWall,
-                  style: theme.textTheme.titleSmall,
-                ),
-                const Spacer(),
-                Text(
-                  l10n.noticeBlessingCount(notice.blessingCount),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          UtenSectionHeader(
+            title: l10n.noticeBlessingWall,
+            icon: Icons.favorite_rounded,
+            trailing: Text(
+              l10n.noticeBlessingCount(notice.blessingCount),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(height: UtenSpacing.s16),
-            if (_templates.isNotEmpty) ...[
-              Text(
-                l10n.noticeBlessingTemplatesTitle,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          if (_templates.isNotEmpty) ...[
+            Text(
+              l10n.noticeBlessingTemplatesTitle,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(height: UtenSpacing.s8),
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  for (final template in _templates)
-                    ActionChip(
-                      label: Text(_resolved(template)),
-                      onPressed: () {
-                        _controller.text = _resolved(template);
-                        _controller.selection = TextSelection(
-                          baseOffset: _controller.text.length,
-                          extentOffset: _controller.text.length,
-                        );
-                      },
-                    ),
-                ],
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-            ],
-            TextField(
-              controller: _controller,
-              minLines: 2,
-              maxLines: 5,
-              maxLength: 200,
-              decoration: InputDecoration(
-                hintText: l10n.noticeBlessingPlaceholder,
-                border: const OutlineInputBorder(),
-                alignLabelWithHint: true,
-              ),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              children: [
+                for (final template in _templates)
+                  ActionChip(
+                    label: Text(_resolved(template)),
+                    onPressed: () {
+                      _controller.text = _resolved(template);
+                      _controller.selection = TextSelection(
+                        baseOffset: _controller.text.length,
+                        extentOffset: _controller.text.length,
+                      );
+                    },
+                  ),
+              ],
             ),
             const SizedBox(height: UtenSpacing.s12),
-            UtenActionButton(
-              isExpanded: true,
-              icon: Icons.send_rounded,
-              label: Text(
-                notice.myBlessing != null
-                    ? l10n.noticeBlessingSent
-                    : l10n.noticeBlessingSendButton,
-              ),
-              loadingLabel: Text(l10n.noticeBlessingSending),
-              onAction: () async {
-                final text = _controller.text.trim();
-                if (text.isEmpty) {
-                  context.appError(l10n.noticeBlessingValidateEmpty);
-                  throw Exception('empty'); // 保持按钮解锁
-                }
-                await blessNotice(ref, notice.id, text);
-                _controller.clear();
-                if (context.mounted) {
-                  context.appSuccess(l10n.noticeBlessingSent);
-                }
-              },
-            ),
-            if (notice.recentBlessings.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s20),
-              UtenSectionHeader(
-                title: l10n.noticeBlessingReceivedCount(notice.blessingCount),
-                icon: Icons.card_giftcard_rounded,
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              for (final b in notice.recentBlessings) ...[
-                _BlessingCard(blessing: b),
-                const SizedBox(height: UtenSpacing.s8),
-              ],
-              if (notice.blessingCount > notice.recentBlessings.length)
-                Center(
-                  child: TextButton.icon(
-                    onPressed: () => _showWall(context, ref),
-                    icon: const Icon(Icons.arrow_forward_rounded),
-                    label: Text(
-                      l10n.noticeBlessingViewAll(notice.blessingCount),
-                    ),
-                  ),
-                ),
-            ],
           ],
-        ),
+          TextField(
+            controller: _controller,
+            minLines: 2,
+            maxLines: 5,
+            maxLength: 200,
+            decoration: InputDecoration(
+              hintText: l10n.noticeBlessingPlaceholder,
+              border: const OutlineInputBorder(),
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          UtenActionButton(
+            isExpanded: true,
+            icon: Icons.send_rounded,
+            label: Text(
+              notice.myBlessing != null
+                  ? l10n.noticeBlessingSent
+                  : l10n.noticeBlessingSendButton,
+            ),
+            loadingLabel: Text(l10n.noticeBlessingSending),
+            onAction: () async {
+              final text = _controller.text.trim();
+              if (text.isEmpty) {
+                context.appError(l10n.noticeBlessingValidateEmpty);
+                throw Exception('empty'); // 保持按钮解锁
+              }
+              await blessNotice(ref, notice.id, text);
+              _controller.clear();
+              if (context.mounted) {
+                context.appSuccess(l10n.noticeBlessingSent);
+              }
+            },
+          ),
+          if (notice.recentBlessings.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s20),
+            UtenSectionHeader(
+              title: l10n.noticeBlessingReceivedCount(notice.blessingCount),
+              icon: Icons.card_giftcard_rounded,
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+            for (final b in notice.recentBlessings) ...[
+              _BlessingCard(blessing: b),
+              const SizedBox(height: UtenSpacing.s8),
+            ],
+            if (notice.blessingCount > notice.recentBlessings.length)
+              Center(
+                child: TextButton.icon(
+                  onPressed: () => _showWall(context, ref),
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                  label: Text(l10n.noticeBlessingViewAll(notice.blessingCount)),
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }
@@ -327,7 +313,10 @@ class _BlessingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               CircleAvatar(
                 radius: 12,
@@ -354,7 +343,6 @@ class _BlessingCard extends StatelessWidget {
                   ),
                 ),
               ],
-              const Spacer(),
               Text(
                 _fmt(blessing.createdAt),
                 style: theme.textTheme.labelSmall?.copyWith(

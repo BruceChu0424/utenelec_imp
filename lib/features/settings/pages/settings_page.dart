@@ -1,7 +1,7 @@
 // SettingsPage - 设置页
 // 文档：docs/03-页面/设置页.md
 //
-// 包含：主题切换 / 语言切换 / 字号调节 / 性能档切换 / 关于 / 退出登录
+// 包含：主题切换 / 语言切换 / 界面大小 / 性能档切换 / 关于 / 退出登录
 // 外观 + 性能 + 关于 三段与 VisitorSettingsPage 共享 SettingsSection 布局。
 // 全断点套 UtenContentContainer.narrow：长列表行在宽屏下收敛到 1120，保证可读性。
 

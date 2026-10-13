@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -133,7 +134,8 @@ class _GoodsQuoteHistoryTabState extends ConsumerState<GoodsQuoteHistoryTab>
       context: context,
       builder: (context) => trackNativeReadDialog(
         context,
-        AlertDialog(
+        UtenAlertDialog(
+          scrollable: false,
           title: Text('${row.text('billNo')} · 第 ${row.text('revision')} 版'),
           content: SizedBox(
             width: 440,

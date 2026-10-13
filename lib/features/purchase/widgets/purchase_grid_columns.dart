@@ -1,3 +1,4 @@
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/models/procurement_quantity.dart';
 // 采购单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
@@ -653,7 +654,7 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
             onTap: canOpen && onOpenSource != null
                 ? () => onOpenSource(row)
                 : null,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(UtenRadius.xs),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(

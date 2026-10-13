@@ -423,7 +423,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     final value = await UtenDialog.showAndWaitForExit<_WarningValue>(
       context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
+        builder: (dialogContext, setDialogState) => UtenAlertDialog(
           title: const Text('设置余额警戒线'),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
@@ -519,7 +519,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
     if (detail == null || !_canDelete) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Text('删除账户'),
         content: Text(
           '确定删除「${detail.name?.isNotEmpty == true ? detail.name! : (detail.code ?? '该账户')}」吗？'

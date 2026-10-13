@@ -1209,12 +1209,12 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
                 ),
               ),
             ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
+          Wrap(
+            spacing: UtenSpacing.s8,
+            runSpacing: UtenSpacing.s4,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
-                // rows 含已处理行：主行只报「还没核对的」，已处理进副行。
                 plan.status == HrReconcilePlanStatus.closed
                     ? '${l10n.hrReconcileRecords} · ${l10n.hrReconcileRecordCount(counts.rows)}'
                     : l10n.hrReconcileStatPeople(counts.rows - counts.applied),
@@ -1222,22 +1222,17 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              const SizedBox(width: UtenSpacing.s8),
-              Flexible(
-                child: Text(
-                  [
-                    if (counts.update > 0)
-                      l10n.hrReconcileStatUpdate(counts.update),
-                    if (counts.info > 0) l10n.hrReconcileStatInfo(counts.info),
-                    if (counts.same > 0) l10n.hrReconcileStatSame(counts.same),
-                    if (counts.applied > 0)
-                      l10n.hrReconcileStatApplied(counts.applied),
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+              Text(
+                [
+                  if (counts.update > 0)
+                    l10n.hrReconcileStatUpdate(counts.update),
+                  if (counts.info > 0) l10n.hrReconcileStatInfo(counts.info),
+                  if (counts.same > 0) l10n.hrReconcileStatSame(counts.same),
+                  if (counts.applied > 0)
+                    l10n.hrReconcileStatApplied(counts.applied),
+                ].join(' · '),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],

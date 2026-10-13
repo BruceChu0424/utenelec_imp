@@ -6,6 +6,7 @@
 // 2026-10-05 证件号码有问题(服务端 idNumberIssue)时顶部常驻红/黄提醒，修好之前一直显示；
 // 概览的证件号码行带「待核对」徽标；持 employee:pii:edit 可「修改证件信息」(证件唯一修改入口)。
 // 文档：docs/03-页面/员工详情页.md
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -766,7 +767,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                       ),
                       decoration: BoxDecoration(
                         color: badgeColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(UtenRadius.sm),
                       ),
                       child: Text(
                         badgeText,
@@ -851,7 +852,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
+        builder: (ctx, setState) => UtenAlertDialog(
           title: const Text('续签 / 补录合同'),
           content: Form(
             key: formKey,
@@ -1296,7 +1297,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: Text(
           lock
               ? l10n.employeeActionLockAccount
@@ -1363,7 +1364,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
+        builder: (ctx, setState) => UtenAlertDialog(
           title: Text(l10n.employeeConfirmTitle),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1423,7 +1424,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final l10n = AppLocalizations.of(context);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: Text(l10n.employeeRehireTitle),
         content: Text(l10n.employeeRehireBody),
         actionsAlignment: MainAxisAlignment.center,

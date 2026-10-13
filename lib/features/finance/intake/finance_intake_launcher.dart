@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -183,7 +184,9 @@ class _FinanceIntakeReviewDialogState extends State<FinanceIntakeReviewDialog> {
         field == FinanceIntakeField.accountAmount,
   );
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => UtenAlertDialog(
+    maxWidth: 620,
+    scrollable: false,
     title: Text(financeIntakeText(context, 'reviewTitle')),
     content: SizedBox(
       width: 620,

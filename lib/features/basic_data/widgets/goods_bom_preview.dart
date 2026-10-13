@@ -12,6 +12,7 @@
 // - 打印：pdf 包生成 A4 横向 PDF（NotoSansSC 内置中文字体）→ printing 系统打印对话框；
 // - 下载 Excel：复用 UtenExportButton（加密 xlsx，走后端 bom/export，同列集同序号）；
 // - 关闭。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -302,7 +303,7 @@ class _GoodsBomPreviewDialogState
     final rows = _rows;
     // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region；内嵌表格自带更深 region）。
     return SelectionArea(
-      child: Dialog(
+      child: UtenDialogFrame(
         shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
         child: ConstrainedBox(
           constraints: BoxConstraints(

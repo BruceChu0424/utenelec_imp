@@ -24,6 +24,7 @@ import '../../shared/auth/permissions.dart';
 import '../../shared/providers/draft_counts_provider.dart';
 import '../feedback/uten_notification_badge.dart';
 import 'uten_app_bar_action_button.dart';
+import '../layout/uten_app_bar_action_scope.dart';
 
 class UtenDraftsButton extends ConsumerWidget {
   const UtenDraftsButton({
@@ -63,16 +64,21 @@ class UtenDraftsButton extends ConsumerWidget {
     final note = countScopeNote;
     // 顶栏动作统一形态（深绿实心白字、固定 36 高），与「权限设置」同款；
     // 计数走红色徽章贴在文案右侧（0 不渲染，见 UtenNotificationBadge）。
-    return UtenAppBarActionButton(
-      key: const Key('uten-drafts-button'),
-      icon: Icons.drafts_outlined,
-      label: label,
-      badge: UtenNotificationBadge(count: count),
-      tooltip: note == null
-          ? '本人待处理草稿 $count 张，点击查看'
-          : '本人待处理草稿 $count 张（$note），点击查看',
-      onPressed: () =>
-          goFrom(context, '$listLocation?status=$kDraftStatusQuery'),
+    return UtenAppBarActionScope.withCloseBeforeAction(
+      context,
+      child: UtenAppBarActionButton(
+        key: const Key('uten-drafts-button'),
+        icon: Icons.drafts_outlined,
+        label: label,
+        badge: UtenNotificationBadge(count: count),
+        tooltip: note == null
+            ? '本人待处理草稿 $count 张，点击查看'
+            : '本人待处理草稿 $count 张（$note），点击查看',
+        onPressed: () => goFrom(
+          UtenAppBarActionScope.actionContextOf(context),
+          '$listLocation?status=$kDraftStatusQuery',
+        ),
+      ),
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -82,7 +83,7 @@ class _MaterialSupplyProgressDialogState
       'SUBCONTRACT' => '委外领料与加工进度',
       _ => '供给全链路进度',
     };
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

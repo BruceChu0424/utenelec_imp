@@ -17,6 +17,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
@@ -248,6 +249,7 @@ List<EditableGridColumn<FinanceGridRow>> financeGridColumns(
         filterValueOf: column.filterValueOf,
         frozenTextOf: column.frozenTextOf,
         chromeWidth: column.chromeWidth,
+        chromeWidthOf: column.chromeWidthOf,
         fillsCellHeight: column.fillsCellHeight,
         cellColor: column.cellColor,
         cellColorListenableOf: column.cellColorListenableOf,
@@ -646,6 +648,11 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       ),
       listenableOf: (row) => row.department,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
+      chromeWidthOf: (context) =>
+          UtenEditableGridCellSpec.dropdownChevronWidth +
+          (names.departmentLoadError == null
+              ? 0
+              : UtenControlMetrics.minimumHitExtent(context, desktop: 32)),
       cellBuilder: (context, row) => ValueListenableBuilder<TextEditingValue>(
         valueListenable: row.department,
         builder: (context, value, _) => Row(
@@ -682,13 +689,14 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
             if (names.departmentLoadError != null)
               IconButton(
                 tooltip: '${names.departmentLoadError} 点击重试',
-                // 表格控件统一口径：默认 40 最小点击区会撑高编辑行（行高标准=
-                // 紧凑输入格，UtenEditableGridCellSpec），收紧到图标本身。
+                // 重试与部门选择是不同操作；独立槽同源估宽，触摸不能缩成图标大小。
                 style: IconButton.styleFrom(
-                  minimumSize: Size.zero,
+                  minimumSize: Size.square(
+                    UtenControlMetrics.minimumHitExtent(context, desktop: 32),
+                  ),
                   padding: EdgeInsets.zero,
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
+                  visualDensity: VisualDensity.standard,
                 ),
                 iconSize: 16,
                 onPressed: () => names.ensureDepartmentsLoaded(),

@@ -585,10 +585,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsLanguage => '语言';
 
   @override
-  String get settingsFontSize => '字号';
+  String get settingsFontSize => '界面大小';
 
   @override
-  String get settingsFontSizeHint => '整体等比缩放：文字、图标、卡片与间距一起变大变小；手机上只放大文字';
+  String get settingsFontSizeHint => '文字、图标、按钮、卡片与间距同步调整；当前设备按账号独立记忆';
 
   @override
   String get settingsSectionPerformance => '性能';

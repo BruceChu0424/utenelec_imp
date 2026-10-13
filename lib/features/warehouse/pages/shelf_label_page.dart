@@ -4,6 +4,7 @@
 // 表格/定位/打印保持实际仓库身份；打印按仓库+库行分组，导出沿服务端同口径。
 // 2026-09-29 口径：库行分段退役（库行会越积越多放不下，筛选走列头「货架」）；
 // 顶部工具条+货架图随上滑收起、表格置顶后表内滚动（UtenCollapsingHeaderScrollView）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -791,7 +792,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
                 ),
                 decoration: pw.BoxDecoration(
                   color: PdfColors.white,
-                  borderRadius: pw.BorderRadius.circular(3),
+                  borderRadius: pw.BorderRadius.circular(UtenRadius.xs),
                 ),
                 child: pw.Text(
                   rack == _kUnparsedLabel ? rack : '$rack库行',
@@ -855,7 +856,7 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Dialog(
+    return UtenDialogFrame(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
         constraints: BoxConstraints(

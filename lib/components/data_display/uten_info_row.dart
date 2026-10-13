@@ -38,36 +38,49 @@ class UtenInfoRow extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 100,
-                child: Text(
-                  label,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+              final stacked = constraints.maxWidth < 360 * textScale;
+              final labelText = Text(
+                label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child:
-                    valueWidget ??
-                    Text(
-                      value ?? '—',
-                      textAlign: TextAlign.right,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: isImportant
-                            ? FontWeight.w700
-                            : FontWeight.w400,
-                        color: isImportant
-                            ? theme.colorScheme.onSurface
-                            : theme.colorScheme.onSurfaceVariant,
-                      ),
+              );
+              final valueContent =
+                  valueWidget ??
+                  Text(
+                    value ?? '—',
+                    textAlign: stacked ? TextAlign.start : TextAlign.end,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: isImportant
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                      color: isImportant
+                          ? theme.colorScheme.onSurface
+                          : theme.colorScheme.onSurfaceVariant,
                     ),
-              ),
-            ],
+                  );
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    labelText,
+                    const SizedBox(height: 4),
+                    valueContent,
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 100 * textScale, child: labelText),
+                  const SizedBox(width: 12),
+                  Expanded(child: valueContent),
+                ],
+              );
+            },
           ),
         ),
         if (showDivider)

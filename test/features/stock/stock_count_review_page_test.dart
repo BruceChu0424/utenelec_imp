@@ -755,8 +755,18 @@ void main() {
     final approve = find.byKey(const Key('stock-count-approve'));
     await tester.tap(approve);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('stock-count-review-confirm')));
+    final confirm = find.byKey(const Key('stock-count-review-confirm'));
+    final confirmationRoute = ModalRoute.of(tester.element(confirm))!;
+    await tester.tap(confirm);
     await tester.pump();
+    expect(
+      repo.approvals,
+      0,
+      reason: 'The controller-owning confirmation is still exiting.',
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    await confirmationRoute.completed;
     expect(repo.approvals, 1);
     expect(tester.widget<UtenButton>(approve).onPressed, isNull);
     expect(find.byType(LinearProgressIndicator), findsNothing);

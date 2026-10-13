@@ -529,7 +529,7 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
               key: const ValueKey('uten-column-chooser'),
               color: theme.colorScheme.surfaceContainerHigh,
               elevation: 8,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(UtenRadius.md),
               clipBehavior: Clip.antiAlias,
               child: Container(
                 constraints: BoxConstraints(
@@ -1571,7 +1571,7 @@ mixin UtenColumnHeaderDragHost<T extends StatefulWidget> on State<T> {
                 width: 2.5,
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(UtenRadius.xs),
                   boxShadow: const [
                     BoxShadow(color: Colors.black26, blurRadius: 3),
                   ],
@@ -1629,7 +1629,7 @@ class UtenColumnDragGhostCell extends StatelessWidget {
             color: armed ? error : theme.colorScheme.outline,
             width: armed ? 2 : 1,
           ),
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(UtenRadius.xs),
           boxShadow: const [
             BoxShadow(
               color: UtenColors.floatingCellShadow,

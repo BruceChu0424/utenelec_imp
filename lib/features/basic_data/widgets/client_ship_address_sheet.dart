@@ -5,6 +5,7 @@
 //  - 「新增地址」展开内联表单，提交即入库并自动选中回填；
 //  - 删除按钮仅持 client_address:delete 者可见，删除前二次确认（后端仍独立鉴权）；
 //  - 空态说明学习规则：保存出货单后会自动记住本次填写的地址。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -236,7 +237,7 @@ class _ClientShipAddressSheetState
   Future<void> _delete(ClientShipAddress item) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
+      builder: (dialogCtx) => UtenAlertDialog(
         title: const Text('删除收货地址'),
         content: Text('确定删除地址「${item.address}」吗？删除后开单不再自动带出该地址。'),
         actionsAlignment: MainAxisAlignment.center,

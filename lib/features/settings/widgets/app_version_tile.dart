@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -101,7 +102,8 @@ class _ReleaseNotesDialog extends StatelessWidget {
     };
     final theme = Theme.of(context);
     return SelectionArea(
-      child: AlertDialog(
+      child: UtenAlertDialog(
+        scrollable: false,
         title: Text('${l10n.releaseNotesTitle} · $version'),
         content: ConstrainedBox(
           constraints: BoxConstraints(

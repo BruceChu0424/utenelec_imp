@@ -7,6 +7,7 @@
 //   提示「差异较大: 换了供应商/批次?」并给勾选「从本次起作为新批次(旧数据降权)」。
 // - 权限: warehouse_inbound:stock_in 或 stock_doc:edit 或 stock:weight:manage。
 // - 入口: 采集表格行菜单 (主要是到货行)、流水面板「单重学习」、库存分析「单重学习」批量表。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -282,7 +283,8 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
         ),
     ];
 
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text('称样校准 · ${widget.goodsTitle}'),
       content: ConstrainedBox(
         constraints: BoxConstraints(

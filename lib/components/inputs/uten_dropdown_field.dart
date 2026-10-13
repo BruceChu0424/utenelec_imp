@@ -634,7 +634,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
         message: message ?? (hasValue ? _display : display),
         child: InkWell(
           onTap: _open,
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: BorderRadius.circular(UtenRadius.xs),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -761,7 +761,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
             child: Material(
               color: theme.colorScheme.surfaceContainerHigh,
               elevation: 8,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(UtenRadius.md),
               clipBehavior: Clip.antiAlias,
               child: Container(
                 width: fieldWidth,
@@ -817,7 +817,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                                         },
                                       ),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(
+                                    UtenRadius.control,
+                                  ),
                                 ),
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: UtenSpacing.s8,
@@ -848,7 +850,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                                 _close();
                                 onAddNew();
                               },
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(
+                                UtenRadius.sm,
+                              ),
                               child: Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.symmetric(
@@ -857,7 +861,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                                 ),
                                 decoration: BoxDecoration(
                                   color: UtenColors.successBg,
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(
+                                    UtenRadius.sm,
+                                  ),
                                   border: Border.all(color: UtenColors.success),
                                 ),
                                 child: Row(

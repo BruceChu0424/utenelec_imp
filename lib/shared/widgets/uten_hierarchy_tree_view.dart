@@ -12,7 +12,9 @@
 import 'package:flutter/material.dart';
 
 import '../../components/inputs/uten_search_bar.dart';
+import '../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../core/theme/uten_colors.dart';
+import '../../core/theme/uten_tokens.dart';
 import '../models/uten_tree_node.dart';
 
 /// 树的选择语义。
@@ -122,7 +124,7 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深层固定
   /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；方角、行距收紧、行间 1px
   /// 分隔线；选中 = 左缘 3px 强调条 + 加粗 + 勾选图标（深绿行上反白）。
-  /// 层级语义只靠颜色与勾选图标表达。
+  /// 层级同时由父级名称、层数与选中路径表达；颜色只作辅助。
   final bool flatLevelColors;
 
   @override
@@ -253,18 +255,26 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         case UtenTreeSelectMode.multi:
           widget.onToggleSelect?.call(node);
       }
+      if (widget.onNodeTap != null || widget.onToggleSelect != null) {
+        UtenHierarchyPanelScope.maybeOf(context)?.onSelection?.call();
+      }
     } else if (node.hasChildren) {
       _toggleExpand(node);
     }
   }
 
-  Widget _buildNode(T node, int depth, Set<String>? visibleFilter) {
+  Widget _buildNode(
+    T node,
+    int depth,
+    Set<String>? visibleFilter, [
+    List<String> ancestors = const [],
+  ]) {
     if (_passes(node)) {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           for (final c in _ordered(node.children))
-            _buildNode(c, depth, visibleFilter),
+            _buildNode(c, depth, visibleFilter, ancestors),
         ],
       );
     }
@@ -295,103 +305,166 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     final onDarkRow = flat && depth == 0;
     final rowAccent = onDarkRow ? Colors.white : theme.colorScheme.primary;
 
-    final row = Material(
-      color: rowBg,
-      borderRadius: flat ? BorderRadius.zero : BorderRadius.circular(8),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _onRowTap(node),
-        child: DecoratedBox(
-          // flat 模式：左缘 3px 常驻透明边占位（行文字左缘对各层级恒对齐），
-          // 底部 1px 行间分隔线——同色行堆叠时分不清一行一行（2026-09-24 用户
-          // 口径）。深绿行上用 surface 色（浅色主题即细白线）；浅色行上白线
-          // 看不见，换 outlineVariant 细灰线。
-          decoration: flat
-              ? BoxDecoration(
-                  border: Border(
-                    left: BorderSide(
-                      width: 3,
-                      color: isSelected ? rowAccent : Colors.transparent,
-                    ),
-                    bottom: BorderSide(
-                      color: onDarkRow
-                          ? theme.colorScheme.surface
-                          : theme.colorScheme.outlineVariant,
-                    ),
-                  ),
-                )
-              : const BoxDecoration(),
-          child: Padding(
-            padding: flat
-                ? EdgeInsets.only(
-                    left: 8,
-                    right: 8,
-                    top: depth == 0 ? 7 : 4,
-                    bottom: depth == 0 ? 7 : 4,
-                  )
-                : EdgeInsets.only(
-                    left: 8 + depth * 18.0,
-                    right: 8,
-                    top: 6,
-                    bottom: 6,
-                  ),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 24,
-                  child: node.hasChildren
-                      ? GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => _toggleExpand(node),
-                          child: Icon(
-                            expanded
-                                ? Icons.expand_more_rounded
-                                : Icons.chevron_right_rounded,
-                            size: 20,
-                            color: onDarkRow
-                                ? Colors.white70
-                                : theme.colorScheme.onSurfaceVariant,
+    final row = LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 260;
+        final indent = flat
+            ? 0.0
+            : (depth * 16.0).clamp(0.0, constraints.maxWidth * 0.12);
+        final hitExtent = UtenControlMetrics.minimumHitExtent(
+          context,
+          desktop: 32,
+        );
+        final label = widget.labelOf?.call(node) ?? node.name;
+        final metadata = [
+          ?leading,
+          ?trailing,
+          if (enabled && widget.mode == UtenTreeSelectMode.multi)
+            Checkbox(
+              value: isSelected,
+              onChanged: (_) => widget.onToggleSelect?.call(node),
+              materialTapTargetSize:
+                  UtenControlMetrics.usesTouchTargets(context)
+                  ? MaterialTapTargetSize.padded
+                  : MaterialTapTargetSize.shrinkWrap,
+            )
+          else if (enabled &&
+              widget.mode == UtenTreeSelectMode.single &&
+              isSelected)
+            Icon(Icons.check_circle_rounded, size: 18, color: rowAccent),
+        ];
+        return Semantics(
+          selected: isSelected,
+          expanded: node.hasChildren ? expanded : null,
+          child: Material(
+            color: rowBg,
+            borderRadius: flat
+                ? BorderRadius.zero
+                : BorderRadius.circular(UtenRadius.md),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: enabled || node.hasChildren ? () => _onRowTap(node) : null,
+              child: DecoratedBox(
+                decoration: flat
+                    ? BoxDecoration(
+                        border: Border(
+                          left: BorderSide(
+                            width: 3,
+                            color: isSelected ? rowAccent : Colors.transparent,
                           ),
-                        )
-                      : null,
-                ),
-                if (leading != null) ...[leading, const SizedBox(width: 8)],
-                if (leading == null) const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    widget.labelOf?.call(node) ?? node.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: isSelected || onDarkRow
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                      color: enabled
-                          ? (onDarkRow
-                                ? Colors.white
-                                : isSelected
-                                ? theme.colorScheme.primary
-                                : null)
-                          : theme.colorScheme.onSurfaceVariant,
+                          bottom: BorderSide(
+                            color: onDarkRow
+                                ? theme.colorScheme.surface
+                                : theme.colorScheme.outlineVariant,
+                          ),
+                        ),
+                      )
+                    : const BoxDecoration(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: UtenControlMetrics.controlHeight(context),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(8 + indent, 6, 8, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (node.hasChildren)
+                              SizedBox(
+                                width: hitExtent,
+                                height: hitExtent,
+                                child: IconButton(
+                                  tooltip: expanded ? '收起$label' : '展开$label',
+                                  constraints: BoxConstraints.tightFor(
+                                    width: hitExtent,
+                                    height: hitExtent,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  onPressed: () => _toggleExpand(node),
+                                  icon: Icon(
+                                    expanded
+                                        ? Icons.expand_more_rounded
+                                        : Icons.chevron_right_rounded,
+                                    size: 20,
+                                    color: onDarkRow
+                                        ? Colors.white
+                                        : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            if (node.hasChildren) const SizedBox(width: 4),
+                            Expanded(
+                              child: Tooltip(
+                                message: [...ancestors, label].join(' / '),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      label,
+                                      softWrap: true,
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(
+                                            fontWeight: isSelected || onDarkRow
+                                                ? FontWeight.w600
+                                                : FontWeight.w400,
+                                            color: enabled
+                                                ? (onDarkRow
+                                                      ? Colors.white
+                                                      : isSelected
+                                                      ? theme
+                                                            .colorScheme
+                                                            .primary
+                                                      : null)
+                                                : theme
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                          ),
+                                    ),
+                                    if (ancestors.isNotEmpty &&
+                                        (flat || depth > 2))
+                                      Text(
+                                        isSelected
+                                            ? '第${depth + 1}层 · ${ancestors.join(' / ')}'
+                                            : '第${depth + 1}层 · ${ancestors.last}',
+                                        softWrap: true,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: onDarkRow
+                                                  ? Colors.white
+                                                  : theme
+                                                        .colorScheme
+                                                        .onSurfaceVariant,
+                                            ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (!narrow && metadata.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              ...metadata,
+                            ],
+                          ],
+                        ),
+                        if (narrow && metadata.isNotEmpty)
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            alignment: WrapAlignment.end,
+                            children: metadata,
+                          ),
+                      ],
                     ),
                   ),
                 ),
-                ?trailing,
-                if (enabled && widget.mode == UtenTreeSelectMode.multi)
-                  Checkbox(
-                    value: isSelected,
-                    onChanged: (_) => widget.onToggleSelect?.call(node),
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                  )
-                else if (enabled &&
-                    widget.mode == UtenTreeSelectMode.single &&
-                    isSelected)
-                  Icon(Icons.check_circle_rounded, size: 18, color: rowAccent),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
     return Column(
@@ -400,7 +473,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         row,
         if (node.hasChildren && expanded)
           for (final c in _ordered(node.children))
-            _buildNode(c, depth + 1, visibleFilter),
+            _buildNode(c, depth + 1, visibleFilter, [...ancestors, node.name]),
       ],
     );
   }

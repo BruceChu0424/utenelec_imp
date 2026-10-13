@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../core/responsive/breakpoint.dart';
+import '../../shared/hierarchy/uten_tree_path.dart';
 import '../../shared/models/uten_tree_node.dart';
 import '../../shared/widgets/uten_hierarchy_tree_view.dart';
 import '../feedback/uten_empty.dart';
@@ -374,7 +375,10 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
   );
 
   double _treeWidth(List<_EmployeeDepartmentNode> nodes, ThemeData theme) {
-    final painter = TextPainter(textDirection: Directionality.of(context));
+    final painter = TextPainter(
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    );
     var width = 0.0;
     for (final node in nodes) {
       painter.text = TextSpan(
@@ -428,22 +432,19 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         expandOnRowTap: true,
         onToggleSelect: (node) => setState(() => _department = node.id),
       );
-      body = context.breakpoint.isCompact
-          ? Row(
-              children: [
-                SizedBox(width: 152, child: tree),
-                const VerticalDivider(width: 1),
-                Expanded(child: _list(theme)),
-              ],
-            )
-          : UtenSplitView(
-              persistenceKey: 'employeePicker.departmentTree',
-              initialLeadingWidth: _treeWidth(departments, theme),
-              minLeadingWidth: 200,
-              maxLeadingWidth: 560,
-              leading: tree,
-              trailing: _list(theme),
-            );
+      body = UtenSplitView(
+        persistenceKey: 'employeePicker.departmentTree',
+        initialLeadingWidth: _treeWidth(departments, theme),
+        minLeadingWidth: 200,
+        maxLeadingWidth: 560,
+        leadingNoun: '部门',
+        selectedLeadingLabel:
+            utenTreeSelectionPath(departments, _department) ?? '全部部门',
+        selectedLeadingKey: _department,
+        compactHeader: _search(),
+        leading: tree,
+        trailing: _list(theme),
+      );
     }
     return Column(
       children: [

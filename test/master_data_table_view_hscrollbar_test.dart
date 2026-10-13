@@ -44,11 +44,23 @@ MasterDataTableView<_Row> _table(
 Widget _wrap(MasterDataTableView<_Row> table) =>
     MaterialApp(home: Scaffold(body: table));
 
-/// 横向滚动条 = 树里唯一的框架 Scrollbar（2026-09-22 起竖向改自绘
-/// UtenContentScrollbar 覆盖层，不再走框架 Scrollbar）。
+/// Chrome/悬浮操作有各自的竖向滚动条；只定位控制业务横向轴的滚动条。
+Finder _horizontalBars() => find.byWidgetPredicate((widget) {
+  if (widget is! Scrollbar) return false;
+  final controller = widget.controller;
+  return controller != null &&
+      controller.hasClients &&
+      controller.positions.every(
+        (position) => position.axis == Axis.horizontal,
+      );
+});
+
+ScrollController _horizontalController(WidgetTester tester) =>
+    tester.widget<Scrollbar>(_horizontalBars()).controller!;
+
 RenderBox _hBarBox(WidgetTester tester) {
-  final bars = find.byType(Scrollbar).evaluate().toList();
-  expect(bars.length, 1, reason: '仅横向一个框架 Scrollbar（竖向为自绘覆盖层）');
+  final bars = _horizontalBars().evaluate().toList();
+  expect(bars.length, 1, reason: '业务表格只有一个横向滚动条');
   return bars[0].findRenderObject() as RenderBox;
 }
 
@@ -213,18 +225,12 @@ void main() {
     );
     await tester.pumpWidget(page(0));
     await tester.pumpAndSettle();
-    final body = tester
-        .widgetList<Scrollbar>(find.byType(Scrollbar))
-        .last
-        .controller!;
+    final body = _horizontalController(tester);
     body.jumpTo(100);
     await tester.pumpAndSettle();
     await tester.pumpWidget(page(200));
     await tester.pumpAndSettle();
-    final overlay = tester
-        .widgetList<Scrollbar>(find.byType(Scrollbar))
-        .last
-        .controller!;
+    final overlay = _horizontalController(tester);
     expect(overlay.offset, closeTo(100, 1));
     overlay.jumpTo(160);
     await tester.pumpAndSettle();
@@ -237,10 +243,7 @@ void main() {
     }
     await tester.pumpWidget(page(0));
     await tester.pumpAndSettle();
-    final natural = tester
-        .widgetList<Scrollbar>(find.byType(Scrollbar))
-        .last
-        .controller!;
+    final natural = _horizontalController(tester);
     expect(natural.offset, closeTo(160, 1));
     expect(tester.takeException(), isNull);
   });
@@ -253,7 +256,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.byType(Scrollbar),
+      _horizontalBars(),
       findsNothing,
       reason: '空表（0 行、无前导分组）不应有框架横滚条（覆盖层分支不挂）',
     );
@@ -263,13 +266,13 @@ void main() {
   testWidgets('空表补一行数据后覆盖层横滚条恢复（回归保护）', (tester) async {
     await tester.pumpWidget(_wrap(_table(const [], bottomContentPadding: 200)));
     await tester.pumpAndSettle();
-    expect(find.byType(Scrollbar), findsNothing);
+    expect(_horizontalBars(), findsNothing);
 
     await tester.pumpWidget(
       _wrap(_table(const [_Row('a')], bottomContentPadding: 200)),
     );
     await tester.pumpAndSettle();
-    // _hBarBox 已断言「树里唯一框架 Scrollbar」：恢复后恰好一个横滚条。
+    // 恢复后恰好一个业务横向滚动条。
     expect(_hBarBox(tester).size.height, 11);
     expect(tester.takeException(), isNull);
   });
@@ -277,7 +280,7 @@ void main() {
   testWidgets('空表（流内路径）：不渲染横向滚动条，来数据后恢复', (tester) async {
     await tester.pumpWidget(_wrap(_table(const [])));
     await tester.pumpAndSettle();
-    expect(find.byType(Scrollbar), findsNothing, reason: '空表不包流内 Scrollbar');
+    expect(_horizontalBars(), findsNothing, reason: '空表不包流内横向 Scrollbar');
 
     await tester.pumpWidget(_wrap(_table(const [_Row('a')])));
     await tester.pumpAndSettle();

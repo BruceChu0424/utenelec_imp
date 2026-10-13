@@ -771,7 +771,7 @@ class _TodayTokensCard extends StatelessWidget {
           ),
           const SizedBox(height: UtenSpacing.s8),
           ClipRRect(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(UtenRadius.pill),
             child: LinearProgressIndicator(
               minHeight: 6,
               value: ratio?.clamp(0.0, 1.0),

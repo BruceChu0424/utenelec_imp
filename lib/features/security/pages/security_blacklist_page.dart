@@ -5,6 +5,7 @@
 // 历史申请状态不变；行级留痕由后端 fn_audit + 审计事件承载）。
 //
 // 响应式：compact 自套 UtenContentContainer 收敛；窄屏表格横向滚动即可。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
@@ -49,7 +50,7 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
     final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(l10n.securityBlacklistRemove),
         content: Text(l10n.securityBlacklistRemoveConfirm),
         actionsAlignment: MainAxisAlignment.center,

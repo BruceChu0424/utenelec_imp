@@ -11,6 +11,7 @@
 // 选中即切到对应分段并回第 1 页（下推后端 status 参数，非页内裁剪）。
 // 响应式：compact 下内容套 UtenContentContainer（medium+ 由 MainShell 统一收敛）。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
@@ -300,7 +301,7 @@ class _MyBatchDetailDialog extends ConsumerWidget {
     final async = ref.watch(myProfileChangeDetailProvider(batchId));
     // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
     return SelectionArea(
-      child: Dialog(
+      child: UtenDialogFrame(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
           child: Padding(

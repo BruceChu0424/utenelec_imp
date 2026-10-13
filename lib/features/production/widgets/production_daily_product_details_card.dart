@@ -314,6 +314,11 @@ class _ProductionDailyProductDetailsCardState
   }
 
   Widget _allocationTable(BuildContext context) {
+    final removeExtent = UtenControlMetrics.minimumHitExtent(
+      context,
+      desktop: 36,
+    );
+    final actionWidth = removeExtent + UtenSpacing.s4;
     final removable =
         enabled &&
         onRemoveAllocation != null &&
@@ -329,7 +334,7 @@ class _ProductionDailyProductDetailsCardState
         if (removable) 'actions',
       ],
       columnLabels: ['去向工单', '接收名称', '编号', '颜色', '去向数量', if (removable) ''],
-      minimumWidths: [64, 148, 64, 64, 140, if (removable) 40],
+      minimumWidths: [64, 148, 64, 64, 140, if (removable) actionWidth],
       manualWidths: _manualWidths[DailyRowGroup.allocations] ?? const {},
       onResize: (key, delta, initial, minimum) => _resizeDetailColumn(
         DailyRowGroup.allocations,
@@ -373,7 +378,7 @@ class _ProductionDailyProductDetailsCardState
           names: allocationRows.map(_receivingColor),
         ),
         164,
-        if (removable) 40,
+        if (removable) actionWidth,
       ],
       headers: [
         const Text('去向工单'),
@@ -404,13 +409,13 @@ class _ProductionDailyProductDetailsCardState
                     icon: const Icon(Icons.close, size: 18),
                     padding: EdgeInsets.zero,
                     style: IconButton.styleFrom(
-                      minimumSize: const Size.square(36),
-                      maximumSize: const Size.square(36),
+                      minimumSize: Size.square(removeExtent),
+                      maximumSize: Size.square(removeExtent),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    constraints: const BoxConstraints.tightFor(
-                      width: 36,
-                      height: 36,
+                    constraints: BoxConstraints.tightFor(
+                      width: removeExtent,
+                      height: removeExtent,
                     ),
                     visualDensity: VisualDensity.standard,
                     onPressed: () => onRemoveAllocation?.call(row),
@@ -786,17 +791,15 @@ class _DetailGroupHeader extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: EdgeInsets.symmetric(vertical: expanded ? UtenSpacing.s2 : 0),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: colors.primary),
-          const SizedBox(width: UtenSpacing.s6),
-          Text(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final symbol = Icon(icon, size: 18, color: colors.primary);
+          final heading = Text(
             title,
             maxLines: 1,
             style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(width: UtenSpacing.s6),
-          DecoratedBox(
+          );
+          final countLabel = DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: UtenRadius.xsAll,
               border: Border.all(color: colors.outlineVariant),
@@ -808,22 +811,19 @@ class _DetailGroupHeader extends StatelessWidget {
               ),
               child: Text(count, style: Theme.of(context).textTheme.bodySmall),
             ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Flexible(
-            child: Tooltip(
-              message: detail ?? status,
-              child: Text(
-                status,
-                textWidthBasis: TextWidthBasis.longestLine,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: issue ? colors.error : colors.primary),
-              ),
+          );
+          final compact = constraints.maxWidth < 480;
+          final statusLabel = Tooltip(
+            message: detail ?? status,
+            child: Text(
+              status,
+              textWidthBasis: TextWidthBasis.longestLine,
+              maxLines: compact ? null : 1,
+              overflow: compact ? null : TextOverflow.ellipsis,
+              style: TextStyle(color: issue ? colors.error : colors.primary),
             ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Tooltip(
+          );
+          final toggle = Tooltip(
             message: '${expanded ? '收起' : '展开'}$title',
             child: Semantics(
               expanded: expanded,
@@ -841,8 +841,36 @@ class _DetailGroupHeader extends StatelessWidget {
                 child: Text(expanded ? '收起' : '展开'),
               ),
             ),
-          ),
-        ],
+          );
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: UtenSpacing.s6,
+                  runSpacing: UtenSpacing.s4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [symbol, heading, countLabel],
+                ),
+                statusLabel,
+                Align(alignment: Alignment.centerRight, child: toggle),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              symbol,
+              const SizedBox(width: UtenSpacing.s6),
+              heading,
+              const SizedBox(width: UtenSpacing.s6),
+              countLabel,
+              const SizedBox(width: UtenSpacing.s8),
+              Flexible(child: statusLabel),
+              const SizedBox(width: UtenSpacing.s8),
+              toggle,
+            ],
+          );
+        },
       ),
     );
   }
@@ -886,10 +914,14 @@ class _ProductDetailsTable extends StatelessWidget {
       ];
       final width = resolved.fold(0.0, (sum, value) => sum + value);
       final rowHeight = math.max(
-        42.0,
-        MediaQuery.textScalerOf(context).scale(24) +
-            UtenEditableGridCellSpec.contentPadding.vertical +
-            6,
+        UtenControlMetrics.minimumHitExtent(context, desktop: 36) +
+            UtenSpacing.s4,
+        math.max(
+          42.0,
+          MediaQuery.textScalerOf(context).scale(24) +
+              UtenEditableGridCellSpec.contentPadding.vertical +
+              6,
+        ),
       );
       final colors = Theme.of(context).colorScheme;
       return UtenHScrollArea(

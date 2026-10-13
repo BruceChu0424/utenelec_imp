@@ -4,6 +4,7 @@
 // 不能超过「这次可下单」。弹窗按申请明细逐条显示 委外件 / 剩余未下单 / 够做套数 /
 // 可下单，并列出每种直属物料的 每套用量 / 需要 / 专属库存 / 已被占用 / 现在能用 /
 // 还缺 / 够做套数，让委外人员看清「卡在哪种料」。数量全部由服务端算好，只读。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -90,7 +91,7 @@ class _SubcontractApplicationKitDialogState
     final size = MediaQuery.sizeOf(context);
     final kits = _kits;
     final title = widget.title?.trim() ?? '';
-    return Dialog(
+    return UtenDialogFrame(
       key: const Key('subcontract-kit-dialog'),
       child: ConstrainedBox(
         constraints: BoxConstraints(

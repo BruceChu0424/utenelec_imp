@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -132,7 +133,7 @@ class _InventoryCostPostingDialogState
     final l10n = AppLocalizations.of(context);
     return await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
+          builder: (dialogContext) => UtenAlertDialog(
             title: Text(action),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
@@ -204,7 +205,7 @@ class _InventoryCostPostingDialogState
     final result = await _inputDialog<Map<String, dynamic>>(
       controllers: [reference],
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, localSetState) => AlertDialog(
+        builder: (context, localSetState) => UtenAlertDialog(
           title: Text(l10n.inventoryCostPolicy),
           content: SizedBox(
             width: 500,
@@ -301,7 +302,7 @@ class _InventoryCostPostingDialogState
     final result = await _inputDialog<Map<String, dynamic>>(
       controllers: [reason],
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, localSetState) => AlertDialog(
+        builder: (context, localSetState) => UtenAlertDialog(
           title: Text(l10n.inventoryCostAssignPeriod),
           content: SizedBox(
             width: 500,
@@ -418,7 +419,7 @@ class _InventoryCostPostingDialogState
     final reason = TextEditingController();
     final result = await _inputDialog<String>(
       controllers: [reason],
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(l10n.inventoryCostClosePeriod),
         content: SizedBox(
           width: 480,
@@ -469,7 +470,7 @@ class _InventoryCostPostingDialogState
     final capability = ref.watch(costWorkbenchCapabilityProvider);
     final l10n = AppLocalizations.of(context);
     if (!capability.canReadPostings) {
-      return AlertDialog(
+      return UtenAlertDialog(
         content: Text(l10n.inventoryCostNoAccess),
         actions: [
           TextButton(
@@ -553,7 +554,7 @@ class _InventoryCostPostingDialogState
         ),
       );
     }
-    return Dialog(
+    return UtenDialogFrame(
       insetPadding: const EdgeInsets.all(UtenSpacing.s12),
       child: SizedBox(
         width: 1200,

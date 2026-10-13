@@ -6,9 +6,9 @@ import 'package:uten_imp/core/theme/uten_tokens.dart';
 /// （原 MasterDataTableView._buildBatchBar 私有实现升位为公共组件）。
 ///
 /// 选中态走主色（primaryContainer 底 + primary 边框/字）；未选态整体降级为
-/// 中性灰。固定高 48（UtenTableToolbar.controlHeight），与表头工具条控件等高。
+/// 中性灰。最小高度对齐表格工具条，文字可换行、容器随内容增高。
 /// ⚠ 不能给 Container 设 alignment（又没给 width 会撑满父级可用宽度）；
-/// 垂直居中靠固定 height + Row 默认 crossAxis.center，宽度随内容收紧。
+/// 垂直居中靠最小高度与 Row 对齐，宽度受可用空间约束。
 class UtenSelectionSummaryPill extends StatelessWidget {
   const UtenSelectionSummaryPill({
     super.key,
@@ -55,26 +55,30 @@ class UtenSelectionSummaryPill extends StatelessWidget {
       constraints: BoxConstraints(minHeight: minHeight),
       decoration: BoxDecoration(
         color: barBackground,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
         border: Border.all(color: barBorder),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '已选 $count 项', // TODO(l10n): 补 arb
-            style: theme.textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: accent,
+          Flexible(
+            child: Text(
+              '已选 $count 项', // TODO(l10n): 补 arb
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: accent,
+              ),
             ),
           ),
           const SizedBox(width: UtenSpacing.s4),
           InkWell(
             key: clearKey,
             onTap: onClear,
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: Icon(Icons.close_rounded, size: 18, color: accent),
+            child: SizedBox.square(
+              dimension: UtenControlMetrics.minimumHitExtent(context),
+              child: Center(
+                child: Icon(Icons.close_rounded, size: 18, color: accent),
+              ),
             ),
           ),
         ],

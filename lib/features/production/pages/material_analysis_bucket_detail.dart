@@ -264,7 +264,9 @@ class _MaterialAnalysisBucketPageState
     } else {
       final selected = await showDialog<_MaterialGroup>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => UtenAlertDialog(
+          maxWidth: 600,
+          scrollable: false,
           title: const Text('选择需要查看或调拨的物料'),
           content: SizedBox(
             width: 600,

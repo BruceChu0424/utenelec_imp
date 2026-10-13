@@ -8,6 +8,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../responsive/display_zoom.dart';
+
 /// Uten 圆角 token
 ///
 /// 提供 double 常量（用于自定义圆角组合）与对应的 BorderRadius 快捷 getter。
@@ -15,7 +17,7 @@ import 'package:flutter/material.dart';
 /// 常用映射：
 /// - 小控件（标签、勾选框）：xs / sm
 /// - 按钮、输入框、Chip 等表单级控件：control（10，全平台唯一控件圆角）
-/// - 卡片、面板：lg / xl（卡片主题默认 14，见 cardTheme）
+/// - 卡片、面板：card（16）
 /// - 对话框、底部弹层：xxl
 /// - 徽章、胶囊：pill
 abstract final class UtenRadius {
@@ -41,6 +43,17 @@ abstract final class UtenRadius {
 
   /// 20 —— 对话框、底部弹层
   static const double xxl = 20;
+
+  /// Semantic surface roles shared by themes and custom containers.
+  static const double menu = md;
+  static const double table = lg;
+  static const double card = xl;
+  static const double dialog = xxl;
+  static const BorderRadius cardAll = BorderRadius.all(Radius.circular(card));
+  static const BorderRadius tableAll = BorderRadius.all(Radius.circular(table));
+  static const BorderRadius dialogAll = BorderRadius.all(
+    Radius.circular(dialog),
+  );
 
   /// 999 —— 胶囊（徽章、Pill 按钮）
   static const double pill = 999;
@@ -111,14 +124,39 @@ abstract final class UtenSpacing {
   static const double s48 = 48;
 }
 
-/// 表格工具条控件统一高度。
-///
-/// 表头上方工具条（表头设置/全屏/选择摘要条/筛选 chip 等）所有控件统一到
-/// 44——2026-09-25 用户口径「按钮高度统一成 BOM学习记录那个高度，稍微矮点，
-/// 整个平台 UI 统一」；UtenButton 通过 `height:` 覆盖参与对齐
-/// （右下悬浮动作组仍是 52 大按钮，不在此口径内）。
+/// Standard desktop toolbar geometry. Touch targets use [UtenControlMetrics].
 abstract final class UtenTableToolbar {
-  static const double controlHeight = 44;
+  static const double controlHeight = UtenControlMetrics.standardHeight;
+}
+
+/// Screen-size-independent control roles, in the application's layout canvas.
+/// Application zoom scales this canvas once at the root. Shrinking the UI must
+/// never shrink a touch target below 48 window logical pixels.
+abstract final class UtenControlMetrics {
+  static const double compactHeight = 36;
+  static const double standardHeight = 40;
+  static const double primaryHeight = 48;
+  static const double inputHeight = 44;
+  static const double cellHeight = 32;
+  static const double touchExtent = 48;
+
+  static bool usesTouchTargets(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    return platform == TargetPlatform.android ||
+        platform == TargetPlatform.iOS ||
+        platform == TargetPlatform.fuchsia ||
+        (MediaQuery.maybeSizeOf(context)?.width ?? 840) < 600;
+  }
+
+  static double minimumHitExtent(BuildContext context, {double desktop = 40}) {
+    if (!usesTouchTargets(context)) return desktop;
+    final zoom = UtenDisplayScale.fontZoomOf(context);
+    final touch = touchExtent / (zoom < 1 ? zoom : 1);
+    return desktop > touch ? desktop : touch;
+  }
+
+  static double controlHeight(BuildContext context, {double desktop = 40}) =>
+      minimumHitExtent(context, desktop: desktop);
 }
 
 /// 筛选工具条（分类分段 + 搜索框）的描边高度下限，两侧共用同一枚值：
@@ -126,10 +164,10 @@ abstract final class UtenTableToolbar {
 /// - [UtenSearchBar] 前后缀图标约束的 minHeight——InputDecorator 的药丸描边
 ///   只按内容高度绘制（`fixIconHeight = max(前后缀图标约束高)` 参与内容高），
 ///   外部 minHeight 约束拉不高描边。两侧同取本值后，描边高度恒等于
-///   `max(36, 文本内容高)`，任意密度/字号/缩放下严格同高（2026-10-07 根因修复，
-///   同日用户口径「两条都再小点」：40 → 36，配套 UtenSearchBar 竖向内边距 10 → 6）。
+///   `max(40, 文本内容高)`，任意密度/字号/缩放下严格同高（2026-10-07 根因修复，
+///   2026-10-13 桌面标准40，触屏实际目标由 UtenControlMetrics 保底48）。
 abstract final class UtenFilterRow {
-  static const double minHeight = 36;
+  static const double minHeight = UtenControlMetrics.standardHeight;
 }
 
 /// 自研表格共用的表头文字样式，渲染与列宽测量使用同一入口。

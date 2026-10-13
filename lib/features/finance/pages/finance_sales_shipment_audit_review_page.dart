@@ -9,6 +9,7 @@
 //  - 底部右下悬浮双决策：退回销售（必填原因，红）/ 确认放行；认领机制
 //    （SALES_SHIPMENT_FINANCE_AUDIT）贯穿加载与提交，他人认领中禁止决策。
 // 本页不出现销售端操作（编辑/删除/销售确认）与仓库作业，职责分离。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -430,7 +431,7 @@ class _FinanceSalesShipmentAuditReviewPageState
     final generation = _loadGeneration;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
+      builder: (dialogCtx) => UtenAlertDialog(
         title: Text('确认放行 ${_detail?.billNo ?? ''}'),
         content: SizedBox(
           width: 440,
@@ -532,7 +533,7 @@ class _FinanceSalesShipmentAuditReviewPageState
     final reason = await showDialog<String>(
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => AlertDialog(
+        builder: (dialogCtx, setDialogState) => UtenAlertDialog(
           title: Text('退回销售 ${_detail?.billNo ?? ''}'),
           content: SizedBox(
             width: 440,
@@ -650,7 +651,7 @@ class _FinanceSalesShipmentAuditReviewPageState
     final billNo = _detail?.billNo ?? '';
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
+      builder: (dialogCtx) => UtenAlertDialog(
         title: Text('撤回退回 $billNo'),
         content: const SizedBox(
           width: 440,

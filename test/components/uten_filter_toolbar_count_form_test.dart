@@ -158,7 +158,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    final popup = find.byType(PopupMenuItem<String>).first;
+    final popup = find
+        .ancestor(
+          of: find.byWidgetPredicate(
+            (widget) =>
+                widget is UtenSegmentBadgeLabel &&
+                widget.label == '等待财务审核与供应商处理',
+          ),
+          matching: find.byType(InkWell),
+        )
+        .first;
     final red = find.descendant(
       of: popup,
       matching: find.byType(UtenNotificationBadge),

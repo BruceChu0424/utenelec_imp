@@ -19,7 +19,7 @@ import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/hierarchy/category_tree_search.dart';
@@ -471,22 +471,19 @@ class _DeptEmployeePickerSheetState
       nodeEnabledPredicate: (_) => true,
       onToggleSelect: _onDeptTap,
     );
-    final body = context.breakpoint.isCompact
-        ? Row(
-            children: [
-              SizedBox(width: 176, child: treePane),
-              const VerticalDivider(width: 1),
-              Expanded(child: _buildRightPane(theme)),
-            ],
-          )
-        : UtenSplitView(
-            persistenceKey: 'employeePicker.departmentTree',
-            initialLeadingWidth: _treeNaturalWidth(theme),
-            minLeadingWidth: 200,
-            maxLeadingWidth: 560,
-            leading: treePane,
-            trailing: _buildRightPane(theme),
-          );
+    final body = UtenSplitView(
+      persistenceKey: 'employeePicker.departmentTree',
+      initialLeadingWidth: _treeNaturalWidth(theme),
+      minLeadingWidth: 200,
+      maxLeadingWidth: 560,
+      leadingNoun: '部门',
+      selectedLeadingLabel:
+          utenTreeSelectionPath(widget.tree, _selectedDeptId) ?? '全部部门',
+      selectedLeadingKey: _selectedDeptId,
+      compactHeader: treePane.header,
+      leading: treePane,
+      trailing: _buildRightPane(theme),
+    );
     return Column(
       children: [
         Padding(
@@ -520,7 +517,10 @@ class _DeptEmployeePickerSheetState
   }
 
   double _treeNaturalWidth(ThemeData theme) {
-    final painter = TextPainter(textDirection: Directionality.of(context));
+    final painter = TextPainter(
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    );
     var widest = 0.0;
     void measure(List<DepartmentNode> nodes) {
       for (final node in nodes) {

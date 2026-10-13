@@ -1,5 +1,7 @@
 part of 'production_material_analysis_page.dart';
 
+enum _MaterialPlanHandleChoice { view, cancel }
+
 extension _MaterialAggregateActions on _MaterialAggregateTableController {
   Widget actionCell(_MaterialAggregate aggregate) {
     // 来源车间 / 负责人 / 比例不同时，这一行下单会自动分成几张工单
@@ -86,7 +88,8 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
     final owner = this.owner;
     return showDialog<ProductionMaterialAnalysisMaterial>(
       context: owner.context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
+        scrollable: false,
         key: const Key('material-aggregate-transfer-path-picker'),
         title: const Text('调入到哪条来源路径？'),
         content: SizedBox(
@@ -421,55 +424,195 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
     required VoidCallback? onCancel,
   }) {
     final label = _planLabel(plan);
-    final view = owner._canViewPlans
-        ? Tooltip(
-            message: '查看计划 $label',
-            child: TextButton(
-              key: ValueKey(viewKey),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s4,
-                  vertical: UtenSpacing.s8,
+    final extent = UtenControlMetrics.minimumHitExtent(
+      owner.context,
+      desktop: 32,
+    );
+    final lineHeight = MediaQuery.textScalerOf(
+      owner.context,
+    ).scale(Theme.of(owner.context).textTheme.bodyMedium?.fontSize ?? 14);
+    // Master rows ask intrinsic height; answer from control/text roles before
+    // the width-dependent presentation is laid out.
+    return SizedBox(
+      height: math.max(extent, lineHeight * 1.5 + UtenSpacing.s16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final extent = UtenControlMetrics.minimumHitExtent(
+            context,
+            desktop: 32,
+          );
+          final canView = owner._canViewPlans;
+          if ((canView || canCancel) &&
+              constraints.maxWidth <
+                  (canCancel ? extent * 2 + UtenSpacing.s8 : extent)) {
+            return Tooltip(
+              message: '生产计划 $label：查看与办理操作',
+              child: TextButton(
+                key: ValueKey('$viewKey-actions'),
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.square(extent),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: owner._busy
+                    ? null
+                    : () => unawaited(
+                        _showPlanHandleChoices(
+                          plan,
+                          viewKey: viewKey,
+                          cancelKey: cancelKey,
+                          canCancel: canCancel,
+                          cancelTooltip: cancelTooltip,
+                          onCancel: onCancel,
+                        ),
+                      ),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              onPressed: owner._busy
-                  ? null
-                  : () => unawaited(
-                      owner.context.push(
-                        RoutePath.productionPlanDetail(plan.planId),
+            );
+          }
+          final view = canView
+              ? Tooltip(
+                  message: '查看计划 $label',
+                  child: TextButton(
+                    key: ValueKey(viewKey),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s4,
+                        vertical: UtenSpacing.s8,
                       ),
+                      minimumSize: Size.square(extent),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-          )
-        : Tooltip(
-            message: label,
-            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onPressed: owner._busy
+                        ? null
+                        : () => unawaited(
+                            owner.context.push(
+                              RoutePath.productionPlanDetail(plan.planId),
+                            ),
+                          ),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+              : Tooltip(
+                  message: label,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: view),
+              if (canCancel)
+                Padding(
+                  padding: const EdgeInsets.only(left: UtenSpacing.s8),
+                  child: IconButton(
+                    key: ValueKey(cancelKey),
+                    tooltip: cancelTooltip,
+                    onPressed: onCancel,
+                    icon: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Icon(Icons.undo_rounded, size: 18),
+                    ),
+                    style: IconButton.styleFrom(
+                      foregroundColor: Theme.of(
+                        owner.context,
+                      ).colorScheme.primary,
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.square(extent),
+                      maximumSize: Size.square(extent),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ),
+            ],
           );
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(flex: 3, child: view),
-        if (canCancel)
-          Flexible(
-            child: IconButton(
-              key: ValueKey(cancelKey),
-              tooltip: cancelTooltip,
-              onPressed: onCancel,
-              icon: const FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Icon(Icons.undo_rounded, size: 18),
+        },
+      ),
+    );
+  }
+
+  Future<void> _showPlanHandleChoices(
+    MaterialAnalysisPlanReference plan, {
+    required String viewKey,
+    required String cancelKey,
+    required bool canCancel,
+    required String cancelTooltip,
+    required VoidCallback? onCancel,
+  }) async {
+    final choice =
+        await UtenDialog.showAndWaitForExit<_MaterialPlanHandleChoice>(
+          owner.context,
+          builder: (dialogContext) => SelectionArea(
+            child: UtenAlertDialog(
+              title: Text('生产计划 ${_planLabel(plan)}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (owner._canViewPlans)
+                    ListTile(
+                      key: ValueKey(viewKey),
+                      minTileHeight: UtenControlMetrics.minimumHitExtent(
+                        dialogContext,
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.open_in_new_rounded),
+                      title: const Text('查看计划'),
+                      enabled: !owner._busy,
+                      onTap: owner._busy
+                          ? null
+                          : () => Navigator.pop(
+                              dialogContext,
+                              _MaterialPlanHandleChoice.view,
+                            ),
+                    ),
+                  if (canCancel)
+                    ListTile(
+                      key: ValueKey(cancelKey),
+                      minTileHeight: UtenControlMetrics.minimumHitExtent(
+                        dialogContext,
+                      ),
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.undo_rounded),
+                      title: const Text('整批撤回'),
+                      subtitle: Text(cancelTooltip),
+                      enabled: onCancel != null && !owner._busy,
+                      onTap: onCancel == null || owner._busy
+                          ? null
+                          : () => Navigator.pop(
+                              dialogContext,
+                              _MaterialPlanHandleChoice.cancel,
+                            ),
+                    ),
+                ],
               ),
-              style: IconButton.styleFrom(
-                foregroundColor: Theme.of(owner.context).colorScheme.primary,
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(48, 48),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('关闭'),
+                ),
+              ],
             ),
           ),
-      ],
-    );
+        );
+    if (!owner.mounted || owner._busy) return;
+    if (choice == _MaterialPlanHandleChoice.view && owner._canViewPlans) {
+      unawaited(
+        owner.context.push(RoutePath.productionPlanDetail(plan.planId)),
+      );
+    } else if (choice == _MaterialPlanHandleChoice.cancel && canCancel) {
+      onCancel?.call();
+    }
   }
 
   Widget _unresolvedMakeTaskEntry(

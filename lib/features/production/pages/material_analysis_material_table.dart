@@ -1575,7 +1575,19 @@ abstract class _MaterialAnalysisMaterialTableState
     MasterColumnDef(
       key: 'handle',
       label: _l10n.materialHandle,
-      width: 110,
+      width: UtenControlMetrics.usesTouchTargets(context)
+          ? UtenControlMetrics.minimumHitExtent(context, desktop: 32) * 2 +
+                UtenSpacing.s8 +
+                UtenSpacing.s24 +
+                1
+          : 110,
+      minimumWidthOf: (context) => UtenControlMetrics.usesTouchTargets(context)
+          ? UtenControlMetrics.minimumHitExtent(context, desktop: 32) +
+                UtenSpacing.s24 +
+                1
+          : 48,
+      cellHorizontalPaddingOf: (context) =>
+          UtenControlMetrics.usesTouchTargets(context) ? UtenSpacing.s12 : 7,
       value: _materialTableHandleText,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => _materialTableHandleCell(theme, row),
@@ -1585,7 +1597,7 @@ abstract class _MaterialAnalysisMaterialTableState
       label: _bomAggregateByMaterial
           ? _l10n.materialIdentityByMaterial
           : _l10n.materialIdentityByProduct,
-      width: 360,
+      width: 360 + UtenTreeTableCell.toggleExtentOf(context) - 48,
       value: _materialTableIdentityText,
       cellBuilderHandlesSemantics: true,
       // 树列自己吃满整行高度：同一行里只要别的列换了两行，这一格若被竖向
@@ -4775,8 +4787,9 @@ abstract class _MaterialAnalysisMaterialTableState
     final color = enabled
         ? theme.colorScheme.primary
         : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.55);
+    final extent = UtenControlMetrics.minimumHitExtent(context, desktop: 32);
     return Tooltip(
-      message: tooltip,
+      message: '$label，$tooltip',
       child: InkWell(
         key: ValueKey(key),
         onTap: onTap,
@@ -4786,6 +4799,7 @@ abstract class _MaterialAnalysisMaterialTableState
           button: true,
           enabled: enabled,
           child: Container(
+            constraints: BoxConstraints(minWidth: extent, minHeight: extent),
             padding: const EdgeInsets.symmetric(
               horizontal: UtenSpacing.s8,
               vertical: UtenSpacing.s4,
@@ -4794,16 +4808,28 @@ abstract class _MaterialAnalysisMaterialTableState
               borderRadius: BorderRadius.circular(UtenRadius.control),
               border: Border.all(color: color.withValues(alpha: 0.5)),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 14, color: color),
-                const SizedBox(width: UtenSpacing.s4),
-                Text(
-                  label,
-                  style: theme.textTheme.bodySmall?.copyWith(color: color),
-                ),
-              ],
+            child: UtenFitOrCompact(
+              expanded: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 14, color: color),
+                  const SizedBox(width: UtenSpacing.s4),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(color: color),
+                    ),
+                  ),
+                ],
+              ),
+              compact: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(color: color),
+              ),
             ),
           ),
         ),
@@ -6821,7 +6847,9 @@ abstract class _MaterialAnalysisMaterialTableState
           material: material,
           group: displayedGroup,
         );
-        return AlertDialog(
+        return UtenAlertDialog(
+          maxWidth: 720,
+          scrollable: false,
           title: Text(material.goodsName ?? material.goodsCode ?? '物料详情'),
           content: SizedBox(
             width: 720,
@@ -7570,35 +7598,43 @@ abstract class _MaterialAnalysisMaterialTableState
     final sessionScope = _sessionScopeKey();
     final reasonController = TextEditingController();
     final planNo = plan.planNo?.trim();
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '整批撤回生产计划${(planNo ?? '').isEmpty ? '' : '（$planNo）'}',
-      confirmLabel: '确认整批撤回',
-      danger: true,
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '将撤回所选生产计划及其有效执行安排，恢复这个来源对应的待安排数量。'
-              '其它产品计划和共享子件批次保留。'
-              '存在实际领用、报工、库存或下游单据依赖时，系统会阻止整批撤回。',
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              key: const Key('material-plan-cancel-reason'),
-              controller: reasonController,
-              maxLength: 500,
-              decoration: const InputDecoration(labelText: '撤回原因（必填）'),
-            ),
-          ],
+    bool? confirmed;
+    var reason = '';
+    try {
+      confirmed = await UtenDialog.show(
+        context,
+        waitForExit: true,
+        onPopped: (result) {
+          if (result == true) reason = reasonController.text.trim();
+        },
+        title: '整批撤回生产计划${(planNo ?? '').isEmpty ? '' : '（$planNo）'}',
+        confirmLabel: '确认整批撤回',
+        danger: true,
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '将撤回所选生产计划及其有效执行安排，恢复这个来源对应的待安排数量。'
+                '其它产品计划和共享子件批次保留。'
+                '存在实际领用、报工、库存或下游单据依赖时，系统会阻止整批撤回。',
+              ),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                key: const Key('material-plan-cancel-reason'),
+                controller: reasonController,
+                maxLength: 500,
+                decoration: const InputDecoration(labelText: '撤回原因（必填）'),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
-    final reason = reasonController.text.trim();
-    // 退场动画仍会使用控制器，不在确认后的同一帧销毁它。
+      );
+    } finally {
+      reasonController.dispose();
+    }
     if (!mounted || confirmed != true) return false;
     if (reason.length < 2) {
       context.appWarning('撤回原因至少填写两个字');

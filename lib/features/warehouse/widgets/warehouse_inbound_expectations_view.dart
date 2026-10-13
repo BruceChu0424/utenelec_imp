@@ -7,6 +7,7 @@
 // 固定来源、embedded=true 不渲染自己的类型分段与搜索框——关键字由任务中心页级
 // 工具条统一下发）；独立路由 /warehouse/inbound/expectations 由对应页面以
 // embedded=false 包一层继续承接（委外模块卡片深链依赖它）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -250,7 +251,7 @@ class _WarehouseInboundExpectationsViewState
       final receiptIds = [for (final task in drafts) ...task.draftReceiptIds];
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: Text('批量送检 ${drafts.length} 张'),
           content: Text(
             '将把 ${receiptIds.length} 张已登记的草稿收货单一键送品质部待检(IQC)：'

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -259,7 +260,8 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
     final pending = _pendingItems();
     final selected = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialog) => AlertDialog(
+      builder: (dialog) => UtenAlertDialog(
+        maxWidth: 1150,
         title: Text(_l.costPendingItems),
         content: SizedBox(
           width: 1150,
@@ -376,7 +378,8 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
     final path = _sourceRoute(row);
     await showDialog<void>(
       context: context,
-      builder: (dialog) => AlertDialog(
+      builder: (dialog) => UtenAlertDialog(
+        maxWidth: 1000,
         key: const Key('cost-actual-evidence'),
         title: Text(_l.costViewEvidence),
         content: SizedBox(

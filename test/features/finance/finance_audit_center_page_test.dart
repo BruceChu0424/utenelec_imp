@@ -14,6 +14,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/filter_segment_tap.dart';
 
 late SharedPreferences _preferences;
 
@@ -84,11 +85,12 @@ void main() {
   testWidgets('initialSegment deep link embeds the sales confirm queue', (
     tester,
   ) async {
+    final repository = _EmptyConfirmationRepository();
     await tester.pumpWidget(
       _app(
         const FinanceAuditCenterPage(initialSegment: 'salesConfirm'),
         const {Perm.salesOrderFinanceView},
-        repository: _EmptyConfirmationRepository(),
+        repository: repository,
       ),
     );
     await tester.pumpAndSettle();
@@ -96,8 +98,6 @@ void main() {
     // 分段内容 = 队列页自带的小类行（待确认/已驳回），不再是引导空态。
     expect(find.text('在上方选择分类后开始审核'), findsNothing);
     expect(find.text('待确认'), findsOneWidget);
-    expect(find.text('已驳回'), findsOneWidget);
-    expect(find.text('已批准'), findsOneWidget);
     final table = tester
         .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
           find.byKey(const Key('sales-order-finance-desktop-table')),
@@ -107,6 +107,19 @@ void main() {
       'initial',
       'changes',
     ]);
+    expect(repository.pendingQueries.last, (false, false, null));
+    // 非当前分类在收起面板内；实际切换仍使用原队列的服务端查询。
+    await selectFilterSegment(tester, '已驳回');
+    await tester.pumpAndSettle();
+    expect(find.text('已驳回'), findsOneWidget);
+    expect(repository.pendingQueries.last, (true, false, null));
+    await selectFilterSegment(tester, '已批准');
+    await tester.pumpAndSettle();
+    expect(find.text('已批准'), findsOneWidget);
+    expect(repository.pendingQueries.last, (false, true, null));
+    await selectFilterSegment(tester, '待确认');
+    await tester.pumpAndSettle();
+    expect(repository.pendingQueries.last, (false, false, null));
     // 嵌入形态不渲染队列页自己的 AppBar（只有审核中心一个标题）。
     expect(find.text('销售订单财务确认'), findsNothing);
   });
@@ -151,6 +164,7 @@ Widget _app(
 class _EmptyConfirmationRepository
     implements SalesOrderFinanceConfirmationRepository {
   final List<bool?> changesFilters = [];
+  final pendingQueries = <(bool?, bool, bool?)>[];
   @override
   Future<List<MasterFacetBucket>> billNoFacets({
     bool? rejected,
@@ -171,6 +185,7 @@ class _EmptyConfirmationRepository
     String? billNo,
   }) async {
     changesFilters.add(changesOnly);
+    pendingQueries.add((rejected, confirmed, changesOnly));
     return const SalesOrderFinancePendingPage(
       items: [],
       page: 1,

@@ -1,6 +1,7 @@
 // 登录庆典弹窗（生日/周年/新婚/新生儿）。每日一次由 dashboard 的 CelebrationPopupGate 守卫。
 // 文档：docs/00-项目准则/06-动画规范.md（粒子循环按性能档关闭；控制器 dispose）。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,7 +39,7 @@ class _CelebrationLoginDialog extends ConsumerWidget {
     final accent = celebration.type.color;
     final lines = _message(l10n, celebration).split('\n');
 
-    return Dialog(
+    return UtenDialogFrame(
       backgroundColor: theme.colorScheme.surface,
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       insetPadding: const EdgeInsets.symmetric(

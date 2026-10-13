@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -204,6 +205,7 @@ class _ChatSession extends ConsumerStatefulWidget {
 
 class _ChatSessionState extends ConsumerState<_ChatSession> {
   final _input = TextEditingController();
+  final _composerInputKey = GlobalKey();
   final _focus = FocusNode();
   final _scroll = ScrollController();
   final _messages = <_ChatMessage>[];
@@ -1576,7 +1578,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             });
             return const SizedBox.shrink();
           }
-          return AlertDialog(
+          return UtenAlertDialog(
+            scrollable: false,
             title: Text(title),
             content: ConstrainedBox(
               constraints: BoxConstraints(
@@ -1842,7 +1845,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                         side: BorderSide(color: colors.outlineVariant),
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: _panel(panelHeight),
+                      child: _panel(panelHeight, width: panelWidth),
                     ),
                   ),
                 ),
@@ -1853,7 +1856,7 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     );
   }
 
-  Widget _panel(double height) {
+  Widget _panel(double height, {required double width}) {
     final colors = Theme.of(context).colorScheme;
     final tight = height < 400;
     final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
@@ -1861,7 +1864,9 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     // the space above the keyboard. Keep every word and control reachable in
     // one scroll surface instead of clipping content or shrinking the font.
     final scrollAll =
-        height < 240 || (textScale > 1.2 && height < 400 * textScale);
+        width < 240 ||
+        height < 240 ||
+        (textScale > 1.2 && height < 400 * textScale);
     Widget messagesViewport({required Widget child}) =>
         scrollAll ? child : Expanded(child: child);
     final content = Column(
@@ -1871,62 +1876,81 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
             left: UtenSpacing.s16,
             right: UtenSpacing.s4,
           ),
-          child: Row(
-            children: [
-              if (_settingsOpen)
-                IconButton(
-                  key: const ValueKey('ai-settings-back'),
-                  tooltip: aiPageL10n(context).aiChatSettingsBack,
-                  onPressed: _toggleSettings,
-                  icon: const Icon(Icons.arrow_back, size: 20),
-                )
-              else
-                Icon(
-                  Icons.auto_awesome_outlined,
-                  size: 20,
-                  color: colors.primary,
-                ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  _settingsOpen
-                      ? aiPageL10n(context).aiChatSettings
-                      : _t('title'),
-                  style: Theme.of(context).textTheme.titleMedium,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (!_settingsOpen) ...[
-                IconButton(
-                  key: const ValueKey('ai-chat-settings'),
-                  tooltip: aiPageL10n(context).aiChatSettings,
-                  onPressed: _toggleSettings,
-                  icon: const Icon(Icons.tune, size: 20),
-                ),
-                IconButton(
-                  key: const ValueKey('ai-chat-info'),
-                  tooltip: _t('info'),
-                  onPressed: _showHelp,
-                  icon: const Icon(Icons.info_outline, size: 20),
-                ),
-                IconButton(
-                  key: const ValueKey('ai-chat-new'),
-                  tooltip: _t('reset'),
-                  onPressed: _busy || _picking ? null : _newChat,
-                  icon: const Icon(Icons.add_comment_outlined, size: 20),
-                ),
-              ],
-              IconButton(
-                key: const ValueKey('ai-chat-close'),
-                tooltip: _t('close'),
-                onPressed: () {
-                  _focus.unfocus();
-                  setState(() => _open = false);
-                },
-                icon: const Icon(Icons.close, size: 20),
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final heading = Row(
+                children: [
+                  if (_settingsOpen)
+                    IconButton(
+                      key: const ValueKey('ai-settings-back'),
+                      tooltip: aiPageL10n(context).aiChatSettingsBack,
+                      onPressed: _toggleSettings,
+                      icon: const Icon(Icons.arrow_back, size: 20),
+                    )
+                  else
+                    Icon(
+                      Icons.auto_awesome_outlined,
+                      size: 20,
+                      color: colors.primary,
+                    ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      _settingsOpen
+                          ? aiPageL10n(context).aiChatSettings
+                          : _t('title'),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                ],
+              );
+              final actions = Wrap(
+                alignment: WrapAlignment.end,
+                children: [
+                  if (!_settingsOpen) ...[
+                    IconButton(
+                      key: const ValueKey('ai-chat-settings'),
+                      tooltip: aiPageL10n(context).aiChatSettings,
+                      onPressed: _toggleSettings,
+                      icon: const Icon(Icons.tune, size: 20),
+                    ),
+                    IconButton(
+                      key: const ValueKey('ai-chat-info'),
+                      tooltip: _t('info'),
+                      onPressed: _showHelp,
+                      icon: const Icon(Icons.info_outline, size: 20),
+                    ),
+                    IconButton(
+                      key: const ValueKey('ai-chat-new'),
+                      tooltip: _t('reset'),
+                      onPressed: _busy || _picking ? null : _newChat,
+                      icon: const Icon(Icons.add_comment_outlined, size: 20),
+                    ),
+                  ],
+                  IconButton(
+                    key: const ValueKey('ai-chat-close'),
+                    tooltip: _t('close'),
+                    onPressed: () {
+                      _focus.unfocus();
+                      setState(() => _open = false);
+                    },
+                    icon: const Icon(Icons.close, size: 20),
+                  ),
+                ],
+              );
+              if (constraints.maxWidth < 360 * textScale) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [heading, actions],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: heading),
+                  actions,
+                ],
+              );
+            },
           ),
         ),
         const Divider(height: 1),
@@ -2096,7 +2120,16 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
     // The input's natural height drives both buttons, including wrapped text
     // and accessibility text scaling. A shared compact minimum keeps all
     // three controls flush; no fixed input height can clip a new line.
-    const controlSize = UtenFilterRow.minHeight;
+    final controlSize = UtenControlMetrics.controlHeight(context);
+    final inputStyle = Theme.of(context).textTheme.bodyMedium;
+    final lineHeight =
+        MediaQuery.textScalerOf(context).scale(inputStyle?.fontSize ?? 14) *
+        (inputStyle?.height ?? 1.5);
+    final verticalPadding = math.max(7.5, (controlSize - lineHeight) / 2);
+    final removeSize = UtenControlMetrics.minimumHitExtent(
+      context,
+      desktop: 32,
+    );
     final file = _attachment;
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
@@ -2160,20 +2193,24 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                     ),
                     const SizedBox(width: UtenSpacing.s8),
                     Flexible(
-                      child: Text(
-                        file.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodySmall,
+                      child: Tooltip(
+                        message: file.name,
+                        child: Text(
+                          file.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       ),
                     ),
                     const SizedBox(width: UtenSpacing.s4),
                     IconButton(
+                      key: const ValueKey('ai-chat-remove-attachment'),
                       tooltip: _t('removeFile'),
                       onPressed: () => setState(() => _attachment = null),
-                      constraints: const BoxConstraints.tightFor(
-                        width: 28,
-                        height: 28,
+                      constraints: BoxConstraints.tightFor(
+                        width: removeSize,
+                        height: removeSize,
                       ),
                       padding: EdgeInsets.zero,
                       style: const ButtonStyle(
@@ -2196,20 +2233,74 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
               UtenSpacing.s4,
               UtenSpacing.s4,
             ),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_canUpload) ...[
-                    SizedBox(
+            child: _composerControls(
+              controlSize: controlSize,
+              input: KeyedSubtree(
+                key: _composerInputKey,
+                child: DecoratedBox(
+                  key: const ValueKey('ai-chat-input-surface'),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerLowest,
+                    borderRadius: UtenRadius.controlAll,
+                    border: Border.all(
+                      color: _focus.hasFocus
+                          ? colors.primary
+                          : colors.outlineVariant,
+                      width: _focus.hasFocus ? 1.5 : 1,
+                    ),
+                  ),
+                  child: Semantics(
+                    label: _t('label'),
+                    child: Focus(
+                      canRequestFocus: false,
+                      skipTraversal: true,
+                      onKeyEvent: _composerKey,
+                      child: TextField(
+                        key: const ValueKey('ai-chat-input'),
+                        controller: _input,
+                        focusNode: _focus,
+                        minLines: 1,
+                        maxLines: tight ? 2 : 4,
+                        inputFormatters: [
+                          LengthLimitingTextInputFormatter(2000),
+                        ],
+                        enabled: _capabilities?.usable == true,
+                        textInputAction: TextInputAction.newline,
+                        textAlignVertical: TextAlignVertical.center,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                        onChanged: (_) => setState(() {}),
+                        decoration: InputDecoration(
+                          constraints: BoxConstraints(minHeight: controlSize),
+                          hintText: _t(_canUpload ? 'hint' : 'hintNoUpload'),
+                          hintStyle: TextStyle(color: colors.onSurfaceVariant),
+                          // Fill the current control minimum evenly around one
+                          // line. Larger text then determines its own height.
+                          contentPadding: EdgeInsets.fromLTRB(
+                            UtenSpacing.s12,
+                            verticalPadding,
+                            UtenSpacing.s12,
+                            verticalPadding,
+                          ),
+                          isDense: true,
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              attachment: _canUpload
+                  ? SizedBox(
                       width: controlSize,
                       child: IconButton(
                         key: const ValueKey('ai-chat-attach'),
                         tooltip: _t('attach'),
                         onPressed: _busy || _picking ? null : _pickFile,
-                        constraints: const BoxConstraints(
-                          minHeight: UtenFilterRow.minHeight,
-                        ),
+                        constraints: BoxConstraints(minHeight: controlSize),
                         style: IconButton.styleFrom(
                           padding: EdgeInsets.zero,
                           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -2220,110 +2311,37 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                         ),
                         icon: const Icon(Icons.attach_file, size: 18),
                       ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                  ],
-                  Expanded(
-                    child: DecoratedBox(
-                      key: const ValueKey('ai-chat-input-surface'),
-                      decoration: BoxDecoration(
-                        color: colors.surfaceContainerLowest,
-                        borderRadius: UtenRadius.controlAll,
-                        border: Border.all(
-                          color: _focus.hasFocus
-                              ? colors.primary
-                              : colors.outlineVariant,
-                          width: _focus.hasFocus ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Semantics(
-                        label: _t('label'),
-                        child: Focus(
-                          canRequestFocus: false,
-                          skipTraversal: true,
-                          onKeyEvent: _composerKey,
-                          child: TextField(
-                            key: const ValueKey('ai-chat-input'),
-                            controller: _input,
-                            focusNode: _focus,
-                            minLines: 1,
-                            maxLines: tight ? 2 : 4,
-                            inputFormatters: [
-                              LengthLimitingTextInputFormatter(2000),
-                            ],
-                            enabled: _capabilities?.usable == true,
-                            textInputAction: TextInputAction.newline,
-                            textAlignVertical: TextAlignVertical.center,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                            onChanged: (_) => setState(() {}),
-                            decoration: InputDecoration(
-                              constraints: const BoxConstraints(
-                                minHeight: UtenFilterRow.minHeight,
-                              ),
-                              hintText: _t(
-                                _canUpload ? 'hint' : 'hintNoUpload',
-                              ),
-                              hintStyle: TextStyle(
-                                color: colors.onSurfaceVariant,
-                              ),
-                              // Zero-slack vertical centering: bodyMedium is
-                              // 14 * 1.5 = 21px per line; 21 + 7.5 * 2 = 36,
-                              // exactly the surface's min height, so the text
-                              // cannot drift off-center regardless of how
-                              // InputDecorator distributes leftover space
-                              // (isDense sinks it to the bottom).
-                              contentPadding: const EdgeInsets.fromLTRB(
-                                UtenSpacing.s12,
-                                7.5,
-                                UtenSpacing.s12,
-                                7.5,
-                              ),
-                              isDense: true,
-                              filled: false,
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    )
+                  : null,
+              send: SizedBox(
+                width: controlSize,
+                child: IconButton.filled(
+                  key: const ValueKey('ai-chat-send'),
+                  tooltip: _t(_cancel != null ? 'stop' : 'send'),
+                  constraints: BoxConstraints(minHeight: controlSize),
+                  style: IconButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.standard,
+                    shape: const StadiumBorder(),
+                    backgroundColor: colors.primary,
+                    foregroundColor: colors.onPrimary,
                   ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  SizedBox(
-                    width: controlSize,
-                    child: IconButton.filled(
-                      key: const ValueKey('ai-chat-send'),
-                      tooltip: _t(_cancel != null ? 'stop' : 'send'),
-                      constraints: const BoxConstraints(
-                        minHeight: UtenFilterRow.minHeight,
-                      ),
-                      style: IconButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.standard,
-                        shape: const StadiumBorder(),
-                        backgroundColor: colors.primary,
-                        foregroundColor: colors.onPrimary,
-                      ),
-                      onPressed: _cancel != null
-                          ? _stop
-                          : canSend
-                          ? _send
-                          : null,
-                      icon: Icon(
-                        _cancel != null
-                            ? Icons.stop_rounded
-                            : Icons.arrow_upward_rounded,
-                        size: 18,
-                        color: _cancel != null || canSend
-                            ? colors.onPrimary
-                            : colors.onSurfaceVariant,
-                      ),
-                    ),
+                  onPressed: _cancel != null
+                      ? _stop
+                      : canSend
+                      ? _send
+                      : null,
+                  icon: Icon(
+                    _cancel != null
+                        ? Icons.stop_rounded
+                        : Icons.arrow_upward_rounded,
+                    size: 18,
+                    color: _cancel != null || canSend
+                        ? colors.onPrimary
+                        : colors.onSurfaceVariant,
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -2331,6 +2349,53 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       ),
     );
   }
+
+  Widget _composerControls({
+    required double controlSize,
+    required Widget input,
+    required Widget? attachment,
+    required Widget send,
+  }) => LayoutBuilder(
+    builder: (context, constraints) {
+      final controlsWidth =
+          controlSize + (attachment == null ? 0 : controlSize);
+      final gaps = attachment == null ? UtenSpacing.s8 : UtenSpacing.s16;
+      if (constraints.maxWidth < controlsWidth + gaps + 80) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            input,
+            const SizedBox(height: UtenSpacing.s8),
+            SizedBox(
+              height: controlSize,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ?attachment,
+                  if (attachment == null) const Spacer(),
+                  send,
+                ],
+              ),
+            ),
+          ],
+        );
+      }
+      return IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (attachment != null) ...[
+              attachment,
+              const SizedBox(width: UtenSpacing.s8),
+            ],
+            Expanded(child: input),
+            const SizedBox(width: UtenSpacing.s8),
+            send,
+          ],
+        ),
+      );
+    },
+  );
 
   /// ADR-152 send key: Enter sends (Shift+Enter = new line), or Ctrl/Cmd+Enter
   /// sends (Enter = new line). A key that confirms an input-method
@@ -2511,10 +2576,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
                     color: colors.primary,
                   ),
                   const SizedBox(width: UtenSpacing.s6),
-                  Text(
-                    _t('assistant'),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: colors.onSurfaceVariant,
+                  Flexible(
+                    child: Text(
+                      _t('assistant'),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ],

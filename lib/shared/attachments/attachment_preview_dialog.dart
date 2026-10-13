@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -140,7 +141,7 @@ class _AttachmentPreviewDialogState extends State<AttachmentPreviewDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final kindIcon = AttachmentFileKind.of(widget.name, widget.contentType);
-    return Dialog(
+    return UtenDialogFrame(
       insetPadding: const EdgeInsets.all(UtenSpacing.s16),
       backgroundColor: theme.colorScheme.surface,
       clipBehavior: Clip.antiAlias,

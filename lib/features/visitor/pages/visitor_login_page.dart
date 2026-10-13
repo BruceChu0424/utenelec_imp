@@ -167,7 +167,6 @@ class _VisitorLoginPageState extends ConsumerState<VisitorLoginPage> {
                             constraints: const BoxConstraints(maxWidth: 440),
                             child: UtenCard(
                               padding: const EdgeInsets.all(UtenSpacing.s32),
-                              borderRadius: UtenRadius.xl,
                               child: _buildLoginForm(theme, isDark),
                             ),
                           ),

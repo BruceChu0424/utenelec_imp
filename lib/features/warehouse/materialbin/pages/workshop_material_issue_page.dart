@@ -10,6 +10,7 @@
 // 内料仓正在盘点时, 发的料自动算到下一期 (页面提示); 盘点前漏录的发料可勾选
 // "这批料是上一期漏录的", 选补到哪一期并写原因。
 // 库存不足、版本冲突整笔不成功, 页面保留输入; 原样再点确认是同一个请求号, 不会重复发。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -543,36 +544,43 @@ class _WorkshopMaterialIssuePageState
     final requisition = _requisition;
     if (requisition == null) return;
     final controller = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('取消这张申请'),
-        content: TextField(
-          key: const Key('wm-issue-cancel-reason'),
-          controller: controller,
-          autofocus: true,
-          maxLength: 500,
-          decoration: const InputDecoration(labelText: '取消原因', counterText: ''),
+    late final String? reason;
+    try {
+      reason = await UtenDialog.showAndWaitForExit<String>(
+        context,
+        builder: (dialogContext) => UtenAlertDialog(
+          title: const Text('取消这张申请'),
+          content: TextField(
+            key: const Key('wm-issue-cancel-reason'),
+            controller: controller,
+            autofocus: true,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              labelText: '取消原因',
+              counterText: '',
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('返回'),
+            ),
+            UtenButton(
+              type: UtenButtonType.danger,
+              onPressed: () {
+                final text = controller.text.trim();
+                if (text.length >= 2) Navigator.of(dialogContext).pop(text);
+              },
+              child: const Text('取消申请'),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('返回'),
-          ),
-          UtenButton(
-            type: UtenButtonType.danger,
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.length >= 2) Navigator.of(dialogContext).pop(text);
-            },
-            child: const Text('取消申请'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
+      );
+    } finally {
+      controller.dispose();
+    }
     if (reason == null || !mounted) return;
     setState(() => _saving = true);
     try {

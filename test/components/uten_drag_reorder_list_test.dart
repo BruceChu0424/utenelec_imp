@@ -2,7 +2,7 @@
 //
 // 1) 按住手柄拖过其余项中点即换位：onReorder(old, new) 语义与
 //    ReorderableListView.onReorderItem 一致（newIndex = 最终下标）；
-// 2) 根部整体缩放（UtenDisplayZoomBox，2560 窗口 → zoom 4/3）之下，用窗口坐标拖动
+// 2) 显式整体缩放（UtenDisplayZoomBox，界面倍率 4/3）之下，用窗口坐标拖动
 //    仍换到正确位置，且拖影盖在原项上（不偏 zoom 倍——这正是弃用
 //    ReorderableListView 的原因）；
 // 3) 越出列表上沿：钳到首位；固定行由宿主钳位（组件不裁剪）。
@@ -136,7 +136,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         builder: (context, child) => UtenDisplayZoomBox(
-          fontFactor: 1,
+          fontFactor: 4 / 3,
           child: child ?? const SizedBox.shrink(),
         ),
         home: Scaffold(body: _Host(onReorder: (o, n) => calls.add((o, n)))),
@@ -171,6 +171,10 @@ void main() {
             .toList()
           ..sort();
     expect(tops.last, closeTo(110, 1.0));
+    expect(tops.first, closeTo(80, 1e-6), reason: '原列表按既有即时换位契约布局');
+    expect(tester.getRect(_row('b')).top, closeTo(0, 1e-6));
+    expect(tester.getRect(_row('c')).top, closeTo(160, 1e-6));
+    expect(calls, [(0, 1)], reason: '越过中点时即时回调一次，释放后不重复');
     await gesture.up();
     await tester.pumpAndSettle();
     expect(calls, [(0, 1)]);

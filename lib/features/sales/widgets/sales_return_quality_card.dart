@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -478,7 +479,8 @@ class _DispositionDialogState extends State<_DispositionDialog> {
         : widget.item.remainingBaseQty;
     return PopScope(
       canPop: !_submitting,
-      child: AlertDialog(
+      child: UtenAlertDialog(
+        scrollable: false,
         title: Text(
           widget.correction
               ? '确认撤回${widget.action.label}'
@@ -666,7 +668,7 @@ class _Metric extends StatelessWidget {
         color: emphasized
             ? theme.colorScheme.tertiaryContainer
             : theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(UtenRadius.md),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -718,7 +720,7 @@ class _QualityMessage extends StatelessWidget {
         padding: const EdgeInsets.all(UtenSpacing.s12),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(UtenRadius.md),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

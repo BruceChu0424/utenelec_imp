@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -686,7 +687,9 @@ class _ProductionDrawRequestPageState
     ProductionDrawRequestSummary summary,
   ) => showDialog<void>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => UtenAlertDialog(
+      maxWidth: 920,
+      scrollable: false,
       title: Text('${_label(summary.goodsName)} · 任务来源'),
       content: SizedBox(
         width: 920,

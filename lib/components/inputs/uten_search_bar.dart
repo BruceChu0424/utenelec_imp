@@ -235,10 +235,10 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
               widget.onSubmitted!(value);
             },
       textInputAction: TextInputAction.search,
-      decoration: _decoration(theme),
+      decoration: _decoration(context, theme),
       style: widget.dense
-          ? theme.textTheme.bodySmall
-          : theme.textTheme.bodyMedium,
+          ? theme.textTheme.bodyMedium
+          : theme.textTheme.bodyLarge,
     );
   }
 
@@ -249,10 +249,11 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   /// 描边高度 = max(前后缀图标约束高, contentPadding + 文本行高 + 密度折减)，
   /// 图标约束高与分类分段行 minCellHeight 同源取 UtenFilterRow.minHeight(36)
   ///（机制见文件头）；字号放大时行高自然增高，描边跟随、分段行同拉伸。
-  InputDecoration _decoration(ThemeData theme) {
+  InputDecoration _decoration(BuildContext context, ThemeData theme) {
+    final controlHeight = UtenControlMetrics.controlHeight(context);
     OutlineInputBorder border(Color color, [double width = 1]) =>
         OutlineInputBorder(
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(UtenRadius.pill),
           borderSide: BorderSide(color: color, width: width),
         );
     return InputDecoration(
@@ -267,12 +268,12 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
         // 图标约束高 = 药丸描边的内容高下限（fixIconHeight 参与内容高计算，
         // 见文件头机制说明）——与 UtenSegmentRow.minCellHeight 同源取
         // UtenFilterRow.minHeight，分类栏与搜索框描边恒同高。
-        minHeight: widget.dense ? 28 : UtenFilterRow.minHeight,
+        minHeight: controlHeight,
       ),
       suffixIcon: _controller.text.isNotEmpty
           ? SizedBox(
-              width: UtenFilterRow.minHeight,
-              height: UtenFilterRow.minHeight,
+              width: controlHeight,
+              height: controlHeight,
               // 清除钮默认 padded 触达目标最小约 40，会把有输入时的药丸顶高、
               // 空框又回落，高度来回跳；外层紧约束统一收口到行高下限。
               child: IconButton(
@@ -284,8 +285,8 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
             )
           : null,
       suffixIconConstraints: BoxConstraints(
-        minWidth: 36,
-        minHeight: widget.dense ? 28 : UtenFilterRow.minHeight,
+        minWidth: controlHeight,
+        minHeight: controlHeight,
       ),
       // 描边高度机制见文件头：内容高下限由前后缀图标约束(36)提供，
       // contentPadding 与文本行高决定随字号增长的部分，**不设 minHeight 48**：

@@ -26,6 +26,7 @@
 // 2026-09-10（V543 车间默认权限收紧二）：车间默认包不再含 production_plan:view，
 // 「查看生产计划」行菜单/双击只对持该码（或超管）的人开放，其余人给明确提示，
 // 用「确认用料/物料使用情况」看本工单（此前直接落到 /access-denied）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -809,7 +810,7 @@ class _ProductionWorkshopTasksPageState
             height: 16,
             decoration: BoxDecoration(
               color: _routeDotColor(context, current),
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(UtenRadius.xs),
             ),
           ),
           const SizedBox(width: UtenSpacing.s4),
@@ -1429,7 +1430,8 @@ class _ProductionWorkshopTasksPageState
           ? 'report:${formal.single.id}'
           : await showDialog<String>(
               context: context,
-              builder: (dialogContext) => AlertDialog(
+              builder: (dialogContext) => UtenAlertDialog(
+                scrollable: false,
                 title: const Text('继续填写'),
                 content: SizedBox(
                   width: 460,
@@ -2120,7 +2122,7 @@ class _ProductionWorkshopTasksPageState
               for (final row in _items) row.segmentId: row,
             }[segmentId];
             if (task == null) {
-              return AlertDialog(
+              return UtenAlertDialog(
                 title: const Text('车间任务详情'),
                 content: const Text('任务已更新，请关闭后重新打开'),
                 actions: [
@@ -2485,7 +2487,8 @@ class _ProductionWorkshopTasksPageState
         }
         final source = await showDialog<ProductionMaterialUsageSource>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
+          builder: (dialogContext) => UtenAlertDialog(
+            scrollable: false,
             title: const Text('选择原领料任务'),
             content: SizedBox(
               width: 460,

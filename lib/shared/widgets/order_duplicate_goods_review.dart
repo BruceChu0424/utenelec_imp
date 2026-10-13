@@ -6,6 +6,8 @@
 //   删除重复行 —— 每组只保留第一行（仅当全部组各行内容完全一致时提供，无损）；
 //   返回修改   —— 不保存，页面把重复行整行标红（EditableGridRow.flagged）供检查。
 // 弹窗被 ESC/点蒙层关闭按「返回修改」处理（返回 null），绝不静默保存。
+import '../../core/theme/uten_tokens.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../components/buttons/uten_button.dart';
@@ -76,7 +78,8 @@ Future<DuplicateGoodsReviewAction?> showDuplicateGoodsReviewDialog<T>(
         ctx,
       ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
       return SelectionArea(
-        child: AlertDialog(
+        child: UtenAlertDialog(
+          scrollable: false,
           title: Text(
             groups.length == 1 ? '发现重复货品' : '发现 ${groups.length} 组重复货品',
           ),
@@ -100,7 +103,7 @@ Future<DuplicateGoodsReviewAction?> showDuplicateGoodsReviewDialog<T>(
                         color: scheme.surfaceContainerHighest.withValues(
                           alpha: 0.45,
                         ),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(UtenRadius.md),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

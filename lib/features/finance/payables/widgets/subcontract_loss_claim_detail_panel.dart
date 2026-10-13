@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -177,7 +178,7 @@ class _SubcontractLossClaimDetailPanelState
     if (resolution.requiresPhysicalDocument) {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: const Text('先红冲履约实物单'),
           content: Text(
             '服务端将核验 ${resolution.fulfillmentDocNo ?? resolution.fulfillmentDocId ?? '对应实物单'}'

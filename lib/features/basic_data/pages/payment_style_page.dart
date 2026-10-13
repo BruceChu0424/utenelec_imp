@@ -3,6 +3,7 @@
 // 这是纯分类主档，不套用“分类摘要卡 + 下方业务表格”的通用详情页模板：
 // 大屏采用可调宽目录树 + 页面级属性检查器，手机采用详情 + 分类抽屉。
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,13 +21,13 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
-import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -292,7 +293,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
     if (disabling) {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: const Text('停用类别'),
           content: Text('停用「${detail.name}」后，新业务应不再选择它；历史单据仍保留原类别。确定继续吗？'),
           actions: [
@@ -531,7 +532,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
         ? null
         : _findById(_tree, _selectedId!);
 
-    Widget detail = selected == null
+    final detail = selected == null
         ? const UtenEmpty(
             icon: Icons.touch_app_outlined,
             message: '从类别目录选择一项查看属性',
@@ -549,29 +550,19 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
             onSelectChild: (id) => _select(id),
           );
 
-    // medium 断点及较窄桌面屏的可用内容宽度还要扣除左侧 Rail；
-    // 960dp 以下改用抽屉，避免把目录树压成不可用的窄栏。
-    final directoryInDrawer = MediaQuery.sizeOf(context).width < 960;
-    if (directoryInDrawer) {
-      detail = UtenContentContainer(
-        child: Padding(
-          padding: const EdgeInsets.only(top: UtenSpacing.s8),
-          child: detail,
-        ),
-      );
-    }
-
-    final body = directoryInDrawer
-        ? detail
-        : UtenSplitView(
-            persistenceKey: 'basicData.paymentStyle',
-            initialLeadingWidth: 320,
-            minLeadingWidth: 260,
-            maxLeadingWidth: 460,
-            minTrailingWidth: 440,
-            leading: _buildDirectory(),
-            trailing: detail,
-          );
+    final body = UtenSplitView(
+      persistenceKey: 'basicData.paymentStyle',
+      minTwoPaneWidth: 840,
+      initialLeadingWidth: 320,
+      minLeadingWidth: 260,
+      maxLeadingWidth: 460,
+      minTrailingWidth: 440,
+      selectedLeadingLabel: utenTreeSelectionPath(_tree, _selectedId),
+      selectedLeadingKey: _selectedId,
+      leadingNoun: '类别',
+      leading: _buildDirectory(),
+      trailing: detail,
+    );
 
     return Scaffold(
       appBar: UtenAppBar(
@@ -596,19 +587,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
             tooltip: '刷新',
             onPressed: _treeLoading ? null : _load,
           ),
-          if (directoryInDrawer)
-            Builder(
-              builder: (scaffoldContext) => IconButton(
-                icon: const Icon(Icons.account_tree_rounded),
-                tooltip: '类别目录',
-                onPressed: () => Scaffold.of(scaffoldContext).openEndDrawer(),
-              ),
-            ),
         ],
       ),
-      endDrawer: directoryInDrawer
-          ? Drawer(child: SafeArea(child: _buildDirectory(closeOnSelect: true)))
-          : null,
       body: SafeArea(child: body),
     );
   }
@@ -1713,7 +1693,9 @@ class _PaymentStyleEditDialogState
         ? null
         : _pathTo(_parent!.id);
     final protectedName = _isEdit && _hasProtectedSystemName(widget.editing!);
-    return AlertDialog(
+    return UtenAlertDialog(
+      maxWidth: 620,
+      scrollable: false,
       title: Text(_isEdit ? '编辑类别' : '新增${widget.category.label}类别'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 620),

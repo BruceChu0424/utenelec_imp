@@ -62,7 +62,7 @@ Future<bool> showFinanceAssetPolicyDialog(
   return await showDialog<bool>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => Dialog(
+        builder: (_) => UtenDialogFrame(
           clipBehavior: Clip.antiAlias,
           shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
           child: SizedBox(

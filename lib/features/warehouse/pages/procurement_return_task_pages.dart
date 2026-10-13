@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -155,46 +156,50 @@ class _ProcurementReturnTasksPageState
         .toList(growable: false);
     if (tasks.isEmpty) return;
     final noteCtl = TextEditingController();
-    final note = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('批量确认退回 ${tasks.length} 条'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '将记录以下 ${tasks.length} 条超量已实际退回供应商，'
-              '并关闭对应退回任务(超量未入库，不冲库存/应付)。',
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: noteCtl,
-              minLines: 2,
-              maxLines: 4,
-              maxLength: 1000,
-              decoration: const InputDecoration(
-                labelText: '退回说明(可选，批量共用)',
-                hintText: '例如：供应商司机已带回',
+    late final String? note;
+    try {
+      note = await UtenDialog.showAndWaitForExit<String>(
+        context,
+        builder: (ctx) => UtenAlertDialog(
+          title: Text('批量确认退回 ${tasks.length} 条'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '将记录以下 ${tasks.length} 条超量已实际退回供应商，'
+                '并关闭对应退回任务(超量未入库，不冲库存/应付)。',
               ),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                controller: noteCtl,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 1000,
+                decoration: const InputDecoration(
+                  labelText: '退回说明(可选，批量共用)',
+                  hintText: '例如：供应商司机已带回',
+                ),
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, noteCtl.text.trim()),
+              icon: const Icon(Icons.assignment_return_outlined),
+              label: const Text('确认退回'),
             ),
           ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(ctx, noteCtl.text.trim()),
-            icon: const Icon(Icons.assignment_return_outlined),
-            label: const Text('确认退回'),
-          ),
-        ],
-      ),
-    );
-    noteCtl.dispose();
+      );
+    } finally {
+      noteCtl.dispose();
+    }
     if (note == null || !mounted) return;
     setState(() {
       _batchSaving = true;
@@ -609,46 +614,50 @@ class _ProcurementReturnTaskDetailPageState
       return;
     }
     final noteController = TextEditingController();
-    final note = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('确认已退回供应商'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '请确认 ${procurementQty(returnTask.qty)} ${task.unitName ?? ''} 已实际交还供应商。',
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: noteController,
-              minLines: 2,
-              maxLines: 4,
-              maxLength: 1000,
-              decoration: const InputDecoration(
-                labelText: '退回说明(可选)',
-                hintText: '例如：供应商司机已带回',
+    late final String? note;
+    try {
+      note = await UtenDialog.showAndWaitForExit<String>(
+        context,
+        builder: (dialogContext) => UtenAlertDialog(
+          title: const Text('确认已退回供应商'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '请确认 ${procurementQty(returnTask.qty)} ${task.unitName ?? ''} 已实际交还供应商。',
               ),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                controller: noteController,
+                minLines: 2,
+                maxLines: 4,
+                maxLength: 1000,
+                decoration: const InputDecoration(
+                  labelText: '退回说明(可选)',
+                  hintText: '例如：供应商司机已带回',
+                ),
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, noteController.text.trim()),
+              icon: const Icon(Icons.assignment_return_outlined),
+              label: const Text('确认已退回'),
             ),
           ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton.icon(
-            onPressed: () =>
-                Navigator.pop(dialogContext, noteController.text.trim()),
-            icon: const Icon(Icons.assignment_return_outlined),
-            label: const Text('确认已退回'),
-          ),
-        ],
-      ),
-    );
-    noteController.dispose();
+      );
+    } finally {
+      noteController.dispose();
+    }
     if (note == null || !mounted) return;
     setState(() => _saving = true);
     try {

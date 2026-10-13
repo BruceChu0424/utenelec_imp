@@ -25,6 +25,7 @@
 // 工作流类(type=approval/workflow)一律行动级，不受 priority=normal 降级。
 // 文档：docs/02-组件库/ReviewPendingDialog.md
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -282,7 +283,7 @@ class _LevelBadge extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: style.badgeContainer,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -591,10 +592,12 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
     // 高度完全随内容自适应；封顶 min(60% 屏高, 560)——积压多条时列表内部
     // 滚动，弹窗保持正常卡片比例，不再被拉到接近全屏。
     final maxHeight = math.min(MediaQuery.sizeOf(context).height * 0.6, 560.0);
-    return Dialog(
+    return UtenDialogFrame(
       backgroundColor: scheme.surface,
       elevation: 12,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(UtenRadius.dialog),
+      ),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: 480, maxHeight: maxHeight),
         child: Padding(
@@ -721,7 +724,7 @@ class _Header extends StatelessWidget {
           height: 52,
           decoration: BoxDecoration(
             color: scheme.primaryContainer,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(UtenRadius.card),
           ),
           child: Icon(
             hasReviews ? Icons.fact_check_rounded : Icons.campaign_rounded,
@@ -766,7 +769,9 @@ class _Header extends StatelessWidget {
                               color: scheme.secondaryContainer.withValues(
                                 alpha: 0.6,
                               ),
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: BorderRadius.circular(
+                                UtenRadius.pill,
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -863,7 +868,7 @@ class _LargeItemCard extends StatelessWidget {
     final claimedBy = status?.claimedByName;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(UtenRadius.card),
       child: Container(
         // clip 让左侧竖红条贴着圆角裁齐。
         clipBehavior: Clip.antiAlias,
@@ -873,7 +878,7 @@ class _LargeItemCard extends StatelessWidget {
               : level == ReviewNoticeLevel.progress
               ? scheme.surfaceContainerLow
               : scheme.secondaryContainer.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(UtenRadius.card),
           border: Border.all(
             color: urgent
                 ? scheme.error
@@ -906,7 +911,9 @@ class _LargeItemCard extends StatelessWidget {
                             height: style.dense ? 36 : 40,
                             decoration: BoxDecoration(
                               color: style.iconContainer,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(
+                                UtenRadius.lg,
+                              ),
                             ),
                             child: Icon(
                               _eventIcon(notice.sourceEvent),
@@ -996,14 +1003,14 @@ class _CompactItemCard extends StatelessWidget {
     final urgent = level == ReviewNoticeLevel.urgent;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(UtenRadius.lg),
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: urgent
               ? scheme.errorContainer.withValues(alpha: 0.45)
               : scheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(UtenRadius.lg),
           border: urgent ? Border.all(color: scheme.error, width: 1.5) : null,
         ),
         // IntrinsicHeight：列表项高度不定（unbounded），让左竖条 stretch 到整行高。
@@ -1025,7 +1032,9 @@ class _CompactItemCard extends StatelessWidget {
                         height: 30,
                         decoration: BoxDecoration(
                           color: style.iconContainer,
-                          borderRadius: BorderRadius.circular(9),
+                          borderRadius: BorderRadius.circular(
+                            UtenRadius.control,
+                          ),
                         ),
                         child: Icon(
                           _eventIcon(notice.sourceEvent),
@@ -1109,7 +1118,7 @@ class _ClaimChip extends StatelessWidget {
         color: claimed
             ? scheme.tertiaryContainer.withValues(alpha: 0.7)
             : scheme.primaryContainer.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1267,7 +1276,7 @@ class _ManualNoticeCard extends StatelessWidget {
         color: urgent
             ? scheme.errorContainer.withValues(alpha: 0.45)
             : style.iconContainer,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(UtenRadius.lg),
         border: urgent ? Border.all(color: scheme.error, width: 1.5) : null,
       ),
       child: Column(
@@ -1282,7 +1291,7 @@ class _ManualNoticeCard extends StatelessWidget {
                 height: 36,
                 decoration: BoxDecoration(
                   color: typeColor.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(UtenRadius.control),
                 ),
                 child: Icon(notice.type.icon, size: 20, color: typeColor),
               ),
@@ -1396,7 +1405,7 @@ class _DoneChip extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

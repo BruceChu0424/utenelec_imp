@@ -1,5 +1,6 @@
 // 主档批量命令的结果反馈(ADR-111)：全部成功弹一条顶部通知；有失败就弹结果框，
 // 逐条列出「哪一条、为什么」，不再只报「N 个跳过」把原因吞掉。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -26,7 +27,8 @@ Future<void> showMasterBatchOutcome(
   await showDialog<void>(
     context: context,
     builder: (ctx) => SelectionArea(
-      child: AlertDialog(
+      child: UtenAlertDialog(
+        scrollable: false,
         key: const Key('master-batch-outcome'),
         title: Text(
           result.succeeded == 0

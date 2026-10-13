@@ -52,7 +52,9 @@ class UtenInProgressBadge extends StatelessWidget {
     final scale = UtenBadgeScale.of(context);
     // 字号档: 桌面/平板由根部整体缩放(UtenDisplayZoomBox)连同徽章一起放大; 手机只放大
     // 文字(textScaler), 药丸高度与内边距也要跟着同一倍数放大, 否则数字撑破徽章。
-    final textGrow = MediaQuery.textScalerOf(context).scale(10) / 10;
+    final fontSize = (showLabel ? 11 : 10) * scale;
+    final textGrow =
+        MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
     final grow = scale * textGrow;
     final size = this.size * grow;
 
@@ -77,7 +79,7 @@ class UtenInProgressBadge extends StatelessWidget {
           style: TextStyle(
             // 亮琥珀底上是深棕字不是白字, 与 UtenColors.warningStrong 配套。
             color: UtenColors.onWarningStrong,
-            fontSize: (showLabel ? 11 : 10) * scale,
+            fontSize: fontSize,
             fontWeight: FontWeight.w800,
           ),
         ),

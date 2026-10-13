@@ -190,7 +190,6 @@ class _LoginPageState extends ConsumerState<LoginPage>
                                     padding: const EdgeInsets.all(
                                       UtenSpacing.s32,
                                     ),
-                                    borderRadius: UtenRadius.xl,
                                     child: _buildLoginForm(l10n, theme),
                                   ),
                                 ),

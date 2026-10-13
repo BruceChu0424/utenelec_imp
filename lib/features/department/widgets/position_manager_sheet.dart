@@ -3,6 +3,8 @@
 // 从部门管理页的部门节点「岗位」入口打开。列出该部门岗位（按 sortOrder），
 // 支持添加（编码 + 名称 + 职级 + 排序号）、改名/改级/改序、删除（二次确认）。
 // 接口：GET/POST /org/departments/{deptId}/positions，PUT/DELETE /org/positions/{id}。
+import '../../../core/theme/uten_tokens.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -144,86 +146,106 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
     final sortCtl = TextEditingController(
       text: position.sortOrder?.toString() ?? '',
     );
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: Text(isCreate ? '添加岗位' : '编辑岗位'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (isCreate) ...[
-                  TextField(
-                    controller: codeCtl,
-                    decoration: const InputDecoration(
-                      labelText: '岗位编码 *',
-                      hintText: '如 BUYER-01',
+    var confirmedCode = '';
+    var confirmedName = '';
+    var confirmedLevel = '';
+    var confirmedSort = '';
+    late final bool? saved;
+    try {
+      saved = await UtenDialog.showAndWaitForExit<bool>(
+        context,
+        onPopped: (_) {
+          confirmedCode = codeCtl.text;
+          confirmedName = nameCtl.text;
+          confirmedLevel = levelCtl.text;
+          confirmedSort = sortCtl.text;
+        },
+
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setSt) => UtenAlertDialog(
+            scrollable: false,
+            title: Text(isCreate ? '添加岗位' : '编辑岗位'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isCreate) ...[
+                    TextField(
+                      controller: codeCtl,
+                      decoration: const InputDecoration(
+                        labelText: '岗位编码 *',
+                        hintText: '如 BUYER-01',
+                      ),
                     ),
+                    const SizedBox(height: 12),
+                  ],
+                  TextField(
+                    controller: nameCtl,
+                    decoration: const InputDecoration(labelText: '岗位名称 *'),
                   ),
                   const SizedBox(height: 12),
+                  TextField(
+                    controller: levelCtl,
+                    decoration: const InputDecoration(labelText: '职级'),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final s in kPositionLevelSuggestions)
+                        ActionChip(
+                          label: Text(s),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => setSt(() => levelCtl.text = s),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: sortCtl,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: const InputDecoration(labelText: '排序号'),
+                  ),
                 ],
-                TextField(
-                  controller: nameCtl,
-                  decoration: const InputDecoration(labelText: '岗位名称 *'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: levelCtl,
-                  decoration: const InputDecoration(labelText: '职级'),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final s in kPositionLevelSuggestions)
-                      ActionChip(
-                        label: Text(s),
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => setSt(() => levelCtl.text = s),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: sortCtl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(labelText: '排序号'),
-                ),
-              ],
+              ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(isCreate ? '添加' : '保存'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(isCreate ? '添加' : '保存'),
-            ),
-          ],
         ),
-      ),
-    );
+      );
+    } finally {
+      codeCtl.dispose();
+      nameCtl.dispose();
+      levelCtl.dispose();
+      sortCtl.dispose();
+    }
     if (saved != true || !mounted) return;
-    final name = nameCtl.text.trim();
-    if (name.isEmpty || (isCreate && codeCtl.text.trim().isEmpty)) {
+    final name = confirmedName.trim();
+    if (name.isEmpty || (isCreate && confirmedCode.trim().isEmpty)) {
       UtenToast.warning(context, '请填写必填项(编码/名称)');
       return;
     }
-    final level = levelCtl.text.trim();
-    final sort = int.tryParse(sortCtl.text.trim());
+    final level = confirmedLevel.trim();
+    final sort = int.tryParse(confirmedSort.trim());
     try {
       if (isCreate) {
         await _repo.create(
           widget.node.id,
           PositionSaveInput(
-            code: codeCtl.text.trim(),
+            code: confirmedCode.trim(),
             name: name,
             level: level.isEmpty ? null : level,
             sortOrder: sort,
@@ -255,7 +277,7 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
     if (!_canDelete) return;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除岗位'),
         content: Text('确定删除岗位「${p.name}」吗？删除后不可恢复。'),
         actionsAlignment: MainAxisAlignment.center,
@@ -362,7 +384,7 @@ class _PositionManagerSheetState extends ConsumerState<PositionManagerSheet> {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: theme.colorScheme.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(6),
+                          borderRadius: BorderRadius.circular(UtenRadius.sm),
                         ),
                         child: Text(
                           '${p.sortOrder ?? i + 1}',

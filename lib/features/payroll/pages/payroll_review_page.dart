@@ -11,6 +11,7 @@
 //
 // 响应式：compact 由页面自套 UtenContentContainer；明细表随折叠容器内滚
 //（摘要/驳回卡进折叠头，2026-09-22 全站表格滚动口径），窄屏横向滚动即可。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -231,7 +232,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
     if (action == _BatchAction.publish) {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
+        builder: (dialogContext) => UtenAlertDialog(
           title: const Text('确认发布工资条？'),
           content: Text(
             '发布后，${batch.headcount} 名员工将可以查看 '
@@ -290,58 +291,62 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
   Future<String?> _askRejectReason() async {
     final controller = TextEditingController();
     String? validationError;
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('驳回工资批次'),
-          content: SizedBox(
-            width: 440,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const UtenReviewerResponsibilityNotice(
-                  actionLabel: '工资审核驳回',
-                  description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  maxLines: 3,
-                  decoration: UtenInputDecoration(
-                    InputDecoration(
-                      labelText: '驳回原因',
-                      error: utenFieldError(validationError),
+    late final String? reason;
+    try {
+      reason = await UtenDialog.showAndWaitForExit<String>(
+        context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => UtenAlertDialog(
+            title: const Text('驳回工资批次'),
+            content: SizedBox(
+              width: 440,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const UtenReviewerResponsibilityNotice(
+                    actionLabel: '工资审核驳回',
+                    description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLines: 3,
+                    decoration: UtenInputDecoration(
+                      InputDecoration(
+                        labelText: '驳回原因',
+                        error: utenFieldError(validationError),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final value = controller.text.trim();
+                  if (value.isEmpty) {
+                    setDialogState(() => validationError = '请填写驳回原因');
+                    return;
+                  }
+                  Navigator.pop(dialogContext, value);
+                },
+                child: const Text('确认驳回'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final value = controller.text.trim();
-                if (value.isEmpty) {
-                  setDialogState(() => validationError = '请填写驳回原因');
-                  return;
-                }
-                Navigator.pop(dialogContext, value);
-              },
-              child: const Text('确认驳回'),
-            ),
-          ],
         ),
-      ),
-    );
-    controller.dispose();
+      );
+    } finally {
+      controller.dispose();
+    }
     return reason;
   }
 }
@@ -366,14 +371,14 @@ class _BatchChip extends StatelessWidget {
       color: selected
           ? theme.colorScheme.primary.withValues(alpha: 0.1)
           : theme.colorScheme.surface,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(UtenRadius.control),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(UtenRadius.control),
             border: Border.all(
               color: selected
                   ? theme.colorScheme.primary

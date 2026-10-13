@@ -1,5 +1,7 @@
 // 服务器切换对话框：原生 Release 只能在两个构建期可信端点间切换；Debug
 // 可显式覆盖云端地址。Web 始终走同源 /api，由访问入口 / split-horizon DNS 路由。
+import '../../core/theme/uten_tokens.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,7 +48,8 @@ class _ServerSwitchDialogState extends ConsumerState<ServerSwitchDialog> {
     final cloud = readCloudUrl(prefs);
     final localReachable = ref.watch(localServerReachableProvider);
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: const Text('服务器'),
       content: SizedBox(
         width: 360,
@@ -233,7 +236,7 @@ class _EndpointStatus extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(UtenRadius.control),
         ),
         child: Padding(
           padding: const EdgeInsets.all(12),

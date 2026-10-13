@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
 // 销售订货单财务审核详情页（V300 专用审核视图，与销售端订单详情分离）。
 //
@@ -287,7 +288,7 @@ class _FinanceSalesOrderReviewPageState
     final controller = _confirmRemark;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
+      builder: (dialogCtx) => UtenAlertDialog(
         title: Text('确认通过 ${reviewed.billNo}'),
         content: SizedBox(
           width: 440,
@@ -433,7 +434,7 @@ class _FinanceSalesOrderReviewPageState
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) => AlertDialog(
+        builder: (dialogCtx, setDialogState) => UtenAlertDialog(
           title: Text('驳回 ${reviewed.billNo}'),
           content: SizedBox(
             width: 440,

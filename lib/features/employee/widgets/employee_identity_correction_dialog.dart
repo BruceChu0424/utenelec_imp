@@ -7,6 +7,7 @@
 // - 服务端拒绝时原话显示在弹窗里，弹窗不关；
 // - 成功后先清忙标志再关弹窗(忙碌遮罩是 root Overlay 裸图层，见
 //   uten_busy_overlay_dialog_order_contract_test)。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -199,7 +200,8 @@ class _EmployeeIdentityCorrectionDialogState
     );
     return PopScope<void>(
       canPop: !_submitting,
-      child: AlertDialog(
+      child: UtenAlertDialog(
+        scrollable: false,
         key: const ValueKey('employee-identity-correction-dialog'),
         title: Row(
           children: [

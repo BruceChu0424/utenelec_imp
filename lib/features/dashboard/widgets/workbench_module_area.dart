@@ -222,7 +222,7 @@ class _SectionDragFeedback extends StatelessWidget {
                 height: 16,
                 decoration: BoxDecoration(
                   color: group.color,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.circular(UtenRadius.xs),
                 ),
               ),
               const SizedBox(width: UtenSpacing.s8),

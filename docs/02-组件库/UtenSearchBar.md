@@ -1,36 +1,19 @@
 # UtenSearchBar
 
 > 源码：`lib/components/inputs/uten_search_bar.dart`
-> 2026-09-01 起为**全平台唯一搜索框组件**：胶囊圆角 + 内容驱动高度（≈44）+ 清除按钮 +
+> 2026-09-01 起为**全平台唯一搜索框组件**：胶囊圆角 + 内容驱动高度（桌面≥40、触屏目标≥48）+ 清除按钮 +
 > 300ms 防抖 + 输入法组合保护（拼音未上屏不触发回调，见 §二·五）；业务代码不得再手写搜索
 > `TextField`。
 > 相关：[UtenFilterToolbar](UtenFilterToolbar.md)（分类分段 + 本组件的统一工具条）
 
-## 一、形态（唯一，无变体参数）
+## 一、形态与统一高度（2026-10-13）
 
-- **胶囊圆角**：边框半径远大于高度，RRect 归一化后即高度一半的 stadium，
-  与 M3 SegmentedButton 默认 StadiumBorder 同形；描边 `outline`、聚焦主色 2px。
-- **高度由内容驱动（≈44，contentPadding 10 + 单行文本），不设 minHeight 48**（2026-09-10 曾加
-  `constraints: minHeight 48`，因 `UtenFilterToolbar` 的 IntrinsicHeight+stretch 会把分段条一起拉到
-  48，全站分类分段肉眼变高，用户反馈后当日回退）：与工具条同排的行尾控件自行对齐到 ≈44——
-  `UtenFilterPickerField`（2026-09-11 起页面层级筛选的统一形态，见
-  [UtenFilterPickerField](UtenFilterPickerField.md)）按同一口径算内边距；表单内下拉若同排，
-  传紧凑 `contentPadding`（`WarehouseHierarchyDropdown` 的 `contentPadding` 参数）。M3 默认给 prefix/suffix 图标各 48×48 最小
-  约束会顶高输入框，本组件已显式收紧。与分段导航条并排时的「严格同高」：
-  InputDecorator 的药丸**描边**只按内容高绘制（`max(前后缀图标约束高,
-  contentPadding + 文本行高)`），不吃外部 minHeight——外部约束拉高的只是盒子、
-  描边居中浮在盒里（2026-10-07 SDK 源码定位，compact 密度空框实测药丸 33 vs
-  分段 40，即用户看到的「搜索栏矮一截」）。因此本组件把前后缀图标约束的
-  minHeight 设为与 `UtenSegmentRow.minCellHeight` 同源的
-  `UtenFilterRow.minHeight`(36)：两侧描边恒等于 `max(36, 文本内容高)`，任意
-  密度/字号下相等；不要在页面里给分段设 minimumSize 对齐。
-- 内置：搜索前缀图标、清除按钮（有内容时）、300ms 防抖、自动聚焦控制。
-- **`dense: true`（2026-09-11）**：收紧内边距与图标（高约 30 而非 36），字号降一档。
-  **只给「筛选面板里的一格」用**——报表/明细表左侧筛选区里搜索框只是一堆筛选项中的一项，
-  默认高度显得笨重（用户要求「搜索的框显示小点」）。
-  ⚠️ **不要给页面主搜索框或 `UtenFilterToolbar` 里的搜索框传 dense**：工具条用
-  IntrinsicHeight+stretch 让分类分段跟搜索框同高，改高度会把全站分段一起带走
-  （2026-09-10 已因此回退过一次）。
+- 全平台唯一胶囊搜索框，圆角从 `UtenRadius.pill`取值；普通输入内容16，dense内容14。
+- 桌面最小内容高40，触屏目标至少48窗口像素；前后图标约束与清除按钮同源使用 `UtenControlMetrics`。应用缩小不能把清除目标缩到48以下，文字放大可以撑高。
+- 内边距水平12/16、垂直6；高度由内容和图标约束共同决定。不能在外部只拉高盒子而不让描边跟随。
+- `UtenFilterToolbar`给分类和搜索提供实际有界宽度；分类放不下时完整面板，搜索不被强行压成窄条。
+- dense仅用于内容密集筛选/表格，不意味着触控目标可以缩到28。旧36/约30高度口径退役。
+- 保留清除、300ms防抖、输入法组合保护、立即输入回调、回车取消挂起回调；本次尺寸整改不改查询时序。
 
 ## 二、用法
 

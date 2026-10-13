@@ -349,8 +349,16 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(
         find.byKey(const Key('uten-employee-picker-departments')),
+        findsNothing,
+      );
+      await tester.tap(find.byIcon(Icons.account_tree_rounded));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('uten-employee-picker-departments')),
         findsOneWidget,
       );
+      await tester.tap(find.byTooltip('返回内容'));
+      await tester.pumpAndSettle();
       await _panel(
         tester,
         loader: (_) async => _candidates,

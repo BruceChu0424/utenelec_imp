@@ -2,6 +2,7 @@
 //
 // 只收原因文本（2–500 字，trim 后提交）；能否撤回由服务端按「每条 FQC 仍待检、无决定/
 // 放行/恢复授权」判定，本弹窗不做业务判断，也不猜测撤回后的库存或品质事实。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -62,7 +63,7 @@ class _ArrivalRegistrationReversalDialogState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(widget.title),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),

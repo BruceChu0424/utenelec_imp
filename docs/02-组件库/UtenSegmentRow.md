@@ -15,7 +15,7 @@ SDK `SegmentedButton` 的渲染对象把**每个分段强制铺成同一宽度**
 - StadiumBorder 描边（enabled=`outline`，整条禁用=`onSurface@12%`）；
 - 选中格 `secondaryContainer` 填充、文字 `onSecondaryContainer`；未选透明、
   `onSurface`；禁用文字 `onSurface@38%`、不填充；
-- 格间 1px 分隔线（与描边同色）；高度下限 36（`minCellHeight` 默认
+- 格间 1px 分隔线（与描边同色）；桌面高度下限40、触控至少48（`minCellHeight` 默认
   `UtenFilterRow.minHeight`，与 UtenSearchBar 前后缀图标约束同源——InputDecorator
   药丸描边只按内容高绘制，两侧共用同一枚下限才能恒同高）；图标 18、图标与文字间距 8；
 - 悬停/按压水波按 M3（选中 onSecondaryContainer@8%/10%，未选 onSurface 同比）。
@@ -43,6 +43,16 @@ UtenSegmentRow<String>(
 - 计数徽章走 label 槽位（`UtenSegmentBadgeLabel`），文字颜色经
   `DefaultTextStyle` 自动继承本组件三态前景色。
 
-## 三、测试
+## 三、真实宽度与完整分类面板
 
-`test/components/layout/uten_filter_toolbar_autoselect_test.dart`（宽度自适应两组）。
+`UtenFitOrCompact`按完整分段的实际intrinsic宽度选择呈现，兼容工具条的IntrinsicHeight。
+直接使用本组件也会适配，不需要调用方包装横向滚动条或缩字。
+超宽时显示当前分类（未选“选择分类”），点开纵向面板；长名称可换行。
+`compactSummary`可保留分类总量，面板中`UtenSegmentBadgeLabel`会把名称和计数分开排布。
+
+隐藏分支排除焦点、语义和文本选择；选择面板返回时检查当前element仍挂载、当前值仍启用、
+当前回调仍有效。多选、空选、只读、逐项disabled和nullable值保留原契约。
+
+## 四、测试
+
+`test/components/layout/uten_filter_toolbar_autoselect_test.dart`、`test/components/layout/uten_adaptive_category_layout_test.dart`、`test/components/uten_filter_toolbar_count_form_test.dart`。覆盖宽屏长分段、160逻辑宽及200%文字、双徽章、nullable分类、面板打开后撤销权限。

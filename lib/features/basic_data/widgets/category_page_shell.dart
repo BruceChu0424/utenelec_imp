@@ -3,7 +3,7 @@
 // client/mould/product/supplier 四个 *_category_page 的顶层 State 曾逐字重复
 // 约 460 行编排：树加载、顶部统一搜索四件套（输入/提交/应用/选分类）、
 // 分类增改删（CategoryEditDialog + prefix 预览）、树渲染 trailing、
-// loading/error/empty/compact/split 的 build 骨架与 endDrawer。
+// loading/error/empty 与按局部宽度切换的两栏/完整目录。
 // 本 mixin 收敛这些编排；页面只声明配置钩子（文案/图标/权限/仓储调用）
 // 并提供右栏 DetailPane 构造。
 //
@@ -16,6 +16,7 @@
 //
 // 不改任何业务语义/文案/TODO(l10n)；渲染与交互只在这一处维护。
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,14 +24,15 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../models/product_category_node.dart';
 import '../widgets/category_edit_dialog.dart';
@@ -125,7 +127,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除分类'), // TODO(l10n): 补 arb
         content: Text(
           '确定删除「${node.name}」吗？若存在子分类或$shellContentNoun引用，删除可能失败。', // TODO(l10n): 补 arb
@@ -474,15 +476,24 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
             if (canDelete && isSystemRoot)
               const SystemMasterCategoryProtectionNotice(compact: true),
             if (canDelete && !isSystemRoot)
-              InkWell(
-                onTap: () => shellDeleteNode(node),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(
-                    Icons.delete_outline,
-                    size: 16,
-                    color: theme.colorScheme.onSurfaceVariant,
+              IconButton(
+                tooltip: '删除${node.name}',
+                constraints: BoxConstraints.tightFor(
+                  width: UtenControlMetrics.minimumHitExtent(
+                    context,
+                    desktop: 32,
                   ),
+                  height: UtenControlMetrics.minimumHitExtent(
+                    context,
+                    desktop: 32,
+                  ),
+                ),
+                padding: EdgeInsets.zero,
+                onPressed: () => shellDeleteNode(node),
+                icon: Icon(
+                  Icons.delete_outline,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
           ],
@@ -533,27 +544,17 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     );
 
     Widget mainLayout() {
-      if (bp == UtenBreakpoint.compact) {
-        final compactDetail = selected == null
-            ? UtenEmpty(
-                icon: shellEmptyIcon,
-                message: '请选择左侧分类查看详情', // TODO(l10n): 补 arb
-              )
-            : UtenContentContainer(child: detailPaneOf(selected));
-        return Column(
-          children: [
-            _buildGlobalSearchBox(),
-            Expanded(child: compactDetail),
-          ],
-        );
-      }
       return UtenSplitView(
         persistenceKey: shellPersistenceKey,
+        minTwoPaneWidth: 840,
+        selectedLeadingLabel: utenTreeSelectionPath(tree, _selectedId),
+        selectedLeadingKey: _selectedId,
+        compactHeader: _buildGlobalSearchBox(),
         leading: _buildTree(onSelect: _selectCategory),
         trailing: selected == null
             ? Center(
                 child: Text(
-                  '请选择左侧分类查看详情', // TODO(l10n): 补 arb
+                  '请选择分类查看详情', // TODO(l10n): 补 arb
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -606,28 +607,8 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
             tooltip: '刷新', // TODO(l10n): 补 arb
             onPressed: shellReloadAll,
           ),
-          if (bp == UtenBreakpoint.compact && tree.isNotEmpty)
-            Builder(
-              builder: (scaffoldCtx) => IconButton(
-                icon: const Icon(Icons.account_tree_rounded),
-                tooltip: '分类树', // TODO(l10n): 补 arb
-                onPressed: () => Scaffold.of(scaffoldCtx).openEndDrawer(),
-              ),
-            ),
         ],
       ),
-      endDrawer: bp == UtenBreakpoint.compact && tree.isNotEmpty
-          ? Drawer(
-              child: SafeArea(
-                child: _buildTree(
-                  onSelect: (id) {
-                    _selectCategory(id);
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ),
-            )
-          : null,
       // 页面级局部 SelectionArea：分类树/详情面板/空态文字可框选复制（准则 §3.4）。
       // 内嵌 MasterDataTableView 自带更深层 region，嵌套各管各的；AppBar 不进选择区。
       body: SafeArea(child: SelectionArea(child: body)),

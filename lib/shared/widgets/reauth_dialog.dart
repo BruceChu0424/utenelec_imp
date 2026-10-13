@@ -7,6 +7,7 @@
 //
 // 输错：留在框里提示「密码不正确」，可重试；连续输错到上限：框里提示暂停多久、不再可输
 // (服务端同时让当前登录失效，关掉弹窗后会回到登录页)。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -104,7 +105,7 @@ class _ReauthDialogState extends State<ReauthDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
       key: const Key('reauth-dialog'),
       title: const Row(
         children: [

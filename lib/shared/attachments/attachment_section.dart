@@ -4,6 +4,7 @@
 // 调用方只表达 owner/state 是否允许上传或删除；组件统一叠加 attachment:upload/delete。
 // 预览和下载统一使用 attachment:download；对象范围由后端 AttachmentOwnerAccessPolicy 终审。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -202,7 +203,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Text(
         '$count',
@@ -633,7 +634,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     if (!_canUse(Perm.attachmentDelete, widget.ownerCanDelete)) return;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (d) => AlertDialog(
+      builder: (d) => UtenAlertDialog(
         title: const Text('删除附件？'),
         content: Text('将永久删除「${a.originalName}」。'),
         actionsAlignment: MainAxisAlignment.center,

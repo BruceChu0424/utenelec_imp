@@ -126,39 +126,53 @@ class _PendingAttachmentSectionState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: UtenSectionHeader(
-                      title: widget.title,
-                      icon: Icons.folder_outlined,
-                      trailing: items.isEmpty
-                          ? null
-                          : _countBadge(theme, items.length),
-                    ),
-                  ),
-                  if (widget.headerExtra != null) ...[
-                    const SizedBox(width: UtenSpacing.s8),
-                    widget.headerExtra!,
-                  ],
-                  if (canAdd && !widget.selectionMode) ...[
-                    const SizedBox(width: UtenSpacing.s8),
-                    FilledButton.tonalIcon(
-                      key: const ValueKey('pending-attachment-add'),
-                      onPressed: busy ? null : _pick,
-                      icon: widget.controller.isFlushing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.attach_file_rounded, size: 18),
-                      label: Text(
-                        widget.controller.isFlushing ? '上传中…' : '添加文件',
-                      ),
-                    ),
-                  ],
-                ],
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final heading = UtenSectionHeader(
+                    title: widget.title,
+                    icon: Icons.folder_outlined,
+                    trailing: items.isEmpty
+                        ? null
+                        : _countBadge(theme, items.length),
+                  );
+                  final actions = Wrap(
+                    spacing: UtenSpacing.s8,
+                    runSpacing: UtenSpacing.s8,
+                    children: [
+                      if (widget.headerExtra != null) widget.headerExtra!,
+                      if (canAdd && !widget.selectionMode)
+                        FilledButton.tonalIcon(
+                          key: const ValueKey('pending-attachment-add'),
+                          onPressed: busy ? null : _pick,
+                          icon: widget.controller.isFlushing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.attach_file_rounded, size: 18),
+                          label: Text(
+                            widget.controller.isFlushing ? '上传中…' : '添加文件',
+                          ),
+                        ),
+                    ],
+                  );
+                  if (constraints.maxWidth < 480) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [heading, const SizedBox(height: 8), actions],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: heading),
+                      const SizedBox(width: UtenSpacing.s8),
+                      Flexible(child: actions),
+                    ],
+                  );
+                },
               ),
               // 只在真的在传的那几秒出现一行进度；平时不挂静态提示语。
               if (widget.controller.isFlushing)
@@ -190,30 +204,40 @@ class _PendingAttachmentSectionState
     required bool canAdd,
     required bool busy,
   }) {
-    return Wrap(
-      spacing: UtenSpacing.s12,
-      runSpacing: UtenSpacing.s12,
-      children: [
-        for (int i = 0; i < items.length; i++)
-          _FileCard(
-            item: items[i],
-            categories: widget.categories,
-            action: widget.selectionMode
-                ? null
-                : widget.actionFor?.call(items[i]),
-            canRemove: canAdd && !busy && !widget.selectionMode,
-            canCategorize: canAdd,
-            onRemove: () => widget.controller.removeAt(i),
-            onSetCategory: (value) => widget.controller.setCategoryAt(i, value),
-            selectionMode: widget.selectionMode,
-            selected: widget.selectedItems.contains(items[i]),
-            selectable: widget.selectableFor?.call(items[i]) ?? true,
-            onToggleSelection: widget.onToggleSelection != null
-                ? () => widget.onToggleSelection!(items[i])
-                : null,
-          ),
-        if (canAdd && !busy && !widget.selectionMode) _AddTile(onTap: _pick),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = constraints.maxWidth < _kCardSize.width
+            ? constraints.maxWidth
+            : _kCardSize.width;
+        return Wrap(
+          spacing: UtenSpacing.s12,
+          runSpacing: UtenSpacing.s12,
+          children: [
+            for (int i = 0; i < items.length; i++)
+              _FileCard(
+                width: cardWidth,
+                item: items[i],
+                categories: widget.categories,
+                action: widget.selectionMode
+                    ? null
+                    : widget.actionFor?.call(items[i]),
+                canRemove: canAdd && !busy && !widget.selectionMode,
+                canCategorize: canAdd,
+                onRemove: () => widget.controller.removeAt(i),
+                onSetCategory: (value) =>
+                    widget.controller.setCategoryAt(i, value),
+                selectionMode: widget.selectionMode,
+                selected: widget.selectedItems.contains(items[i]),
+                selectable: widget.selectableFor?.call(items[i]) ?? true,
+                onToggleSelection: widget.onToggleSelection != null
+                    ? () => widget.onToggleSelection!(items[i])
+                    : null,
+              ),
+            if (canAdd && !busy && !widget.selectionMode)
+              _AddTile(width: cardWidth, onTap: _pick),
+          ],
+        );
+      },
     );
   }
 
@@ -222,7 +246,7 @@ class _PendingAttachmentSectionState
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       decoration: BoxDecoration(
         color: theme.colorScheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Text(
         '$count',
@@ -360,13 +384,14 @@ class _PendingAttachmentSectionState
   }
 }
 
-/// 统一卡片尺寸：固定宽高保证横排整齐（文件名单行省略，悬停出全称提示）。
+/// 卡片默认宽与最小高；窄画布收宽，正文和触摸动作按内容自然增高。
 const Size _kCardSize = Size(156, 148);
 
 /// 文件卡：左对齐编辑排版(图标/分类占满顶行、名称单行、元信息一行)，
 /// 柔和阴影替代重边框，悬停微升起、失败才换红描边——克制、安静，靠留白和层次出质感。
 class _FileCard extends StatefulWidget {
   const _FileCard({
+    required this.width,
     required this.item,
     required this.canRemove,
     required this.canCategorize,
@@ -381,6 +406,7 @@ class _FileCard extends StatefulWidget {
   });
 
   final PendingAttachment item;
+  final double width;
   final List<String>? categories;
   final PendingFileActionSpec? action;
 
@@ -410,14 +436,18 @@ class _FileCardState extends State<_FileCard> {
     final error = item.lastError;
     final action = widget.action;
     final selected = widget.selected;
+    final removeExtent = UtenControlMetrics.minimumHitExtent(
+      context,
+      desktop: 32,
+    );
 
     final shadowBase = dark ? Colors.black : const Color(0x0F0F172A);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: AnimatedContainer(
-        width: _kCardSize.width,
-        height: _kCardSize.height,
+        width: widget.width,
+        constraints: BoxConstraints(minHeight: _kCardSize.height),
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
         decoration: BoxDecoration(
@@ -455,6 +485,7 @@ class _FileCardState extends State<_FileCard> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
@@ -468,17 +499,21 @@ class _FileCardState extends State<_FileCard> {
                         )
                       else if (widget.canRemove)
                         SizedBox(
-                          width: 30,
-                          height: 30,
+                          width: removeExtent,
+                          height: removeExtent,
                           child: IconButton(
                             key: ValueKey(
                               'pending-attachment-remove-${item.name}',
                             ),
                             tooltip: '删除',
                             padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints.tightFor(
-                              width: 30,
-                              height: 30,
+                            constraints: BoxConstraints.tightFor(
+                              width: removeExtent,
+                              height: removeExtent,
+                            ),
+                            style: const ButtonStyle(
+                              visualDensity: VisualDensity.standard,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
                             icon: const Icon(
                               Icons.close_rounded,
@@ -492,12 +527,10 @@ class _FileCardState extends State<_FileCard> {
                   ),
                   const SizedBox(height: UtenSpacing.s8),
                   Tooltip(
-                    // 单行省略，全称悬停即出(标题一行，卡片更矮更安静)。
+                    // 名称可换行，触摸用户也能直接读到全名。
                     message: item.name,
                     child: Text(
                       item.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -510,52 +543,39 @@ class _FileCardState extends State<_FileCard> {
                     error == null
                         ? '${formatAttachmentSize(item.sizeBytes)} · 待保存后上传'
                         : '上传失败：$error',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: error == null
                           ? theme.colorScheme.onSurfaceVariant
                           : UtenColors.error,
                     ),
                   ),
-                  const Spacer(),
-                  // 底行 = 分类chip(左) + 动作按钮(右)，一行放下不空置。
+                  const SizedBox(height: UtenSpacing.s8),
+                  // 分类与动作可分行，每个独立操作都保留完整触摸目标。
                   if ((widget.categories != null &&
                           widget.categories!.isNotEmpty) ||
                       action != null)
-                    Row(
+                    Wrap(
+                      spacing: UtenSpacing.s4,
+                      runSpacing: UtenSpacing.s4,
                       children: [
                         if (widget.categories != null &&
                             widget.categories!.isNotEmpty)
-                          Flexible(
-                            child: AttachmentCategoryControl(
-                              categories: widget.categories!,
-                              value: item.category,
-                              // 上传那几秒只是暂时不接受点击（enabled=false），入口不消失，卡片不跳动。
-                              enabled: widget.canRemove,
-                              onChanged: widget.canCategorize
-                                  ? widget.onSetCategory
-                                  : null,
-                              // 紧凑形态：与按钮同排，窄了先省略文字不撑爆。
-                              dense: true,
-                            ),
+                          AttachmentCategoryControl(
+                            categories: widget.categories!,
+                            value: item.category,
+                            // 上传那几秒只是暂时不接受点击（enabled=false），入口不消失，卡片不跳动。
+                            enabled: widget.canRemove,
+                            onChanged: widget.canCategorize
+                                ? widget.onSetCategory
+                                : null,
+                            dense: true,
                           ),
-                        if ((widget.categories != null &&
-                                widget.categories!.isNotEmpty) &&
-                            action != null)
-                          const SizedBox(width: UtenSpacing.s4),
-                        // 按钮也允许收缩：极端字号下两项按比例让位、各自省略。
                         if (action != null)
-                          Flexible(
-                            child: Align(
-                              alignment: AlignmentDirectional.centerEnd,
-                              child: _ActionButton(
-                                key: ValueKey(
-                                  'pending-attachment-action-${item.name}',
-                                ),
-                                spec: action,
-                              ),
+                          _ActionButton(
+                            key: ValueKey(
+                              'pending-attachment-action-${item.name}',
                             ),
+                            spec: action,
                           ),
                       ],
                     ),
@@ -643,15 +663,22 @@ class _ActionButton extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: spec.busy ? null : spec.onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-          child: Text(
-            spec.done ? spec.doneLabel : spec.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: foreground,
-              fontWeight: spec.done ? FontWeight.w500 : FontWeight.w600,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: UtenControlMetrics.minimumHitExtent(context, desktop: 32),
+            minHeight: UtenControlMetrics.minimumHitExtent(
+              context,
+              desktop: 32,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            child: Text(
+              spec.done ? spec.doneLabel : spec.label,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: foreground,
+                fontWeight: spec.done ? FontWeight.w500 : FontWeight.w600,
+              ),
             ),
           ),
         ),
@@ -665,59 +692,66 @@ class _ActionButton extends StatelessWidget {
 /// 队尾的虚线「添加」卡：与文件卡同尺寸同圆角，轻轻一层主色晕染，
 /// 像火车最后挂一节空车厢。
 class _AddTile extends StatelessWidget {
-  const _AddTile({required this.onTap});
+  const _AddTile({required this.width, required this.onTap});
 
   final VoidCallback onTap;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return SizedBox(
-      width: _kCardSize.width,
-      height: _kCardSize.height,
-      child: Material(
-        color: theme.colorScheme.primary.withValues(alpha: 0.03),
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(UtenRadius.xl),
-        ),
-        child: InkWell(
-          onTap: onTap,
-          child: DashedContainer(
-            borderRadius: UtenRadius.xl,
-            child: SizedBox.expand(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                      shape: BoxShape.circle,
+      width: width,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: _kCardSize.height),
+        child: Material(
+          color: theme.colorScheme.primary.withValues(alpha: 0.03),
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(UtenRadius.xl),
+          ),
+          child: InkWell(
+            onTap: onTap,
+            child: DashedContainer(
+              borderRadius: UtenRadius.xl,
+              child: Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(
+                          alpha: 0.08,
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.add_rounded,
+                        size: 24,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
-                    child: Icon(
-                      Icons.add_rounded,
-                      size: 24,
-                      color: theme.colorScheme.primary,
+                    const SizedBox(height: UtenSpacing.s8),
+                    Text(
+                      '添加文件',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  Text(
-                    '添加文件',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
+                    const SizedBox(height: 2),
+                    Text(
+                      '点击或拖入',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '点击或拖入',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

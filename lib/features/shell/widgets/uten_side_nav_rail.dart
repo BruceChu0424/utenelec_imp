@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import '../../../components/brand/uten_brand_mascot.dart';
 import '../../../components/brand/uten_wordmark_logo.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/theme/uten_tokens.dart';
 
 /// 桌面 / 平板端左侧导航栏。
 ///
@@ -80,6 +81,10 @@ class UtenSideNavRail extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final toggleExtent = UtenControlMetrics.minimumHitExtent(
+      context,
+      desktop: 48,
+    );
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -123,9 +128,9 @@ class UtenSideNavRail extends StatelessWidget {
                       ? AppLocalizations.of(context).navCollapse
                       : AppLocalizations.of(context).navExpand,
                   onPressed: onToggleExtended,
-                  constraints: const BoxConstraints.tightFor(
-                    width: 48,
-                    height: 48,
+                  constraints: BoxConstraints.tightFor(
+                    width: toggleExtent,
+                    height: toggleExtent,
                   ),
                   icon: Icon(
                     extended ? Icons.menu_open_rounded : Icons.menu_rounded,

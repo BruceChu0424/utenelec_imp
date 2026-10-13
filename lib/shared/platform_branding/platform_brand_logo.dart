@@ -1,3 +1,4 @@
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -66,7 +67,7 @@ class PlatformBrandLogo extends ConsumerWidget {
           ? DecoratedBox(
               decoration: BoxDecoration(
                 color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(UtenRadius.control),
               ),
               child: Center(
                 child: Text(

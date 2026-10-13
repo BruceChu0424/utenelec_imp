@@ -1,3 +1,4 @@
+import '../../../core/theme/uten_tokens.dart';
 import 'dart:ui' show ImmutableBuffer, ImageDescriptor;
 
 import 'package:file_picker/file_picker.dart';
@@ -631,7 +632,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: error ? cs.errorContainer : cs.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(UtenRadius.lg),
       ),
       child: Text(
         text,
@@ -887,7 +888,7 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
                         border: Border.all(
                           color: Theme.of(context).colorScheme.outline,
                         ),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(UtenRadius.sm),
                       ),
                     ),
                   ),

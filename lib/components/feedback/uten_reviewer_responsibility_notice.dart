@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../../shared/providers/session_provider.dart';
+import 'uten_dialog.dart';
 
 /// 审核动作前的责任提示。
 ///
@@ -53,39 +54,38 @@ class UtenReviewerResponsibilityNotice extends ConsumerWidget {
           borderRadius: UtenRadius.mdAll,
           border: Border.all(color: colors.error.withValues(alpha: 0.55)),
         ),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.gpp_maybe_outlined,
-              size: compact ? UtenSpacing.s20 : UtenSpacing.s24,
-              color: colors.error,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    '审核员：$currentActor',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: colors.error,
-                      fontWeight: FontWeight.w800,
-                    ),
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Icon(
+                  Icons.gpp_maybe_outlined,
+                  size: compact ? UtenSpacing.s20 : UtenSpacing.s24,
+                  color: colors.error,
+                ),
+                Text(
+                  '审核员：$currentActor',
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: colors.error,
+                    fontWeight: FontWeight.w800,
                   ),
-                  if (showDetail) ...[
-                    const SizedBox(height: UtenSpacing.s4),
-                    Text(
-                      detail,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: colors.onErrorContainer,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
             ),
+            if (showDetail) ...[
+              const SizedBox(height: UtenSpacing.s4),
+              Text(
+                detail,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onErrorContainer,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -104,7 +104,8 @@ Future<bool> showUtenReviewerConfirmDialog(
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => UtenAlertDialog(
+      maxWidth: 480,
       title: Text(title),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 440),

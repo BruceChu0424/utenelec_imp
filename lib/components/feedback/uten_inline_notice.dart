@@ -96,47 +96,57 @@ class UtenInlineNotice extends StatelessWidget {
             borderRadius: UtenRadius.mdAll,
             border: Border.all(color: accent.withValues(alpha: 0.45)),
           ),
-          child: Row(
-            // 无正文的单行提示：标题与右侧动作垂直居中；有正文时顶部对齐。
-            crossAxisAlignment: messageText == null || messageText.isEmpty
-                ? CrossAxisAlignment.center
-                : CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(level.icon, size: 20, color: accent),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: messageText == null || messageText.isEmpty
-                      ? MainAxisAlignment.center
-                      : MainAxisAlignment.start,
-                  children: [
-                    if (titleText != null && titleText.isNotEmpty) ...[
-                      Text(
-                        titleText,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: level == UtenInlineNoticeLevel.info
-                              ? theme.colorScheme.onSurface
-                              : accent,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (messageText != null && messageText.isNotEmpty)
-                        const SizedBox(height: UtenSpacing.s4),
-                    ],
-                    if (messageText != null && messageText.isNotEmpty)
-                      Text(
-                        messageText,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          height: 1.45,
-                        ),
-                      ),
-                  ],
-                ),
+              Row(
+                // 无正文的单行提示：标题与右侧动作垂直居中；有正文时顶部对齐。
+                crossAxisAlignment: messageText == null || messageText.isEmpty
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
+                children: [
+                  Icon(level.icon, size: 20, color: accent),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment:
+                          messageText == null || messageText.isEmpty
+                          ? MainAxisAlignment.center
+                          : MainAxisAlignment.start,
+                      children: [
+                        if (titleText != null && titleText.isNotEmpty) ...[
+                          Text(
+                            titleText,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: level == UtenInlineNoticeLevel.info
+                                  ? theme.colorScheme.onSurface
+                                  : accent,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (messageText != null && messageText.isNotEmpty)
+                            const SizedBox(height: UtenSpacing.s4),
+                        ],
+                        if (messageText != null && messageText.isNotEmpty)
+                          Text(
+                            messageText,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              height: 1.45,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
               if (trailing != null) ...[
-                const SizedBox(width: UtenSpacing.s8),
-                trailing!,
+                const SizedBox(height: UtenSpacing.s8),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: trailing!,
+                ),
               ],
             ],
           ),

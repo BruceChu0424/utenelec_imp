@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -393,7 +394,7 @@ class _WarehouseSalesOutboundBatchPageState
     setState(() => _confirming = true);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text(
           l10n.warehouseOutboundBatchAction(
             warehouseSalesOutboundActionLabel(l10n, widget.action),

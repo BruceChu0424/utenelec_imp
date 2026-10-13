@@ -791,7 +791,10 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
       // 子行树形缩进(2×24)+ 叶子位(48)：树单元的缩进与图标位不进 textOf 的
       // 自动量宽，宽度只能硬给，否则物料名一律被挤成省略号（缩进按物料分析
       // 「按产品看」同款 24，双分组后子行深一层，320→368）。
-      width: standaloneDetails ? 280 : 368,
+      width: standaloneDetails
+          ? 280
+          : 272 +
+                UtenTreeTableCell.prefixWidthOf(context, depth: 2, indent: 24),
       required: true,
       // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色**各占一列**。
       // 报工行多由来源子任务冻结带入，同名不同色/不同编号的货品只看名称会报到

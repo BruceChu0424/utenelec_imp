@@ -25,6 +25,20 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/filter_segment_tap.dart';
+
+Future<void> _showStatusChoices(WidgetTester tester) async {
+  final compact = find
+      .descendant(
+        of: find.byKey(const Key('warehouse-quality-result-status')),
+        matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+      )
+      .hitTestable();
+  if (tester.any(compact)) {
+    await tester.tap(compact);
+    await tester.pumpAndSettle();
+  }
+}
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -258,6 +272,7 @@ void main() {
         utenStatusBadgeCellColor(UtenStatusBadgeType.success),
       );
       expect(find.text('采购 · 全部合格 · 待入库'), findsWidgets);
+      await _showStatusChoices(tester);
       expect(find.text('等待结果'), findsWidgets);
       expect(
         find.byKey(const Key('warehouse-quality-result-batch-stock-in')),
@@ -306,11 +321,11 @@ void main() {
       'receipt-1',
       'receipt-2',
     ]);
-    await tester.tap(find.text('不合格退回'));
+    await selectFilterSegment(tester, '不合格退回');
     await tester.pumpAndSettle();
     expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.returnRequired);
     expect(table().items.map((row) => row.receiptId), ['receipt-2']);
-    await tester.tap(find.text('全部'));
+    await selectFilterSegment(tester, '全部');
     await tester.pumpAndSettle();
     expect(gateway.lastWorkStatus, isNull);
     expect(table().items.map((row) => row.receiptId), [
@@ -341,6 +356,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await _showStatusChoices(tester);
       Finder segment(String label) => find.byWidgetPredicate(
         (widget) => widget is UtenSegmentBadgeLabel && widget.label == label,
       );
@@ -504,16 +520,7 @@ void main() {
       _app(const WarehouseQualityResultsPage(), gateway, preferences),
     );
     await tester.pumpAndSettle();
-    final historyButton = find
-        .ancestor(
-          of: find.descendant(
-            of: find.byKey(const Key('warehouse-quality-result-status')),
-            matching: find.text('历史记录'),
-          ),
-          matching: find.byType(InkWell),
-        )
-        .first;
-    tester.widget<InkWell>(historyButton).onTap!();
+    await selectFilterSegment(tester, '历史记录');
     await tester.pumpAndSettle();
     tester
         .widget<UtenHistoryTimeFilter>(

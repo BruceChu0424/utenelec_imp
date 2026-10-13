@@ -12,20 +12,24 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/pages/operations_workbench_page.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
+import '../../support/filter_segment_tap.dart';
 
 /// 选中工具条分段：分段铺得开时直接点；小屏放不下时工具条收成「分类」下拉
 /// 按钮（2026-09-14 起不再左右拖），先点开下拉再点目标菜单项。
-Future<void> _selectSegment(WidgetTester tester, String label) async {
-  final segment = find.text(label);
-  if (tester.any(segment)) {
-    await tester.tap(segment);
+Future<void> _selectSegment(WidgetTester tester, String label) =>
+    selectFilterSegment(tester, label);
+
+Future<void> _tapRefresh(WidgetTester tester) async {
+  var refresh = find.byTooltip('刷新').hitTestable();
+  if (!tester.any(refresh)) {
+    await tester.tap(find.byKey(const Key('uten-app-bar-more-actions')));
     await tester.pump();
-    return;
+    await tester.pump(const Duration(milliseconds: 300));
+    refresh = find.byTooltip('刷新').hitTestable();
   }
-  await tester.tap(find.text('分类'));
-  await tester.pumpAndSettle();
-  await tester.tap(find.text(label).last);
-  await tester.pumpAndSettle();
+  expect(refresh, findsOneWidget, reason: '刷新必须在工具条或更多面板内可操作');
+  await tester.tap(refresh);
+  await tester.pump();
 }
 
 MasterDataTableView<OperationsWorkbenchTask> _table(WidgetTester tester) =>
@@ -486,7 +490,7 @@ void main() {
     );
     expect(button.onPressed, isNotNull);
 
-    await tester.tap(find.byTooltip('刷新'));
+    await _tapRefresh(tester);
     await tester.pump();
     button = tester.widget<UtenButton>(
       find.byKey(const Key('operations-workbench-purchase-batch')),
@@ -1045,7 +1049,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(gateway.statuses, [null, 'WAITING_ORDER']);
 
-      await tester.tap(find.byTooltip('刷新'));
+      await _tapRefresh(tester);
       await tester.pumpAndSettle();
 
       // 刷新后阶段选择保持：仍以选中阶段发起请求，分段仍是单选选中态。

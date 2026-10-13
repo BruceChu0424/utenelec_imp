@@ -113,7 +113,7 @@ class CelebrationSubjectChips extends StatelessWidget {
             ),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: BorderRadius.circular(UtenRadius.pill),
             ),
             child: Text(
               '+$overflow 位',
@@ -151,7 +151,7 @@ class _SubjectChip extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(

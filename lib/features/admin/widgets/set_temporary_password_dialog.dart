@@ -5,6 +5,7 @@
 // 设置成功后：该账号全部已登录会话立即失效、临时密码在有效期内可用
 // (默认 72 小时，可在系统设置调整)、员工用临时密码登录后被强制设置新密码。
 // 服务端要求再认证：确认后网络层会弹统一的「重新输入登录密码」框 (ADR-110)。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -38,7 +39,8 @@ class _SetTemporaryPasswordDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       key: const Key('set-temporary-password-dialog'),
       title: const Row(
         children: [
@@ -68,7 +70,7 @@ class _SetTemporaryPasswordDialog extends StatelessWidget {
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 decoration: BoxDecoration(
                   color: UtenColors.warning.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(UtenRadius.control),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,

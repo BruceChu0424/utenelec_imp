@@ -5,7 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
-Widget _table(List<String> items, {String columnKey = 'name'}) => MaterialApp(
+Widget _table(
+  List<String> items, {
+  String columnKey = 'name',
+  TextScaler textScaler = TextScaler.noScaling,
+}) => MaterialApp(
+  builder: (context, child) => MediaQuery(
+    data: MediaQuery.of(context).copyWith(textScaler: textScaler),
+    child: child!,
+  ),
   home: Scaffold(
     body: SizedBox(
       width: 900,
@@ -31,6 +39,23 @@ Widget _table(List<String> items, {String columnKey = 'name'}) => MaterialApp(
 );
 
 void main() {
+  testWidgets(
+    'nonlinear scaling invalidates widths even when scale(1) is unchanged',
+    (tester) async {
+      const value = 'A long business value';
+      await tester.pumpWidget(
+        _table([value], textScaler: const _NonlinearScaler(1)),
+      );
+      await tester.pumpAndSettle();
+      final before = _columnWidth(tester);
+      await tester.pumpWidget(
+        _table([value], textScaler: const _NonlinearScaler(1.8)),
+      );
+      await tester.pumpAndSettle();
+      expect(_columnWidth(tester), greaterThan(before));
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('同一份数据换新 List 实例: 0 次文本测量, 列宽不变', (tester) async {
     await tester.pumpWidget(_table(['甲', '乙乙', '丙丙丙']));
     await tester.pumpAndSettle();
@@ -74,6 +99,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(_columnWidth(tester), lessThan(wide));
   });
+}
+
+class _NonlinearScaler extends TextScaler {
+  const _NonlinearScaler(this.factor);
+  final double factor;
+  @override
+  double scale(double fontSize) => fontSize <= 1 ? fontSize : fontSize * factor;
+  @override
+  double get textScaleFactor => factor;
 }
 
 /// 该列表头单元格宽度(列宽由表头与表体共用; 表头格是定宽 Container)。

@@ -144,11 +144,12 @@ Future<void> _open(
 
 Finder get _picker => find.byType(UtenPagedPickerList<SupplierListItem>);
 
-ScrollableState _scrollable(WidgetTester tester) => tester
-    .stateList<ScrollableState>(
-      find.descendant(of: _picker, matching: find.byType(Scrollable)),
-    )
-    .firstWhere((state) => state.position.axis == Axis.vertical);
+ScrollableState _scrollable(WidgetTester tester) {
+  final row = find
+      .descendant(of: _picker, matching: find.byType(ListTile))
+      .first;
+  return Scrollable.of(tester.element(row), axis: Axis.vertical);
+}
 
 Future<void> _edge(WidgetTester tester, {required bool top}) async {
   final position = _scrollable(tester).position;
@@ -278,6 +279,8 @@ void main() {
     await _edge(tester, top: false);
     await _wheel(tester, 150);
     expect(suppliers.requests, [('A', 1), ('A', 2)]);
+    await tester.tap(find.byIcon(Icons.account_tree_rounded));
+    await tester.pump();
     await tester.tap(find.text('乙类(B)'));
     await tester.pumpAndSettle();
     expect(suppliers.requests.last, ('B', 1));
@@ -285,7 +288,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('B-委外商1-0'), findsOneWidget);
     expect(find.text('A-委外商2-0'), findsNothing);
-    expect(find.text('1 / 4'), findsOneWidget);
+    final pageWindow = tester.widget<UtenPagedPickerList<SupplierListItem>>(
+      find.byType(UtenPagedPickerList<SupplierListItem>),
+    );
+    expect(pageWindow.currentPage, 1);
+    expect(pageWindow.totalPages, 4);
     await tester.tap(find.text('B-委外商1-0'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('确定'));

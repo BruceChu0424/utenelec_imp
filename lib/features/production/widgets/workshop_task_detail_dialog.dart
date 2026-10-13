@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
@@ -42,7 +43,9 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final compactActions = MediaQuery.sizeOf(context).width < 544;
-    return AlertDialog(
+    return UtenAlertDialog(
+      maxWidth: 880,
+      scrollable: false,
       key: ValueKey('workshop-task-detail-${task.segmentId}'),
       insetPadding: const EdgeInsets.all(UtenSpacing.s16),
       title: const Text('车间任务详情'),

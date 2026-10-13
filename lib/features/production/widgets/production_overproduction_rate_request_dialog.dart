@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -255,7 +256,8 @@ class _RateRequestEditorState
 
   @override
   Widget build(BuildContext context) => withFormDraft(
-    AlertDialog(
+    UtenAlertDialog(
+      scrollable: false,
       title: const Text('申请调整允许超产比例'),
       content: SizedBox(
         width: 480,

@@ -1,6 +1,7 @@
 // 模拟身份横幅：admin「切换人」后跨所有页面常驻，提示「正以谁的身份查看（只读）」
 // + 居中剩余时间 + 切换/退出。挂在 app.dart 的 Column 顶部（占顶固定、把页面整体下推，
 // 不再覆盖 AppBar/返回键），由 sessionProvider 驱动。
+import '../../../core/theme/uten_tokens.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -172,7 +173,7 @@ class _RemainingTimePill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: foreground.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
         border: Border.all(color: foreground.withValues(alpha: 0.45)),
       ),
       child: Row(

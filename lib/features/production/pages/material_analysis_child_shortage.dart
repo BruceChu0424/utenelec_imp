@@ -524,7 +524,8 @@ abstract class _MaterialAnalysisChildShortageState
     final kinds = roots.fold<int>(0, (sum, root) => sum + root.lines.length);
     return showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
+        scrollable: false,
         key: const Key('child-shortage-dialog'),
         titlePadding: EdgeInsets.zero,
         title: _ChildShortageDialogHeader(kinds: kinds),
@@ -738,7 +739,9 @@ class _ChildShortageDialogHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
       decoration: BoxDecoration(
         color: isDark ? accent.withValues(alpha: 0.16) : UtenColors.warningBg,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(UtenRadius.dialog),
+        ),
       ),
       child: Row(
         children: [

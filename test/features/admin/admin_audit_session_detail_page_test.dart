@@ -121,12 +121,11 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
+      final repository = _FakeAuditLogRepository();
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            auditLogRepositoryProvider.overrideWithValue(
-              _FakeAuditLogRepository(),
-            ),
+            auditLogRepositoryProvider.overrideWithValue(repository),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
           child: MaterialApp(
@@ -151,6 +150,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await tester.tap(find.byKey(const Key('uten-app-bar-more-actions')));
+      await tester.pumpAndSettle();
       expect(
         Theme.of(
           tester.element(
@@ -166,6 +167,12 @@ void main() {
         greaterThanOrEqualTo(48),
       );
       expect(find.text('一次登录，一条完整时间线'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('audit-session-detail-refresh')),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.summaryCalls, 2);
+      expect(find.byTooltip('关闭操作面板'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

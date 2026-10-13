@@ -159,7 +159,7 @@ class _SubcontractDrawTaskDetailDialogState
     final size = MediaQuery.sizeOf(context);
     return PopScope(
       canPop: _busy == null,
-      child: Dialog(
+      child: UtenDialogFrame(
         child: ConstrainedBox(
           constraints: BoxConstraints(
             maxWidth: 1180,
@@ -503,7 +503,7 @@ class _CloseDrawReasonDialogState extends State<_CloseDrawReasonDialog> {
   @override
   Widget build(BuildContext context) {
     final task = widget.task;
-    return AlertDialog(
+    return UtenAlertDialog(
       title: const Text('结束领料(不再发外)'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),

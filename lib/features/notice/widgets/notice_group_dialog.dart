@@ -5,6 +5,7 @@
 // （叠在其上，关闭后回到本弹窗）；「全部已读」把组内未读一次清零。
 // 弹窗持有本地已读集合：单条置读后立即生效，不必等列表刷新。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -38,7 +39,7 @@ Future<void> showNoticeGroupDialog(
   }
   return showDialog<void>(
     context: originContext,
-    builder: (_) => Dialog(
+    builder: (_) => UtenDialogFrame(
       clipBehavior: Clip.antiAlias,
       insetPadding: utenDialogInsetPadding(originContext),
       child: SizedBox(
@@ -252,7 +253,7 @@ class _GroupNoticeRow extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(UtenRadius.pill),
                 ),
                 child: Text(
                   '已办结',

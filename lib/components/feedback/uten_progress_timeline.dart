@@ -246,7 +246,7 @@ class _TimelineTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(UtenRadius.sm),
       ),
       child: Text(
         '${event.operatorLabel}：${event.operatorName ?? '—'}',
@@ -263,7 +263,7 @@ class _TimelineTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: theme.colorScheme.primary,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(UtenRadius.sm),
       ),
       child: Text(
         '最新',

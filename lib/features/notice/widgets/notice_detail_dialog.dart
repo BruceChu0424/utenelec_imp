@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -38,7 +39,7 @@ Future<void> showNoticeDetailDialog(
     context: context,
     builder: (dialogContext) {
       final height = MediaQuery.sizeOf(dialogContext).height - 96;
-      return Dialog(
+      return UtenDialogFrame(
         clipBehavior: Clip.antiAlias,
         insetPadding: utenDialogInsetPadding(dialogContext),
         child: SizedBox(

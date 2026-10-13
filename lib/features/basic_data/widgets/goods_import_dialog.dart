@@ -3,6 +3,7 @@
 // 两段式（先检测后导入）：检测出的硬错误（编号空/重复/已存在、必填缺失、引用歧义）会拦住
 // 提交，让用户改完重传；无错才允许「确认导入」。提交是后端原子事务（缺分类/颜色/单位自动
 // 新建，编号查重命中整批回滚），绝不「传一半」。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -28,7 +29,7 @@ Future<void> showGoodsImportDialog(
     context: context,
     // 导入弹窗文字（步骤说明/错误结果）可框选复制（准则 §3.4）。
     builder: (ctx) => SelectionArea(
-      child: Dialog(
+      child: UtenDialogFrame(
         shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
         child: ConstrainedBox(
           constraints: BoxConstraints(

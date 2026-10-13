@@ -632,47 +632,52 @@ class _WorkshopMaterialCountPageState
     final period = _period;
     if (period == null) return;
     final controller = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.wmCorrectCount),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text('会出一张新版本的盘点单 (带上一版全部的数), 改完再提交; 系统按新数自动重新结算。'),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              key: const Key('wm-correct-reason'),
-              controller: controller,
-              autofocus: true,
-              maxLength: 500,
-              decoration: const InputDecoration(
-                labelText: '更正原因',
-                counterText: '',
+    late final String? reason;
+    try {
+      reason = await UtenDialog.showAndWaitForExit<String>(
+        context,
+        builder: (dialogContext) => UtenAlertDialog(
+          title: Text(l10n.wmCorrectCount),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('会出一张新版本的盘点单 (带上一版全部的数), 改完再提交; 系统按新数自动重新结算。'),
+              const SizedBox(height: UtenSpacing.s12),
+              TextField(
+                key: const Key('wm-correct-reason'),
+                controller: controller,
+                autofocus: true,
+                maxLength: 500,
+                decoration: const InputDecoration(
+                  labelText: '更正原因',
+                  counterText: '',
+                ),
               ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('返回'),
+            ),
+            UtenButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                if (text.length >= 2) Navigator.of(dialogContext).pop(text);
+              },
+              child: Text(l10n.wmCorrectCount),
             ),
           ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('返回'),
-          ),
-          UtenButton(
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.length >= 2) Navigator.of(dialogContext).pop(text);
-            },
-            child: Text(l10n.wmCorrectCount),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (reason == null || !mounted) return;
+      );
+    } finally {
+      controller.dispose();
+    }
+    final confirmedReason = reason;
+    if (confirmedReason == null || !mounted) return;
     // 提交盘点后系统在后台自动结算, 每试一次 (含被拦住) 期间版本都会变;
     // 更正前先取这一期的最新版本, 免得被当成"这一期已被别人改过"。
     final count = await _run('正在出更正版本', () async {
@@ -680,11 +685,11 @@ class _WorkshopMaterialCountPageState
       return _repo.correctCount(
         period.id,
         expectedVersion: fresh.rowVersion,
-        reason: reason,
+        reason: confirmedReason,
         idempotencyKey: wmIdempotencyKey('correct-count', _nonce, {
           'period': period.id,
           'v': fresh.rowVersion,
-          'reason': reason,
+          'reason': confirmedReason,
         }),
       );
     });

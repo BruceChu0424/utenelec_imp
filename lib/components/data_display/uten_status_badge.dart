@@ -110,8 +110,6 @@ class UtenStatusBadge extends StatelessWidget {
                 message: label,
                 child: Text(
                   label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: _labelStyle(textSize).copyWith(color: colors.$2),
                 ),
               ),

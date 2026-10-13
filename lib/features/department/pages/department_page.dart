@@ -4,6 +4,7 @@
 //   宽度收敛由 MainShell 统一处理
 // 文档：docs/03-页面/部门管理页.md
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import '../widgets/position_manager_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,12 +13,11 @@ import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/layout/uten_app_bar.dart';
-import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
-import '../../../core/responsive/breakpoint.dart';
+import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -312,7 +312,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: Text(l10n.departmentDialogDeleteTitle),
         content: Text(l10n.departmentDeleteConfirm(node.name)),
         actionsAlignment: MainAxisAlignment.center,
@@ -538,7 +538,6 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
 
   Widget _buildDraftHost(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final bp = context.breakpoint;
     final permissions = ref.watch(currentPermissionsProvider);
     final canEdit = permissions.contains(Perm.departmentEdit);
     final canCreate = permissions.contains(Perm.departmentCreate);
@@ -553,7 +552,6 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     final tree = _tree ?? const <DepartmentNode>[];
     final selected = _selectedId == null ? null : _findById(tree, _selectedId!);
 
-    final useSplitLayout = bp.isExpanded;
     Widget body;
     if (_loading) {
       body = const Center(child: CircularProgressIndicator());
@@ -572,33 +570,14 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         actionLabel: canCreate ? '新建部门' : null, // TODO(l10n): 补 arb
         onAction: canCreate ? () => _showCreateDialog() : null,
       );
-    } else if (!useSplitLayout) {
-      final compactDetail = selected == null
-          ? UtenEmpty(
-              icon: Icons.account_tree_outlined,
-              message: l10n.departmentEmpty,
-              description: l10n.departmentEmptyHint,
-            )
-          // 非宽屏使用单列详情，组织树放入抽屉，避免 medium 宽度下双栏拥挤。
-          : UtenContentContainer(
-              child: _buildDetailPane(
-                selected,
-                canManage: canManage,
-                canCreate: canCreate,
-                canDelete: canDelete,
-                canViewEmployees: canViewEmployees,
-                canCreateEmployee: canCreateEmployee,
-              ),
-            );
-      body = Column(
-        children: [
-          _buildGlobalSearchBox(),
-          Expanded(child: compactDetail),
-        ],
-      );
     } else {
       body = UtenSplitView(
         persistenceKey: 'department.manage',
+        minTwoPaneWidth: 840,
+        leadingNoun: '部门',
+        selectedLeadingLabel: utenTreeSelectionPath(tree, _selectedId),
+        selectedLeadingKey: _selectedId,
+        compactHeader: _buildGlobalSearchBox(),
         leading: _buildTree(
           l10n,
           canDelete: canDelete,
@@ -627,30 +606,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             tooltip: l10n.departmentTooltipRefresh,
             onPressed: _load,
           ),
-          if (!useSplitLayout)
-            Builder(
-              builder: (scaffoldCtx) => IconButton(
-                icon: const Icon(Icons.account_tree_rounded),
-                tooltip: l10n.departmentTooltipTree,
-                onPressed: () => Scaffold.of(scaffoldCtx).openEndDrawer(),
-              ),
-            ),
         ],
       ),
-      endDrawer: !useSplitLayout
-          ? Drawer(
-              child: SafeArea(
-                child: _buildTree(
-                  l10n,
-                  canDelete: canDelete,
-                  onSelect: (id) {
-                    _selectDepartment(id);
-                    Navigator.of(context).pop();
-                  },
-                ),
-              ),
-            )
-          : null,
       body: SafeArea(child: body),
     );
   }

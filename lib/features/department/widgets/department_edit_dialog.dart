@@ -9,6 +9,7 @@
 //
 // 提交通过 onSubmit 回调上抛，由页面执行真正的仓储调用并返回是否成功；
 // 成功时对话框自行关闭。替代了部门页内联的 _showCreateDialog/_showEditDialog。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -312,7 +313,8 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
 
   Widget _buildDialog(BuildContext context) {
     final theme = Theme.of(context);
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text(
         _isEdit ? '编辑部门' : '新增部门', // TODO(l10n): 补 arb
       ),
@@ -402,7 +404,7 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(UtenRadius.control),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,

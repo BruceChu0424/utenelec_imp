@@ -2,6 +2,7 @@
 // 后端对象层：view=本人或 employee:pii:view，上传/删除=employee:edit；
 // 通用层再分别叠 attachment:view/download/upload/delete。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -80,7 +81,7 @@ class _ContractAttachmentsDialogState
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
+    return UtenDialogFrame(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
         child: Padding(

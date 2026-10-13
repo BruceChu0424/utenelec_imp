@@ -6,6 +6,7 @@
 //   - 宽度自适应：按最长 label 用 TextPainter 计算单格宽，clamp 在最小/最大之间
 // 技术栈适配：JustPlay 用 GetX `.tr`，本项目改为直接传入已本地化的 label 列表。
 
+import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -160,7 +161,9 @@ class FloatingCapsuleNavBar extends StatelessWidget {
                         child: Container(
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primary,
-                            borderRadius: BorderRadius.circular(22),
+                            borderRadius: BorderRadius.circular(
+                              UtenRadius.dialog,
+                            ),
                           ),
                         ),
                       ),

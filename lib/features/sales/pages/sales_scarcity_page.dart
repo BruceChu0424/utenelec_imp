@@ -108,7 +108,7 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
     final input =
         await UtenDialog.showAndWaitForExit<({String qtyText, String reason})>(
           context,
-          builder: (ctx) => AlertDialog(
+          builder: (ctx) => UtenAlertDialog(
             title: const Text('让单 · 释放现货预留'),
             content: Column(
               mainAxisSize: MainAxisSize.min,

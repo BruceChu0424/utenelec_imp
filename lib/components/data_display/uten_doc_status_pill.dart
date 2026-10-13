@@ -7,6 +7,7 @@
 // 与 [UtenStatusBadge] 的分工：后者按语义枚举配色（type 驱动、胶囊圆角），
 // 本组件按调用方给定的原始 Material 色渲染（域内 0/1/-1 状态机各自的
 // xStatusColor 映射驱动）。
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'uten_status_cell_color.dart';
 import 'uten_color_name.dart';
@@ -42,7 +43,7 @@ class UtenDocStatusPill extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(UtenRadius.sm),
           border: Border.all(color: color.withValues(alpha: 0.4)),
         ),
         child: Text(

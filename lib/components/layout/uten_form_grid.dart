@@ -22,6 +22,8 @@
 // 注意：本组件要求父容器给出"有界宽度"（Card 内边距、Padding 等场景均满足）。
 // 子项自行控制高度（TextField / 下拉 / 日期选择器 / ListTile 等），Label 仍在字段上方（既有风格）。
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/responsive/breakpoint.dart';
@@ -40,12 +42,13 @@ class UtenFormGrid extends StatelessWidget {
     this.spacing = UtenSpacing.s12,
     this.runSpacing = UtenSpacing.s12,
     this.lastRowFill = false,
-  });
+    this.minFieldWidth = 240,
+  }) : assert(minFieldWidth > 0);
 
   /// 字段子项列表。每个子项会被强制设为单格宽（[lastRowFill] 时最后一个跨整行）。
   final List<Widget> children;
 
-  /// 强制列数（覆盖默认按宽度算的列数）。null 时按容器宽度自动算。
+  /// 期望列数（覆盖默认列数）；字段最小可读宽仍优先。null 时自动算。
   final int? columns;
 
   /// 列数上限(默认 6，即不额外限制)。按宽度自动算出的列数仍会被它压低，
@@ -66,6 +69,9 @@ class UtenFormGrid extends StatelessWidget {
   /// 此时建议改为把该长字段放在网格外。
   final bool lastRowFill;
 
+  /// Explicit column requests also yield when a field would become unreadable.
+  final double minFieldWidth;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -74,10 +80,17 @@ class UtenFormGrid extends StatelessWidget {
         final width = constraints.hasBoundedWidth
             ? constraints.maxWidth
             : MediaQuery.sizeOf(context).width;
-        final cols = (columns ?? defaultColumnsForWidth(width)).clamp(
+        final requested = (columns ?? defaultColumnsForWidth(width)).clamp(
           1,
           maxColumns.clamp(1, 6),
         );
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final capacity =
+            ((width + spacing) /
+                    (minFieldWidth * math.max(1, textScale) + spacing))
+                .floor()
+                .clamp(1, maxColumns.clamp(1, 6));
+        final cols = math.min(requested, capacity);
         final itemWidth = (width - spacing * (cols - 1)) / cols;
 
         final wrapped = <Widget>[];

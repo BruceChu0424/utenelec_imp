@@ -9,6 +9,7 @@
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/数据迁移/05-模具资料-新库与迁移.md。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -184,7 +185,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
         (preview.descendantCount > 0 || preview.mouldCount > 0);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: UtenColors.error),
@@ -203,7 +204,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 decoration: BoxDecoration(
                   color: UtenColors.error.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(UtenRadius.md),
                   border: Border.all(
                     color: UtenColors.error.withValues(alpha: 0.45),
                   ),

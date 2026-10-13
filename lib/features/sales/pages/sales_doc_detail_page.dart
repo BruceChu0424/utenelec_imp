@@ -349,6 +349,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
         builder: (ctx) => trackNativeReadDialog(
           ctx,
           Text(l10n.salesQuoteStatusConvertConfirmBody),
+          inlineNotice: true,
         ),
       ),
       confirmLabel: l10n.salesQuoteStatusActionConvert,
@@ -414,7 +415,8 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       context,
       title: title,
       content: Builder(
-        builder: (ctx) => trackNativeReadDialog(ctx, Text(confirmBody)),
+        builder: (ctx) =>
+            trackNativeReadDialog(ctx, Text(confirmBody), inlineNotice: true),
       ),
       confirmLabel: confirmLabel,
       cancelLabel: l10n.salesQuoteStatusCancel,
@@ -515,6 +517,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           const Text(
             '重新报价后，原订货单将永久只读，不能恢复、修改或再次审核，原订单与报价历史继续保留。系统将另建报价草稿，新报价仍需财务核价和客户同意后才能生成新订货单。',
           ),
+          inlineNotice: true,
         ),
       ),
       confirmLabel: '确认重新报价',
@@ -581,7 +584,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       builder: (ctx) => trackNativeReadDialog(
         ctx,
         StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
+          builder: (ctx, setDialogState) => UtenAlertDialog(
             title: Text(l10n.salesQuoteCancelQuote),
             content: SizedBox(
               width: 460,
@@ -860,102 +863,114 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
         );
       }
     }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => trackNativeReadDialog(
-        ctx,
-        AlertDialog(
-          title: const Text('订单改量'),
-          content: SizedBox(
-            width: 420,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                if (_detail!.financeConfirmed)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                    child: Text(
-                      '改量后需财务再次确认，修改前后明细会以红绿两行展示。',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                if (_orderHasPlanned && !_canChangePlanned)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                    child: Text(
-                      '已排产/已生产行仅生产确认人员可改，当前为只读。',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-                  ),
-                for (final it in _detail!.items)
-                  if (it.id != null)
+    var quantityTexts = <String, String>{};
+    late final bool? ok;
+    try {
+      ok = await UtenDialog.showAndWaitForExit<bool>(
+        context,
+        onPopped: (accepted) {
+          if (accepted == true) {
+            quantityTexts = {
+              for (final entry in ctrls.entries) entry.key: entry.value.text,
+            };
+          }
+        },
+        builder: (ctx) => trackNativeReadDialog(
+          ctx,
+          UtenAlertDialog(
+            scrollable: false,
+            title: const Text('订单改量'),
+            content: SizedBox(
+              width: 420,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  if (_detail!.financeConfirmed)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              '${it.clientModel ?? ''} 现 ${financeExactTrimmed(it.exactDecimals['qty'] ?? it.qty?.toString()) ?? '—'}'
-                              ' 已发 ${financeExactTrimmed(it.exactDecimals['shippedQty'] ?? it.shippedQty?.toString()) ?? '0'}',
-                              style: Theme.of(context).textTheme.labelMedium
-                                  ?.copyWith(fontWeight: FontWeight.w400),
-                              overflow: TextOverflow.ellipsis,
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                      child: Text(
+                        '改量后需财务再次确认，修改前后明细会以红绿两行展示。',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: Theme.of(context).colorScheme.error,
+                              fontWeight: FontWeight.w700,
                             ),
-                          ),
-                          SizedBox(
-                            width: 100,
-                            child: TextField(
-                              controller: ctrls[it.id!],
-                              enabled:
-                                  _canChangePlanned || !_touchesPlanned(it),
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
+                      ),
+                    ),
+                  if (_orderHasPlanned && !_canChangePlanned)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+                      child: Text(
+                        '已排产/已生产行仅生产确认人员可改，当前为只读。',
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(fontWeight: FontWeight.w400),
+                      ),
+                    ),
+                  for (final it in _detail!.items)
+                    if (it.id != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${it.clientModel ?? ''} 现 ${financeExactTrimmed(it.exactDecimals['qty'] ?? it.qty?.toString()) ?? '—'}'
+                                ' 已发 ${financeExactTrimmed(it.exactDecimals['shippedQty'] ?? it.shippedQty?.toString()) ?? '0'}',
+                                style: Theme.of(context).textTheme.labelMedium
+                                    ?.copyWith(fontWeight: FontWeight.w400),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 100,
+                              child: TextField(
+                                controller: ctrls[it.id!],
+                                enabled:
+                                    _canChangePlanned || !_touchesPlanned(it),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const UtenInputDecoration(
+                                  InputDecoration(
+                                    isDense: true,
+                                    labelText: '新数量',
                                   ),
-                              decoration: const UtenInputDecoration(
-                                InputDecoration(
-                                  isDense: true,
-                                  labelText: '新数量',
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-              ],
+                ],
+              ),
             ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('确认改量'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认改量'),
-            ),
-          ],
         ),
-      ),
-    );
-    if (ok != true || !mounted || !ownsNative() || !nativeReadCanWrite) {
-      for (final c in ctrls.values) {
-        c.dispose();
+      );
+    } finally {
+      for (final controller in ctrls.values) {
+        controller.dispose();
       }
+    }
+    if (ok != true || !mounted || !ownsNative() || !nativeReadCanWrite) {
       return;
     }
     final changes = <Map<String, dynamic>>[];
     for (final it in _detail!.items) {
       if (it.id == null) continue;
-      final v = positiveDocumentQuantityText(ctrls[it.id!]!.text);
-      ctrls[it.id!]!.dispose();
+      final v = positiveDocumentQuantityText(quantityTexts[it.id!] ?? '');
       if (v == null) {
         if (mounted && ownsNative()) context.appError('有数量填写不正确，请检查后再试');
         return;
@@ -1025,34 +1040,45 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       return;
     }
     final reasonCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => trackNativeReadDialog(
-        ctx,
-        AlertDialog(
-          title: const Text('驳回出货单'),
-          content: TextField(
-            controller: reasonCtrl,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: '驳回原因(如：预留货物损坏 / 找不到)'),
+    var reason = '';
+    late final bool? ok;
+    try {
+      ok = await UtenDialog.showAndWaitForExit<bool>(
+        context,
+        onPopped: (_) {
+          reason = reasonCtrl.text;
+        },
+
+        builder: (ctx) => trackNativeReadDialog(
+          ctx,
+          UtenAlertDialog(
+            title: const Text('驳回出货单'),
+            content: TextField(
+              controller: reasonCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: '驳回原因(如：预留货物损坏 / 找不到)',
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('确认驳回'),
+              ),
+            ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确认驳回'),
-            ),
-          ],
         ),
-      ),
-    );
-    final reason = reasonCtrl.text;
-    reasonCtrl.dispose();
-    if (ok != true) return;
+      );
+    } finally {
+      reasonCtrl.dispose();
+    }
+
+    if (ok != true || !mounted || !ownsNative() || !nativeReadCanWrite) return;
     setState(() => _busy = true);
     try {
       await ref
@@ -1189,7 +1215,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
             context: context,
             builder: (ctx) => trackNativeReadDialog(
               ctx,
-              AlertDialog(
+              UtenAlertDialog(
                 title: const Text('确认'),
                 content: Text(confirm),
                 actionsAlignment: MainAxisAlignment.center,
@@ -1245,7 +1271,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       context: context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
-        AlertDialog(
+        UtenAlertDialog(
           title: Text(isShipment ? '取消出货单' : '删除单据'),
           content: Text(
             isShipment
@@ -2063,7 +2089,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                           s.id,
                         ),
                       ),
-                      borderRadius: BorderRadius.circular(4),
+                      borderRadius: BorderRadius.circular(UtenRadius.xs),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

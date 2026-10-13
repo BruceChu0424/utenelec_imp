@@ -107,7 +107,21 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
         child: Stack(
           children: [
             if (!kIsWeb && _controller != null)
-              MobileScanner(controller: _controller!, onDetect: _onDetect)
+              MobileScanner(
+                controller: _controller!,
+                onDetect: _onDetect,
+                errorBuilder: (context, error) => Center(
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s16),
+                      child: Text(
+                        l10n.securityScanManual,
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                    ),
+                  ),
+                ),
+              )
             else
               Center(
                 child: Text(
@@ -161,24 +175,43 @@ class _SecurityScanPageState extends ConsumerState<SecurityScanPage> {
                 ),
                 child: SafeArea(
                   top: false,
-                  child: UtenCard(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: UtenInput(
+                  child: SingleChildScrollView(
+                    child: UtenCard(
+                      padding: const EdgeInsets.all(UtenSpacing.s12),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final compact = constraints.maxWidth < 360;
+                          final input = UtenInput(
                             controller: _manualCtl,
                             label: l10n.securityPasscodeHint,
                             keyboardType: TextInputType.number,
-                            prefixIcon: Icons.password_rounded,
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s8),
-                        UtenButton(
-                          onPressed: _manualGo,
-                          child: Text(l10n.commonConfirm),
-                        ),
-                      ],
+                            prefixIcon: compact ? null : Icons.password_rounded,
+                          );
+                          final confirm = UtenButton(
+                            isExpanded: compact,
+                            onPressed: _manualGo,
+                            child: Text(l10n.commonConfirm),
+                          );
+                          if (compact) {
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                input,
+                                const SizedBox(height: UtenSpacing.s8),
+                                confirm,
+                              ],
+                            );
+                          }
+                          return Row(
+                            children: [
+                              Expanded(child: input),
+                              const SizedBox(width: UtenSpacing.s8),
+                              confirm,
+                            ],
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),

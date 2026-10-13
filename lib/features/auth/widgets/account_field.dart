@@ -3,6 +3,7 @@
 // 只记账号不记密码（安全铁律）。默认填上次登录账号（AccountHistoryStore.first）；
 // 聚焦或点右侧下拉箭头 → 输入框下方浮出历史账号列表：点选填入、每项可删、底部「清除全部」。
 // 点外部 / 失焦 / 选定后自动关闭。
+import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -201,7 +202,7 @@ class _Dropdown extends StatelessWidget {
               onTapOutside: (_) => onClose(),
               child: Material(
                 elevation: 6,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(UtenRadius.md),
                 color: theme.colorScheme.surface,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 280),

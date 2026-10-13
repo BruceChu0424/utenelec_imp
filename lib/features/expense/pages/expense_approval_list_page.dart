@@ -8,6 +8,7 @@
 // reject-batch，全成全败，不再前端逐单循环）。
 // 历史：2026-09-09 表格化；2026-09-10 表头筛选 + 责任提示；2026-09-16 类别桶。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/master_name_provider.dart'
@@ -441,7 +442,7 @@ class _ExpenseApprovalListPageState
     final count = ids.length;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: Text('批量通过($count)'),
         content: SizedBox(
           width: 440,

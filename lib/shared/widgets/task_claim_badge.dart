@@ -1,4 +1,5 @@
 // 「XXX 处理中」徽标（show-as-locked）。他人认领时显示；本人/无人认领不显示。
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../models/task_claim_view.dart';
@@ -17,7 +18,7 @@ class TaskClaimBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: scheme.tertiaryContainer,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(UtenRadius.lg),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

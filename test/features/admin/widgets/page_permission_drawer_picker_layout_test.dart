@@ -20,7 +20,12 @@ void main() {
       await tester.pumpWidget(_app(repository));
       await tester.pumpAndSettle();
 
+      expect(find.byType(UtenDepartmentTreeView), findsNothing);
+      await tester.tap(find.byIcon(Icons.account_tree_rounded));
+      await tester.pumpAndSettle();
       expect(find.byType(UtenDepartmentTreeView), findsOneWidget);
+      await tester.tap(find.byTooltip('返回内容'));
+      await tester.pumpAndSettle();
       expect(find.text('胡钟炎(UT0006)'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(

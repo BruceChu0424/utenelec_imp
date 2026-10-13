@@ -14,6 +14,10 @@ import '../../core/theme/uten_colors.dart';
 import '../../shared/auth/page_permission_action.dart';
 import '../buttons/uten_back_button.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
+import 'uten_adaptive_panel.dart';
+import 'uten_app_bar_action_scope.dart';
+import '../buttons/uten_button.dart';
+import '../buttons/uten_app_bar_action_button.dart';
 
 /// Uten 自适应顶栏
 ///
@@ -51,7 +55,7 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   /// 标题区内「居中」部件（如列表页的 [UtenSegmentedFilter]）。
   /// 与 [title] 共存：[title] 文字靠最左，[centerWidget] 在标题区水平居中；
-  /// 空间不足时自动等比缩小（FittedBox），不会溢出报错。
+  /// 向部件提供实际可用宽度，由其响应式布局保留可读字号。
   final Widget? centerWidget;
 
   /// 完全自定义标题区（整体替换 [title] / [centerWidget]，优先级最高）。
@@ -91,25 +95,57 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
         theme.dividerTheme.color ??
         (isDark ? UtenColors.darkBorder : UtenColors.divider);
 
-    final appBar = AppBar(
-      title: _buildTitleArea(theme, isDark),
-      leading:
-          leading ??
-          (showBackButton ? const UtenBackButton() : const SizedBox.shrink()),
-      automaticallyImplyLeading: false,
-      actions: [
-        ...?actions,
-        if (showPagePermissionAction) const PagePermissionAction(),
-      ],
-      centerTitle: centerTitle,
-      backgroundColor: blurred ? baseColor.withValues(alpha: 0.8) : baseColor,
-      foregroundColor: foregroundColor ?? theme.appBarTheme.foregroundColor,
-      bottom: bottom,
-      flexibleSpace: flexibleSpace,
-      // 发丝级底部分隔线代替阴影
-      shape: showBottomBorder
-          ? Border(bottom: BorderSide(color: dividerColor, width: 0.5))
-          : null,
+    final pageActions = <Widget>[
+      ...?actions,
+      if (showPagePermissionAction)
+        PagePermissionAction(scope: pagePermissionScopeFromContext(context)),
+    ];
+    final appBar = LayoutBuilder(
+      builder: (context, constraints) {
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final compactActions =
+            (actions?.isNotEmpty ?? false) &&
+            (constraints.maxWidth < 360 * textScale ||
+                ((pageActions.length > 2 ||
+                        actions!.any(
+                          (action) =>
+                              action is! IconButton &&
+                              action is! ButtonStyleButton &&
+                              action is! UtenAppBarActionButton,
+                        )) &&
+                    constraints.maxWidth < 600 * textScale));
+        return AppBar(
+          title: _buildTitleArea(context, theme, isDark),
+          leading:
+              leading ??
+              (showBackButton
+                  ? const UtenBackButton()
+                  : const SizedBox.shrink()),
+          automaticallyImplyLeading: false,
+          leadingWidth: leading == null && !showBackButton ? 0 : null,
+          actions: compactActions
+              ? [
+                  IconButton(
+                    key: const Key('uten-app-bar-more-actions'),
+                    tooltip: '更多操作',
+                    onPressed: () => _showActions(context, pageActions),
+                    icon: const Icon(Icons.more_horiz_rounded),
+                  ),
+                ]
+              : pageActions,
+          centerTitle: centerTitle,
+          backgroundColor: blurred
+              ? baseColor.withValues(alpha: 0.8)
+              : baseColor,
+          foregroundColor: foregroundColor ?? theme.appBarTheme.foregroundColor,
+          bottom: bottom,
+          flexibleSpace: flexibleSpace,
+          // 发丝级底部分隔线代替阴影
+          shape: showBottomBorder
+              ? Border(bottom: BorderSide(color: dividerColor, width: 0.5))
+              : null,
+        );
+      },
     );
 
     // ADR-150: the page title tells the AI assistant which page it reads.
@@ -133,43 +169,188 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
+  Future<void> _showActions(BuildContext context, List<Widget> pageActions) {
+    ModalRoute<void>? actionRoute;
+    var claimed = false;
+    bool claim() {
+      if (claimed || actionRoute?.isCurrent != true) return false;
+      claimed = true;
+      return true;
+    }
+
+    void dismiss() {
+      final route = actionRoute;
+      final navigator = route?.navigator;
+      if (route == null || navigator == null || !route.isActive) return;
+      if (route.isCurrent) {
+        navigator.pop();
+      } else {
+        navigator.removeRoute(route);
+      }
+    }
+
+    VoidCallback? before(VoidCallback? callback) => callback == null
+        ? null
+        : () {
+            if (!claim()) return;
+            dismiss();
+            callback();
+          };
+    Widget present(Widget source, BuildContext panelContext) {
+      if (source is Padding) {
+        return Padding(
+          key: source.key,
+          padding: source.padding,
+          child: source.child == null
+              ? null
+              : present(source.child!, panelContext),
+        );
+      }
+      if (source is IconButton) {
+        return IconButton(
+          key: source.key,
+          icon: source.icon,
+          iconSize: source.iconSize,
+          visualDensity: source.visualDensity,
+          padding: source.padding,
+          alignment: source.alignment,
+          splashRadius: source.splashRadius,
+          color: source.color,
+          focusColor: source.focusColor,
+          hoverColor: source.hoverColor,
+          highlightColor: source.highlightColor,
+          splashColor: source.splashColor,
+          disabledColor: source.disabledColor,
+          onPressed: before(source.onPressed),
+          onLongPress: before(source.onLongPress),
+          onHover: source.onHover,
+          mouseCursor: source.mouseCursor,
+          focusNode: source.focusNode,
+          autofocus: source.autofocus,
+          tooltip: source.tooltip,
+          enableFeedback: source.enableFeedback,
+          constraints: source.constraints,
+          style: source.style,
+          isSelected: source.isSelected,
+          selectedIcon: source.selectedIcon,
+          statesController: source.statesController,
+        );
+      }
+      final native = source;
+      if (native is ButtonStyleButton) {
+        return UtenAppBarNativeActionButton(
+          key: source.key,
+          source: native,
+          onPressed: before(native.onPressed),
+          onLongPress: before(native.onLongPress),
+        );
+      }
+      if (source is UtenButton || source is UtenAppBarActionButton) {
+        return UtenAppBarActionScope(
+          actionContext: context,
+          claimAction: claim,
+          dismiss: dismiss,
+          closeBeforeAction: true,
+          child: source,
+        );
+      }
+      return source;
+    }
+
+    return showUtenAdaptivePanel<void>(
+      context: context,
+      compactHeightFactor: 0.5,
+      builder: (panelContext) {
+        actionRoute = ModalRoute.of<void>(panelContext);
+        return UtenAppBarActionScope(
+          actionContext: context,
+          claimAction: claim,
+          dismiss: dismiss,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title ?? '页面操作',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(panelContext).textTheme.titleMedium,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '关闭操作面板',
+                      onPressed: () => Navigator.of(panelContext).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 12,
+                    children: [
+                      for (final action in pageActions)
+                        present(action, panelContext),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// 组合标题区，优先级：[titleWidget] > [title]+[centerWidget] > [title]。
-  Widget? _buildTitleArea(ThemeData theme, bool isDark) {
+  Widget? _buildTitleArea(BuildContext context, ThemeData theme, bool isDark) {
     if (titleWidget != null) return titleWidget;
 
-    final titleCol = title != null ? _titleColumn(theme, isDark) : null;
+    final titleCol = title != null
+        ? _titleColumn(context, theme, isDark)
+        : null;
     if (centerWidget == null) return titleCol;
 
-    // title 文字靠最左；centerWidget 在标题右侧的剩余空间内水平居中，
-    // FittedBox.scaleDown 保证空间不足时整体缩小——不溢出、不与标题重叠。
+    // Both receive bounded space, so filters can switch to their compact mode
+    // rather than rendering at full width and scaling their text back down.
     return Row(
       children: [
-        ?titleCol,
-        Expanded(
-          child: Center(
-            child: FittedBox(fit: BoxFit.scaleDown, child: centerWidget!),
-          ),
-        ),
+        if (titleCol != null) Flexible(child: titleCol),
+        Expanded(child: Center(child: centerWidget!)),
       ],
     );
   }
 
-  Widget _titleColumn(ThemeData theme, bool isDark) {
+  Widget _titleColumn(BuildContext context, ThemeData theme, bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title!,
-          style: theme.appBarTheme.titleTextStyle?.copyWith(
-            color: foregroundColor ?? theme.colorScheme.onSurface,
+        Tooltip(
+          message: subtitle == null ? title! : '$title\n$subtitle',
+          child: Text(
+            title!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.appBarTheme.titleTextStyle?.copyWith(
+              color: foregroundColor ?? theme.colorScheme.onSurface,
+            ),
           ),
         ),
-        if (subtitle != null)
+        if (subtitle != null &&
+            MediaQuery.textScalerOf(context).scale(14) <= 18)
           Padding(
             padding: const EdgeInsets.only(top: 2),
             child: Text(
               subtitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelMedium?.copyWith(
                 fontWeight: FontWeight.w400,
                 height: 1.3,

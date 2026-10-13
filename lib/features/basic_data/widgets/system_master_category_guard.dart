@@ -1,3 +1,4 @@
+import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 /// 由服务端 UUID 注册表派生 [systemManaged]；编号、名称与 legacyId
@@ -43,7 +44,7 @@ class SystemMasterCategoryProtectionNotice extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(UtenRadius.md),
               border: Border.all(color: theme.colorScheme.outlineVariant),
             ),
             child: Row(

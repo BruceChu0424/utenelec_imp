@@ -864,8 +864,7 @@ class _ProductionDailyReportDetailPageState
     if (!mounted || !isCurrent()) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        scrollable: true,
+      builder: (context) => UtenAlertDialog(
         title: const Text('按原内容重试审核'),
         content: Text(
           '${record.intent.confirmation}\n\n将重试保存的原审核；日报已经变化时会拒绝，请重新核对。',

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -40,7 +41,8 @@ Future<String?> showProductionMaterialReturnReceiveDialog(
   return showDialog<String>(
     context: context,
     builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
+      builder: (context, setState) => UtenAlertDialog(
+        scrollable: false,
         title: const Text('确认余料收仓'),
         content: SizedBox(
           width: 440,

@@ -11,6 +11,7 @@
 //   - ProductionFqcInspectionPage：单条 FQC 任务（含无检查单的历史任务）的
 //     详情 + 办理页。摘要卡展示送检登记事实，检验图片/文件就近挂载；决定表单
 //     与检查单页同一套数量/处置口径。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -518,8 +519,7 @@ Future<bool> _confirmOriginalFqcReport(
 ) async =>
     await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        scrollable: true,
+      builder: (context) => UtenAlertDialog(
         title: const Text('核对并继续原提交'),
         content: Text(
           [

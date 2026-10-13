@@ -18,6 +18,7 @@
 // （上月今日..今日）+ 无筛选 = 「时间范围内的全部」——避免历史持久化的过时日期
 // 范围或失效客户 UUID 把新数据滤成空白（曾发生：prefs 记了 5~7 月，8 月新单全被滤空）。
 // 关键字亦不持久化。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -770,7 +771,7 @@ class _SalesClientDetailDialogState
       ...mapped.where((col) => _isReportStatusLabel(col.label)),
       ...mapped.where((col) => !_isReportStatusLabel(col.label)),
     ];
-    return Dialog(
+    return UtenDialogFrame(
       insetPadding: const EdgeInsets.all(UtenSpacing.s16),
       child: SizedBox(
         width: size.width > 1240 ? 1200 : size.width * 0.95,

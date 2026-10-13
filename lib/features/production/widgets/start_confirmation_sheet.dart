@@ -12,6 +12,7 @@
 //
 // 网络段的全屏遮罩由本表自己持有 (发请求的是本表); 关闭本表之前一定先撤遮罩
 // 并等一帧, 否则遮罩会盖住回到的任务页。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -1117,7 +1118,8 @@ class _MaterialPickerDialogState extends State<_MaterialPickerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final names = widget.options.map((option) => option.label).join('、');
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: Text('「${widget.productName}」用哪种料'),
       content: SizedBox(
         width: 440,

@@ -6,6 +6,7 @@
 // 通用入口是车间总览 (唯一的车间清单, 开通/开启整批领料/撤销都在总览里批量办)。
 // 操作: 申请领料、退回、其它耗用、盘点、记录。按钮只按服务端下发的 allowedActions 显示。
 // 车间成员只看本车间 (服务端按对象范围过滤); 多个车间时顶部切换。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -564,37 +565,41 @@ class _WorkshopMaterialBinPageState
     required String confirm,
   }) async {
     final controller = TextEditingController();
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          key: const Key('wm-reason-input'),
-          controller: controller,
-          autofocus: true,
-          maxLength: 500,
-          decoration: InputDecoration(labelText: label, counterText: ''),
+    late final String? result;
+    try {
+      result = await UtenDialog.showAndWaitForExit<String>(
+        context,
+        builder: (dialogContext) => UtenAlertDialog(
+          title: Text(title),
+          content: TextField(
+            key: const Key('wm-reason-input'),
+            controller: controller,
+            autofocus: true,
+            maxLength: 500,
+            decoration: InputDecoration(labelText: label, counterText: ''),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            UtenButton(
+              type: UtenButtonType.ghost,
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('返回'),
+            ),
+            UtenButton(
+              type: UtenButtonType.danger,
+              onPressed: () {
+                final text = controller.text.trim();
+                if (text.length < 2) return;
+                Navigator.of(dialogContext).pop(text);
+              },
+              child: Text(confirm),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('返回'),
-          ),
-          UtenButton(
-            type: UtenButtonType.danger,
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.length < 2) return;
-              Navigator.of(dialogContext).pop(text);
-            },
-            child: Text(confirm),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
+      );
+    } finally {
+      controller.dispose();
+    }
     return result;
   }
 

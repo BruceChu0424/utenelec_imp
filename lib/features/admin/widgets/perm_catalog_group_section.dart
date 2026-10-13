@@ -3,6 +3,7 @@
 // 同一组件复用于两级：一级=功能模块（level=module），二级=子类（level=category）。
 // 一级展示模块名、计数和可选批量操作，段内为二级子类 section；二级按需构建权限项。
 // 支持受控/非受控展开状态，便于权限搜索命中时自动展开，并避免折叠状态仍构建全部权限行。
+import '../../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_anim.dart';
@@ -95,14 +96,14 @@ class _PermCatalogGroupSectionState extends State<PermCatalogGroupSection> {
             value: expanded ? '已展开' : '已折叠',
             child: Material(
               type: MaterialType.transparency,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(UtenRadius.control),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: _toggle,
                 child: Ink(
                   decoration: BoxDecoration(
                     color: headerBg,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(UtenRadius.control),
                   ),
                   padding: headerPad,
                   child: Row(
@@ -138,7 +139,9 @@ class _PermCatalogGroupSectionState extends State<PermCatalogGroupSection> {
                             color: isModule
                                 ? Colors.white.withValues(alpha: 0.22)
                                 : cs.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(999),
+                            borderRadius: BorderRadius.circular(
+                              UtenRadius.pill,
+                            ),
                           ),
                           child: Text(
                             widget.countLabel!,

@@ -366,12 +366,12 @@ void main() {
   });
 
   testWidgets(
-    '375px screen opens searchable categories in a drawer and selection closes it',
+    '375px screen opens a full-width category pane and selection closes it',
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock, size: const Size(375, 812));
       expect(tester.takeException(), isNull);
-      expect(find.byType(UtenSplitView), findsNothing);
+      expect(find.byType(UtenSplitView), findsOneWidget);
       expect(
         find.byKey(const Key('instant-inventory-category-tree')),
         findsNothing,
@@ -381,7 +381,7 @@ void main() {
         find.byKey(const Key('instant-inventory-open-categories')),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(Drawer), findsOneWidget);
+      expect(find.text('分类目录'), findsOneWidget);
       expect(
         find.byKey(const Key('instant-inventory-category-tree')),
         findsOneWidget,
@@ -570,11 +570,14 @@ void main() {
       expect(tester.takeException(), isNull);
       final tree = find.byKey(const Key('instant-inventory-category-tree'));
       final table = find.byType(MasterDataTableView<InstantInventoryRow>);
-      expect(tree, findsOneWidget);
+      expect(tree, findsNothing);
       expect(table, findsOneWidget);
-      expect(tester.getRect(tree).right, lessThan(tester.getRect(table).left));
       expect(tester.getSize(table).height, greaterThan(0));
-
+      await tester.tap(
+        find.byKey(const Key('instant-inventory-open-categories')),
+      );
+      await tester.pumpAndSettle();
+      expect(tree, findsOneWidget);
       await tester.tap(find.text('原材料(RAW)'));
       await tester.pumpAndSettle();
       expect(stock.lastCategoryId, 'raw');

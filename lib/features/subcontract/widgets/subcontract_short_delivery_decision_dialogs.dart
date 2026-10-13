@@ -1,6 +1,7 @@
 // ADR-098 委外回厂短交判定弹窗：分批到货继续等（预计到齐日必填）/ 接受损耗结案。
 //
 // 两个弹窗只收集判定内容，不发请求；调用方拿到结果后再走仓库接口，失败提示留在页面。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -22,7 +23,7 @@ Future<SubcontractShortDeliveryDecision?>
 showSubcontractShortDeliveryWaitDialog(
   BuildContext context, {
   required SubcontractShortDeliveryCase row,
-}) {
+}) async {
   final today = ChinaDateTime.today();
   DateTime? expected = row.expectedCompleteBy == null
       ? null
@@ -32,89 +33,15 @@ showSubcontractShortDeliveryWaitDialog(
     expected = null;
   }
   final note = TextEditingController(text: row.decisionNote ?? '');
-  return showDialog<SubcontractShortDeliveryDecision>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) => AlertDialog(
-        title: const Text('分批到货，继续等'),
-        content: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 460,
-            maxHeight: MediaQuery.sizeOf(ctx).height * 0.6,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _CaseSummary(row: row),
-                const SizedBox(height: UtenSpacing.s12),
-                const Text('仓库会继续等后面的批次；到了预计到齐日还没到齐，系统会再提醒你。'),
-                const SizedBox(height: UtenSpacing.s12),
-                UtenDateField(
-                  key: const Key('short-delivery-expected-date'),
-                  label: '预计到齐日期',
-                  value: expected,
-                  required: true,
-                  firstDate: today,
-                  onChanged: (value) =>
-                      setState(() => expected = ChinaDateTime.dateOnly(value)),
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-                UtenInput(
-                  key: const Key('short-delivery-wait-note'),
-                  label: '说明(选填)',
-                  hint: '例如：委外商答复剩余数量下周送',
-                  controller: note,
-                  maxLines: 2,
-                ),
-              ],
-            ),
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          UtenButton(
-            key: const Key('short-delivery-wait-confirm'),
-            onPressed: expected == null
-                ? null
-                : () => Navigator.pop(ctx, (
-                    decision: 'WAIT_MORE',
-                    expectedCompleteBy: expected,
-                    note: note.text.trim().isEmpty ? null : note.text.trim(),
-                  )),
-            onDisabledTap: () => ScaffoldMessenger.maybeOf(
-              ctx,
-            )?.showSnackBar(const SnackBar(content: Text('请先填写预计到齐日期'))),
-            child: const Text('确认继续等'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// 「接受损耗·结案」：列出三件后果；低于允许下限时说明必填。
-Future<SubcontractShortDeliveryDecision?>
-showSubcontractShortDeliveryAcceptDialog(
-  BuildContext context, {
-  required SubcontractShortDeliveryCase row,
-}) {
-  final note = TextEditingController();
-  final noteRequired = row.isBelowFloor;
-  final unit = row.unitName;
-  return showDialog<SubcontractShortDeliveryDecision>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setState) {
-        final canConfirm = !noteRequired || note.text.trim().isNotEmpty;
-        return AlertDialog(
-          title: const Text('接受损耗，结案'),
+  try {
+    return await UtenDialog.showAndWaitForExit<
+      SubcontractShortDeliveryDecision
+    >(
+      context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => UtenAlertDialog(
+          scrollable: false,
+          title: const Text('分批到货，继续等'),
           content: ConstrainedBox(
             constraints: BoxConstraints(
               maxWidth: 460,
@@ -127,31 +54,25 @@ showSubcontractShortDeliveryAcceptDialog(
                 children: [
                   _CaseSummary(row: row),
                   const SizedBox(height: UtenSpacing.s12),
-                  Text(
-                    '结案后剩余 ${formatSubcontractQty(row.shortfallQty, unit)} 不再等待到货，系统会自动做三件事：',
-                    style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  const Text('仓库会继续等后面的批次；到了预计到齐日还没到齐，系统会再提醒你。'),
+                  const SizedBox(height: UtenSpacing.s12),
+                  UtenDateField(
+                    key: const Key('short-delivery-expected-date'),
+                    label: '预计到齐日期',
+                    value: expected,
+                    required: true,
+                    firstDate: today,
+                    onChanged: (value) => setState(
+                      () => expected = ChinaDateTime.dateOnly(value),
                     ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s8),
-                  const _Bullet(
-                    '按发料时冻结的用量，把短交对应的材料登记成委外损耗单；'
-                    '超出允许损耗的部分转财务判定责任。',
-                  ),
-                  const _Bullet('保留订货数量和来源申请占用，实收如实记录，剩余按损耗核销并结清，不重新下单。'),
-                  const _Bullet(
-                    '记录损耗量和损耗率，计入委外商汇总；此次结清不产生改量复核。'
-                    '允许损耗范围内正常结清，不通知财务。',
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   UtenInput(
-                    key: const Key('short-delivery-accept-note'),
-                    label: noteRequired ? '说明(必填)' : '说明(选填)',
-                    hint: noteRequired ? '低于允许损耗下限，请写明原因' : '例如：委外商确认损耗',
+                    key: const Key('short-delivery-wait-note'),
+                    label: '说明(选填)',
+                    hint: '例如：委外商答复剩余数量下周送',
                     controller: note,
-                    required: noteRequired,
-                    maxLines: 3,
-                    onChanged: (_) => setState(() {}),
+                    maxLines: 2,
                   ),
                 ],
               ),
@@ -165,25 +86,123 @@ showSubcontractShortDeliveryAcceptDialog(
               child: const Text('取消'),
             ),
             UtenButton(
-              key: const Key('short-delivery-accept-confirm'),
-              type: UtenButtonType.danger,
-              onPressed: canConfirm
-                  ? () => Navigator.pop(ctx, (
-                      decision: 'ACCEPT_LOSS',
-                      expectedCompleteBy: null,
+              key: const Key('short-delivery-wait-confirm'),
+              onPressed: expected == null
+                  ? null
+                  : () => Navigator.pop(ctx, (
+                      decision: 'WAIT_MORE',
+                      expectedCompleteBy: expected,
                       note: note.text.trim().isEmpty ? null : note.text.trim(),
-                    ))
-                  : null,
-              onDisabledTap: () => ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
-                const SnackBar(content: Text('低于允许损耗下限的结案必须填写说明')),
-              ),
-              child: const Text('确认接受损耗并结案'),
+                    )),
+              onDisabledTap: () => ScaffoldMessenger.maybeOf(
+                ctx,
+              )?.showSnackBar(const SnackBar(content: Text('请先填写预计到齐日期'))),
+              child: const Text('确认继续等'),
             ),
           ],
-        );
-      },
-    ),
-  );
+        ),
+      ),
+    );
+  } finally {
+    note.dispose();
+  }
+}
+
+/// 「接受损耗·结案」：列出三件后果；低于允许下限时说明必填。
+Future<SubcontractShortDeliveryDecision?>
+showSubcontractShortDeliveryAcceptDialog(
+  BuildContext context, {
+  required SubcontractShortDeliveryCase row,
+}) async {
+  final note = TextEditingController();
+  final noteRequired = row.isBelowFloor;
+  final unit = row.unitName;
+  try {
+    return await UtenDialog.showAndWaitForExit<
+      SubcontractShortDeliveryDecision
+    >(
+      context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) {
+          final canConfirm = !noteRequired || note.text.trim().isNotEmpty;
+          return UtenAlertDialog(
+            scrollable: false,
+            title: const Text('接受损耗，结案'),
+            content: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 460,
+                maxHeight: MediaQuery.sizeOf(ctx).height * 0.6,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _CaseSummary(row: row),
+                    const SizedBox(height: UtenSpacing.s12),
+                    Text(
+                      '结案后剩余 ${formatSubcontractQty(row.shortfallQty, unit)} 不再等待到货，系统会自动做三件事：',
+                      style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s8),
+                    const _Bullet(
+                      '按发料时冻结的用量，把短交对应的材料登记成委外损耗单；'
+                      '超出允许损耗的部分转财务判定责任。',
+                    ),
+                    const _Bullet('保留订货数量和来源申请占用，实收如实记录，剩余按损耗核销并结清，不重新下单。'),
+                    const _Bullet(
+                      '记录损耗量和损耗率，计入委外商汇总；此次结清不产生改量复核。'
+                      '允许损耗范围内正常结清，不通知财务。',
+                    ),
+                    const SizedBox(height: UtenSpacing.s12),
+                    UtenInput(
+                      key: const Key('short-delivery-accept-note'),
+                      label: noteRequired ? '说明(必填)' : '说明(选填)',
+                      hint: noteRequired ? '低于允许损耗下限，请写明原因' : '例如：委外商确认损耗',
+                      controller: note,
+                      required: noteRequired,
+                      maxLines: 3,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              UtenButton(
+                type: UtenButtonType.ghost,
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              UtenButton(
+                key: const Key('short-delivery-accept-confirm'),
+                type: UtenButtonType.danger,
+                onPressed: canConfirm
+                    ? () => Navigator.pop(ctx, (
+                        decision: 'ACCEPT_LOSS',
+                        expectedCompleteBy: null,
+                        note: note.text.trim().isEmpty
+                            ? null
+                            : note.text.trim(),
+                      ))
+                    : null,
+                onDisabledTap: () =>
+                    ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(
+                      const SnackBar(content: Text('低于允许损耗下限的结案必须填写说明')),
+                    ),
+                child: const Text('确认接受损耗并结案'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  } finally {
+    note.dispose();
+  }
 }
 
 class _CaseSummary extends StatelessWidget {

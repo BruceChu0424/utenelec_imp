@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
@@ -249,7 +250,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
             context: context,
             builder: (ctx) => trackNativeReadDialog(
               ctx,
-              AlertDialog(
+              UtenAlertDialog(
                 title: const Text('确认'),
                 content: Text(confirm),
                 actionsAlignment: MainAxisAlignment.center,
@@ -305,7 +306,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
       context: context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
-        AlertDialog(
+        UtenAlertDialog(
           title: const Text('删除单据'),
           content: const Text('确定删除该草稿单据吗？'),
           actionsAlignment: MainAxisAlignment.center,

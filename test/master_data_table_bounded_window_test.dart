@@ -122,7 +122,7 @@ class _HarnessState extends State<_Harness> {
 ScrollableState _body(WidgetTester tester) => tester
     .stateList<ScrollableState>(
       find.descendant(
-        of: find.byType(MasterDataTableView<_Row>),
+        of: find.byType(ListView),
         matching: find.byType(Scrollable),
       ),
     )

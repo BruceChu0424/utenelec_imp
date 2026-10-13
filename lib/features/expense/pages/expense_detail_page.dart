@@ -8,6 +8,7 @@
 // 悬浮操作：DRAFT/REJECTED=删除/编辑/提交（重新提交）；SUBMITTED=撤回。
 // 宽度口径：默认 1600 容器（明细表为主体）。
 
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -320,7 +321,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   Future<void> _confirmDelete(ExpenseClaim claim) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         title: const Text('删除报销草稿？'),
         content: const Text('删除后无法恢复，请确认该草稿不再需要。'),
         actionsAlignment: MainAxisAlignment.center,
@@ -573,16 +574,12 @@ class _HeroCard extends StatelessWidget {
             const SizedBox(height: UtenSpacing.s12),
             SizedBox(
               width: double.infinity,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${claim.totalAmount.toStringAsFixed(2)} 元',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+              child: Text(
+                '${claim.totalAmount.toStringAsFixed(2)} 元',
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.primary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ),

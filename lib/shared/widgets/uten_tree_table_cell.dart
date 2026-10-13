@@ -5,7 +5,6 @@ import '../../core/theme/uten_tokens.dart';
 
 const double _treeIndent = 16;
 const double _treeToggleExtent = 48;
-const double _treeToggleCenter = _treeToggleExtent / 2;
 
 /// Reusable tree identity cell for data tables.
 ///
@@ -46,6 +45,18 @@ class UtenTreeTableCell extends StatelessWidget {
   /// （物料分析级联页 10 层）对齐。原来组件默认 8、级联页显式传 10，同一颗
   /// 第 9/10 层的料在两个页面缩进深浅不同。确有更浅需求的宿主再显式覆盖。
   static const int defaultMaxVisualDepth = 10;
+
+  /// 展开位、叶子占位与连线中心同源，缩小偏好仍保留48窗口触摸目标。
+  static double toggleExtentOf(BuildContext context) =>
+      UtenControlMetrics.minimumHitExtent(context, desktop: _treeToggleExtent);
+
+  /// 宿主估宽使用真实树前缀，不能只改按钮而继续按旧48占位估算。
+  static double prefixWidthOf(
+    BuildContext context, {
+    required int depth,
+    double indent = _treeIndent,
+    int maxVisualDepth = defaultMaxVisualDepth,
+  }) => depth.clamp(0, maxVisualDepth) * indent + toggleExtentOf(context);
 
   /// 连接线向单元格上下各溢出多少像素。
   ///
@@ -153,6 +164,8 @@ class UtenTreeTableCell extends StatelessWidget {
         foregroundColor?.withValues(alpha: 0.82) ?? colors.onSurfaceVariant;
     final effectiveLevelLabel = levelLabel ?? '层级 ${depth + 1}';
     final visualDepth = depth.clamp(0, maxVisualDepth);
+    final toggleExtent = toggleExtentOf(context);
+    final toggleCenter = toggleExtent / 2;
     final safeSubtitle = subtitle?.trim();
     // 2026-09-12 起不再有 pathLabel 路径行：货品 BOM 宿主按用户口径收敛为
     // 「名字 + 组件X级」（编号看「编号」列），物料分析宿主本就不传。语义朗读
@@ -191,7 +204,7 @@ class UtenTreeTableCell extends StatelessWidget {
     // （标题换行 / 有副标题 / 邻列两行文本）竖线就缩在中间，上下各露一截空白。
     // IgnorePointer：这层压住展开按钮左半边，不让它吃掉点击。
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: _treeToggleExtent),
+      constraints: BoxConstraints(minHeight: toggleExtent),
       child: Stack(
         clipBehavior: Clip.none,
         // 内容与连接线共用整格中线；邻列撑高或文字放大时仍对齐箭头圆心。
@@ -204,13 +217,14 @@ class UtenTreeTableCell extends StatelessWidget {
               bottom: -guideBleed,
               // 多画半个展开位：肘线的横段一直伸到展开按钮/叶子位的圆心，
               // 行才真的「挂」在树上（原来横段停在缩进区边缘，离标题还有 52px）。
-              width: guideWidth + _treeToggleCenter,
+              width: guideWidth + toggleCenter,
               child: IgnorePointer(
                 child: CustomPaint(
                   painter: _TreeGuidePainter(
                     depth: depth,
                     maxVisualDepth: maxVisualDepth,
                     indent: indent,
+                    toggleExtent: toggleExtent,
                     // 连线用色三档：宿主显式色（2026-10-10 按产品轮换）→
                     // 行前景降调 → 默认明暗两档灰。宿主显式色整笔直用、不再
                     // 降调——轮换色的意义就是让整棵子树一眼同色。
@@ -238,8 +252,8 @@ class UtenTreeTableCell extends StatelessWidget {
             children: [
               SizedBox(width: guideWidth),
               SizedBox(
-                width: _treeToggleExtent,
-                height: _treeToggleExtent,
+                width: toggleExtent,
+                height: toggleExtent,
                 child: hasChildren
                     ? Semantics(
                         button: true,
@@ -250,9 +264,13 @@ class UtenTreeTableCell extends StatelessWidget {
                             : '${expanded ? '收起' : '展开'} $title 的下级',
                         child: IconButton(
                           key: toggleKey,
-                          constraints: const BoxConstraints.tightFor(
-                            width: _treeToggleExtent,
-                            height: _treeToggleExtent,
+                          constraints: BoxConstraints.tightFor(
+                            width: toggleExtent,
+                            height: toggleExtent,
+                          ),
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.standard,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
                           padding: EdgeInsets.zero,
                           tooltip:
@@ -477,7 +495,7 @@ class _ToggleGlyph extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surface,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(UtenRadius.md),
                   border: Border.all(color: background, width: 1.5),
                 ),
                 alignment: Alignment.center,
@@ -552,10 +570,11 @@ List<({double x1, double y1, double x2, double y2})> utenTreeGuideSegments({
   bool hasExpandedChildren = false,
   int maxVisualDepth = UtenTreeTableCell.defaultMaxVisualDepth,
   double indent = _treeIndent,
+  double toggleExtent = _treeToggleExtent,
 }) {
   final result = <({double x1, double y1, double x2, double y2})>[];
   double centerX(int level) =>
-      level.clamp(0, maxVisualDepth) * indent + _treeToggleCenter;
+      level.clamp(0, maxVisualDepth) * indent + toggleExtent / 2;
 
   if (depth > 0) {
     // 每条竖线与对应父行的箭头圆心同轴。槽 level 承载深度 level+1
@@ -597,6 +616,7 @@ class _TreeGuidePainter extends CustomPainter {
     required this.depth,
     required this.maxVisualDepth,
     required this.indent,
+    required this.toggleExtent,
     required this.color,
     required this.ancestorContinuations,
     required this.isLastChild,
@@ -606,6 +626,7 @@ class _TreeGuidePainter extends CustomPainter {
   final int depth;
   final int maxVisualDepth;
   final double indent;
+  final double toggleExtent;
   final Color color;
 
   /// `[i]` = 深度 i 的祖先后面还有没有兄弟。长度 = 本行深度
@@ -632,6 +653,7 @@ class _TreeGuidePainter extends CustomPainter {
       hasExpandedChildren: hasExpandedChildren,
       maxVisualDepth: maxVisualDepth,
       indent: indent,
+      toggleExtent: toggleExtent,
     )) {
       canvas.drawLine(
         Offset(line.x1, line.y1),
@@ -646,6 +668,7 @@ class _TreeGuidePainter extends CustomPainter {
       oldDelegate.depth != depth ||
       oldDelegate.maxVisualDepth != maxVisualDepth ||
       oldDelegate.indent != indent ||
+      oldDelegate.toggleExtent != toggleExtent ||
       oldDelegate.color != color ||
       oldDelegate.isLastChild != isLastChild ||
       oldDelegate.hasExpandedChildren != hasExpandedChildren ||

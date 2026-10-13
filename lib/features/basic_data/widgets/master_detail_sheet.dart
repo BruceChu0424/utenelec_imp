@@ -3,6 +3,7 @@
 // 替代各页内联 _openXxxDialog + _row：调用方按期望顺序传入 [MasterDetailRow] 列表，
 // 组件统一渲染「双列卡片网格 + 自适应容器 + 底部居中操作按钮」。
 // 容器自适应（参照 showUtenPickerSheet）：compact 底部抽屉 / medium+ 居中面板。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -74,7 +75,7 @@ Future<void> showMasterDetailSheet({
   }
   return showDialog<void>(
     context: context,
-    builder: (ctx) => Dialog(
+    builder: (ctx) => UtenDialogFrame(
       shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
       child: ConstrainedBox(
         // 2026-09-14：宽度随屏幕放缩（原固定 560 太小；客户/供应商已改详情整页，

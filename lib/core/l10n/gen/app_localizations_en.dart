@@ -643,11 +643,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLanguage => 'Language';
 
   @override
-  String get settingsFontSize => 'Font size';
+  String get settingsFontSize => 'Interface size';
 
   @override
   String get settingsFontSizeHint =>
-      'Scales the whole interface together (text, icons, cards, spacing); phones scale text only';
+      'Scales text, icons, buttons, cards and spacing together; remembered per account on this device';
 
   @override
   String get settingsSectionPerformance => 'Performance';

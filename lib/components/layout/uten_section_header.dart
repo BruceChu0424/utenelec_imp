@@ -11,6 +11,7 @@
 //   UtenSectionHeader(title: '报销明细 (3)', trailing: 添加按钮)
 //   UtenSectionHeader(title: '外观', subdued: true)            // 设置页分组标题（弱化）
 
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
@@ -48,44 +49,76 @@ class UtenSectionHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Row(
-        children: [
-          if (accentColor != null) ...[
-            Container(
-              width: 4,
-              height: 16,
-              decoration: BoxDecoration(
-                color: accentColor,
-                borderRadius: BorderRadius.circular(2),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          final stacked =
+              trailing != null && constraints.maxWidth < 420 * textScale;
+          final heading = Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (accentColor != null) ...[
+                Container(
+                  width: 4,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: accentColor,
+                    borderRadius: BorderRadius.circular(UtenRadius.xs),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 16,
+                  color: brandAccent(theme, UtenColors.teal600),
+                ),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Text(
+                  title,
+                  style: subdued
+                      ? theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurfaceVariant,
+                          letterSpacing: 0.5,
+                        )
+                      : theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                          letterSpacing: -0.1,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          if (icon != null) ...[
-            Icon(icon, size: 16, color: brandAccent(theme, UtenColors.teal600)),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: subdued
-                  ? theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.onSurfaceVariant,
-                      letterSpacing: 0.5,
-                    )
-                  : theme.textTheme.bodyLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      height: 1.4,
-                      letterSpacing: -0.1,
-                      color: theme.colorScheme.onSurface,
-                    ),
-            ),
-          ),
-          if (trailing != null) ...[const SizedBox(width: 8), trailing!],
-        ],
+            ],
+          );
+          if (stacked) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                heading,
+                const SizedBox(height: 8),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: trailing,
+                ),
+              ],
+            );
+          }
+          if (trailing == null) return heading;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: heading),
+              const SizedBox(width: 8),
+              trailing!,
+            ],
+          );
+        },
       ),
     );
   }

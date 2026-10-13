@@ -11,6 +11,7 @@
 // 三者是包含关系：服务端转换 ⊂ 可预览 ⊂ 可上传。渲染不了也转不了的（tiff/heic/7z/rar）
 // 只登记上传能力、预览记为 none，行内图标直接显示「下载」，绝不承诺一个会失败的预览。
 
+import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 /// 单文件上限的兜底默认值（后端 `uten.storage.max-bytes` 出厂 25MB）。
@@ -418,7 +419,7 @@ class AttachmentKindIcon extends StatelessWidget {
       height: 36,
       decoration: BoxDecoration(
         color: kind.color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(UtenRadius.control),
       ),
       child: Icon(kind.icon, size: 19, color: kind.color),
     );

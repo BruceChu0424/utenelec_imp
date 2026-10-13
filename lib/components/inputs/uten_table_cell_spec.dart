@@ -25,11 +25,8 @@ abstract final class UtenEditableGridCellSpec {
   /// 单元内输入框内边距 = 库存盘点实盘格口径（原 14·12，2026-10-08 收紧）。
   static const EdgeInsets contentPadding = EdgeInsets.fromLTRB(10, 6, 10, 6);
 
-  /// 选择格（InkWell + InputDecorator 结构）内边距：水平同 [contentPadding]，
-  /// 垂直 +1——选择格正文 bodyMedium 行高比 TextField 输入文本 bodyLarge 矮
-  /// 约 1px/侧，补偿后与同行输入格等高（grid_cell_height_uniformity_test 校准；
-  /// 原 14·13 口径平移）。
-  static const EdgeInsets pickerCellPadding = EdgeInsets.fromLTRB(10, 7, 10, 7);
+  /// 选择格与输入格使用同一14字号与上下6内距；旧+1字体补偿退役。
+  static const EdgeInsets pickerCellPadding = contentPadding;
 
   /// 兼容既有列宽定义。单元格说明/预填/错误提示已无图标，不再额外占宽。
   static const double hintIconWidth = 0;
@@ -52,9 +49,21 @@ class UtenTableCellInputTheme extends StatelessWidget {
     final theme = Theme.of(context);
     return Theme(
       data: theme.copyWith(
+        textTheme: theme.textTheme.copyWith(
+          bodyLarge: theme.textTheme.bodyMedium,
+        ),
         inputDecorationTheme: theme.inputDecorationTheme.copyWith(
           isDense: true,
           contentPadding: UtenEditableGridCellSpec.contentPadding,
+          hintStyle: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          constraints: BoxConstraints(
+            minHeight: UtenControlMetrics.minimumHitExtent(
+              context,
+              desktop: UtenControlMetrics.cellHeight,
+            ),
+          ),
         ),
       ),
       child: child,

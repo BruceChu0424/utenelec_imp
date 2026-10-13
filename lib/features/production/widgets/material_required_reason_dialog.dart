@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
@@ -66,7 +67,7 @@ class _MaterialRequiredReasonDialogState
     final l10n =
         Localizations.of<AppLocalizations>(context, AppLocalizations) ??
         AppLocalizationsZh();
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(widget.title),
       content: SizedBox(
         width: 440,

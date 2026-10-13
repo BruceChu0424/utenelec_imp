@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/measurement/widgets/weight_totals.dart';
@@ -1050,7 +1051,7 @@ class _InboundArrivalRegistrationPageState
     ApiException error,
   ) => showDialog<WarehouseArrivalSource>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
+    builder: (dialogContext) => UtenAlertDialog(
       key: const Key('warehouse-arrival-source-ambiguity-dialog'),
       title: Text(workflowFieldText(dialogContext).warehouseArrivalSourceLabel),
       content: Text(

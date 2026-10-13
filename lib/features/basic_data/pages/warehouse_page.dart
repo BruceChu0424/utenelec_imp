@@ -10,6 +10,7 @@
 // 仓库负责人(仓管员, ADR-115 / ADR-149)：列表「负责人」列 + 详情「设置负责人」。负责关系决定
 // 谁看、谁收仓库任务(服务端唯一判定)：登记在主仓上 = 仓库主管(看全部、可挑任一仓)；登记在子仓上
 // = 只看、只收自己负责的仓；没登记负责人的仓交主管，没登记的同事也看得到。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -430,7 +431,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage> {
   Future<void> _delete(WarehouseDetail d) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('删除仓库'),
         content: Text(
           '确定删除「${d.name?.isNotEmpty == true ? d.name! : (d.code ?? '该仓库')}」吗？',
@@ -935,7 +936,7 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
         if (_known[item.id]?.warningOf(l10n) case final warning?)
           '${item.name}: $warning',
     ];
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text(l10n.warehouseKeeperDialogTitle(widget.warehouseName)),
       content: SizedBox(
         width: 460,

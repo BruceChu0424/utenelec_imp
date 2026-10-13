@@ -68,6 +68,10 @@ void main() {
   testWidgets('multiple selections and all produce a zip', (tester) async {
     UtenExportSelection? result;
     await pumpPicker(tester, (value) => result = value);
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('quote-template-detailed')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('quote-template-detailed')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Download selected'));

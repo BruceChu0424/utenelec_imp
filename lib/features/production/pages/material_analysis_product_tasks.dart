@@ -1363,56 +1363,85 @@ abstract class _MaterialAnalysisProductTasksState
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        SizedBox(
-          height: (_priorityDraft.length * 56.0).clamp(56.0, 480.0),
-          child: Scrollbar(
-            child: ListView.builder(
-              key: const Key('material-analysis-priority-list'),
-              itemExtent: 56,
-              itemCount: _priorityDraft.length,
-              itemBuilder: (_, index) => Container(
-                key: ValueKey('material-priority-${_priorityDraft[index]}'),
-                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s8),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 16,
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      foregroundColor: theme.colorScheme.onPrimaryContainer,
-                      child: Text('${index + 1}'),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final extent = UtenControlMetrics.minimumHitExtent(
+              context,
+              desktop: 48,
+            );
+            final compact = constraints.maxWidth < 360;
+            final textHeight = MediaQuery.textScalerOf(
+              context,
+            ).scale(theme.textTheme.bodyMedium?.fontSize ?? 14);
+            final rowHeight = compact
+                ? extent + textHeight * 2 + UtenSpacing.s16
+                : math.max(
+                    56.0,
+                    math.max(
+                      extent + UtenSpacing.s8,
+                      textHeight * 3 + UtenSpacing.s8,
                     ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Expanded(
-                      child: Text(
+                  );
+            return SizedBox(
+              height: (_priorityDraft.length * rowHeight)
+                  .clamp(rowHeight, 480.0)
+                  .toDouble(),
+              child: Scrollbar(
+                child: ListView.builder(
+                  key: const Key('material-analysis-priority-list'),
+                  itemExtent: compact ? null : rowHeight,
+                  itemCount: _priorityDraft.length,
+                  itemBuilder: (_, index) {
+                    final name =
                         products[_priorityDraft[index]]?.goodsName ??
-                            products[_priorityDraft[index]]?.goodsCode ??
-                            _priorityDraft[index],
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    IconButton(
+                        products[_priorityDraft[index]]?.goodsCode ??
+                        _priorityDraft[index];
+                    final summary = Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(UtenSpacing.s8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer,
+                            borderRadius: UtenRadius.pillAll,
+                          ),
+                          child: Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: theme.colorScheme.onPrimaryContainer,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: UtenSpacing.s8),
+                        Expanded(
+                          child: Tooltip(
+                            message: name,
+                            child: Text(
+                              name,
+                              maxLines: compact ? null : 2,
+                              overflow: compact ? null : TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                    final up = IconButton(
                       key: ValueKey('material-priority-up-$index'),
-                      constraints: const BoxConstraints.tightFor(
-                        width: 48,
-                        height: 48,
+                      constraints: BoxConstraints.tightFor(
+                        width: extent,
+                        height: extent,
                       ),
                       tooltip: '提高优先级',
                       onPressed: index == 0 || _savingPriorities
                           ? null
                           : () => _movePriority(index, -1),
                       icon: const Icon(Icons.arrow_upward_rounded),
-                    ),
-                    IconButton(
+                    );
+                    final down = IconButton(
                       key: ValueKey('material-priority-down-$index'),
-                      constraints: const BoxConstraints.tightFor(
-                        width: 48,
-                        height: 48,
+                      constraints: BoxConstraints.tightFor(
+                        width: extent,
+                        height: extent,
                       ),
                       tooltip: '降低优先级',
                       onPressed:
@@ -1421,12 +1450,47 @@ abstract class _MaterialAnalysisProductTasksState
                           ? null
                           : () => _movePriority(index, 1),
                       icon: const Icon(Icons.arrow_downward_rounded),
-                    ),
-                  ],
+                    );
+                    return Container(
+                      key: ValueKey(
+                        'material-priority-${_priorityDraft[index]}',
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: UtenSpacing.s8,
+                        vertical: UtenSpacing.s4,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(
+                            color: theme.colorScheme.outlineVariant,
+                          ),
+                        ),
+                      ),
+                      child: compact
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                summary,
+                                Wrap(
+                                  alignment: WrapAlignment.end,
+                                  spacing: UtenSpacing.s8,
+                                  children: [up, down],
+                                ),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(child: summary),
+                                up,
+                                down,
+                              ],
+                            ),
+                    );
+                  },
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
         const SizedBox(height: UtenSpacing.s8),
         Wrap(
@@ -1611,7 +1675,15 @@ abstract class _MaterialAnalysisProductTasksState
     }
     return TextButton.icon(
       key: ValueKey('material-view-plan-${material.materialLineId}'),
-      style: TextButton.styleFrom(minimumSize: Size(48, compact ? 44 : 48)),
+      style: TextButton.styleFrom(
+        minimumSize: Size(
+          UtenControlMetrics.minimumHitExtent(context, desktop: 48),
+          UtenControlMetrics.minimumHitExtent(
+            context,
+            desktop: compact ? 44 : 48,
+          ),
+        ),
+      ),
       onPressed: () =>
           context.push(RoutePath.productionPlanDetail(latestPlanId)),
       icon: const Icon(Icons.open_in_new_rounded, size: 18),
@@ -1944,7 +2016,10 @@ abstract class _MaterialAnalysisProductTasksState
           ),
         ),
         IconButton(
-          constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+          constraints: BoxConstraints.tightFor(
+            width: UtenControlMetrics.minimumHitExtent(context, desktop: 48),
+            height: UtenControlMetrics.minimumHitExtent(context, desktop: 48),
+          ),
           tooltip: '关闭更新提示',
           onPressed: () => setState(() => _serverRefreshNotice = null),
           icon: const Icon(Icons.close_rounded),

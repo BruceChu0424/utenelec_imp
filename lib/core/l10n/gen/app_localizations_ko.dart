@@ -620,11 +620,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsLanguage => '언어';
 
   @override
-  String get settingsFontSize => '글자 크기';
+  String get settingsFontSize => '화면 크기';
 
   @override
   String get settingsFontSizeHint =>
-      '화면 전체(글자, 아이콘, 카드, 간격)를 함께 확대/축소합니다. 휴대폰에서는 글자만 조절됩니다';
+      '글자, 아이콘, 버튼, 카드, 간격을 함께 조절하며 이 기기에 계정별로 저장됩니다';
 
   @override
   String get settingsSectionPerformance => '성능';

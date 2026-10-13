@@ -26,10 +26,10 @@
 - **配色走 `UtenButtonType.primary`**：浅色主题 `colorScheme.primary = teal700`（深绿）+
   `onPrimary` 白字；深色主题自动提亮为 teal400，不在暗底上糊成一块。与表格工具条的
   「表头设置 x/y」「预览打印」同一视觉语言。
-- **高度固定 36**（`UtenAppBarActionButton.height`）：顶栏 56 高，全站默认的 44/52 会顶满
-  上下留白。
-- **`compact: true` 只渲染图标**（窄屏顶栏放不下文案），底色/高度/圆角**不变**——窄屏缩的是
-  文案不是形态，避免「一个按钮两种长相」。文案仍进 tooltip 与语义标签。
+- **桌面紧凑最小高度36，触屏保底48**（`UtenAppBarActionButton.height` 提供36的桌面目标）：
+  系统文字较大时允许内容撑高；动作进入面板的时机由实际可用顶栏宽度决定。
+- **`compact: true` 只渲染图标**，底色与圆角保持同组形态；文案仍进 tooltip 与语义标签。
+  窄宽或系统文字较大时由 `UtenAppBar` 将动作放入完整操作面板，普通控件遵循触屏48的命中下限。
 - 自带左右 4px 间距，直接放进 `UtenAppBar(actions: [...])` 即可。
 
 ```dart
@@ -61,9 +61,12 @@ UtenAppBarActionButton(
 ## isLoading（2026-09-11）
 
 顶栏「刷新」这类要等网络的动作传 `isLoading: true`：走 UtenButton 自带的转圈，
-**高度不变**（仍是 36），不会在加载时把整条顶栏顶高一格。
+忙态不另加高度：沿用桌面紧凑36、触屏至少48的最小目标；实际高度可随系统文字内容增长。
 
 同日把全站 17 个页面共 20 处顶栏动作（清一色
 `Padding + UtenButton(size: large, type: tonal)` 的「刷新」）收敛到本组件——
 用户反馈「刷新和权限设置按钮高度不一致，统一都和权限设置一致」。
 仍有少量顶栏用裸 `IconButton`（纯图标、无文案），那是另一种形态，不在本次收敛范围。
+
+
+2026-10-13：窄宽或大系统文字的顶栏动作放入完整操作面板，不把标题挤没。`UtenAppBarActionScope`携带原页presentation context，仅负责动作面板生命周期，不提供权限/业务数据。同步草稿/权限导航关闭旧面板后从原页打开；有状态异步导出保留挂载至prepare/password/download完成或取消，随后只关闭所属面板。不得用pointerDown预先销毁按钮。

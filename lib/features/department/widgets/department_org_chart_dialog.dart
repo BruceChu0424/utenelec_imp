@@ -5,6 +5,7 @@
 // - 节点可展开/收起（默认展开，点节点头切换）；
 // - 打印架构图按 employee:export 权限点门控（无权限隐藏按钮）。
 // 入口：部门管理 → 部门概览卡「部门架构图」按钮。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -141,7 +142,7 @@ class _DepartmentOrgChartDialogState
         .contains(Perm.employeeView);
     // 弹窗文字可框选复制（准则 §3.4：弹窗独立路由自带局部 region）。
     return SelectionArea(
-      child: Dialog(
+      child: UtenDialogFrame(
         clipBehavior: Clip.antiAlias,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 680, maxHeight: 760),
@@ -391,7 +392,7 @@ class _DepartmentOrgChartDialogState
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: theme.colorScheme.tertiaryContainer,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -450,7 +451,7 @@ class _DepartmentOrgChartDialogState
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: theme.colorScheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(UtenRadius.pill),
               ),
               child: Text(
                 badgeLabel,

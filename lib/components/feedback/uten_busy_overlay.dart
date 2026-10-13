@@ -178,8 +178,45 @@ class UtenBusyOverlayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (description?.isNotEmpty == true) ...[
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            description!,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.45,
+            ),
+          ),
+        ],
+        if (showDoNotLeaveHint) ...[
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            '请勿重复点击或关闭页面，完成后自动继续。',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+    const progress = SizedBox(
+      width: 32,
+      height: 32,
+      child: CircularProgressIndicator(strokeWidth: 3),
+    );
     return Padding(
-      padding: const EdgeInsets.all(UtenSpacing.s24),
+      padding: EdgeInsets.all(compact ? UtenSpacing.s12 : UtenSpacing.s24),
       child: SingleChildScrollView(
         child: Semantics(
           key: semanticsKey,
@@ -198,56 +235,27 @@ class UtenBusyOverlayCard extends StatelessWidget {
                 elevation: 12,
                 borderRadius: UtenRadius.lgAll,
                 child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(
-                            width: 32,
-                            height: 32,
-                            child: CircularProgressIndicator(strokeWidth: 3),
-                          ),
-                          const SizedBox(width: UtenSpacing.s16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  title,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                if (description?.isNotEmpty == true) ...[
-                                  const SizedBox(height: UtenSpacing.s4),
-                                  Text(
-                                    description!,
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                      height: 1.45,
-                                    ),
-                                  ),
-                                ],
-                                if (showDoNotLeaveHint) ...[
-                                  const SizedBox(height: UtenSpacing.s4),
-                                  Text(
-                                    '请勿重复点击或关闭页面，完成后自动继续。',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                  padding: EdgeInsets.all(
+                    compact ? UtenSpacing.s16 : UtenSpacing.s24,
                   ),
+                  child: compact
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            progress,
+                            const SizedBox(height: UtenSpacing.s12),
+                            text,
+                          ],
+                        )
+                      : Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            progress,
+                            const SizedBox(width: UtenSpacing.s16),
+                            Expanded(child: text),
+                          ],
+                        ),
                 ),
               ),
             ),

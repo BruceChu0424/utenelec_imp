@@ -325,9 +325,11 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
     ]),
     required: required,
     headerInfo: headerInfo,
-    chromeWidth: onWeighCount == null
+    chromeWidthOf: (context) => onWeighCount == null
         ? 0
-        : UtenEditableGridCellSpec.hintIconWidth,
+        : UtenControlMetrics.minimumHitExtent(context, desktop: 32),
+    textOf: (row) => controllerOf(row).text.text,
+    listenableOf: (row) => controllerOf(row),
     frozenTextOf: (row) {
       final exact = _exactKg(row, exactKgOf, paramsOf, qtyBaseOf);
       if (exact != null) return '=${formatWeight(exact)}';
@@ -575,6 +577,10 @@ class _WeightCellState<T extends EditableGridRow>
 
   Widget _buildField(BuildContext context) {
     final theme = Theme.of(context);
+    final weighExtent = UtenControlMetrics.minimumHitExtent(
+      context,
+      desktop: 32,
+    );
     final c = widget.controller;
     final params = widget.paramsOf?.call(widget.row);
     final qtyBase = widget.qtyBaseOf?.call(widget.row);
@@ -644,10 +650,15 @@ class _WeightCellState<T extends EditableGridRow>
           onPressed: widget.enabled
               ? () => widget.onWeighCount!(context, widget.row)
               : null,
-          // 2026-10-10 表格内输入框高度统一：44 触控槽会把整格撑到 44+，比同行
-          // 27 高的库位/数量格明显高一截。格内图标口径 = 16px 图标 + 24 命中槽
-          // (16 图标 + 4 边距，不超同行输入格 27 的自然高度)。
-          constraints: const BoxConstraints.tightFor(width: 24, height: 24),
+          // 称重是独立操作，不能由输入框代替命中；桌面紧凑、触摸同源补足48。
+          constraints: BoxConstraints.tightFor(
+            width: weighExtent,
+            height: weighExtent,
+          ),
+          style: const ButtonStyle(
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.standard,
+          ),
           padding: const EdgeInsets.all(UtenSpacing.s4),
           icon: const Icon(Icons.scale_outlined, size: 16),
         ),
@@ -668,11 +679,9 @@ class _WeightCellState<T extends EditableGridRow>
             hintText: _placeholder(params, qtyBase),
             enabledBorder: border(focused: false),
             focusedBorder: border(focused: true),
-            // 格内 suffix 不吃 48×48 默认触控槽(2026-10-06 口径)；无 ⓘ 时
-            // 24 槽的称重按钮不再把框撑高，重量格与同行输入格等高。
-            suffixIconConstraints: const BoxConstraints(
-              minWidth: 24,
-              minHeight: 24,
+            suffixIconConstraints: BoxConstraints(
+              minWidth: weighExtent,
+              minHeight: weighExtent,
             ),
             suffixIcon: suffix.isEmpty
                 ? null

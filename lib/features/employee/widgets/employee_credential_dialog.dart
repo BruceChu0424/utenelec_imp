@@ -3,6 +3,7 @@
 // 抽自 employee_onboarding_page 的 _showOnboardingCredential，供入职页与员工详情页复用。
 // 返回的员工资料带证件问题(idNumberIssue)时，在临时密码上方加红/黄提醒：开号不受影响，
 // 但初始密码可能和员工本人证件后六位对不上，要以弹窗显示的为准(入职时证件一定合规，不会出现)。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -24,8 +25,7 @@ Future<void> showEmployeeCredentialDialog(
     barrierDismissible: false,
     builder: (dialogContext) => PopScope(
       canPop: false,
-      child: AlertDialog(
-        scrollable: true,
+      child: UtenAlertDialog(
         title: Row(
           children: [
             const Icon(Icons.key_rounded),
@@ -71,7 +71,7 @@ Future<void> showEmployeeCredentialDialog(
                   color: Theme.of(
                     dialogContext,
                   ).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(UtenRadius.control),
                 ),
                 child: SelectableText(
                   result.temporaryPassword,

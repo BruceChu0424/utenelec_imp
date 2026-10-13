@@ -44,9 +44,10 @@ class UtenNotificationBadge extends StatelessWidget {
 
     final label = count > 99 ? '99+' : count.toString();
     final scale = UtenBadgeScale.of(context);
-    // 字号档: 桌面/平板由根部整体缩放(UtenDisplayZoomBox)连同徽章一起放大; 手机只放大
-    // 文字(textScaler), 药丸高度与内边距也要跟着同一倍数放大, 否则数字撑破徽章。
-    final textGrow = MediaQuery.textScalerOf(context).scale(10) / 10;
+    // 应用倍率由根部整体缩放；系统非线性策略按徽章实际字体大小换算几何。
+    final fontSize = (showLabel ? 11 : 10) * scale;
+    final textGrow =
+        MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
     final grow = scale * textGrow;
     final size = this.size * grow;
 
@@ -73,7 +74,7 @@ class UtenNotificationBadge extends StatelessWidget {
             // 实底是固定的深红, 字就得是固定的白 —— 跟着 colorScheme.onError 走的话
             // 深色模式下可能换成深色, 压在这块固定红底上会读不清。
             color: Colors.white,
-            fontSize: (showLabel ? 11 : 10) * scale,
+            fontSize: fontSize,
             fontWeight: FontWeight.w700,
           ),
         ),

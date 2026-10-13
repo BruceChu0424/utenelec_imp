@@ -48,8 +48,12 @@ double measureCategoryTreeNaturalWidth(
   TextStyle? style, {
   double min = 200,
   double max = 560,
+  TextScaler textScaler = TextScaler.noScaling,
 }) {
-  final painter = TextPainter(textDirection: TextDirection.ltr);
+  final painter = TextPainter(
+    textDirection: TextDirection.ltr,
+    textScaler: textScaler,
+  );
   var widest = 0.0;
   void walk(List<ProductCategoryNode> nodes) {
     for (final n in nodes) {

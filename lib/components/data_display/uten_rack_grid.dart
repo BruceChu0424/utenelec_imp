@@ -682,7 +682,10 @@ class _RackGridMetrics {
   final double minCellHeight;
 
   factory _RackGridMetrics.of(BuildContext context) {
-    final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.8);
+    final scale = (MediaQuery.textScalerOf(context).scale(14) / 14).clamp(
+      1.0,
+      2.0,
+    );
     return _RackGridMetrics(
       cellWidth: 136 * scale,
       labelWidth: 52 * scale,

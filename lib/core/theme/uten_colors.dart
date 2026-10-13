@@ -46,11 +46,11 @@ abstract final class UtenColors {
   /// 文字（三档建立清晰层级）
   static const Color textPrimary = Color(0xFF0F172A);
   static const Color textSecondary = Color(0xFF475569);
-  static const Color textTertiary = Color(0xFF94A3B8);
+  static const Color textTertiary = Color(0xFF475569);
 
   /// 边框/分隔线
   static const Color border = Color(0xFFE2E8F0);
-  static const Color borderStrong = Color(0xFFCBD5E1);
+  static const Color borderStrong = Color(0xFF64748B);
   static const Color divider = Color(0xFFF1F5F9);
 
   // slate 色阶（备用）
@@ -339,10 +339,10 @@ abstract final class UtenColors {
   static const Color darkSurfaceLow = Color(0xFF1E293B);
   static const Color darkSurfaceHigh = Color(0xFF334155);
   static const Color darkBorder = Color(0xFF1F2A3D);
-  static const Color darkBorderStrong = Color(0xFF334155);
+  static const Color darkBorderStrong = Color(0xFF94A3B8);
 
   /// 深色文字
   static const Color darkTextPrimary = Color(0xFFF1F5F9);
-  static const Color darkTextSecondary = Color(0xFF94A3B8);
-  static const Color darkTextTertiary = Color(0xFF64748B);
+  static const Color darkTextSecondary = Color(0xFFB4C0D3);
+  static const Color darkTextTertiary = Color(0xFFA2B0C5);
 }

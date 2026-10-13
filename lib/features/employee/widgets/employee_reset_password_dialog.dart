@@ -1,5 +1,6 @@
 // 人事详情页修改密码：确认后生成临时密码，在同一弹窗中一次性展示。
 // 使用员工 ID 调账号支持端点；再认证由统一网络拦截器处理。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -136,9 +137,8 @@ class _EmployeeResetPasswordDialogState
     final password = _temporaryPassword;
     return PopScope<bool>(
       canPop: !_submitting && password == null,
-      child: AlertDialog(
+      child: UtenAlertDialog(
         key: const ValueKey('employee-reset-password-dialog'),
-        scrollable: true,
         title: Text(password == null ? '修改密码' : '一次性临时密码'),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
@@ -169,7 +169,7 @@ class _EmployeeResetPasswordDialogState
                   padding: const EdgeInsets.all(UtenSpacing.s16),
                   decoration: BoxDecoration(
                     color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(UtenRadius.control),
                   ),
                   child: SelectableText(
                     password,

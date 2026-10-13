@@ -8,6 +8,7 @@
 //
 // 不要在业务代码里直接用本组件；通知走 UtenNotify 门面，连接态走 ConnectionRecoveryBanner。
 
+import '../theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 
 import '../../shared/ai/page_context/ai_page_context.dart';
@@ -101,7 +102,7 @@ class UtenTopBannerCard extends StatelessWidget {
           color: background,
           elevation: 4,
           shadowColor: theme.colorScheme.shadow.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(UtenRadius.card),
           clipBehavior: Clip.antiAlias,
           child: _body(),
         ),
@@ -149,7 +150,7 @@ class UtenTopBannerCard extends StatelessWidget {
     if (onTap == null) return column;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(UtenRadius.card),
       // 悬停/点按反馈用「前景色低透明叠加」，而非 Material 默认的灰（黑）高亮——
       // 否则把语义容器色（绿/红/橙）刷成一片灰，用户会以为是「灰色长条」。
       hoverColor: foreground.withValues(alpha: 0.08),

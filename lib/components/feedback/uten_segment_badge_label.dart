@@ -60,6 +60,7 @@ class UtenSegmentBadgeLabel extends StatelessWidget {
     this.countForm = UtenSegmentCountForm.browsing,
     this.inProgressCount,
     this.badgeSize = 16,
+    this.stacked = false,
   });
 
   /// 分段文字（如「采购收货」「自制产成品」）。
@@ -83,6 +84,10 @@ class UtenSegmentBadgeLabel extends StatelessWidget {
   /// 徽章直径，默认 16(与分段导航条内边距协调)。
   /// 仅 [UtenSegmentCountForm.actionable] / [UtenSegmentCountForm.inProgress] 用。
   final double badgeSize;
+
+  /// Vertical category panels keep the complete name on its own line. Counts
+  /// may wrap independently so two badges never squeeze the label to zero.
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) => AiPageRegistrar(
@@ -114,6 +119,41 @@ class UtenSegmentBadgeLabel extends StatelessWidget {
     final count = this.count;
     final inProgress = inProgressCount;
     final hasInProgress = inProgress != null && inProgress > 0;
+    if (stacked) {
+      final badges = <Widget>[
+        if (hasInProgress)
+          UtenInProgressBadge(count: inProgress, size: badgeSize),
+        if (count != null)
+          if (countForm == UtenSegmentCountForm.browsing)
+            UtenCountSuffix(
+              count: count,
+              hideWhenZero: false,
+              semanticsLabel: '共 $count 条',
+            )
+          else if (count > 0)
+            if (countForm == UtenSegmentCountForm.actionable)
+              UtenNotificationBadge(count: count, size: badgeSize)
+            else
+              UtenInProgressBadge(count: count, size: badgeSize),
+      ];
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label),
+          if (badges.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final badge in badges) IntrinsicWidth(child: badge),
+              ],
+            ),
+          ],
+        ],
+      );
+    }
     if (countForm != UtenSegmentCountForm.browsing || hasInProgress) {
       // 红/黄两种徽章形态同构：同高、同 0 不渲染规则，只有颜色与语义不同。
       // 两枚并存时黄在左、红在右(与 hub 卡右上角同序)。

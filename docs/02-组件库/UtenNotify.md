@@ -267,3 +267,7 @@ flowchart TD
 ---
 
 **最后更新**：2026-08-30（ADR-059：全部到达提醒顶部非阻塞叠放、批次并发派发、逐条 delivered、默认链不写 popup ack） · **门面**：`lib/core/ui/uten_notify.dart` · **操作反馈**：`lib/core/ui/action_feedback.dart`（guardAction/guardLoad/guardRun） · **组件**：`lib/core/ui/app_notification.dart`、`lib/core/ui/app_notification_stack.dart`、`lib/core/ui/uten_top_banner_card.dart` · **通知模块**：`/api/notices` + `/api/notices/arrivals`
+
+## 全平台界面缩放适配（2026-10-13）
+
+UtenCenterAlert 使用 UtenAlertDialog，图标/标题/长文可滚动、双动作按宽度换行，低高窗口整框可滚以确保确认可达。normal/important/urgent 分级、urgent 默认禁止遮罩关闭、blockSystemBack、interruptSignal、回调结果和性能/减少动画的过渡时长保持。

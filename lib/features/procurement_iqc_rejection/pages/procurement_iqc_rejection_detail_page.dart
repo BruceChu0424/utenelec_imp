@@ -271,6 +271,8 @@ class _ProcurementIqcRejectionDetailPageState
             // 可拖宽，初始/复位宽取布局宽的 58% 对齐旧 flex 3:2 观感。
             return LayoutBuilder(
               builder: (context, constraints) => UtenSplitView(
+                leadingNoun: '事实',
+                selectedLeadingLabel: '案件事实',
                 persistenceKey: 'procurementIqc.rejectionDetail',
                 initialLeadingWidth: constraints.maxWidth * 0.58,
                 minLeadingWidth: 320,

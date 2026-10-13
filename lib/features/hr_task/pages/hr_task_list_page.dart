@@ -971,25 +971,30 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
             horizontal: UtenSpacing.s12,
             vertical: UtenSpacing.s8,
           ),
-          child: Row(
-            children: [
-              Icon(
-                _type == HrTaskType.birthday
-                    ? Icons.cake_rounded
-                    : Icons.emoji_events_rounded,
-                color: theme.colorScheme.onPrimaryContainer,
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Expanded(
-                child: Text(
-                  '一键为今日$noun的 ${toBless.length} 人发布一张聚合祝福卡',
-                  style: theme.textTheme.bodyMedium?.copyWith(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final info = Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    _type == HrTaskType.birthday
+                        ? Icons.cake_rounded
+                        : Icons.emoji_events_rounded,
                     color: theme.colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w600,
                   ),
-                ),
-              ),
-              FilledButton.icon(
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(
+                    child: Text(
+                      '一键为今日$noun的 ${toBless.length} 人发布一张聚合祝福卡',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+              final action = FilledButton.icon(
                 onPressed: _batchBusy
                     ? null
                     : () => _batchBless({
@@ -997,8 +1002,31 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
                       }, toBless),
                 icon: const Icon(Icons.send_rounded, size: 18),
                 label: const Text('一键全部'),
-              ),
-            ],
+              );
+              if (constraints.maxWidth < 400) {
+                return ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.3,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        info,
+                        const SizedBox(height: UtenSpacing.s8),
+                        action,
+                      ],
+                    ),
+                  ),
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: info),
+                  action,
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -1024,37 +1052,33 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           horizontal: UtenSpacing.s16,
           vertical: UtenSpacing.s8,
         ),
-        child: Row(
-          children: [
-            Icon(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final icon = Icon(
               Icons.auto_awesome_outlined,
               size: 20,
               color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '自动发送祝福',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+            );
+            final description = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '自动发送祝福',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '开：每天 08:00（北京时间）自动为当天生日/入职周年的同事发布祝福卡；'
-                    '关：由人事在本页手动送祝福',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '开：每天 08:00（北京时间）自动为当天生日/入职周年的同事发布祝福卡；'
+                  '关：由人事在本页手动送祝福',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(width: UtenSpacing.s12),
-            async.when(
+                ),
+              ],
+            );
+            final toggle = async.when(
               loading: () => const SizedBox(
                 width: 24,
                 height: 24,
@@ -1070,8 +1094,28 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
                 value: settings.autoEnabled,
                 onChanged: _autoToggling ? null : _onToggleCelebrationAuto,
               ),
-            ),
-          ],
+            );
+            if (constraints.maxWidth < 400) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  icon,
+                  const SizedBox(height: UtenSpacing.s8),
+                  description,
+                  Align(alignment: Alignment.centerRight, child: toggle),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                icon,
+                const SizedBox(width: UtenSpacing.s12),
+                Expanded(child: description),
+                const SizedBox(width: UtenSpacing.s12),
+                toggle,
+              ],
+            );
+          },
         ),
       ),
     );

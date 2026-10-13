@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -181,6 +182,9 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     BuildContext context,
     Widget child, {
     bool readOnly = false,
+    // A confirmation body already belongs to a dialog shell. Its revoked
+    // notice must stay intrinsic-safe instead of nesting another dialog.
+    bool inlineNotice = false,
   }) {
     _privateRoutes.removeWhere((route) => !route.isActive);
     _dialogAccess.removeWhere((route, _) => !route.isActive);
@@ -198,8 +202,28 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
         return Stack(
           children: [
             Offstage(offstage: !current, child: child),
-            if (!current)
-              AlertDialog(
+            if (!current && inlineNotice)
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '操作权限已更新',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('此窗口中的输入不会提交。请关闭窗口，核对当前信息后再操作。'),
+                  const SizedBox(height: 12),
+                  Align(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('关闭'),
+                    ),
+                  ),
+                ],
+              ),
+            if (!current && !inlineNotice)
+              UtenAlertDialog(
                 title: const Text('操作权限已更新'),
                 content: const Text('此窗口中的输入不会提交。请关闭窗口，核对当前信息后再操作。'),
                 actions: [
@@ -235,7 +259,7 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
         context: context,
         builder: (dialogContext) => trackNativeReadDialog(
           dialogContext,
-          AlertDialog(
+          UtenAlertDialog(
             title: Text(title),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),

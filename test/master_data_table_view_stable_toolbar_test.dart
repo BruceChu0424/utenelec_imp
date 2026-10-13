@@ -54,6 +54,42 @@ void main() {
   );
 
   testWidgets(
+    'fullscreen transfers the accessible surface and keeps live search state',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        final searchKey = GlobalKey();
+        await tester.pumpWidget(
+          page(
+            items: const [
+              {'status': '甲'},
+            ],
+            loading: false,
+            searchKey: searchKey,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final field = find.descendant(
+          of: find.byType(UtenSearchBar),
+          matching: find.byType(EditableText),
+        );
+        await tester.tap(field);
+        await tester.enterText(field, '正在填写的搜索条件');
+        await tester.pump();
+        final originalState = searchKey.currentState;
+        await tester.tap(find.text('全屏'));
+        await tester.pumpAndSettle();
+        expect(searchKey.currentState, same(originalState));
+        expect(find.text('正在填写的搜索条件'), findsOneWidget);
+        expect(find.text('退出全屏'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
+
+  testWidgets(
     'leading search box survives loading → data → empty state switches',
     (tester) async {
       final searchKey = GlobalKey();

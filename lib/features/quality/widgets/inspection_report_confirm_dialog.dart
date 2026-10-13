@@ -4,6 +4,7 @@
 // 合计行（品种数 + 合格/不合格合计）→ 分项行（IQC 明细 / FQC 任务）→
 // 结论原因（含不合格时必填）→ 可滚动明细清单 → 取消 / 确认提交报告。
 // 只做最后一步确认，不承载任何业务校验（校验在页面与服务器）。
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -113,7 +114,8 @@ class _InspectionReportConfirmDialogState
         widget.lines.any(
           (line) => (double.tryParse(line.failText.trim()) ?? 0) > 0,
         );
-    return AlertDialog(
+    return UtenAlertDialog(
+      scrollable: false,
       title: const Text('确认提交检验报告'),
       content: SizedBox(
         width: 520,
@@ -179,37 +181,35 @@ class _InspectionReportConfirmDialogState
                     final line = widget.lines[index];
                     return Padding(
                       padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              line.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                          const SizedBox(width: UtenSpacing.s8),
-                          Text(
-                            line.passText.isEmpty
-                                ? '全部合格'
-                                : '合格 ${line.passText}'
-                                      '${line.dim == null ? '' : ' ${line.dim}'}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                          if (line.failText.isNotEmpty &&
-                              line.failText.trim() != '0') ...[
-                            const SizedBox(width: UtenSpacing.s8),
-                            Text(
-                              '不合格 ${line.failText}'
-                              '${line.dim == null ? '' : ' ${line.dim}'}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.error,
+                          Text(line.label, style: theme.textTheme.bodySmall),
+                          const SizedBox(height: UtenSpacing.s4),
+                          Wrap(
+                            spacing: UtenSpacing.s8,
+                            runSpacing: UtenSpacing.s4,
+                            children: [
+                              Text(
+                                line.passText.isEmpty
+                                    ? '全部合格'
+                                    : '合格 ${line.passText}'
+                                          '${line.dim == null ? '' : ' ${line.dim}'}',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.primary,
+                                ),
                               ),
-                            ),
-                          ],
+                              if (line.failText.isNotEmpty &&
+                                  line.failText.trim() != '0')
+                                Text(
+                                  '不合格 ${line.failText}'
+                                  '${line.dim == null ? '' : ' ${line.dim}'}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.error,
+                                  ),
+                                ),
+                            ],
+                          ),
                         ],
                       ),
                     );

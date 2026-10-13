@@ -53,38 +53,54 @@ class UtenPickerConfirmBar extends StatelessWidget {
             ? '已选择：$selectedLabel'
             : '已选择 $selectedCount 项');
     return UtenBottomActionBar(
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: hasSelection
-                    ? theme.colorScheme.onSurface
-                    : theme.colorScheme.onSurfaceVariant,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final summary = Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: hasSelection
+                  ? theme.colorScheme.onSurface
+                  : theme.colorScheme.onSurfaceVariant,
+            ),
+          );
+          final actions = Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (onClear != null)
+                TextButton(
+                  onPressed: hasSelection ? onClear : null,
+                  child: const Text('清空'),
+                ),
+              TextButton(
+                onPressed: onCancel ?? () => Navigator.of(context).pop(),
+                child: const Text('取消'),
               ),
-            ),
-          ),
-          if (onClear != null) ...[
-            TextButton(
-              onPressed: hasSelection ? onClear : null,
-              child: const Text('清空'),
-            ),
-            const SizedBox(width: 8),
-          ],
-          TextButton(
-            onPressed: onCancel ?? () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: hasSelection ? onConfirm : null,
-            child: Text(confirmLabel),
-          ),
-        ],
+              FilledButton(
+                onPressed: hasSelection ? onConfirm : null,
+                child: Text(confirmLabel),
+              ),
+            ],
+          );
+          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          if (constraints.maxWidth < 560 * textScale) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [summary, const SizedBox(height: 8), actions],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: summary),
+              const SizedBox(width: 12),
+              actions,
+            ],
+          );
+        },
       ),
     );
   }

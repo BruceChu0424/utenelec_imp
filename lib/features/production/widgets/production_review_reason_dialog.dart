@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_field_message.dart';
@@ -45,7 +46,7 @@ class _ProductionReviewReasonDialogState
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => UtenAlertDialog(
     title: Text(widget.title),
     content: Form(
       key: form,

@@ -17,6 +17,7 @@
 import 'package:flutter/material.dart';
 
 import 'uten_button.dart';
+import '../../core/theme/uten_tokens.dart';
 
 class UtenAppBarActionButton extends StatelessWidget {
   const UtenAppBarActionButton({
@@ -51,7 +52,7 @@ class UtenAppBarActionButton extends StatelessWidget {
   final bool isLoading;
 
   /// 顶栏动作统一高度（顶栏 56 高，留出上下呼吸）。
-  static const double height = 36;
+  static const double height = UtenControlMetrics.compactHeight;
 
   @override
   Widget build(BuildContext context) {

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 
@@ -368,7 +369,8 @@ class _CancelFutureTransferDialogState
     onPopInvokedWithResult: (didPop, _) {
       if (!didPop && !_locked) _close();
     },
-    child: AlertDialog(
+    child: UtenAlertDialog(
+      scrollable: false,
       title: const Text('撤销未实收份额'),
       content: SizedBox(
         width: 520,

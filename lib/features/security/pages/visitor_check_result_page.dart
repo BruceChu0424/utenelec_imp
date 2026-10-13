@@ -118,32 +118,40 @@ class _VisitorCheckResultPageState
     final visitorId = _result?.visitorId;
     if (visitorId == null) return;
     final ctl = TextEditingController();
-    final confirmed = await UtenDialog.show(
-      context,
-      title: l10n.securityBlacklistAction,
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          UtenReviewerResponsibilityNotice(
-            actionLabel: l10n.securityBlacklistNoticeLabel,
-            description: l10n.securityBlacklistNoticeDesc,
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          UtenInput(
-            controller: ctl,
-            label: l10n.securityBlacklistReasonLabel,
-            hint: l10n.securityBlacklistReasonHint,
-            maxLines: 2,
-          ),
-        ],
-      ),
-      confirmLabel: l10n.securityBlacklistAction,
-      cancelLabel: l10n.commonCancel,
-      danger: true,
-    );
-    final reason = ctl.text.trim();
-    ctl.dispose();
+    bool? confirmed;
+    var reason = '';
+    try {
+      confirmed = await UtenDialog.show(
+        context,
+        waitForExit: true,
+        onPopped: (result) {
+          if (result == true) reason = ctl.text.trim();
+        },
+        title: l10n.securityBlacklistAction,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            UtenReviewerResponsibilityNotice(
+              actionLabel: l10n.securityBlacklistNoticeLabel,
+              description: l10n.securityBlacklistNoticeDesc,
+            ),
+            const SizedBox(height: UtenSpacing.s12),
+            UtenInput(
+              controller: ctl,
+              label: l10n.securityBlacklistReasonLabel,
+              hint: l10n.securityBlacklistReasonHint,
+              maxLines: 2,
+            ),
+          ],
+        ),
+        confirmLabel: l10n.securityBlacklistAction,
+        cancelLabel: l10n.commonCancel,
+        danger: true,
+      );
+    } finally {
+      ctl.dispose();
+    }
     if (confirmed != true || reason.isEmpty || !mounted) return;
     try {
       await ref

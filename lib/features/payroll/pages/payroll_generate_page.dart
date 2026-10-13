@@ -8,6 +8,8 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/layout/uten_section_header.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -153,56 +155,53 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
                     content: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Row(
+                        UtenFormGrid(
+                          columns: 2,
+                          minFieldWidth: 160,
                           children: [
-                            Expanded(
-                              child: UtenDropdownField(
-                                label: '工资年份',
-                                value: '$_year',
-                                allowClear: false,
-                                searchable: false,
-                                enabled: _draftBatch == null,
-                                items: [
-                                  for (
-                                    var year = ChinaDateTime.today().year + 1;
-                                    year >= ChinaDateTime.today().year - 20;
-                                    year--
-                                  )
-                                    UtenDropdownItem(
-                                      value: '$year',
-                                      label: '$year 年',
-                                    ),
-                                ],
-                                onChanged: (value) {
-                                  final year = int.tryParse(value ?? '');
-                                  if (year != null) {
-                                    setState(() => _year = year);
-                                  }
-                                },
-                              ),
+                            UtenDropdownField(
+                              label: '工资年份',
+                              value: '$_year',
+                              allowClear: false,
+                              searchable: false,
+                              enabled: _draftBatch == null,
+                              items: [
+                                for (
+                                  var year = ChinaDateTime.today().year + 1;
+                                  year >= ChinaDateTime.today().year - 20;
+                                  year--
+                                )
+                                  UtenDropdownItem(
+                                    value: '$year',
+                                    label: '$year 年',
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                final year = int.tryParse(value ?? '');
+                                if (year != null) {
+                                  setState(() => _year = year);
+                                }
+                              },
                             ),
-                            const SizedBox(width: UtenSpacing.s12),
-                            Expanded(
-                              child: UtenDropdownField(
-                                label: l10n.payrollFieldMonth,
-                                value: '$_month',
-                                allowClear: false,
-                                searchable: false,
-                                enabled: _draftBatch == null,
-                                items: [
-                                  for (var month = 1; month <= 12; month++)
-                                    UtenDropdownItem(
-                                      value: '$month',
-                                      label: '$month 月',
-                                    ),
-                                ],
-                                onChanged: (value) {
-                                  final month = int.tryParse(value ?? '');
-                                  if (month != null) {
-                                    setState(() => _month = month);
-                                  }
-                                },
-                              ),
+                            UtenDropdownField(
+                              label: l10n.payrollFieldMonth,
+                              value: '$_month',
+                              allowClear: false,
+                              searchable: false,
+                              enabled: _draftBatch == null,
+                              items: [
+                                for (var month = 1; month <= 12; month++)
+                                  UtenDropdownItem(
+                                    value: '$month',
+                                    label: '$month 月',
+                                  ),
+                              ],
+                              onChanged: (value) {
+                                final month = int.tryParse(value ?? '');
+                                if (month != null) {
+                                  setState(() => _month = month);
+                                }
+                              },
                             ),
                           ],
                         ),
@@ -268,37 +267,29 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
                         : (_step == 1 ? StepState.indexed : StepState.disabled),
                     content: Column(
                       children: [
-                        SwitchListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(l10n.payrollItemOvertime),
+                        _PayrollItemSwitch(
+                          title: l10n.payrollItemOvertime,
                           value: _overtime,
                           onChanged: _draftBatch == null
                               ? (value) => setState(() => _overtime = value)
                               : null,
                         ),
-                        SwitchListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(l10n.payrollItemBonus),
+                        _PayrollItemSwitch(
+                          title: l10n.payrollItemBonus,
                           value: _bonus,
                           onChanged: _draftBatch == null
                               ? (value) => setState(() => _bonus = value)
                               : null,
                         ),
-                        SwitchListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(l10n.payrollItemSocial),
+                        _PayrollItemSwitch(
+                          title: l10n.payrollItemSocial,
                           value: _social,
                           onChanged: _draftBatch == null
                               ? (value) => setState(() => _social = value)
                               : null,
                         ),
-                        SwitchListTile(
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(l10n.payrollItemTax),
+                        _PayrollItemSwitch(
+                          title: l10n.payrollItemTax,
                           value: _tax,
                           onChanged: _draftBatch == null
                               ? (value) => setState(() => _tax = value)
@@ -468,6 +459,27 @@ class _PayrollGeneratePageState extends ConsumerState<PayrollGeneratePage>
   }
 }
 
+class _PayrollItemSwitch extends StatelessWidget {
+  const _PayrollItemSwitch({
+    required this.title,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: UtenSectionHeader(
+      title: title,
+      trailing: Switch(value: value, onChanged: onChanged),
+    ),
+  );
+}
+
 class _ServerBatchPreview extends StatelessWidget {
   const _ServerBatchPreview({required this.batch});
 
@@ -564,18 +576,18 @@ class _SlipPreviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ListTile(
-      dense: true,
-      title: Text(
-        '${slip.employeeName}(${slip.employeeCode})',
-        style: theme.textTheme.bodyMedium,
-      ),
-      trailing: Text(
-        '¥ ${slip.netIncome.toStringAsFixed(2)}',
-        style: theme.textTheme.bodyMedium?.copyWith(
-          color: theme.colorScheme.primary,
-          fontWeight: FontWeight.w600,
-          fontFeatures: const [FontFeature.tabularFigures()],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: UtenInfoRow(
+        label: '${slip.employeeName}(${slip.employeeCode})',
+        value: null,
+        valueWidget: Text(
+          '¥ ${slip.netIncome.toStringAsFixed(2)}',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w600,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
         ),
       ),
     );

@@ -353,6 +353,8 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
         MediaQuery.sizeOf(context).width >= 1100;
     if (isExpanded) {
       return UtenSplitView(
+        leadingNoun: '权限资源',
+        selectedLeadingLabel: '查看权限资源',
         persistenceKey: 'admin.permissions',
         initialLeadingWidth: 320,
         leading: _listColumn(),

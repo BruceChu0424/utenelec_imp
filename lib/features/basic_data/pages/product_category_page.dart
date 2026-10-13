@@ -83,7 +83,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('撤回最近一次导入'),
         content: Text(
           '将撤销最近一次导入的 ${batch!.rowCount} 条货品'
@@ -280,7 +280,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         (preview.descendantCount > 0 || preview.goodsCount > 0);
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: UtenColors.error),
@@ -299,7 +299,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                 padding: const EdgeInsets.all(UtenSpacing.s12),
                 decoration: BoxDecoration(
                   color: UtenColors.error.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(UtenRadius.md),
                   border: Border.all(
                     color: UtenColors.error.withValues(alpha: 0.45),
                   ),
@@ -372,7 +372,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   Future<void> _showDeleteError(String message) {
     return showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Row(
           children: [
             Icon(Icons.error_outline_rounded, color: UtenColors.error),
@@ -927,7 +927,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
+        builder: (ctx, setSt) => UtenAlertDialog(
           title: const Text('批量粘贴货品'), // TODO(l10n): 补 arb
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1185,7 +1185,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   Future<BomPasteMode?> _askBomPasteMode(String message) =>
       showDialog<BomPasteMode>(
         context: context,
-        builder: (ctx) => AlertDialog(
+        builder: (ctx) => UtenAlertDialog(
           title: const Text('粘贴组件信息'), // TODO(l10n): 补 arb
           content: Text(message),
           actionsAlignment: MainAxisAlignment.center,

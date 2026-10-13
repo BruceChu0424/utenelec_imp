@@ -298,6 +298,22 @@ void main() {
       expect(tester.takeException(), isNull);
 
       expect(find.text('A4 生产计划单 · 流水线执行工卡'), findsOneWidget);
+      final persistedCard = find.byKey(
+        const ValueKey('production-work-card-print-segment-1'),
+      );
+      final previewScroll = find
+          .descendant(
+            of: find.byType(ListView).last,
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        persistedCard,
+        200,
+        scrollable: previewScroll,
+      );
+      await tester.pumpAndSettle();
+      expect(persistedCard.hitTestable(), findsOneWidget);
       expect(find.textContaining('SEG-001 · 测试产品'), findsOneWidget);
       await tester.tap(find.byTooltip('关闭生产计划打印预览'));
       await tester.pumpAndSettle();

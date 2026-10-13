@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -297,7 +298,7 @@ class _ProductionExecutionSegmentsCardState
   Future<void> _start(ProductionExecutionSegmentView segment) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('确认开工'),
         content: Text(
           '工单 ${segment.segmentCode} 将进入「生产中 · 可报工」状态；'
@@ -375,7 +376,7 @@ class _ProductionExecutionSegmentsCardState
     }
     return showDialog<_SegmentAction>(
       context: context,
-      builder: (dialogContext) => Dialog(
+      builder: (dialogContext) => UtenDialogFrame(
         clipBehavior: Clip.antiAlias,
         insetPadding: const EdgeInsets.all(UtenSpacing.s24),
         child: SizedBox(
@@ -438,7 +439,8 @@ class _ProductionExecutionSegmentsCardState
             });
           }
 
-          return AlertDialog(
+          return UtenAlertDialog(
+            scrollable: false,
             title: Text('调整 ${segment.segmentCode}'),
             content: SizedBox(
               width: 520,
@@ -602,7 +604,7 @@ class _ProductionExecutionSegmentsCardState
   Future<void> _releaseDefer(ProductionExecutionSegmentView segment) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => UtenAlertDialog(
         title: const Text('解除人工暂缓'),
         content: const Text(
           '系统会立即重新检查整套物料：已满足时转为物料齐套并进入备料，'

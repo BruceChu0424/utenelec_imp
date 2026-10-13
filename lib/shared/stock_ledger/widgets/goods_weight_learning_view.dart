@@ -875,7 +875,7 @@ class _ManualUnitWeightDialogState extends State<_ManualUnitWeightDialog> {
   @override
   Widget build(BuildContext context) {
     final unitName = widget.unitName ?? '基本单位';
-    return AlertDialog(
+    return UtenAlertDialog(
       title: Text('设定单重 · ${widget.goodsTitle}'),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 440),
@@ -987,7 +987,7 @@ class _ExcludeReasonDialogState extends State<_ExcludeReasonDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => UtenAlertDialog(
     title: const Text('排除这条称重记录'),
     content: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 420),

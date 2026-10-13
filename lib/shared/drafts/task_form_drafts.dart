@@ -130,7 +130,8 @@ Future<void> resumeTaskFormDraft(
       ? drafts.single
       : await showDialog<FormDraft>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
+          builder: (dialogContext) => UtenAlertDialog(
+            scrollable: false,
             title: const Text('继续填写'),
             content: SizedBox(
               width: 460,

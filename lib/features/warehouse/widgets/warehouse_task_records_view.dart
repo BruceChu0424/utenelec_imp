@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -443,7 +444,8 @@ class _WarehouseTaskRecordsViewState
         if (!mounted || !requestScope.isCurrent) return;
         final confirmed = await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
+          builder: (dialogContext) => UtenAlertDialog(
+            scrollable: false,
             title: Text(
               family == 'ARRIVAL_EXCEPTION'
                   ? '按批准量处理 ${rows.length} 条到货异常'

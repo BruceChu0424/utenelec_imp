@@ -23,6 +23,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -34,7 +35,6 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
@@ -1164,8 +1164,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       // 订货单不涉及仓库：入库仓库到收货登记时才产生。
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
       if (_cfg.hasDepartment) _KV('申请部门', names.department(d.departmentId)),
-      if (canViewCommercialAmounts && _cfg.hasCurrency)
-        _KV('币种', names.currency(d.currencyId)),
+      if (canViewCommercialAmounts &&
+          _cfg.hasCurrency &&
+          financeExactDecimal(d.totalOriginalText) == null)
+        _KV('单据币种', names.currency(d.currencyId)),
       if (canViewCommercialAmounts &&
           (_historicalReceipt || d.exchangeRate != null))
         _KV(
@@ -1181,13 +1183,44 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       if (_cfg.hasNeedDate) _KV('需求日', d.needDate),
       if (_cfg.hasDeliverDate) _KV('交货日', d.deliverDate),
       if (canViewCommercialAmounts && _historicalReceipt) ...[
-        _KV('原始表头原币合计', historicalReceiptAmount(d.totalOriginalText)),
-        _KV('原始表头本币合计', historicalReceiptAmount(d.totalLocalText)),
+        _KV(
+          '原始表头原币合计',
+          financeMoneyWithUnitSuffix(
+            historicalReceiptAmount(d.totalOriginalText),
+            currencyName: names.currency(d.currencyId),
+            fullCurrencyName: true,
+          ),
+        ),
+        _KV(
+          '原始表头本币合计',
+          financeMoneyWithUnitSuffix(
+            historicalReceiptAmount(d.totalLocalText),
+            currencyName: '人民币',
+            fullCurrencyName: true,
+          ),
+        ),
       ],
       if (canViewCommercialAmounts &&
           widget.docType != PurchaseDocType.request &&
-          !_historicalReceipt)
-        _KV('合计(本币)', financeExactMoneyDisplay(d.totalLocalText)),
+          !_historicalReceipt) ...[
+        if (_cfg.hasCurrency)
+          _KV(
+            '单据金额',
+            financeMoneyWithUnitSuffix(
+              d.totalOriginalText,
+              currencyName: names.currency(d.currencyId),
+              fullCurrencyName: true,
+            ),
+          ),
+        _KV(
+          '合计(本币)',
+          financeMoneyWithUnitSuffix(
+            d.totalLocalText,
+            currencyName: '人民币',
+            fullCurrencyName: true,
+          ),
+        ),
+      ],
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       if (widget.docType == PurchaseDocType.order) ...[
         _KV('财务审批', _financeApprovalLabel()),
@@ -1213,12 +1246,38 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
               ),
       ),
     ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
+    final primaryLabels = {
+      '单据金额',
+      if (d.totalOriginalText == null || !_cfg.hasCurrency) '合计(本币)',
+      '原始表头原币合计',
+      '原始表头本币合计',
+    };
+    const factLabels = {'日期', '供应商', '仓库', '申请部门', '申请人', '需求日', '交货日', '财务审批'};
+    return UtenDetailSummaryCard(
+      heading: Text(
+        d.billNo ?? '—',
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      status: rows.last.badge ?? Text(rows.last.value ?? '—'),
+      primary: [
+        for (final r in rows)
+          if (primaryLabels.contains(r.label)) _kvRow(theme, r),
+      ],
+      facts: [
+        for (final r in rows)
+          if (factLabels.contains(r.label)) _kvRow(theme, r),
+      ],
+      details: [
+        UtenSummaryFacts(
           children: [
-            for (final r in rows) _kvRow(theme, r),
+            for (final r in rows)
+              if (r.label != '单据号' &&
+                  r.label != '状态' &&
+                  !primaryLabels.contains(r.label) &&
+                  !factLabels.contains(r.label))
+                _kvRow(theme, r),
             if (widget.docType == PurchaseDocType.order &&
                 (d.sourceRequestId != null || d.sourceRequestNo != null))
               SourceDocLink(
@@ -1268,26 +1327,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
               ),
           ],
         ),
-      ),
+      ],
     );
   }
 
   Widget _kvRow(ThemeData theme, _KV r) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 84,
-          child: Text(
-            r.label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(child: r.badge ?? Text(r.value ?? '—')),
-      ],
+    return UtenSummaryField(
+      label: r.label,
+      value: r.value,
+      emphasis: r.label == '单据金额' || r.label == '合计(本币)',
+      danger: r.label == '单据金额',
     );
   }
 

@@ -29,6 +29,8 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart' show utenFmtIsoTime;
@@ -39,7 +41,6 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -81,6 +82,7 @@ class _FinanceProcurementApprovalReviewPageState
         FormDraftMixin<FinanceProcurementApprovalReviewPage>,
         ReviewTaskDraftMixin<FinanceProcurementApprovalReviewPage> {
   FinanceProcurementApprovalReview? _review;
+  bool _summaryExpanded = false;
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -734,10 +736,6 @@ class _FinanceProcurementApprovalReviewPageState
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                               ],
-                              _statusStrip(theme, review),
-                              const SizedBox(height: UtenSpacing.s12),
-                              _supplierFinanceCard(theme, review),
-                              const SizedBox(height: UtenSpacing.s12),
                               _orderCard(theme, review),
                               if (procurementHeaderUnknownLabels(
                                 review.previousHeaderSnapshot,
@@ -901,81 +899,29 @@ class _FinanceProcurementApprovalReviewPageState
     final pending = r.isPending;
     final rejected = r.status == 'REJECTED';
     final approved = r.status == 'APPROVED';
-    final color = pending
-        ? theme.colorScheme.tertiary
-        : rejected
-        ? theme.colorScheme.error
-        : theme.colorScheme.primary;
     final icon = pending
         ? Icons.pending_actions_rounded
         : rejected
         ? Icons.undo_rounded
         : Icons.verified_rounded;
     final changed = r.previousItems.isNotEmpty;
-    final revisionTitle = r.orderType == FinanceProcurementOrderType.subcontract
-        ? '委外订单修改'
-        : '采购订单修改';
     final statusText = pending
         ? (changed ? '修改后待复核' : '待财务审核')
         : rejected
-        ? '已退回 · 待修改重提'
+        ? '已退回'
         : approved
-        ? '已通过 · 订货已生效'
+        ? '已通过'
         : '已撤回';
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (changed) ...[
-                  Text(
-                    revisionTitle,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: UtenSpacing.s4),
-                ],
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        r.billNo,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: UtenSpacing.s8),
-                    Text(
-                      '${r.orderTypeLabel} · 第 ${r.attempt ?? 1} 轮',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                Text(
-                  statusText,
-                  style: theme.textTheme.bodySmall?.copyWith(color: color),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return UtenStatusBadge(
+      label: statusText,
+      icon: icon,
+      type: pending
+          ? UtenStatusBadgeType.warning
+          : rejected
+          ? UtenStatusBadgeType.danger
+          : approved
+          ? UtenStatusBadgeType.success
+          : UtenStatusBadgeType.neutral,
     );
   }
 
@@ -986,10 +932,12 @@ class _FinanceProcurementApprovalReviewPageState
     ThemeData theme,
     FinanceProcurementApprovalReview r,
   ) {
-    final convertedTotal =
-        _convertedLocalText(r.totalOriginal, _effectiveRateText(r)) ??
-        r.totalLocal;
     return FinancePartySnapshotCard(
+      embedded: true,
+      expanded: _summaryExpanded,
+      showTitle: false,
+      showLeading: false,
+      showBalances: false,
       title:
           '供应商财务快照 · ${r.supplierName ?? '—'}'
           '${r.supplierCode != null ? '(${r.supplierCode})' : ''}',
@@ -999,91 +947,126 @@ class _FinanceProcurementApprovalReviewPageState
       ),
       balance: r.supplierBalance,
       side: PartyBalanceSide.supplier,
-      leading: [
-        FinanceSnapshotMetric(
-          '本单金额',
-          financeMoneyWithUnitSuffix(
-            r.totalOriginal,
-            currencyName: r.currencyName,
-          ),
-          emphasis: true,
-          danger: true,
-        ),
-      ],
-      trailing: [
-        FinanceSnapshotMetric(
-          '折合人民币',
-          r.supplierBalance?.baseMoneyText(convertedTotal) ??
-              financeLocalMoneyWithUnitSuffix(convertedTotal),
-        ),
-        FinanceSnapshotMetric('税率', _trimNum(r.taxRate)),
-      ],
     );
   }
 
   /// 订单信息卡：币种、供应商加粗红色（2026-10-10 订货审批口径：供应商是本页
   /// 核对主体）；汇率跟明细表上方编辑器走（case 级记账口径），不在此重复。
   Widget _orderCard(ThemeData theme, FinanceProcurementApprovalReview r) {
-    Widget kv(String label, String? value, {bool highlight = false}) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    Widget kv(String label, String? value) =>
+        UtenSummaryField(label: label, value: value);
+    final balance = r.supplierBalance;
+    final currency = balance?.baseCurrency == true
+        ? (balance?.baseCurrencyName ?? '人民币')
+        : balance?.currencyName;
+    final net = financeExactDecimal(balance?.netOriginal);
+    final surplus = net?.startsWith('-') == true;
+    final convertedTotal =
+        _convertedLocalText(r.totalOriginal, _effectiveRateText(r)) ??
+        r.totalLocal;
+    return UtenDetailSummaryCard(
+      heading: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SizedBox(
-            width: 84,
-            child: Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+          if (r.previousItems.isNotEmpty)
+            Text(
+              r.orderType == FinanceProcurementOrderType.subcontract
+                  ? '委外订单修改'
+                  : '采购订单修改',
             ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              (value == null || value.isEmpty) ? '—' : value,
-              style: highlight
-                  ? theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.error,
-                    )
-                  : null,
+          Text(r.billNo),
+          Text(
+            '${r.supplierName ?? '—'}${r.supplierCode != null ? '(${r.supplierCode})' : ''}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
-      );
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
+      ),
+      status: _statusStrip(theme, r),
+      expanded: _summaryExpanded,
+      onExpandedChanged: (value) => setState(() => _summaryExpanded = value),
+      primary: [
+        UtenSummaryField(
+          label: '本单金额',
+          value: financeMoneyWithUnitSuffix(
+            r.totalOriginal,
+            currencyName: r.currencyName,
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
+          danger: true,
+        ),
+        UtenSummaryField(
+          label: '折合本币',
+          value: financeMoneyWithUnitSuffix(
+            convertedTotal,
+            currencyName: '人民币',
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
+        ),
+        UtenSummaryField(
+          label: '应付未付',
+          value: financeMoneyWithUnitSuffix(
+            balance?.openOriginal,
+            currencyName: currency,
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
+        ),
+        UtenSummaryField(
+          label: surplus ? '可抵有余' : '还差多少',
+          value: financeMoneyWithUnitSuffix(
+            surplus ? net!.substring(1) : net,
+            currencyName: currency,
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
+        ),
+      ],
+      facts: [
+        kv('订货类型', '${r.orderTypeLabel} · 第 ${r.attempt ?? 1} 轮'),
+        kv(
+          '可抵预付/贷项',
+          financeMoneyWithUnitSuffix(
+            balance?.creditOriginal,
+            currencyName: currency,
+            fullCurrencyName: true,
+          ),
+        ),
+        kv('税率', _trimNum(r.taxRate)),
+        kv('单据日期', r.billDate),
+        if (r.warehouseName?.isNotEmpty == true) kv('仓库', r.warehouseName),
+        kv('结算方式', r.settlementMethodName),
+        kv('订货人', r.purchaserName),
+        kv('预计到货日', r.deliverDate),
+        kv(
+          '来源申请',
+          r.items.any((line) => !line.displaySnapshotComplete)
+              ? '历史未留存'
+              : r.sourceApplicationCount > 0
+              ? '${r.sourceApplicationCount} 张'
+              : '无申请来源',
+        ),
+      ],
+      notices: [_supplierFinanceCard(theme, r)],
+      details: [
+        UtenSummaryFacts(
           children: [
-            kv('单据日期', r.billDate),
-            kv('订货类型', r.orderTypeLabel),
-            kv('供应商', r.supplierName, highlight: true),
-            kv('仓库', r.warehouseName),
-            kv('币种', r.currencyLabel, highlight: true),
-            kv('结算方式', r.settlementMethodName),
-            kv('订货人', r.purchaserName),
             kv('制单员', r.makerName),
             kv('提交人', r.submittedByName),
             kv('提交时间', utenFmtIsoTime(r.submittedAt)),
-            kv('预计到货日', r.deliverDate),
-            kv(
-              '来源申请',
-              r.items.any((line) => !line.displaySnapshotComplete)
-                  ? '历史未留存'
-                  : r.sourceApplicationCount > 0
-                  ? '${r.sourceApplicationCount} 张'
-                  : '无申请来源',
-            ),
             kv(
               '备注',
               r.headerSnapshot.containsKey('remark') ? r.remark : '历史未留存',
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 

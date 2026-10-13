@@ -159,18 +159,39 @@ void main() {
     expect(find.text('应收未收'), findsOneWidget);
     expect(find.text('0.00 美金'), findsOneWidget);
     expect(find.text('可用预收'), findsOneWidget);
-    expect(find.text('25.00 美金'), findsOneWidget);
-    expect(find.text('预收有余 25.00 美金'), findsOneWidget);
+    expect(find.text('25.00 美金'), findsNWidgets(2));
+    expect(find.text('预收有余'), findsOneWidget);
+    // 收起状态仍完整显示超额风险；金额明细随统一的查看更多展开。
+    expect(
+      find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
+      findsOneWidget,
+    );
+    final risk = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(
+      risk.data,
+      allOf(
+        contains('70.00 人民币'),
+        contains('100.00 人民币'),
+        contains('30.00 人民币'),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('detail-summary-toggle')));
+    await tester.pumpAndSettle();
     // 铺底额只和全部币种正式应收(折本币，不扣预收)比，超出标红。
     expect(find.text('全部币种应收(折本币)'), findsOneWidget);
-    expect(find.text('100.00 元'), findsOneWidget);
+    expect(find.text('100.00 人民币'), findsOneWidget);
     expect(find.text('铺底额'), findsOneWidget);
-    expect(find.text('30.00 元'), findsOneWidget);
+    expect(find.text('30.00 人民币'), findsOneWidget);
     expect(find.text('超出铺底额'), findsOneWidget);
-    expect(find.text('70.00 元'), findsOneWidget);
+    expect(find.text('70.00 人民币'), findsOneWidget);
     expect(
-      tester.widget<Text>(find.text('70.00 元')).style?.color,
-      Theme.of(tester.element(find.text('70.00 元'))).colorScheme.error,
+      tester.widget<Text>(find.text('70.00 人民币')).style?.color,
+      Theme.of(tester.element(find.text('70.00 人民币'))).colorScheme.error,
     );
     // 其它币种各列各的，不换算。
     expect(find.text('另有 100.00 元'), findsOneWidget);

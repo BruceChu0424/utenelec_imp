@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -27,7 +28,6 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -36,6 +36,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/currency_display.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
@@ -70,6 +71,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
   FinanceDocConfig get _cfg => FinanceDocConfig.by(widget.docType);
   FinanceDocDetail? _detail;
   bool _loading = false;
+  bool _summaryExpanded = false;
   bool _busy = false;
   // 处理中遮罩标题（跟随动作，如「正在审核…」「正在删除…」）。
   String _busyTitle = '正在处理，请稍候';
@@ -506,13 +508,6 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         widget.id,
       ),
       _headerCard(theme, names),
-      if (_cfg.type == FinanceDocType.receipt &&
-          !_detail!.legacyImported &&
-          _detail!.receiptKind == 'CUSTOMER_PREPAYMENT' &&
-          _detail!.salesOrderId != null) ...[
-        const SizedBox(height: UtenSpacing.s12),
-        SalesOrderMoneySummaryCard(salesOrderId: _detail!.salesOrderId!),
-      ],
       if (canViewFiles) ...[
         const SizedBox(height: UtenSpacing.s12),
         BusinessAttachmentSection(
@@ -777,30 +772,266 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
           _ => '未过账',
         }),
     ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(children: [for (final r in rows) _kvRow(theme, r)]),
+    final primaryLabels = <String>{
+      if (isHistoricalReceipt) ...['原始收款金额', '原始本币金额'],
+      if (isVersionedReceipt) ...[
+        '本批客户支付/核销原币',
+        (d.settlementAuthorityVersion ?? 0) >= 2
+            ? '本批客户已付(人民币)'
+            : '本批结算毛额(人民币)',
+        '真实账户实际入账($accountCurrencyLabel)',
+        '实际入账本位币(人民币)',
+      ],
+      if (isCustomerPrepayment && !isVersionedReceipt) ...[
+        cnyReceiptAccount ? '本批预收原币金额' : '本批账户原币实际入账',
+        cnyReceiptAccount ? '本批人民币实际入账' : '本批本位币折算(人民币)',
+      ],
+      if (isReceipt &&
+          !isCustomerPrepayment &&
+          !isVersionedReceipt &&
+          !isHistoricalReceipt) ...[
+        '本批到账(应收原币)',
+        receiptLocalLabel,
+        '冲减应收账面金额(人民币)',
+      ],
+      if (isPayment) ...[
+        '付款原币金额',
+        '银行实际总扣款($accountCurrencyLabel)',
+        '冲减应付账面本币',
+        if ((d.settlementAuthorityVersion ?? 0) < 2) '付款本币合计',
+      ],
+      if (!isReceipt && !isPayment) '合计(本币)',
+    };
+    final factLabels = {
+      '日期',
+      _cfg.partyLabel,
+      _cfg.accountLabel,
+      '收款类型',
+      '结算渠道',
+      '外贸代理公司',
+      '总账',
+    };
+    const noticeLabels = {'结算口径', '付款口径', '资金来源'};
+    const currencyLabels = {
+      '币种',
+      '应收币种',
+      '原始币种',
+      '应收/预收原币',
+      '真实收款账户币种',
+      '实际付款账户币种',
+      '收款账户币种',
+      '费用账户币种',
+    };
+    bool currencyCarriedByAmount(_KV currency) {
+      final name = currency.value;
+      if (name == null || name == '—') {
+        return false;
+      }
+      final documentCurrency = const {
+        '币种',
+        '应收币种',
+        '原始币种',
+        '应收/预收原币',
+      }.contains(currency.label);
+      final accountCurrency = const {
+        '真实收款账户币种',
+        '实际付款账户币种',
+        '收款账户币种',
+      }.contains(currency.label);
+      for (final amount in rows) {
+        if (financeExactDecimal(amount.value) == null ||
+            amount.label.contains('汇率')) {
+          continue;
+        }
+        if (name == '人民币' &&
+            (amount.label.contains('人民币') ||
+                amount.label.contains('本币') ||
+                amount.label.contains('本位币'))) {
+          return true;
+        }
+        if (documentCurrency &&
+            const {
+              '本批预收原币金额',
+              '本批到账(应收原币)',
+              '付款原币金额',
+              '原始收款金额',
+              '本批客户支付/核销原币',
+              '本批货款原币',
+            }.contains(amount.label) &&
+            names.currency(d.currencyId) == name) {
+          return true;
+        }
+        if (accountCurrency &&
+            (amount.label == '本批账户原币实际入账' ||
+                amount.label.startsWith('真实账户实际入账(') ||
+                amount.label.startsWith('银行实际总扣款(')) &&
+            accountCurrencyLabel == name) {
+          return true;
+        }
+        if (currency.label == '费用账户币种' &&
+            (amount.label.startsWith('银行手续费(') ||
+                amount.label.startsWith('其它费用(')) &&
+            feeCurrencyLabel == name) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    final statusRow = rows.firstWhere((row) => row.label == '状态');
+    Widget summaryCard(
+      List<Widget> moneyMetrics,
+      List<Widget> moneyDetails,
+      List<Widget> moneyNotices,
+    ) => UtenDetailSummaryCard(
+      heading: Text(
+        d.billNo ?? '—',
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
       ),
+      status: statusRow.badge,
+      expanded: _summaryExpanded,
+      onExpandedChanged: (value) => setState(() => _summaryExpanded = value),
+      primary: [
+        for (final r in rows)
+          if (primaryLabels.contains(r.label)) _kvRow(theme, r),
+      ],
+      facts: [
+        for (final r in rows)
+          if (factLabels.contains(r.label)) _kvRow(theme, r),
+        for (final metric in moneyMetrics)
+          if (metric is UtenSummaryField)
+            UtenSummaryField(
+              label: '订单资金 · ${metric.label}',
+              value: metric.value,
+              inline: true,
+              danger: metric.danger,
+            )
+          else
+            metric,
+      ],
+      notices: [
+        for (final r in rows)
+          if (noticeLabels.contains(r.label)) _kvRow(theme, r),
+        ...moneyNotices,
+      ],
+      details: [
+        UtenSummaryFacts(
+          children: [
+            for (final r in rows)
+              if (r.label != '单据号' &&
+                  r.label != '状态' &&
+                  !primaryLabels.contains(r.label) &&
+                  !factLabels.contains(r.label) &&
+                  !noticeLabels.contains(r.label) &&
+                  (!currencyLabels.contains(r.label) ||
+                      !currencyCarriedByAmount(r)))
+                _kvRow(theme, r),
+          ],
+        ),
+        ...moneyDetails,
+      ],
     );
+    if (isCustomerPrepayment && !d.legacyImported && d.salesOrderId != null) {
+      return SalesOrderMoneySummaryCard(
+        salesOrderId: d.salesOrderId!,
+        summaryBuilder: (context, metrics, details, notices) =>
+            summaryCard(metrics, details, notices),
+      );
+    }
+    return summaryCard(const [], const [], const []);
   }
 
   Widget _kvRow(ThemeData theme, _KV r) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 84,
-          child: Text(
-            r.label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(child: r.badge ?? Text(r.value ?? '—')),
-      ],
+    final d = _detail!;
+    var value = r.value;
+    var label = r.label;
+    const moneyLabels = {
+      '本批预收原币金额',
+      '本批账户原币实际入账',
+      '本批到账(应收原币)',
+      '付款原币金额',
+      '手续费(人民币)',
+      '其它费用(人民币)',
+      '原始收款金额',
+      '原始本币金额',
+      '本批客户支付/核销原币',
+      '本批客户已付(人民币)',
+      '本批结算毛额(人民币)',
+      '实际入账本位币(人民币)',
+      '银行费用本位币(人民币)',
+      '其它费用本位币(人民币)',
+      '本批人民币实际入账',
+      '本批本位币折算(人民币)',
+      '本批费用冲销(人民币)',
+      '本批核销折算合计(人民币)',
+      '冲减应收账面金额(人民币)',
+      '本批汇兑差额(人民币)',
+      '本批货款原币',
+      '实际总扣款本币',
+      '银行扣款账面本币',
+      '货款本币',
+      '货款账面本币',
+      '银行手续费本币',
+      '银行手续费账面本币',
+      '冲减应付账面本币',
+      '汇兑差额本币',
+      '付款本币合计',
+      '合计(本币)',
+    };
+    final money =
+        moneyLabels.contains(r.label) ||
+        r.label.startsWith('真实账户实际入账(') ||
+        r.label.startsWith('银行手续费(') ||
+        r.label.startsWith('其它费用(') ||
+        r.label.startsWith('银行实际总扣款(') ||
+        r.label.startsWith('其中银行手续费(');
+    if (money && financeExactDecimal(value) != null) {
+      final names = ref.watch(financeNameServiceProvider);
+      final local =
+          r.label.contains('人民币') ||
+          r.label.contains('本币') ||
+          r.label.contains('本位币');
+      final account =
+          r.label.contains('账户原币') ||
+          r.label.contains('账户实际') ||
+          r.label.startsWith('银行实际总扣款');
+      final fee =
+          r.label.startsWith('银行手续费(') ||
+          r.label.startsWith('其它费用(') ||
+          r.label.startsWith('其中银行手续费(');
+      final currency = local
+          ? '人民币'
+          : fee
+          ? (names.currency(d.feeAccountCurrencyId) != '—'
+                ? names.currency(d.feeAccountCurrencyId)
+                : names.currency(d.accountCurrencyId) != '—'
+                ? names.currency(d.accountCurrencyId)
+                : names.accountCurrency(d.accountId))
+          : account
+          ? (names.currency(d.accountCurrencyId) != '—'
+                ? names.currency(d.accountCurrencyId)
+                : names.accountCurrency(d.accountId))
+          : names.currency(d.currencyId);
+      value = financeMoneyWithUnitSuffix(
+        value,
+        currencyName: currency,
+        fullCurrencyName: true,
+      );
+      label = label.replaceAll('(人民币)', '').replaceAll('(本币)', '');
+      if (currency?.isNotEmpty == true) {
+        label = label.replaceAll('($currency)', '');
+      }
+    }
+    return UtenSummaryField(
+      label: label,
+      value: value,
+      emphasis:
+          r.label.contains('金额') ||
+          r.label.contains('实际入账') ||
+          r.label.contains('实际总扣款') ||
+          r.label.contains('合计'),
     );
   }
 

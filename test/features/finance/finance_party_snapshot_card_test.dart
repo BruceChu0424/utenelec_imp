@@ -20,6 +20,78 @@ Color? _color(WidgetTester tester, String text) =>
     tester.widget<Text>(find.text(text)).style?.color;
 
 void main() {
+  testWidgets(
+    'embedded customer balances remain distinct when credit details are folded',
+    (tester) async {
+      await _pump(
+        tester,
+        const FinancePartySnapshotCard(
+          title: '客户往来',
+          embedded: true,
+          expanded: false,
+          balance: PartyOpenBalance(
+            currencyName: '人民币',
+            openOriginal: '15000',
+            creditOriginal: '4000',
+            netOriginal: '11000',
+            baseCurrencyName: '人民币',
+            openBookLocal: '15000',
+            creditLimitLocal: '10000',
+            overLimitLocal: '5000',
+            overCredit: true,
+            unverifiedLocal: '2000',
+            unverifiedCount: 1,
+          ),
+          limitLabel: '信用额度',
+          overLimitWarning: '已超信用额度',
+          footer: [Text('本次放行记账汇率必填')],
+        ),
+      );
+      expect(find.byType(Card), findsNothing);
+      expect(find.text('应收未收'), findsOneWidget);
+      expect(find.text('15000.00 人民币'), findsOneWidget);
+      expect(find.text('可用预收'), findsOneWidget);
+      expect(find.text('4000.00 人民币'), findsOneWidget);
+      expect(find.text('还差多少'), findsOneWidget);
+      expect(find.text('11000.00 人民币'), findsOneWidget);
+      expect(find.textContaining('已超信用额度'), findsOneWidget);
+      expect(find.textContaining('原币未核实'), findsOneWidget);
+      expect(find.text('本次放行记账汇率必填'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'embedded surplus and missing balances never become a fictitious debt',
+    (tester) async {
+      await _pump(
+        tester,
+        const FinancePartySnapshotCard(
+          title: '供应商往来',
+          embedded: true,
+          expanded: false,
+          side: PartyBalanceSide.supplier,
+          balance: PartyOpenBalance(
+            currencyName: '美金',
+            netOriginal: '-123.4567',
+          ),
+        ),
+      );
+      expect(find.text('可抵有余'), findsOneWidget);
+      expect(find.text('123.4567 美金'), findsOneWidget);
+      await _pump(
+        tester,
+        const FinancePartySnapshotCard(
+          title: '客户往来',
+          embedded: true,
+          expanded: false,
+          balance: null,
+        ),
+      );
+      expect(find.text('—'), findsNWidgets(3));
+      expect(find.text('0.00'), findsNothing);
+    },
+  );
+
   const overCredit = PartyOpenBalance(
     currencyName: '美金',
     openOriginal: '500',

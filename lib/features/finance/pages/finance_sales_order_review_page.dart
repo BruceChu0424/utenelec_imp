@@ -23,6 +23,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../widgets/sales_order_revision_table.dart';
@@ -35,7 +36,6 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -83,6 +83,7 @@ class _FinanceSalesOrderReviewPageState
   SalesOrderFinanceReview? _review;
   bool _loading = true;
   bool _busy = false;
+  bool _summaryExpanded = false;
   String? _error;
 
   /// 明细行勾选集（2026-10-10 审核页防看岔行口径：纯阅读辅助，无行级批量
@@ -620,23 +621,11 @@ class _FinanceSalesOrderReviewPageState
                                 ),
                                 const SizedBox(height: UtenSpacing.s12),
                               ],
-                              _statusStrip(theme, _review!),
-                              if (_review!.sourceQuote != null) ...[
-                                const SizedBox(height: UtenSpacing.s12),
-                                _sourceQuoteStrip(theme, _review!),
-                              ],
-                              const SizedBox(height: UtenSpacing.s12),
-                              _clientFinanceCard(_review!),
-                              const SizedBox(height: UtenSpacing.s12),
-                              _orderCard(theme, _review!),
-                              if (canViewMoneySummary) ...[
-                                const SizedBox(height: UtenSpacing.s12),
-                                // 2026-09-24 用户口径：不再外嵌折叠块——订单资金
-                                // 状态卡直接展开显示。
-                                SalesOrderMoneySummaryCard(
-                                  salesOrderId: widget.id,
-                                ),
-                              ],
+                              _summaryCard(
+                                theme,
+                                _review!,
+                                canViewMoneySummary: canViewMoneySummary,
+                              ),
                               const SizedBox(height: UtenSpacing.s12),
                               if (_review!
                                       .revisionDiff
@@ -800,79 +789,23 @@ class _FinanceSalesOrderReviewPageState
 
   /// 顶部状态条：单据号 + 已确认/已驳回/待确认状态。
   Widget _statusStrip(ThemeData theme, SalesOrderFinanceReview r) {
-    final isRevision = r.revisionDiff != null;
-    final confirmed = r.financeConfirmed;
-    final rejected = r.financeRejected;
-    final color = confirmed
-        ? theme.colorScheme.primary
-        : rejected
-        ? theme.colorScheme.error
-        : theme.colorScheme.tertiary;
-    final icon = confirmed
-        ? Icons.verified_rounded
-        : rejected
-        ? Icons.undo_rounded
-        : Icons.pending_actions_rounded;
-    final statusText =
-        r.readOnlyReason ??
-        (confirmed
-            ? '已财务确认 · ${r.financeConfirmedByName ?? '当前审核员'}'
-                  '${r.financeConfirmedAt == null ? '' : ' · ${utenFmtIsoTime(r.financeConfirmedAt)}'}'
-            : rejected
-            ? '已驳回 · 待销售修改'
-            : r.revisionDiff != null
-            ? '修改后待复审'
-            : '待财务确认');
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isRevision ? '销售订单修改' : r.billNo,
-                  key: isRevision
-                      ? const Key('sales-order-revision-heading')
-                      : null,
-                  style:
-                      (isRevision
-                              ? theme.textTheme.titleLarge
-                              : theme.textTheme.titleMedium)
-                          ?.copyWith(
-                            fontWeight: isRevision
-                                ? FontWeight.w800
-                                : FontWeight.w700,
-                            color: isRevision
-                                ? theme.colorScheme.primary
-                                : null,
-                          ),
-                ),
-                Wrap(
-                  spacing: UtenSpacing.s12,
-                  runSpacing: UtenSpacing.s4,
-                  children: [
-                    if (isRevision)
-                      Text(r.billNo, style: theme.textTheme.bodyMedium),
-                    Text(
-                      statusText,
-                      style: theme.textTheme.bodySmall?.copyWith(color: color),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return UtenStatusBadge(
+      label: r.readOnlyReason != null
+          ? '只读'
+          : r.financeConfirmed
+          ? '已财务确认'
+          : r.financeRejected
+          ? '已驳回 · 待销售修改'
+          : r.revisionDiff != null
+          ? '修改后待复审'
+          : '待财务确认',
+      type: r.readOnlyReason != null
+          ? UtenStatusBadgeType.neutral
+          : r.financeConfirmed
+          ? UtenStatusBadgeType.success
+          : r.financeRejected
+          ? UtenStatusBadgeType.danger
+          : UtenStatusBadgeType.warning,
     );
   }
 
@@ -950,22 +883,10 @@ class _FinanceSalesOrderReviewPageState
 
   Widget _clientFinanceCard(SalesOrderFinanceReview r) {
     return FinancePartySnapshotCard(
-      title:
-          '客户财务快照 · ${r.clientName ?? '—'}'
-          '${r.clientCode != null ? '(${r.clientCode})' : ''}',
+      title: '客户往来',
       balance: r.clientBalance,
-      leading: [
-        FinanceSnapshotMetric(
-          '本单金额',
-          financeMoneyWithUnitSuffix(
-            r.totalOriginal,
-            currencyName: r.currencyName,
-            currencyCode: r.currencyCode,
-          ),
-          emphasis: true,
-          danger: true,
-        ),
-      ],
+      embedded: true,
+      expanded: _summaryExpanded,
       limitLabel: '信用额度',
       overLimitWarning: '该客户全部币种应收(折本币，不扣预收)已超信用额度，请谨慎确认',
       trailing: [
@@ -973,77 +894,110 @@ class _FinanceSalesOrderReviewPageState
           '铺底额',
           r.clientCreditFloor == null
               ? null
-              : r.clientBalance?.baseMoneyText(r.clientCreditFloor) ??
-                    financeMoneyText(r.clientCreditFloor),
+              : financeMoneyWithUnitSuffix(
+                  r.clientCreditFloor,
+                  currencyName: r.clientBalance?.baseCurrencyName,
+                  fullCurrencyName: true,
+                ),
         ),
       ],
     );
   }
 
-  /// 订单信息卡：币种加粗红色与销售端详情同规则。
-  Widget _orderCard(ThemeData theme, SalesOrderFinanceReview r) {
-    Widget kv(String label, String? value, {bool highlight = false}) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _summaryCard(
+    ThemeData theme,
+    SalesOrderFinanceReview r, {
+    required bool canViewMoneySummary,
+  }) {
+    Widget card(
+      List<Widget> metrics,
+      List<Widget> fundingDetails,
+      List<Widget> fundingNotices,
+    ) => UtenDetailSummaryCard(
+      key: ValueKey('sales-order-summary-${r.orderId}'),
+      heading: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          SizedBox(
-            width: 84,
-            child: Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              (value == null || value.isEmpty) ? '—' : value,
-              style: highlight
-                  ? theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.error,
-                    )
-                  : null,
+          if (r.revisionDiff != null)
+            const Text('销售订单修改', key: Key('sales-order-revision-heading')),
+          Text(r.billNo),
+          Text(
+            '${r.clientName ?? '—'}'
+            '${r.clientCode == null ? '' : ' (${r.clientCode})'}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
-      );
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      ),
+      status: _statusStrip(theme, r),
+      expanded: _summaryExpanded,
+      onExpandedChanged: (value) => setState(() => _summaryExpanded = value),
+      primary: [
+        UtenSummaryField(
+          label: '本单金额',
+          value: financeMoneyWithUnitSuffix(
+            r.totalOriginal,
+            currencyName: r.currencyName,
+            currencyCode: r.currencyCode,
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
+          danger: true,
+        ),
+        ...metrics,
+        UtenSummaryField(label: '交货日', value: r.deliverDate, emphasis: true),
+      ],
+      facts: [
+        UtenSummaryField(label: '业务员', value: r.sellerName),
+        UtenSummaryField(label: '结帐方式', value: r.settlementMethodName),
+        UtenSummaryField(
+          label: '发运策略',
+          value: r.shipmentPolicyName ?? r.shipmentPolicy,
+        ),
+      ],
+      notices: [
+        if (r.readOnlyReason != null)
+          Text(
+            r.readOnlyReason!,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+        if (r.sourceQuote != null) _sourceQuoteStrip(theme, r),
+        _clientFinanceCard(r),
+        ...fundingNotices,
+      ],
+      details: [
+        UtenSummaryFacts(
           children: [
-            UtenFormGrid(
-              children: [
-                kv('业务员', r.sellerName),
-                kv('交货日', r.deliverDate),
-                kv('币种', r.currencyLabel, highlight: true),
-                kv('发运策略', r.shipmentPolicyName ?? r.shipmentPolicy),
-                kv('结帐方式', r.settlementMethodName),
-              ],
-            ),
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const Text('更多订单信息'),
-              children: [
-                UtenFormGrid(
-                  children: [
-                    kv('单据日期', r.billDate),
-                    kv('制单员', r.makerName),
-                    kv('制单时间', utenFmtIsoTime(r.createdAt)),
-                    kv('合同号', r.contractNo),
-                    kv('备注', r.remark),
-                  ],
-                ),
-              ],
-            ),
+            UtenSummaryField(label: '单据日期', value: r.billDate),
+            UtenSummaryField(label: '制单员', value: r.makerName),
+            UtenSummaryField(label: '制单时间', value: utenFmtIsoTime(r.createdAt)),
+            UtenSummaryField(label: '合同号', value: r.contractNo),
+            if (r.financeConfirmed)
+              UtenSummaryField(label: '财务确认人', value: r.financeConfirmedByName),
+            if (r.financeConfirmedAt != null)
+              UtenSummaryField(
+                label: '财务确认时间',
+                value: utenFmtIsoTime(r.financeConfirmedAt),
+              ),
           ],
         ),
-      ),
+        UtenSummaryField(label: '备注', value: r.remark),
+        if (fundingDetails.isNotEmpty)
+          Text('订单资金明细', style: theme.textTheme.titleSmall),
+        ...fundingDetails,
+      ],
+    );
+    if (!canViewMoneySummary) return card(const [], const [], const []);
+    return SalesOrderMoneySummaryCard(
+      salesOrderId: widget.id,
+      showOrderTotal: false,
+      summaryBuilder: (context, metrics, details, notices) =>
+          card(metrics, details, notices),
     );
   }
 

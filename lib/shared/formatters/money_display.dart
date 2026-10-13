@@ -27,28 +27,39 @@ String financeCurrencyText({
 
 /// 本位币的后缀短名：金额带币种时「人民币」显示为「元」(2026-10-10 用户口径
 /// 「单价 0.5 元、总金额 1500 美金」)，其余币种沿用主档名称(美金/港币)。
-String? _currencyUnitSuffix(String? currencyName, String? currencyCode) {
+String? _currencyUnitSuffix(
+  String? currencyName,
+  String? currencyCode, {
+  bool fullCurrencyName = false,
+}) {
   final label = financeCurrencyDisplayLabel(
     name: currencyName,
     code: currencyCode,
   );
   if (label == null) return null;
-  return label == '人民币' ? '元' : label;
+  return label == '人民币' && !fullCurrencyName ? '元' : label;
 }
 
 /// 「金额 币种」后缀式(ADR-128 → 2026-10-10 用户口径：金额后自动带单位)，
 /// 例如「12000.00 美金」「0.50 元」。与 [formatQtyWithUnit] 的「数量 单位」
 /// 对称，是金额侧唯一拼装点。缺币种信息或金额不是数字（「—」「***」等哨兵
 /// 原文）时只显金额原文，不猜币种、不拼单位。
+/// 只读摘要可指定 [fullCurrencyName] 保留「人民币」全名；默认表格、表单
+/// 继续显示「元」，不改变它们现有的金额展示。
 String financeMoneyWithUnitSuffix(
   String? amount, {
   String? currencyName,
   String? currencyCode,
+  bool fullCurrencyName = false,
 }) {
   final text = amount?.trim();
   if (text == null || text.isEmpty) return '—';
   if (financeExactDecimal(text) == null) return text;
-  final unit = _currencyUnitSuffix(currencyName, currencyCode);
+  final unit = _currencyUnitSuffix(
+    currencyName,
+    currencyCode,
+    fullCurrencyName: fullCurrencyName,
+  );
   return unit == null
       ? financeMoneyText(text)
       : '${financeMoneyText(text)} $unit';

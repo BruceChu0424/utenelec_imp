@@ -246,7 +246,7 @@ void main() {
 
     // 表头信息
     expect(find.text('WO-2026-001'), findsOneWidget);
-    expect(find.text('单据号'), findsOneWidget);
+    expect(find.text('单据号'), findsNothing);
     expect(find.text('等待财务审核组审核'), findsOneWidget);
 
     // 财务审批横幅
@@ -353,6 +353,8 @@ void main() {
     );
     final keys = {for (final column in table.columns) column.key};
     expect(keys, containsAll(<String>{'price', 'amount'}));
+    await tester.tap(find.byKey(const ValueKey('detail-summary-toggle')));
+    await tester.pumpAndSettle();
     expect(find.text('合计(本币)'), findsOneWidget);
   });
 

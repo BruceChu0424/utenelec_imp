@@ -6,14 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
-import '../../../components/data_display/uten_info_row.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
-import '../../../core/responsive/scale.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -103,53 +102,6 @@ class VisitorApplicationDetailPage extends ConsumerWidget {
                     ),
                     const SizedBox(height: UtenSpacing.s16),
                   ],
-                  UtenCard(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        UtenSectionHeader(
-                          title: l10n.visitorDetailPurpose,
-                          icon: Icons.description_outlined,
-                        ),
-                        UtenInfoRow(
-                          label: l10n.visitorApplyName,
-                          value: app.visitorName,
-                        ),
-                        UtenInfoRow(
-                          label: l10n.visitorDetailHost,
-                          value: app.hostName ?? app.hostDepartment ?? '—',
-                        ),
-                        UtenInfoRow(
-                          label: l10n.visitorDetailVisitTime,
-                          value: fmtDateTime(app.plannedVisitAt),
-                        ),
-                        if (app.hasVehicle && app.plateNo != null)
-                          UtenInfoRow(
-                            label: l10n.securityPlate,
-                            value: app.plateNo,
-                          ),
-                        UtenInfoRow(
-                          label: l10n.visitorDetailAppliedAt,
-                          value: fmtDateTime(app.appliedAt),
-                        ),
-                        if (app.approvedAt != null)
-                          UtenInfoRow(
-                            label: l10n.visitorDetailApprovedAt,
-                            value: fmtDateTime(app.approvedAt!),
-                          ),
-                        if (app.rejectReason != null &&
-                            app.rejectReason!.isNotEmpty)
-                          UtenInfoRow(
-                            label: l10n.visitorDetailRejectReason,
-                            value: app.rejectReason,
-                          ),
-                      ],
-                    ),
-                  ),
                   if (d.steps.isNotEmpty) ...[
                     const SizedBox(height: UtenSpacing.s16),
                     UtenCard(
@@ -184,47 +136,54 @@ class _StatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    return UtenCard(
-      padding: const EdgeInsets.all(UtenSpacing.s20),
-      child: Row(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: visitorStatusColor(app.status).withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(UtenRadius.card),
-            ),
-            child: Icon(
-              visitorStatusIcon(app.status),
-              color: visitorStatusColor(app.status),
-              size: context.scaled(28),
-            ),
-          ),
-          const SizedBox(width: UtenSpacing.s16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                UtenStatusBadge(
-                  label: visitorStatusLabel(app.status, l10n),
-                  type: visitorBadgeType(app.status),
-                ),
-                const SizedBox(height: UtenSpacing.s8),
-                Text(
-                  app.visitPurpose,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ],
+    return UtenDetailSummaryCard(
+      key: ValueKey('visitor-summary-${app.id}'),
+      heading: Text(app.visitPurpose),
+      status: UtenStatusBadge(
+        label: visitorStatusLabel(app.status, l10n),
+        type: visitorBadgeType(app.status),
+        icon: visitorStatusIcon(app.status),
       ),
+      facts: [
+        UtenSummaryField(
+          label: l10n.visitorApplyName,
+          value: app.visitorName,
+          emphasis: true,
+        ),
+        UtenSummaryField(
+          label: l10n.visitorDetailHost,
+          value: app.hostName ?? app.hostDepartment,
+        ),
+        UtenSummaryField(
+          label: l10n.visitorDetailVisitTime,
+          value: fmtDateTime(app.plannedVisitAt),
+        ),
+        if (app.hasVehicle && app.plateNo != null)
+          UtenSummaryField(label: l10n.securityPlate, value: app.plateNo),
+      ],
+      details: [
+        UtenSummaryFacts(
+          children: [
+            UtenSummaryField(
+              label: l10n.visitorDetailAppliedAt,
+              value: fmtDateTime(app.appliedAt),
+            ),
+            if (app.approvedAt != null)
+              UtenSummaryField(
+                label: l10n.visitorDetailApprovedAt,
+                value: fmtDateTime(app.approvedAt!),
+              ),
+          ],
+        ),
+      ],
+      notices: [
+        if (app.rejectReason != null && app.rejectReason!.isNotEmpty)
+          UtenSummaryField(
+            label: l10n.visitorDetailRejectReason,
+            value: app.rejectReason,
+            danger: true,
+          ),
+      ],
     );
   }
 }

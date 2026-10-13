@@ -5,8 +5,60 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/shared/widgets/sales_order_money_summary_card.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 
 void main() {
+  testWidgets(
+    'one summary toggle expands order funds while source warnings remain visible',
+    (tester) async {
+      final api = _MoneySummaryApi(
+        data: {
+          ..._summary,
+          'hasUnallocated': true,
+          'warnings': ['历史来源需核对'],
+        },
+      );
+      var expanded = false;
+      await _pumpSummary(
+        tester,
+        api,
+        child: StatefulBuilder(
+          builder: (context, setState) => SalesOrderMoneySummaryCard(
+            salesOrderId: 'order-1',
+            showOrderTotal: false,
+            summaryBuilder: (context, metrics, details, notices) =>
+                UtenDetailSummaryCard(
+                  heading: const Text('SO-001'),
+                  expanded: expanded,
+                  onExpandedChanged: (next) => setState(() => expanded = next),
+                  primary: [
+                    const UtenSummaryField(label: '本单金额', value: '100.00 美金'),
+                    ...metrics,
+                  ],
+                  notices: notices,
+                  details: [const Text('订单补充资料'), ...details],
+                ),
+          ),
+        ),
+      );
+      expect(find.byType(Card), findsOneWidget);
+      expect(find.text('100.00 美金'), findsOneWidget);
+      expect(find.text('59.8566 美金'), findsOneWidget);
+      expect(find.text('其中：预收到账'), findsNothing);
+      expect(find.textContaining('历史来源需核对'), findsOneWidget);
+      await tester.tap(find.text('查看更多'));
+      await tester.pumpAndSettle();
+      expect(find.text('其中：预收到账'), findsOneWidget);
+      expect(find.text('客户已付'), findsOneWidget);
+      expect(find.text('预计还需新收'), findsOneWidget);
+      await tester.tap(find.text('收起信息'));
+      await tester.pumpAndSettle();
+      expect(find.text('其中：预收到账'), findsNothing);
+      expect(find.textContaining('历史来源需核对'), findsOneWidget);
+      expect(api.getCount, 1);
+    },
+  );
+
   testWidgets(
     'money summary is hidden and never requested without permission',
     (tester) async {
@@ -181,7 +233,11 @@ void main() {
   );
 }
 
-Future<void> _pumpSummary(WidgetTester tester, _MoneySummaryApi api) async {
+Future<void> _pumpSummary(
+  WidgetTester tester,
+  _MoneySummaryApi api, {
+  Widget? child,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -191,10 +247,12 @@ Future<void> _pumpSummary(WidgetTester tester, _MoneySummaryApi api) async {
           Perm.customerPrepaymentView,
         }),
       ],
-      child: const MaterialApp(
+      child: MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
-            child: SalesOrderMoneySummaryCard(salesOrderId: 'order-1'),
+            child:
+                child ??
+                const SalesOrderMoneySummaryCard(salesOrderId: 'order-1'),
           ),
         ),
       ),

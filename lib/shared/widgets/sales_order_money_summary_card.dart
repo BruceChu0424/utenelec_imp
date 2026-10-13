@@ -4,16 +4,36 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../components/data_display/uten_detail_summary_card.dart';
 import '../../features/finance/models/customer_prepayment.dart';
 import '../formatters/exact_decimal.dart';
 import '../formatters/money_display.dart';
 import '../../features/finance/repositories/customer_prepayment_repository.dart';
 import '../auth/permissions.dart';
 
+typedef SalesOrderMoneySummaryBuilder =
+    Widget Function(
+      BuildContext context,
+      List<Widget> metrics,
+      List<Widget> details,
+      List<Widget> notices,
+    );
+
 class SalesOrderMoneySummaryCard extends ConsumerStatefulWidget {
-  const SalesOrderMoneySummaryCard({super.key, required this.salesOrderId});
+  const SalesOrderMoneySummaryCard({
+    super.key,
+    required this.salesOrderId,
+    this.embedded = false,
+    this.expanded,
+    this.showOrderTotal = true,
+    this.summaryBuilder,
+  });
 
   final String salesOrderId;
+  final bool embedded;
+  final bool? expanded;
+  final bool showOrderTotal;
+  final SalesOrderMoneySummaryBuilder? summaryBuilder;
 
   @override
   ConsumerState<SalesOrderMoneySummaryCard> createState() =>
@@ -28,6 +48,8 @@ class _SalesOrderMoneySummaryCardState
   bool _expanded = false;
   String? _error;
   int _requestVersion = 0;
+  bool get _isExpanded => widget.expanded ?? _expanded;
+  bool get _compact => widget.embedded || widget.summaryBuilder != null;
 
   @override
   void didUpdateWidget(covariant SalesOrderMoneySummaryCard oldWidget) {
@@ -87,9 +109,106 @@ class _SalesOrderMoneySummaryCardState
   @override
   Widget build(BuildContext context) {
     final permissions = ref.watch(currentPermissionsProvider);
-    if (!_canView(permissions)) return const SizedBox.shrink();
+    if (!_canView(permissions)) {
+      return widget.summaryBuilder?.call(
+            context,
+            const [],
+            const [],
+            const [],
+          ) ??
+          const SizedBox.shrink();
+    }
     _scheduleLoad();
     final theme = Theme.of(context);
+    if (widget.summaryBuilder case final builder?) {
+      final summary = _summary;
+      final words = Localizations.of<AppLocalizations>(
+        context,
+        AppLocalizations,
+      );
+      Widget metric(String label, String? value) => UtenSummaryField(
+        label: label,
+        value: financeMoneyWithUnitSuffix(
+          value,
+          currencyName: summary?.currencyName,
+          currencyCode: summary?.currencyCode,
+          fullCurrencyName: true,
+        ),
+        emphasis: true,
+      );
+      return KeyedSubtree(
+        key: const ValueKey('sales-order-money-summary'),
+        child: builder(
+          context,
+          [
+            if (widget.showOrderTotal)
+              metric('订单总额', summary?.orderTotalOriginal),
+            metric(
+              words?.moneySummaryCustomerPaid ?? '客户已付',
+              summary?.cashReceivedOriginal,
+            ),
+            metric(
+              words?.moneySummaryExpectedNewCash ?? '预计还需新收',
+              summary?.plannedRemainingOriginal,
+            ),
+          ],
+          [
+            if (summary != null)
+              _summaryBody(theme, summary, detailsOnly: true),
+          ],
+          [
+            if (_loading && summary == null) const LinearProgressIndicator(),
+            if (_error != null) _errorBody(theme),
+            if (summary != null &&
+                (summary.hasUnallocated ||
+                    summary.warnings.isNotEmpty ||
+                    (financeExactDecimalUnits(summary.returnCreditOriginal) ??
+                            BigInt.zero) >
+                        BigInt.zero ||
+                    (financeExactDecimalUnits(
+                              summary.customerPendingBalanceOriginal,
+                            ) ??
+                            BigInt.zero) >
+                        BigInt.zero))
+              _summaryBody(theme, summary, warningsOnly: true),
+          ],
+        ),
+      );
+    }
+    if (widget.embedded) {
+      return Column(
+        key: const ValueKey('sales-order-money-summary'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _summary?.orderBillNo?.isNotEmpty == true
+                      ? '订单资金 · ${_summary!.orderBillNo}'
+                      : '订单资金',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: '刷新订单资金状态',
+                onPressed: _loading ? null : _load,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+              ),
+            ],
+          ),
+          if (_loading && _summary == null)
+            const LinearProgressIndicator()
+          else if (_error != null && _summary == null)
+            _errorBody(theme)
+          else if (_summary case final summary?)
+            _summaryBody(theme, summary),
+          if (_error != null && _summary != null) _errorBody(theme),
+        ],
+      );
+    }
     return Card(
       key: const ValueKey('sales-order-money-summary'),
       child: Padding(
@@ -115,11 +234,11 @@ class _SalesOrderMoneySummaryCardState
                 ),
                 if (_summary != null)
                   IconButton(
-                    tooltip: _expanded ? '收起明细' : '展开明细',
+                    tooltip: _isExpanded ? '收起明细' : '展开明细',
                     key: const ValueKey('sales-order-money-summary-toggle'),
                     onPressed: () => setState(() => _expanded = !_expanded),
                     icon: Icon(
-                      _expanded
+                      _isExpanded
                           ? Icons.expand_less_rounded
                           : Icons.expand_more_rounded,
                       size: 22,
@@ -176,7 +295,12 @@ class _SalesOrderMoneySummaryCardState
   /// 折叠态常显的两笔钱（2026-09-05 用户口径）：订单总额 + 已收金额，
   /// 其余明细默认收起、点右上箭头展开。字段重命名避免三个派生口径
   /// （可用预收=预收到账−已抵、超收与待收互补）叠在一起看花眼。
-  Widget _summaryBody(ThemeData theme, SalesOrderMoneySummary summary) {
+  Widget _summaryBody(
+    ThemeData theme,
+    SalesOrderMoneySummary summary, {
+    bool detailsOnly = false,
+    bool warningsOnly = false,
+  }) {
     final words = Localizations.of<AppLocalizations>(context, AppLocalizations);
     final hasReturns =
         (financeExactDecimalUnits(summary.returnCreditOriginal) ??
@@ -187,11 +311,12 @@ class _SalesOrderMoneySummaryCardState
             BigInt.zero) >
         BigInt.zero;
     final detailMetrics = <(String, String?, bool)>[
-      (
-        words?.moneySummaryCustomerPaid ?? '客户已付',
-        summary.cashReceivedOriginal,
-        true,
-      ),
+      if (!_compact)
+        (
+          words?.moneySummaryCustomerPaid ?? '客户已付',
+          summary.cashReceivedOriginal,
+          true,
+        ),
       ('其中：预收到账', summary.prepaymentReceivedOriginal, false),
       ('预收已抵扣', summary.prepaymentAppliedOriginal, false),
       ('可用预收余额', summary.prepaymentAvailableOriginal, true),
@@ -221,11 +346,12 @@ class _SalesOrderMoneySummaryCardState
         summary.unrecognizedOrderOriginal,
         false,
       ),
-      (
-        words?.moneySummaryExpectedNewCash ?? '预计还需新收',
-        summary.plannedRemainingOriginal,
-        true,
-      ),
+      if (!_compact)
+        (
+          words?.moneySummaryExpectedNewCash ?? '预计还需新收',
+          summary.plannedRemainingOriginal,
+          true,
+        ),
       if (hasPendingBalance)
         (
           words?.moneySummaryPendingBalance ?? '客户待处理余额',
@@ -236,40 +362,63 @@ class _SalesOrderMoneySummaryCardState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 600;
-            final width = compact
-                ? constraints.maxWidth
-                : (constraints.maxWidth - UtenSpacing.s8) / 2;
-            return Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              children: [
-                SizedBox(
-                  width: width,
-                  child: _metric(
-                    theme,
-                    summary,
-                    '订单总额',
-                    summary.orderTotalOriginal,
+        if (!detailsOnly && !warningsOnly && _compact)
+          UtenSummaryFacts(
+            minFieldWidth: 180,
+            children: [
+              if (widget.showOrderTotal)
+                _metric(theme, summary, '订单总额', summary.orderTotalOriginal),
+              _metric(
+                theme,
+                summary,
+                words?.moneySummaryCustomerPaid ?? '客户已付',
+                summary.cashReceivedOriginal,
+                emphasis: true,
+              ),
+              _metric(
+                theme,
+                summary,
+                words?.moneySummaryExpectedNewCash ?? '预计还需新收',
+                summary.plannedRemainingOriginal,
+                emphasis: true,
+              ),
+            ],
+          )
+        else if (!detailsOnly && !warningsOnly)
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 600;
+              final width = compact
+                  ? constraints.maxWidth
+                  : (constraints.maxWidth - UtenSpacing.s8) / 2;
+              return Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  SizedBox(
+                    width: width,
+                    child: _metric(
+                      theme,
+                      summary,
+                      '订单总额',
+                      summary.orderTotalOriginal,
+                    ),
                   ),
-                ),
-                SizedBox(
-                  width: width,
-                  child: _metric(
-                    theme,
-                    summary,
-                    words?.moneySummaryCustomerPaid ?? '客户已付',
-                    summary.cashReceivedOriginal,
-                    emphasis: true,
+                  SizedBox(
+                    width: width,
+                    child: _metric(
+                      theme,
+                      summary,
+                      words?.moneySummaryCustomerPaid ?? '客户已付',
+                      summary.cashReceivedOriginal,
+                      emphasis: true,
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
-        ),
-        if (hasReturns || hasPendingBalance) ...[
+                ],
+              );
+            },
+          ),
+        if (!detailsOnly && (hasReturns || hasPendingBalance)) ...[
           const SizedBox(height: UtenSpacing.s8),
           Wrap(
             spacing: UtenSpacing.s8,
@@ -304,61 +453,77 @@ class _SalesOrderMoneySummaryCardState
             style: theme.textTheme.bodySmall,
           ),
         ],
-        AnimatedSize(
-          key: const ValueKey('sales-order-money-summary-details'),
-          duration: const Duration(milliseconds: 180),
-          alignment: Alignment.topCenter,
-          child: _expanded
-              ? Padding(
-                  padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        words?.moneySummarySourceHint ??
-                            '金额来自已审核单据。客户已付可能含代扣费用，银行实际到账以账户流水为准。',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+        if (!warningsOnly)
+          AnimatedSize(
+            key: const ValueKey('sales-order-money-summary-details'),
+            duration: const Duration(milliseconds: 180),
+            alignment: Alignment.topCenter,
+            child: _isExpanded || detailsOnly
+                ? Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          words?.moneySummarySourceHint ??
+                              '金额来自已审核单据。客户已付可能含代扣费用，银行实际到账以账户流水为准。',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      Text(
-                        words?.moneySummaryCollectionHint ??
-                            '按当前应收、后续发货及未使用预收估算，不会自动抵扣或退款。',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: UtenSpacing.s8),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final compact = constraints.maxWidth < 600;
-                          final width = compact
-                              ? constraints.maxWidth
-                              : (constraints.maxWidth - UtenSpacing.s8) / 2;
-                          return Wrap(
-                            spacing: UtenSpacing.s8,
-                            runSpacing: UtenSpacing.s8,
-                            children: [
-                              for (final metric in detailMetrics)
-                                SizedBox(
-                                  width: width,
-                                  child: _metric(
-                                    theme,
-                                    summary,
-                                    metric.$1,
-                                    metric.$2,
-                                    emphasis: metric.$3,
+                        const SizedBox(height: UtenSpacing.s8),
+                        Text(
+                          words?.moneySummaryCollectionHint ??
+                              '按当前应收、后续发货及未使用预收估算，不会自动抵扣或退款。',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: UtenSpacing.s8),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            if (_compact) {
+                              return UtenSummaryFacts(
+                                children: [
+                                  for (final metric in detailMetrics)
+                                    _metric(
+                                      theme,
+                                      summary,
+                                      metric.$1,
+                                      metric.$2,
+                                      emphasis: metric.$3,
+                                    ),
+                                ],
+                              );
+                            }
+                            final compact = constraints.maxWidth < 600;
+                            final width = compact
+                                ? constraints.maxWidth
+                                : (constraints.maxWidth - UtenSpacing.s8) / 2;
+                            return Wrap(
+                              spacing: UtenSpacing.s8,
+                              runSpacing: UtenSpacing.s8,
+                              children: [
+                                for (final metric in detailMetrics)
+                                  SizedBox(
+                                    width: width,
+                                    child: _metric(
+                                      theme,
+                                      summary,
+                                      metric.$1,
+                                      metric.$2,
+                                      emphasis: metric.$3,
+                                    ),
                                   ),
-                                ),
-                            ],
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                )
-              : const SizedBox(width: double.infinity),
-        ),
-        if (summary.hasUnallocated || summary.warnings.isNotEmpty) ...[
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        if (!detailsOnly &&
+            (summary.hasUnallocated || summary.warnings.isNotEmpty)) ...[
           const SizedBox(height: UtenSpacing.s8),
           Container(
             width: double.infinity,
@@ -390,37 +555,51 @@ class _SalesOrderMoneySummaryCardState
     String label,
     String? value, {
     bool emphasis = false,
-  }) => Container(
-    padding: const EdgeInsets.all(UtenSpacing.s8),
-    decoration: BoxDecoration(
-      color: emphasis
-          ? theme.colorScheme.primaryContainer.withValues(alpha: 0.45)
-          : theme.colorScheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(UtenRadius.md),
-      border: Border.all(color: theme.colorScheme.outlineVariant),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+  }) {
+    if (_compact) {
+      return UtenSummaryField(
+        label: label,
+        value: financeMoneyWithUnitSuffix(
+          value,
+          currencyName: summary.currencyName,
+          currencyCode: summary.currencyCode,
+          fullCurrencyName: true,
         ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(
-          financeMoneyWithUnitSuffix(
-            value,
-            currencyName: summary.currencyName,
-            currencyCode: summary.currencyCode,
+        emphasis: emphasis,
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(UtenSpacing.s8),
+      decoration: BoxDecoration(
+        color: emphasis
+            ? theme.colorScheme.primaryContainer.withValues(alpha: 0.45)
+            : theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(UtenRadius.md),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            fontFeatures: const [FontFeature.tabularFigures()],
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            financeMoneyWithUnitSuffix(
+              value,
+              currencyName: summary.currencyName,
+              currencyCode: summary.currencyCode,
+            ),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }

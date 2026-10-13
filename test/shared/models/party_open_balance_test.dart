@@ -5,6 +5,39 @@ import 'package:uten_imp/shared/models/party_open_balance.dart';
 /// ADR-128 → 2026-10-10 用户口径：往来余额只显示服务端算好的数，按单据币种
 /// 写成「金额 币种」后缀式（人民币显示为「元」）。
 void main() {
+  test(
+    'top summary may use the full currency name without changing table defaults',
+    () {
+      expect(
+        financeMoneyWithUnitSuffix(
+          '12.3456',
+          currencyName: '人民币',
+          fullCurrencyName: true,
+        ),
+        '12.3456 人民币',
+      );
+      expect(
+        financeMoneyWithUnitSuffix('12.3456', currencyName: '人民币'),
+        '12.3456 元',
+      );
+      expect(
+        financeMoneyWithUnitSuffix(
+          '***',
+          currencyName: '人民币',
+          fullCurrencyName: true,
+        ),
+        '***',
+      );
+      expect(
+        financeMoneyWithUnitSuffix(
+          null,
+          currencyName: '人民币',
+          fullCurrencyName: true,
+        ),
+        '—',
+      );
+    },
+  );
   group('financeMoneyWithUnitSuffix', () {
     test('币种名优先做后缀，旧数字编号不显示，金额按原文至少两位小数', () {
       expect(

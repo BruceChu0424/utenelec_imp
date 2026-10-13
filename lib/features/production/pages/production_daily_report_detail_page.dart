@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -1307,54 +1308,35 @@ class _ProductionDailyReportDetailPageState
 
   Widget _headerCard(ThemeData theme) {
     final d = _detail!;
-    final rows = <_KV>[
-      _KV('单据号', d.billNo),
-      _KV('日期', d.billDate),
-      _KV('制单员', d.makerName),
-      _KV('制单时间', utenFmtIsoTime(d.createdAt)),
-      // 车间与参与人员都用服务端随单解析的名字：客户端字典缓存会随连接恢复或权限快照
-      // 变化整体清空，那时这两行会变「—」且不自愈; 员工档案接口还要 employee:view。
-      if ((d.departmentName ?? d.workshopName ?? '').isNotEmpty)
-        _KV('车间', d.departmentName ?? d.workshopName),
-      if (d.workerNames.isNotEmpty)
-        _KV('生产参与人员', d.workerNames.where((n) => n.isNotEmpty).join('、')),
-      if ((d.sourceDocNo ?? '').isNotEmpty) _KV('来源单号', d.sourceDocNo),
-      if ((d.remark ?? '').isNotEmpty) _KV('备注', d.remark),
-      _KV(
-        '状态',
-        null,
-        badge: ProductionStatusBadge(status: d.status, closed: d.closed),
-      ),
-    ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [for (final r in rows) _kvRow(theme, r)],
-        ),
-      ),
-    );
-  }
-
-  Widget _kvRow(ThemeData theme, _KV r) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              r.label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+    return UtenDetailSummaryCard(
+      heading: UtenSummaryField(label: '单据号', value: d.billNo, emphasis: true),
+      status: ProductionStatusBadge(status: d.status, closed: d.closed),
+      facts: [
+        UtenSummaryField(label: '日期', value: d.billDate),
+        // 车间及参与人员沿用服务端随单解析的名字。
+        if ((d.departmentName ?? d.workshopName ?? '').isNotEmpty)
+          UtenSummaryField(
+            label: '车间',
+            value: d.departmentName ?? d.workshopName,
           ),
-          Expanded(child: r.badge ?? Text(r.value ?? '—')),
-        ],
-      ),
+        if ((d.sourceDocNo ?? '').isNotEmpty)
+          UtenSummaryField(label: '来源单号', value: d.sourceDocNo),
+        UtenSummaryField(label: '制单员', value: d.makerName),
+      ],
+      details: [
+        UtenSummaryFacts(
+          children: [
+            UtenSummaryField(label: '制单时间', value: utenFmtIsoTime(d.createdAt)),
+            if (d.workerNames.isNotEmpty)
+              UtenSummaryField(
+                label: '生产参与人员',
+                value: d.workerNames.where((n) => n.isNotEmpty).join('、'),
+              ),
+          ],
+        ),
+        if ((d.remark ?? '').isNotEmpty)
+          UtenSummaryField(label: '备注', value: d.remark),
+      ],
     );
   }
 
@@ -1693,11 +1675,4 @@ class _ProductionDailyReportDetailPageState
 String? _dictText(String? value) {
   final trimmed = value?.trim();
   return trimmed == null || trimmed.isEmpty || trimmed == '—' ? null : trimmed;
-}
-
-class _KV {
-  const _KV(this.label, this.value, {this.badge});
-  final String label;
-  final String? value;
-  final Widget? badge;
 }

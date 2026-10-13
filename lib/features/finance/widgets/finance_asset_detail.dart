@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/inputs/uten_date_field.dart';
@@ -21,6 +22,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../department/widgets/uten_department_picker.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_models.dart';
@@ -405,12 +407,7 @@ class _FinanceAssetDetailSurfaceState
           if (detail.summary.allowedActions.isNotEmpty)
             const SizedBox(height: UtenSpacing.s20),
           FinanceAssetRevisionSection(detail: detail),
-          _section(
-            theme,
-            '概要',
-            Icons.info_outline_rounded,
-            _summaryGrid(detail.summary),
-          ),
+          _summaryGrid(detail.summary),
           const SizedBox(height: UtenSpacing.s20),
           _section(
             theme,
@@ -522,23 +519,40 @@ class _FinanceAssetDetailSurfaceState
   }
 
   Widget _summaryGrid(FinanceAssetSummary item) {
-    return UtenFormGrid(
-      children: [
-        _info('分类', item.categoryName ?? item.categoryId ?? '—'),
-        _info('归属部门', item.departmentName ?? item.departmentId ?? '—'),
-        _info(
-          widget.ledger.amountLabel,
-          '¥ ${formatFinanceDecimal(widget.ledger == FinanceAssetLedger.fixedAsset ? item.originalValue : item.totalAmount)}',
-          money: true,
+    Widget fact(String label, String? value) =>
+        UtenSummaryField(label: label, value: value);
+    return UtenDetailSummaryCard(
+      heading: const Text('概要'),
+      primary: [
+        UtenSummaryField(
+          label: widget.ledger.amountLabel,
+          value: financeMoneyWithUnitSuffix(
+            widget.ledger == FinanceAssetLedger.fixedAsset
+                ? item.originalValue
+                : item.totalAmount,
+            currencyName: '人民币',
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
         ),
-        _info(
-          widget.ledger == FinanceAssetLedger.fixedAsset ? '账面净值' : '待摊余额',
-          '¥ ${formatFinanceDecimal(item.displayedBalance)}',
-          money: true,
+        UtenSummaryField(
+          label: widget.ledger == FinanceAssetLedger.fixedAsset
+              ? '账面净值'
+              : '待摊余额',
+          value: financeMoneyWithUnitSuffix(
+            item.displayedBalance,
+            currencyName: '人民币',
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
         ),
-        _info('政策月份', item.usefulMonths?.toString() ?? '—'),
-        _info('开始期间', item.startPeriod ?? '—'),
-        _info(
+      ],
+      facts: [
+        fact('分类', item.categoryName ?? item.categoryId),
+        fact('归属部门', item.departmentName ?? item.departmentId),
+        fact('政策月份', item.usefulMonths?.toString()),
+        fact('开始期间', item.startPeriod),
+        fact(
           widget.ledger == FinanceAssetLedger.fixedAsset
               ? '达到预定可使用日期'
               : '受益开始日期',
@@ -546,58 +560,38 @@ class _FinanceAssetDetailSurfaceState
               ? item.readyForUseDate ?? '—'
               : item.benefitStartDate ?? '—',
         ),
-        _info('地点', item.location ?? '—'),
-        _info(
-          widget.ledger == FinanceAssetLedger.fixedAsset ? '保管人' : '负责人',
-          item.custodianName ?? item.custodianId ?? '—',
-        ),
-        _info(
-          '来源',
-          [
-                    if (item.sourceType != null)
-                      financeAssetSourceTypeLabel(item.sourceType),
-                    item.sourceRef,
-                  ]
-                  .whereType<String>()
-                  .where((value) => value.isNotEmpty)
-                  .join(' / ')
-                  .isEmpty
-              ? '—'
-              : [
-                      if (item.sourceType != null)
-                        financeAssetSourceTypeLabel(item.sourceType),
-                      item.sourceRef,
-                    ]
-                    .whereType<String>()
-                    .where((value) => value.isNotEmpty)
-                    .join(' / '),
-        ),
-        _info('备注', item.remark ?? '—'),
       ],
-    );
-  }
-
-  Widget _info(String label, String value, {bool money = false}) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: money
-          ? CrossAxisAlignment.end
-          : CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s4),
-        SelectableText(
-          value,
-          textAlign: money ? TextAlign.right : TextAlign.left,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-            fontFeatures: money ? const [FontFeature.tabularFigures()] : null,
-          ),
+      details: [
+        UtenSummaryFacts(
+          children: [
+            fact('地点', item.location),
+            fact(
+              widget.ledger == FinanceAssetLedger.fixedAsset ? '保管人' : '负责人',
+              item.custodianName ?? item.custodianId ?? '—',
+            ),
+            fact(
+              '来源',
+              [
+                        if (item.sourceType != null)
+                          financeAssetSourceTypeLabel(item.sourceType),
+                        item.sourceRef,
+                      ]
+                      .whereType<String>()
+                      .where((value) => value.isNotEmpty)
+                      .join(' / ')
+                      .isEmpty
+                  ? '—'
+                  : [
+                          if (item.sourceType != null)
+                            financeAssetSourceTypeLabel(item.sourceType),
+                          item.sourceRef,
+                        ]
+                        .whereType<String>()
+                        .where((value) => value.isNotEmpty)
+                        .join(' / '),
+            ),
+            fact('备注', item.remark),
+          ],
         ),
       ],
     );

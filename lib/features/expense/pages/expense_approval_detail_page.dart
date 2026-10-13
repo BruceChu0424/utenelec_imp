@@ -15,6 +15,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -300,10 +301,6 @@ class _ExpenseApprovalDetailPageState
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _Hero(claim: claim),
-                  const SizedBox(height: UtenSpacing.s16),
-                  _sectionTitle(theme, '申请信息'),
-                  const SizedBox(height: UtenSpacing.s8),
-                  _applicantCard(theme, claim),
                   const SizedBox(height: UtenSpacing.s20),
                   ExpenseSubmissionChangeSummary(claim: claim),
                   _itemsSection(theme, claim),
@@ -427,44 +424,6 @@ class _ExpenseApprovalDetailPageState
     text,
     style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
   );
-
-  Widget _applicantCard(ThemeData theme, ExpenseClaim claim) {
-    Widget row(String label, String value) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(child: Text(value)),
-        ],
-      ),
-    );
-    return UtenCard(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s16,
-        vertical: UtenSpacing.s8,
-      ),
-      child: Column(
-        children: [
-          row('报销单号', claim.claimNo),
-          row('申请人', claim.applicantName),
-          row('部门', claim.departmentName ?? '—'),
-          row('标题', claim.title),
-          if (claim.remark != null && claim.remark!.trim().isNotEmpty)
-            row('备注', claim.remark!),
-          row('提交时间', _fmt(claim.submittedAt ?? claim.createdAt)),
-        ],
-      ),
-    );
-  }
 
   Widget _itemsSection(ThemeData theme, ExpenseClaim claim) {
     final revision = ExpenseSubmissionRevision.fromClaim(claim);
@@ -732,96 +691,62 @@ class _Hero extends StatelessWidget {
   final ExpenseClaim claim;
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(UtenRadius.card),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final theme = Theme.of(context);
+    return UtenDetailSummaryCard(
+      key: ValueKey('expense-approval-summary-${claim.id}'),
+      heading: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          if (expenseIsSubmittedModification(claim)) ...[
-            Text(
-              '报销单修改',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${claim.applicantName} · ${claim.title}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              UtenStatusBadge(
-                label: claim.status.label,
-                type: _badge(claim.status),
-              ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          Text(
-            '报销总额',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          SizedBox(
-            width: double.infinity,
-            child: Text(
-              '${claim.totalAmount.toStringAsFixed(2)} 元',
-              style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-                fontWeight: FontWeight.w800,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          Text(
-            '大写 ${rmbCapital(claim.totalAmount)}',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
-            ),
-          ),
-          if (claim.status == ExpenseClaimStatus.paid) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              '已付款：${claim.paymentAccountName ?? '—'} · '
-              '${claim.paymentExpenseStyleName ?? '—'} · '
-              '付款日期 ${claim.paymentDate == null ? '—' : _fmtDate(claim.paymentDate!)} · '
-              '出纳 ${claim.paidByName ?? '—'}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-              ),
-            ),
-          ],
-          if (claim.status == ExpenseClaimStatus.rejected &&
-              claim.rejectReason != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Text(
-              '已驳回（${claim.rejectedByName ?? '—'}）：${claim.rejectReason}',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+          if (expenseIsSubmittedModification(claim)) const Text('报销单修改'),
+          Text('${claim.claimNo} · ${claim.title}'),
         ],
       ),
+      status: UtenStatusBadge(
+        label: claim.status.label,
+        type: _badge(claim.status),
+      ),
+      primary: [
+        UtenSummaryField(
+          label: '报销总额',
+          value: '${claim.totalAmount.toStringAsFixed(2)} 元',
+          emphasis: true,
+          danger: true,
+        ),
+      ],
+      facts: [
+        UtenSummaryField(label: '申请人', value: claim.applicantName),
+        UtenSummaryField(label: '部门', value: claim.departmentName),
+        UtenSummaryField(
+          label: '提交时间',
+          value: _fmt(claim.submittedAt ?? claim.createdAt),
+        ),
+      ],
+      details: [
+        UtenSummaryField(label: '大写', value: rmbCapital(claim.totalAmount)),
+        if (claim.remark != null && claim.remark!.trim().isNotEmpty)
+          UtenSummaryField(label: '备注', value: claim.remark),
+      ],
+      notices: [
+        if (claim.status == ExpenseClaimStatus.paid)
+          Text(
+            '已付款：${claim.paymentAccountName ?? '—'} · '
+            '${claim.paymentExpenseStyleName ?? '—'} · '
+            '付款日期 ${claim.paymentDate == null ? '—' : _fmtDate(claim.paymentDate!)} · '
+            '出纳 ${claim.paidByName ?? '—'}',
+            style: theme.textTheme.bodySmall,
+          ),
+        if (claim.status == ExpenseClaimStatus.rejected &&
+            claim.rejectReason != null)
+          Text(
+            '已驳回（${claim.rejectedByName ?? '—'}）：${claim.rejectReason}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+      ],
     );
   }
 }

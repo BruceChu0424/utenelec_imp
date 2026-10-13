@@ -27,6 +27,9 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/feedback/uten_inline_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_endpoints.dart';
@@ -71,6 +74,7 @@ class _FinanceSalesShipmentAuditReviewPageState
   SalesDocDetail? _detail;
   ShipmentFinanceAuditInfo? _info;
   bool _loading = true;
+  bool _summaryExpanded = false;
   bool _busy = false;
   String? _error;
 
@@ -776,10 +780,6 @@ class _FinanceSalesShipmentAuditReviewPageState
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),
                                 ],
-                                _statusStrip(theme, _detail!, _info!),
-                                const SizedBox(height: UtenSpacing.s12),
-                                _clientFinanceCard(theme, _info!),
-                                const SizedBox(height: UtenSpacing.s12),
                                 _shipmentCard(theme, _detail!),
                                 const SizedBox(height: UtenSpacing.s12),
                                 ShipmentFinanceChangeSummary(
@@ -946,81 +946,20 @@ class _FinanceSalesShipmentAuditReviewPageState
     ShipmentFinanceAuditInfo info,
   ) {
     final rejected = d.shipmentWorkflow.financeRejected;
-    final revised =
-        readableShipmentReviewSnapshot(info.previousCommercialSnapshot) &&
-        readableShipmentReviewSnapshot(info.commercialSnapshot);
     final audited = d.financeAudit == 1;
     final warehouseStarted = !salesShipmentAllowsFinanceAudit(
       d.warehouseWorkStatus,
     );
-    final (color, icon, text) = audited
-        ? (
-            theme.colorScheme.primary,
-            Icons.verified_rounded,
-            '财务已放行 · ${d.financeAuditedAt != null ? '${d.financeAuditedAt!.substring(0, 10)} · ' : ''}仓库可以确认出库',
-          )
+    final (type, icon, text) = audited
+        ? (UtenStatusBadgeType.success, Icons.verified_rounded, '财务已放行')
         : rejected
-        ? (
-            theme.colorScheme.error,
-            Icons.undo_rounded,
-            '已退回销售 · ${d.shipmentWorkflow.financeRejectionReason ?? '未注明原因'}'
-                '${_canRejectReverse ? ' · 可撤回退回恢复审核' : ''}',
-          )
+        ? (UtenStatusBadgeType.danger, Icons.undo_rounded, '已退回销售')
         : warehouseStarted
-        ? (
-            theme.colorScheme.error,
-            Icons.block_rounded,
-            '仓库已确认出库，不能补做或撤销财务审核；纠错请走销售退货。',
-          )
+        ? (UtenStatusBadgeType.danger, Icons.block_rounded, '仓库已出库')
         : !d.shipmentWorkflow.salesConfirmed
-        ? (
-            theme.colorScheme.tertiary,
-            Icons.hourglass_top_rounded,
-            '销售尚未确认本单内容；确认提交后才进入财务审核。',
-          )
-        : (
-            theme.colorScheme.tertiary,
-            Icons.pending_actions_rounded,
-            '待财务审核 · 放行后仓库才能确认出库',
-          );
-    return Container(
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (revised)
-                  Text(
-                    '出货单修改',
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                Text(
-                  d.billNo ?? '未编号出货',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  text,
-                  style: theme.textTheme.bodySmall?.copyWith(color: color),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+        ? (UtenStatusBadgeType.warning, Icons.hourglass_top_rounded, '待销售确认')
+        : (UtenStatusBadgeType.warning, Icons.pending_actions_rounded, '待财务审核');
+    return UtenStatusBadge(label: text, type: type, icon: icon);
   }
 
   /// 客户财务快照卡：审核必看的本单结账方式、应收、铺底与可用预收。
@@ -1029,6 +968,11 @@ class _FinanceSalesShipmentAuditReviewPageState
   Widget _clientFinanceCard(ThemeData theme, ShipmentFinanceAuditInfo info) {
     final names = ref.watch(salesMasterNameServiceProvider);
     return FinancePartySnapshotCard(
+      embedded: true,
+      expanded: _summaryExpanded,
+      showTitle: false,
+      showLeading: false,
+      showBalances: false,
       title: '客户财务快照 · ${info.clientName ?? names.client(_detail?.clientId)}',
       balance: info.clientBalance,
       leading: [
@@ -1064,9 +1008,6 @@ class _FinanceSalesShipmentAuditReviewPageState
           _exchangeRateSection(theme, info),
         ],
       ],
-      note:
-          '结账方式来自本单。应收和可用预收按本单币种的原币余额相加，不用汇率换算；'
-          '可用预收只算已审核到账的预收。铺底额只和全部币种应收(折本币，不扣预收)比。',
     );
   }
 
@@ -1154,85 +1095,146 @@ class _FinanceSalesShipmentAuditReviewPageState
   /// 出货信息卡：与销售端详情同规则的只读商业事实（币种红色加粗）。
   Widget _shipmentCard(ThemeData theme, SalesDocDetail d) {
     final names = ref.watch(salesMasterNameServiceProvider);
-    Widget kv(String label, String? value, {bool highlight = false}) => Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 84,
-          child: Text(
-            label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+    Widget kv(String label, String? value, {bool highlight = false}) =>
+        UtenSummaryField(
+          label: label,
+          value: value,
+          emphasis: highlight,
+          danger: highlight,
+        );
+    final info = _info!;
+    final balance = info.clientBalance;
+    final currency = balance?.baseCurrency == true
+        ? (balance?.baseCurrencyName ?? '人民币')
+        : balance?.currencyName;
+    final net = financeExactDecimal(balance?.netOriginal);
+    final surplus = net?.startsWith('-') == true;
+    final revised =
+        readableShipmentReviewSnapshot(info.previousCommercialSnapshot) &&
+        readableShipmentReviewSnapshot(info.commercialSnapshot);
+    return UtenDetailSummaryCard(
+      heading: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (revised) const Text('出货单修改'),
+          Text(d.billNo ?? '未编号出货'),
+          Text(
+            info.clientName ?? names.client(d.clientId),
+            style: theme.textTheme.titleSmall,
           ),
+        ],
+      ),
+      status: _statusStrip(theme, d, info),
+      expanded: _summaryExpanded,
+      onExpandedChanged: (value) => setState(() => _summaryExpanded = value),
+      primary: [
+        kv(
+          '本次货款',
+          d.shipmentWorkflow.isFree
+              ? '不收费（货款 0）'
+              : d.priceMasked
+              ? '***'
+              : financeMoneyWithUnitSuffix(
+                  d.exactDecimals['totalOriginal'] ??
+                      d.totalOriginal?.toString(),
+                  currencyName: names.currency(d.currencyId),
+                  fullCurrencyName: true,
+                ),
+          highlight: true,
         ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child: Text(
-            value == null || value.isEmpty ? '—' : value,
-            style: highlight
-                ? theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.error,
-                  )
-                : null,
+        UtenSummaryField(
+          label: '应收未收',
+          value: financeMoneyWithUnitSuffix(
+            balance?.openOriginal,
+            currencyName: currency,
+            fullCurrencyName: true,
           ),
+          emphasis: true,
+        ),
+        UtenSummaryField(
+          label: '可用预收',
+          value: financeMoneyWithUnitSuffix(
+            balance?.creditOriginal,
+            currencyName: currency,
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
+        ),
+        UtenSummaryField(
+          label: surplus ? '预收有余' : '还差多少',
+          value: financeMoneyWithUnitSuffix(
+            surplus ? net!.substring(1) : net,
+            currencyName: currency,
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
         ),
       ],
-    );
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      facts: [
+        kv('结账方式', info.settlementMethodName ?? '未设置'),
+        if (info.billingMode != null)
+          kv('本次发货', info.billingMode == 'FREE' ? '不收费（货款 0）' : '收费'),
+        if (info.directPurpose != null)
+          kv('发货用途', switch (info.directPurpose) {
+            'SAMPLE' => '样品',
+            'GIFT' => '赠送',
+            _ => '其它客户发货',
+          }),
+        if (info.freeReason != null) kv('不收费原因', info.freeReason),
+        if (!_isFreeShipment)
+          kv(
+            '主档参考汇率${info.currencyName == null ? '' : '(${financeCurrencyText(name: info.currencyName)})'}',
+            _rateLocked
+                ? '1(本位币)'
+                : info.financeRateReady == false
+                ? '未维护'
+                : info.financeRate ?? '—',
+            highlight: !_rateLocked && info.financeRateReady == false,
+          ),
+        kv('出货日期', d.billDate),
+        if ((d.sourceDocNo?.isNotEmpty ?? false)) kv('来源订单', d.sourceDocNo),
+        kv('仓库作业', salesWarehouseWorkStatusLabel(d.warehouseWorkStatus)),
+      ],
+      notices: [
+        if (d.shipmentWorkflow.financeRejected)
+          UtenInlineNotice(
+            level: UtenInlineNoticeLevel.error,
+            message:
+                '${d.shipmentWorkflow.financeRejectionReason ?? '未注明原因'}${_canRejectReverse ? ' · 可撤回退回恢复审核' : ''}',
+          ),
+        if (!salesShipmentAllowsFinanceAudit(d.warehouseWorkStatus))
+          const UtenInlineNotice(
+            level: UtenInlineNoticeLevel.error,
+            message: '仓库已确认出库，不能补做或撤销财务审核；纠错请走销售退货。',
+          ),
+        if (!d.shipmentWorkflow.salesConfirmed &&
+            !d.shipmentWorkflow.financeRejected &&
+            d.financeAudit != 1)
+          const UtenInlineNotice(message: '销售尚未确认本单内容；确认提交后才进入财务审核。'),
+        _clientFinanceCard(theme, info),
+      ],
+      details: [
+        UtenSummaryFacts(
           children: [
-            UtenFormGrid(
-              children: [
-                kv('出货日期', d.billDate),
-                kv('客户', names.client(d.clientId)),
-                kv('币种', names.currency(d.currencyId), highlight: true),
-                kv(
-                  '本次货款',
-                  d.shipmentWorkflow.isFree
-                      ? '不收费（货款 0）'
-                      : d.priceMasked
-                      ? '***'
-                      : '${financeExactTrimmed(d.exactDecimals['totalOriginal'] ?? d.totalOriginal?.toString()) ?? '—'}（所选币种）',
-                ),
-                if ((d.sourceDocNo?.isNotEmpty ?? false))
-                  kv('来源订单', d.sourceDocNo),
-                if (d.remark?.isNotEmpty == true) kv('备注', d.remark),
-              ],
-            ),
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const Text('收货与单据资料'),
-              children: [
-                UtenFormGrid(
-                  children: [
-                    kv('仓库', names.warehouse(d.warehouseId)),
-                    kv('业务员', names.employee(d.sellerId)),
-                    kv('发货人', names.employee(d.senderId)),
-                    kv('制单员', d.makerName),
-                    kv('制单时间', utenFmtIsoTime(d.createdAt)),
-                    if ((d.logisticsNo?.isNotEmpty ?? false))
-                      kv('物流单号', d.logisticsNo),
-                    if ((d.shipAddr?.isNotEmpty ?? false))
-                      kv('收货地址', d.shipAddr),
-                    if (d.parcelCount != null)
-                      kv('件数', d.parcelCount?.toString()),
-                    kv(
-                      '仓库作业',
-                      salesWarehouseWorkStatusLabel(d.warehouseWorkStatus),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+            kv('仓库', names.warehouse(d.warehouseId)),
+            kv('业务员', names.employee(d.sellerId)),
+            kv('发货人', names.employee(d.senderId)),
+            kv('制单员', d.makerName),
+            kv('制单时间', utenFmtIsoTime(d.createdAt)),
+            if ((d.logisticsNo?.isNotEmpty ?? false)) kv('物流单号', d.logisticsNo),
+            if ((d.shipAddr?.isNotEmpty ?? false)) kv('收货地址', d.shipAddr),
+            if (d.parcelCount != null) kv('件数', d.parcelCount?.toString()),
+            if (d.remark?.isNotEmpty == true) kv('备注', d.remark),
+            if (d.financeAuditedAt != null) kv('放行时间', d.financeAuditedAt),
           ],
         ),
-      ),
+        Text(
+          '结账方式来自本单。应收和可用预收按本单币种的原币余额相加，不用汇率换算；可用预收只算已审核到账的预收。铺底额只和全部币种应收(折本币，不扣预收)比。',
+          style: theme.textTheme.bodySmall,
+        ),
+      ],
     );
   }
 

@@ -94,7 +94,7 @@ void main() {
     expect(find.byType(MasterDataTableView<SalesDocItem>), findsOneWidget);
     await expectUtenHeaderCollapses(
       tester,
-      headerAnchor: find.text('单据号'),
+      headerAnchor: find.text('SO-2026-001'),
       bodyAnchor: find.byType(MasterDataTableView<SalesDocItem>),
     );
     // 明细表在 body 里：头部收起后仍在原位可内滚。

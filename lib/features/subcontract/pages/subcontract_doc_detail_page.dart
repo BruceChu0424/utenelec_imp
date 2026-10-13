@@ -24,6 +24,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -33,7 +34,6 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -836,13 +836,22 @@ class _SubcontractDocDetailPageState
       if (_cfg.hasSupplier) _KV('委外商', names.supplier(d.supplierId)),
       // 订货单不涉及仓库：委外成品入库仓库到进仓登记时才产生。
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
-      if (canViewCommercialAmounts && _cfg.hasCurrency)
-        _KV('币种', names.currency(d.currencyId)),
+      if (canViewCommercialAmounts &&
+          _cfg.hasCurrency &&
+          financeExactDecimal(d.totalOriginalText) == null)
+        _KV('单据币种', names.currency(d.currencyId)),
       if (canViewCommercialAmounts && _cfg.hasSettlement)
         _KV('结算方式', settlementMethodLabel),
       if (canViewCommercialAmounts && _historicalReceipt) ...[
         _KV('原始汇率', historicalReceiptRate(d.exchangeRateText)),
-        _KV('原始表头 Total', historicalReceiptAmount(d.totalOriginalText)),
+        _KV(
+          '原始表头 Total',
+          financeMoneyWithUnitSuffix(
+            historicalReceiptAmount(d.totalOriginalText),
+            currencyName: names.currency(d.currencyId),
+            fullCurrencyName: true,
+          ),
+        ),
         const _KV('金额口径', '行 STotal 是本币成本；原始表头值不代表行成本合计或加工应付'),
       ],
       // 委外不展示汇率（固定 1 随单保存，进仓/退货与订单快照一致性由服务端校验）。
@@ -860,9 +869,31 @@ class _SubcontractDocDetailPageState
       if (canViewCommercialAmounts &&
           _cfg.hasDeductAmount &&
           (d.deductAmount ?? 0) > 0)
-        _KV('建议索赔金额(本币)', '${d.deductAmount?.toStringAsFixed(2)}(仅建议，不自动冲应付)'),
-      if (canViewCommercialAmounts && _cfg.hasAmount && !_historicalReceipt)
-        _KV('合计(本币)', financeExactMoneyDisplay(d.totalLocalText)),
+        _KV(
+          '建议索赔金额(本币)',
+          '${financeMoneyWithUnitSuffix(d.deductAmount?.toStringAsFixed(2), currencyName: '人民币', fullCurrencyName: true)}(仅建议，不自动冲应付)',
+        ),
+      if (canViewCommercialAmounts &&
+          _cfg.hasAmount &&
+          !_historicalReceipt) ...[
+        if (_cfg.hasCurrency)
+          _KV(
+            '单据金额',
+            financeMoneyWithUnitSuffix(
+              d.totalOriginalText,
+              currencyName: names.currency(d.currencyId),
+              fullCurrencyName: true,
+            ),
+          ),
+        _KV(
+          '合计(本币)',
+          financeMoneyWithUnitSuffix(
+            d.totalLocalText,
+            currencyName: '人民币',
+            fullCurrencyName: true,
+          ),
+        ),
+      ],
       if (d.remark?.isNotEmpty == true) _KV('备注', d.remark),
       _KV(
         '状态',
@@ -882,12 +913,44 @@ class _SubcontractDocDetailPageState
               ),
       ),
     ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
+    final primaryLabels = {
+      '单据金额',
+      if (d.totalOriginalText == null || !_cfg.hasCurrency) '合计(本币)',
+      '原始表头 Total',
+      '建议索赔金额(本币)',
+      '总重',
+    };
+    const factLabels = {'日期', '委外商', '仓库', '结算方式', '交货日', '最后交货日', '经办人'};
+    return UtenDetailSummaryCard(
+      heading: Text(
+        d.billNo ?? '—',
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      status: rows.last.badge ?? Text(rows.last.value ?? '—'),
+      primary: [
+        for (final r in rows)
+          if (primaryLabels.contains(r.label)) _kvRow(theme, r),
+      ],
+      facts: [
+        for (final r in rows)
+          if (factLabels.contains(r.label)) _kvRow(theme, r),
+      ],
+      notices: [
+        for (final r in rows)
+          if (r.label == '金额口径') _kvRow(theme, r),
+      ],
+      details: [
+        UtenSummaryFacts(
           children: [
-            for (final r in rows) _kvRow(theme, r),
+            for (final r in rows)
+              if (r.label != '单据号' &&
+                  r.label != '状态' &&
+                  r.label != '金额口径' &&
+                  !primaryLabels.contains(r.label) &&
+                  !factLabels.contains(r.label))
+                _kvRow(theme, r),
             // 溯源：有权威来源 id 时可点击跳转；跨申请/跨订单分解时退化为纯文本谱系。
             if (widget.docType == SubcontractDocType.order &&
                 (d.sourceApplicationId != null ||
@@ -924,26 +987,17 @@ class _SubcontractDocDetailPageState
               SourceDocLink(label: '来源单据', billNo: d.sourceDocNo),
           ],
         ),
-      ),
+      ],
     );
   }
 
   Widget _kvRow(ThemeData theme, _KV r) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 84,
-          child: Text(
-            r.label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(child: r.badge ?? Text(r.value ?? '—')),
-      ],
+    return UtenSummaryField(
+      label: r.label,
+      value: r.value,
+      emphasis:
+          r.label == '单据金额' || r.label == '合计(本币)' || r.label == '建议索赔金额(本币)',
+      danger: r.label == '单据金额' || r.label == '建议索赔金额(本币)',
     );
   }
 

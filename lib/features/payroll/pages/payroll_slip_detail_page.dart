@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/click_guard.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -15,10 +16,8 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/io/file_saver.dart';
-import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
@@ -163,31 +162,8 @@ class _DetailContent extends ConsumerWidget {
                   UtenFloatingActionGroup.scrollClearance,
                 ),
                 children: [
-                  // 头部 - 大金额展示
-                  _buildHero(theme),
-                  const SizedBox(height: UtenSpacing.s16),
-
-                  // 状态信息
-                  UtenCard(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      children: [
-                        UtenInfoRow(label: '所属期间', value: slip.periodLabelZh),
-                        UtenInfoRow(label: '员工工号', value: slip.employeeCode),
-                        UtenInfoRow(
-                          label: '发布日期',
-                          value: _formatDate(slip.publishedAt),
-                        ),
-                        UtenInfoRow(
-                          label: '查看时间',
-                          value: slip.viewedAt != null
-                              ? _formatDateTime(slip.viewedAt)
-                              : '—',
-                          showDivider: false,
-                        ),
-                      ],
-                    ),
-                  ),
+                  // 金额与状态信息合为顶部摘要；工资构成仍在下方逐项显示。
+                  _buildSummary(),
                   const SizedBox(height: UtenSpacing.s16),
 
                   // 应发明细
@@ -325,88 +301,50 @@ class _DetailContent extends ConsumerWidget {
     );
   }
 
-  Widget _buildHero(ThemeData theme) {
-    return UtenCard(
-      padding: const EdgeInsets.all(UtenSpacing.s24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 期间 + 状态
-          Wrap(
-            spacing: UtenSpacing.s12,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              Text(
-                slip.periodLabelZh,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              // 状态徽章与列表状态列同源（ADR-169：PayrollSlipStatus.badgeType）。
-              UtenStatusBadge(
-                label: slip.status.label,
-                type: slip.status.badgeType,
-                icon: slip.status == PayrollSlipStatus.downloaded
-                    ? Icons.check_circle_rounded
-                    : null,
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // 实发金额（displayMedium 大字号 + tabular figures）
-          Text(
-            '实发金额',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: '¥ ',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurfaceVariant,
-                    height: 1,
-                  ),
-                ),
-                TextSpan(
-                  text: slip.netIncome.toStringAsFixed(2),
-                  style: theme.textTheme.displayMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
-                    height: 1,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: UtenSpacing.s16),
-          const Divider(),
-          const SizedBox(height: UtenSpacing.s16),
-          // 应发 / 扣除
-          UtenFormGrid(
-            columns: 2,
-            minFieldWidth: 160,
-            children: [
-              _SummaryItem(
-                label: '应发',
-                value: slip.grossIncome,
-                color: UtenColors.success,
-              ),
-              _SummaryItem(
-                label: '扣除',
-                value: -slip.totalDeduction,
-                color: UtenColors.error,
-              ),
-            ],
-          ),
-        ],
+  Widget _buildSummary() {
+    return UtenDetailSummaryCard(
+      key: ValueKey('payroll-slip-summary-${slip.id}'),
+      heading: Text(slip.periodLabelZh),
+      // 状态徽章与列表状态列同源（ADR-169：PayrollSlipStatus.badgeType）。
+      status: UtenStatusBadge(
+        label: slip.status.label,
+        type: slip.status.badgeType,
+        icon: slip.status == PayrollSlipStatus.downloaded
+            ? Icons.check_circle_rounded
+            : null,
       ),
+      primary: [
+        UtenSummaryField(
+          label: '实发金额',
+          value: '${slip.netIncome.toStringAsFixed(2)} 元',
+          emphasis: true,
+          danger: true,
+        ),
+        UtenSummaryField(
+          label: '应发',
+          value: '${slip.grossIncome.toStringAsFixed(2)} 元',
+        ),
+        UtenSummaryField(
+          label: '扣除',
+          value:
+              '${slip.totalDeduction > 0 ? '-' : ''}${slip.totalDeduction.abs().toStringAsFixed(2)} 元',
+        ),
+      ],
+      facts: [UtenSummaryField(label: '员工工号', value: slip.employeeCode)],
+      details: [
+        UtenSummaryFacts(
+          children: [
+            UtenSummaryField(
+              label: '发布日期',
+              value: _formatDate(slip.publishedAt),
+            ),
+            UtenSummaryField(
+              label: '查看时间',
+              value: _formatDateTime(slip.viewedAt),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -418,43 +356,5 @@ class _DetailContent extends ConsumerWidget {
   String _formatDateTime(DateTime? date) {
     if (date == null) return '—';
     return '${_formatDate(date)} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-  }
-}
-
-/// 顶部摘要小项（应发 / 扣除）
-class _SummaryItem extends StatelessWidget {
-  const _SummaryItem({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-  final String label;
-  final double value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '${value >= 0 ? '' : '-'}¥ ${value.abs().toStringAsFixed(2)}',
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: color,
-            fontWeight: FontWeight.w700,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
-    );
   }
 }

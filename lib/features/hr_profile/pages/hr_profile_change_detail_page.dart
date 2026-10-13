@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_batch_reject_dialog.dart';
@@ -198,76 +200,61 @@ class _HrProfileChangeDetailPageState
           UtenFloatingActionGroup.scrollClearance,
         ),
         children: [
-          // 员工摘要卡
-          UtenCard(
-            child: Row(
+          // 员工与提交信息合为摘要；待审字段差异保持独立常显。
+          UtenDetailSummaryCard(
+            key: ValueKey('hr-profile-summary-${batch.batchId}'),
+            heading: Row(
               children: [
                 UtenUserAvatar(name: batch.employeeName, size: 44),
                 const SizedBox(width: UtenSpacing.s12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        batch.employeeName ?? '—',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        batch.employeeCode ?? '—',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                Expanded(child: Text(batch.employeeName ?? '—')),
               ],
             ),
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-
-          // 提交信息
-          UtenCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${l10n.profileChangeSubmittedAt}：${_formatTime(batch.submittedAt)}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                if (batch.submittedByName != null) ...[
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '${l10n.profileChangeReviewer}：${batch.submittedByName!}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-                if (batch.reviewedAt != null) ...[
-                  const SizedBox(height: UtenSpacing.s4),
-                  Text(
-                    '${l10n.profileChangeReviewer}：${batch.reviewedByName ?? '—'} · ${_formatTime(batch.reviewedAt!)}',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-                if (batch.reviewComment != null &&
-                    batch.reviewComment!.isNotEmpty) ...[
-                  const SizedBox(height: UtenSpacing.s8),
-                  Container(
-                    padding: const EdgeInsets.all(UtenSpacing.s12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainer,
-                      borderRadius: UtenRadius.mdAll,
-                    ),
-                    child: Text(
-                      '${l10n.profileChangeReviewComment}：${batch.reviewComment!}',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                ],
-              ],
+            status: UtenStatusBadge(
+              label: switch (batch.status) {
+                ProfileChangeStatus.pending => l10n.profileChangeStatusPending,
+                ProfileChangeStatus.applied => l10n.profileChangeStatusApplied,
+                ProfileChangeStatus.approved =>
+                  l10n.profileChangeStatusApproved,
+                ProfileChangeStatus.rejected =>
+                  l10n.profileChangeStatusRejected,
+                ProfileChangeStatus.cancelled =>
+                  l10n.profileChangeStatusCancelled,
+              },
+              type: profileChangeStatusBadgeType(batch.status),
             ),
+            facts: [
+              UtenSummaryField(label: '员工工号', value: batch.employeeCode),
+              UtenSummaryField(
+                label: l10n.profileChangeSubmittedAt,
+                value: _formatTime(batch.submittedAt),
+              ),
+              if (batch.submittedByName != null)
+                UtenSummaryField(label: '提交人', value: batch.submittedByName),
+            ],
+            details: [
+              if (batch.reviewedAt != null)
+                UtenSummaryField(
+                  label: l10n.profileChangeReviewer,
+                  value:
+                      '${batch.reviewedByName ?? '—'} · ${_formatTime(batch.reviewedAt!)}',
+                ),
+            ],
+            notices: [
+              if (batch.reviewComment != null &&
+                  batch.reviewComment!.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainer,
+                    borderRadius: UtenRadius.mdAll,
+                  ),
+                  child: Text(
+                    '${l10n.profileChangeReviewComment}：${batch.reviewComment!}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: UtenSpacing.s12),
 

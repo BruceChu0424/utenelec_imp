@@ -10,7 +10,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_form_grid.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/party_open_balance.dart';
 
 /// 快照卡里的一格：标题 + 数值。
@@ -41,6 +44,11 @@ class FinancePartySnapshotCard extends StatelessWidget {
     this.overLimitWarning,
     this.footer = const [],
     this.note,
+    this.embedded = false,
+    this.expanded = true,
+    this.showTitle = true,
+    this.showLeading = true,
+    this.showBalances = true,
   });
 
   /// 卡片标题，例如「客户财务快照 · 远硕智能(C001)」。
@@ -69,6 +77,11 @@ class FinancePartySnapshotCard extends StatelessWidget {
 
   /// 最底部的一行灰字说明。
   final String? note;
+  final bool embedded;
+  final bool expanded;
+  final bool showTitle;
+  final bool showLeading;
+  final bool showBalances;
 
   bool get _customer => side == PartyBalanceSide.customer;
 
@@ -105,6 +118,7 @@ class FinancePartySnapshotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (embedded) return _CompactFinanceSnapshot(card: this);
     final theme = Theme.of(context);
     final footnote = balance?.footnote(side);
     // 横幅只在本页比额度([limitLabel])并且服务端判定超额时出现。
@@ -200,6 +214,146 @@ class FinancePartySnapshotCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CompactFinanceSnapshot extends StatelessWidget {
+  const _CompactFinanceSnapshot({required this.card});
+  final FinancePartySnapshotCard card;
+
+  String money(String? amount, {bool base = false}) =>
+      financeMoneyWithUnitSuffix(
+        amount,
+        currencyName: base
+            ? card.balance?.baseCurrencyName
+            : card.balance?.currencyName,
+        fullCurrencyName: true,
+      );
+
+  Widget metric(FinanceSnapshotMetric value) => UtenSummaryField(
+    label: value.label,
+    value: value.value,
+    emphasis: value.emphasis,
+    danger: value.danger,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final b = card.balance;
+    final customer = card.side == PartyBalanceSide.customer;
+    final net = financeExactDecimal(b?.netOriginal);
+    final surplus = (financeAmountUnits(net)?.sign ?? 0) < 0;
+    final warning = card.limitLabel != null && b?.overCredit == true;
+    return Column(
+      key: const ValueKey('finance-party-snapshot'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (card.showLeading && card.leading.isNotEmpty) ...[
+          UtenSummaryFacts(
+            minFieldWidth: 160,
+            children: card.leading.map(metric).toList(),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+        ],
+        if (card.showTitle)
+          Text(
+            card.title,
+            style: theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.w600)
+                .merge(card.titleStyle),
+          ),
+        if (card.showTitle && card.showBalances)
+          const SizedBox(height: UtenSpacing.s4),
+        if (card.showBalances)
+          UtenSummaryFacts(
+            inline: false,
+            minFieldWidth: 180,
+            maxColumns: 3,
+            children: [
+              UtenSummaryField(
+                label: customer ? '应收未收' : '应付未付',
+                value: money(b?.openOriginal),
+              ),
+              UtenSummaryField(
+                label: customer ? '可用预收' : '可抵预付/贷项',
+                value: money(b?.creditOriginal),
+              ),
+              UtenSummaryField(
+                label: surplus ? (customer ? '预收有余' : '可抵有余') : '还差多少',
+                value: money(surplus ? net!.substring(1) : net),
+                emphasis: true,
+              ),
+            ],
+          ),
+        if (b?.footnote(card.side) case final footnote?) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          Text(
+            footnote,
+            key: const ValueKey('finance-party-snapshot-footnote'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (warning) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          Container(
+            key: const ValueKey('finance-party-snapshot-over-limit'),
+            padding: const EdgeInsets.all(UtenSpacing.s8),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.errorContainer,
+              borderRadius: UtenRadius.mdAll,
+            ),
+            child: Text(
+              '已超${card.limitLabel} ${money(b?.overLimitLocal, base: true)} · '
+              '全部币种${customer ? '应收' : '应付'}(折本币、不扣预收) '
+              '${money(b?.openBookLocal, base: true)} · '
+              '${card.limitLabel} ${money(b?.creditLimitLocal, base: true)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onErrorContainer,
+              ),
+            ),
+          ),
+        ],
+        if (card.expanded &&
+            (card.limitLabel != null || card.trailing.isNotEmpty)) ...[
+          const SizedBox(height: UtenSpacing.s12),
+          UtenSummaryFacts(
+            inline: true,
+            children: [
+              if (card.limitLabel != null) ...[
+                UtenSummaryField(
+                  label: '全部币种${customer ? '应收' : '应付'}(折本币)',
+                  value: money(b?.openBookLocal, base: true),
+                  danger: b?.overCredit == true,
+                ),
+                UtenSummaryField(
+                  label: card.limitLabel!,
+                  value: b == null
+                      ? null
+                      : b.creditLimitLocal == null
+                      ? '未设置'
+                      : money(b.creditLimitLocal, base: true),
+                ),
+                if (b?.creditLimitLocal != null)
+                  UtenSummaryField(
+                    label: '超出${card.limitLabel}',
+                    value: money(b?.overLimitLocal, base: true),
+                    danger: b?.overCredit == true,
+                  ),
+              ],
+              ...card.trailing.map(metric),
+            ],
+          ),
+        ],
+        ...card.footer,
+        if (card.note case final note?) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          Text(note, style: theme.textTheme.bodySmall),
+        ],
+      ],
     );
   }
 }

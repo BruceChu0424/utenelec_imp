@@ -616,7 +616,8 @@ void main() {
     expect(find.text('PO-2026-001'), findsOneWidget);
     expect(find.text('采购订货 · 第 2 轮'), findsOneWidget);
     expect(find.text('待财务审核'), findsOneWidget);
-    expect(find.text('供应商财务快照 · 供应商A(S-001)'), findsOneWidget);
+    expect(find.text('供应商A(S-001)'), findsOneWidget);
+    expect(find.textContaining('供应商财务快照'), findsNothing);
     expect(find.text('本单金额'), findsOneWidget);
     // 快照卡/总金额列/合计条三处同文案（金额后缀口径下字面相同）。
     expect(find.text('10000.00 美元'), findsWidgets);
@@ -727,7 +728,7 @@ void main() {
     );
     await _pumpReviewPage(tester, repository);
 
-    expect(find.text('已通过 · 订货已生效'), findsOneWidget);
+    expect(find.text('已通过'), findsOneWidget);
     expect(find.byKey(const Key('finance-order-review-approve')), findsNothing);
     expect(find.byKey(const Key('finance-order-review-reject')), findsNothing);
     expect(find.byKey(const Key('finance-order-review-back')), findsOneWidget);
@@ -1045,14 +1046,11 @@ void main() {
     expect(repository.approved.single.exchangeRate, 6.5);
   });
 
-  testWidgets('供应商红色加粗：快照卡标题与订单信息卡供应商值', (tester) async {
+  testWidgets('合并摘要保留唯一供应商核对标题的红色加粗', (tester) async {
     await _pumpReviewPage(tester, _FakeWorkflowRepo(_pendingReview()));
     final theme = Theme.of(tester.element(find.text('PO-2026-001')));
-    final title = tester.widget<Text>(find.text('供应商财务快照 · 供应商A(S-001)'));
+    final title = tester.widget<Text>(find.text('供应商A(S-001)'));
     expect(title.style?.color, theme.colorScheme.error);
     expect(title.style?.fontWeight, FontWeight.w800);
-    final supplier = tester.widget<Text>(find.text('供应商A').first);
-    expect(supplier.style?.color, theme.colorScheme.error);
-    expect(supplier.style?.fontWeight, FontWeight.w700);
   });
 }

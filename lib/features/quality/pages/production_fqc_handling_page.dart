@@ -25,6 +25,7 @@ import '../../../shared/drafts/form_draft_values.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -1234,121 +1235,106 @@ class _ProductionFqcSheetHandlingPageState
     int activeCount,
   ) {
     final sheet = detail.sheet;
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                UtenStatusBadge(
-                  // ADR-169：待检=绿——本页是品质部自己的办理页，待检即
-                  // 「轮到品质动手」的就绪档；已办结=灰。
-                  label: sheet.active ? '待检' : '已办结',
-                  type: sheet.active
-                      ? UtenStatusBadgeType.success
-                      : UtenStatusBadgeType.neutral,
-                ),
-                Text(
-                  '品质检查单 ${sheet.sheetNo}',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            MasterDataTableView<_SheetHeaderRow>(
-              tableKey:
-                  'features.quality.pages.production_fqc_handling_page.ProductionFqcSheetHandlingPageState._buildSummaryCard.1',
-              key: const Key('fqc-sheet-header-table'),
-              embedded: true,
-              showColumnChooser: false,
-              columns: [
-                MasterColumnDef<_SheetHeaderRow>(
-                  key: 'warehouseName',
-                  label: '成品仓',
-                  width: 140,
-                  value: (row) => row.warehouseName,
-                ),
-                MasterColumnDef<_SheetHeaderRow>(
-                  key: 'receiverName',
-                  label: '收货人',
-                  width: 110,
-                  value: (row) => row.receiverName,
-                ),
-                MasterColumnDef<_SheetHeaderRow>(
-                  key: 'reportNos',
-                  label: '报工单',
-                  width: 200,
-                  value: (row) => row.reportNos,
-                ),
-                MasterColumnDef<_SheetHeaderRow>(
-                  key: 'pending',
-                  label: '待检',
-                  width: 200,
-                  value: (row) => row.pending,
-                ),
-                MasterColumnDef<_SheetHeaderRow>(
-                  key: 'createdAt',
-                  label: '进入质检',
-                  width: 150,
-                  value: (row) => row.createdAt,
-                ),
-              ],
-              items: [
-                _SheetHeaderRow(
-                  warehouseName: sheet.warehouseName ?? '—',
-                  receiverName: sheet.receiverName ?? '—',
-                  reportNos: sheet.reportNos ?? '—',
-                  pending:
-                      '$activeCount 行待检'
-                      '${sheet.pendingQtyText == null ? '' : ' · ${sheet.pendingQtyText}'}',
-                  createdAt: ChinaDateTime.formatInstant(sheet.createdAt),
-                ),
-              ],
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-            ),
-            if (sheet.remark?.isNotEmpty == true) ...[
-              const SizedBox(height: UtenSpacing.s4),
-              Text('登记备注：${sheet.remark}', style: theme.textTheme.bodySmall),
-            ],
-            const Divider(height: UtenSpacing.s24),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  size: 18,
-                  color: theme.colorScheme.primary,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    _canDecide
-                        ? '一行是一批实物(需求份 / 计划公共 / 实际超产合在一起)，行内直接修改整批的'
-                              '合格数量/不合格数量(默认全合格)，合格先满足需求份、不合格先扣实际超产；'
-                              '含不合格的行另选处置方式；勾选后点「提交报告」整批一起提交，'
-                              '任一行失败则本次新增决定全部回滚；待核对行保留原内容继续办理。'
-                        : '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
+      child: UtenDetailSummaryCard(
+        key: ValueKey('fqc-sheet-summary-${sheet.id}'),
+        heading: Text('品质检查单 ${sheet.sheetNo}'),
+        status: UtenStatusBadge(
+          // ADR-169：待检=绿——轮到品质动手；已办结=灰。
+          label: sheet.active ? '待检' : '已办结',
+          type: sheet.active
+              ? UtenStatusBadgeType.success
+              : UtenStatusBadgeType.neutral,
         ),
+        // 一行事实表保持原列与单元格；办理所需仓库、批次和数量常显。
+        facts: [
+          MasterDataTableView<_SheetHeaderRow>(
+            tableKey:
+                'features.quality.pages.production_fqc_handling_page.ProductionFqcSheetHandlingPageState._buildSummaryCard.1',
+            key: const Key('fqc-sheet-header-table'),
+            embedded: true,
+            showColumnChooser: false,
+            columns: [
+              MasterColumnDef<_SheetHeaderRow>(
+                key: 'warehouseName',
+                label: '成品仓',
+                width: 140,
+                value: (row) => row.warehouseName,
+              ),
+              MasterColumnDef<_SheetHeaderRow>(
+                key: 'receiverName',
+                label: '收货人',
+                width: 110,
+                value: (row) => row.receiverName,
+              ),
+              MasterColumnDef<_SheetHeaderRow>(
+                key: 'reportNos',
+                label: '报工单',
+                width: 200,
+                value: (row) => row.reportNos,
+              ),
+              MasterColumnDef<_SheetHeaderRow>(
+                key: 'pending',
+                label: '待检',
+                width: 200,
+                value: (row) => row.pending,
+              ),
+              MasterColumnDef<_SheetHeaderRow>(
+                key: 'createdAt',
+                label: '进入质检',
+                width: 150,
+                value: (row) => row.createdAt,
+              ),
+            ],
+            items: [
+              _SheetHeaderRow(
+                warehouseName: sheet.warehouseName ?? '—',
+                receiverName: sheet.receiverName ?? '—',
+                reportNos: sheet.reportNos ?? '—',
+                pending:
+                    '$activeCount 行待检'
+                    '${sheet.pendingQtyText == null ? '' : ' · ${sheet.pendingQtyText}'}',
+                createdAt: ChinaDateTime.formatInstant(sheet.createdAt),
+              ),
+            ],
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+          ),
+        ],
+        details: [
+          if (sheet.remark?.isNotEmpty == true)
+            UtenSummaryField(label: '登记备注', value: sheet.remark),
+        ],
+        notices: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                size: 18,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  _canDecide
+                      ? '一行是一批实物(需求份 / 计划公共 / 实际超产合在一起)，行内直接修改整批的'
+                            '合格数量/不合格数量(默认全合格)，合格先满足需求份、不合格先扣实际超产；'
+                            '含不合格的行另选处置方式；勾选后点「提交报告」整批一起提交，'
+                            '任一行失败则本次新增决定全部回滚；待核对行保留原内容继续办理。'
+                      : '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -1954,7 +1940,7 @@ class _ProductionFqcInspectionPageState
                           notice,
                           const SizedBox(height: UtenSpacing.s12),
                         ],
-                        _buildFactsCard(theme, inspection),
+                        _buildFactsCard(inspection),
                         const SizedBox(height: UtenSpacing.s12),
                         if (_fqcSubmissionNotice(
                               [?_row],
@@ -1991,153 +1977,130 @@ class _ProductionFqcInspectionPageState
   }
 
   /// 送检登记事实卡（报工/货品/检查单/仓/库位/数量全貌）。
-  Widget _buildFactsCard(ThemeData theme, ProductionFqcInspection inspection) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                UtenStatusBadge(
-                  // 同上：待检=绿（轮到品质动手），已办结=灰。
-                  label: fqcStatusLabel(inspection),
-                  type: inspection.active
-                      ? UtenStatusBadgeType.success
-                      : UtenStatusBadgeType.neutral,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    '报工 ${inspection.reportNo ?? inspection.id}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            MasterDataTableView<_FactRow>(
-              tableKey:
-                  'features.quality.pages.production_fqc_handling_page.ProductionFqcInspectionPageState._buildFactsCard.1',
-              key: const Key('fqc-inspection-facts-table'),
-              embedded: true,
-              stickyHeaderPinned: _factsPinned,
-              showColumnChooser: false,
-              columns: [
-                MasterColumnDef<_FactRow>(
-                  key: 'planNo',
-                  label: '生产计划',
-                  width: 150,
-                  value: (row) => row.planNo,
-                ),
-                // 身份格：本卡无独立编号/颜色列，名称、编号、颜色三属性合并一格，
-                // 办理前一眼确认「同名不同色」的是不是手上这批货。
-                MasterColumnDef<_FactRow>(
-                  key: 'goods',
-                  label: '货品名称',
-                  width: 200,
-                  value: (row) => row.goodsName ?? '—',
-                  cellBuilderHandlesSemantics: true,
-                  cellBuilder: (_, row) =>
-                      UtenGoodsIdentityCell(name: row.goodsName),
-                ),
-                MasterColumnDef<_FactRow>(
-                  key: 'goodsCode',
-                  label: '编号',
-                  width: 130,
-                  value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
-                  cellBuilder: (_, row) =>
-                      UtenGoodsAttributeCell(row.goodsCode),
-                ),
-                MasterColumnDef<_FactRow>(
-                  key: 'colorName',
-                  label: '颜色',
-                  width: 96,
-                  value: (row) => UtenGoodsAttributeCell.text(row.colorName),
-                  cellBuilder: (_, row) =>
-                      UtenGoodsAttributeCell(row.colorName),
-                ),
-                MasterColumnDef<_FactRow>(
-                  // 2026-09-25 单号列统一：明细就地排序+按值筛选。
-                  key: 'sheetNo',
-                  sortable: true,
-                  filterFromRows: true,
-                  label: '检查单号',
-                  width: 150,
-                  value: (row) => row.sheetNo,
-                ),
-                MasterColumnDef<_FactRow>(
-                  key: 'warehouse',
-                  label: '实际成品仓',
-                  width: 140,
-                  value: (row) => row.warehouse,
-                ),
-                MasterColumnDef<_FactRow>(
-                  key: 'place',
-                  label: '储放位置',
-                  width: 150,
-                  value: (row) => row.place,
-                ),
-                MasterColumnDef<_FactRow>(
-                  key: 'receiver',
-                  label: '收货人',
-                  width: 110,
-                  value: (row) => row.receiver,
-                ),
-                MasterColumnDef<_FactRow>(
-                  key: 'qty',
-                  label: '数量（报工/合格/不合格/待检/已生成待点收）',
-                  width: 300,
-                  value: (row) => row.qty,
-                ),
-                MasterColumnDef<_FactRow>(
-                  key: 'time',
-                  label: '进入质检 / 更新',
-                  width: 300,
-                  value: (row) => row.time,
-                ),
-              ],
-              items: [
-                _FactRow(
-                  planNo: inspection.planNo ?? '—',
-                  goodsName: inspection.goodsName,
-                  goodsCode: inspection.goodsCode,
-                  colorName: inspection.colorName,
-                  sheetNo: inspection.sheetNo ?? '无检查单',
-                  warehouse: inspection.warehouseName ?? '—',
-                  place: fqcStorageText(inspection),
-                  receiver: inspection.receiverName ?? '—',
-                  qty:
-                      '${fqty(inspection.reportedQty)} / '
-                      '${fqty(inspection.passedQty)} / '
-                      '${fqty(inspection.failedQty)} / '
-                      '${fqty(inspection.remainingQty)} / '
-                      '${fqty(inspection.authorizedInboundQty)}'
-                      '${inspection.unitName == null ? '' : ' ${inspection.unitName}'}',
-                  time:
-                      '${ChinaDateTime.formatInstant(inspection.createdAt)}'
-                      ' / ${ChinaDateTime.formatInstant(inspection.updatedAt)}',
-                ),
-              ],
-              facets: const {},
-              nullCounts: const {},
-              filters: const {},
-              onFilterChanged: (_, _) {},
-            ),
-            if (inspection.registrationRemark?.isNotEmpty == true) ...[
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '登记备注：${inspection.registrationRemark}',
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-          ],
-        ),
+  Widget _buildFactsCard(ProductionFqcInspection inspection) {
+    return UtenDetailSummaryCard(
+      key: ValueKey('fqc-inspection-summary-${inspection.id}'),
+      heading: Text('报工 ${inspection.reportNo ?? inspection.id}'),
+      status: UtenStatusBadge(
+        // 同上：待检=绿（轮到品质动手），已办结=灰。
+        label: fqcStatusLabel(inspection),
+        type: inspection.active
+            ? UtenStatusBadgeType.success
+            : UtenStatusBadgeType.neutral,
       ),
+      // 身份、库位、数量全貌都留在原一行事实表中。
+      facts: [
+        MasterDataTableView<_FactRow>(
+          tableKey:
+              'features.quality.pages.production_fqc_handling_page.ProductionFqcInspectionPageState._buildFactsCard.1',
+          key: const Key('fqc-inspection-facts-table'),
+          embedded: true,
+          stickyHeaderPinned: _factsPinned,
+          showColumnChooser: false,
+          columns: [
+            MasterColumnDef<_FactRow>(
+              key: 'planNo',
+              label: '生产计划',
+              width: 150,
+              value: (row) => row.planNo,
+            ),
+            // 身份格：本卡无独立编号/颜色列，名称、编号、颜色三属性合并一格，
+            // 办理前一眼确认「同名不同色」的是不是手上这批货。
+            MasterColumnDef<_FactRow>(
+              key: 'goods',
+              label: '货品名称',
+              width: 200,
+              value: (row) => row.goodsName ?? '—',
+              cellBuilderHandlesSemantics: true,
+              cellBuilder: (_, row) =>
+                  UtenGoodsIdentityCell(name: row.goodsName),
+            ),
+            MasterColumnDef<_FactRow>(
+              key: 'goodsCode',
+              label: '编号',
+              width: 130,
+              value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
+              cellBuilder: (_, row) => UtenGoodsAttributeCell(row.goodsCode),
+            ),
+            MasterColumnDef<_FactRow>(
+              key: 'colorName',
+              label: '颜色',
+              width: 96,
+              value: (row) => UtenGoodsAttributeCell.text(row.colorName),
+              cellBuilder: (_, row) => UtenGoodsAttributeCell(row.colorName),
+            ),
+            MasterColumnDef<_FactRow>(
+              // 2026-09-25 单号列统一：明细就地排序+按值筛选。
+              key: 'sheetNo',
+              sortable: true,
+              filterFromRows: true,
+              label: '检查单号',
+              width: 150,
+              value: (row) => row.sheetNo,
+            ),
+            MasterColumnDef<_FactRow>(
+              key: 'warehouse',
+              label: '实际成品仓',
+              width: 140,
+              value: (row) => row.warehouse,
+            ),
+            MasterColumnDef<_FactRow>(
+              key: 'place',
+              label: '储放位置',
+              width: 150,
+              value: (row) => row.place,
+            ),
+            MasterColumnDef<_FactRow>(
+              key: 'receiver',
+              label: '收货人',
+              width: 110,
+              value: (row) => row.receiver,
+            ),
+            MasterColumnDef<_FactRow>(
+              key: 'qty',
+              label: '数量（报工/合格/不合格/待检/已生成待点收）',
+              width: 300,
+              value: (row) => row.qty,
+            ),
+            MasterColumnDef<_FactRow>(
+              key: 'time',
+              label: '进入质检 / 更新',
+              width: 300,
+              value: (row) => row.time,
+            ),
+          ],
+          items: [
+            _FactRow(
+              planNo: inspection.planNo ?? '—',
+              goodsName: inspection.goodsName,
+              goodsCode: inspection.goodsCode,
+              colorName: inspection.colorName,
+              sheetNo: inspection.sheetNo ?? '无检查单',
+              warehouse: inspection.warehouseName ?? '—',
+              place: fqcStorageText(inspection),
+              receiver: inspection.receiverName ?? '—',
+              qty:
+                  '${fqty(inspection.reportedQty)} / '
+                  '${fqty(inspection.passedQty)} / '
+                  '${fqty(inspection.failedQty)} / '
+                  '${fqty(inspection.remainingQty)} / '
+                  '${fqty(inspection.authorizedInboundQty)}'
+                  '${inspection.unitName == null ? '' : ' ${inspection.unitName}'}',
+              time:
+                  '${ChinaDateTime.formatInstant(inspection.createdAt)}'
+                  ' / ${ChinaDateTime.formatInstant(inspection.updatedAt)}',
+            ),
+          ],
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+        ),
+      ],
+      details: [
+        if (inspection.registrationRemark?.isNotEmpty == true)
+          UtenSummaryField(label: '登记备注', value: inspection.registrationRemark),
+      ],
     );
   }
 

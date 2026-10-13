@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -217,59 +218,47 @@ class _WarehouseDocumentHistoryDetailPageState
   Widget _factsCard(WarehouseDocumentHistoryDetail detail) {
     final header = detail.header;
     final facts = <(String, String?)>[
-      ('单据号', header.displayBillNo),
       ('业务日期', header.billDate),
-      ('状态', header.statusLabel),
       if (header.inspectionStatus != null)
         ('质量状态', header.inspectionStatusLabel),
       ('往来单位', header.supplierName),
       ('仓库', header.warehouseName),
       ('来源单据', header.sourceDocNo),
       ('明细行', header.itemCount.toString()),
+    ].where((fact) => _present(fact.$2)).toList(growable: false);
+    final additionalFacts = <(String, String?)>[
       ('制单人', detail.makerName),
       ('审核人', detail.approverName),
       ('交货人', detail.senderName),
       ('收货人', detail.receiverName),
       ('经办人', detail.workerName),
       ('制单时间', utenFmtIsoTime(detail.createdAt)),
-      ('备注', detail.remark),
     ].where((fact) => _present(fact.$2)).toList(growable: false);
-    final theme = Theme.of(context);
     return Semantics(
       container: true,
       label: '${widget.type.documentLabel}实物信息',
-      child: Card(
-        elevation: 0,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(
-          borderRadius: UtenRadius.lgAll,
-          side: BorderSide(color: theme.colorScheme.outlineVariant),
+      child: UtenDetailSummaryCard(
+        heading: UtenSummaryField(
+          label: '单据号',
+          value: header.displayBillNo,
+          emphasis: true,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 1080
-                  ? 3
-                  : constraints.maxWidth >= 640
-                  ? 2
-                  : 1;
-              final gap = UtenSpacing.s12 * (columns - 1);
-              final width = (constraints.maxWidth - gap) / columns;
-              return Wrap(
-                spacing: UtenSpacing.s12,
-                runSpacing: UtenSpacing.s12,
-                children: [
-                  for (final fact in facts)
-                    SizedBox(
-                      width: width,
-                      child: _FactTile(label: fact.$1, value: fact.$2!),
-                    ),
-                ],
-              );
-            },
-          ),
-        ),
+        status: UtenSummaryField(label: '状态', value: header.statusLabel),
+        facts: [
+          for (final fact in facts)
+            UtenSummaryField(label: fact.$1, value: fact.$2),
+        ],
+        details: [
+          if (additionalFacts.isNotEmpty)
+            UtenSummaryFacts(
+              children: [
+                for (final fact in additionalFacts)
+                  UtenSummaryField(label: fact.$1, value: fact.$2),
+              ],
+            ),
+          if (_present(detail.remark))
+            UtenSummaryField(label: '备注', value: detail.remark),
+        ],
       ),
     );
   }
@@ -510,48 +499,6 @@ class _WarehouseDocumentHistoryDetailPageState
         ),
     ];
     return columns;
-  }
-}
-
-class _FactTile extends StatelessWidget {
-  const _FactTile({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      label: '$label：$value',
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 64),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLowest,
-          borderRadius: UtenRadius.mdAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            SelectableText(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

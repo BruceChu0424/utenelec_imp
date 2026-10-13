@@ -195,7 +195,18 @@ void main() {
     // 字典还挂着, 首屏已出, 且姓名直接用服务端给的。
     expect(gated.gate.isCompleted, isFalse);
     expect(find.text('李四'), findsWidgets);
+    expect(find.text('王五'), findsNothing);
+    expect(gated.paths.where((p) => p.startsWith('/org/employees/')), isEmpty);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('production-plan-summary-hero')),
+        matching: find.byKey(const ValueKey('detail-summary-toggle')),
+      ),
+    );
+    await _pumpWhileGated(tester);
+    expect(gated.gate.isCompleted, isFalse);
     expect(find.text('王五'), findsWidgets);
+    expect(gated.paths.where((p) => p.startsWith('/org/employees/')), isEmpty);
 
     gated.gate.complete();
     await tester.pumpAndSettle();

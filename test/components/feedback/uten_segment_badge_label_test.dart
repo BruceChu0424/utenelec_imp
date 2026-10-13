@@ -85,6 +85,11 @@ void main() {
                 value: 'b',
                 label: UtenSegmentBadgeLabel(label: '生产中', count: 12),
               ),
+              ButtonSegment(
+                value: 'disabled',
+                enabled: false,
+                label: UtenSegmentBadgeLabel(label: '不可选', count: 12),
+              ),
             ],
             selected: const {'a'},
             onSelectionChanged: (_) {},
@@ -108,13 +113,18 @@ void main() {
 
       final selected = colorOf('待生产');
       final unselected = colorOf('生产中');
+      final disabled = colorOf('不可选');
       // 选中段背景是 secondaryContainer：中性灰必须换成该段自己的前景色，
       // 否则在变色背景上读不清。两态颜色必然不同，且都不是固定 onSurfaceVariant。
       expect(selected, isNot(unselected));
       expect(selected, isNot(scheme.onSurfaceVariant));
-      // 半透明而非全黑：与标签文字拉开层次但仍可读。
-      expect(selected.a, lessThan(1.0));
-      expect(selected.a, greaterThan(0.5));
+      // 计数完整继承宿主前景，避免在浅色选中容器上二次降透明度。
+      expect(selected, scheme.onSecondaryContainer);
+      expect(unselected, scheme.onSurface);
+      expect(selected.a, 1.0);
+      expect(unselected.a, 1.0);
+      // 禁用段只使用宿主的 38% 前景，不能再次乘计数透明度。
+      expect(disabled, scheme.onSurface.withValues(alpha: 0.38));
     });
   });
 

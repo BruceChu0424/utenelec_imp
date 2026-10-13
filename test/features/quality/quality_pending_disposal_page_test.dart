@@ -19,6 +19,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/detail_summary_tap.dart';
 
 // 合并版待检处置页（IQC 收货单 + FQC 自制产成品统一队列）的widget 测试：
 // - 混合队列首屏显示所有授权来源，来源/状态筛选由表头承担；
@@ -520,10 +521,30 @@ void main() {
     // 2026-09-12 弹窗改页：进入检查单办理页（对齐采购 IQC 处置页范式）。
     expect(find.byKey(const Key('fqc-sheet-header-table')), findsOneWidget);
     expect(api.sheetDetailCalls, 1);
-    expect(find.textContaining('登记备注：整托入库'), findsOneWidget);
+    final summary = find.byKey(
+      const ValueKey('fqc-sheet-summary-$_sheetId'),
+      skipOffstage: false,
+    );
+    await setDetailSummaryExpanded(tester, summary: summary);
+    await expectVisibleDetailSummaryField(
+      tester,
+      '登记备注',
+      '整托入库',
+      summary: summary,
+    );
+    expect(api.sheetDetailCalls, 1);
+    expect(api.postPaths, isEmpty);
+    await setDetailSummaryExpanded(tester, summary: summary, expanded: false);
     expect(find.text('CP-A-01'), findsWidgets);
     // 默认全勾 + 合格默认=待检：整份报告一次提交。
-    await tester.tap(find.byKey(const Key('fqc-sheet-submit-report')));
+    final submit = find.byKey(
+      const Key('fqc-sheet-submit-report'),
+      skipOffstage: false,
+    );
+    await tester.ensureVisible(submit);
+    await tester.pumpAndSettle();
+    expect(submit.hitTestable(), findsOneWidget);
+    await tester.tap(submit.hitTestable());
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pump();
@@ -533,6 +554,9 @@ void main() {
     // 整批判定：合格 10、不良 0(服务端按瀑布分给批内各份)。
     expect(api.decisionBody?['passQty'], 10);
     expect(api.decisionBody?['failQty'], 0);
+    expect(api.postPaths, [
+      '${ApiEndpoints.productionQualityInspections}/decisions/report',
+    ]);
     // 单内已无待检行 → 完成态；返回队列后检查单行消失。
     expect(find.text('本检查单当前待检已全部处理完成'), findsOneWidget);
     await tester.tap(find.byType(UtenBackButton));
@@ -811,6 +835,7 @@ class _FqcApi extends ApiClient {
   bool decided = false;
   int listCalls = 0;
   int capabilityCalls = 0;
+  final List<String> postPaths = [];
 
   Map<String, dynamic> get _inspection => const {
     'id': _inspectionId,
@@ -931,6 +956,7 @@ class _FqcApi extends ApiClient {
     Map<String, dynamic>? query,
     Map<String, dynamic>? headers,
   }) async {
+    postPaths.add(path);
     if (path == ApiEndpoints.productionQualityInspectionPassAll) {
       batchBody = Map<String, dynamic>.from(body! as Map<String, dynamic>);
       decided = true;

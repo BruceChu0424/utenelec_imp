@@ -369,6 +369,14 @@ void main() {
     Locale locale = const Locale('zh'),
   }) async {
     await loadAuditScreenshotFonts(tester);
+    final koreanFont = locale.languageCode == 'ko'
+        ? await loadAuditKoreanScreenshotFont(
+            tester,
+            requiredForCapture: const String.fromEnvironment(
+              'UTEN_PRICE_VISUAL_DIR',
+            ).isNotEmpty,
+          )
+        : null;
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -401,7 +409,10 @@ void main() {
           child: MaterialApp.router(
             routerConfig: router,
             debugShowCheckedModeBanner: false,
-            theme: auditScreenshotTheme(buildLightTheme()),
+            theme: auditScreenshotTheme(
+              buildLightTheme(),
+              fontFamilyFallback: koreanFont == null ? null : [koreanFont],
+            ),
             builder: (context, routed) => MediaQuery(
               data: scaler == null
                   ? MediaQuery.of(context)

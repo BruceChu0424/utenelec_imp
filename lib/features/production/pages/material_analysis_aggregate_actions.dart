@@ -86,56 +86,76 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
     final owner = this.owner;
     return showDialog<ProductionMaterialAnalysisMaterial>(
       context: owner.context,
-      builder: (dialogContext) => UtenAlertDialog(
+      builder: (dialogContext) => UtenDialogFrame(
         key: const Key('material-aggregate-transfer-path-picker'),
-        title: const Text('调入到哪条来源路径？'),
-        content: SizedBox(
-          width: 560,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                child: Text(
-                  '调拨量记到所选路径的物料行上，其余路径缺口不变；同料各来源'
-                  '共享同一供方池。',
-                  style: Theme.of(dialogContext).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(dialogContext).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
+        maxWidth: 560,
+        child: CustomScrollView(
+          primary: false,
+          shrinkWrap: true,
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              sliver: SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (final path in candidates)
-                      ListTile(
-                        key: ValueKey(
-                          'material-aggregate-transfer-path-${path.materialLineId}',
-                        ),
-                        dense: true,
-                        title: Text(sourceLabel(path)),
-                        subtitle: Text(
-                          '缺口 ${owner._qty(path.shortageQty)} · 可调入 '
-                          '${owner._qty(owner._tableTransferableIn[path.materialLineId] ?? 0)}',
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => Navigator.of(dialogContext).pop(path),
+                    Semantics(
+                      namesRoute: true,
+                      header: true,
+                      child: Text(
+                        '调入到哪条来源路径？',
+                        style: Theme.of(dialogContext).textTheme.titleLarge,
                       ),
+                    ),
+                    const SizedBox(height: UtenSpacing.s8),
+                    Text(
+                      '调拨量记到所选路径的物料行上，其余路径缺口不变；同料各来源'
+                      '共享同一供方池。',
+                      style: Theme.of(dialogContext).textTheme.bodySmall
+                          ?.copyWith(
+                            color: Theme.of(
+                              dialogContext,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final path = candidates[index];
+                return ListTile(
+                  key: ValueKey(
+                    'material-aggregate-transfer-path-${path.materialLineId}',
+                  ),
+                  dense: true,
+                  title: Text(sourceLabel(path)),
+                  subtitle: Text(
+                    '缺口 ${owner._qty(path.shortageQty)} · 可调入 '
+                    '${owner._qty(owner._tableTransferableIn[path.materialLineId] ?? 0)}',
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(dialogContext).pop(path),
+                );
+              }, childCount: candidates.length),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.all(UtenSpacing.s8),
+              sliver: SliverToBoxAdapter(
+                child: Center(
+                  child: TextButton(
+                    key: const ValueKey(
+                      'material-aggregate-transfer-path-back',
+                    ),
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    child: const Text('返回'),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            key: const ValueKey('material-aggregate-transfer-path-back'),
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('返回'),
-          ),
-        ],
       ),
     );
   }

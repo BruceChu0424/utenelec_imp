@@ -223,15 +223,19 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
                 ],
               ),
             if (!current && !inlineNotice)
-              UtenAlertDialog(
-                title: const Text('操作权限已更新'),
-                content: const Text('此窗口中的输入不会提交。请关闭窗口，核对当前信息后再操作。'),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('关闭'),
-                  ),
-                ],
+              // The retained offstage dialog still owns its scroll position.
+              // This notice must not attach to that route's primary controller.
+              PrimaryScrollController.none(
+                child: UtenAlertDialog(
+                  title: const Text('操作权限已更新'),
+                  content: const Text('此窗口中的输入不会提交。请关闭窗口，核对当前信息后再操作。'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('关闭'),
+                    ),
+                  ],
+                ),
               ),
           ],
         );

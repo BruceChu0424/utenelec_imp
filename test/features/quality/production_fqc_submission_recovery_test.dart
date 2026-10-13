@@ -26,6 +26,7 @@ import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../support/audit_screenshot_support.dart';
+import '../../support/detail_summary_tap.dart';
 
 const _id = '10000000-0000-0000-0000-000000000001';
 const _id2 = '10000000-0000-0000-0000-000000000002';
@@ -154,6 +155,32 @@ void main() {
         expect(find.textContaining('刷新失败：'), findsOneWidget);
         expect(tester.takeException(), isNull);
         final original = jsonEncode(api.reportCalls.single);
+        if (const bool.fromEnvironment('UTEN_CAPTURE_UI')) {
+          await _captureSheetPagePhases(
+            tester,
+            boundary,
+            outcome,
+            api.sheetRemark!,
+          );
+          expect(api.reportCalls, hasLength(1));
+          expect(jsonEncode(api.reportCalls.single), original);
+          expect(api.commits, 0);
+          await _revealSheetRegion(
+            tester,
+            find.byKey(const Key('fqc-sheet-report-table')),
+          );
+          expect(
+            tester.state(find.byKey(const Key('fqc-sheet-report-table'))),
+            same(tableState),
+          );
+          expect(_rows(tester, sheet: true).first.pass.text, '3.25');
+          expect(_rows(tester, sheet: true).first.fail.text, '0.75');
+          await _revealSheetRegion(
+            tester,
+            find.textContaining('刷新失败：', skipOffstage: false),
+            header: true,
+          );
+        }
 
         api.failReads = false;
         api.afterPost = null;
@@ -1333,6 +1360,69 @@ Future<void> _pressureTap(WidgetTester tester, Finder target) async {
   expect(target.hitTestable(), findsOneWidget);
   await tester.tap(target.hitTestable());
   await tester.pumpAndSettle();
+}
+
+Future<void> _captureSheetPagePhases(
+  WidgetTester tester,
+  GlobalKey boundary,
+  String outcome,
+  String remark,
+) async {
+  expect(
+    find.byWidgetPredicate((widget) => widget is AlertDialog),
+    findsNothing,
+  );
+  await saveAuditScreenshot(tester, boundary, 'fqc-page-error-$outcome-320-2x');
+  final summary = find.byKey(
+    const ValueKey('fqc-sheet-summary-$_sheetId'),
+    skipOffstage: false,
+  );
+  final heading = find.descendant(
+    of: summary,
+    matching: find.byWidgetPredicate(
+      (widget) =>
+          widget is Text && (widget.data?.startsWith('品质检查单 ') ?? false),
+      skipOffstage: false,
+    ),
+    skipOffstage: false,
+  );
+  await _revealSheetRegion(tester, heading, header: true);
+  await saveAuditScreenshot(
+    tester,
+    boundary,
+    'fqc-page-summary-collapsed-$outcome-320-2x',
+  );
+  await setDetailSummaryExpanded(tester, summary: summary);
+  final field = detailSummaryField('登记备注', summary: summary);
+  expect(field, findsOneWidget);
+  final value = find.descendant(
+    of: field,
+    matching: find.text(remark, skipOffstage: false),
+    skipOffstage: false,
+  );
+  expect(value, findsOneWidget, reason: '展开后保留完整原备注，不缩字或删内容');
+  final label = find.descendant(
+    of: field,
+    matching: find.text('登记备注', skipOffstage: false),
+    skipOffstage: false,
+  );
+  await _revealSheetRegion(tester, label, header: true);
+  await saveAuditScreenshot(
+    tester,
+    boundary,
+    'fqc-page-summary-expanded-$outcome-320-2x',
+  );
+  await setDetailSummaryExpanded(tester, summary: summary, expanded: false);
+  await _revealSheetRegion(
+    tester,
+    find.textContaining('刷新失败：', skipOffstage: false),
+    header: true,
+  );
+  expect(
+    find.byWidgetPredicate((widget) => widget is AlertDialog),
+    findsNothing,
+  );
+  expect(tester.takeException(), isNull);
 }
 
 Future<void> _revealSheetRegion(

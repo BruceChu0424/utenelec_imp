@@ -265,6 +265,14 @@ void main() {
     expect(find.text('SO-OUT-001'), findsWidgets);
     expect(find.text('确认出库'), findsOneWidget);
     expect(find.text('当前建议库位'), findsOneWidget);
+    expect(find.textContaining('金额'), findsNothing);
+    final summaryToggle = find.descendant(
+      of: find.byKey(const Key('warehouse-sales-outbound-detail-boundary')),
+      matching: find.byKey(const ValueKey('detail-summary-toggle')),
+    );
+    await tester.ensureVisible(summaryToggle);
+    await tester.tap(summaryToggle);
+    await tester.pumpAndSettle();
     // V631：时间按北京时间显示，不再出现原始 ISO 瞬时。
     expect(find.text('2026-09-20T22:19:29.862649Z'), findsNothing);
     expect(find.textContaining('2026-09-21 06:19'), findsOneWidget);

@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -4706,6 +4707,44 @@ void main() {
     expect(tiles, findsNWidgets(3));
     final firstTile = tester.widget<ListTile>(tiles.first);
     expect((firstTile.subtitle as Text).data, contains('缺口 2000'));
+    // The list owns its bounded viewport, so long headers and the back action
+    // remain reachable without asking a lazy viewport for intrinsic height.
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    final back = find.byKey(
+      const ValueKey('material-aggregate-transfer-path-back'),
+    );
+    for (final window in [const Size(320, 320), const Size(640, 240)]) {
+      tester.view.physicalSize = window;
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final bounds = tester.getRect(picker);
+      expect(bounds.left, greaterThanOrEqualTo(0));
+      expect(bounds.top, greaterThanOrEqualTo(0));
+      expect(bounds.right, lessThanOrEqualTo(window.width));
+      expect(bounds.bottom, lessThanOrEqualTo(window.height));
+      await tester.scrollUntilVisible(
+        back,
+        160,
+        scrollable: find
+            .descendant(of: picker, matching: find.byType(Scrollable))
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(back.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    }
+    tester.platformDispatcher.clearTextScaleFactorTestValue();
+    tester.view.physicalSize = const Size(1800, 1800);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('material-aggregate-transfer-path-shared-1')),
+      -160,
+      scrollable: find
+          .descendant(of: picker, matching: find.byType(Scrollable))
+          .first,
+    );
+    await tester.pumpAndSettle();
     // 选中 shared-1：调拨选择器按这条路径的物料行打开，请求落点必须是它。
     requests.clear();
     await tester.tap(
@@ -5060,7 +5099,15 @@ void main() {
       expect(tester.getSize(row).height, lessThanOrEqualTo(64));
       expect(viewPlan, findsNothing);
       expect(tester.widget<TextButton>(cancelPlan).onPressed, isNotNull);
-      expect(tester.getSize(cancelPlan).height, greaterThanOrEqualTo(48));
+      expect(
+        tester.getSize(cancelPlan).height,
+        greaterThanOrEqualTo(
+          UtenControlMetrics.controlHeight(
+            tester.element(cancelPlan),
+            desktop: 32,
+          ),
+        ),
+      );
       final label = find.descendant(
         of: cancelPlan,
         matching: find.text('整批撤回 $planNo'),

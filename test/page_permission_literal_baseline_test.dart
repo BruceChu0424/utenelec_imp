@@ -51,6 +51,13 @@ final _fullPermReference = RegExp(r'\bPerm\.[a-zA-Z]\w*');
 // 的批次。对象范围与最终动作仍由服务端 allowedActions / capability 及
 // @PreAuthorize 裁决。保留旧基线 677，只减去这些精确来源的已审增量；
 // 同样次数改成另一权限、复制到其他文件或再加引用均不享受这份登记。
+// 2026-10-13：合入 main e206d69b1 / b329fa29d 的价格分析五处来源，净 +13。
+// a7e3fc9db -> main b93f0e476 的引用从 697 增至 710；本轮 UI 与 main
+// 在每文件、每 Perm 标识的出现次数完全一致，未增加权限检查。
+// goods:view + goods:price_analysis:view 对应 GoodsPriceAnalysisController /
+// GoodsPriceHistoryTableController 的服务端复合守卫；销售历史模式对应
+// GoodsPriceAccess.requireHistory，来源与价格对象范围继续由服务端裁决。
+// 货品详情原有 16 处引用不享受新增额度，其余四个新文件原有计数为 0。
 const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> tokens})>{
   'lib/features/finance/pages/finance_procurement_approval_review_page.dart': (
     legacyCount: 4,
@@ -109,6 +116,45 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
   ),
   'lib/features/warehouse/pages/warehouse_material_return_batch_receive_page.dart':
       (legacyCount: 1, tokens: {'Perm.stockDocApprove': 3}),
+  'lib/features/basic_data/pages/goods_price_analysis_page.dart': (
+    legacyCount: 0,
+    tokens: {
+      'Perm.goodsPriceAnalysisView': 1,
+      'Perm.goodsView': 1,
+      'Perm.salesOrderPriceView': 1,
+      'Perm.salesOrderView': 1,
+      'Perm.salesQuoteFinanceView': 1,
+    },
+  ),
+  'lib/features/basic_data/widgets/goods_detail_body.dart': (
+    legacyCount: 16,
+    tokens: {
+      'Perm.attachmentView': 1,
+      'Perm.colorCreate': 1,
+      'Perm.goodsCostView': 2,
+      'Perm.goodsDiscountView': 2,
+      'Perm.goodsEdit': 1,
+      'Perm.goodsPriceAnalysisView': 1,
+      'Perm.goodsPriceEdit': 2,
+      'Perm.goodsPriceView': 2,
+      'Perm.goodsView': 3,
+      'Perm.salesQuoteFinanceView': 1,
+      'Perm.stockView': 1,
+      'Perm.unitCreate': 1,
+    },
+  ),
+  'lib/features/basic_data/widgets/goods_price_facet_picker.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.goodsPriceAnalysisView': 1, 'Perm.goodsView': 1},
+  ),
+  'lib/features/basic_data/widgets/goods_price_observation_detail.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.goodsPriceAnalysisView': 1, 'Perm.goodsView': 1},
+  ),
+  'lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.goodsPriceAnalysisView': 1, 'Perm.goodsView': 1},
+  ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -207,7 +253,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      20,
+      33,
     );
   });
 }

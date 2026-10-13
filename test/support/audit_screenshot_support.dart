@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -15,6 +16,39 @@ Future<void> loadAuditScreenshotFonts(WidgetTester tester) =>
         'MaterialIcons',
       )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
     });
+
+/// Optional local fixture fallback; never bundled into the application.
+///
+/// The SC fixture font has no Hangul. A Korean capture must name an installed
+/// Korean font explicitly, for example UTEN_AUDIT_KOREAN_FONT pointing to
+/// C:/Windows/Fonts/malgun.ttf. Non-capture CI tests need no machine font.
+Future<String?> loadAuditKoreanScreenshotFont(
+  WidgetTester tester, {
+  bool requiredForCapture = false,
+}) async {
+  const path = String.fromEnvironment('UTEN_AUDIT_KOREAN_FONT');
+  if (path.isEmpty) {
+    if (requiredForCapture) {
+      throw StateError(
+        'Korean screenshots require --dart-define=UTEN_AUDIT_KOREAN_FONT='
+        '<installed Korean font path>; the SC fixture does not cover Hangul.',
+      );
+    }
+    return null;
+  }
+  const family = 'UtenAuditKorean';
+  await tester.runAsync(() async {
+    final font = File(path);
+    if (!await font.exists()) {
+      throw StateError(
+        'The configured Korean screenshot font is missing: $path',
+      );
+    }
+    final data = ByteData.sublistView(await font.readAsBytes());
+    await (FontLoader(family)..addFont(Future.value(data))).load();
+  });
+  return family;
+}
 
 Future<void> saveAuditScreenshot(
   WidgetTester tester,
@@ -37,9 +71,14 @@ Future<void> saveAuditScreenshot(
 // Widget tests inject the block-shaped Ahem font into default Material styles.
 // For optional screenshots, preserve every runtime style property and resolve
 // the test-only missing-family fallback to the application's bundled font.
-ThemeData auditScreenshotTheme(ThemeData theme) {
-  TextStyle withFont(TextStyle? style) =>
-      (style ?? const TextStyle()).copyWith(fontFamily: 'NotoSansSC');
+ThemeData auditScreenshotTheme(
+  ThemeData theme, {
+  List<String>? fontFamilyFallback,
+}) {
+  TextStyle withFont(TextStyle? style) => (style ?? const TextStyle()).copyWith(
+    fontFamily: 'NotoSansSC',
+    fontFamilyFallback: fontFamilyFallback,
+  );
   ButtonStyle button(ButtonStyle? style) =>
       (style ?? const ButtonStyle()).copyWith(
         textStyle: WidgetStatePropertyAll(
@@ -47,8 +86,14 @@ ThemeData auditScreenshotTheme(ThemeData theme) {
         ),
       );
   return theme.copyWith(
-    textTheme: theme.textTheme.apply(fontFamily: 'NotoSansSC'),
-    primaryTextTheme: theme.primaryTextTheme.apply(fontFamily: 'NotoSansSC'),
+    textTheme: theme.textTheme.apply(
+      fontFamily: 'NotoSansSC',
+      fontFamilyFallback: fontFamilyFallback,
+    ),
+    primaryTextTheme: theme.primaryTextTheme.apply(
+      fontFamily: 'NotoSansSC',
+      fontFamilyFallback: fontFamilyFallback,
+    ),
     appBarTheme: theme.appBarTheme.copyWith(
       titleTextStyle: withFont(theme.appBarTheme.titleTextStyle),
     ),

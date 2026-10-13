@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/components/layout/uten_form_grid.dart';
+import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
@@ -162,8 +162,8 @@ void main() {
 
     expect(tester.takeException(), isNull);
     final headerFields = find.ancestor(
-      of: find.text('单据号'),
-      matching: find.byType(UtenFormGrid),
+      of: find.text('WO-2026-001'),
+      matching: find.byType(UtenDetailSummaryCard),
     );
     expect(headerFields, findsOneWidget);
     expect(

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:uten_imp/shared/models/user.dart';
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/detail_summary_tap.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -16,6 +17,7 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
@@ -563,12 +565,15 @@ void main() {
         ..['status'] = 1
         ..['settlementAuthorityVersion'] = 2
         ..['settlementGrossLocalExact'] = local;
-      await _pumpDetail(tester, detail: detail);
+      final api = await _pumpDetail(tester, detail: detail);
       expect(find.text('实际银行到账与本批结算分别记录'), findsOneWidget);
-      expect(find.text('本批客户已付(人民币)'), findsOneWidget);
-      expect(find.text(local), findsOneWidget);
+      await expectVisibleDetailSummaryField(tester, '本批客户已付', '$local 人民币');
       expect(find.text('历史口径未分层'), findsNothing);
+      await setDetailSummaryExpanded(tester);
       expect(find.text('本批汇率报价'), findsWidgets);
+      expect(api.lastPutBody, isNull);
+      expect(api.writeCalls, 0);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -831,7 +836,8 @@ void main() {
   testWidgets(
     'receipt detail shows line currency conversion and balance facts',
     (tester) async {
-      await _pumpDetail(tester, detail: _receiptDetail());
+      final api = await _pumpDetail(tester, detail: _receiptDetail());
+      await setDetailSummaryExpanded(tester);
 
       expect(find.text('其它费用项目'), findsOneWidget);
       expect(find.text('银行费用'), findsOneWidget);
@@ -842,16 +848,24 @@ void main() {
       expect(find.text('本位币/结算原币（1 原币对应本位币金额）'), findsOneWidget);
       expect(find.text('账户折算汇率来源'), findsOneWidget);
       expect(find.text('本位币同值'), findsOneWidget);
-      expect(find.text('本批结算毛额(人民币)'), findsOneWidget);
-      expect(find.text('360.00'), findsWidgets);
-      expect(find.text('真实账户实际入账(人民币)'), findsOneWidget);
-      expect(find.text('324.00'), findsWidgets);
-      expect(find.text('银行手续费(人民币)'), findsOneWidget);
-      expect(find.text('20.00'), findsWidgets);
-      expect(find.text('其它费用(人民币)'), findsOneWidget);
-      expect(find.text('16.00'), findsWidgets);
+      await expectVisibleDetailSummaryField(tester, '本批结算毛额', '360.00 人民币');
+      await expectVisibleDetailSummaryField(tester, '真实账户实际入账', '324.00 人民币');
+      expect(find.text('324.00 人民币'), findsWidgets);
+      await expectVisibleDetailSummaryField(tester, '银行手续费', '20.00 人民币');
+      expect(find.text('20.00 人民币'), findsWidgets);
+      await expectVisibleDetailSummaryField(tester, '其它费用', '16.00 人民币');
+      expect(find.text('16.00 人民币'), findsWidgets);
       expect(find.text('费用承担方'), findsOneWidget);
       expect(find.text('本公司承担'), findsOneWidget);
+
+      await tester.ensureVisible(
+        find.byWidgetPredicate(
+          (widget) => widget is MasterDataTableView<FinanceDocItem>,
+          skipOffstage: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('360.00'), findsWidgets);
       expect(find.text('冲减应收账面金额(人民币)'), findsWidgets);
       expect(find.text('汇兑差额(人民币)'), findsOneWidget);
       expect(find.text('350.00'), findsWidgets);
@@ -884,6 +898,9 @@ void main() {
       expect(find.text('100.00'), findsOneWidget);
       expect(find.text('50.00'), findsWidgets);
       expect(find.text('行备注'), findsOneWidget);
+      expect(api.lastPutBody, isNull);
+      expect(api.writeCalls, 0);
+      expect(tester.takeException(), isNull);
     },
   );
 
@@ -904,12 +921,19 @@ void main() {
         ..['feeSettlementMode'] = 'NONE'
         ..['feeBearer'] = 'NONE'
         ..['feeAccountCurrencyId'] = 'currency-usd';
-      await _pumpDetail(tester, detail: detail, accountBaseCurrency: false);
+      final api = await _pumpDetail(
+        tester,
+        detail: detail,
+        accountBaseCurrency: false,
+      );
 
       expect(find.text('真实账户直接到账'), findsOneWidget);
-      expect(find.text('真实账户实际入账(美元)'), findsOneWidget);
-      expect(find.text('实际入账本位币(人民币)'), findsOneWidget);
+      await expectVisibleDetailSummaryField(tester, '真实账户实际入账', '50.00 美元');
+      await expectVisibleDetailSummaryField(tester, '实际入账本位币', '360.00 人民币');
       expect(find.textContaining('人民币实际入账'), findsNothing);
+      expect(api.lastPutBody, isNull);
+      expect(api.writeCalls, 0);
+      expect(tester.takeException(), isNull);
     },
   );
 }
@@ -1000,7 +1024,7 @@ Future<_ReceiptApi> _pumpEditor(
   return api;
 }
 
-Future<void> _pumpDetail(
+Future<_ReceiptApi> _pumpDetail(
   WidgetTester tester, {
   required Map<String, dynamic> detail,
   bool accountBaseCurrency = true,
@@ -1028,6 +1052,7 @@ Future<void> _pumpDetail(
     ),
   );
   await tester.pumpAndSettle();
+  return api;
 }
 
 Map<String, dynamic> _receiptDetail() => <String, dynamic>{
@@ -1119,6 +1144,24 @@ class _ReceiptApi extends ApiClient {
   final bool includeFeeAccount;
   final bool failAccounts;
   Map<String, dynamic>? lastPutBody;
+  int writeCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    writeCalls++;
+    throw StateError('未预期的收款POST：$path');
+  }
+
+  @override
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
+    writeCalls++;
+    throw StateError('未预期的收款DELETE：$path');
+  }
 
   @override
   Future<Map<String, dynamic>> get(
@@ -1209,6 +1252,7 @@ class _ReceiptApi extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
+    writeCalls++;
     lastPutBody = Map<String, dynamic>.from(body! as Map);
     return detail;
   }

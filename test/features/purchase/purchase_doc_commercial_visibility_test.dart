@@ -1,4 +1,5 @@
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/detail_summary_tap.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,14 +25,16 @@ void main() {
       expect(keys, contains('qty'));
       expect(keys, isNot(contains('price')));
       expect(keys, isNot(contains('amount')));
+      await setDetailSummaryExpanded(tester);
       expect(find.text('币种'), findsNothing);
+      expect(detailSummaryField('单据币种'), findsNothing);
       expect(find.text('汇率'), findsNothing);
       expect(find.text('合计(本币)'), findsNothing);
     },
   );
 
   testWidgets('commercial permission retains purchase amounts', (tester) async {
-    await _pumpDetail(
+    final api = await _pumpDetail(
       tester,
       permissions: const {Perm.purchaseReceiptPriceView},
       priceMasked: false,
@@ -39,9 +42,12 @@ void main() {
 
     final keys = _detailColumnKeys(tester);
     expect(keys, containsAll(<String>{'qty', 'price', 'amount'}));
-    expect(find.text('币种'), findsOneWidget);
-    expect(find.text('汇率'), findsOneWidget);
-    expect(find.text('合计(本币)'), findsOneWidget);
+    await setDetailSummaryExpanded(tester);
+    await expectVisibleDetailSummaryField(tester, '单据币种', '人民币');
+    await expectVisibleDetailSummaryField(tester, '汇率', '1.0');
+    await expectVisibleDetailSummaryField(tester, '合计(本币)', '50.00 人民币');
+    expect(api.writeCalls, 0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('server price mask wins over commercial permission', (
@@ -57,7 +63,9 @@ void main() {
     expect(keys, contains('qty'));
     expect(keys, isNot(contains('price')));
     expect(keys, isNot(contains('amount')));
+    await setDetailSummaryExpanded(tester);
     expect(find.text('币种'), findsNothing);
+    expect(detailSummaryField('单据币种'), findsNothing);
     expect(find.text('汇率'), findsNothing);
     expect(find.text('合计(本币)'), findsNothing);
   });
@@ -76,6 +84,9 @@ void main() {
     expect(keys, contains('qty'));
     expect(keys, isNot(contains('price')));
     expect(keys, isNot(contains('amount')));
+    await setDetailSummaryExpanded(tester);
+    expect(detailSummaryField('单据币种'), findsNothing);
+    expect(detailSummaryField('汇率'), findsNothing);
     expect(find.text('合计(本币)'), findsNothing);
   });
 
@@ -145,7 +156,7 @@ Set<String> _detailColumnKeys(WidgetTester tester) {
   return {for (final column in table.columns) column.key};
 }
 
-Future<void> _pumpDetail(
+Future<_TestApi> _pumpDetail(
   WidgetTester tester, {
   required Set<String> permissions,
   required bool priceMasked,
@@ -176,6 +187,7 @@ Future<void> _pumpDetail(
   );
   await tester.pumpAndSettle();
   expect(tester.takeException(), isNull);
+  return api;
 }
 
 class _TestApi extends ApiClient {
@@ -185,12 +197,40 @@ class _TestApi extends ApiClient {
   final bool priceMasked;
   final PurchaseDocType docType;
   final String id;
+  int writeCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    writeCalls++;
+    throw StateError('采购只读详情不能POST：$path');
+  }
+
+  @override
+  Future<Map<String, dynamic>> put(String path, {Object? body}) async {
+    writeCalls++;
+    throw StateError('采购只读详情不能PUT：$path');
+  }
+
+  @override
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
+    writeCalls++;
+    throw StateError('采购只读详情不能DELETE：$path');
+  }
 
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => <Map<String, dynamic>>[];
+  }) async => path == '/master/currencies/dict'
+      ? [
+          {'id': 'cny', 'name': '人民币'},
+        ]
+      : <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(

@@ -14,6 +14,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
@@ -1176,6 +1177,22 @@ void main() {
     // 2026-10-10 数量内联口径：单位列撤销，随单下发的单位名内联在数量后。
     expect(find.text('1000 只'), findsWidgets);
     expect(find.text('六车间'), findsOneWidget);
+    expect(find.text('王小明'), findsNothing);
+    expect(
+      api.requestedPaths.where((path) => path.contains('/master/')),
+      isEmpty,
+    );
+    expect(
+      api.requestedPaths.where((path) => path.contains('/org/employees')),
+      isEmpty,
+    );
+    final summaryToggle = find.descendant(
+      of: find.byType(UtenDetailSummaryCard),
+      matching: find.byKey(const ValueKey('detail-summary-toggle')),
+    );
+    await tester.ensureVisible(summaryToggle);
+    await tester.tap(summaryToggle);
+    await tester.pumpAndSettle();
     expect(find.text('王小明'), findsOneWidget);
     expect(
       api.requestedPaths.where((path) => path.contains('/master/')),

@@ -7640,16 +7640,30 @@ void main() {
       // 视图本就显示所有节点——它能绿只是因为该行恰好被挤到视口之外（列宽
       // 或行高一变就翻红，本轮树形列改动就踩到了）。改为在「只看缺料」视图
       // 里断言，才是它真正要守的口径：零需求的已转交行不算缺料。
-      await tester.tap(
-        find.byKey(const ValueKey('material-bom-view-shortage')),
-      );
-      await tester.pumpAndSettle();
+      Future<void> selectBomView(String mode) async {
+        final group = find.byKey(const Key('material-bom-view-segments'));
+        final current = tester.widget<UtenSegmentRow<Object?>>(group);
+        final target = current.segments.singleWhere(
+          (segment) =>
+              segment.label?.key == ValueKey('material-bom-view-$mode'),
+        );
+        final label = target.label! as Text;
+        // Counts come from the real current definition; open its complete
+        // panel when the natural-width group is compact in this layout.
+        await selectFilterSegment(tester, label.data!);
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<UtenSegmentRow<Object?>>(group).selected,
+          contains(target.value),
+        );
+      }
+
+      await selectBomView('shortage');
       expect(
         find.byKey(const ValueKey('material-aggregate-goods-delegated||个')),
         findsNothing,
       );
-      await tester.tap(find.byKey(const ValueKey('material-bom-view-all')));
-      await tester.pumpAndSettle();
+      await selectBomView('all');
       final byProduct = find.byKey(
         const ValueKey('material-bom-layout-product'),
       );

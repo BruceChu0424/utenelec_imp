@@ -26,6 +26,7 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 import '../../../helpers/badge_summary_fixture.dart';
+import '../../../support/detail_summary_tap.dart';
 
 class _AuthenticatedSession extends SessionNotifier {
   @override
@@ -258,6 +259,7 @@ void main() {
       expect(api.getPaths, contains('/sales/quotes/quote-1/history'));
       expect(api.getPaths, isNot(contains('/sales/quotes/quote-1')));
       expect(find.text('销售报价单历史（只读）'), findsOneWidget);
+      await setDetailSummaryExpanded(tester);
       expect(find.text('历史记录（只读）'), findsOneWidget);
       for (final key in [
         'sales-doc-edit',
@@ -276,6 +278,7 @@ void main() {
         expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
       }
       expect(api.postPaths, isEmpty);
+      expect(api.deleted, isEmpty);
       expect(find.byKey(const ValueKey('sales-quote-back')), findsOneWidget);
     },
   );
@@ -526,7 +529,12 @@ void main() {
       ),
     );
     expect(find.textContaining('财务已核价，请与客户确认'), findsOneWidget);
-    expect(find.text('核价人'), findsOneWidget);
+    await setDetailSummaryExpanded(tester);
+    await expectVisibleDetailSummaryField(
+      tester,
+      '核价人',
+      '王会计 · 2026-09-27 12:00(北京)',
+    );
     expect(
       find.byKey(const Key('sales-quote-revision-timeline')),
       findsOneWidget,
@@ -535,12 +543,15 @@ void main() {
     // 折扣列(报价与订货同口径)与服务端金额。
     expect(find.text('折扣'), findsOneWidget);
     expect(find.text('190.00'), findsWidgets);
+    expect(api.postPaths, isEmpty);
+    expect(api.deleted, isEmpty);
 
     await _tapAndConfirm(tester, 'sales-quote-convert');
     expect(api.postPaths, contains('/sales/quotes/quote-1/convert'));
     expect(api.postBodies['/sales/quotes/quote-1/convert'], {
       'expectedRevision': 4,
     });
+    expect(api.postPaths, ['/sales/quotes/quote-1/convert']);
     expect(find.text('order-edit-order-9'), findsOneWidget);
   });
 

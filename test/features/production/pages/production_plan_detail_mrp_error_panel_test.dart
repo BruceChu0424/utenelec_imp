@@ -182,9 +182,24 @@ void main() {
       expect(find.textContaining('明细 ('), findsNothing);
       expect(
         find.byKey(const Key('production-plan-draft-product-summary')),
+        findsNothing,
+      );
+      final summaryToggle = find.descendant(
+        of: find.byKey(const Key('production-plan-summary-hero')),
+        matching: find.byKey(const ValueKey('detail-summary-toggle')),
+      );
+      await tester.ensureVisible(summaryToggle);
+      await tester.tap(summaryToggle);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('production-plan-draft-product-summary')),
         findsOneWidget,
       );
       expect(find.text('计划产品摘要'), findsOneWidget);
+      expect(find.text('回到物料分析'), findsOneWidget);
+      expect(find.text('审核'), findsOneWidget);
+      expect(find.text('编辑'), findsNothing);
+      expect(find.text('删除'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

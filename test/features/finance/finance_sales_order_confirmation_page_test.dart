@@ -31,6 +31,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/detail_summary_tap.dart';
 
 class _FakeConfirmationRepository
     implements SalesOrderFinanceConfirmationRepository {
@@ -50,6 +51,7 @@ class _FakeConfirmationRepository
   final List<String?> batchRemarks = [];
   final List<int?> confirmedRevisions = [];
   final List<String> reviewedIds = [];
+  final List<String> rejectedIds = [];
   final List<
     ({int page, int size, bool? rejected, bool? changes, bool confirmed})
   >
@@ -163,7 +165,9 @@ class _FakeConfirmationRepository
     required String reason,
     int? expectedRevision,
     String? expectedClaimId,
-  }) async {}
+  }) async {
+    rejectedIds.add(orderId);
+  }
 }
 
 class _FinanceSessionNotifier extends SessionNotifier {
@@ -927,21 +931,51 @@ void main() {
         overCredit: true,
       ),
     );
-    await _pumpReview(tester, review);
+    final repository = _FakeConfirmationRepository([], reviewValue: review);
+    await _pumpReview(tester, review, repository: repository);
 
-    expect(find.text('客户财务快照 · 远硕智能(C001)'), findsOneWidget);
+    expect(find.text('远硕智能 (C001)'), findsOneWidget);
+    expect(find.text('客户往来'), findsOneWidget);
     expect(find.text('144000.00 美金'), findsWidgets);
     expect(find.text('500.00 美金'), findsOneWidget);
     expect(find.text('100.00 美金'), findsOneWidget);
     expect(find.text('400.00 美金'), findsOneWidget);
-    expect(find.text('3500.00 元'), findsOneWidget);
-    expect(find.text('3000.00 元'), findsOneWidget);
-    expect(find.text('2000.00 元'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
       findsOneWidget,
     );
-    expect(find.textContaining('已超信用额度，请谨慎确认'), findsOneWidget);
+    final warning = find.byKey(
+      const ValueKey('finance-party-snapshot-over-limit'),
+    );
+    await tester.ensureVisible(warning);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: warning,
+        matching: find.text(
+          '已超信用额度 500.00 人民币 · 全部币种应收(折本币、不扣预收) '
+          '3500.00 人民币 · 信用额度 3000.00 人民币',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      (tester.widget<Container>(warning).decoration! as BoxDecoration).color,
+      Theme.of(tester.element(warning)).colorScheme.errorContainer,
+    );
+    await setDetailSummaryExpanded(tester);
+    final exposure = await expectVisibleDetailSummaryField(
+      tester,
+      '全部币种应收(折本币)',
+      '3500.00 人民币',
+    );
+    expect(exposure.danger, isTrue);
+    await expectVisibleDetailSummaryField(tester, '信用额度', '3000.00 人民币');
+    await expectVisibleDetailSummaryField(tester, '铺底额', '2000.00 人民币');
+    expect(repository.confirmedRevisions, isEmpty);
+    expect(repository.batchIds, isEmpty);
+    expect(repository.rejectedIds, isEmpty);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('紧凑端使用可勾选列表并保留显式详情入口', (tester) async {
@@ -1043,7 +1077,12 @@ void main() {
       find.byKey(const Key('sales-order-revision-heading')),
     );
     expect(heading.data, '销售订单修改');
-    expect(heading.style!.fontWeight, FontWeight.w800);
+    expect(
+      DefaultTextStyle.of(
+        tester.element(find.byKey(const Key('sales-order-revision-heading'))),
+      ).style.merge(heading.style).fontWeight,
+      FontWeight.w700,
+    );
     expect(find.byKey(const Key('sales-order-revision-table')), findsOneWidget);
     final diff = tester.widget<UtenRevisionTable<SalesOrderRevisionLine>>(
       find.byType(UtenRevisionTable<SalesOrderRevisionLine>),

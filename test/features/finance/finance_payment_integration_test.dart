@@ -1,5 +1,6 @@
 import 'package:uten_imp/shared/models/user.dart';
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/detail_summary_tap.dart';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -325,11 +326,13 @@ void main() {
   testWidgets('payment detail shows server-calculated settlement amounts', (
     tester,
   ) async {
-    await _pumpDetail(tester, detail: _appliedPaymentDetail());
+    final api = await _pumpDetail(tester, detail: _appliedPaymentDetail());
 
     expect(find.text('付款原币金额'), findsOneWidget);
-    expect(find.text('货款本币'), findsOneWidget);
-    expect(find.text('银行实际总扣款(人民币)'), findsOneWidget);
+    await expectVisibleDetailSummaryField(tester, '付款原币金额', '50.00 美元');
+    await expectVisibleDetailSummaryField(tester, '银行实际总扣款', '360.00 人民币');
+    await setDetailSummaryExpanded(tester);
+    await expectVisibleDetailSummaryField(tester, '货款本币', '360.00 人民币');
     expect(find.text('银行扣款流水号'), findsOneWidget);
 
     final table = tester.widget<MasterDataTableView<FinanceDocItem>>(
@@ -347,6 +350,9 @@ void main() {
     expect(columns['appliedAmountLocal']?.value(item), '350.00');
     expect(columns['exchangeDiff']?.label, '汇兑差额');
     expect(columns['exchangeDiff']?.value(item), '10.00');
+    expect(api.lastPutBody, isNull);
+    expect(api.writeCalls, 0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -443,7 +449,7 @@ Future<_PaymentApi> _pumpEditor(
   return api;
 }
 
-Future<void> _pumpDetail(
+Future<_PaymentApi> _pumpDetail(
   WidgetTester tester, {
   required Map<String, dynamic> detail,
 }) async {
@@ -470,6 +476,7 @@ Future<void> _pumpDetail(
     ),
   );
   await tester.pumpAndSettle();
+  return api;
 }
 
 Map<String, dynamic> _directPaymentDetail() => <String, dynamic>{
@@ -582,6 +589,24 @@ class _PaymentApi extends ApiClient {
   final Map<String, dynamic> detail;
   final List<Map<String, dynamic>> ledgerItems;
   Map<String, dynamic>? lastPutBody;
+  int writeCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    writeCalls++;
+    throw StateError('未预期的付款POST：$path');
+  }
+
+  @override
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
+    writeCalls++;
+    throw StateError('未预期的付款DELETE：$path');
+  }
 
   @override
   Future<Map<String, dynamic>> get(
@@ -645,6 +670,7 @@ class _PaymentApi extends ApiClient {
 
   @override
   Future<Map<String, dynamic>> put(String path, {Object? body}) async {
+    writeCalls++;
     lastPutBody = Map<String, dynamic>.from(body! as Map);
     return detail;
   }

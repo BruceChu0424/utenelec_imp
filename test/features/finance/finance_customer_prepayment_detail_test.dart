@@ -1,4 +1,5 @@
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/detail_summary_tap.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,18 +44,30 @@ void main() {
       expect(find.text('收款类型'), findsOneWidget);
       expect(find.text('客户订单预收'), findsOneWidget);
       expect(find.text('历史口径未分层'), findsOneWidget);
+      await expectVisibleDetailSummaryField(tester, '本批预收原币金额', '88.1234 美元');
+      await expectVisibleDetailSummaryField(
+        tester,
+        '本批人民币实际入账',
+        '627.6999 人民币',
+      );
+      await setDetailSummaryExpanded(tester);
       expect(find.text('绑定销售订单 UUID'), findsOneWidget);
       expect(find.text('order-1'), findsWidgets);
       expect(find.text('本批预收原币金额'), findsOneWidget);
       expect(find.text('当前批次实际到账汇率'), findsOneWidget);
-      expect(find.text('88.1234'), findsWidgets);
-      expect(find.text('收款账户币种'), findsOneWidget);
+      await expectVisibleDetailSummaryField(tester, '当前批次实际到账汇率', '7.123456');
+      expect(detailSummaryField('收款账户币种'), findsNothing);
       expect(find.text('本批人民币实际入账'), findsOneWidget);
-      expect(find.text('627.6999'), findsOneWidget);
       expect(find.text('资金来源'), findsOneWidget);
       expect(find.text('已审核财务收款单；不是销售订单历史订金'), findsOneWidget);
       expect(find.textContaining('明细 ('), findsNothing);
-      expect(find.text('订单资金状态'), findsOneWidget);
+      await expectVisibleDetailSummaryField(
+        tester,
+        '订单资金 · 客户已付',
+        '88.1234 美金',
+      );
+      await expectVisibleDetailSummaryField(tester, '可用预收余额', '88.1234 美金');
+      expect(api.writeCalls, 0);
     },
   );
 
@@ -88,10 +101,13 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('本批账户原币实际入账'), findsOneWidget);
-      expect(find.text('本批本位币折算(人民币)'), findsOneWidget);
-      expect(find.text('收款账户币种'), findsOneWidget);
-      expect(find.text('美元'), findsWidgets);
+      await expectVisibleDetailSummaryField(tester, '本批账户原币实际入账', '88.1234 美元');
+      await expectVisibleDetailSummaryField(tester, '本批本位币折算', '627.6999 人民币');
+      await setDetailSummaryExpanded(tester);
+      expect(detailSummaryField('收款账户币种'), findsNothing);
+      expect(find.textContaining('人民币实际入账'), findsNothing);
+      expect(api.writeCalls, 0);
+      expect(tester.takeException(), isNull);
     },
   );
 }
@@ -100,6 +116,30 @@ class _DetailApi extends ApiClient {
   _DetailApi({this.baseCurrency = true}) : super(Dio());
 
   final bool baseCurrency;
+  int writeCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? query,
+    Map<String, dynamic>? headers,
+  }) async {
+    writeCalls++;
+    throw StateError('只读详情不能发送POST：$path');
+  }
+
+  @override
+  Future<Map<String, dynamic>> put(String path, {Object? body}) async {
+    writeCalls++;
+    throw StateError('只读详情不能发送PUT：$path');
+  }
+
+  @override
+  Future<void> delete(String path, {Map<String, dynamic>? query}) async {
+    writeCalls++;
+    throw StateError('只读详情不能发送DELETE：$path');
+  }
 
   @override
   Future<Map<String, dynamic>> get(

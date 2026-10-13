@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -118,14 +119,51 @@ void main() {
           payroll: payroll,
           systemText: systemText,
         );
-        final amount = find.byWidgetPredicate(
-          (widget) =>
-              widget is Text &&
-              widget.textSpan?.toPlainText() == '¥ 9876543210.12',
+        final summary = find.byKey(
+          const ValueKey('payroll-slip-summary-slip-1'),
+        );
+        expect(summary, findsOneWidget);
+        const exactAmount = '9876543210.12 元';
+        final amount = find.descendant(
+          of: summary,
+          matching: find.text(exactAmount),
         );
         expect(amount, findsOneWidget);
-        final text = tester.widget<Text>(amount);
-        expect((text.textSpan! as TextSpan).children!.last.style!.fontSize, 36);
+        await Scrollable.ensureVisible(tester.element(amount), alignment: 0.5);
+        await tester.pumpAndSettle();
+        final amountContext = tester.element(amount);
+        final expectedStyle = Theme.of(amountContext).textTheme.titleLarge!;
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: amount, matching: find.byType(RichText)),
+        );
+        expect(paragraph.text.toPlainText(), exactAmount);
+        expect(paragraph.text.style!.fontSize, expectedStyle.fontSize);
+        expect(paragraph.text.style!.fontWeight, FontWeight.w700);
+        expect(paragraph.didExceedMaxLines, isFalse);
+        expect(paragraph.maxLines, isNull);
+        expect(
+          paragraph.textScaler.scale(expectedStyle.fontSize!),
+          closeTo(expectedStyle.fontSize! * systemText, 0.001),
+        );
+        expect(UtenDisplayScale.fontZoomOf(amountContext), 2);
+        expect(
+          find.ancestor(of: amount, matching: find.byType(FittedBox)),
+          findsNothing,
+          reason: 'the complete amount must wrap without shrinking its font',
+        );
+        final amountRect = tester.getRect(amount);
+        expect(amountRect.top, greaterThanOrEqualTo(-0.05));
+        expect(amountRect.bottom, lessThanOrEqualTo(1200 + 0.05));
+        final glyphBoxes = paragraph.getBoxesForSelection(
+          TextSelection(baseOffset: 0, extentOffset: exactAmount.length),
+        );
+        expect(glyphBoxes, isNotEmpty);
+        for (final box in glyphBoxes) {
+          expect(box.left, greaterThanOrEqualTo(-0.05));
+          expect(box.right, lessThanOrEqualTo(paragraph.size.width + 0.05));
+          expect(box.top, greaterThanOrEqualTo(-0.05));
+          expect(box.bottom, lessThanOrEqualTo(paragraph.size.height + 0.05));
+        }
         expect(payroll.reads, ['slip-1']);
         expect(payroll.viewed, ['slip-1']);
         expect(tester.takeException(), isNull);

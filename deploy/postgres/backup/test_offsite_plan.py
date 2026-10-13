@@ -314,7 +314,12 @@ class CommandLineTests(unittest.TestCase):
         receiver_fixture_parent = "/var/lib" if os.geteuid() == 0 else user.pw_dir
         with tempfile.TemporaryDirectory(prefix="offsite-plan-", dir=receiver_fixture_parent) as directory:
             root = Path(directory)
-            key, pins, machine = root / "identity", root / "known_hosts", root / "machine-id"
+            ssh_directory = root / "ssh"
+            ssh_directory.mkdir(mode=0o700)
+            key, pins = ssh_directory / "identity", ssh_directory / "known_hosts"
+            # Keep receiver identity readable when testing inaccessible SSH paths,
+            # so the earlier machine-identity gate does not mask the target check.
+            machine = root / "machine-id"
             key.write_bytes(b"PRIVATE_KEY_IS_NOT_OPENED")
             public_key = b"\x00\x00\x00\x0bssh-ed25519\x00\x00\x00\x20" + b"x" * 32
             pins.write_text("erp.internal ssh-ed25519 " + base64.b64encode(public_key).decode() + "\n", encoding="ascii")
@@ -324,6 +329,7 @@ class CommandLineTests(unittest.TestCase):
             receiving_uid = os.geteuid() if os.geteuid() != 0 else 65534
             if os.geteuid() == 0:
                 os.chown(root, receiving_uid, -1)
+                os.chown(ssh_directory, receiving_uid, -1)
                 os.chown(key, receiving_uid, -1)
                 os.chown(pins, receiving_uid, -1)
             config = configured()
@@ -350,10 +356,18 @@ class CommandLineTests(unittest.TestCase):
                     PLAN.validate_receiver_files(config, machine)
 
                 config["ssh"]["hostKeySha256"] = "SHA256:" + base64.b64encode(hashlib.sha256(public_key).digest()).decode().rstrip("=")
-                root.chmod(0o600)
-                with self.assertRaisesRegex(PLAN.ContractError, "cannot traverse"):
-                    PLAN.validate_receiver_files(config, machine)
-                root.chmod(0o700)
+                ssh_directory.chmod(0o600)
+                # A privileged process can lstat the leaf and reject receiver
+                # execute permission explicitly; otherwise lstat is denied.
+                # Both must identify the same rejected SSH identity path.
+                permission_error = (r"ssh\.identityFile has a parent the receiver cannot traverse|"
+                                    r"cannot inspect ssh\.identityFile")
+                try:
+                    with mock.patch.object(Path, "open", refusing_private_key_open), \
+                            self.assertRaisesRegex(PLAN.ContractError, permission_error):
+                        PLAN.validate_receiver_files(config, machine)
+                finally:
+                    ssh_directory.chmod(0o700)
 
             with mock.patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=0)):
                 with self.assertRaisesRegex(PLAN.ContractError, "root UID alias"):

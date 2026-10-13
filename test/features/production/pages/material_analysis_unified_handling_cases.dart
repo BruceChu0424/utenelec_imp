@@ -43,12 +43,13 @@ void materialUnifiedHandlingCases() {
       final button = find.byKey(
         const ValueKey('material-top-level-cancel-plan'),
       );
-      expect(find.text('SJ-ROOT-001'), findsOneWidget);
+      expect(find.text('整批撤回 SJ-ROOT-001'), findsOneWidget);
+      expect(button, findsOneWidget);
       if (!canWithdraw) {
-        expect(button, findsNothing);
+        expect(tester.widget<TextButton>(button).onPressed, isNull);
         return;
       }
-      expect(tester.widget<IconButton>(button).onPressed, isNotNull);
+      expect(tester.widget<TextButton>(button).onPressed, isNotNull);
       await tester.tap(button);
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -94,11 +95,12 @@ void materialUnifiedHandlingCases() {
         },
       );
       await _showUnifiedMaterialLayout(tester);
-      expect(
-        find.byKey(const ValueKey('material-top-level-cancel-plan')),
-        findsNothing,
+      final button = find.byKey(
+        const ValueKey('material-top-level-cancel-plan'),
       );
-      expect(find.text('SJ-ROOT-001'), findsOneWidget);
+      expect(button, findsOneWidget);
+      expect(tester.widget<TextButton>(button).onPressed, isNull);
+      expect(find.text('整批撤回 SJ-ROOT-001'), findsOneWidget);
     });
   }
 
@@ -215,7 +217,7 @@ void materialUnifiedHandlingCases() {
       find.descendant(of: row, matching: find.textContaining('车间已收到')),
       findsNothing,
     );
-    expect(find.text('SJ-ROOT-001'), findsOneWidget);
+    expect(find.text('整批撤回 SJ-ROOT-001'), findsOneWidget);
     final table = tester.widget<MasterDataTableView<dynamic>>(
       find.byKey(const Key('material-analysis-material-table')),
     );
@@ -259,17 +261,22 @@ void materialUnifiedHandlingCases() {
     );
     await _showUnifiedMaterialLayout(tester);
     final cancel = find.byKey(const ValueKey('material-top-level-cancel-plan'));
-    expect(cancel, findsNothing, reason: '旧响应缺审批状态时不能猜撤回权限');
-    expect(find.text('SJ-ROOT-001'), findsOneWidget);
+    expect(cancel, findsOneWidget);
+    expect(
+      tester.widget<TextButton>(cancel).onPressed,
+      isNull,
+      reason: '旧响应缺审批状态时保留相同入口但不能猜撤回权限',
+    );
+    expect(find.text('整批撤回 SJ-ROOT-001'), findsOneWidget);
     await tester.pump(const Duration(seconds: 45));
     await tester.pumpAndSettle();
     expect(detailReads, greaterThanOrEqualTo(2));
     expect(cancel, findsOneWidget, reason: '同版本新计划列表与状态也必须刷新办理能力');
-    expect(tester.widget<IconButton>(cancel).onPressed, isNotNull);
-    expect(find.text('SJ-ROOT-001'), findsOneWidget);
+    expect(tester.widget<TextButton>(cancel).onPressed, isNotNull);
+    expect(find.text('整批撤回 SJ-ROOT-001'), findsOneWidget);
   });
 
-  testWidgets('统一办理：顶层、普通子件、共享制造显示真实计划号且查看撤回同一行', (tester) async {
+  testWidgets('统一办理：顶层、普通子件、共享制造都只有整批撤回加真实计划号入口', (tester) async {
     await _pump(
       tester,
       permissions: _unifiedHandlingPermissions,
@@ -296,18 +303,33 @@ void materialUnifiedHandlingCases() {
       final (planNo, viewKey, cancelKey) = entry;
       final view = find.byKey(ValueKey(viewKey));
       final cancel = find.byKey(ValueKey(cancelKey));
-      expect(view, findsOneWidget);
+      expect(view, findsNothing);
       expect(cancel, findsOneWidget);
-      expect(tester.widget<TextButton>(view).onPressed, isNotNull);
-      expect(tester.widget<IconButton>(cancel).onPressed, isNotNull);
-      expect(find.text(planNo), findsOneWidget, reason: '计划号只显示一次');
+      expect(tester.widget<TextButton>(cancel).onPressed, isNotNull);
       expect(
-        tester.getCenter(view).dy,
-        closeTo(tester.getCenter(cancel).dy, 0.1),
-        reason: '所有自制办理入口都采用同一单行布局',
+        find.text('整批撤回 $planNo'),
+        findsOneWidget,
+        reason: '办理文字及计划号只显示一次',
       );
-      expect(find.byTooltip('查看计划 $planNo'), findsOneWidget);
-      expect(tester.widget<IconButton>(cancel).tooltip, contains(planNo));
+      expect(find.text(planNo), findsNothing);
+      expect(
+        find.descendant(of: cancel, matching: find.byIcon(Icons.undo_rounded)),
+        findsNothing,
+        reason: '自制办理不再额外提供撤回图标',
+      );
+      expect(find.byTooltip('查看计划 $planNo'), findsNothing);
+      final tooltip = find.ancestor(
+        of: cancel,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip && widget.message?.contains(planNo) == true,
+        ),
+      );
+      expect(tooltip, findsOneWidget);
+      expect(
+        tester.widget<Tooltip>(tooltip).message,
+        allOf(startsWith('整批撤回 $planNo。'), contains('来源'), endsWith('阻止撤回。')),
+      );
     }
     final table = tester.widget<MasterDataTableView<dynamic>>(
       find.byKey(const Key('material-analysis-material-table')),
@@ -341,7 +363,7 @@ void materialUnifiedHandlingCases() {
     for (var i = 1; i <= 2; i++) {
       final planNo = 'SJ-SHARED-00$i';
       expect(
-        find.descendant(of: row, matching: find.text(planNo)),
+        find.descendant(of: row, matching: find.text('整批撤回 $planNo')),
         findsOneWidget,
         reason: '三个来源引用同一批次不能重复列出其计划',
       );
@@ -351,14 +373,15 @@ void materialUnifiedHandlingCases() {
       final cancel = find.byKey(
         ValueKey('material-aggregate-cancel-make-batch-$i'),
       );
-      expect(tester.widget<TextButton>(view).onPressed, isNotNull);
-      expect(tester.widget<IconButton>(cancel).onPressed, isNotNull);
+      expect(view, findsNothing);
+      expect(cancel, findsOneWidget);
+      expect(tester.widget<TextButton>(cancel).onPressed, isNotNull);
       expect(
-        tester.getCenter(view).dy,
-        closeTo(tester.getCenter(cancel).dy, 0.1),
+        find.descendant(of: row, matching: find.byIcon(Icons.undo_rounded)),
+        findsNothing,
       );
     }
-    expect(find.text('SJ-SAME-GOODS-UNRELATED'), findsNothing);
+    expect(find.textContaining('SJ-SAME-GOODS-UNRELATED'), findsNothing);
     expect(find.textContaining('共享制造'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -381,15 +404,15 @@ void materialUnifiedHandlingCases() {
     await _showUnifiedMaterialLayout(tester);
     final row = find.byKey(const ValueKey('material-bom-product-product-0'));
     expect(
-      find.descendant(of: row, matching: find.text('SJ-ROOT-OLD')),
+      find.descendant(of: row, matching: find.text('整批撤回 SJ-ROOT-OLD')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: row, matching: find.text('SJ-ROOT-001')),
+      find.descendant(of: row, matching: find.text('整批撤回 SJ-ROOT-001')),
       findsOneWidget,
     );
     expect(
-      find.descendant(of: row, matching: find.byType(IconButton)),
+      find.descendant(of: row, matching: find.byType(TextButton)),
       findsNWidgets(2),
       reason: '重复planId及latestPlan引用不能制造重复撤回入口',
     );
@@ -424,11 +447,11 @@ void materialUnifiedHandlingCases() {
     expect(withdrawal.body?['fingerprint'], 'a' * 64);
     expect(withdrawal.body?['idempotencyKey'], isNotEmpty);
     expect(
-      find.text('SJ-ROOT-001'),
+      find.text('整批撤回 SJ-ROOT-001'),
       findsOneWidget,
       reason: '只撤选中的旧计划，其它有效计划仍保留',
     );
-    expect(find.text('SJ-ROOT-OLD'), findsNothing);
+    expect(find.textContaining('SJ-ROOT-OLD'), findsNothing);
   });
 
   testWidgets('统一办理：单个共享批次多张计划分别列出且保持唯一操作键', (tester) async {
@@ -463,20 +486,19 @@ void materialUnifiedHandlingCases() {
       final cancel = find.byKey(
         ValueKey('material-aggregate-cancel-make-batch-1$suffix'),
       );
-      expect(view, findsOneWidget);
+      expect(view, findsNothing);
       expect(cancel, findsOneWidget);
-      expect(find.text(planNo), findsOneWidget);
-      expect(tester.widget<TextButton>(view).onPressed, isNotNull);
-      expect(tester.widget<IconButton>(cancel).onPressed, isNotNull);
+      expect(find.text('整批撤回 $planNo'), findsOneWidget);
+      expect(tester.widget<TextButton>(cancel).onPressed, isNotNull);
       expect(
-        tester.getCenter(view).dy,
-        closeTo(tester.getCenter(cancel).dy, 0.1),
+        find.descendant(of: cancel, matching: find.byIcon(Icons.undo_rounded)),
+        findsNothing,
       );
     }
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('统一办理：无查看权限保留真实单号和撤回图标，不提供计划链接', (tester) async {
+  testWidgets('统一办理：无查看权限仍使用整批撤回加真实单号文字入口', (tester) async {
     await _pump(
       tester,
       permissions: {..._unifiedHandlingPermissions}
@@ -490,49 +512,65 @@ void materialUnifiedHandlingCases() {
       ('SJ-SHARED-001', 'material-aggregate-cancel-make-batch-1'),
     ]) {
       final (planNo, cancelKey) = entry;
-      expect(find.text(planNo), findsOneWidget);
+      final cancel = find.byKey(ValueKey(cancelKey));
+      expect(find.text('整批撤回 $planNo'), findsOneWidget);
+      expect(find.text(planNo), findsNothing);
       expect(find.byTooltip('查看计划 $planNo'), findsNothing);
       expect(
-        find.ancestor(of: find.text(planNo), matching: find.byType(TextButton)),
-        findsNothing,
-        reason: '无查看权限的单号只是文本，不提供导航',
+        tester
+            .widget<TextButton>(
+              find.ancestor(
+                of: find.text('整批撤回 $planNo'),
+                matching: find.byType(TextButton),
+              ),
+            )
+            .key,
+        ValueKey(cancelKey),
+        reason: '真实单号只属于撤回文字入口，不受查看权限影响',
       );
-      expect(
-        tester.widget<IconButton>(find.byKey(ValueKey(cancelKey))).onPressed,
-        isNotNull,
-      );
-      expect(find.text('整批撤回 $planNo'), findsNothing);
+      expect(tester.widget<TextButton>(cancel).onPressed, isNotNull);
     }
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('统一办理：无撤回权限仍可查看真实计划，不产生可执行撤回入口', (tester) async {
+  testWidgets('统一办理：无撤回权限保留相同文字入口但禁用撤回', (tester) async {
     await _pump(
       tester,
       permissions: {..._permissions, Perm.productionPlanView},
       mutate: _unifiedHandlingFixture,
     );
     await _showUnifiedMaterialLayout(tester);
-    for (final planNo in ['SJ-ROOT-001', 'SJ-COMPONENT-001', 'SJ-SHARED-001']) {
-      final link = find.ancestor(
-        of: find.text(planNo),
-        matching: find.byType(TextButton),
-      );
-      expect(link, findsOneWidget);
-      expect(tester.widget<TextButton>(link).onPressed, isNotNull);
-    }
-    for (final key in [
-      'material-top-level-cancel-plan',
-      'material-aggregate-cancel-plan',
-      'material-aggregate-cancel-make-batch-1',
+    for (final entry in [
+      (
+        'SJ-ROOT-001',
+        'material-top-level-cancel-plan',
+        'material-top-level-view-plan',
+      ),
+      (
+        'SJ-COMPONENT-001',
+        'material-aggregate-cancel-plan',
+        'material-aggregate-view-plan',
+      ),
+      (
+        'SJ-SHARED-001',
+        'material-aggregate-cancel-make-batch-1',
+        'material-aggregate-view-plan-make-batch-1',
+      ),
     ]) {
-      final cancel = find.byKey(ValueKey(key));
-      if (cancel.evaluate().isNotEmpty) {
-        expect(tester.widget<IconButton>(cancel).onPressed, isNull);
-      }
+      final (planNo, cancelKey, viewKey) = entry;
+      final cancel = find.byKey(ValueKey(cancelKey));
+      expect(find.text('整批撤回 $planNo'), findsOneWidget);
+      expect(cancel, findsOneWidget);
+      expect(tester.widget<TextButton>(cancel).onPressed, isNull);
+      expect(find.byKey(ValueKey(viewKey)), findsNothing);
+      expect(find.byTooltip('查看计划 $planNo'), findsNothing);
     }
     expect(
-      requests.where((request) => request.path.endsWith('/cancel')),
+      requests.where(
+        (request) =>
+            request.path.endsWith('/cancel') ||
+            request.path.endsWith('/withdraw'),
+      ),
       isEmpty,
     );
   });
@@ -554,16 +592,34 @@ void materialUnifiedHandlingCases() {
       const ValueKey('material-aggregate-split-make|本色|unit-1'),
     );
     expect(
-      find.descendant(of: row, matching: find.text('生产任务待核对')),
+      find.descendant(of: row, matching: find.text('整批撤回 · 生产任务待核对')),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey('material-aggregate-view-plan-make-batch-1')),
       findsNothing,
     );
-    expect(find.text('SJ-SHARED-001'), findsNothing);
-    expect(find.text('SJ-SAME-GOODS-UNRELATED'), findsNothing);
+    final cancel = find.byKey(
+      const ValueKey('material-aggregate-cancel-make-batch-1'),
+    );
+    expect(cancel, findsOneWidget);
+    expect(tester.widget<TextButton>(cancel).onPressed, isNull);
+    expect(
+      find.descendant(of: row, matching: find.byIcon(Icons.undo_rounded)),
+      findsNothing,
+    );
+    expect(find.textContaining('SJ-SHARED-001'), findsNothing);
+    expect(find.textContaining('SJ-SAME-GOODS-UNRELATED'), findsNothing);
     expect(find.textContaining('共享制造'), findsNothing);
+    expect(
+      requests.where(
+        (request) =>
+            request.path.endsWith('/cancel') ||
+            request.path.endsWith('/withdraw'),
+      ),
+      isEmpty,
+      reason: '缺少正式计划锚点不能猜测生命周期授权，不写撤回请求',
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -587,16 +643,34 @@ void materialUnifiedHandlingCases() {
       const ValueKey('material-aggregate-split-make|本色|unit-1'),
     );
     expect(
-      find.descendant(of: row, matching: find.text('生产任务待核对')),
+      find.descendant(of: row, matching: find.text('整批撤回 · 生产任务待核对')),
       findsOneWidget,
     );
     expect(
       find.byKey(const ValueKey('material-aggregate-view-plan-make-batch-1')),
       findsNothing,
     );
-    expect(find.text('SJ-SHARED-001'), findsNothing);
-    expect(find.text('SJ-SAME-GOODS-UNRELATED'), findsNothing);
+    final cancel = find.byKey(
+      const ValueKey('material-aggregate-cancel-make-batch-1'),
+    );
+    expect(cancel, findsOneWidget);
+    expect(tester.widget<TextButton>(cancel).onPressed, isNull);
+    expect(
+      find.descendant(of: row, matching: find.byIcon(Icons.undo_rounded)),
+      findsNothing,
+    );
+    expect(find.textContaining('SJ-SHARED-001'), findsNothing);
+    expect(find.textContaining('SJ-SAME-GOODS-UNRELATED'), findsNothing);
     expect(find.textContaining('共享制造'), findsNothing);
+    expect(
+      requests.where(
+        (request) =>
+            request.path.endsWith('/cancel') ||
+            request.path.endsWith('/withdraw'),
+      ),
+      isEmpty,
+      reason: '共享锚点缺少真实计划时不能猜测生命周期授权，不写撤回请求',
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -706,7 +780,7 @@ void materialUnifiedHandlingCases() {
     final button = find.byKey(
       const ValueKey('material-aggregate-cancel-legacy-ordinary-action'),
     );
-    expect(tester.widget<IconButton>(button).onPressed, isNotNull);
+    expect(tester.widget<TextButton>(button).onPressed, isNotNull);
     requests.clear();
     await tester.tap(button);
     await tester.pumpAndSettle();
@@ -735,7 +809,7 @@ void materialUnifiedHandlingCases() {
       requests.where((request) => request.path.endsWith('/cancel')),
       isEmpty,
     );
-    expect(find.text('SJ-COMPONENT-001'), findsNothing);
+    expect(find.textContaining('SJ-COMPONENT-001'), findsNothing);
     expect(
       find.byKey(
         const ValueKey(

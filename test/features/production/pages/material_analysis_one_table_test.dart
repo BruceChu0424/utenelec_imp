@@ -4859,10 +4859,15 @@ void main() {
       find.byKey(const ValueKey('material-bom-layout-material')),
     );
     await tester.pumpAndSettle();
+    final packageOnlyCancel = find.byKey(
+      const ValueKey('material-top-level-cancel-plan'),
+    );
+    expect(packageOnlyCancel, findsOneWidget);
+    expect(find.text('整批撤回 SJ-PLAN-001'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('material-top-level-cancel-plan')),
-      findsNothing,
-      reason: '只有取消计划包权限不能获得整张生产计划的撤回入口',
+      tester.widget<TextButton>(packageOnlyCancel).onPressed,
+      isNull,
+      reason: '只有取消计划包权限不能操作整张生产计划的撤回入口',
     );
 
     // 有整计划反审核权限但没有准确计划身份，不能猜一张计划撤回。
@@ -4887,10 +4892,10 @@ void main() {
     expect(
       find.byKey(const ValueKey('material-top-level-cancel-plan')),
       findsNothing,
-      reason: '锚点没挂计划号时无从取消，不给入口',
+      reason: '锚点没有准确计划身份时无从取消，不给入口',
     );
 
-    // 旧投影只有单号，没有审批状态；仍可查看，但不能猜反审核或删除。
+    // 旧投影有计划身份但没有审批状态；保留统一文字入口，不能猜反审核或删除。
     await _pump(
       tester,
       permissions: {
@@ -4915,7 +4920,13 @@ void main() {
     final cancelPlan = find.byKey(
       const ValueKey('material-top-level-cancel-plan'),
     );
-    expect(cancelPlan, findsNothing, reason: '缺审批状态的旧投影不给整计划撤回入口');
+    expect(cancelPlan, findsOneWidget);
+    expect(
+      tester.widget<TextButton>(cancelPlan).onPressed,
+      isNull,
+      reason: '缺审批状态的旧投影不能操作整计划撤回入口',
+    );
+    expect(find.text('整批撤回 生产计划（单号待核对）'), findsOneWidget);
     expect(
       find.textContaining('整批撤回生产计划'),
       findsNothing,
@@ -4928,7 +4939,7 @@ void main() {
     );
   });
 
-  testWidgets('按物料汇总顶层自制已下过计划：给计划入口，不再显示已下达文字(2026-10-10修订)', (tester) async {
+  testWidgets('按物料汇总顶层自制已下过计划：无撤回权限仍保留统一的置灰文字入口', (tester) async {
     await _pump(
       tester,
       permissions: {
@@ -4947,6 +4958,10 @@ void main() {
           'canIssueSurplus': true,
           'remainingQty': 0,
           'latestPlanId': 'plan-1',
+          'latestPlanNo': 'SJ-READ-ONLY',
+          'planReferences': [
+            {'planId': 'plan-1', 'planNo': 'SJ-READ-ONLY', 'status': 1},
+          ],
         });
         _fixturePlanAssignment(product);
         return data;
@@ -4973,14 +4988,18 @@ void main() {
       findsNothing,
       reason: '顶层自制走 issue-plans，不该套供给行动的空态文案',
     );
-    // 锚点带计划号且有查看权限：给可点的「查看计划」入口（同按产品视图路由）。
-    // 本用例没有取消计划包权限，整批撤回不出现。
+    // 有查看权限也只显示统一文字入口；缺整计划撤回权限时保留真实单号并置灰。
     final viewPlan = find.byKey(const ValueKey('material-top-level-view-plan'));
-    expect(viewPlan, findsOneWidget);
-    expect(tester.widget<TextButton>(viewPlan).onPressed, isNotNull);
+    expect(viewPlan, findsNothing);
+    final cancelPlan = find.byKey(
+      const ValueKey('material-top-level-cancel-plan'),
+    );
+    expect(cancelPlan, findsOneWidget);
+    expect(find.text('整批撤回 SJ-READ-ONLY'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey('material-top-level-cancel-plan')),
-      findsNothing,
+      tester.widget<TextButton>(cancelPlan).onPressed,
+      isNull,
+      reason: '查看计划权限不能代替整计划撤回权限',
     );
   });
 
@@ -4990,7 +5009,7 @@ void main() {
     ('SJ20261012000001-LONG-PLAN-NUMBER', false),
   ]) {
     final (planNo, canView) = scenario;
-    testWidgets('顶层已下计划办理单行显示且单号不重复：$planNo 查看=$canView', (tester) async {
+    testWidgets('顶层已下计划统一文字撤回、单行且单号不重复：$planNo 查看=$canView', (tester) async {
       await _pump(
         tester,
         platform: TargetPlatform.windows,
@@ -5036,38 +5055,32 @@ void main() {
       expect(
         find.descendant(of: row, matching: find.textContaining(planNo)),
         findsOneWidget,
-        reason: '同一计划号不能在查看与撤回入口各显示一遍',
+        reason: '同一计划号只在统一撤回入口显示一次',
       );
       expect(tester.getSize(row).height, lessThanOrEqualTo(64));
-      if (canView) {
-        expect(
-          tester.getCenter(viewPlan).dy,
-          closeTo(tester.getCenter(cancelPlan).dy, 0.1),
-          reason: '查看与撤回必须在同一行，不把顶层行撑成两行按钮',
-        );
-        expect(tester.widget<TextButton>(viewPlan).onPressed, isNotNull);
-        expect(tester.widget<IconButton>(cancelPlan).onPressed, isNotNull);
-        expect(
-          find.byTooltip('查看计划 $planNo'),
-          findsOneWidget,
-          reason: '长单号省略时仍可查看完整计划号',
-        );
-        expect(
-          tester.widget<IconButton>(cancelPlan).tooltip,
-          startsWith('整批撤回 $planNo'),
-        );
-      } else {
-        expect(viewPlan, findsNothing);
-        expect(tester.widget<IconButton>(cancelPlan).onPressed, isNotNull);
-        expect(
-          find.descendant(of: row, matching: find.text(planNo)),
-          findsOneWidget,
-          reason: '无查看权限时也只显示一次真实单号，撤回仍使用同一图标入口',
-        );
-        expect(find.text('整批撤回 $planNo'), findsNothing);
-      }
+      expect(viewPlan, findsNothing);
+      expect(tester.widget<TextButton>(cancelPlan).onPressed, isNotNull);
+      expect(tester.getSize(cancelPlan).height, greaterThanOrEqualTo(48));
+      final label = find.descendant(
+        of: cancelPlan,
+        matching: find.text('整批撤回 $planNo'),
+      );
+      expect(label, findsOneWidget);
+      expect(tester.widget<Text>(label).maxLines, 1);
+      expect(tester.widget<Text>(label).overflow, TextOverflow.ellipsis);
+      expect(
+        tester
+            .widget<Tooltip>(
+              find
+                  .ancestor(of: cancelPlan, matching: find.byType(Tooltip))
+                  .first,
+            )
+            .message,
+        startsWith('整批撤回 $planNo'),
+        reason: '长单号省略时悬浮仍显示完整单号和撤回说明',
+      );
       expect(tester.takeException(), isNull);
-      // 共享表格可拖到 48px：按钮也须受列宽约束，不能由固定尾部图标撑溢出。
+      // 共享表格可拖到 48px：统一文字按钮须受列宽约束并保持单行。
       final handleHeader = find
           .ancestor(
             of: find.text('物料办理'),
@@ -5101,25 +5114,16 @@ void main() {
       expect(tester.getSize(handleHeader).width, 48);
       expect(tester.getSize(row).height, lessThanOrEqualTo(64));
       expect(tester.takeException(), isNull, reason: '最窄列也不横向溢出或折成两行');
-      final actions = find.byKey(
-        const ValueKey('material-top-level-view-plan-actions'),
-      );
-      expect(tester.getRect(actions).width, greaterThanOrEqualTo(32));
-      await tester.tap(actions);
-      await tester.pumpAndSettle();
-      expect(
-        viewPlan,
-        canView ? findsOneWidget : findsNothing,
-        reason: '窄列动作面板也不能绕过查看计划权限',
-      );
-      expect(tester.widget<ListTile>(cancelPlan).enabled, isTrue);
+      expect(viewPlan, findsNothing, reason: '统一撤回文字入口不再额外显示计划链接');
+      expect(tester.getRect(cancelPlan).width, greaterThanOrEqualTo(32));
+      expect(tester.widget<TextButton>(cancelPlan).onPressed, isNotNull);
       await tester.tap(cancelPlan);
       await tester.pumpAndSettle();
       expect(find.textContaining('整批撤回生产计划'), findsOneWidget);
       expect(
         requests.any((r) => r.path.endsWith('/withdraw')),
         isFalse,
-        reason: '动作面板只进入原确认，不提前执行撤回',
+        reason: '文字入口只进入原确认，不提前执行撤回',
       );
       await tester.tap(find.text('取消').last);
       await tester.pumpAndSettle();
@@ -5129,7 +5133,7 @@ void main() {
 
   for (final factor in [0.85, 2.0]) {
     testWidgets(
-      'touch narrow plan actions preserve target, permission and confirmation at $factor',
+      'touch narrow withdrawal text preserves target, permission and confirmation at $factor',
       (tester) async {
         await _pump(
           tester,
@@ -5196,7 +5200,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         final actions = find.byKey(
-          const ValueKey('material-top-level-view-plan-actions'),
+          const ValueKey('material-top-level-cancel-plan'),
         );
         // Body controls must be below the pinned header and to the right of
         // the frozen identity column, rather than aligned under that overlay.
@@ -5208,16 +5212,14 @@ void main() {
         await tester.pumpAndSettle();
         expect(tester.getRect(actions).width, greaterThanOrEqualTo(48));
         expect(tester.getRect(actions).height, greaterThanOrEqualTo(48));
-        await tester.tap(actions);
-        await tester.pumpAndSettle();
         expect(
           find.byKey(const ValueKey('material-top-level-view-plan')),
-          findsOneWidget,
+          findsNothing,
         );
         final cancel = find.byKey(
           const ValueKey('material-top-level-cancel-plan'),
         );
-        expect(tester.widget<ListTile>(cancel).enabled, isTrue);
+        expect(tester.widget<TextButton>(cancel).onPressed, isNotNull);
         await tester.ensureVisible(cancel);
         await tester.tap(cancel);
         await tester.pumpAndSettle();
@@ -5268,10 +5270,15 @@ void main() {
       const ValueKey('material-top-level-cancel-plan'),
     );
     expect(cancelPlan, findsOneWidget, reason: '正式计划需有生成与反审核权限才能整批撤回');
-    expect(tester.widget<IconButton>(cancelPlan).onPressed, isNotNull);
-    // 查看链接只显示一次计划号，整批撤回入口与说明放在旁边图标的悬浮中。
+    expect(tester.widget<TextButton>(cancelPlan).onPressed, isNotNull);
+    expect(find.text('整批撤回 PP-2026-001'), findsOneWidget);
+    // 统一文字入口显示一次计划号，完整撤回说明保留在悬浮中。
     expect(
-      tester.widget<IconButton>(cancelPlan).tooltip,
+      tester
+          .widget<Tooltip>(
+            find.ancestor(of: cancelPlan, matching: find.byType(Tooltip)).first,
+          )
+          .message,
       startsWith('整批撤回 PP-2026-001'),
     );
     expect(find.text('已下达车间计划 2000 个'), findsNothing);

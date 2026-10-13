@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_supplier_picker.dart';
 import 'package:uten_imp/features/purchase/config/purchase_doc_config.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
@@ -89,6 +90,7 @@ Future<void> _pumpEditor(WidgetTester tester, PurchaseDocType docType) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         apiClientProvider.overrideWithValue(_EmptyApi()),
         sessionProvider.overrideWith(_EmptySessionNotifier.new),
       ],

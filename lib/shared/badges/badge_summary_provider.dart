@@ -163,13 +163,13 @@ class BadgeSummary {
         kept.inProgress - partial.inProgress,
       );
       nextEntries[key] = kept;
+      final entry = byName[key];
+      if (entry == null || !entry.contributesToModule) continue;
       nextTotal = nextTotal._plus(delta);
-      final module = byName[key]?.module.name;
-      if (module != null) {
-        nextModules[module] = (nextModules[module] ?? BadgeCounts.zero)._plus(
-          delta,
-        );
-      }
+      final module = entry.module.name;
+      nextModules[module] = (nextModules[module] ?? BadgeCounts.zero)._plus(
+        delta,
+      );
     }
     final nextFacts = Map<String, int>.of(facts);
     for (final source in staleSources) {
@@ -382,11 +382,18 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   }
 
   Future<void> _fetch(int generation) async {
+    final writeRevision = ref.read(dataWriteRevisionProvider);
     try {
       final json = await ref
           .read(apiClientProvider)
           .get(ApiEndpoints.workbenchBadges);
       if (generation != _generation) return;
+      if (writeRevision != ref.read(dataWriteRevisionProvider)) {
+        // The read predates a completed command. Keep the last accepted snapshot
+        // until the tail read, instead of briefly resurrecting completed work.
+        _dirty = true;
+        return;
+      }
       final next = BadgeSummary.fromJson(json).keepStaleFrom(state);
       if (next != state) state = next;
       ref.read(badgeSummaryFetchRevisionProvider.notifier).state++;

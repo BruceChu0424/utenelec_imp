@@ -18,6 +18,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
+import '../../../shared/widgets/editor_identity_notice.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 
@@ -46,6 +47,7 @@ import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/editor_resource_key.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -141,6 +143,26 @@ class _SubcontractOrderEditPageState
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loading = false;
+  bool _documentIdentityChanged = false;
+  late final Key _openedDocumentIdentity;
+
+  Key get _documentIdentity => editorResourceKey(
+    Uri(path: 'subcontract-order'),
+    sourceIdentity: {
+      'id': widget.id,
+      'applicationItemIds':
+          (widget.applicationItemIds
+              .map((id) => id.trim())
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort()),
+    },
+  );
+
+  @override
+  bool get formDraftIdentityIsCurrent =>
+      super.formDraftIdentityIsCurrent && !_documentIdentityChanged;
   bool _orderSourceReady = true;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
@@ -231,7 +253,17 @@ class _SubcontractOrderEditPageState
   @override
   void initState() {
     super.initState();
+    _openedDocumentIdentity = _documentIdentity;
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
+  }
+
+  @override
+  void didUpdateWidget(covariant SubcontractOrderEditPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_documentIdentity != _openedDocumentIdentity) {
+      _documentIdentityChanged = true;
+    }
   }
 
   @override
@@ -246,8 +278,10 @@ class _SubcontractOrderEditPageState
   }
 
   Future<void> _init() async {
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     for (final entry
         in ref.read(masterNameServiceProvider).currencyEntries.entries) {
       if (entry.value.contains('人民币')) {
@@ -260,15 +294,19 @@ class _SubcontractOrderEditPageState
     if (meId != null && meId.isNotEmpty) {
       _purchaserId = meId;
       await _preloadEmployees([meId]);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
     }
     if (_isCreate) {
       await _prefillFromApplication();
     } else {
       await _loadExisting();
     }
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     if (_grid.isEmpty) _grid.addRow(_blankRow());
-    if (mounted && widget.id == null) await initializeFormDraft();
-    if (mounted) setState(() => _loading = false);
+    if (mounted && formDraftIdentityIsCurrent && widget.id == null) {
+      await initializeFormDraft();
+    }
+    if (mounted && formDraftIdentityIsCurrent) setState(() => _loading = false);
   }
 
   /// 空白行带条款默认 (币种人民币/汇率 1/税率 0)：主档默认值只在字段为空时回填，
@@ -294,6 +332,7 @@ class _SubcontractOrderEditPageState
       uniq.map((id) async {
         try {
           final p = await repo.getById(id);
+          if (!mounted || !formDraftIdentityIsCurrent) return;
           _empCache[id] = UtenEmployeePickerItem(
             id: p.id,
             name: p.fullName ?? '',
@@ -339,7 +378,7 @@ class _SubcontractOrderEditPageState
       await ref
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final names = ref.read(masterNameServiceProvider);
       final rows = <SubcontractGridRow>[];
       // 同货品+颜色+单位 合并：数量=可下单数量之和，来源逐条聚合(保留预览顺序)。
@@ -411,7 +450,7 @@ class _SubcontractOrderEditPageState
             ..sort();
       _deliverDate = dates.isEmpty ? null : dates.first;
       _orderSourceReady = true;
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       // 有明细没带入 / 只按够做的套数预填时说明数量为什么比剩余少。
       final skipped = open.length - orderable.length;
       final capped = orderable
@@ -426,13 +465,19 @@ class _SubcontractOrderEditPageState
       }
     } on StateError catch (error) {
       _orderSourceReady = false;
-      if (mounted) context.appError(error.message);
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(error.message);
+      }
     } on ApiException catch (error) {
       _orderSourceReady = false;
-      if (mounted) context.appError(error.message);
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(error.message);
+      }
     } catch (_) {
       _orderSourceReady = false;
-      if (mounted) context.appError('读取委外申请失败，请返回委外任务中心重试');
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError('读取委外申请失败，请返回委外任务中心重试');
+      }
     }
   }
 
@@ -445,6 +490,7 @@ class _SubcontractOrderEditPageState
       final d = await ref
           .read(subcontractRepositoryProvider(SubcontractDocType.order))
           .detail(widget.id!);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final writable =
           d.status == kSubcontractStatusDraft &&
           d.canEdit &&
@@ -453,7 +499,7 @@ class _SubcontractOrderEditPageState
             DocumentDataScope.subcontract,
             d.makerId,
           );
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       if (!writable) {
         context.appWarning(documentScopeReadOnlyMessage, force: true);
         context.replace(SubcontractRoute.detail(_cfg.pathSegment, widget.id!));
@@ -466,8 +512,9 @@ class _SubcontractOrderEditPageState
       await ref
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       await _preloadEmployees([d.purchaserId]);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       _billNo.text = d.billNo ?? '';
       _remark.text = d.remark ?? '';
       if (d.billDate != null) {
@@ -533,7 +580,7 @@ class _SubcontractOrderEditPageState
       }
       _grid.replaceAll(rows);
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && formDraftIdentityIsCurrent) context.appError(e.message);
     } catch (_) {
       // 静默降级
     }
@@ -546,7 +593,12 @@ class _SubcontractOrderEditPageState
       ref,
       UtenGoodsPickerScope.sellable,
     );
-    if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        picked.isEmpty ||
+        !_grid.rows.contains(row)) {
+      return;
+    }
     void fill(SubcontractGridRow target, GoodsListItem goods) {
       target
         ..goods = GoodsOption(id: goods.id, code: goods.code, name: goods.name)
@@ -622,10 +674,11 @@ class _SubcontractOrderEditPageState
     } catch (_) {
       // 学习预填失败静默：用户可逐行手选或勾选多行统一设置。
     }
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final names = ref.read(masterNameServiceProvider);
     final settlementEntries = await _settlementEntries();
     if (!mounted ||
+        !formDraftIdentityIsCurrent ||
         generation != _termsLoadGeneration ||
         !ref.read(sessionProvider).isSameIdentity(session)) {
       return;
@@ -786,7 +839,7 @@ class _SubcontractOrderEditPageState
     if (candidate == null || candidate.isEmpty) return;
     final settlementEntries = await _settlementEntries();
     if (!settlementEntries.containsKey(candidate)) return;
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final currentRows = _grid.rows.toSet();
     for (final r in targets) {
       if (!currentRows.contains(r) ||
@@ -816,7 +869,7 @@ class _SubcontractOrderEditPageState
     if (rows.isEmpty) return;
     final names = ref.read(masterNameServiceProvider);
     final settlementEntries = await _settlementEntries();
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final result = await showCommercialTermsBatchSheet(
       context,
       ref,
@@ -826,7 +879,7 @@ class _SubcontractOrderEditPageState
       partyNoun: '委外商',
       settlementLabel: '结算方式',
     );
-    if (result == null || !mounted) return;
+    if (result == null || !mounted || !formDraftIdentityIsCurrent) return;
     // 编辑既有单只能一套条款：批量写全部行。
     final targets = _isCreate ? rows : _grid.rows;
     for (final r in targets) {
@@ -865,7 +918,7 @@ class _SubcontractOrderEditPageState
   /// 行级委外商选择：滑入面板选中后按多选范围落值（编辑态=全部行）。
   Future<void> _pickRowSupplier(SubcontractGridRow row) async {
     final picked = await showUtenSupplierPicker(context, ref, title: '选择委外商');
-    if (picked == null || !mounted) return;
+    if (picked == null || !mounted || !formDraftIdentityIsCurrent) return;
     _applyRowSupplier(row, picked.id);
   }
 
@@ -910,7 +963,7 @@ class _SubcontractOrderEditPageState
       _cfg,
       allowOverRemaining: true,
     );
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     if (result == null || result.items.isEmpty) return;
     final goodsIds = result.items
         .map((e) => e.goodsId)
@@ -921,7 +974,7 @@ class _SubcontractOrderEditPageState
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
     }
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     // 本次引入触达的行（新加行 + 被并入的既有行）：新建态自动勾上。
     final touched = <SubcontractGridRow>[];
     // V463：同「货品+颜色+单位」的引入项并入既有行（数量加总、来源聚合）。
@@ -1053,7 +1106,7 @@ class _SubcontractOrderEditPageState
       context,
       groups: groups,
     );
-    if (!mounted) return null;
+    if (!mounted || !formDraftIdentityIsCurrent) return null;
     if (action == null || action == DuplicateGoodsReviewAction.back) {
       for (final g in groups) {
         for (final r in g.rows) {
@@ -1095,6 +1148,16 @@ class _SubcontractOrderEditPageState
   }
 
   Future<void> _save() async {
+    if (!mounted || !formDraftIdentityIsCurrent || _saving) return;
+    try {
+      final requestScope = await captureFormDraftRequestScope();
+      await requestScope.run(() => _saveOwned(requestScope.verify));
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) context.appApiError(error);
+    }
+  }
+
+  Future<void> _saveOwned(Future<void> Function() verifyRequestScope) async {
     if (_saving) return;
     if (_createdOrders case final created?) {
       // 订货单已生成、附件未全部上传：只补传附件，成功后再提交财务/进入详情。
@@ -1102,7 +1165,9 @@ class _SubcontractOrderEditPageState
       try {
         await _finishCreatedOrders(created);
       } finally {
-        if (mounted) setState(() => _saving = false);
+        if (mounted && formDraftIdentityIsCurrent) {
+          setState(() => _saving = false);
+        }
       }
       return;
     }
@@ -1129,7 +1194,9 @@ class _SubcontractOrderEditPageState
             '来源申请行仍保留待分解（可稍后再下单），手工添加的行不会被保存。',
           ),
         );
-        if (confirmed != true || !mounted) return;
+        if (confirmed != true || !mounted || !formDraftIdentityIsCurrent) {
+          return;
+        }
       }
     }
     // 行级条款完整性：委外商/结算方式/币种必填，汇率>0，税率 0-100；
@@ -1212,7 +1279,7 @@ class _SubcontractOrderEditPageState
       return;
     }
     final settlementEntries = await _settlementEntries();
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final stoppedSettlement = <String>[];
     for (var i = 0; i < gridRows.length; i++) {
       final r = gridRows[i];
@@ -1232,7 +1299,7 @@ class _SubcontractOrderEditPageState
     // 不同订货单，不属于重复。
     final reviewed = await _reviewDuplicateGoods(rows);
     if (reviewed == null) return;
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     rows = reviewed;
     // 逐行校验已全部通过，这里只组装提交体。
     final itemsBody = <Map<String, dynamic>>[];
@@ -1307,7 +1374,7 @@ class _SubcontractOrderEditPageState
     // 「保存并提交财务审核」一步直通锁单进财务共享待办，误触代价高：与详情页
     // 「提交财务审核」同款二次确认；保存草稿路径不弹。
     if (_canSubmitFinance) {
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final confirmed = await UtenDialog.show(
         context,
         title: '提交财务审核',
@@ -1317,7 +1384,7 @@ class _SubcontractOrderEditPageState
           '下一步由财务在「订货审批任务中心」审核。确认提交？',
         ),
       );
-      if (confirmed != true || !mounted) return;
+      if (confirmed != true || !mounted || !formDraftIdentityIsCurrent) return;
     }
     setState(() => _saving = true);
     try {
@@ -1329,7 +1396,7 @@ class _SubcontractOrderEditPageState
         final created = await runFormDraftSubmission(
           () => repo.createBatch(body),
         );
-        if (!mounted) return;
+        if (!mounted || !formDraftIdentityIsCurrent) return;
         setState(() {
           _createdOrders = created;
           _termsLoadGeneration++;
@@ -1351,8 +1418,9 @@ class _SubcontractOrderEditPageState
         body: body,
         id: widget.id,
         submitFinance: _canSubmitFinance,
+        beforeFinanceSubmit: verifyRequestScope,
       );
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final d = outcome.detail;
       if (outcome.financeSubmitError case final error?) {
         context.appWarning('委外订货单已保存，但未提交财务：$error。可在详情页重新提交。');
@@ -1365,7 +1433,7 @@ class _SubcontractOrderEditPageState
         );
         return;
       }
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess(_canSubmitFinance ? '委外订货单已提交财务审核' : '委外订货单草稿已保存');
       bumpListRefresh(ref, _cfg.refreshKey);
       popSavedEditOrReplace(
@@ -1373,15 +1441,17 @@ class _SubcontractOrderEditPageState
         SubcontractRoute.detail(_cfg.pathSegment, d.id),
       );
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && formDraftIdentityIsCurrent) context.appError(e.message);
     } catch (error, stack) {
       // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
       debugPrint('保存委外订货单失败: $error\n$stack');
-      if (mounted) {
+      if (mounted && formDraftIdentityIsCurrent) {
         context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -1405,7 +1475,7 @@ class _SubcontractOrderEditPageState
           ownerType: 'subcontract_order',
           ownerIds: [for (final createdDoc in created) createdDoc.id],
         );
-        if (!mounted || !ok) return;
+        if (!mounted || !formDraftIdentityIsCurrent || !ok) return;
       }
       String? financeError;
       if (_canSubmitFinance) {
@@ -1417,7 +1487,7 @@ class _SubcontractOrderEditPageState
           }
         }
       }
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       bumpListRefresh(ref, _cfg.refreshKey);
       if (financeError != null) {
         context.appWarning(
@@ -1437,7 +1507,7 @@ class _SubcontractOrderEditPageState
         );
       }
       await completeFormDraft();
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       if (created.length == 1) {
         context.replace(
           SubcontractRoute.detail(_cfg.pathSegment, created.first.id),
@@ -1446,9 +1516,11 @@ class _SubcontractOrderEditPageState
         context.go('/subcontract/${_cfg.type.pathSegment}');
       }
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && formDraftIdentityIsCurrent) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appWarning('订货单已创建，后续处理未完成。点击保存继续处理，不会重复创建。');
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appWarning('订货单已创建，后续处理未完成。点击保存继续处理，不会重复创建。');
+      }
     }
   }
 
@@ -1467,7 +1539,16 @@ class _SubcontractOrderEditPageState
   }
 
   @override
-  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+  Widget build(BuildContext context) {
+    if (!formDraftIdentityIsCurrent) {
+      return EditorIdentityNotice(
+        title: _isCreate ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        documentChanged: _documentIdentityChanged,
+        onBack: () => popOrBackTo(context, defaultPath: '/subcontract'),
+      );
+    }
+    return withFormDraft(_buildDraftPage(context));
+  }
 
   Widget _buildDraftPage(BuildContext context) {
     final theme = Theme.of(context);

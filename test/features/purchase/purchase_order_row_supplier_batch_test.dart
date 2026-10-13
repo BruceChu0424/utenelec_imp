@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
@@ -29,6 +30,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
             apiClientProvider.overrideWithValue(_OrderApi()),
             sessionProvider.overrideWith(_EmptySessionNotifier.new),
             settlementMethodOptionsProvider.overrideWith(
@@ -81,6 +83,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
           apiClientProvider.overrideWithValue(_OrderApi()),
           sessionProvider.overrideWith(_EmptySessionNotifier.new),
         ],

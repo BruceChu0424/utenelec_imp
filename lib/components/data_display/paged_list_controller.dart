@@ -46,6 +46,20 @@ class PagedListController<T> extends ChangeNotifier {
   /// 未选排序列时不传 order；选了按升/降序映射后端参数。
   String? get sortOrder => sortKey == null ? null : (sortAsc ? 'asc' : 'desc');
 
+  /// A different document or reader cannot inherit either accepted data or an
+  /// in-flight response. Unlike load, reset also works in an unselected view.
+  void reset({bool notify = true}) {
+    _requests.begin();
+    page = null;
+    pageNum = 1;
+    loading = false;
+    error = null;
+    keyword = '';
+    sortKey = null;
+    sortAsc = true;
+    if (notify) _notify();
+  }
+
   /// 表头排序回调：column=null 取消排序回后端默认。只更新状态不重查，
   /// 宿主随后自行 load(1)。
   void onSortChange(String? column, bool ascending) {
@@ -60,6 +74,7 @@ class PagedListController<T> extends ChangeNotifier {
     bool silent = false,
     required Future<PagedResult<T>> Function() fetch,
   }) async {
+    if (_disposed) return;
     final generation = _requests.begin();
     pageNum = page;
     if (!silent) {
@@ -91,6 +106,7 @@ class PagedListController<T> extends ChangeNotifier {
 
   @override
   void dispose() {
+    _requests.begin();
     _disposed = true;
     super.dispose();
   }

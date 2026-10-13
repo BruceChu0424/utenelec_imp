@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -339,8 +340,8 @@ class _WarehouseSalesOutboundDetailPageState
     List<String> weightAlerts = const [],
   }) async {
     final controller = TextEditingController();
-    final result = await showDialog<String?>(
-      context: context,
+    final result = await UtenDialog.showAndWaitForExit<String?>(
+      context,
       builder: (dialogContext) => AlertDialog(
         title: Text(action.label),
         content: SizedBox(

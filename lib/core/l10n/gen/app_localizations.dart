@@ -100,6 +100,18 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @editorDocumentIdentityChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'单据或来源已变化，请重新进入页面'**
+  String get editorDocumentIdentityChanged;
+
+  /// No description provided for @editorSessionIdentityChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录身份或服务器已变化，请重新进入页面'**
+  String get editorSessionIdentityChanged;
+
   /// No description provided for @release2511DailyReport.
   ///
   /// In zh, this message translates to:
@@ -18381,6 +18393,12 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'出货审核筛选工具条与全站统一；订货审批/IQC 责任提示横幅退役；BOM 按产品视图连线两色轮换；HR 任务中心徽章回到今日口径；委外损耗「不允许」口径列表与详情一致。'**
   String get release2510Misc;
+
+  /// 模块进行中总数提示，允许同一单据同时存在待办。
+  ///
+  /// In zh, this message translates to:
+  /// **'{count, plural, other{本模块进行中合计 {count} 项(尚未结束)}}'**
+  String badgeModuleProgressTooltip(int count);
 }
 
 class _AppLocalizationsDelegate

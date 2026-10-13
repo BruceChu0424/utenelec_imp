@@ -32,6 +32,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -107,6 +108,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   final _list = PagedListController<PurchaseDocListItem>();
   final _tableRows = MasterDataTableRowsController<PurchaseDocListItem>();
   int _reloadGeneration = 0;
+  int _badgeRequestId = 0;
+  int _readerGeneration = 0;
 
   /// 本页路径（创建时捕获；被 push 页遮住后现取 matchedLocation 会拿到别人的路径）。
   /// 「返回即刷新」onPageResume 用，见 build。
@@ -144,11 +147,18 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   @override
   void initState() {
     super.initState();
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) _readerChanged();
+    });
+    ref.listenManual(apiBaseUrlProvider, (previous, next) {
+      if (previous != next) _readerChanged();
+    });
     // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _seg = _draftSeg;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(masterNameServiceProvider).ensureLoaded();
       _loadBadge();
       if (isDraftStatusQuery(widget.initialStatus)) _reload(1);
@@ -162,12 +172,39 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         oldWidget.initialStatus == widget.initialStatus) {
       return;
     }
-    clearDraftSelection();
-    _list.page = null;
+    _resetReadState();
     _seg = isDraftStatusQuery(widget.initialStatus) ? _draftSeg : null;
     _myLocation = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _loadBadge();
+      if (_shouldLoad) _reload(1);
+    });
+  }
+
+  void _resetReadState() {
+    _readerGeneration++;
+    clearDraftSelection();
+    _reloadGeneration++;
+    _badgeRequestId++;
+    _list.reset(notify: false);
+    _columnFilters.reset();
+    _actionableCount = null;
+    _supplierIdFilter = null;
+    _warehouseIdFilter = null;
+    _historyTime = const UtenHistoryTimeValue.all();
+  }
+
+  void _readerChanged() {
+    if (!mounted) return;
+    setState(_resetReadState);
+    final generation = _reloadGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          generation != _reloadGeneration ||
+          ref.read(authenticatedScopeProvider) == null) {
+        return;
+      }
       _loadBadge();
       if (_shouldLoad) _reload(1);
     });
@@ -402,6 +439,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   /// 「等待财务审核」=status=0 且在审（PENDING）——在审单已交由财务处理，
   /// 不再算草稿（与 hub 红徽章/服务端草稿计数同一口径）。
   Future<void> _loadBadge() async {
+    final requestId = ++_badgeRequestId;
+    final type = widget.docType;
     // 订货/收货/退货: 分段计数走 documentStatusCountsProvider(全部桶一次请求), 这里只
     // 失效重取; 申请页仍按下方 list(size:1) 数「计划已下达」。
     final statusScope = _statusScope;
@@ -415,7 +454,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
         size: 1,
         filter: PurchaseDocFilter(status: _actionableStatus),
       );
-      if (!mounted) return;
+      if (!mounted || requestId != _badgeRequestId || widget.docType != type) {
+        return;
+      }
       setState(() => _actionableCount = r.total);
     } catch (_) {
       // 计数失败静默：徽章不显示，不影响列表。
@@ -800,6 +841,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                             totalPages: _list.totalPages,
                             paginationRevision: _list.page,
                             paginationScope: (
+                              _readerGeneration,
                               widget.docType,
                               _list.normalizedKeyword,
                               _seg,

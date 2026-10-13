@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
@@ -113,6 +114,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
           apiClientProvider.overrideWithValue(api),
           purchaseRepositoryProvider(
             PurchaseDocType.order,

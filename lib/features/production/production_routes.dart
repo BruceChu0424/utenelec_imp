@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router/route_names.dart';
+import '../../core/router/editor_resource_key.dart';
 import '../../shared/drafts/form_draft_navigation.dart';
 import 'config/production_report_config.dart';
 import 'models/production_material_analysis.dart';
@@ -209,8 +210,10 @@ final List<RouteBase> productionRoutes = [
     redirect: (_, state) => state.uri.queryParameters['review'] == '1'
         ? '/production/plans/${state.pathParameters['id']}'
         : null,
-    builder: (_, state) =>
-        ProductionPlanEditPage(id: state.pathParameters['id']),
+    builder: (_, state) => ProductionPlanEditPage(
+      key: editorResourceKey(state.uri),
+      id: state.pathParameters['id'],
+    ),
   ),
   DraftAwareGoRoute(
     path: '/production/plans/:id',
@@ -252,6 +255,12 @@ final List<RouteBase> productionRoutes = [
           .take(100)
           .toList(growable: false);
       return ProductionDailyReportEditPage(
+        key: editorResourceKey(
+          state.uri,
+          sourceIdentity: state.extra is ProductionOutputSupplementView
+              ? (state.extra as ProductionOutputSupplementView).data
+              : null,
+        ),
         id: state.extra is ProductionOutputSupplementView
             ? (state.extra as ProductionOutputSupplementView).excludedReportId
             : null,
@@ -274,6 +283,7 @@ final List<RouteBase> productionRoutes = [
         ? '/production/daily-reports/${state.pathParameters['id']}'
         : null,
     builder: (_, state) => ProductionDailyReportEditPage(
+      key: editorResourceKey(state.uri),
       id: state.pathParameters['id'],
       returnToWorkshopTasks:
           state.uri.queryParameters['from'] == 'workshop-tasks',

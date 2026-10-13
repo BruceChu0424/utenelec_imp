@@ -15,6 +15,7 @@ import '../../../shared/business_columns/business_columns_table.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/historical_receipt_totals.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -545,6 +546,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   /// 批准后改量（对齐销售 V482）：财务批准后的订货单可逐行改数量；改后
   /// 服务端自动重回财务复核，财务在审批详情看到修改清单（以前→现在）。
   bool get _canChangeQty =>
+      _ordinaryWritable &&
       widget.docType == PurchaseDocType.order &&
       _detail?.status == kPurchaseStatusApproved &&
       _detail?.financeApproval?.isPending != true &&
@@ -705,7 +707,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   /// 批准后改量：弹窗逐行改数量（照销售订货详情 _changeQty 结构）。改后自动
   /// 重回财务复核；驳回不会自动还原数量。
   Future<void> _changeQty() async {
-    if (!nativeReadCanWrite) return;
+    if (!_canChangeQty) return;
     final ownsNative = captureNativeOwnership();
     if (_busy) {
       context.appInfo('正在处理，请稍候…');
@@ -723,8 +725,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         );
       }
     }
-    final ok = await showDialog<bool>(
-      context: context,
+    final ok = await UtenDialog.showAndWaitForExit<Map<String, String>>(
+      context,
       builder: (ctx) => trackNativeReadDialog(
         ctx,
         AlertDialog(
@@ -785,26 +787,28 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
           actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
+              onPressed: () => Navigator.pop(ctx),
               child: Text(l10n.commonCancel),
             ),
             FilledButton(
               key: const Key('purchase-order-change-qty-submit'),
-              onPressed: () => Navigator.pop(ctx, true),
+              onPressed: () => Navigator.pop(ctx, {
+                for (final entry in ctrls.entries) entry.key: entry.value.text,
+              }),
               child: Text(l10n.orderChangeQtyConfirm),
             ),
           ],
         ),
       ),
     );
-    if (ok != true || !mounted || !ownsNative() || !nativeReadCanWrite) {
+    if (ok == null || !mounted || !ownsNative() || !_canChangeQty) {
       _disposeChangeQtyControllers(ctrls.values);
       return;
     }
     final changes = <Map<String, dynamic>>[];
     for (final it in detail.items) {
       if (it.id == null) continue;
-      final v = positiveDocumentQuantityText(ctrls[it.id!]!.text);
+      final v = positiveDocumentQuantityText(ok[it.id!] ?? '');
       if (v == null) {
         _disposeChangeQtyControllers(ctrls.values);
         if (mounted && ownsNative()) {
@@ -817,7 +821,7 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       }
     }
     _disposeChangeQtyControllers(ctrls.values);
-    if (changes.isEmpty || !mounted || !ownsNative() || !nativeReadCanWrite) {
+    if (changes.isEmpty || !mounted || !ownsNative() || !_canChangeQty) {
       return;
     }
     setState(() {
@@ -841,16 +845,13 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     }
   }
 
-  /// 弹窗关闭动画期间 TextField 仍持有 controller：延迟 dispose，避免构建期
-  /// 使用已释放对象（与审核备注弹窗同款处理）。
+  /// 调用方已等待弹层完全退出，逐个释放临时控制器。
   void _disposeChangeQtyControllers(
     Iterable<TextEditingController> controllers,
   ) {
-    Future<void>.delayed(const Duration(milliseconds: 300), () {
-      for (final controller in controllers) {
-        controller.dispose();
-      }
-    });
+    for (final controller in controllers) {
+      controller.dispose();
+    }
   }
 
   Future<void> _cancelOrder() async => _doAction(

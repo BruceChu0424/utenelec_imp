@@ -18,10 +18,12 @@ class ProductionPendingBadge extends ConsumerWidget {
     this.size = 16,
     this.showLabel = false,
     this.includeProductionDrafts = false,
+    this.showOverdueIndicator = true,
   });
 
   final double size;
   final bool showLabel;
+  final bool showOverdueIndicator;
 
   /// 把生产草稿（计划 draft + 日报 status=0，含本地表单草稿投影）并入红数
   /// （2026-09-26 全站草稿口径：hub 任务中心卡红数里的每张草稿都要能在
@@ -38,7 +40,6 @@ class ProductionPendingBadge extends ConsumerWidget {
           ])
         : 0;
     if (c.count + drafts <= 0) return const SizedBox.shrink();
-    final theme = Theme.of(context);
     return Tooltip(
       message:
           '待排产 ${c.count} 行 · 紧急 ${c.urgent} · 已逾期 ${c.overdue}'
@@ -46,25 +47,8 @@ class ProductionPendingBadge extends ConsumerWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (c.overdue > 0) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              constraints: BoxConstraints(minHeight: size),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(size),
-                border: Border.all(color: theme.colorScheme.error, width: 1.2),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                '逾期 ${c.overdue > 99 ? '99+' : c.overdue}',
-                style: TextStyle(
-                  color: theme.colorScheme.error,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
+          if (showOverdueIndicator && c.overdue > 0) ...[
+            ProductionOverdueBadge(count: c.overdue, size: size),
             const SizedBox(width: 4),
           ],
           UtenNotificationBadge(
@@ -73,6 +57,48 @@ class ProductionPendingBadge extends ConsumerWidget {
             showLabel: showLabel,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 逾期子集提示；窄屏大字号时放在标题旁，保持红黄计数与原始逾期数可见。
+class ProductionOverdueBadge extends StatelessWidget {
+  const ProductionOverdueBadge({
+    super.key,
+    required this.count,
+    this.size = 16,
+  });
+
+  final int count;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    return Tooltip(
+      message: '待排产任务中已逾期 $count 行',
+      child: Semantics(
+        label: '待排产任务中已逾期 $count 行',
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+          constraints: BoxConstraints(minHeight: size),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface,
+            borderRadius: BorderRadius.circular(size),
+            border: Border.all(color: theme.colorScheme.error, width: 1.2),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '逾期 ${count > 99 ? '99+' : count}',
+            style: TextStyle(
+              color: theme.colorScheme.error,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -42,6 +42,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -234,6 +235,7 @@ class _HrProfileChangesListPageState
     // 刷新队列、筛选桶与导航徽章（员工详情页的「待审修改」区块共用旧 key，一并失效）。
     ref.invalidate(hrProfileChangeQueueProvider);
     ref.invalidate(hrProfileChangesProvider);
+    ref.invalidate(hrProfileEmployeePendingProvider);
     ref.invalidate(hrProfileChangeFacetsProvider(_effectiveStatus));
     refreshBadges(ref);
   }
@@ -267,6 +269,11 @@ class _HrProfileChangesListPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.onPageResume(RouteName.hrProfileChanges, () {
+      ref.invalidate(hrProfileChangeQueueProvider);
+      ref.invalidate(hrProfileChangeFacetsProvider(_effectiveStatus));
+      refreshBadges(ref);
+    });
     final l10n = AppLocalizations.of(context);
     final async = _retainedPage.resolve(
       _paginationScope,

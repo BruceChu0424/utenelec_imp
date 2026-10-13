@@ -77,4 +77,73 @@ void main() {
       const Offset(0, 80 + _spacing),
     );
   });
+
+  testWidgets('content minimum reduces fixed columns and includes padding', (
+    tester,
+  ) async {
+    final widths = <int, double>{};
+    await tester.pumpWidget(
+      _harness(
+        tester,
+        UtenResponsiveGrid(
+          itemCount: 3,
+          spacing: _spacing,
+          padding: const EdgeInsets.all(16),
+          columns: const UtenResponsiveColumns(medium: 4),
+          minItemWidth: 250,
+          itemBuilder: (context, index, itemWidth) {
+            widths[index] = itemWidth;
+            return SizedBox(key: Key('minimum-$index'), height: 80);
+          },
+        ),
+      ),
+    );
+
+    const columnWidth = (700 - 32 - _spacing) / 2;
+    expect(widths.values, everyElement(columnWidth));
+    expect(
+      tester.getSize(find.byKey(const Key('minimum-0'))).width,
+      columnWidth,
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('minimum-1'))),
+      const Offset(16 + columnWidth + _spacing, 16),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('minimum-2'))),
+      const Offset(16, 16 + 80 + _spacing),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'content minimum preserves the configured columns when they fit',
+    (tester) async {
+      await tester.pumpWidget(
+        _harness(
+          tester,
+          UtenResponsiveGrid(
+            itemCount: 4,
+            spacing: _spacing,
+            columns: const UtenResponsiveColumns(),
+            minItemWidth: 250,
+            itemBuilder: (context, index, itemWidth) =>
+                SizedBox(key: Key('wide-$index'), height: 80),
+          ),
+          size: const Size(1280, 600),
+        ),
+      );
+
+      const columnWidth = (1280 - 3 * _spacing) / 4;
+      expect(
+        tester.getSize(find.byKey(const Key('wide-0'))).width,
+        columnWidth,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const Key('wide-3'))),
+        const Offset(3 * (columnWidth + _spacing), 0),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

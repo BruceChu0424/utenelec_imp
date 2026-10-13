@@ -9,6 +9,12 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get editorDocumentIdentityChanged => '单据或来源已变化，请重新进入页面';
+
+  @override
+  String get editorSessionIdentityChanged => '登录身份或服务器已变化，请重新进入页面';
+
+  @override
   String get release2511DailyReport =>
       '生产日报改为紧凑货品卡片，支持展开去向与子件；审核余料处理保留完整数量和来源。';
 
@@ -10021,4 +10027,14 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get release2510Misc =>
       '出货审核筛选工具条与全站统一；订货审批/IQC 责任提示横幅退役；BOM 按产品视图连线两色轮换；HR 任务中心徽章回到今日口径；委外损耗「不允许」口径列表与详情一致。';
+
+  @override
+  String badgeModuleProgressTooltip(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '本模块进行中合计 $count 项(尚未结束)',
+    );
+    return '$_temp0';
+  }
 }

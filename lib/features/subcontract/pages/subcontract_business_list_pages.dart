@@ -16,6 +16,7 @@
 // 主类与历史时间随页头收起；默认不选不加载。
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../../components/data_display/paged_list_controller.dart';
 import '../../../shared/drafts/form_draft_master_names.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +33,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -313,9 +315,11 @@ class _BizSeg {
 class _SubcontractBusinessListPageState
     extends ConsumerState<_SubcontractBusinessListPage>
     with DraftBulkDeleteMixin<_SubcontractBusinessListPage> {
-  final _controller = _BusinessPagedController();
+  final _controller = PagedListController<SubcontractDocListItem>();
   final _tableRows = MasterDataTableRowsController<SubcontractDocListItem>();
   int _reloadGeneration = 0;
+  int _badgeRequestId = 0;
+  int _readerGeneration = 0;
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _BizSeg? _seg;
@@ -436,11 +440,18 @@ class _SubcontractBusinessListPageState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) _readerChanged();
+    });
+    ref.listenManual(apiBaseUrlProvider, (previous, next) {
+      if (previous != next) _readerChanged();
+    });
     // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _seg = _draftSeg;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(mn.masterNameServiceProvider).ensureLoaded();
       if (_shouldLoad) _reload();
       _loadBadge();
@@ -454,13 +465,40 @@ class _SubcontractBusinessListPageState
         oldWidget.initialStatus == widget.initialStatus) {
       return;
     }
-    clearDraftSelection();
-    _controller.result = null;
-    _apPostedFilter = null;
+    _resetReadState();
     _seg = isDraftStatusQuery(widget.initialStatus) ? _draftSeg : null;
     _location = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _loadBadge();
+      if (_shouldLoad) _reload(1);
+    });
+  }
+
+  void _resetReadState() {
+    _readerGeneration++;
+    clearDraftSelection();
+    _reloadGeneration++;
+    _badgeRequestId++;
+    _controller.reset(notify: false);
+    _columnFilters.reset();
+    _actionableCount = null;
+    _supplierIdFilter = null;
+    _warehouseIdFilter = null;
+    _apPostedFilter = null;
+    _historyTime = const UtenHistoryTimeValue.all();
+  }
+
+  void _readerChanged() {
+    if (!mounted) return;
+    setState(_resetReadState);
+    final generation = _reloadGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          generation != _reloadGeneration ||
+          ref.read(authenticatedScopeProvider) == null) {
+        return;
+      }
       _loadBadge();
       if (_shouldLoad) _reload(1);
     });
@@ -478,7 +516,7 @@ class _SubcontractBusinessListPageState
     return ref
         .read(subcontractRepositoryProvider(_p.type))
         .list(
-          page: _controller.page,
+          page: _controller.pageNum,
           filter: SubcontractDocFilter(
             keyword: _controller.keyword.trim(),
             supplierId: _supplierIdFilter,
@@ -541,7 +579,7 @@ class _SubcontractBusinessListPageState
     if (!_shouldLoad) return;
     unawaited(_loadBillNoFacets());
     await _controller.load(
-      page ?? _controller.page,
+      page ?? _controller.pageNum,
       silent: silent,
       fetch: _fetch,
     );
@@ -700,6 +738,8 @@ class _SubcontractBusinessListPageState
   /// 「等待财务审核」=status=0 且在审（PENDING）——在审单已交由财务处理，
   /// 不再算草稿（与 hub 红徽章/服务端草稿计数同一口径）。
   Future<void> _loadBadge() async {
+    final requestId = ++_badgeRequestId;
+    final type = _p.type;
     // 订货/成品退回/余料退回/损耗: 分段计数走 documentStatusCountsProvider(全部桶一次
     // 请求), 这里只失效重取; 没有 hub 徽章的单据仍按下方 list(size:1) 数草稿。
     final statusScope = _statusScope;
@@ -715,7 +755,7 @@ class _SubcontractBusinessListPageState
         size: 1,
         filter: SubcontractDocFilter(status: status),
       );
-      if (!mounted) return;
+      if (!mounted || requestId != _badgeRequestId || _p.type != type) return;
       setState(() => _actionableCount = docs.total);
     } catch (_) {
       // 计数失败静默：徽章不显示，不影响列表。
@@ -909,13 +949,13 @@ class _SubcontractBusinessListPageState
                           columns: _p.columns(
                             names,
                             _canViewCommercial &&
-                                !(_controller.result?.items.any(
+                                !(_controller.page?.items.any(
                                       (row) => row.priceMasked,
                                     ) ??
                                     false),
                           ),
                           items:
-                              _controller.result?.items ??
+                              _controller.page?.items ??
                               const <SubcontractDocListItem>[],
                           selectable: _draftDeleteEnabled,
                           idOf: (row) =>
@@ -976,18 +1016,19 @@ class _SubcontractBusinessListPageState
                             );
                           },
                           isLoading:
-                              _controller.loading && _controller.result == null,
+                              _controller.loading && _controller.page == null,
                           loadingMore:
-                              _controller.loading && _controller.result != null,
+                              _controller.loading && _controller.page != null,
                           error: _controller.error,
                           onRetry: _reload,
                           emptyMessage: seg.history
                               ? '该时间段内暂无记录'
                               : _p.emptyMessage,
-                          currentPage: _controller.result?.page ?? 1,
-                          totalPages: _controller.result?.totalPages ?? 1,
-                          paginationRevision: _controller.result,
+                          currentPage: _controller.page?.page ?? 1,
+                          totalPages: _controller.page?.totalPages ?? 1,
+                          paginationRevision: _controller.page,
                           paginationScope: (
+                            _readerGeneration,
                             _p.type,
                             _controller.keyword,
                             _seg,
@@ -1015,53 +1056,6 @@ class _SubcontractBusinessListPageState
           icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
           label: const Text('清除状态筛选'),
         );
-}
-
-class _BusinessPagedController extends ChangeNotifier {
-  PagedResult<SubcontractDocListItem>? result;
-  bool loading = false;
-  String? error;
-  int page = 1;
-  String keyword = '';
-  int _requestId = 0;
-
-  /// 列排序态（2026-09-25 单号列统一）：sortKey=null 不排序（走后端默认）。
-  String? sortKey;
-  bool sortAsc = true;
-
-  /// 未选排序列时不传 order；选了按升/降序映射后端参数。
-  String? get sortOrder => sortKey == null ? null : (sortAsc ? 'asc' : 'desc');
-
-  /// 表头排序回调：column=null 取消排序回后端默认。只更新状态不重查，
-  /// 宿主随后自行 reload(1)。
-  void onSortChange(String? column, bool ascending) {
-    sortKey = column;
-    sortAsc = ascending;
-  }
-
-  Future<void> load(
-    int nextPage, {
-    required Future<PagedResult<SubcontractDocListItem>> Function() fetch,
-    bool silent = false,
-  }) async {
-    final requestId = ++_requestId;
-    page = nextPage;
-    loading = true;
-    error = null;
-    if (!silent) notifyListeners();
-    try {
-      final next = await fetch();
-      if (requestId != _requestId) return;
-      result = next;
-      loading = false;
-      notifyListeners();
-    } catch (e) {
-      if (requestId != _requestId) return;
-      loading = false;
-      error = e is ApiException ? e.message : '委外记录加载失败，请稍后重试';
-      notifyListeners();
-    }
-  }
 }
 
 List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({

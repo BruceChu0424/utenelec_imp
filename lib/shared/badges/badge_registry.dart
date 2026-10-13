@@ -164,6 +164,9 @@ enum BadgeEntry {
 
   /// 该入口画在哪个容器(hub / 工作台模块卡)里。
   final BadgeModule module;
+
+  /// 旧领料入口是出入库方向入口的兼容别名，不再重复计入模块与导航。
+  bool get contributesToModule => this != warehouseDrawCenter;
 }
 
 /// 汇总里的原始事实数键(来源键 + "." + 原端点字段名), 供页内分段使用。

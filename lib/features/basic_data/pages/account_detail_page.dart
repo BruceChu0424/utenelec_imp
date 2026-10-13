@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -14,6 +15,9 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -23,6 +27,7 @@ import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../models/account_node.dart';
@@ -76,6 +81,8 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
   /// 见 MasterServerColumnFilters）。流水余额按单据日期/过账序滚动，排序语义
   /// 固定，不做表头排序（本页不使用共享态的排序字段）。
   final _columnFilters = MasterServerColumnFilters();
+  int _warningIntentEpoch = 0;
+  bool _warningGuardStarted = false;
 
   Set<String> get _permissions => ref.read(currentPermissionsProvider);
   bool get _isAdmin => ref.read(isSuperAdminProvider);
@@ -376,12 +383,45 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
 
   Future<void> _showWarningEditor() async {
     if (!_canManageWarning) return;
+    if (!_warningGuardStarted) {
+      _warningGuardStarted = true;
+      ref.listenManual(authenticatedScopeProvider, (before, after) {
+        if (before != after) _warningIntentEpoch++;
+      });
+      ref.listenManual(apiBaseUrlProvider, (before, after) {
+        if (before != after) _warningIntentEpoch++;
+      });
+    }
+    final epoch = ++_warningIntentEpoch;
+    final accountId = widget.accountId;
+    final owner = ref.read(authenticatedScopeProvider);
+    final repository = ref.read(accountRepositoryProvider);
+    final client = ref.read(apiClientProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    bool current() =>
+        mounted &&
+        epoch == _warningIntentEpoch &&
+        widget.accountId == accountId &&
+        owner != null &&
+        !owner.readOnly &&
+        ref.read(authenticatedScopeProvider) == owner &&
+        identical(ref.read(apiClientProvider), client) &&
+        ref.read(apiBaseUrlProvider) == server &&
+        _canManageWarning;
+    final AuthenticatedRequestScope requestScope;
+    try {
+      requestScope = await client.captureRequestScope(isCurrent: current);
+    } catch (error) {
+      if (mounted) context.appApiError(error);
+      return;
+    }
+    if (!mounted) return;
     final controller = TextEditingController(
       text: _detail?.balanceFloorText ?? '',
     );
     String? errorMessage;
-    final value = await showDialog<_WarningValue>(
-      context: context,
+    final value = await UtenDialog.showAndWaitForExit<_WarningValue>(
+      context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) => AlertDialog(
           title: const Text('设置余额警戒线'),
@@ -435,15 +475,15 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage> {
       ),
     );
     controller.dispose();
-    if (value == null || !mounted) return;
+    if (value == null || !mounted || !requestScope.isCurrent) return;
     final ok = await context.guardRun(
-      () => ref
-          .read(accountRepositoryProvider)
-          .updateWarning(widget.accountId, balanceFloor: value.value),
+      () => requestScope.run(
+        () => repository.updateWarning(accountId, balanceFloor: value.value),
+      ),
       success: value.value == null ? '已清除余额警戒线' : '余额警戒线已更新',
       errorFallback: '警戒线更新失败，请稍后重试',
     );
-    if (ok && mounted) await _load();
+    if (ok && requestScope.isCurrent) await _load();
   }
 
   Future<void> _toggleStatus() async {

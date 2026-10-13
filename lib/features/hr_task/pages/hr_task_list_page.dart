@@ -52,6 +52,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_access_policy.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -155,6 +156,9 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
 
   @override
   Widget build(BuildContext context) {
+    ref.onPageResume(RouteName.hrTaskList(_type.taskType), () {
+      ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
+    });
     final async = ref.watch(hrTaskSummaryProvider);
     final perms = ref.watch(currentPermissionsProvider);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);

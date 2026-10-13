@@ -8,13 +8,17 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../components/inputs/uten_input.dart';
+import '../../../components/feedback/uten_batch_reject_dialog.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -23,6 +27,8 @@ import '../../profile/providers/profile_change_providers.dart';
 import '../../profile/repositories/profile_change_repository.dart';
 import '../../profile/widgets/profile_change_diff_row.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 
 class HrProfileChangeDetailPage extends ConsumerStatefulWidget {
   const HrProfileChangeDetailPage({super.key, required this.batchId});
@@ -36,13 +42,94 @@ class HrProfileChangeDetailPage extends ConsumerStatefulWidget {
 class _HrProfileChangeDetailPageState
     extends ConsumerState<HrProfileChangeDetailPage> {
   bool _acting = false;
+  bool _confirming = false;
+  int _actionEpoch = 0;
+  ModalRoute<dynamic>? _reviewDialogRoute;
 
   @override
   void initState() {
     super.initState();
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) _invalidateReviewIntent();
+    });
+    ref.listenManual(apiBaseUrlProvider, (previous, next) {
+      if (previous != next) _invalidateReviewIntent();
+    });
+    ref.listenManual(currentPermissionsProvider, (previous, next) {
+      if (previous != next) _invalidateReviewIntent();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(hrProfileChangeDetailProvider);
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant HrProfileChangeDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.batchId != widget.batchId) _invalidateReviewIntent();
+  }
+
+  void _invalidateReviewIntent() {
+    _actionEpoch++;
+    _acting = false;
+    _confirming = false;
+    final route = _reviewDialogRoute;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (route?.isActive == true) route!.navigator?.removeRoute(route);
+      if (mounted) setState(() {});
+    });
+  }
+
+  Widget _reviewDialog(BuildContext context, Widget child, int epoch) {
+    _reviewDialogRoute = ModalRoute.of(context);
+    if (epoch != _actionEpoch) {
+      final route = _reviewDialogRoute;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (route?.isActive == true) route!.navigator?.removeRoute(route);
+      });
+      return const SizedBox.shrink();
+    }
+    return child;
+  }
+
+  Future<
+    ({
+      String batchId,
+      int epoch,
+      ProfileChangeRepository repository,
+      AuthenticatedRequestScope scope,
+    })
+  >
+  _captureReviewIntent() async {
+    final batchId = widget.batchId;
+    final epoch = ++_actionEpoch;
+    final owner = ref.read(authenticatedScopeProvider);
+    final repository = ref.read(profileChangeRepositoryProvider);
+    final baseUrl = ref.read(apiBaseUrlProvider);
+    bool current() =>
+        mounted &&
+        epoch == _actionEpoch &&
+        widget.batchId == batchId &&
+        owner != null &&
+        !owner.readOnly &&
+        ref.read(authenticatedScopeProvider) == owner &&
+        ref.read(apiBaseUrlProvider) == baseUrl &&
+        locationAllowedFor(
+          ref.read(currentPermissionsProvider),
+          ref.read(isSuperAdminProvider),
+          RouteName.hrProfileChanges,
+        ) &&
+        ref.read(hrProfileChangeDetailProvider(batchId)).valueOrNull?.status ==
+            ProfileChangeStatus.pending;
+    final scope = await ref
+        .read(apiClientProvider)
+        .captureRequestScope(isCurrent: current);
+    return (
+      batchId: batchId,
+      epoch: epoch,
+      repository: repository,
+      scope: scope,
+    );
   }
 
   @override
@@ -72,13 +159,17 @@ class _HrProfileChangeDetailPageState
                     type: UtenButtonType.danger,
                     size: UtenButtonSize.large,
                     isLoading: _acting,
-                    onPressed: _acting ? null : () => _onReject(context, l10n),
+                    onPressed: _acting || _confirming
+                        ? null
+                        : () => _onReject(context, l10n),
                     child: Text(l10n.profileChangeReviewReject),
                   ),
                   UtenButton(
                     size: UtenButtonSize.large,
                     isLoading: _acting,
-                    onPressed: _acting ? null : () => _onApprove(context, l10n),
+                    onPressed: _acting || _confirming
+                        ? null
+                        : () => _onApprove(context, l10n),
                     child: Text(l10n.profileChangeReviewApprove),
                   ),
                 ],
@@ -211,34 +302,52 @@ class _HrProfileChangeDetailPageState
   }
 
   Future<void> _onApprove(BuildContext context, AppLocalizations l10n) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(l10n.profileChangeApproveDialogTitle),
-        content: Text(l10n.profileChangeApproveDialogBody),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.profileChangeCancel2),
-          ),
-          UtenButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.profileChangeConfirm),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    if (!context.mounted) return;
-    setState(() => _acting = true);
+    if (_acting || _confirming) return;
+    setState(() => _confirming = true);
+    final actionEpoch = _actionEpoch + 1;
     try {
-      await ref
-          .read(profileChangeRepositoryProvider)
-          .review(widget.batchId, 'approve', null);
-      if (!context.mounted) return;
+      final intent = await _captureReviewIntent();
+      if (!context.mounted || !intent.scope.isCurrent) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => _reviewDialog(
+          ctx,
+          AlertDialog(
+            title: Text(l10n.profileChangeApproveDialogTitle),
+            content: Text(l10n.profileChangeApproveDialogBody),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              UtenButton(
+                type: UtenButtonType.ghost,
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(l10n.profileChangeCancel2),
+              ),
+              UtenButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(l10n.profileChangeConfirm),
+              ),
+            ],
+          ),
+          intent.epoch,
+        ),
+      );
+      if (ok != true) return;
+      if (!context.mounted || !intent.scope.isCurrent) return;
+      setState(() {
+        _confirming = false;
+        _acting = true;
+      });
+      await intent.scope.run(
+        () => intent.repository.review(intent.batchId, 'approve', null),
+      );
+      if (!context.mounted || !intent.scope.isCurrent) return;
       ref.invalidate(hrProfileChangesProvider);
+      ref.invalidate(hrProfileEmployeePendingProvider);
+      ref.invalidate(hrProfileChangeQueueProvider);
+      ref.invalidate(hrProfileChangeFacetsProvider);
+      ref.invalidate(myProfileChangesProvider);
+      ref.invalidate(myProfileChangeDetailProvider(intent.batchId));
+      ref.invalidate(myEmployeeProfileProvider);
       ref.invalidate(hrProfileChangeDetailProvider);
       refreshBadges(ref);
       context.appSuccess(l10n.profileChangeApproveSuccess);
@@ -247,86 +356,76 @@ class _HrProfileChangeDetailPageState
       // 吞掉，成功操作反而弹「失败」——backTo 的栈空兜底归位变更队列。
       backTo(context, defaultPath: RouteName.hrProfileChanges);
     } on ApiException catch (e) {
-      if (!context.mounted) return;
+      if (!context.mounted || actionEpoch != _actionEpoch) return;
       context.appApiError(e);
     } catch (_) {
-      if (!context.mounted) return;
+      if (!context.mounted || actionEpoch != _actionEpoch) return;
       context.appError(l10n.profileChangeSubmitFailed);
     } finally {
-      if (mounted) setState(() => _acting = false);
+      if (mounted && actionEpoch == _actionEpoch) {
+        setState(() {
+          _acting = false;
+          _confirming = false;
+        });
+      }
     }
   }
 
   Future<void> _onReject(BuildContext context, AppLocalizations l10n) async {
-    final ctrl = TextEditingController();
-    final reason = await showDialog<String?>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(l10n.profileChangeRejectDialogTitle),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                l10n.profileChangeRejectReasonHint,
-                style: Theme.of(ctx).textTheme.bodySmall,
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              UtenInput(
-                label: l10n.profileChangeReviewComment,
-                controller: ctrl,
-                maxLines: 3,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return l10n.profileChangeRejectReasonRequired;
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            UtenButton(
-              type: UtenButtonType.ghost,
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(l10n.profileChangeCancel2),
-            ),
-            UtenButton(
-              type: UtenButtonType.danger,
-              onPressed: () {
-                if (ctrl.text.trim().isEmpty) return;
-                Navigator.pop(ctx, ctrl.text.trim());
-              },
-              child: Text(l10n.profileChangeReviewReject),
-            ),
-          ],
-        );
-      },
-    );
-    ctrl.dispose();
-    if (reason == null || reason.isEmpty) return;
-    if (!context.mounted) return;
-    setState(() => _acting = true);
+    if (_acting || _confirming) return;
+    setState(() => _confirming = true);
+    final actionEpoch = _actionEpoch + 1;
     try {
-      await ref
-          .read(profileChangeRepositoryProvider)
-          .review(widget.batchId, 'reject', reason);
-      if (!context.mounted) return;
+      final intent = await _captureReviewIntent();
+      if (!context.mounted || !intent.scope.isCurrent) return;
+      final reason = await showDialog<String>(
+        context: context,
+        builder: (ctx) => _reviewDialog(
+          ctx,
+          UtenBatchRejectDialog(
+            count: 1,
+            actionLabel: '信息变更审核',
+            subjectLabel: '修改申请',
+            title: l10n.profileChangeRejectDialogTitle,
+            description: l10n.profileChangeRejectReasonHint,
+            confirmLabel: l10n.profileChangeReviewReject,
+          ),
+          intent.epoch,
+        ),
+      );
+      if (reason == null || reason.isEmpty) return;
+      if (!context.mounted || !intent.scope.isCurrent) return;
+      setState(() {
+        _confirming = false;
+        _acting = true;
+      });
+      await intent.scope.run(
+        () => intent.repository.review(intent.batchId, 'reject', reason),
+      );
+      if (!context.mounted || !intent.scope.isCurrent) return;
       ref.invalidate(hrProfileChangesProvider);
+      ref.invalidate(hrProfileEmployeePendingProvider);
+      ref.invalidate(hrProfileChangeQueueProvider);
+      ref.invalidate(hrProfileChangeFacetsProvider);
+      ref.invalidate(myProfileChangesProvider);
+      ref.invalidate(myProfileChangeDetailProvider(intent.batchId));
       ref.invalidate(hrProfileChangeDetailProvider);
       refreshBadges(ref);
       context.appSuccess(l10n.profileChangeRejectSuccess);
       backTo(context, defaultPath: RouteName.hrProfileChanges);
     } on ApiException catch (e) {
-      if (!context.mounted) return;
+      if (!context.mounted || actionEpoch != _actionEpoch) return;
       context.appApiError(e);
     } catch (_) {
-      if (!context.mounted) return;
+      if (!context.mounted || actionEpoch != _actionEpoch) return;
       context.appError(l10n.profileChangeSubmitFailed);
     } finally {
-      if (mounted) setState(() => _acting = false);
+      if (mounted && actionEpoch == _actionEpoch) {
+        setState(() {
+          _acting = false;
+          _confirming = false;
+        });
+      }
     }
   }
 }

@@ -3,6 +3,8 @@
 //  - silent 静默刷新：不翻 loading、失败不弹错误、成功静默换数据；
 //  - ApiException 优先展示 message，其它异常落兜底文案；
 //  - 关键字/排序归一：trim 空 → null，未选排序列 → order null。
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/paged_list_controller.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -90,11 +92,52 @@ void main() {
     c.dispose();
   });
 
-  test('dispose 后 load 不再通知(不抛)', () async {
-    final c = PagedListController<String>();
-    c.dispose();
-    await c.load(1, fetch: () async => _page(const ['x']));
-    // 不抛 ChangeNotifier.useAfterDispose 即通过；dispose 后仅抑制通知，字段写入无害
-    expect(c.page?.items, const ['x']);
-  });
+  for (final fails in [false, true]) {
+    test(
+      'reset discards a late ${fails ? 'error' : 'page'} without another load',
+      () async {
+        final c = PagedListController<String>();
+        final gate = Completer<PagedResult<String>>();
+        final pending = c.load(4, fetch: () => gate.future);
+        c.keyword = 'old reader';
+        c.onSortChange('billNo', false);
+        c.reset();
+        if (fails) {
+          gate.completeError(ApiException('FORBIDDEN', 'old reader error'));
+        } else {
+          gate.complete(_page(const ['private old document']));
+        }
+        await pending;
+        expect(c.page, isNull);
+        expect(c.error, isNull);
+        expect(c.loading, isFalse);
+        expect(c.pageNum, 1);
+        expect(c.keyword, isEmpty);
+        expect(c.sortKey, isNull);
+        c.dispose();
+      },
+    );
+  }
+
+  test(
+    'dispose invalidates pending reads and prevents new transport calls',
+    () async {
+      final c = PagedListController<String>();
+      final gate = Completer<PagedResult<String>>();
+      final pending = c.load(1, fetch: () => gate.future);
+      c.dispose();
+      gate.complete(_page(const ['private old document']));
+      await pending;
+      var called = false;
+      await c.load(
+        1,
+        fetch: () async {
+          called = true;
+          return _page(const ['x']);
+        },
+      );
+      expect(c.page, isNull);
+      expect(called, isFalse);
+    },
+  );
 }

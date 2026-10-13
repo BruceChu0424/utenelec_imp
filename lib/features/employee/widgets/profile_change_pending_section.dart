@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
+import '../../../components/feedback/uten_notification_badge.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_names.dart';
 import '../../../shared/auth/permissions.dart';
@@ -28,17 +29,16 @@ class ProfileChangePendingSection extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    final async = ref.watch(
-      hrProfileChangesProvider((status: 'pending', page: 1)),
-    );
+    final async = ref.watch(hrProfileEmployeePendingProvider(employeeId));
     final items = <HrProfileChangeListItem>[];
-    async.whenData((page) {
-      items.addAll(page.items.where((i) => i.employeeId == employeeId));
-    });
+    if (!async.isLoading && !async.hasError && async.hasValue) {
+      items.addAll(async.requireValue.items);
+    }
     if (items.isEmpty) return const SizedBox.shrink();
 
     final preview = items.take(3).toList();
-    final more = items.length - preview.length;
+    final total = async.valueOrNull?.total ?? 0;
+    final more = total - preview.length;
 
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 8),
@@ -62,23 +62,7 @@ class ProfileChangePendingSection extends ConsumerWidget {
                     ),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.error.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    l10n.profilePendingBadge(items.length),
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
+                UtenNotificationBadge(count: total),
               ],
             ),
             const SizedBox(height: 12),

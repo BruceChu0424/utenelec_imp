@@ -278,17 +278,17 @@ public class ExpenseApplicantQuery {
         Object[] row = (Object[]) entityManager.createNativeQuery("""
                         SELECT
                           (SELECT COUNT(*) FROM expense_claims c
-                            WHERE :apply = true AND c.applicant_id = :actor AND c.status = 'DRAFT'),
+                            WHERE c.is_deleted = false AND :apply = true AND c.applicant_id = :actor AND c.status = 'DRAFT'),
                           (SELECT COUNT(*) FROM expense_claims c
-                            WHERE :apply = true AND c.applicant_id = :actor AND c.status = 'REJECTED'),
+                            WHERE c.is_deleted = false AND :apply = true AND c.applicant_id = :actor AND c.status = 'REJECTED'),
                           (SELECT COUNT(*) FROM expense_claims c
-                            WHERE :apply = true AND c.applicant_id = :actor
+                            WHERE c.is_deleted = false AND :apply = true AND c.applicant_id = :actor
                               AND c.status IN ('SUBMITTED','REVIEWING','APPROVED')),
                           (SELECT COUNT(*) FROM expense_claims c
-                            WHERE :approve = true AND c.status IN ('SUBMITTED','REVIEWING')
+                            WHERE c.is_deleted = false AND :approve = true AND c.status IN ('SUBMITTED','REVIEWING')
                               AND c.applicant_id <> :actor),
                           (SELECT COUNT(*) FROM expense_claims c
-                            WHERE :pay = true AND c.status = 'APPROVED'
+                            WHERE c.is_deleted = false AND :pay = true AND c.status = 'APPROVED'
                               AND c.applicant_id <> :actor
                               AND (c.approved_by IS NULL OR c.approved_by <> :actor))
                         """)

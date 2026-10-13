@@ -9,6 +9,14 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get editorDocumentIdentityChanged =>
+      'The document or source has changed. Reopen this page.';
+
+  @override
+  String get editorSessionIdentityChanged =>
+      'The signed-in account or server has changed. Reopen this page.';
+
+  @override
   String get release2511DailyReport =>
       'Daily reports use compact product cards with expandable destinations and components; material review preserves quantities and source links.';
 
@@ -10630,4 +10638,15 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get release2510Misc =>
       'The shipment audit filter toolbar matches the app-wide pattern; the ordering-approval/IQC responsibility banners are retired; the BOM per-product view alternates two guide colors; HR task badges return to the today-only caliber; the subcontract loss tolerance now agrees between list and detail.';
+
+  @override
+  String badgeModuleProgressTooltip(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count items in progress in this module (not yet finished)',
+      one: '$count item in progress in this module (not yet finished)',
+    );
+    return '$_temp0';
+  }
 }

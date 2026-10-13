@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -247,6 +248,7 @@ Future<void> _pumpCreate(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         apiClientProvider.overrideWithValue(_CreateApi()),
         sessionProvider.overrideWith(_Session.new),
         if (hostLayout != null)
@@ -291,6 +293,7 @@ Future<_EditApi> _pumpEdit(WidgetTester tester, Object? pct) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         apiClientProvider.overrideWithValue(api),
         purchaseRepositoryProvider(
           PurchaseDocType.order,

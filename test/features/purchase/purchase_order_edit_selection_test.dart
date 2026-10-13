@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
@@ -51,6 +52,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
             apiClientProvider.overrideWithValue(api),
             sessionProvider.overrideWith(_EmptySessionNotifier.new),
           ],
@@ -189,6 +191,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
           apiClientProvider.overrideWithValue(_SelectionApi()),
           sessionProvider.overrideWith(_EmptySessionNotifier.new),
         ],
@@ -485,6 +488,7 @@ Future<void> _openSourcePreview(WidgetTester tester, _SelectionApi api) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_EmptySessionNotifier.new),
       ],

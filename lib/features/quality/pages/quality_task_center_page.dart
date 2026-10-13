@@ -144,6 +144,9 @@ class QualityTaskCenterPage extends ConsumerWidget {
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
+            minItemWidth: entries.any((entry) => entry.badge != null)
+                ? UtenHubCard.minimumBadgeRowWidth(context)
+                : null,
             itemBuilder: (context, i, _) {
               final entry = entries[i];
               return UtenHubCard(

@@ -61,6 +61,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
     // 返回即刷新：回到本 hub 时按需重拉徽章汇总(本端写过数据或超过 30 秒，ADR-108)。
     ref.onPageResume(RouteName.finance, () => refreshBadges(ref));
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
@@ -81,12 +82,17 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: const [
-          FormDraftsAppBarButton(categoryId: 'finance'),
+        actions: [
+          const FormDraftsAppBarButton(categoryId: 'finance'),
           // 本模块累计：服务端徽章目录对钱流容器全部入口算好的和(含本模块 5 类
           // 草稿，ADR-108)，页面里不做加法。0 时组件自身不渲染。
-          UtenModuleBadges(module: BadgeModule.finance),
+          if (!compact) const UtenModuleBadges(module: BadgeModule.finance),
         ],
+        bottom: UtenModuleBadges.compactAppBarBottom(
+          context,
+          ref,
+          BadgeModule.finance,
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -332,6 +338,12 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(compact: 2, medium: 3),
+            minItemWidth:
+                entries.any(
+                  (entry) => entry.badgeScope != null || entry.badge != null,
+                )
+                ? UtenHubCard.minimumBadgeRowWidth(context)
+                : null,
             itemBuilder: (context, i, _) => _EntryTile(entry: entries[i]),
           ),
         ],

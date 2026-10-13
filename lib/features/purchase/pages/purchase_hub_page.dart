@@ -47,6 +47,7 @@ class PurchaseHubPage extends ConsumerWidget {
     // ADR-108)；本页全部卡片角标都在这一份汇总里。
     ref.onPageResume(RouteName.purchase, () => refreshBadges(ref));
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
@@ -114,10 +115,15 @@ class PurchaseHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: const [
+        actions: [
           // 模块合计包含任务中心、供应商退货和三类草稿，由服务端汇总。
-          UtenModuleBadges(module: BadgeModule.purchase),
+          if (!compact) const UtenModuleBadges(module: BadgeModule.purchase),
         ],
+        bottom: UtenModuleBadges.compactAppBarBottom(
+          context,
+          ref,
+          BadgeModule.purchase,
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -194,6 +200,9 @@ class PurchaseHubPage extends ConsumerWidget {
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
+            minItemWidth: entries.any((entry) => entry.badgeScope != null)
+                ? UtenHubCard.minimumBadgeRowWidth(context)
+                : null,
             itemBuilder: (context, i, _) => _EntryTile(entry: entries[i]),
           ),
         ],

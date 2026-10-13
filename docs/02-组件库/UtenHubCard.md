@@ -44,7 +44,9 @@ UtenHubCard(
 )
 ```
 
-销售、仓库等承接整个模块的中心用 `BadgeScope.module(BadgeModule.sales)` 或 `BadgeScope.module(BadgeModule.warehouse)`。模块顶栏用 `UtenModuleBadges(module: BadgeModule.sales)`，无需逐页监听两个 provider、拼两枚 chip。
+承接整个销售模块的中心用 `BadgeScope.module(BadgeModule.sales)`。仓库任务中心按[2026-10-01 枢纽页规范](../03-页面/仓库管理枢纽页.md)只在卡片显示模块待办红数，因此保留 `badge: UtenNotificationBadge(count: ref.watch(badgeModuleTodoProvider(BadgeModule.warehouse)))`。模块顶栏用 `UtenModuleBadges` 同时显示红黄计数，仓库的等待检查结果黄数继续在顶栏与页内分类可见。
+
+模块枢纽在 `<600dp` 的手机顶栏通过 `UtenModuleBadges.compactAppBarBottom(context, ref, module)` 使用统一的独立计数行，保留完整“进行中 N / 待办 N”标签、标题、返回和业务动作。计数行按当前字体实测空间，两枚放不下时换行；两色为 0 或首次加载未知时不创建该行。宽屏继续放在 `actions`。窄屏草稿按钮采用公共 `UtenAppBarActionButton` 的图标与计数形态，完整意义由 tooltip 保留。
 
 生产任务中心红黄登记在不同入口，用 `BadgeScope.entries(todo: BadgeEntry.productionSchedule, inProgress: BadgeEntry.productionBatches)`。原有 `badge`、`progressBadge` 仍可覆盖对应颜色，保留生产逾期提示、财务读屏语义等专用展示；另一色继续由组件取数。
 
@@ -69,6 +71,8 @@ UtenHubCard(
 - 哪张卡该挂哪种颜色、哪张卡刻意不挂(挂了就是链内双计)，逐卡结论见 [徽章与计数口径 §四之八](../00-项目准则/14-徽章与计数口径.md)。
 - 销售任务中心覆盖订货关注事项、出货退回与四类草稿，必须取模块，不能只取 `salesAttention`。采购/委外运营任务台、财务审核中心与独立审批卡只取各自入口；供应商退回另有卡，不能把整个模块挂进运营任务卡。生产草稿、钱流草稿仍由模块顶栏累计，不能混入不承接这些草稿的审批/调度入口。
 - 图标盒统一 40×40 / 图标 size 22，颜色取自 `color`，不复用裸 `Color(0x...)`。
+- 有徽章的分组将 `minimumBadgeRowWidth(context)` 传给网格 `minItemWidth`。该下限按当前字体和缩放测量两枚 `99+`，生产传 `includeOverdue: true` 再预留逾期提示；空间不足时减列，保证图标同行与黄左红右，徽章文字遵循用户字号。
+- 生产任务卡在手机大字号时将逾期子集提示移到标题旁，原逾期数仍可见且有完整 tooltip；图标行继续显示黄左红右，宽屏保留原逾期位置。这是原待排产红数的子集说明，不另登记或上卷。
 - 底部留白由各 hub 的外层 `ListView` padding 负责（compact `s16` / 桌面 `s40`，叠在工作台外壳对 compact 子页面已预留的胶囊高度之上），不在卡片内处理。
 - 新增 hub 入口只需在各 hub 的 `_Entry` 列表加一条，`itemBuilder` 走 `_EntryTile`（薄包装，映射到 `UtenHubCard`）；不再为单页新写卡片样式。
 

@@ -42,6 +42,20 @@ void main() {
     expect(BadgeModule.values.map((m) => m.name).toList(), serverModules);
   });
 
+  test('兼容入口的汇总排重规则与服务端目录一致', () {
+    final method = RegExp(
+      r'boolean contributesToModule\(\) \{([^}]*)\}',
+    ).firstMatch(catalog)!.group(1)!;
+    final excluded = {
+      for (final match in RegExp(r'this != (\w+)').allMatches(method))
+        match.group(1)!,
+    };
+    expect({
+      for (final entry in BadgeEntry.values)
+        if (!entry.contributesToModule) entry.name,
+    }, excluded);
+  });
+
   test('BadgeFact 引用的来源键都在服务端注册过', () {
     final sourceKeys = <String>{};
     final sourceFiles = Directory(_serverMain)

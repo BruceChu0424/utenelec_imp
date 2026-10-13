@@ -9,16 +9,25 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/admin/models/ai_provider_models.dart';
 import 'package:uten_imp/features/admin/pages/admin_ai_settings_page.dart';
 import 'package:uten_imp/features/admin/repositories/ai_provider_repository.dart';
+import 'package:uten_imp/features/admin/models/ai_usage_dashboard_models.dart';
+import 'package:uten_imp/features/admin/repositories/ai_usage_dashboard_repository.dart';
 import 'package:uten_imp/features/admin/widgets/ai_connection_test_view.dart';
 import 'package:uten_imp/features/sales/intake/sales_intake_launcher.dart';
 import 'package:uten_imp/shared/ai/ai_job_models.dart';
 import 'package:uten_imp/shared/ai/ai_job_runner.dart';
 import 'package:uten_imp/shared/ai/ai_progress_dialog.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 
 import 'ai_visual_business_screens.dart';
 import 'ai_visual_support.dart';
@@ -303,6 +312,55 @@ class _AiRepo implements AiProviderRepository {
   }) async => const AiModelList(models: ['deepseek-chat', 'deepseek-reasoner']);
 }
 
+class _SettingsSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'visual-settings-admin',
+      code: 'admin',
+      name: '截图管理员',
+      superAdmin: true,
+      permissions: [Perm.authorizationManage],
+    ),
+  );
+}
+
+class _SettingsSnapshot extends SessionSnapshotNotifier {
+  @override
+  Future<SessionSnapshot?> build() async => SessionSnapshot(generation: 1);
+}
+
+class _SettingsDashboard extends Fake implements AiUsageDashboardRepository {
+  @override
+  Future<AiUsageDashboard> dashboard(AiUsageWindow window) async =>
+      AiUsageDashboard.fromJson({
+        'window': 'day',
+        'todayTokens': 1336040,
+        'dailyTokenBudget': 3000000,
+        'todayCalls': 134,
+        'activeUsersToday': 7,
+        'disabledCount': 0,
+        'series': <Object>[],
+        'people': <Object>[],
+      });
+}
+
+Future<List<Override>> _settingsOverrides(_AiRepo repository) async => [
+  ...await baseOverrides(),
+  aiProviderRepositoryProvider.overrideWithValue(repository),
+  aiUsageDashboardRepositoryProvider.overrideWithValue(_SettingsDashboard()),
+  authenticatedScopeProvider.overrideWithValue(
+    const AuthenticatedScope(userId: 'visual-settings-admin'),
+  ),
+  apiBaseUrlProvider.overrideWithValue('https://visual-settings.invalid/api'),
+  currentPermissionsProvider.overrideWithValue(const {
+    Perm.authorizationManage,
+  }),
+  sessionProvider.overrideWith(_SettingsSession.new),
+  sessionSnapshotProvider.overrideWith(_SettingsSnapshot.new),
+];
+
 Future<void> _pumpSettings(
   WidgetTester tester,
   _AiRepo repo, {
@@ -313,10 +371,7 @@ Future<void> _pumpSettings(
   await tester.pumpWidget(
     captureApp(
       dark: dark,
-      overrides: [
-        ...await baseOverrides(),
-        aiProviderRepositoryProvider.overrideWithValue(repo),
-      ],
+      overrides: await _settingsOverrides(repo),
       home: const AdminAiSettingsPage(),
     ),
   );
@@ -325,9 +380,27 @@ Future<void> _pumpSettings(
 
 Future<void> _tapKey(WidgetTester tester, String key) async {
   final finder = find.byKey(ValueKey(key));
+  for (final providerId in [_deepseekId, _localId]) {
+    if (key.endsWith(providerId)) {
+      await _expandProvider(tester, providerId);
+    }
+  }
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
   await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _expandProvider(WidgetTester tester, String id) async {
+  final header = find.byKey(ValueKey('ai-provider-header-$id'));
+  final rotation = find.descendant(
+    of: header,
+    matching: find.byType(AnimatedRotation),
+  );
+  if (tester.widget<AnimatedRotation>(rotation).turns == 0.5) return;
+  await tester.ensureVisible(header);
+  await tester.pumpAndSettle();
+  await tester.tap(header);
   await tester.pumpAndSettle();
 }
 
@@ -456,10 +529,7 @@ void main() {
       await setCaptureView(tester, kDesktop);
       await tester.pumpWidget(
         captureApp(
-          overrides: [
-            ...await baseOverrides(),
-            aiProviderRepositoryProvider.overrideWithValue(repo),
-          ],
+          overrides: await _settingsOverrides(repo),
           home: const AdminAiSettingsPage(),
         ),
       );
@@ -473,6 +543,7 @@ void main() {
     testWidgets('saving overlay (set default)', (tester) async {
       final repo = _AiRepo(providers: _twoProviders)..holdWrite = Completer();
       await _pumpSettings(tester, repo);
+      await _expandProvider(tester, _localId);
       await tester.tap(
         find.byKey(const ValueKey('ai-provider-default-$_localId')),
       );

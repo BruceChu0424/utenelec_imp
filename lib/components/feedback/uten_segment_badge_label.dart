@@ -125,7 +125,7 @@ class UtenSegmentBadgeLabel extends StatelessWidget {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label),
+          Flexible(child: Text(label)),
           if (hasInProgress) ...[
             const SizedBox(width: UtenSpacing.s4),
             UtenInProgressBadge(count: inProgress, size: badgeSize),
@@ -151,7 +151,7 @@ class UtenSegmentBadgeLabel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        Text(label),
+        Flexible(child: Text(label)),
         if (count != null)
           Padding(
             padding: const EdgeInsetsDirectional.only(start: UtenSpacing.s4),

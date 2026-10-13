@@ -30,6 +30,50 @@ import '../feedback/uten_notification_badge.dart' show UtenBadgeScale;
 import '../feedback/uten_scoped_badges.dart';
 
 class UtenHubCard extends StatelessWidget {
+  static const _iconExtent = 40.0;
+  static const _badgeScale = 1.4;
+
+  /// 给有计数的 Hub 分组预留两枚完整 `99+` 徽章所需的宽度。
+  /// 随当前字体缩放计算，网格可据此减列，避免缩小用户设置的字号。
+  static double minimumBadgeRowWidth(
+    BuildContext context, {
+    bool showLabel = true,
+    bool includeOverdue = false,
+  }) {
+    final scaler = MediaQuery.textScalerOf(context);
+    final textGrow = scaler.scale(10) / 10;
+    final baseStyle = DefaultTextStyle.of(context).style;
+    double textWidth(String text, double fontSize, FontWeight weight) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: baseStyle.copyWith(fontSize: fontSize, fontWeight: weight),
+        ),
+        textScaler: scaler,
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final width = painter.width;
+      painter.dispose();
+      return width;
+    }
+
+    final badgePadding = (showLabel ? 16.0 : 8.0) * _badgeScale * textGrow;
+    final badgeTextWidth = textWidth(
+      '99+',
+      (showLabel ? 11 : 10) * _badgeScale,
+      FontWeight.w800,
+    );
+    final overdueWidth = includeOverdue
+        ? textWidth('逾期 99+', 10, FontWeight.w700) + 10 + UtenSpacing.s4
+        : 0.0;
+    return _iconExtent +
+        UtenSpacing.s16 * 2 +
+        UtenSpacing.s8 +
+        UtenSpacing.s6 +
+        (badgePadding + badgeTextWidth) * 2 +
+        overdueWidth;
+  }
+
   const UtenHubCard({
     super.key,
     required this.icon,
@@ -123,8 +167,8 @@ class UtenHubCard extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: _iconExtent,
+                    height: _iconExtent,
                     decoration: BoxDecoration(
                       color: iconColor.withValues(alpha: 0.1),
                       borderRadius: UtenRadius.mdAll,
@@ -185,7 +229,7 @@ class UtenHubCard extends StatelessWidget {
   Widget _badges(ThemeData theme) {
     if (!enabled) return _DisabledChip(theme: theme);
     return UtenBadgeScale(
-      scale: 1.4,
+      scale: _badgeScale,
       child: badgeScope != null
           ? UtenScopedBadges(
               scope: badgeScope!,

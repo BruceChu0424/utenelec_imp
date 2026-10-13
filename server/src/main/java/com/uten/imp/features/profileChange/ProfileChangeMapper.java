@@ -40,6 +40,10 @@ public class ProfileChangeMapper {
 
     /** 同批次多字段整体状态：applied / approved / rejected / pending / cancelled。 */
     public String aggregateStatus(List<ProfileChangeRequest> rs) {
+        // Legacy batches can contain terminal fields and unreviewed fields.
+        // Remaining work must remain actionable; preserve terminal priority
+        // once the last pending field has been decided.
+        if (rs.stream().anyMatch(r -> "pending".equals(r.getStatus()))) return "pending";
         boolean anyApplied = rs.stream().anyMatch(r -> "applied".equals(r.getStatus()));
         if (anyApplied) return "applied";
         boolean anyApproved = rs.stream().anyMatch(r -> "approved".equals(r.getStatus()));

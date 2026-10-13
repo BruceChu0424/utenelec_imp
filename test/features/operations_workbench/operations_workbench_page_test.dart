@@ -470,12 +470,12 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
-
-    // 默认未选阶段 → 无任务卡。点「申请待分解」段触发的加载同样被网关挂起，
-    // 手动放行后内容才出现（刷新语义与新范式下的首次列表加载一致）。
-    await _selectSegment(tester, '申请待分解');
+    // The overview badge selects the actionable stage automatically. Its
+    // accepted overview rows must remain hidden while the stage GET is held.
     await tester.pump();
+    await tester.pump();
+    expect(gateway._pending, isNotNull);
+    expect(find.byType(Checkbox), findsNothing);
     gateway.completeRefresh();
     await tester.pumpAndSettle();
 

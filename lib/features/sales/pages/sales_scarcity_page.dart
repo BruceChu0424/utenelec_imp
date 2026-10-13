@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -104,54 +105,58 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
     }
     final qtyCtrl = TextEditingController(text: reserved.toStringAsFixed(2));
     final reasonCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('让单 · 释放现货预留'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${r.clientName ?? '—'} · ${r.orderNo ?? '—'}',
-              style: Theme.of(ctx).textTheme.labelMedium,
+    final input =
+        await UtenDialog.showAndWaitForExit<({String qtyText, String reason})>(
+          context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('让单 · 释放现货预留'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${r.clientName ?? '—'} · ${r.orderNo ?? '—'}',
+                  style: Theme.of(ctx).textTheme.labelMedium,
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                TextField(
+                  controller: qtyCtrl,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '让单数量(要大于 0，不超过 $reserved)',
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                TextField(
+                  controller: reasonCtrl,
+                  decoration: const InputDecoration(hintText: '让单原因(必填)'),
+                ),
+              ],
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            TextField(
-              controller: qtyCtrl,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
               ),
-              decoration: InputDecoration(
-                hintText: '让单数量(要大于 0，不超过 $reserved)',
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, (
+                  qtyText: qtyCtrl.text.trim(),
+                  reason: reasonCtrl.text.trim(),
+                )),
+                child: const Text('确认让单'),
               ),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
-            TextField(
-              controller: reasonCtrl,
-              decoration: const InputDecoration(hintText: '让单原因(必填)'),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认让单'),
-          ),
-        ],
-      ),
-    );
-    final qty = double.tryParse(qtyCtrl.text.trim());
-    final reason = reasonCtrl.text.trim();
+        );
+    final qty = double.tryParse(input?.qtyText ?? '');
+    final reason = input?.reason ?? '';
     qtyCtrl.dispose();
     reasonCtrl.dispose();
     if (!mounted) return;
-    if (ok != true) return;
+    if (input == null) return;
     if (qty == null || qty <= 0 || qty > reserved) {
       context.appWarning('让单数量要大于 0，且不能超过 $reserved');
       return;

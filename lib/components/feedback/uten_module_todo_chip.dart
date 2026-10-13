@@ -34,6 +34,8 @@ class UtenModuleTodoChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
       child: Center(
+        widthFactor: 1,
+        heightFactor: 1,
         child: Tooltip(
           message: tooltip ?? '本模块待办合计 $count 项（各任务卡待办数之和）',
           child: Semantics(

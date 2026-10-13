@@ -46,11 +46,9 @@ public class ProfileChangeQueryService {
     public ProfileChangeDto.Page<ProfileChangeDto.MyListItem> myList(int page, int size, String status) {
         UUID employeeId = requireEmployeeId();
         Pageable pageable = Pageables.of(page, size);
-        Page<ProfileChangeRequest> p = (status == null || status.isBlank())
-                ? repo.findBySubmittedByOrderBySubmittedAtDesc(employeeId, pageable)
-                : repo.findBySubmittedByAndStatusOrderBySubmittedAtDesc(employeeId, status, pageable);
+        Page<UUID> p = repo.findBatchIds(normalizeStatus(status), employeeId, null, null, pageable);
         List<ProfileChangeDto.MyListItem> items = new ArrayList<>();
-        for (var e : foldByBatch(p.getContent()).entrySet()) {
+        for (var e : pageBatches(p, employeeId).entrySet()) {
             List<ProfileChangeRequest> rs = e.getValue();
             ProfileChangeRequest first = rs.get(0);
             String s = mapper.aggregateStatus(rs);
@@ -105,18 +103,10 @@ public class ProfileChangeQueryService {
         access.requireHr();
         Pageable pageable = Pageables.of(page, size);
         // 默认待审队列；指定状态筛选（applied/rejected/cancelled）——之前误用 findAll 导致筛选失效
-        String effectiveStatus = (status == null || status.isBlank()) ? "pending" : status;
-        Page<ProfileChangeRequest> p;
-        if (employeeId != null) {
-            p = (status == null || status.isBlank())
-                    ? repo.findByEmployeeIdOrderBySubmittedAtDesc(employeeId, pageable)
-                    : repo.findByEmployeeIdAndStatusOrderBySubmittedAtDesc(employeeId, status, pageable);
-        } else if (departmentId != null) {
-            p = repo.findByStatusAndDepartmentOrderBySubmittedAtDesc(effectiveStatus, departmentId, pageable);
-        } else {
-            p = repo.findByStatusOrderBySubmittedAtDesc(effectiveStatus, pageable);
-        }
-        Map<UUID, List<ProfileChangeRequest>> byBatch = foldByBatch(p.getContent());
+        String effectiveStatus = normalizeStatus(status);
+        if (effectiveStatus == null && employeeId == null) effectiveStatus = "pending";
+        Page<UUID> p = repo.findBatchIds(effectiveStatus, null, employeeId, departmentId, pageable);
+        Map<UUID, List<ProfileChangeRequest>> byBatch = pageBatches(p, null);
         // 员工姓名/部门批量回填（避免逐批 findById 的 N+1）
         Map<UUID, Employee> emps = mapper.employeesById(
                 byBatch.values().stream().map(rs -> rs.get(0).getEmployeeId()).toList());
@@ -174,5 +164,20 @@ public class ProfileChangeQueryService {
             byBatch.computeIfAbsent(r.getBatchId(), k -> new ArrayList<>()).add(r);
         }
         return byBatch;
+    }
+
+    private Map<UUID, List<ProfileChangeRequest>> pageBatches(Page<UUID> page, UUID submittedBy) {
+        if (page.isEmpty()) return Map.of();
+        Map<UUID, List<ProfileChangeRequest>> rows = foldByBatch(repo.findBatchRows(page.getContent(), submittedBy));
+        Map<UUID, List<ProfileChangeRequest>> ordered = new LinkedHashMap<>();
+        for (UUID batchId : page.getContent()) {
+            List<ProfileChangeRequest> batch = rows.get(batchId);
+            if (batch != null && !batch.isEmpty()) ordered.put(batchId, batch);
+        }
+        return ordered;
+    }
+
+    private String normalizeStatus(String status) {
+        return status == null || status.isBlank() ? null : status;
     }
 }

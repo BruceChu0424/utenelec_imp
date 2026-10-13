@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -58,9 +59,9 @@ class ProfileChangeQueryServiceTest {
         UUID batchId = UUID.randomUUID();
         ProfileChangeRequest first = request(employeeId, batchId, "phone");
         ProfileChangeRequest second = request(employeeId, batchId, "email");
-        Page<ProfileChangeRequest> page = new PageImpl<>(List.of(first, second));
-        when(repo.findByStatusAndDepartmentOrderBySubmittedAtDesc(
-                eq("pending"), eq(departmentId), any(Pageable.class))).thenReturn(page);
+        Page<UUID> page = new PageImpl<>(List.of(batchId));
+        when(repo.findBatchIds(eq("pending"), isNull(), isNull(), eq(departmentId), any(Pageable.class))).thenReturn(page);
+        when(repo.findBatchRows(List.of(batchId), null)).thenReturn(List.of(first, second));
 
         Department department = mock(Department.class);
         when(department.getName()).thenReturn("研发部");
@@ -79,37 +80,33 @@ class ProfileChangeQueryServiceTest {
         assertEquals(batchId, item.batchId());
         assertEquals("研发部", item.departmentName());
         assertEquals(List.of("phone", "email"), item.fieldCodes());
-        verify(repo, never()).findByStatusOrderBySubmittedAtDesc(anyString(), any(Pageable.class));
+        assertEquals(1, result.totalElements(), "总数与表格一样按批次数，不按字段数");
         verify(access).requireHr();
     }
 
     @Test
     void hrListWithDepartmentAndStatusPassesStatusThrough() {
         UUID departmentId = UUID.randomUUID();
-        when(repo.findByStatusAndDepartmentOrderBySubmittedAtDesc(
-                anyString(), any(UUID.class), any(Pageable.class)))
+        when(repo.findBatchIds(anyString(), isNull(), isNull(), any(UUID.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
         when(mapper.employeesById(any())).thenReturn(Map.of());
 
         service.hrList(2, 20, "applied", null, departmentId);
 
         ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
-        verify(repo).findByStatusAndDepartmentOrderBySubmittedAtDesc(
-                eq("applied"), eq(departmentId), pageable.capture());
+        verify(repo).findBatchIds(eq("applied"), isNull(), isNull(), eq(departmentId), pageable.capture());
         assertEquals(1, pageable.getValue().getPageNumber(), "对外页码从 1 起");
     }
 
     @Test
     void hrListWithoutDepartmentKeepsStatusQuery() {
-        when(repo.findByStatusOrderBySubmittedAtDesc(eq("pending"), any(Pageable.class)))
+        when(repo.findBatchIds(eq("pending"), isNull(), isNull(), isNull(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
         when(mapper.employeesById(any())).thenReturn(Map.of());
 
         service.hrList(1, 20, null, null, null);
 
-        verify(repo).findByStatusOrderBySubmittedAtDesc(eq("pending"), any(Pageable.class));
-        verify(repo, never()).findByStatusAndDepartmentOrderBySubmittedAtDesc(
-                anyString(), any(UUID.class), any(Pageable.class));
+        verify(repo).findBatchIds(eq("pending"), isNull(), isNull(), isNull(), any(Pageable.class));
     }
 
     @Test

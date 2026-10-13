@@ -33,9 +33,12 @@
 // 委外任务 / 订货单定位；?segment=pending(&keyword=申请号) 直落「待处理」并按
 // 申请号搜索(可下单通知)。
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../widgets/subcontract_draft_task_category.dart';
 
@@ -140,10 +143,14 @@ class SubcontractDecompositionPage extends ConsumerStatefulWidget {
 class _SubcontractDecompositionPageState
     extends ConsumerState<SubcontractDecompositionPage> {
   OperationsWorkbenchData? _data;
+  Map<String, Object?>? _acceptedQuery;
+  Map<String, int>? _categoryCounts;
+  Map<String, Object?>? _acceptedCategoryScope;
   String? _error;
   bool _loading = true;
   int _page = 1;
   int _requestId = 0;
+  int _readerGeneration = 0;
   String _keyword = '';
   String? _sortColumn;
   bool _sortAscending = true;
@@ -366,6 +373,26 @@ class _SubcontractDecompositionPageState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) _readerChanged();
+    });
+    ref.listenManual(currentPermissionsProvider, (previous, next) {
+      if (!setEquals(previous, next)) _readerChanged();
+    });
+    ref.listenManual(sessionSnapshotProvider, (previous, next) {
+      if (previous?.valueOrNull != null &&
+          (next.isLoading ||
+              next.hasError ||
+              previous?.valueOrNull?.generation !=
+                  next.valueOrNull?.generation)) {
+        _readerChanged();
+      }
+    });
+    if (widget.repository == null) {
+      ref.listenManual(operationsWorkbenchRepositoryProvider, (previous, next) {
+        if (!identical(previous, next)) _readerChanged();
+      });
+    }
     final deepLinked = _applyRoute(
       widget.initialSegment,
       widget.initialOrderItemId,
@@ -381,9 +408,60 @@ class _SubcontractDecompositionPageState
     });
   }
 
+  void _resetReadState() {
+    _readerGeneration++;
+    _requestId++;
+    _drawRequestId++;
+    _drawCountRequestId++;
+    _data = null;
+    _acceptedQuery = null;
+    _categoryCounts = null;
+    _acceptedCategoryScope = null;
+    _drawData = null;
+    _error = null;
+    _drawError = null;
+    _loading = false;
+    _drawLoading = false;
+    _drawCount = null;
+    _submittedCount = null;
+    _drawVisible = true;
+    _page = 1;
+    _keyword = '';
+    _exception = null;
+    _columnFilters.clear();
+    _sortColumn = null;
+    _sortAscending = true;
+    _selectedIds.clear();
+    _selectedDrawIds.clear();
+    _drawOrderId = null;
+    _drawOrderItemId = null;
+    _drawOrderLabel = null;
+    _historyTime = const UtenHistoryTimeValue.all();
+  }
+
+  void _readerChanged() {
+    if (!mounted) return;
+    setState(_resetReadState);
+    final generation = _readerGeneration;
+    Future<void>.microtask(() {
+      if (mounted &&
+          generation == _readerGeneration &&
+          ref.read(authenticatedScopeProvider) != null) {
+        _refreshAll();
+      }
+    });
+  }
+
   @override
   void didUpdateWidget(covariant SubcontractDecompositionPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final readerChanged =
+        oldWidget.repository != widget.repository ||
+        oldWidget.drawRepository != widget.drawRepository;
+    if (readerChanged) {
+      _resetReadState();
+      Future<void>.microtask(_refreshAll);
+    }
     if (oldWidget.initialSegment == widget.initialSegment &&
         oldWidget.initialOrderItemId == widget.initialOrderItemId &&
         oldWidget.initialOrderId == widget.initialOrderId &&
@@ -434,15 +512,39 @@ class _SubcontractDecompositionPageState
     return true;
   }
 
+  Map<String, Object?> get _queryIdentity => {
+    'segment': _seg,
+    'historyTime': _historyTime,
+    'keyword': _keyword,
+    'exception': _exception,
+    'sort': _sortColumn,
+    'ascending': _sortAscending,
+    for (final entry in _columnFilters.entries)
+      'column.${entry.key}': entry.value,
+  };
+  Map<String, Object?> get _categoryScope => {
+    'keyword': _keyword,
+    'exception': _exception,
+  };
+
   Future<void> _load({int? page, int size = 50}) async {
     if (!mounted) return;
-    if (_seg?.code == _draftStage) return;
     final requestId = ++_requestId;
+    final query = _queryIdentity;
+    final categoryScope = _categoryScope;
     final seg = _seg;
-    final listing = _shouldLoad;
+    final draft = seg?.code == _draftStage;
+    final listing = _shouldLoad && !draft;
     final range = seg?.history == true ? _historyTime.range : null;
     setState(() {
-      _loading = true;
+      if (!mapEquals(_acceptedQuery, query)) {
+        _data = null;
+        _selectedIds.clear();
+      }
+      if (!mapEquals(_acceptedCategoryScope, categoryScope)) {
+        _categoryCounts = null;
+      }
+      _loading = !draft;
       _error = null;
     });
     try {
@@ -460,20 +562,38 @@ class _SubcontractDecompositionPageState
         order: _sortAscending ? 'asc' : 'desc',
         columnFilters: _columnFilters,
       );
-      if (!mounted || requestId != _requestId) return;
+      if (!mounted ||
+          requestId != _requestId ||
+          !mapEquals(query, _queryIdentity)) {
+        return;
+      }
       final visibleIds = next.items
           .where(_canOrderTask)
           .map((item) => item.id)
           .toSet();
       setState(() {
-        _data = next;
-        _page = next.page;
-        _selectedIds.removeWhere((id) => !visibleIds.contains(id));
+        _categoryCounts = Map.unmodifiable(next.summary.statusCounts);
+        _acceptedCategoryScope = categoryScope;
+        if (!draft) {
+          _data = next;
+          _acceptedQuery = query;
+          _page = next.page;
+          _selectedIds.removeWhere((id) => !visibleIds.contains(id));
+        }
         _loading = false;
       });
     } catch (error) {
-      if (!mounted || requestId != _requestId) return;
+      if (!mounted ||
+          requestId != _requestId ||
+          !mapEquals(query, _queryIdentity)) {
+        return;
+      }
       setState(() {
+        if (error is ApiException &&
+            (error.httpStatus == 401 || error.httpStatus == 403)) {
+          _categoryCounts = null;
+          _acceptedCategoryScope = null;
+        }
         _loading = false;
         _error = error is ApiException ? error.message : '委外任务加载失败，请稍后重试';
       });
@@ -987,9 +1107,7 @@ class _SubcontractDecompositionPageState
     if (_seg?.code == _draftStage) {
       return SubcontractDraftTaskCategory(
         search: _keyword,
-        externalHeader: _buildStageToolbar(
-          _data?.summary.statusCounts ?? const {},
-        ),
+        externalHeader: _buildStageToolbar(_categoryCounts ?? const {}),
       );
     }
     if (_data == null && _loading) {
@@ -1022,7 +1140,7 @@ class _SubcontractDecompositionPageState
     // 大小屏同一张表（2026-10-09 用户口径：窄屏横向滚动，窄屏卡片列表退役，
     // 不再单独维护两套渲染）。
     final seg = _seg;
-    final statusCounts = data.summary.statusCounts;
+    final statusCounts = _categoryCounts ?? const <String, int>{};
     final exceptionCounts = data.summary.exceptionCounts;
     final exceptionOptions = [
       ...data.exceptionOptions,
@@ -1118,7 +1236,7 @@ class _SubcontractDecompositionPageState
   Widget _withInitialStages(Widget body) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
+      _buildStageToolbar(_categoryCounts ?? const {}),
       Expanded(child: body),
     ],
   );
@@ -1327,7 +1445,13 @@ class _SubcontractDecompositionPageState
       emptyMessage: _seg?.history == true ? '该时间段内暂无委外任务' : '当前筛选下没有委外任务',
       currentPage: data.page,
       totalPages: data.totalPages,
-      paginationScope: (_keyword, _seg, _exception, _historyTime),
+      paginationScope: (
+        _readerGeneration,
+        _keyword,
+        _seg,
+        _exception,
+        _historyTime,
+      ),
       onPageChange: (page) {
         setState(() => _page = page);
         _load(page: page);
@@ -1657,7 +1781,7 @@ class _SubcontractDecompositionPageState
           : '暂无待处理的委外任务；计划下达的申请与财务批准后的领料任务会出现在这里',
       currentPage: data.page,
       totalPages: data.totalPages,
-      paginationScope: (_keyword, _seg, _exception),
+      paginationScope: (_readerGeneration, _keyword, _seg, _exception),
       onPageChange: (page) {
         setState(() => _page = page);
         _load(page: page);

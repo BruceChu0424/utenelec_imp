@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/feedback/uten_count_suffix.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
+import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 
@@ -126,5 +127,53 @@ void main() {
     // 不是上下居中导致的「数字往上飘」。
     expect(count.bottom, closeTo(label.bottom, 2.0));
     expect(count.left, greaterThan(label.right));
+  });
+
+  testWidgets('compact menu keeps both counts visible with large text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(375, 812));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      _wrap(
+        UtenFilterToolbar<String>(
+          autoSelectBadge: false,
+          segments: const [
+            UtenFilterSegment(
+              value: 'review',
+              label: '等待财务审核与供应商处理',
+              count: 120,
+              countForm: UtenSegmentCountForm.actionable,
+              inProgressCount: 140,
+            ),
+            UtenFilterSegment(value: 'history', label: '历史记录', count: 0),
+          ],
+          selected: const {},
+          onSelectionChanged: (_) {},
+        ),
+        textScale: 2,
+      ),
+    );
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    final popup = find.byType(PopupMenuItem<String>).first;
+    final red = find.descendant(
+      of: popup,
+      matching: find.byType(UtenNotificationBadge),
+    );
+    final yellow = find.descendant(
+      of: popup,
+      matching: find.byType(UtenInProgressBadge),
+    );
+    expect(red, findsOneWidget);
+    expect(yellow, findsOneWidget);
+    expect(tester.getRect(yellow).right, lessThan(tester.getRect(red).left));
+    expect(
+      tester.getRect(red).right,
+      lessThanOrEqualTo(tester.getRect(popup).right),
+    );
+    expect(find.text('(0)'), findsOneWidget);
   });
 }

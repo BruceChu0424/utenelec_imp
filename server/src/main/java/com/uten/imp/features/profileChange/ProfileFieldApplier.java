@@ -184,7 +184,23 @@ public class ProfileFieldApplier {
     }
 
     private String safeEncrypt(String plain) {
-        if (plain == null || plain.isBlank()) return null;
-        return tx.encrypt(plain);
+        String value = encryptedPlainValue(plain);
+        return value == null ? null : tx.encrypt(value);
+    }
+
+    /** Match the actual writer's null/blank semantics without trimming content. */
+    static String directWriteValue(String fieldCode, String value) {
+        return switch (fieldCode) {
+            case ProfileFieldPolicy.Field.POLITICAL_STATUS,
+                 ProfileFieldPolicy.Field.MARITAL_STATUS,
+                 ProfileFieldPolicy.Field.RESIDENCE_ADDRESS,
+                 ProfileFieldPolicy.Field.OFFICE_PHONE,
+                 ProfileFieldPolicy.Field.EMAIL -> encryptedPlainValue(value);
+            default -> value;
+        };
+    }
+
+    private static String encryptedPlainValue(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

@@ -85,6 +85,8 @@ class PurchaseRepository {
       if (filter.supplierId != null) 'supplierId': filter.supplierId,
       if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
       if (filter.status != null) 'status': filter.status,
+      if (filter.financeApproval != null)
+        'financeApproval': filter.financeApproval,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
     };

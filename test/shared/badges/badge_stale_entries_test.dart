@@ -41,6 +41,34 @@ BadgeSummary _next(BadgeSummary previous, Map<String, dynamic> json) =>
     BadgeSummary.fromJson(json).keepStaleFrom(previous);
 
 void main() {
+  test('旧领料兼容入口降级保留旧数，但不重复加回模块与导航', () {
+    BadgeSummary snapshot({required bool failed, required int outbound}) =>
+        BadgeSummary.fromJson({
+          'entries': {
+            'warehouseOutboundCenter': {'todo': outbound, 'inProgress': 0},
+            'warehouseDrawCenter': {'todo': failed ? 0 : 4, 'inProgress': 0},
+          },
+          'modules': {
+            'warehouse': {'todo': outbound, 'inProgress': 0},
+          },
+          'total': {'todo': outbound, 'inProgress': 0},
+          'facts': {if (!failed) 'productionDraw.count': 4},
+          'staleEntries': [if (failed) 'warehouseDrawCenter'],
+          'staleSources': [if (failed) 'productionDraw'],
+        });
+    var previous = snapshot(failed: false, outbound: 7);
+    for (final outbound in [3, 8, 0]) {
+      previous = snapshot(
+        failed: true,
+        outbound: outbound,
+      ).keepStaleFrom(previous);
+      expect(previous.entryTodo(BadgeEntry.warehouseDrawCenter), 4);
+      expect(previous.fact('productionDraw.count'), 4);
+      expect(previous.moduleTodo(BadgeModule.warehouse), outbound);
+      expect(previous.total.todo, outbound);
+    }
+  });
+
   test('服务器状态来源一直出错: 导航总数仍跟着健康入口变化', () {
     Map<String, dynamic> json(int rd) => {
       'entries': {

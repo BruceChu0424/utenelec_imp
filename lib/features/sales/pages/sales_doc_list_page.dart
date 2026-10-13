@@ -138,6 +138,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   var _list = PagedListController<SalesDocListItem>();
   final _tableRows = MasterDataTableRowsController<SalesDocListItem>();
   int _reloadGeneration = 0;
+  int _statsGeneration = 0;
 
   /// 大类分段（仅订货单）：pending/production/shippable/monthDone/draft/history；
   /// null = 未选择引导态（不发请求）。
@@ -290,6 +291,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   void didUpdateWidget(covariant SalesDocListPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.docType == widget.docType) return;
+    _statsGeneration++;
     clearDraftSelection();
     _list.dispose();
     _list = PagedListController<SalesDocListItem>();
@@ -315,6 +317,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
 
   @override
   void dispose() {
+    _statsGeneration++;
     _list.dispose();
     super.dispose();
   }
@@ -392,11 +395,19 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
 
   /// 大类段徽章计数（后端 stats 全量口径；失败保持旧值不显示变化）。
   Future<void> _loadStats() async {
+    final generation = ++_statsGeneration;
+    final docType = widget.docType;
+    final scope = ref.read(authenticatedScopeProvider);
     try {
       final stats = await ref
           .read(salesRepositoryProvider(widget.docType))
           .stats();
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _statsGeneration ||
+          widget.docType != docType ||
+          ref.read(authenticatedScopeProvider) != scope) {
+        return;
+      }
       setState(() => _stats = stats);
     } catch (_) {
       // 统计失败静默：徽章不显示，不影响列表。

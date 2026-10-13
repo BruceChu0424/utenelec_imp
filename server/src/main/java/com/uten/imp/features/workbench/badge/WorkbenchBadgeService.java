@@ -83,6 +83,9 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
         this.sources = List.copyOf(all);
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setReadOnly(true);
+        // All source counts must describe the same committed business state,
+        // even if another staff member finishes a task between source queries.
+        template.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
         template.setName("workbench-badges");
         this.readOnlyTransaction = template;
         this.warehouseScopes = warehouseScopes;

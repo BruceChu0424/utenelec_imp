@@ -247,6 +247,7 @@ class WorkbenchBadgeSummaryPostgresTest {
     @Autowired JdbcTemplate db;
     @Autowired NoticeService notices;
     @Autowired WorkbenchBadgeReadPort badgePort;
+    @Autowired BrokenSourceConfiguration snapshotSource;
 
     /**
      * 服务器状态告警调度(@Profile("!cloud"), fixedDelay 5 分钟)会在测试中途给 seed 超管发
@@ -305,6 +306,23 @@ class WorkbenchBadgeSummaryPostgresTest {
                     .as("入口 %s 黄数", formula.getKey()).isEqualTo(sum(formula.getValue().get(1), facts));
         }
         assertRollups(summary);
+    }
+
+    @Test
+    void oneSummaryUsesOneSnapshotAcrossAnIndependentCommittedWrite() throws Exception {
+        var world = fixture.seedWorld("BADGESNAPSHOT" + tag());
+        UUID user = fixture.createUserWithPerms(world, "snapshot-" + tag(), "rd_task:view");
+        snapshotSource.snapshotUser = user;
+        try {
+            JsonNode summary = getJson("/api/workbench/badges", auth(world.superAdminUserId()));
+            assertThat(summary.path("facts").path("aaSnapshotBefore.count").asLong()).isZero();
+            assertThat(summary.path("facts").path("zzSnapshotAfter.count").asLong()).isZero();
+            assertThat(db.queryForObject("SELECT failed_attempts FROM users WHERE id=?", Long.class, user))
+                    .as("另一事务确实已经提交，而汇总所有来源仍读同一快照").isEqualTo(1L);
+            assertRollups(summary);
+        } finally {
+            snapshotSource.snapshotUser = null;
+        }
     }
 
     @Test
@@ -609,6 +627,36 @@ class WorkbenchBadgeSummaryPostgresTest {
     @TestConfiguration(proxyBeanMethods = false)
     static class BrokenSourceConfiguration {
         static final String KEY = "aaBrokenForTest";
+        volatile UUID snapshotUser;
+
+        @Bean
+        WorkbenchBadgeSources snapshotWorkbenchBadgeSource(JdbcTemplate jdbc) {
+            return () -> List.of(
+                    new WorkbenchBadgeSources.Source("aaSnapshotBefore", () -> {
+                        UUID user = snapshotUser;
+                        if (user == null) return Map.of();
+                        long before = jdbc.queryForObject(
+                                "SELECT failed_attempts FROM users WHERE id=?", Long.class, user);
+                        // A separate committed transaction models another staff
+                        // member completing work while the summary is being read.
+                        try (var connection = jdbc.getDataSource().getConnection();
+                             var update = connection.prepareStatement(
+                                     "UPDATE users SET failed_attempts=failed_attempts+1 WHERE id=?")) {
+                            connection.setAutoCommit(true);
+                            update.setObject(1, user);
+                            update.executeUpdate();
+                        } catch (java.sql.SQLException error) {
+                            throw new IllegalStateException(error);
+                        }
+                        return Map.of("count", before);
+                    }),
+                    new WorkbenchBadgeSources.Source("zzSnapshotAfter", () -> {
+                        UUID user = snapshotUser;
+                        if (user == null) return Map.of();
+                        return Map.of("count", jdbc.queryForObject(
+                                "SELECT failed_attempts FROM users WHERE id=?", Long.class, user));
+                    }));
+        }
 
         @Bean
         WorkbenchBadgeSources brokenWorkbenchBadgeSource(JdbcTemplate jdbc) {

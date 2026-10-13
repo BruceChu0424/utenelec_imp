@@ -2,6 +2,9 @@ package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.application.port.InventoryValuationPort;
+import com.uten.imp.features.stock.InventoryKey;
+import com.uten.imp.features.stock.InventoryMutationLock;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.valuation.InventoryValueWorkService;
 import com.uten.imp.features.subcontract.order.SubcontractOrderService;
@@ -24,7 +27,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -59,6 +64,8 @@ class SubcontractLossValueEndToEndTest {
     @Autowired ProcurementIqcStockInService stockIns;
     @Autowired InventoryValueWorkService worker;
     @Autowired GlPostingService gl;
+    @Autowired InventoryValuationPort values;
+    @Autowired InventoryMutationLock inventoryLocks;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
     private FullChainEndToEndTest fixture;
     /** 本测试世界用到的全部货品: drain 只等自己的价值任务, 不被共享库里其他世界的合法残留拖死。 */
@@ -155,6 +162,56 @@ class SubcontractLossValueEndToEndTest {
         var valued=claims.detail(zeroCase);money(new BigDecimal(valued.summary().lossBookValueLocal()),"0");assertEquals("VALUED",valued.lines().getFirst().valuationStatus());
     }
 
+    @Test void unrelatedPendingCostDoesNotHideKnownFreeLossOrInventAnUnknownCost(){
+        var free=ready("loss-free-unrelated-pending","3","0");
+        UUID freeCase=lossCase(loss(free,"1","0"));
+        var unknown=ready("loss-unknown-unrelated-pending","3",null);
+        UUID unknownCase=lossCase(loss(unknown,"1","0"));
+        fixture.loginAs(free.world().superAdminUserId());
+        UUID document=unrelatedStockReceipt(free.world());
+        var source=db.queryForMap("SELECT result_node_id,source_doc_id,source_item_id FROM stock_value_events WHERE source_doc_id=? AND operation='RECEIVE'",document);
+        // The real correction is visible to this reader but uncommitted, so a
+        // background worker cannot race the pending-state assertion.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            inventoryLocks.lock(new InventoryKey(free.world().goodsD(),null));
+            UUID adjustment=queueCostCorrection(free.world(),source,BigDecimal.ONE);
+            assertEquals("PENDING",db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,adjustment));
+            var known=claims.detail(freeCase);
+            money(new BigDecimal(known.summary().lossBookValueLocal()),"0");
+            money(new BigDecimal(known.lines().getFirst().lossBookValueLocal()),"0");
+            assertEquals("VALUED",known.lines().getFirst().valuationStatus(),"an unrelated goods cost correction cannot make an exact free source missing");
+            var missing=claims.detail(unknownCase);
+            assertNull(missing.summary().lossBookValueLocal());
+            assertNull(missing.lines().getFirst().lossBookValueLocal());
+            assertEquals("MISSING_COST",missing.lines().getFirst().valuationStatus());
+            status.setRollbackOnly();
+        });
+    }
+
+    @Test void pendingCorrectionInTheLossSourceClosureCannotPublishTheOldKnownValueAsFinal(){
+        var related=ready("loss-own-source-pending","3","6");
+        UUID lossCase=lossCase(loss(related,"1","0"));
+        var source=db.queryForMap("""
+                SELECT event.result_node_id,event.source_doc_id,event.source_item_id
+                FROM stock_value_events event JOIN stock_value_nodes node ON node.id=event.result_node_id
+                JOIN stock_value_pools pool ON pool.id=node.pool_id
+                WHERE event.operation='RECEIVE' AND pool.goods_id=? AND node.kind='SOURCE'
+                """,related.material());
+        var before=claims.detail(lossCase);
+        money(new BigDecimal(before.lines().getFirst().lossBookValueLocal()),"2");
+        assertEquals("VALUED",before.lines().getFirst().valuationStatus());
+        new TransactionTemplate(transactionManager).executeWithoutResult(status->{
+            inventoryLocks.lock(new InventoryKey(related.material(),null));
+            UUID adjustment=queueCostCorrection(related.world(),source,new BigDecimal("3"));
+            assertEquals("PENDING",db.queryForObject("SELECT status FROM stock_value_jobs WHERE event_id=?",String.class,adjustment));
+            assertEquals("MISSING_COST",claims.detail(lossCase).lines().getFirst().valuationStatus(),"a cached amount is not final while its real ancestor correction is unpropagated");
+            status.setRollbackOnly();
+        });
+        var after=claims.detail(lossCase);
+        money(new BigDecimal(after.lines().getFirst().lossBookValueLocal()),"2");
+        assertEquals("VALUED",after.lines().getFirst().valuationStatus());
+    }
+
     @Test void reversingClassifiedNormalLossRestoresTheSameSourceAfterPartialProduction(){
         var c=ready("normal-loss-reverse","5","5");UUID loss=loss(c,"2","2");receive(c,"3");drain();
         fixture.loginAs(c.world().superAdminUserId());wastes.reverse(loss);drain();money(stock(c),"153");
@@ -243,6 +300,23 @@ class SubcontractLossValueEndToEndTest {
         if(amount!=null){line.setAmountOriginal(new BigDecimal(amount));line.setAmountLocal(new BigDecimal(amount));
             line.setPrice(new BigDecimal(amount).divide(new BigDecimal(quantity),10,java.math.RoundingMode.HALF_UP));}
         command.setItems(List.of(line));stockDocs.approve(stockDocs.create(command).getId());
+    }
+    private UUID lossCase(UUID waste){return db.queryForObject("SELECT id FROM subcontract_loss_cases WHERE waste_id=?",UUID.class,waste);}
+    private UUID unrelatedStockReceipt(FullChainEndToEndTest.World w){
+        var command=new com.uten.imp.features.stock.dto.StockDocSaveRequest();
+        command.setDocType("OTHER_IN");command.setBillDate(BusinessTime.today());command.setWarehouseId(w.warehouseId());
+        var line=new com.uten.imp.features.stock.dto.StockDocItemLine();
+        line.setGoodsId(w.goodsD());line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.TEN);line.setPrice(BigDecimal.TEN);
+        command.setItems(List.of(line));UUID document=stockDocs.create(command).getId();stockDocs.approve(document);return document;
+    }
+    private UUID queueCostCorrection(FullChainEndToEndTest.World w,Map<String,Object> source,BigDecimal delta){
+        beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
+        UUID event=UUID.randomUUID();
+        var context=new InventoryValuationPort.EventContext(event,"TEST_SUBCONTRACT_LOSS_COST",(UUID)source.get("source_doc_id"),
+                (UUID)source.get("source_item_id"),1,w.superAdminUserId(),w.employeeId(),event.toString(),OffsetDateTime.now());
+        var correction=values.adjustSource(new InventoryValuationPort.SourceAdjustment(context,(UUID)source.get("result_node_id"),delta,true));
+        assertTrue(correction.pendingTasks()>0,"the regression must create real durable propagation work");
+        return correction.eventId();
     }
     private UUID loss(CaseFixture c,String quantity,String normal){
         fixture.loginAs(c.world().superAdminUserId());var command=new com.uten.imp.features.subcontract.waste.dto.WasteSaveRequest();

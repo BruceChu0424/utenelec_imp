@@ -52,6 +52,7 @@ class SubcontractHubPage extends ConsumerWidget {
     // ADR-108)；本页全部卡片角标都在这一份汇总里。
     ref.onPageResume(RouteName.subcontract, () => refreshBadges(ref));
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final l10n = AppLocalizations.of(context);
     // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /subcontract 入口守卫同源，ADR-109)。
     final perms = ref.watch(currentPermissionsProvider);
@@ -167,10 +168,15 @@ class SubcontractHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: const [
+        actions: [
           // 模块合计包含任务中心、供应商退货和四类草稿，由服务端汇总。
-          UtenModuleBadges(module: BadgeModule.subcontract),
+          if (!compact) const UtenModuleBadges(module: BadgeModule.subcontract),
         ],
+        bottom: UtenModuleBadges.compactAppBarBottom(
+          context,
+          ref,
+          BadgeModule.subcontract,
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -234,6 +240,12 @@ class SubcontractHubPage extends ConsumerWidget {
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
+            minItemWidth:
+                entries.any(
+                  (entry) => entry.badgeScope != null || entry.badge != null,
+                )
+                ? UtenHubCard.minimumBadgeRowWidth(context)
+                : null,
             itemBuilder: (context, i, _) => _EntryTile(entry: entries[i]),
           ),
         ],

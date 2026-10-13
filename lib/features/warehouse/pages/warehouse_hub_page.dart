@@ -56,6 +56,7 @@ class WarehouseHubPage extends ConsumerWidget {
       () => invalidateWarehouseTaskCounts(ref),
     );
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final l10n = AppLocalizations.of(context);
     // 卡片显隐 = hub 目录登记的落点 + 路由守卫(与 /warehouse 入口守卫同源)。
     final perms = ref.watch(currentPermissionsProvider);
@@ -161,10 +162,15 @@ class WarehouseHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: const [
+        actions: [
           // 与任务中心卡同取服务端仓库容器累计；公共组件统一黄左红右、零隐藏。
-          UtenModuleBadges(module: BadgeModule.warehouse),
+          if (!compact) const UtenModuleBadges(module: BadgeModule.warehouse),
         ],
+        bottom: UtenModuleBadges.compactAppBarBottom(
+          context,
+          ref,
+          BadgeModule.warehouse,
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -187,6 +193,7 @@ class WarehouseHubPage extends ConsumerWidget {
                   itemCount: taskEntries.length,
                   spacing: UtenSpacing.s12,
                   columns: const UtenResponsiveColumns(medium: 4),
+                  minItemWidth: UtenHubCard.minimumBadgeRowWidth(context),
                   itemBuilder: (context, index, _) {
                     final e = taskEntries[index];
                     return UtenHubCard(

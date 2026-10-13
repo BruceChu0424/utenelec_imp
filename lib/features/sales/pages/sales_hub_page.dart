@@ -44,6 +44,7 @@ class SalesHubPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final l10n = AppLocalizations.of(context);
     final perms = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
@@ -109,10 +110,15 @@ class SalesHubPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: const [
-          FormDraftsAppBarButton(categoryId: 'sales'),
-          UtenModuleBadges(module: BadgeModule.sales),
+        actions: [
+          const FormDraftsAppBarButton(categoryId: 'sales'),
+          if (!compact) const UtenModuleBadges(module: BadgeModule.sales),
         ],
+        bottom: UtenModuleBadges.compactAppBarBottom(
+          context,
+          ref,
+          BadgeModule.sales,
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -190,6 +196,9 @@ class SalesHubPage extends ConsumerWidget {
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
+            minItemWidth: entries.any((entry) => entry.badgeScope != null)
+                ? UtenHubCard.minimumBadgeRowWidth(context)
+                : null,
             itemBuilder: (context, i, _) => _EntryTile(entry: entries[i]),
           ),
         ],

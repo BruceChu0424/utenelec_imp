@@ -813,8 +813,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     };
     final reasonController = TextEditingController();
     String? dialogError;
-    final confirmed = await showDialog<bool>(
-      context: context,
+    final input = await UtenDialog.showAndWaitForExit<_FinishedInReceiptInput>(
+      context,
       barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -923,7 +923,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('取消'),
             ),
             FilledButton.icon(
@@ -949,7 +949,18 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                   setDialogState(() => dialogError = '少收时必须填写差异原因');
                   return;
                 }
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(
+                  dialogContext,
+                  _FinishedInReceiptInput([
+                    for (final lot in lots)
+                      {
+                        'lotId': lot.lotId,
+                        'acceptedQty': double.parse(
+                          controllers[lot.lotId]!.text.trim(),
+                        ),
+                      },
+                  ], reasonController.text.trim()),
+                );
               },
               label: const Text('确认实收并入库'),
             ),
@@ -958,32 +969,20 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       ),
     );
 
-    if (confirmed != true) {
-      for (final controller in controllers.values) {
-        controller.dispose();
-      }
-      reasonController.dispose();
-      return;
+    for (final controller in controllers.values) {
+      controller.dispose();
     }
-    final lotLines = <Map<String, dynamic>>[
-      for (final lot in lots)
-        {
-          'lotId': lot.lotId,
-          'acceptedQty': double.parse(controllers[lot.lotId]!.text.trim()),
-        },
-    ];
+    reasonController.dispose();
+    if (input == null || !mounted || widget.id != detail.id) return;
+    final lotLines = input.lotLines;
     final canonical = lotLines
         .map((line) => '${line['lotId']}|${line['acceptedQty']}')
         .join(';');
     final idempotencyKey = businessIdempotencyKey(
       'FINISHED-IN-CONFIRM',
-      '${widget.id}|$canonical|${reasonController.text.trim()}',
+      '${widget.id}|$canonical|${input.reason}',
     );
-    for (final controller in controllers.values) {
-      controller.dispose();
-    }
-    final reason = reasonController.text.trim();
-    reasonController.dispose();
+    final reason = input.reason;
 
     setState(() => _busy = true);
     try {
@@ -1877,6 +1876,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     if (children.isEmpty) return const SizedBox.shrink();
     return UtenFloatingActionGroup(children: children);
   }
+}
+
+class _FinishedInReceiptInput {
+  const _FinishedInReceiptInput(this.lotLines, this.reason);
+
+  final List<Map<String, dynamic>> lotLines;
+  final String reason;
 }
 
 /// 取消出库弹窗的输入结果：行 id → 本次取消数量文本；reason = 取消原因。

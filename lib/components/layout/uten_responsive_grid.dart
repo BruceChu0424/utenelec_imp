@@ -44,7 +44,8 @@ class UtenResponsiveGrid extends StatelessWidget {
     this.columns,
     this.maxColumns = 6,
     this.minColumns = 1,
-  });
+    this.minItemWidth,
+  }) : assert(minItemWidth == null || minItemWidth > 0);
 
   /// 子项总数
   final int itemCount;
@@ -72,14 +73,29 @@ class UtenResponsiveGrid extends StatelessWidget {
   /// 最小列数
   final int minColumns;
 
+  /// 内容所需的最小卡宽；有值时在容器变窄或字体放大后减少列数。
+  /// 即使配置了固定列数，也优先让内容完整可见；单列时使用可用宽度。
+  final double? minItemWidth;
+
   @override
   Widget build(BuildContext context) {
     final rs = runSpacing ?? spacing;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final cols = _resolveColumns(width).clamp(minColumns, maxColumns);
+        final width =
+            (constraints.maxWidth -
+                    (padding?.resolve(Directionality.of(context)).horizontal ??
+                        0))
+                .clamp(0.0, double.infinity);
+        var cols = _resolveColumns(width).clamp(minColumns, maxColumns);
+        final minimum = minItemWidth;
+        if (minimum != null) {
+          final fittingColumns = ((width + spacing) / (minimum + spacing))
+              .floor()
+              .clamp(1, maxColumns);
+          cols = cols.clamp(1, fittingColumns);
+        }
         final itemWidth = (width - spacing * (cols - 1)) / cols;
 
         // 单列直接堆叠，无需 Row 分栏

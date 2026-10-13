@@ -19,6 +19,7 @@ import '../../../shared/documents/document_unapproval.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -533,8 +534,8 @@ class _ProductionPlanDetailPageState
     final verb = isCancel ? '取消' : '冲销';
     final reasonController = TextEditingController();
     String? validationError;
-    final reason = await showDialog<String>(
-      context: context,
+    final reason = await UtenDialog.showAndWaitForExit<String>(
+      context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: Text('$verb生产计划包'),

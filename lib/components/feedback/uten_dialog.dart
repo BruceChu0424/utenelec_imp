@@ -6,6 +6,26 @@ import '../buttons/uten_button.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 abstract final class UtenDialog {
+  /// External dialog controllers can be released only after the overlay's exit
+  /// animation ends. A pop result alone does not mean its TextFields unmounted.
+  static Future<T?> showAndWaitForExit<T>(
+    BuildContext context, {
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    ModalRoute<T>? route;
+    final result = await showDialog<T>(
+      context: context,
+      barrierDismissible: barrierDismissible,
+      builder: (dialogContext) {
+        route = ModalRoute.of<T>(dialogContext);
+        return builder(dialogContext);
+      },
+    );
+    await route?.completed;
+    return result;
+  }
+
   /// 显示确认对话框。返回 true=确认，false/null=取消。
   static Future<bool?> show(
     BuildContext context, {

@@ -45,6 +45,21 @@ class ExpenseClaimChainPostgresTest {
     @Autowired com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
+    @Test void softDeletedDraftLeavesTheListAndBadgeTogether() {
+        Actor applicant=actor("deleted-count-owner");login(applicant,"expense:apply");
+        var keep=claims.create(request("保留草稿",null));
+        var remove=claims.create(request("待删除草稿",null));
+        assertThat(claims.counts().draftCount()).isEqualTo(2);
+        assertThat(claims.listMine("DRAFT",null,null,null,null,1,20).getTotal()).isEqualTo(2);
+        claims.delete(remove.id(),remove.version());
+        var current=claims.listMine("DRAFT",null,null,null,null,1,20);
+        assertThat(current.getItems()).extracting(row->row.id()).containsExactly(keep.id());
+        assertThat(claims.counts().draftCount()).isEqualTo(current.getTotal());
+        claims.delete(keep.id(),keep.version());
+        assertThat(claims.counts().draftCount()).isZero();
+        assertThat(claims.listMine("DRAFT",null,null,null,null,1,20).getItems()).isEmpty();
+    }
+
     @Test void submissionFreezesExtraColumnsAcrossRejectionAndRecreatedItemIds() throws Exception {
         Actor applicant=actor("extra-applicant"),reviewer=actor("extra-reviewer");login(applicant,"expense:apply");
         var column=platformColumns.create("expense_claim_item",new com.uten.imp.common.platformcolumns.PlatformColumnContracts.CreateDefinition("项目说明","TEXT",false,null));

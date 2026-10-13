@@ -75,7 +75,8 @@ class UtenSegmentRow<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final anyEnabled = segments.any((segment) => segment.enabled);
+    final canChange = onSelectionChanged != null;
+    final anyEnabled = canChange && segments.any((segment) => segment.enabled);
     final borderColor = anyEnabled
         ? colors.outline
         : colors.onSurface.withValues(alpha: 0.12);
@@ -97,7 +98,9 @@ class UtenSegmentRow<T> extends StatelessWidget {
                 selectedIcon: selectedIcon,
                 minCellWidth: minCellWidth,
                 minCellHeight: minCellHeight,
-                onPressed: () => _handlePressed(segments[i].value),
+                onPressed: canChange
+                    ? () => _handlePressed(segments[i].value)
+                    : null,
               ),
             ],
           ],
@@ -148,13 +151,13 @@ class _SegmentCell<T> extends StatelessWidget {
   final Widget? selectedIcon;
   final double? minCellWidth;
   final double minCellHeight;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
-    final enabled = segment.enabled;
+    final enabled = segment.enabled && onPressed != null;
     // M3 三态前景：禁用 onSurface@38%、选中 onSecondaryContainer、未选 onSurface。
     final foreground = !enabled
         ? colors.onSurface.withValues(alpha: 0.38)

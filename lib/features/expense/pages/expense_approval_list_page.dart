@@ -30,6 +30,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
@@ -108,6 +109,7 @@ class _ExpenseApprovalListPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.onPageResume('/expense/approval', _refreshQueue);
     if (!_queueReady) {
       return const Scaffold(
         appBar: UtenAppBar(title: '报销审批'),

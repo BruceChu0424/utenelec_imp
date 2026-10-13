@@ -7,6 +7,33 @@ import 'package:uten_imp/shared/models/procurement_finance_approval.dart';
 
 void main() {
   test(
+    'bill facets preserve the finance slice while excluding their own bill filter',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = PurchaseRepository(
+        _api((request) {
+          requests.add(request);
+          return {'billNo': <Object>[]};
+        }),
+        PurchaseDocType.order,
+      );
+      await repository.billNoFacets(
+        filter: const PurchaseDocFilter(
+          status: 0,
+          financeApproval: 'REJECTED',
+          supplierId: 'supplier-1',
+          billNo: 'old-filter',
+        ),
+      );
+      expect(requests.single.path, '/purchase/orders/facets');
+      expect(requests.single.queryParameters, {
+        'status': 0,
+        'financeApproval': 'REJECTED',
+        'supplierId': 'supplier-1',
+      });
+    },
+  );
+  test(
     'business order detail keeps finance status but exposes no decision helper',
     () {
       final pending = PurchaseDocDetail.fromJson({

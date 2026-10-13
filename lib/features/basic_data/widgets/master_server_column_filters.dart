@@ -87,6 +87,7 @@ class MasterServerColumnFilters {
 
   /// 整体回默认：清值 + 清桶 + 清排序。分段/类别切换时调用。
   void reset() {
+    generation++;
     values.clear();
     buckets = const {};
     sortColumn = null;

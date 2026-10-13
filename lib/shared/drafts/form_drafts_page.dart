@@ -161,6 +161,7 @@ class FormDraftsAppBarButton extends ConsumerWidget {
       key: ValueKey('form-drafts-button-$categoryId'),
       icon: Icons.drafts_outlined,
       label: label,
+      compact: MediaQuery.sizeOf(context).width < 600,
       badge: UtenNotificationBadge(count: count),
       tooltip: '「${category.hubTitle}」未完成草稿 $count 份，点击查看',
       onPressed: () =>

@@ -31,6 +31,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/ui/human_error_message.dart';
@@ -99,6 +100,11 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
 
   @override
   Widget build(BuildContext context) {
+    ref.onPageResume(RouteName.expense, () {
+      ref.read(expenseListProvider.notifier).refresh();
+      ref.invalidate(expenseMineFacetsProvider);
+      refreshBadges(ref);
+    });
     ref.listen(expenseListProvider, (previous, next) {
       if (next.isLoading || !next.hasValue) return;
       if (next.requireValue.page > 1 &&

@@ -110,6 +110,7 @@ Future<_RecordingOrderRepository> _pump(
     ProviderScope(
       overrides: [
         ...nativeDetailReaderOverrides(),
+        apiClientProvider.overrideWithValue(api),
         subcontractWriteAllDocumentScope(),
         currentPermissionsProvider.overrideWithValue(const <String>{
           Perm.subcontractOrderPriceView,

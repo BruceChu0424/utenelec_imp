@@ -14,6 +14,7 @@
 // 主阶段和采购任务中心卡面红数(后端 countPending 的 FINANCE_REJECTED)。
 // 仓库部门两段(待备料/待领取、部分领取)不在合并范围，原样保留。
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -36,6 +37,9 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/session_snapshot_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -86,10 +90,14 @@ class OperationsWorkbenchPage extends ConsumerStatefulWidget {
 class _OperationsWorkbenchPageState
     extends ConsumerState<OperationsWorkbenchPage> {
   OperationsWorkbenchData? _data;
+  Map<String, Object?>? _acceptedQuery;
+  Map<String, int>? _categoryCounts;
+  Map<String, Object?>? _acceptedCategoryScope;
   String? _error;
   bool _loading = true;
   int _page = 1;
   int _requestId = 0;
+  int _readerGeneration = 0;
   String _keyword = '';
 
   /// 当前选中阶段分段；null = 未选择引导态（内容不加载）。
@@ -195,10 +203,11 @@ class _OperationsWorkbenchPageState
   /// 预热仓库字典（「主仓 - 子仓」组合名）。任何失败——含测试环境没有注入
   /// api client、离线——都就地吞掉：仓库列回退行内叶仓名，不阻断任务加载。
   Future<void> _warmWarehouseNames() async {
+    final requestId = _requestId;
     try {
       final names = ref.read(masterNameServiceProvider);
       await names.ensureWarehousesLoaded();
-      _masterNames = names;
+      if (mounted && requestId == _requestId) _masterNames = names;
     } catch (_) {}
   }
 
@@ -251,18 +260,114 @@ class _OperationsWorkbenchPageState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) _readerChanged();
+    });
+    ref.listenManual(currentPermissionsProvider, (previous, next) {
+      if (!setEquals(previous, next)) _readerChanged();
+    });
+    ref.listenManual(sessionSnapshotProvider, (previous, next) {
+      if (previous?.valueOrNull != null &&
+          (next.isLoading ||
+              next.hasError ||
+              previous?.valueOrNull?.generation !=
+                  next.valueOrNull?.generation)) {
+        _readerChanged();
+      }
+    });
+    if (widget.repository == null) {
+      ref.listenManual(operationsWorkbenchRepositoryProvider, (previous, next) {
+        if (!identical(previous, next)) _readerChanged();
+      });
+    }
     // 默认不选阶段：内容不加载；仅拉一次 size=1 概览获取阶段/异常计数徽章。
     Future<void>.microtask(() => _load(page: 1));
   }
 
+  void _resetReadState() {
+    _readerGeneration++;
+    _requestId++;
+    _data = null;
+    _acceptedQuery = null;
+    _categoryCounts = null;
+    _acceptedCategoryScope = null;
+    _error = null;
+    _loading = false;
+    _page = 1;
+    _keyword = '';
+    _exception = null;
+    _columnFilters.clear();
+    _sortColumn = null;
+    _sortAscending = true;
+    _selectedIds.clear();
+    _masterNames = null;
+    _historyTime = const UtenHistoryTimeValue.all();
+  }
+
+  void _readerChanged() {
+    if (!mounted) return;
+    setState(_resetReadState);
+    final generation = _readerGeneration;
+    Future<void>.microtask(() {
+      if (mounted &&
+          generation == _readerGeneration &&
+          ref.read(authenticatedScopeProvider) != null) {
+        _load(page: 1);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant OperationsWorkbenchPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.department == widget.department &&
+        oldWidget.repository == widget.repository) {
+      return;
+    }
+    _resetReadState();
+    _seg = null;
+    Future<void>.microtask(() => _load(page: 1));
+  }
+
+  Map<String, Object?> get _queryIdentity => {
+    'department': widget.department,
+    'segment': _seg,
+    'historyTime': _historyTime,
+    'keyword': _keyword,
+    'exception': _exception,
+    'sort': _sortColumn,
+    'ascending': _sortAscending,
+    for (final entry in _columnFilters.entries)
+      'column.${entry.key}': entry.value,
+  };
+
+  // Server statusCounts ignore stage/date/page/table controls, but retain the
+  // department, keyword and dedicated exception filter. Never derive them from rows.
+  Map<String, Object?> get _categoryScope => {
+    'department': widget.department,
+    'keyword': _keyword,
+    'exception': _exception,
+  };
+
   Future<void> _load({int? page, int size = 50}) async {
     if (!mounted) return;
-    if (_seg?.code == _draftStage) return;
     final requestId = ++_requestId;
+    final query = _queryIdentity;
+    final categoryScope = _categoryScope;
     final seg = _seg;
+    final draft = seg?.code == _draftStage;
     final range = seg?.history == true ? _historyTime.range : null;
     setState(() {
-      _loading = true;
+      // A category/filter changes before its GET finishes. Accepted rows belong
+      // only to their original query; refreshing that same query may retain them.
+      if (!mapEquals(_acceptedQuery, query)) {
+        _data = null;
+        _selectedIds.clear();
+      }
+      if (!mapEquals(_acceptedCategoryScope, categoryScope)) {
+        _categoryCounts = null;
+      }
+      _loading = !draft;
       _error = null;
     });
     try {
@@ -275,9 +380,9 @@ class _OperationsWorkbenchPageState
         department: widget.department,
         page: page ?? _page,
         // 未选阶段时只拉 1 条：仅为取 summary 阶段/异常计数，内容区仍显示引导占位。
-        size: _shouldLoad ? size : 1,
+        size: _shouldLoad && !draft ? size : 1,
         keyword: _keyword,
-        status: seg == null || seg.history ? null : seg.code,
+        status: seg == null || seg.history || draft ? null : seg.code,
         exception: seg == null || seg.history ? null : _exception,
         dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
         dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
@@ -287,10 +392,19 @@ class _OperationsWorkbenchPageState
         columnFilters: _columnFilters,
       );
       await warehouseNames;
-      if (!mounted || requestId != _requestId) return;
+      if (!mounted ||
+          requestId != _requestId ||
+          !mapEquals(query, _queryIdentity)) {
+        return;
+      }
       setState(() {
-        _data = next;
-        _page = next.page;
+        _categoryCounts = Map.unmodifiable(next.summary.statusCounts);
+        _acceptedCategoryScope = categoryScope;
+        if (!draft) {
+          _data = next;
+          _acceptedQuery = query;
+          _page = next.page;
+        }
         _loading = false;
       });
       // Reconcile after the table has combined any appended pages.
@@ -304,8 +418,17 @@ class _OperationsWorkbenchPageState
         }
       });
     } catch (error) {
-      if (!mounted || requestId != _requestId) return;
+      if (!mounted ||
+          requestId != _requestId ||
+          !mapEquals(query, _queryIdentity)) {
+        return;
+      }
       setState(() {
+        if (error is ApiException &&
+            (error.httpStatus == 401 || error.httpStatus == 403)) {
+          _categoryCounts = null;
+          _acceptedCategoryScope = null;
+        }
         _loading = false;
         _error = error is ApiException ? error.message : '任务工作台加载失败，请稍后重试';
       });
@@ -673,9 +796,7 @@ class _OperationsWorkbenchPageState
       return widget.draftCategoryBuilder!(
         context,
         search: _keyword,
-        externalHeader: _buildStageToolbar(
-          _data?.summary.statusCounts ?? const {},
-        ),
+        externalHeader: _buildStageToolbar(_categoryCounts ?? const {}),
       );
     }
     if (_data == null && _loading) {
@@ -708,9 +829,9 @@ class _OperationsWorkbenchPageState
     return LayoutBuilder(
       builder: (context, constraints) {
         final seg = _seg;
-        final statusCounts = data.summary.statusCounts;
+        final statusCounts = _categoryCounts ?? const <String, int>{};
         // 阶段行：真实阶段（无「全部」；终态归历史记录）+ 末尾历史记录；
-        // 计数取后端全量口径（statusCounts 不随当前筛选收窄）。
+        // 服务端分类数按部门/关键字/专用异常，不随阶段、日期、分页、排序或列筛选收窄。
         final stageRow = _buildStageToolbar(statusCounts);
         final historyTimeRow = seg?.history == true
             ? UtenHistoryTimeFilter(
@@ -763,6 +884,7 @@ class _OperationsWorkbenchPageState
                       data: data,
                       rowsController: _tableRows,
                       paginationScope: (
+                        _readerGeneration,
                         widget.department,
                         _keyword,
                         _seg,
@@ -815,7 +937,7 @@ class _OperationsWorkbenchPageState
   Widget _withInitialStages(Widget body) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      _buildStageToolbar(_data?.summary.statusCounts ?? const {}),
+      _buildStageToolbar(_categoryCounts ?? const {}),
       Expanded(child: body),
     ],
   );

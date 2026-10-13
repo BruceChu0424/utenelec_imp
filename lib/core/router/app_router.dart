@@ -3,9 +3,12 @@
 // 使用 go_router，扁平路由（静态段声明在 :id 之前避免冲突）
 
 import 'package:file_picker/file_picker.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'editor_resource_key.dart';
 import '../../features/stock/models/instant_inventory_scope.dart';
 import '../../shared/ai/guided/ai_guided_file_plan.dart';
 
@@ -214,6 +217,55 @@ import 'route_access_policy.dart';
 import 'route_names.dart';
 import '../../shared/drafts/form_draft_navigation.dart';
 import '../../shared/drafts/form_drafts_page.dart';
+
+final _editorFileDigests = Expando<String>('editorFileDigest');
+
+Object? _editorSourceIdentity(Object? source) {
+  if (source is StockCheckPrefill) {
+    return {
+      'warehouseId': source.warehouseId,
+      'lines': [
+        for (final line in source.lines)
+          {'goodsId': line.goodsId, 'colorId': line.colorId},
+      ],
+    };
+  }
+  if (source is AiGuidedFilePlan) {
+    final scope = source.identity.scope;
+    return {
+      'jobId': source.jobId,
+      'sourceSha256': source.sourceSha256,
+      'workflow': source.workflow.code,
+      'result': source.result.toJson(),
+      'server': source.identity.server,
+      'permissions': source.identity.permissions,
+      'owner': {
+        'userId': scope.userId,
+        'actorId': scope.actorId,
+        'readOnly': scope.readOnly,
+        'epoch': scope.epoch,
+        'businessResetGeneration': scope.businessResetGeneration,
+      },
+    };
+  }
+  if (source is PlatformFile) {
+    // The picker supplies a retained file per navigation intent. Compute its
+    // content fingerprint once; repeated route builds do not rehash the file.
+    final digest = source.bytes == null
+        ? null
+        : (_editorFileDigests[source] ??= sha256
+              .convert(source.bytes!)
+              .toString());
+    return {
+      'name': source.name,
+      'size': source.size,
+      'path': digest == null && !kIsWeb ? source.path : null,
+      'identifier': digest == null ? source.identifier : null,
+      'sha256': digest,
+    };
+  }
+  return null;
+}
 
 String? _rejectUnknownPurchaseDoc(BuildContext _, GoRouterState state) =>
     PurchaseDocType.tryByPath(state.pathParameters['doc']!) == null
@@ -722,6 +774,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.basicinfoAccountDetail,
             name: 'basicinfo-account-detail',
             builder: (_, state) => AccountDetailPage(
+              key: editorResourceKey(state.uri),
               accountId: state.pathParameters['id']!,
               startEditing: state.uri.queryParameters['edit'] == 'true',
             ),
@@ -875,6 +928,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/purchase/orders/new',
             name: 'purchase-order-new',
             builder: (_, s) => PurchaseOrderEditPage(
+              key: editorResourceKey(s.uri),
               sourceRequestId: s.uri.queryParameters['requestId'],
               sourceRequestItemIds:
                   s.uri.queryParameters['requestItemIds']
@@ -887,14 +941,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: '/purchase/orders/:id/edit',
             name: 'purchase-order-edit',
-            builder: (_, s) =>
-                PurchaseOrderEditPage(id: s.pathParameters['id']),
+            builder: (_, s) => PurchaseOrderEditPage(
+              key: editorResourceKey(s.uri),
+              id: s.pathParameters['id'],
+            ),
           ),
           DraftAwareGoRoute(
             path: '/purchase/:doc/new',
             name: 'purchase-doc-new',
             redirect: _rejectUnknownPurchaseDoc,
             builder: (_, s) => PurchaseDocEditPage(
+              key: editorResourceKey(s.uri),
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
             ),
           ),
@@ -903,6 +960,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'purchase-doc-edit',
             redirect: _rejectUnknownPurchaseDoc,
             builder: (_, s) => PurchaseDocEditPage(
+              key: editorResourceKey(s.uri),
               docType: PurchaseDocType.byPath(s.pathParameters['doc']!),
               id: s.pathParameters['id'],
             ),
@@ -1246,6 +1304,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/warehouse/sales-outbound/:id',
             name: 'warehouse-sales-outbound-detail',
             builder: (_, state) => WarehouseSalesOutboundDetailPage(
+              key: editorResourceKey(state.uri),
               id: state.pathParameters['id']!,
             ),
           ),
@@ -1362,6 +1421,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-doc-new',
             redirect: _rejectStockDocManualEdit,
             builder: (_, s) => StockDocEditPage(
+              key: editorResourceKey(
+                s.uri,
+                sourceIdentity: _editorSourceIdentity(s.extra),
+              ),
               docType: StockDocType.byCode(s.pathParameters['code']!),
               checkPrefill: s.extra is StockCheckPrefill
                   ? s.extra! as StockCheckPrefill
@@ -1373,6 +1436,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'stock-doc-edit',
             redirect: _rejectStockDocManualEdit,
             builder: (_, s) => StockDocEditPage(
+              key: editorResourceKey(s.uri),
               docType: StockDocType.byCode(s.pathParameters['code']!),
               id: s.pathParameters['id'],
             ),
@@ -1528,6 +1592,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'sales-doc-new',
             redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocEditPage(
+              key: editorResourceKey(
+                s.uri,
+                sourceIdentity: _editorSourceIdentity(s.extra),
+              ),
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               initialOrderId: s.uri.queryParameters['sourceOrderId'],
               initialOrderItems: s.uri.queryParameters['orderItems'],
@@ -1547,6 +1615,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'sales-doc-edit',
             redirect: _rejectUnknownSalesDoc,
             builder: (_, s) => SalesDocEditPage(
+              key: editorResourceKey(s.uri),
               docType: SalesDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
             ),
@@ -1623,23 +1692,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/subcontract/:seg/new',
             name: 'subcontract-doc-new',
             redirect: _rejectUnknownSubcontractDoc,
-            builder: (_, s) => SubcontractPageFactory.editor(
-              type: SubcontractDocType.byPath(s.pathParameters['seg']!),
-              applicationItemIds:
-                  s.uri.queryParameters['applicationItemIds']
-                      ?.split(',')
-                      .where((id) => id.trim().isNotEmpty)
-                      .toList() ??
-                  const [],
+            builder: (_, s) => KeyedSubtree(
+              key: editorResourceKey(s.uri),
+              child: SubcontractPageFactory.editor(
+                type: SubcontractDocType.byPath(s.pathParameters['seg']!),
+                applicationItemIds:
+                    s.uri.queryParameters['applicationItemIds']
+                        ?.split(',')
+                        .where((id) => id.trim().isNotEmpty)
+                        .toList() ??
+                    const [],
+              ),
             ),
           ),
           DraftAwareGoRoute(
             path: '/subcontract/:seg/:id/edit',
             name: 'subcontract-doc-edit',
             redirect: _rejectUnknownSubcontractDoc,
-            builder: (_, s) => SubcontractPageFactory.editor(
-              type: SubcontractDocType.byPath(s.pathParameters['seg']!),
-              id: s.pathParameters['id'],
+            builder: (_, s) => KeyedSubtree(
+              key: editorResourceKey(s.uri),
+              child: SubcontractPageFactory.editor(
+                type: SubcontractDocType.byPath(s.pathParameters['seg']!),
+                id: s.pathParameters['id'],
+              ),
             ),
           ),
           DraftAwareGoRoute(
@@ -1857,6 +1932,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'finance-doc-new',
             redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocEditPage(
+              key: editorResourceKey(s.uri),
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
             ),
           ),
@@ -1865,6 +1941,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'finance-doc-edit',
             redirect: _rejectUnknownFinanceDoc,
             builder: (_, s) => FinanceDocEditPage(
+              key: editorResourceKey(s.uri),
               docType: FinanceDocType.byPath(s.pathParameters['seg']!),
               id: s.pathParameters['id'],
             ),

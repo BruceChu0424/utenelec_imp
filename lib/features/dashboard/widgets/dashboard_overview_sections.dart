@@ -38,23 +38,25 @@ class _DashboardOverviewBody extends ConsumerWidget {
       loading: () => const _DashboardOverviewSkeleton(),
       error: (error, _) =>
           _ErrorCard(onRetry: () => ref.invalidate(dashboardOverviewProvider)),
-      data: (data) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 2026-09-28 合并改版：今日概览与待办任务从两段独立区块（各自
-          // UtenConsoleHeader + 面板）并入同一块控制台面板——标题栏 / 指标区 /
-          // 待办区，见 dashboard_console_sections.dart 的 DashboardOverviewPanel。
-          DashboardOverviewPanel(
-            metrics: data.metrics,
-            todos: data.todos,
-            departmentName: data.departmentName,
-            generatedAt: data.generatedAt,
-            // 今日庆典卡（当前用户本人生日/周年/新婚/新生儿；无则不渲染）插在
-            // 面板标题栏与指标区之间。数据来自 myCelebrationTodayProvider（PII 安全）。
-            celebration: const CelebrationTodayCard(),
-          ),
-        ],
-      ),
+      data: (data) => data == null
+          ? const SizedBox.shrink()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 2026-09-28 合并改版：今日概览与待办任务从两段独立区块（各自
+                // UtenConsoleHeader + 面板）并入同一块控制台面板——标题栏 / 指标区 /
+                // 待办区，见 dashboard_console_sections.dart 的 DashboardOverviewPanel。
+                DashboardOverviewPanel(
+                  metrics: data.metrics,
+                  todos: data.todos,
+                  departmentName: data.departmentName,
+                  generatedAt: data.generatedAt,
+                  // 今日庆典卡（当前用户本人生日/周年/新婚/新生儿；无则不渲染）插在
+                  // 面板标题栏与指标区之间。数据来自 myCelebrationTodayProvider（PII 安全）。
+                  celebration: const CelebrationTodayCard(),
+                ),
+              ],
+            ),
     );
   }
 }

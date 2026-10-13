@@ -1,4 +1,6 @@
 {
+  "editorDocumentIdentityChanged": "单据或来源已变化，请重新进入页面",
+  "editorSessionIdentityChanged": "登录身份或服务器已变化，请重新进入页面",
   "release2511DailyReport": "生产日报改为紧凑货品卡片，支持展开去向与子件；审核余料处理保留完整数量和来源。",
   "release2511Workshop": "车间任务弹窗按状态呈现操作，物料默认显示一项并可展开全部。",
   "release2511Batch": "物料批量下单与品质批量处理共用写入流程，减少重复读取、锁定和收尾计算。",
@@ -5440,5 +5442,14 @@
   "release2510NeedDate": "任务中心「申请待分解」需求日期兜底为计划下达日期，不再整列空白；逾期判定仍只看真实需求日期。",
   "release2510DirectTransfer": "车间内流转不再要求预先开通内料仓：报工直送下道工序审核时自动开仓；颗粒散料整批领料仍需显式开通。",
   "release2510SessionIdentity": "修复会话静默刷新时误报「登录身份已变化」：身份比较改为语义相等，无变化不再重建登录态。",
-  "release2510Misc": "出货审核筛选工具条与全站统一；订货审批/IQC 责任提示横幅退役；BOM 按产品视图连线两色轮换；HR 任务中心徽章回到今日口径；委外损耗「不允许」口径列表与详情一致。"
+  "release2510Misc": "出货审核筛选工具条与全站统一；订货审批/IQC 责任提示横幅退役；BOM 按产品视图连线两色轮换；HR 任务中心徽章回到今日口径；委外损耗「不允许」口径列表与详情一致。",
+  "badgeModuleProgressTooltip": "{count, plural, other{本模块进行中合计 {count} 项(尚未结束)}}",
+  "@badgeModuleProgressTooltip": {
+    "description": "模块进行中总数提示，允许同一单据同时存在待办。",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

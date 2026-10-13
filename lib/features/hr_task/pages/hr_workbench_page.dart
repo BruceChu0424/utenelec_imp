@@ -31,6 +31,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/route_access_policy.dart';
+import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -48,6 +49,9 @@ class HrWorkbenchPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.onPageResume(RouteName.hrTaskCenter, () {
+      ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
+    });
     final async = ref.watch(hrTaskSummaryProvider);
     final l10n = AppLocalizations.of(context);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);

@@ -33,6 +33,7 @@ class _BadgeApi extends ApiClient {
   Object? failWith;
   Map<String, dynamic> body = _summaryJson(todo: 1);
   final Map<String, Map<String, dynamic>> scopedBodies = {};
+  final List<Completer<Map<String, dynamic>>> responses = [];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -43,6 +44,7 @@ class _BadgeApi extends ApiClient {
       throw StateError('unexpected GET $path');
     }
     calls++;
+    if (responses.isNotEmpty) return responses.removeAt(0).future;
     final pending = gate;
     if (pending != null) await pending.future;
     final error = failWith;
@@ -129,6 +131,32 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _prefs = await SharedPreferences.getInstance();
+  });
+  testWidgets('写操作完成后迟到的旧徽章不复现，等待新快照再统一更新', (tester) async {
+    final (container, api) = _container();
+    await _settle(tester);
+    expect(container.read(badgeTotalTodoProvider), 1);
+    final oldRead = Completer<Map<String, dynamic>>();
+    final newRead = Completer<Map<String, dynamic>>();
+    api.responses.addAll([oldRead, newRead]);
+    final pending = container.read(badgeSummaryProvider.notifier).refresh();
+    await _settle(tester);
+    container.read(dataWriteRevisionProvider.notifier).state++;
+    container.read(lastDataWriteProvider.notifier).state = (
+      seq: 1,
+      path: '/purchase/orders/o1/submit-finance',
+    );
+    oldRead.complete(_summaryJson(todo: 9));
+    await _settle(tester);
+    expect(api.calls, 3);
+    expect(container.read(badgeTotalTodoProvider), 1);
+    expect(container.read(badgeFactProvider('purchaseTask.pending')), 1);
+    newRead.complete(_summaryJson(todo: 0, inProgress: 1));
+    await pending;
+    await _settle(tester);
+    expect(container.read(badgeTotalTodoProvider), 0);
+    expect(container.read(badgeTotalInProgressProvider), 1);
+    container.dispose();
   });
   testWidgets('首次慢请求期间已有短周期设置不会触发尾随多余请求', (tester) async {
     final (container, api) = _container();

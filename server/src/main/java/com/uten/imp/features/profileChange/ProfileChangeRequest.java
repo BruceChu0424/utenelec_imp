@@ -93,6 +93,6 @@ public class ProfileChangeRequest extends BaseEntity {
     @Column(name = "employee_version", nullable = false)
     private Integer employeeVersion;
 
-    @Column(name = "idem_key", nullable = false, length = 64, unique = true)
+    @Column(name = "idem_key", nullable = false, length = 193, unique = true)
     private String idemKey;
 }

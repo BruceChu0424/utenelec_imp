@@ -65,6 +65,7 @@ class WorkbenchBadgeReadTransactionTest {
         assertThat(connections).hasSize(2);
         verify(connections.get(0)).commit(); verify(connections.get(0),never()).rollback();
         verify(connections.get(1)).rollback(); verify(connections.get(1),never()).commit();
+        verify(connections.get(1)).setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
         verify(scopes).withScopeCache(any()); // 一次汇总 = 一个范围解析复用窗口(准则 14)
     }
 }

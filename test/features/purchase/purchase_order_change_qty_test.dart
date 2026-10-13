@@ -97,6 +97,7 @@ class _RecordingApi extends ApiClient {
 Future<void> _pump(
   WidgetTester tester,
   _RecordingApi api, {
+  bool writable = true,
   Set<String> permissions = const {
     Perm.purchaseOrderView,
     Perm.purchaseOrderChangeQty,
@@ -110,7 +111,18 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         ...nativeDetailReaderOverrides(),
-        writeAllDocumentScope(DocumentDataScope.purchase),
+        if (writable)
+          writeAllDocumentScope(DocumentDataScope.purchase)
+        else
+          documentScopeCapabilityProvider(
+            DocumentDataScope.purchase,
+          ).overrideWith(
+            (ref) async => const DocumentScopeCapability(
+              scope: 'purchase',
+              writeAll: false,
+              writableOwnerIds: {},
+            ),
+          ),
         currentPermissionsProvider.overrideWithValue(permissions),
         purchaseRepositoryProvider(
           PurchaseDocType.order,
@@ -139,6 +151,71 @@ Future<void> _pump(
 }
 
 void main() {
+  for (final confirm in [false, true]) {
+    testWidgets(
+      'change-qty ${confirm ? 'confirmation' : 'cancel'} retains input controllers until the dialog exits',
+      (tester) async {
+        final api = _RecordingApi();
+        await _pump(tester, api);
+        await tester.tap(find.byKey(const Key('purchase-order-change-qty')));
+        await tester.pumpAndSettle();
+        final field = find.byKey(const Key('purchase-order-change-qty-i1'));
+        final controller = tester.widget<TextField>(field).controller!;
+        await tester.enterText(field, '12.5');
+        await tester.tap(
+          confirm
+              ? find.byKey(const Key('purchase-order-change-qty-submit'))
+              : find.descendant(
+                  of: find.byType(AlertDialog),
+                  matching: find.text('取消'),
+                ),
+        );
+        await tester.pump();
+        void listener() {}
+        expect(
+          () => controller.addListener(listener),
+          returnsNormally,
+          reason: 'the closing overlay still owns the TextField',
+        );
+        controller.text = '999';
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+        expect(() => controller.addListener(listener), throwsFlutterError);
+        if (confirm) {
+          expect(
+            api.posts.single.body,
+            {
+              'items': [
+                {'orderItemId': 'i1', 'newQty': '12.5'},
+              ],
+            },
+            reason: 'the confirmed quantity is frozen before reverse animation',
+          );
+        } else {
+          expect(api.posts, isEmpty);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final status in ['APPROVED', 'REJECTED']) {
+    testWidgets(
+      'read-only owner has no quantity correction action for $status',
+      (tester) async {
+        final api = _RecordingApi()..approvalStatus = status;
+        await _pump(tester, api, writable: false);
+        expect(
+          find.byKey(const Key('purchase-order-change-qty')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('document-scope-write-notice-readonly')),
+          findsOneWidget,
+        );
+        expect(api.posts, isEmpty);
+      },
+    );
+  }
   testWidgets(
     'opening and confirming without edits preserves all four decimal places',
     (tester) async {

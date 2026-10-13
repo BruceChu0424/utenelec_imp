@@ -1,4 +1,6 @@
 {
+  "editorDocumentIdentityChanged": "The document or source has changed. Reopen this page.",
+  "editorSessionIdentityChanged": "The signed-in account or server has changed. Reopen this page.",
   "release2511DailyReport": "Daily reports use compact product cards with expandable destinations and components; material review preserves quantities and source links.",
   "release2511Workshop": "Workshop task dialogs show actions for the current state, with one material visible initially and an option to expand the list.",
   "release2511Batch": "Batch material orders and quality processing share the write flow to reduce repeated reads, locks and final calculations.",
@@ -4584,5 +4586,6 @@
   "release2510NeedDate": "The pending-decomposition segment of the task center falls back its need date to the plan issue date instead of blank columns; overdue judgement still looks only at real need dates.",
   "release2510DirectTransfer": "Intra-workshop flow no longer requires pre-opening the workshop bin: direct transfers open the bin automatically on approval; granular bulk drawing still requires an explicit opening.",
   "release2510SessionIdentity": "Fixed false \"sign-in identity changed\" errors during silent session refresh: identity comparison is now semantic, so unchanged sessions keep their signed-in state.",
-  "release2510Misc": "The shipment audit filter toolbar matches the app-wide pattern; the ordering-approval/IQC responsibility banners are retired; the BOM per-product view alternates two guide colors; HR task badges return to the today-only caliber; the subcontract loss tolerance now agrees between list and detail."
+  "release2510Misc": "The shipment audit filter toolbar matches the app-wide pattern; the ordering-approval/IQC responsibility banners are retired; the BOM per-product view alternates two guide colors; HR task badges return to the today-only caliber; the subcontract loss tolerance now agrees between list and detail.",
+  "badgeModuleProgressTooltip": "{count, plural, one{{count} item in progress in this module (not yet finished)} other{{count} items in progress in this module (not yet finished)}}"
 }

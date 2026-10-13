@@ -9,6 +9,14 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get editorDocumentIdentityChanged =>
+      '문서 또는 원본이 변경되었습니다. 이 페이지를 다시 열어 주세요.';
+
+  @override
+  String get editorSessionIdentityChanged =>
+      '로그인 계정 또는 서버가 변경되었습니다. 이 페이지를 다시 열어 주세요.';
+
+  @override
   String get release2511DailyReport =>
       '생산 일보가 간결한 제품 카드로 표시되며 목적지와 부품을 펼칠 수 있습니다. 자재 검토 시 수량과 출처 연결을 보존합니다.';
 
@@ -10255,4 +10263,14 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get release2510Misc =>
       '출하 심사 필터 도구 막대가 전역 패턴과 통일되었습니다; 주문 승인/IQC 책임 배너가 제거되었습니다; BOM 제품별 뷰의 연결선이 두 색으로 번갈아 표시됩니다; HR 업무 배지가 \'오늘\' 기준으로 돌아왔습니다; 외주 손실 허용 기준이 목록과 상세에서 일치합니다.';
+
+  @override
+  String badgeModuleProgressTooltip(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '이 모듈에서 진행 중인 항목 $count개(아직 완료되지 않음)',
+    );
+    return '$_temp0';
+  }
 }

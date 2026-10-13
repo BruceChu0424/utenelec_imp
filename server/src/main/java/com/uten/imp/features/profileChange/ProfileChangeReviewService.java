@@ -57,6 +57,17 @@ public class ProfileChangeReviewService {
         String action = req.action();
         String comment = req.comment();
 
+        List<ProfileChangeRequest> batch = repo.findByBatchId(batchId);
+        if (batch.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "申请不存在");
+        UUID targetEmployeeId = batch.getFirst().getEmployeeId();
+        if (batch.stream().anyMatch(row -> !targetEmployeeId.equals(row.getEmployeeId()))) {
+            throw new ApiException(ErrorCode.CONFLICT, "申请批次包含不同员工，请核对来源");
+        }
+        // Match submit/offboarding's lock order: employee, then batch fields.
+        // Re-read pending fields after the lock, so a concurrent decision is
+        // observed before any values, version or notices are changed.
+        Employee lockedEmployee = employeeRepo.findByIdForUpdate(targetEmployeeId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工档案不存在"));
         List<ProfileChangeRequest> rs = repo.findByBatchIdAndStatus(batchId, "pending");
         if (rs.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "无可审批批次");
         ProfileChangeRequest first = rs.get(0);
@@ -66,8 +77,7 @@ public class ProfileChangeReviewService {
         OffsetDateTime now = OffsetDateTime.now();
         switch (action) {
             case "approve" -> {
-                Employee emp = employeeRepo.findById(first.getEmployeeId())
-                        .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工档案不存在"));
+                Employee emp = lockedEmployee;
                 // 乐观锁：所有记录 employee_version 必须等于当前员工 version
                 for (ProfileChangeRequest r : rs) {
                     if (!Integer.valueOf(emp.getVersion()).equals(r.getEmployeeVersion())) {
@@ -176,13 +186,13 @@ public class ProfileChangeReviewService {
     @Transactional(readOnly = true)
     public long pendingCountForEmployee(UUID employeeId) {
         if (!access.hasReviewPerm()) return 0;
-        return repo.countByEmployeeIdAndStatus(employeeId, "pending");
+        return repo.countBatches("pending", null, employeeId, null);
     }
 
     /** 当前 HR 全局待办数（导航徽章）。 */
     @Transactional(readOnly = true)
     public long pendingCount() {
         if (!access.hasReviewPerm()) return 0;
-        return repo.countByStatus("pending");
+        return repo.countBatches("pending", null, null, null);
     }
 }

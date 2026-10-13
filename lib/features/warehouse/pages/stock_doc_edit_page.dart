@@ -517,6 +517,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       try {
         final repository = ref.read(stockDocRepositoryProvider(widget.docType));
         final d = await repository.detail(widget.id!);
+        if (!mounted) return;
         final writable =
             !d.productionLinked &&
             d.canEdit &&
@@ -623,6 +624,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         _grid.replaceAll(rows);
       } catch (_) {}
     }
+    if (!mounted) return;
     if (_grid.isEmpty) {
       _grid.addRow(StockGridRow(isCheck: _isCheck));
     }

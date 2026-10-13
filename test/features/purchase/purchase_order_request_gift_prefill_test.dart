@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
@@ -65,6 +66,7 @@ Future<_PreviewApi> _pumpPreview(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('https://example.invalid/api'),
         apiClientProvider.overrideWithValue(api),
         sessionProvider.overrideWith(_Session.new),
       ],

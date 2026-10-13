@@ -20,6 +20,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../shared/business_columns/business_columns_row.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
+import '../../../shared/widgets/editor_identity_notice.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 
@@ -81,6 +82,7 @@ import '../widgets/doc_link_picker.dart';
 import '../widgets/purchase_grid_columns.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/editor_resource_key.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
 
@@ -164,6 +166,27 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   bool _saving = false;
   bool _confirmGiftSemantics = false;
   bool _loading = false;
+  bool _documentIdentityChanged = false;
+  late final Key _openedDocumentIdentity;
+
+  Key get _documentIdentity => editorResourceKey(
+    Uri(path: 'purchase-order'),
+    sourceIdentity: {
+      'id': widget.id,
+      'requestId': widget.sourceRequestId,
+      'requestItemIds':
+          (widget.sourceRequestItemIds
+              .map((id) => id.trim())
+              .where((id) => id.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort()),
+    },
+  );
+
+  @override
+  bool get formDraftIdentityIsCurrent =>
+      super.formDraftIdentityIsCurrent && !_documentIdentityChanged;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
   String? _createdAt;
@@ -253,7 +276,17 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   @override
   void initState() {
     super.initState();
+    _openedDocumentIdentity = _documentIdentity;
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
+  }
+
+  @override
+  void didUpdateWidget(covariant PurchaseOrderEditPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_documentIdentity != _openedDocumentIdentity) {
+      _documentIdentityChanged = true;
+    }
   }
 
   @override
@@ -269,8 +302,10 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   }
 
   Future<void> _init() async {
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     for (final entry
         in ref.read(masterNameServiceProvider).currencyEntries.entries) {
       if (entry.value.contains('人民币')) {
@@ -283,15 +318,19 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     if (meId != null && meId.isNotEmpty) {
       _purchaserId = meId;
       await _preloadEmployees([meId]);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
     }
     if (_isCreate) {
       await _prefillFromRequest();
     } else {
       await _loadExisting();
     }
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     if (_grid.isEmpty) _grid.addRow(PurchaseGridRow(supportsTotalInput: true));
-    if (mounted && widget.id == null) await initializeFormDraft();
-    if (mounted) setState(() => _loading = false);
+    if (mounted && formDraftIdentityIsCurrent && widget.id == null) {
+      await initializeFormDraft();
+    }
+    if (mounted && formDraftIdentityIsCurrent) setState(() => _loading = false);
   }
 
   DateTime? _parseDate(String? s) =>
@@ -306,6 +345,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       uniq.map((id) async {
         try {
           final p = await repo.getById(id);
+          if (!mounted || !formDraftIdentityIsCurrent) return;
           _empCache[id] = UtenEmployeePickerItem(
             id: p.id,
             name: p.fullName ?? '',
@@ -349,7 +389,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       await ref
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final names = ref.read(masterNameServiceProvider);
       final rows = <PurchaseGridRow>[];
       // 同货品+颜色+单位 合并：数量=剩余量之和，来源逐条聚合（保留预览顺序）。
@@ -437,14 +477,20 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           ref.read(taskClaimRepositoryProvider),
         );
         await _decomposeClaim!.claimAll('PURCHASE_DECOMPOSE', requestIds);
-        if (mounted) setState(() {});
+        if (mounted && formDraftIdentityIsCurrent) setState(() {});
       }
     } on StateError catch (error) {
-      if (mounted) context.appError(error.message);
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(error.message);
+      }
     } on ApiException catch (error) {
-      if (mounted) context.appError(error.message);
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(error.message);
+      }
     } catch (_) {
-      if (mounted) context.appError('读取采购申请失败，请返回任务中心重新选择');
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError('读取采购申请失败，请返回任务中心重新选择');
+      }
     }
   }
 
@@ -453,6 +499,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       final d = await ref
           .read(purchaseRepositoryProvider(PurchaseDocType.order))
           .detail(widget.id!);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final writable =
           d.status == kPurchaseStatusDraft &&
           d.canEdit &&
@@ -461,7 +508,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
             DocumentDataScope.purchase,
             d.makerId,
           );
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       if (!writable) {
         context.appWarning(documentScopeReadOnlyMessage, force: true);
         context.replace(
@@ -476,8 +523,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       await ref
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       await _preloadEmployees([d.purchaserId]);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       _billNo.text = d.billNo ?? '';
       _remark.text = d.remark ?? '';
       if (d.billDate != null) {
@@ -553,7 +601,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       }
       _grid.replaceAll(rows);
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && formDraftIdentityIsCurrent) context.appError(e.message);
     } catch (_) {
       // 静默降级
     }
@@ -565,7 +613,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       context,
       ref,
     );
-    if (!mounted || picked.isEmpty || !_grid.rows.contains(row)) return;
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        picked.isEmpty ||
+        !_grid.rows.contains(row)) {
+      return;
+    }
     void fill(PurchaseGridRow target, GoodsListItem goods) {
       // 换了货品：旧货品带入的允许超收(黄标)作废，新货品重新按主档预填一次。
       target.resetAllowedOverReceiptForGoods(goods.id);
@@ -641,10 +694,11 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     } catch (_) {
       // 学习预填失败静默：用户可逐行手选或勾选多行统一设置。
     }
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final names = ref.read(masterNameServiceProvider);
     final settlementEntries = await _settlementEntries();
     if (!mounted ||
+        !formDraftIdentityIsCurrent ||
         generation != _termsLoadGeneration ||
         !ref.read(sessionProvider).isSameIdentity(session)) {
       return;
@@ -797,7 +851,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     if (candidate == null || candidate.isEmpty) return;
     final settlementEntries = await _settlementEntries();
     if (!settlementEntries.containsKey(candidate)) return;
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final currentRows = _grid.rows.toSet();
     for (final r in targets) {
       if (!currentRows.contains(r) ||
@@ -827,7 +881,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     if (rows.isEmpty) return;
     final names = ref.read(masterNameServiceProvider);
     final settlementEntries = await _settlementEntries();
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final result = await showCommercialTermsBatchSheet(
       context,
       ref,
@@ -835,7 +889,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       currencyEntries: names.currencyEntries,
       settlementEntries: settlementEntries,
     );
-    if (result == null || !mounted) return;
+    if (result == null || !mounted || !formDraftIdentityIsCurrent) return;
     // 编辑既有单只能一套条款：批量写全部行。
     final targets = _isCreate ? rows : _grid.rows;
     for (final r in targets) {
@@ -869,7 +923,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   /// 行级供应商选择：滑入面板选中后按多选范围落值（编辑态=全部行）。
   Future<void> _pickRowSupplier(PurchaseGridRow row) async {
     final picked = await showUtenSupplierPicker(context, ref);
-    if (picked == null || !mounted) return;
+    if (picked == null || !mounted || !formDraftIdentityIsCurrent) return;
     _applyRowSupplier(row, picked.id);
   }
 
@@ -916,7 +970,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       _cfg,
       allowOverRemaining: true,
     );
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     if (result == null || result.items.isEmpty) return;
     final goodsIds = result.items
         .map((e) => e.goodsId)
@@ -927,7 +981,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           .read(masterNameServiceProvider)
           .loadGoodsNamesWithCodes(goodsIds);
     }
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     // 本次引入触达的行（新加行 + 被并入的既有行）：新建态自动勾上。
     final touched = <PurchaseGridRow>[];
     void mergeIntoGrid(PurchaseGridRow row) {
@@ -1132,7 +1186,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       context,
       groups: groups,
     );
-    if (!mounted) return null;
+    if (!mounted || !formDraftIdentityIsCurrent) return null;
     if (action == null || action == DuplicateGoodsReviewAction.back) {
       for (final g in groups) {
         for (final r in g.rows) {
@@ -1188,6 +1242,16 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   }
 
   Future<void> _save() async {
+    if (!mounted || !formDraftIdentityIsCurrent || _saving) return;
+    try {
+      final requestScope = await captureFormDraftRequestScope();
+      await requestScope.run(_saveOwned);
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) context.appApiError(error);
+    }
+  }
+
+  Future<void> _saveOwned() async {
     if (_saving) return;
     if (_createdOrders case final created?) {
       // 订货单已生成、附件未全部上传：只补传附件，成功后再提交财务/进入详情。
@@ -1195,7 +1259,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       try {
         await _finishCreatedOrders(created);
       } finally {
-        if (mounted) setState(() => _saving = false);
+        if (mounted && formDraftIdentityIsCurrent) {
+          setState(() => _saving = false);
+        }
       }
       return;
     }
@@ -1222,7 +1288,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
             '来源申请行仍保留待分解（可稍后再下单），手工添加的行不会被保存。',
           ),
         );
-        if (confirmed != true || !mounted) return;
+        if (confirmed != true || !mounted || !formDraftIdentityIsCurrent) {
+          return;
+        }
       }
     }
     // 行级条款完整性：供应商/结账方式/币种必填，汇率>0，税率 0-100；
@@ -1331,7 +1399,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       }
     }
     final settlementEntries = await _settlementEntries();
-    if (!mounted) return;
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     final stoppedSettlement = <String>[];
     for (var i = 0; i < gridRows.length; i++) {
       final r = gridRows[i];
@@ -1359,7 +1427,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       final pricingError = r.pricing.validate();
       if (pricingError != null) {
-        if (!mounted) return;
+        if (!mounted || !formDraftIdentityIsCurrent) return;
         context.appError('${r.goods?.name ?? "该货品"}：$pricingError');
         return;
       }
@@ -1367,7 +1435,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         r.pricing.totalAmountInput ??
             exactLineAmountText(r.qty.text, r.price.text),
       )) {
-        if (!mounted) return;
+        if (!mounted || !formDraftIdentityIsCurrent) return;
         context.appError('附加列数字或计算有误，请检查数字、除数以及最终金额');
         return;
       }
@@ -1415,7 +1483,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
     // 「保存并提交财务审核」一步直通锁单进财务共享待办，误触代价高：与详情页
     // 「提交财务审核」同款二次确认；保存草稿路径不弹。
     if (_canSubmitFinance) {
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final confirmed = await UtenDialog.show(
         context,
         title: '提交财务审核',
@@ -1425,7 +1493,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           '下一步由财务在「订货审批任务中心」审核。确认提交？',
         ),
       );
-      if (confirmed != true || !mounted) return;
+      if (confirmed != true || !mounted || !formDraftIdentityIsCurrent) return;
     }
     setState(() => _saving = true);
     try {
@@ -1435,7 +1503,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         final created = await runFormDraftSubmission(
           () => repo.createBatch(body),
         );
-        if (!mounted) return;
+        if (!mounted || !formDraftIdentityIsCurrent) return;
         setState(() {
           _createdOrders = created;
           _termsLoadGeneration++;
@@ -1452,12 +1520,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       body['exchangeRate'] = rateTextOf(first).trim();
       body['taxRate'] = taxTextOf(first).trim();
       var d = await repo.update(widget.id!, body);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       if (_canSubmitFinance) {
         try {
           d = await repo.submitFinance(d.id);
         } on ApiException catch (e) {
-          if (!mounted) return;
+          if (!mounted || !formDraftIdentityIsCurrent) return;
           context.appWarning('订货单已保存，但未能提交财务审核组：${e.message}。请在订货详情重新提交。');
           bumpListRefresh(ref, _cfg.refreshKey);
           // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链
@@ -1469,7 +1537,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           return;
         }
       }
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess(
         _canSubmitFinance
             ? '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核'
@@ -1487,15 +1555,17 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         RoutePath.purchaseDocDetail(_cfg.type.pathSegment, d.id),
       );
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && formDraftIdentityIsCurrent) context.appError(e.message);
     } catch (error, stack) {
       // 草稿保护/存储异常自带可行动文案；未知异常记栈便于定位，不再一律吞成兜底句。
       debugPrint('保存采购订货单失败: $error\n$stack');
-      if (mounted) {
+      if (mounted && formDraftIdentityIsCurrent) {
         context.appError(describeFormSaveError(error) ?? '保存失败，请稍后重试');
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted && formDraftIdentityIsCurrent) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -1517,7 +1587,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           ownerType: 'purchase_order',
           ownerIds: [for (final createdDoc in created) createdDoc.id],
         );
-        if (!mounted || !ok) return;
+        if (!mounted || !formDraftIdentityIsCurrent || !ok) return;
       }
       String? financeError;
       if (_canSubmitFinance) {
@@ -1529,7 +1599,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           }
         }
       }
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       bumpListRefresh(ref, _cfg.refreshKey);
       // 业务动作完成 → 对应通知自动已读（指向来源申请或本次新建订货单）。
       // 只认勾选行：未勾选行的来源申请仍待分解，通知不能被替读。
@@ -1567,7 +1637,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         );
       }
       await completeFormDraft();
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       if (created.length == 1) {
         context.replace(
           RoutePath.purchaseDocDetail(_cfg.type.pathSegment, created.first.id),
@@ -1576,9 +1646,11 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         context.go('/purchase/${_cfg.type.pathSegment}');
       }
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted && formDraftIdentityIsCurrent) context.appError(e.message);
     } catch (_) {
-      if (mounted) context.appWarning('订货单已创建，后续处理未完成。点击保存继续处理，不会重复创建。');
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appWarning('订货单已创建，后续处理未完成。点击保存继续处理，不会重复创建。');
+      }
     }
   }
 
@@ -1597,7 +1669,16 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   }
 
   @override
-  Widget build(BuildContext context) => withFormDraft(_buildDraftPage(context));
+  Widget build(BuildContext context) {
+    if (!formDraftIdentityIsCurrent) {
+      return EditorIdentityNotice(
+        title: _isCreate ? '新建${_cfg.label}' : '编辑${_cfg.label}',
+        documentChanged: _documentIdentityChanged,
+        onBack: () => popOrBackTo(context, defaultPath: RouteName.purchase),
+      );
+    }
+    return withFormDraft(_buildDraftPage(context));
+  }
 
   Widget _buildDraftPage(BuildContext context) {
     final theme = Theme.of(context);

@@ -29,6 +29,7 @@ import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../widgets/production_pending_badge.dart';
+import '../providers/production_pending_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/badges/badge_scope.dart';
 
@@ -38,6 +39,7 @@ class ProductionHubPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     final l10n = AppLocalizations.of(context);
     final permissions = ref.watch(currentPermissionsProvider);
     final superAdmin = ref.watch(isSuperAdminProvider);
@@ -47,18 +49,30 @@ class ProductionHubPage extends ConsumerWidget {
     final planningUrges = ref.watch(
       badgeEntryTodoProvider(BadgeEntry.productionPlanningUrges),
     );
+    final compactOverdue =
+        compact && MediaQuery.textScalerOf(context).scale(10) > 10;
+    final overdue = compactOverdue
+        ? ref.watch(
+            productionPendingCountProvider.select((count) => count.overdue),
+          )
+        : 0;
     return Scaffold(
       appBar: UtenAppBar(
         title: l10n.productionHubTitle,
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        actions: const [
+        actions: [
           // 黄左红右(ADR-100), 与卡片右上角同序。两枚都是「生产管理」容器的和
           // (服务端徽章目录算好, ADR-108)，包含生产草稿。车间任务单列 workshop
           // 容器，不混入本 Hub。公共组件处理顶栏居中与零数隐藏。
-          UtenModuleBadges(module: BadgeModule.production),
+          if (!compact) const UtenModuleBadges(module: BadgeModule.production),
         ],
+        bottom: UtenModuleBadges.compactAppBarBottom(
+          context,
+          ref,
+          BadgeModule.production,
+        ),
       ),
       body: SafeArea(
         child: UtenContentContainer(
@@ -102,14 +116,25 @@ class ProductionHubPage extends ConsumerWidget {
                     badgeShowLabel: true,
                     // 待排产红数保留逾期拆分与提示（含生产草稿合计，与
                     // badgeScope 红数同口径），黄数由卡片按范围统一取数。
-                    badge: const ProductionPendingBadge(
+                    badge: ProductionPendingBadge(
                       showLabel: true,
                       includeProductionDrafts: true,
+                      showOverdueIndicator: !compactOverdue,
                     ),
                     // ADR-117 车间在催计划下单的任务数(红，行内)：等计划员动手的
                     // 队列信号挂在任务中心卡上（2026-09-24 三段式：新建卡不挂数）。
-                    labelSuffix: planningUrges > 0
-                        ? UtenNotificationBadge(count: planningUrges)
+                    labelSuffix: planningUrges > 0 || overdue > 0
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (overdue > 0)
+                                ProductionOverdueBadge(count: overdue),
+                              if (overdue > 0 && planningUrges > 0)
+                                const SizedBox(width: UtenSpacing.s4),
+                              if (planningUrges > 0)
+                                UtenNotificationBadge(count: planningUrges),
+                            ],
+                          )
                         : null,
                   ),
                   const _Entry(
@@ -261,6 +286,15 @@ class ProductionHubPage extends ConsumerWidget {
             itemCount: visibleEntries.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
+            minItemWidth:
+                visibleEntries.any(
+                  (entry) => entry.badgeScope != null || entry.badge != null,
+                )
+                ? UtenHubCard.minimumBadgeRowWidth(
+                    context,
+                    includeOverdue: true,
+                  )
+                : null,
             itemBuilder: (context, i, _) =>
                 _EntryTile(entry: visibleEntries[i]),
           ),

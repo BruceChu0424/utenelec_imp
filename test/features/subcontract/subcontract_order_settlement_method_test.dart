@@ -91,6 +91,7 @@ Widget _app({
 }) => ProviderScope(
   overrides: [
     ...nativeDetailReaderOverrides(),
+    apiClientProvider.overrideWithValue(api),
     subcontractWriteAllDocumentScope(),
     // Settlement terms are part of the commercial detail surface and are
     // intentionally protected by the existing price-view permission.

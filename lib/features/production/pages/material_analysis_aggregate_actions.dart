@@ -86,7 +86,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
     final owner = this.owner;
     return showDialog<ProductionMaterialAnalysisMaterial>(
       context: owner.context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => UtenAlertDialog(
         key: const Key('material-aggregate-transfer-path-picker'),
         title: const Text('调入到哪条来源路径？'),
         content: SizedBox(

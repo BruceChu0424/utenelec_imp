@@ -3,25 +3,26 @@
 // 2026-09-03 起全平台「历史记录/历史单据」范式：分类分段末尾的历史段被选中后，
 // 内容区顶部渲染本组件——
 //
-// - 两个胶囊：「时间段」（点开系统日期范围选择器，选中后显示起止日期，可反复
+// - 两个矩形分段：「时间段」（点开系统日期范围选择器，选中后显示起止日期，可反复
 //   点按调整范围）与「全部」（不限时间全量加载）；
 // - 默认「全部」（2026-10-04 用户口径调整，原为默认不选）：历史段被选中后
 //   内容区直接按「全部」加载列表，用户不再多点一步；none 保留为值形态
 //   （[UtenHistoryTimeValue.isNone] 的不发请求护栏仍在），但不再是页面默认；
 // - 单选互斥：选「时间段」即取消「全部」，选「全部」即清空时间段；
-// - 样式与 UtenFilterToolbar 的分段胶囊同构（StadiumBorder、选中
+// - 样式与 UtenFilterToolbar 的圆角矩形分段同构（UtenSegmentRow、选中
 //   secondaryContainer 填充、未选 surface + outline 描边）。
 //
 // 值对象 [UtenHistoryTimeValue] 不含「取消选择回 none」的入口：胶囊一旦
 // 选中只能互相切换——避免误触把已加载的历史列表清回占位态。
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'uten_app_bar_action_scope.dart';
+import 'uten_segment_row.dart';
 
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
+
+enum _HistoryTimeAction { range, all }
 
 /// 历史时间筛选值：未选（不加载）/ 全部 / 时间段。
 class UtenHistoryTimeValue {
@@ -115,88 +116,47 @@ class UtenHistoryTimeFilter extends StatelessWidget {
         ? rangeLabel
         : '${ChinaDateTime.formatDate(range.start)} ~ '
               '${ChinaDateTime.formatDate(range.end)}';
-    return Wrap(
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        _capsule(
-          context: context,
-          selected: range != null,
-          icon: Icons.date_range_outlined,
-          label: rangeText,
-          onTap: enabled ? () => _pickRange(context) : null,
+    return UtenSegmentRow<_HistoryTimeAction>(
+      showSelectedIcon: false,
+      // Empty callback selection means re-tapping a selected action; the value
+      // still never goes back to none, and an existing range opens for editing.
+      emptySelectionAllowed: true,
+      segments: [
+        ButtonSegment(
+          value: _HistoryTimeAction.range,
+          icon: const Icon(Icons.date_range_outlined, size: 16),
+          label: Text(rangeText),
         ),
-        _capsule(
-          context: context,
-          selected: value.all,
-          icon: Icons.all_inclusive_rounded,
-          label: allLabel,
-          onTap: enabled && !value.all
-              ? () => onChanged(const UtenHistoryTimeValue.all())
-              : null,
+        ButtonSegment(
+          value: _HistoryTimeAction.all,
+          icon: const Icon(Icons.all_inclusive_rounded, size: 16),
+          label: Text(allLabel),
         ),
       ],
-    );
-  }
-
-  Widget _capsule({
-    required BuildContext context,
-    required bool selected,
-    required IconData icon,
-    required String label,
-    required FutureOr<void> Function()? onTap,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    final disabled = onTap == null && !enabled;
-    return Opacity(
-      opacity: enabled ? 1 : 0.5,
-      child: Material(
-        color: selected ? scheme.secondaryContainer : scheme.surface,
-        shape: StadiumBorder(
-          side: selected
-              ? BorderSide.none
-              : BorderSide(color: scheme.outline, width: disabled ? 0.5 : 1),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: UtenAppBarActionScope.wrapBefore(context, onTap),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: UtenControlMetrics.controlHeight(context),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    icon,
-                    size: 16,
-                    color: selected
-                        ? scheme.onSecondaryContainer
-                        : scheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: selected
-                            ? scheme.onSecondaryContainer
-                            : scheme.onSurface,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+      selected: {
+        if (range != null) _HistoryTimeAction.range,
+        if (value.all) _HistoryTimeAction.all,
+      },
+      onSelectionChanged: enabled
+          ? (values) {
+              final action = values.isEmpty
+                  ? (value.all
+                        ? _HistoryTimeAction.all
+                        : _HistoryTimeAction.range)
+                  : values.single;
+              if (action == _HistoryTimeAction.range) {
+                UtenAppBarActionScope.wrapBefore(
+                  context,
+                  () => _pickRange(context),
+                )?.call();
+              } else if (!value.all) {
+                UtenAppBarActionScope.wrapBefore(
+                  context,
+                  () => onChanged(const UtenHistoryTimeValue.all()),
+                )?.call();
+              }
+            }
+          : null,
     );
   }
 }

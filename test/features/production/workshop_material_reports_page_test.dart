@@ -5,27 +5,50 @@
 //  4. 撤销结算：先填原因，服务端要求再认证时弹统一密码框，输完后撤销生效；
 //     版本取结算状态里的最新期间版本 (每次结算尝试都会让它 +1)，不用期间列表里的旧值；
 //  5. 服务端报表行形状：收发明细「来源单据」= 库存单据号 / 领料单号，盘点过账显示「盘点」。
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/step_up_coordinator.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
+import 'package:uten_imp/core/theme/uten_control_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/production/models/workshop_material_report_models.dart';
 import 'package:uten_imp/features/production/pages/workshop_material_reports_page.dart';
 import 'package:uten_imp/features/production/repositories/workshop_material_report_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/widgets/reauth_dialog.dart';
+import '../../support/filter_segment_tap.dart';
+import '../../support/audit_screenshot_support.dart';
+
+class _WasteNonlinearScaler extends TextScaler {
+  const _WasteNonlinearScaler();
+  @override
+  double scale(double fontSize) => fontSize <= 1
+      ? fontSize
+      : fontSize <= 20
+      ? fontSize * 2
+      : fontSize * 1.4;
+  @override
+  double get textScaleFactor => 2;
+}
 
 class _FakeRepo implements WorkshopMaterialReportRepository {
   _FakeRepo({
     this.usage = const [],
     this.product = const [],
+    this.trend = const [],
     Map<String, WmReportCloseStatus>? statuses,
   }) : statuses = statuses ?? {};
 
   final List<WmBinUsageRow> usage;
   final List<WmProductUsageRow> product;
+  final List<WmWasteTrendPoint> trend;
+  final trendReads = <String>[];
   final Map<String, WmReportCloseStatus> statuses;
   final reopenCalls = <({String periodId, int? version, String reason})>[];
   final stepUpTokens = <String?>[];
@@ -122,7 +145,10 @@ class _FakeRepo implements WorkshopMaterialReportRepository {
   Future<List<WmWasteTrendPoint>> wasteTrend(
     String binId, {
     String? goodsId,
-  }) async => const [];
+  }) async {
+    trendReads.add(binId);
+    return trend;
+  }
 
   @override
   Future<List<WmMissingWeightRow>> missingWeights(String binId) async =>
@@ -182,9 +208,17 @@ Future<void> _pump(
   _FakeRepo repo, {
   String? initialPeriodId,
   GlobalKey<NavigatorState>? navigatorKey,
+  Size size = const Size(1600, 1000),
+  double factor = 1,
+  TextScaler? scaler,
+  ThemeData? theme,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1000));
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     ProviderScope(
       // 每个伪仓库一棵新树：同一个测试里换数据重新进页面。
@@ -194,6 +228,16 @@ Future<void> _pump(
       ],
       child: MaterialApp(
         navigatorKey: navigatorKey,
+        theme: theme,
+        builder: (context, routed) => MediaQuery(
+          data: scaler == null
+              ? MediaQuery.of(context)
+              : MediaQuery.of(context).copyWith(textScaler: scaler),
+          child: UtenDisplayZoomBox(
+            fontFactor: factor,
+            child: UtenControlTheme(child: routed!),
+          ),
+        ),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('zh'),
@@ -206,6 +250,416 @@ Future<void> _pump(
 
 void main() {
   _serverShapeTests();
+  testWidgets(
+    '320 2x nonlinear waste trend keeps axes, extreme/null facts and selection',
+    (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      const scaler = _WasteNonlinearScaler();
+      const points = [
+        WmWasteTrendPoint(
+          periodId: 'trend-1',
+          periodNo: 1,
+          startDate: '2026-09-01',
+          endDate: '2026-09-15',
+          goodsId: 'pc',
+          goodsName: 'PC E-15',
+          colorId: 'gray',
+          colorName: '灰',
+          wasteRate: -.3,
+          openingCountBasis: 'ESTIMATED',
+          closingCountBasis: 'WEIGHED',
+        ),
+        WmWasteTrendPoint(
+          periodId: 'trend-2',
+          periodNo: 2,
+          startDate: '2026-09-16',
+          endDate: '2026-09-16',
+          goodsId: 'pc',
+          goodsName: 'PC E-15',
+          colorId: 'gray',
+          colorName: '灰',
+        ),
+        WmWasteTrendPoint(
+          periodId: 'trend-3',
+          periodNo: 3,
+          startDate: '2026-09-17',
+          endDate: '2026-09-17',
+          goodsId: 'pc',
+          goodsName: 'PC E-15',
+          colorId: 'gray',
+          colorName: '灰',
+          wasteRate: .5,
+          openingCountBasis: 'WEIGHED',
+          closingCountBasis: 'WEIGHED',
+        ),
+        WmWasteTrendPoint(
+          periodId: 'trend-4',
+          periodNo: 4,
+          startDate: '2026-09-18',
+          endDate: '2026-09-18',
+          goodsId: 'pc',
+          goodsName: 'PC E-15',
+          colorId: 'gray',
+          colorName: '灰',
+          wasteRate: 1000000,
+          openingCountBasis: 'WEIGHED',
+          closingCountBasis: 'WEIGHED',
+        ),
+        WmWasteTrendPoint(
+          periodId: 'single-null',
+          periodNo: 5,
+          startDate: '2026-09-19',
+          endDate: '2026-09-19',
+          goodsId: 'single',
+          goodsName: '单点材料',
+          colorId: 'clear',
+          colorName: '透明',
+        ),
+      ];
+      final repo = _FakeRepo(trend: points, usage: const [_usageRow]);
+      final theme = auditScreenshotTheme(buildLightTheme());
+      await _pump(
+        tester,
+        repo,
+        size: const Size(320, 640),
+        factor: 2,
+        scaler: scaler,
+        theme: theme,
+      );
+      final page = find.byType(WorkshopMaterialReportsPage);
+      final pageState = tester.state(page);
+      final binState = tester.state(find.byKey(const Key('wm-report-bin')));
+      Future<void> revealThroughOuter(
+        Finder target, {
+        bool towardHeader = false,
+      }) async {
+        final outer = find
+            .descendant(
+              of: find.byKey(const Key('wm-report-coordinator')),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is Scrollable &&
+                    widget.axisDirection == AxisDirection.down,
+              ),
+            )
+            .first;
+        for (var i = 0; i < 40 && !tester.any(target); i++) {
+          final window =
+              Offset.zero &
+              (tester.view.physicalSize / tester.view.devicePixelRatio);
+          final visible = tester.getRect(outer).intersect(window);
+          expect(visible.isEmpty, isFalse);
+          final pointer = Offset(
+            visible.left + visible.width / 4,
+            visible.center.dy,
+          );
+          if (towardHeader) {
+            // At the table, a downward touch drag can belong to the inner
+            // viewport. Use the real wheel handoff to return to the outer
+            // header before asking ensureVisible to reveal its lazy segment.
+            await tester.sendEventToBinding(
+              PointerScrollEvent(
+                position: pointer,
+                scrollDelta: const Offset(0, -240),
+                kind: PointerDeviceKind.mouse,
+              ),
+            );
+          } else {
+            await tester.dragFrom(pointer, const Offset(0, -240));
+          }
+          await tester.pumpAndSettle();
+        }
+        expect(
+          target,
+          findsOneWidget,
+          reason:
+              'real vertical scrolling must materialize the lazy report content',
+        );
+        await tester.ensureVisible(target);
+        await tester.pumpAndSettle();
+      }
+
+      expect(
+        tester.takeException(),
+        isNull,
+        reason:
+            'initial usage notice must scroll in the common header instead of squeezing the table',
+      );
+      final initialTableFinder = find.byKey(
+        const ValueKey('wm-usage-table-false'),
+      );
+      await revealThroughOuter(initialTableFinder);
+      final initialTable = tester.widget<MasterDataTableView<WmBinUsageRow>>(
+        initialTableFinder,
+      );
+      expect(initialTable.items.single.actualQty, 80);
+      expect(initialTable.items.single.periodId, 'p1');
+      final view = find.byKey(const Key('wm-report-view-segments'));
+      await revealThroughOuter(view, towardHeader: true);
+      final viewToggle = find.descendant(
+        of: view,
+        matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+      );
+      if (tester.any(viewToggle)) {
+        await tester.ensureVisible(viewToggle);
+        await tester.pumpAndSettle();
+        expect(viewToggle.hitTestable(), findsOneWidget);
+      }
+      await selectFilterSegment(
+        tester,
+        AppLocalizations.of(tester.element(page)).wmReportTrend,
+      );
+      await tester.pumpAndSettle();
+      expect(repo.trendReads, ['bin-1']);
+      final body = find.byKey(const Key('wm-trend-scroll'));
+      await revealThroughOuter(body);
+      final chart = find.byKey(const Key('wm-trend-chart-canvas'));
+      await revealThroughOuter(chart);
+      final vertical = find
+          .descendant(
+            of: body,
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
+          )
+          .first;
+      await tester.scrollUntilVisible(chart, 80, scrollable: vertical);
+      await tester.pumpAndSettle();
+      final painter =
+          tester.widget<CustomPaint>(chart).painter! as WasteTrendPainter;
+      expect(painter.textScaler, same(scaler));
+      expect(scaler.scale(1), 1);
+      expect(painter.range, (-40.0, 100000010.0));
+      expect(painter.points.map((point) => point.periodId), [
+        'trend-1',
+        'trend-2',
+        'trend-3',
+        'trend-4',
+      ]);
+      expect(painter.points.map((point) => point.wasteRate), [
+        -.3,
+        null,
+        .5,
+        1000000,
+      ]);
+      final chartSize = tester.getSize(chart);
+      expect(
+        chartSize.height,
+        lessThan(500),
+        reason: 'an extreme rate cannot create an enormous surface',
+      );
+      final labels = painter.labelBounds(chartSize);
+      final ticks = labels.where((label) => !label.date).toList();
+      final dates = labels.where((label) => label.date).toList();
+      expect(ticks.map((label) => label.text), ['-30%', '0%', '50%']);
+      expect(dates.first.text, '09-15');
+      expect(dates.last.text, '09-18');
+      for (final label in labels) {
+        final bounds = label.bounds;
+        expect(bounds.left, greaterThanOrEqualTo(0));
+        expect(bounds.top, greaterThanOrEqualTo(0));
+        expect(bounds.right, lessThanOrEqualTo(chartSize.width));
+        expect(bounds.bottom, lessThanOrEqualTo(chartSize.height));
+      }
+      for (var i = 1; i < dates.length; i++) {
+        expect(
+          dates[i - 1].bounds.right,
+          lessThanOrEqualTo(dates[i].bounds.left),
+        );
+      }
+      for (var i = 0; i < ticks.length; i++) {
+        for (var j = i + 1; j < ticks.length; j++) {
+          expect(ticks[i].bounds.overlaps(ticks[j].bounds), isFalse);
+        }
+      }
+      final render = tester.renderObject(chart);
+      expect(render, paintsExactlyCountTimes(#drawCircle, 3));
+      expect(
+        render,
+        paints
+          ..circle(
+            radius: 3.5,
+            color: painter.lineColor,
+            style: PaintingStyle.stroke,
+          )
+          ..circle(
+            radius: 3.5,
+            color: painter.lineColor,
+            style: PaintingStyle.fill,
+          )
+          ..circle(
+            radius: 5,
+            color: painter.alertColor,
+            style: PaintingStyle.fill,
+          ),
+      );
+      final horizontal = find.descendant(
+        of: find.byKey(const Key('wm-trend-chart')),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.right,
+        ),
+      );
+      final horizontalState = tester.state<ScrollableState>(horizontal);
+      expect(horizontalState.position.maxScrollExtent, greaterThan(0));
+      final window =
+          Offset.zero &
+          (tester.view.physicalSize / tester.view.devicePixelRatio);
+      final visibleChart = tester.getRect(horizontal).intersect(window);
+      expect(visibleChart.isEmpty, isFalse);
+      await tester.dragFrom(visibleChart.center, const Offset(-120, 0));
+      await tester.pumpAndSettle();
+      expect(horizontalState.position.pixels, greaterThan(0));
+      final outerViewport = find
+          .descendant(
+            of: find.byKey(const Key('wm-report-coordinator')),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
+          )
+          .first;
+      Future<void> expectWholeReadoutReachable(Finder target) async {
+        await tester.scrollUntilVisible(target, 80, scrollable: vertical);
+        await tester.pumpAndSettle();
+        final text = tester.widget<Text>(target);
+        expect(text.maxLines, isNull);
+        expect(text.overflow, isNull);
+        final paragraph = tester.renderObject<RenderParagraph>(target);
+        final fullText = paragraph.text.toPlainText();
+        expect(fullText, text.data);
+        final boxes = paragraph.getBoxesForSelection(
+          TextSelection(baseOffset: 0, extentOffset: fullText.length),
+        );
+        expect(boxes, isNotEmpty);
+        for (final box in boxes) {
+          Rect glyphRect() => Rect.fromPoints(
+            paragraph.localToGlobal(Offset(box.left, box.top)),
+            paragraph.localToGlobal(Offset(box.right, box.bottom)),
+          );
+          Rect visibleViewport() => tester
+              .getRect(vertical)
+              .intersect(tester.getRect(outerViewport))
+              .intersect(
+                Offset.zero &
+                    (tester.view.physicalSize / tester.view.devicePixelRatio),
+              );
+          bool inside(Rect glyph, Rect viewport) =>
+              glyph.left >= viewport.left - 0.5 &&
+              glyph.right <= viewport.right + 0.5 &&
+              glyph.top >= viewport.top - 0.5 &&
+              glyph.bottom <= viewport.bottom + 0.5;
+
+          for (var i = 0; i < 40; i++) {
+            final viewport = visibleViewport();
+            final glyph = glyphRect();
+            expect(viewport.isEmpty, isFalse);
+            expect(glyph.width, lessThanOrEqualTo(viewport.width + 1));
+            expect(glyph.height, lessThanOrEqualTo(viewport.height + 1));
+            if (inside(glyph, viewport)) break;
+            // Window deltas enter the real linked-scroll wheel handoff. Do
+            // not scale again, jump the controller or bypass a lazy viewport.
+            final delta = (glyph.center.dy - viewport.center.dy)
+                .clamp(-240.0, 240.0)
+                .toDouble();
+            await tester.sendEventToBinding(
+              PointerScrollEvent(
+                position: viewport.center,
+                scrollDelta: Offset(0, delta),
+                kind: PointerDeviceKind.mouse,
+              ),
+            );
+            await tester.pumpAndSettle();
+          }
+          final glyph = glyphRect();
+          expect(
+            inside(glyph, visibleViewport()),
+            isTrue,
+            reason:
+                'each complete glyph run, including the first and last, '
+                'must be reachable within the real body viewport: $fullText',
+          );
+          expect(
+            tester
+                .hitTestOnBinding(glyph.center)
+                .path
+                .any((entry) => entry.target == paragraph),
+            isTrue,
+            reason: 'the visible readout must hit the original paragraph',
+          );
+        }
+      }
+
+      for (final period in [1, 2, 3, 4]) {
+        final row = find.textContaining('第 $period 期');
+        await expectWholeReadoutReachable(row);
+      }
+      expect(find.textContaining('100000000.0%'), findsOneWidget);
+      for (final reading in ['-30.0%', '50.0%', '100000000.0%']) {
+        final value = find.textContaining(reading);
+        await expectWholeReadoutReachable(value);
+      }
+      final selector = find.byKey(const Key('wm-trend-material'));
+      await tester.scrollUntilVisible(selector, -80, scrollable: vertical);
+      await tester.pumpAndSettle();
+      await tester.tap(selector);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('单点材料 透明').last);
+      await tester.pumpAndSettle();
+      expect(tester.widget<UtenDropdownField>(selector).value, 'single|clear');
+      await tester.scrollUntilVisible(chart, 80, scrollable: vertical);
+      await tester.pumpAndSettle();
+      final nullPainter =
+          tester.widget<CustomPaint>(chart).painter! as WasteTrendPainter;
+      expect(nullPainter.range, (-40.0, 60.0));
+      expect(nullPainter.points.single, same(points.last));
+      expect(
+        tester.renderObject(chart),
+        paintsExactlyCountTimes(#drawCircle, 0),
+      );
+      expect(repo.trendReads, ['bin-1']);
+      final chartState = tester.state(find.byKey(const Key('wm-trend-chart')));
+      await _pump(
+        tester,
+        repo,
+        size: const Size(1200, 900),
+        scaler: scaler,
+        theme: theme,
+      );
+      expect(tester.state(page), same(pageState));
+      expect(
+        tester.state(find.byKey(const Key('wm-report-bin'))),
+        same(binState),
+      );
+      expect(
+        tester.state(find.byKey(const Key('wm-trend-chart'))),
+        same(chartState),
+      );
+      expect(tester.widget<UtenDropdownField>(selector).value, 'single|clear');
+      expect(
+        tester
+            .widget<UtenDropdownField>(find.byKey(const Key('wm-report-bin')))
+            .value,
+        'bin-1',
+      );
+      expect(
+        tester
+            .widget<UtenDropdownField>(
+              find.byKey(const Key('wm-report-period')),
+            )
+            .value,
+        '',
+      );
+      expect(repo.trendReads, ['bin-1']);
+      expect(repo.reopenCalls, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('服务端没给金额 (无看成本权限) 时金额列整列隐藏，有金额时出现', (tester) async {
     await _pump(tester, _FakeRepo(usage: const [_usageRow]));
 

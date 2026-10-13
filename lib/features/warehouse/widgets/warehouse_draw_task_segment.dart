@@ -434,7 +434,7 @@ class _WarehouseDrawTaskSegmentState
             ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           Padding(
             padding: const EdgeInsets.only(

@@ -104,14 +104,14 @@ void main() {
     },
   );
 
-  testWidgets('default menu retains field width and single-line ellipsis', (
+  testWidgets('default menu retains field width and complete wrapping labels', (
     tester,
   ) async {
     await _pumpField(tester);
     expect(tester.getSize(_option('a')).width, 160);
     final text = tester.widget<Text>(find.text(_name));
-    expect(text.maxLines, 1);
-    expect(text.overflow, TextOverflow.ellipsis);
+    expect(text.maxLines, isNull);
+    expect(text.overflow, TextOverflow.clip);
     expect(tester.takeException(), isNull);
   });
 

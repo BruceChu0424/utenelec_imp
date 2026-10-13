@@ -1,4 +1,5 @@
 import '../../../core/theme/uten_tokens.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import 'dart:ui' show ImmutableBuffer, ImageDescriptor;
 
 import 'package:file_picker/file_picker.dart';
@@ -526,21 +527,25 @@ class _PlatformSettingsState extends ConsumerState<_PlatformSettingsEditor> {
                 ),
               ],
               const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
+              UtenSegmentRow<int>(
+                showSelectedIcon: false,
+                emptySelectionAllowed: true,
+                selected: {_section},
+                onSelectionChanged: _busy
+                    ? null
+                    : (next) => setState(
+                        () => _section = next.isEmpty ? _section : next.single,
+                      ),
+                segments: [
                   for (final (index, label) in const [
                     '公司与品牌',
                     '服务器与文件',
                     '配置导航',
                   ].indexed)
-                    ChoiceChip(
+                    ButtonSegment(
+                      value: index,
                       label: Text(label),
-                      selected: _section == index,
-                      onSelected: _busy
-                          ? null
-                          : (_) => setState(() => _section = index),
+                      enabled: !_busy,
                     ),
                 ],
               ),

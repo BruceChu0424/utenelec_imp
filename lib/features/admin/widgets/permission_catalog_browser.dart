@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permission_action_type.dart';
 import '../models/admin_models.dart';
@@ -280,41 +281,43 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
             );
           },
         ),
-        const SizedBox(height: UtenSpacing.s8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: UtenFilterRow.rowGap),
+        Wrap(
+          spacing: UtenFilterRow.rowGap,
+          runSpacing: UtenFilterRow.rowGap,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Expanded(
-              child: Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                children: [
+            UtenSegmentRow<PermissionCatalogFilter>(
+              showSelectedIcon: false,
+              emptySelectionAllowed: true,
+              selected: {_filter},
+              onSelectionChanged: (next) =>
+                  _setFilter(next.isEmpty ? _filter : next.single),
+              segments: [
+                _filterChip(
+                  key: const ValueKey('permission-filter-all'),
+                  label: '全部 $total',
+                  value: PermissionCatalogFilter.all,
+                ),
+                _filterChip(
+                  key: const ValueKey('permission-filter-enabled'),
+                  label: '${widget.enabledFilterLabel} $enabledCount',
+                  value: PermissionCatalogFilter.enabled,
+                ),
+                _filterChip(
+                  key: const ValueKey('permission-filter-disabled'),
+                  label:
+                      '${widget.disabledFilterLabel} ${total - enabledCount}',
+                  value: PermissionCatalogFilter.disabled,
+                ),
+                if (_hasChangedFilter)
                   _filterChip(
-                    key: const ValueKey('permission-filter-all'),
-                    label: '全部 $total',
-                    value: PermissionCatalogFilter.all,
+                    key: const ValueKey('permission-filter-changed'),
+                    label: '${widget.changedFilterLabel} $changedCount',
+                    value: PermissionCatalogFilter.changed,
                   ),
-                  _filterChip(
-                    key: const ValueKey('permission-filter-enabled'),
-                    label: '${widget.enabledFilterLabel} $enabledCount',
-                    value: PermissionCatalogFilter.enabled,
-                  ),
-                  _filterChip(
-                    key: const ValueKey('permission-filter-disabled'),
-                    label:
-                        '${widget.disabledFilterLabel} ${total - enabledCount}',
-                    value: PermissionCatalogFilter.disabled,
-                  ),
-                  if (_hasChangedFilter)
-                    _filterChip(
-                      key: const ValueKey('permission-filter-changed'),
-                      label: '${widget.changedFilterLabel} $changedCount',
-                      value: PermissionCatalogFilter.changed,
-                    ),
-                ],
-              ),
+              ],
             ),
-            const SizedBox(width: UtenSpacing.s8),
             if (!_isFiltering)
               TextButton.icon(
                 key: const ValueKey('permission-toggle-all-groups'),
@@ -379,17 +382,14 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
       modules.isNotEmpty &&
       modules.every((m) => _expandedModules.contains(m.module));
 
-  Widget _filterChip({
+  ButtonSegment<PermissionCatalogFilter> _filterChip({
     required Key key,
     required String label,
     required PermissionCatalogFilter value,
   }) {
-    return ChoiceChip(
-      key: key,
-      label: Text(label),
-      selected: _filter == value,
-      showCheckmark: false,
-      onSelected: (_) => _setFilter(value),
+    return ButtonSegment(
+      value: value,
+      label: Text(label, key: key),
     );
   }
 
@@ -399,13 +399,13 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
   ) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      padding: const EdgeInsets.only(top: UtenFilterRow.rowGap),
       child: Semantics(
         container: true,
         label: '按动作类型筛选权限',
         child: Wrap(
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
+          spacing: UtenFilterRow.rowGap,
+          runSpacing: UtenFilterRow.rowGap,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
@@ -415,26 +415,33 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            ChoiceChip(
-              key: const ValueKey('permission-action-filter-all'),
-              label: Text('全部 ${allPermissions.length}'),
-              selected: _actionType == null,
-              showCheckmark: false,
-              onSelected: (_) => _setActionType(null),
+            UtenSegmentRow<PermissionActionType?>(
+              showSelectedIcon: false,
+              emptySelectionAllowed: true,
+              selected: {_actionType},
+              onSelectionChanged: (next) =>
+                  _setActionType(next.isEmpty ? _actionType : next.single),
+              segments: [
+                ButtonSegment(
+                  value: null,
+                  label: Text(
+                    '全部 ${allPermissions.length}',
+                    key: const ValueKey('permission-action-filter-all'),
+                  ),
+                ),
+                for (final type in actionTypes)
+                  ButtonSegment(
+                    value: type,
+                    label: Text(
+                      '${type.label} '
+                      '${allPermissions.where((p) => p.actionType == type).length}',
+                      key: ValueKey(
+                        'permission-action-filter-${type.wireValue.toLowerCase()}',
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            for (final type in actionTypes)
-              ChoiceChip(
-                key: ValueKey(
-                  'permission-action-filter-${type.wireValue.toLowerCase()}',
-                ),
-                label: Text(
-                  '${type.label} '
-                  '${allPermissions.where((p) => p.actionType == type).length}',
-                ),
-                selected: _actionType == type,
-                showCheckmark: false,
-                onSelected: (_) => _setActionType(type),
-              ),
           ],
         ),
       ),

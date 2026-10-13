@@ -16,6 +16,7 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../components/cards/uten_card.dart';
 import '../../components/inputs/uten_drop_target.dart';
 import '../../components/layout/uten_section_header.dart';
+import '../../components/layout/uten_segment_row.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/app_notification.dart';
@@ -222,8 +223,8 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     String? active,
   ) {
     return Wrap(
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s4,
+      spacing: UtenFilterRow.rowGap,
+      runSpacing: UtenFilterRow.rowGap,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         Row(
@@ -243,24 +244,28 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
             ),
           ],
         ),
-        _filterChip(null, '全部', widget.attachments.length, active),
-        for (final c in usedCategories)
-          _filterChip(
-            c,
-            c,
-            widget.attachments.where((a) => _categoryOf(a) == c).length,
-            active,
+        UtenSegmentRow<String?>(
+          key: const ValueKey('attachment-category-filter'),
+          emptySelectionAllowed: true,
+          segments: [
+            ButtonSegment(
+              value: null,
+              label: Text('全部 ${widget.attachments.length}'),
+            ),
+            for (final category in usedCategories)
+              ButtonSegment(
+                value: category,
+                label: Text(
+                  '$category ${widget.attachments.where((a) => _categoryOf(a) == category).length}',
+                ),
+              ),
+          ],
+          selected: {active},
+          onSelectionChanged: (values) => setState(
+            () => _filterCategory = values.isEmpty ? active : values.single,
           ),
+        ),
       ],
-    );
-  }
-
-  Widget _filterChip(String? value, String label, int count, String? active) {
-    return ChoiceChip(
-      label: Text(count > 0 ? '$label $count' : label),
-      selected: active == value,
-      onSelected: (_) => setState(() => _filterCategory = value),
-      visualDensity: VisualDensity.compact,
     );
   }
 

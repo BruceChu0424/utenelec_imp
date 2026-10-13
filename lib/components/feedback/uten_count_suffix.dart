@@ -32,7 +32,7 @@ class UtenCountSuffix extends StatelessWidget {
   final String? semanticsLabel;
 
   /// 文字颜色覆盖；null = 主题 `onSurfaceVariant`（卡片/常规行内位置）。
-  /// 背景会变色的宿主（如 SegmentedButton 选中段）传宿主前景色的半透明值，
+  /// 背景会变色的宿主（如分类选中段）传宿主完整前景色，
   /// 否则固定的中性灰在选中背景上对比度不足。**不要传写死的颜色常量。**
   final Color? color;
 

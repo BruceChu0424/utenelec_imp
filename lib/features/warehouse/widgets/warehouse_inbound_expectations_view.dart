@@ -678,7 +678,7 @@ class _WarehouseInboundExpectationsViewState
           ),
         if (widget.externalHeader != null) ...[
           widget.externalHeader!,
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
         Expanded(child: fallback),
       ],
@@ -710,14 +710,14 @@ class _WarehouseInboundExpectationsViewState
             ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           if (!widget.embedded) ..._buildToolbar(result),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
             _InlineError(message: _error!, onRetry: () => _load(result.page)),
           ],
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<InboundExpectation>(

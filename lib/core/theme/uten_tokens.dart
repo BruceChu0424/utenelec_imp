@@ -159,15 +159,27 @@ abstract final class UtenControlMetrics {
       minimumHitExtent(context, desktop: desktop);
 }
 
-/// 筛选工具条（分类分段 + 搜索框）的描边高度下限，两侧共用同一枚值：
-/// - [UtenSegmentRow.minCellHeight] 的默认值（分段 StadiumBorder 画整盒高度）；
-/// - [UtenSearchBar] 前后缀图标约束的 minHeight——InputDecorator 的药丸描边
-///   只按内容高度绘制（`fixIconHeight = max(前后缀图标约束高)` 参与内容高），
-///   外部 minHeight 约束拉不高描边。两侧同取本值后，描边高度恒等于
-///   `max(40, 文本内容高)`，任意密度/字号/缩放下严格同高（2026-10-07 根因修复，
-///   2026-10-13 桌面标准40，触屏实际目标由 UtenControlMetrics 保底48）。
+/// 模块分类栏与搜索框共用的圆角矩形、内容间距和高度角色。桌面36；
+/// 触控目标至少48窗口像素，应用缩小时由 UtenControlMetrics 补偿。
+/// 搜索描边的内容高度下限也使用此角色，不能只拉高外部 TextField 盒子。
+/// 文字和徽章可自然撑高；逐格内容宽度、分类层级与计数逻辑由组件保留。
 abstract final class UtenFilterRow {
-  static const double minHeight = UtenControlMetrics.standardHeight;
+  static const double minHeight = UtenControlMetrics.compactHeight;
+  static const BorderRadius borderRadius = UtenRadius.controlAll;
+  static const double cellHorizontalPadding = 8;
+  static const double cellVerticalPadding = 4;
+  static const double iconGap = 4;
+  static const double rowGap = 6;
+  static const EdgeInsets contentPadding = EdgeInsets.symmetric(
+    horizontal: cellHorizontalPadding,
+    vertical: cellVerticalPadding,
+  );
+
+  static double heightOf(BuildContext context) =>
+      UtenControlMetrics.controlHeight(context, desktop: minHeight);
+
+  static double minimumWidthOf(BuildContext context) =>
+      UtenControlMetrics.minimumHitExtent(context, desktop: 24);
 }
 
 /// 自研表格共用的表头文字样式，渲染与列宽测量使用同一入口。

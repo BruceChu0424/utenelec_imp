@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_filter_chip.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/pricing/price_analysis_models.dart';
 import '../../../shared/pricing/price_analysis_l10n.dart';
 
@@ -15,6 +17,14 @@ class PriceHistoryChart extends StatefulWidget {
 class _PriceHistoryChartState extends State<PriceHistoryChart> {
   PriceObservation? _selected;
   bool _showReference = true;
+  final _horizontal = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontal.dispose();
+    super.dispose();
+  }
+
   @override
   void didUpdateWidget(covariant PriceHistoryChart oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -60,11 +70,11 @@ class _PriceHistoryChartState extends State<PriceHistoryChart> {
                   color: theme.colorScheme.primary,
                 ),
                 const SizedBox(width: 6),
-                Text(priceText(context, 'actualTrend')),
+                Flexible(child: Text(priceText(context, 'actualTrend'))),
               ],
             ),
             if (widget.analysis.ready)
-              FilterChip(
+              UtenFilterChip(
                 label: Text(priceText(context, 'referenceToggle')),
                 selected: _showReference,
                 onSelected: (value) => setState(() => _showReference = value),
@@ -75,39 +85,61 @@ class _PriceHistoryChartState extends State<PriceHistoryChart> {
             ),
           ],
         ),
-        SizedBox(
-          height: 250,
-          child: LayoutBuilder(
-            builder: (context, box) {
-              final painter = _PricePainter(
-                points,
-                widget.analysis,
-                theme.colorScheme,
-                theme.textTheme.bodySmall ?? const TextStyle(fontSize: 12),
-                _selected,
-                _showReference,
-              );
-              void select(Offset local) {
-                final nearest = painter.nearest(local, Size(box.maxWidth, 250));
-                if (_selected != nearest) setState(() => _selected = nearest);
-              }
+        LayoutBuilder(
+          builder: (context, box) {
+            final painter = PriceHistoryPainter(
+              points,
+              widget.analysis,
+              theme.colorScheme,
+              theme.textTheme.bodySmall ?? const TextStyle(fontSize: 12),
+              _selected,
+              _showReference,
+              MediaQuery.textScalerOf(context),
+              Directionality.of(context),
+              Localizations.maybeLocaleOf(context),
+            );
+            final chartSize = Size(
+              math.max(box.maxWidth, painter.minimumWidth),
+              painter.minimumHeight,
+            );
+            void select(Offset local) {
+              final nearest = painter.nearest(local, chartSize);
+              if (_selected != nearest) setState(() => _selected = nearest);
+            }
 
-              return Semantics(
-                label:
-                    '${priceText(context, 'facts')}: ${points.length}. ${priceText(context, 'history')}',
-                child: MouseRegion(
-                  onHover: (event) => select(event.localPosition),
-                  child: GestureDetector(
-                    onTapDown: (event) => select(event.localPosition),
-                    child: CustomPaint(
-                      painter: painter,
-                      size: Size(box.maxWidth, 250),
+            return SizedBox(
+              height: chartSize.height + UtenSpacing.s12,
+              child: Scrollbar(
+                controller: _horizontal,
+                thumbVisibility: true,
+                notificationPredicate: (notification) =>
+                    notification.metrics.axis == Axis.horizontal,
+                child: SingleChildScrollView(
+                  controller: _horizontal,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: chartSize.width,
+                    height: chartSize.height,
+                    child: Semantics(
+                      label:
+                          '${priceText(context, 'facts')}: ${points.length}. ${priceText(context, 'history')}',
+                      child: MouseRegion(
+                        onHover: (event) => select(event.localPosition),
+                        child: GestureDetector(
+                          onTapDown: (event) => select(event.localPosition),
+                          child: CustomPaint(
+                            key: const ValueKey('price-history-chart-canvas'),
+                            painter: painter,
+                            size: chartSize,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
         if (_selected case final selected?)
           Text(
@@ -119,14 +151,17 @@ class _PriceHistoryChartState extends State<PriceHistoryChart> {
   }
 }
 
-class _PricePainter extends CustomPainter {
-  _PricePainter(
+class PriceHistoryPainter extends CustomPainter {
+  PriceHistoryPainter(
     this.points,
     this.analysis,
     this.colors,
     this.textStyle,
     this.selected,
     this.showReference,
+    this.textScaler,
+    this.textDirection,
+    this.locale,
   );
   final List<PriceObservation> points;
   final GoodsPriceAnalysis analysis;
@@ -134,6 +169,9 @@ class _PricePainter extends CustomPainter {
   final TextStyle textStyle;
   final PriceObservation? selected;
   final bool showReference;
+  final TextScaler textScaler;
+  final TextDirection textDirection;
+  final Locale? locale;
   double? number(String key) {
     if (!analysis.ready || !showReference) return null;
     final n = double.tryParse(analysis.text(key));
@@ -141,11 +179,36 @@ class _PricePainter extends CustomPainter {
   }
 
   (Rect, double, double, double, double)? _layout;
-  (Rect, double, double, double, double) layout(Size size) {
-    if (_layout != null) return _layout!;
-    final times = points
-        .map((p) => p.date!.millisecondsSinceEpoch.toDouble())
-        .toList();
+
+  String _tick(double value) =>
+      value != 0 && (value.abs() < .0001 || value.abs() >= 1000000000)
+      ? value.toStringAsExponential(2)
+      : value.toStringAsFixed(value.abs() < 1 ? 4 : 2);
+
+  String _day(double time) => DateTime.fromMillisecondsSinceEpoch(
+    time.toInt(),
+  ).toIso8601String().substring(0, 10);
+
+  TextPainter _labelPainter(String text) => TextPainter(
+    text: TextSpan(
+      text: text,
+      style: textStyle.copyWith(color: colors.onSurfaceVariant),
+    ),
+    textDirection: textDirection,
+    textScaler: textScaler,
+    locale: locale,
+    maxLines: 1,
+  )..layout();
+
+  Size _labelSize(String text) {
+    final painter = _labelPainter(text);
+    final size = painter.size;
+    painter.dispose();
+    return size;
+  }
+
+  (double, double, double, double) get _range {
+    final times = points.map((p) => p.date!.millisecondsSinceEpoch.toDouble());
     final values = [
       ...points.map((p) => double.parse(p.price)),
       ...[
@@ -160,12 +223,62 @@ class _PricePainter extends CustomPainter {
       max == 0 ? .01 : max.abs() * .03,
     );
     final first = times.reduce(math.min), last = times.reduce(math.max);
-    return _layout = (
-      Rect.fromLTRB(64, 16, math.max(65, size.width - 12), size.height - 34),
+    return (
       first,
       math.max(last, first + 86400000),
       math.max(0, min - padding),
       max + padding,
+    );
+  }
+
+  late final _rangeValues = _range;
+  late final _tickSizes = [
+    for (var i = 0; i <= 3; i++)
+      _labelSize(
+        _tick(_rangeValues.$3 + (_rangeValues.$4 - _rangeValues.$3) * i / 3),
+      ),
+  ];
+  late final _dateSizes = [
+    _labelSize(_day(_rangeValues.$1)),
+    _labelSize(_day(_rangeValues.$2)),
+  ];
+  late final _leftInset = math.max(
+    64.0,
+    _tickSizes.map((size) => size.width).reduce(math.max) + 8,
+  );
+  late final _tickHeight = _tickSizes
+      .map((size) => size.height)
+      .reduce(math.max);
+  late final _dateHeight = _dateSizes
+      .map((size) => size.height)
+      .reduce(math.max);
+
+  /// Charts retain their two-dimensional axes. Narrow views pan horizontally
+  /// instead of reducing labels or changing actual transaction points.
+  double get minimumWidth =>
+      _leftInset +
+      math.max(
+        120.0,
+        _dateSizes.fold<double>(0, (sum, size) => sum + size.width) + 16,
+      ) +
+      12;
+  double get minimumHeight =>
+      math.max(250.0, _tickHeight * 4 + _dateHeight + 32);
+
+  (Rect, double, double, double, double) layout(Size size) {
+    if (_layout != null) return _layout!;
+    final (first, last, low, high) = _rangeValues;
+    return _layout = (
+      Rect.fromLTRB(
+        _leftInset,
+        math.max(16, _tickHeight / 2 + 4),
+        size.width - 12,
+        size.height - _dateHeight - 16,
+      ),
+      first,
+      last,
+      low,
+      high,
     );
   }
 
@@ -194,14 +307,9 @@ class _PricePainter extends CustomPainter {
   }
 
   void label(Canvas canvas, String text, Offset at, {bool right = false}) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: textStyle.copyWith(color: colors.onSurfaceVariant),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout(maxWidth: 110);
+    final painter = _labelPainter(text);
     painter.paint(canvas, Offset(right ? at.dx - painter.width : at.dx, at.dy));
+    painter.dispose();
   }
 
   @override
@@ -229,10 +337,8 @@ class _PricePainter extends CustomPainter {
       );
       label(
         canvas,
-        value != 0 && (value.abs() < .0001 || value.abs() >= 1000000000)
-            ? value.toStringAsExponential(2)
-            : value.toStringAsFixed(value.abs() < 1 ? 4 : 2),
-        Offset(rect.left - 8, y(value) - 7),
+        _tick(value),
+        Offset(rect.left - 8, y(value) - _tickSizes[i].height / 2),
         right: true,
       );
     }
@@ -273,18 +379,18 @@ class _PricePainter extends CustomPainter {
         Paint()..color = colors.primary,
       );
     }
-    String day(double time) => DateTime.fromMillisecondsSinceEpoch(
-      time.toInt(),
-    ).toIso8601String().substring(0, 10);
-    label(canvas, day(start), Offset(rect.left, rect.bottom + 10));
-    label(canvas, day(end), Offset(rect.right, rect.bottom + 10), right: true);
+    label(canvas, _day(start), Offset(rect.left, rect.bottom + 8));
+    label(canvas, _day(end), Offset(rect.right, rect.bottom + 8), right: true);
   }
 
   @override
-  bool shouldRepaint(covariant _PricePainter old) =>
+  bool shouldRepaint(covariant PriceHistoryPainter old) =>
       old.analysis != analysis ||
       old.showReference != showReference ||
       old.selected != selected ||
       old.colors != colors ||
-      old.textStyle != textStyle;
+      old.textStyle != textStyle ||
+      old.textScaler != textScaler ||
+      old.textDirection != textDirection ||
+      old.locale != locale;
 }

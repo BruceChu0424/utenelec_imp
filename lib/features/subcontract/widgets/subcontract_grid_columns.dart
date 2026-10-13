@@ -648,6 +648,9 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         required: true,
         headerInfo: l10n.workflowPriceHint,
         frozenTextOf: (r) => r.price.text,
+        textOf: (r) => r.price.text,
+        listenableOf: (r) => r.price,
+        chromeWidthOf: PriceCheckCell.evidenceExtentOf,
         cellBuilder: (context, row) => PriceCheckCell(
           row: row,
           child: RequiredCellFrame(

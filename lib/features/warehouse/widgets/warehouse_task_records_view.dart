@@ -727,7 +727,7 @@ class _WarehouseTaskRecordsViewState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (widget.externalHeader != null) widget.externalHeader!,
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<WarehouseTaskCenterRecord>(

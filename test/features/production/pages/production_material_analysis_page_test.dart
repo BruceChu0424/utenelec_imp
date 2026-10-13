@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
@@ -4360,6 +4362,16 @@ void main() {
         find.byKey(const ValueKey('material-table-row-make-path-2')),
         findsNothing,
       );
+      // Re-selecting the current product layout still executes its original
+      // projection callback without clearing a valid header filter.
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('material-table-row-make-path-2')),
+        findsNothing,
+      );
       await tester.tap(
         find.byKey(const ValueKey('material-bom-layout-material')),
       );
@@ -8349,15 +8361,16 @@ void main() {
   );
 
   // 2026-10-08 用户口径：生产准备任务卡右上角常驻「全部展开/全部收起」按钮
-  // （动作与右键菜单同源）；工具条控件统一与「表头设置/全屏」同高，
-  // 「按产品看/按物料汇总」布局组左右各一条分割线。
+  // （动作与右键菜单同源）；2026-10-13 分类使用共享36/48角色，
+  // 「按产品看/按物料汇总」布局组左右各一条分割线保留。
   testWidgets(
     'material-analysis toolbar expansion toggle, unified heights and layout group dividers',
     (tester) async {
       final json = _makeTreeAnalysisJson();
-      await _pumpPage(
+      final harness = await _pumpPage(
         tester,
         size: const Size(1440, 1000),
+        theme: ThemeData(platform: TargetPlatform.windows),
         permissions: const {
           Perm.productionMaterialAnalysisCreate,
           Perm.productionMaterialAnalysisRefresh,
@@ -8367,26 +8380,90 @@ void main() {
         analysisJson: json,
       );
 
-      // 工具条统一高度：视图 chip 与「全屏」按钮（=「表头设置」同款
-      // UtenTableToolbar.controlHeight）同高。
+      // Both real category groups use the shared outline and desktop36 role.
+      // The preserved legacy item keys now identify their complete labels.
       await _scrollToMaterialTable(tester);
+      final all = find.byKey(const ValueKey('material-bom-view-all'));
+      final modes = find.byKey(const Key('material-bom-view-segments'));
+      final theme = Theme.of(tester.element(all));
+      final hit = find.ancestor(of: all, matching: find.byType(InkWell)).first;
+      expect(tester.widget<Text>(all).data, '全部 BOM 3');
+      expect(tester.getSize(hit).height, UtenFilterRow.minHeight);
       expect(
         tester
-            .getSize(find.byKey(const ValueKey('material-bom-view-all')))
-            .height,
+            .widget<Material>(
+              find.ancestor(of: all, matching: find.byType(Material)).first,
+            )
+            .color,
+        theme.colorScheme.secondaryContainer,
+      );
+      expect(
+        DefaultTextStyle.of(tester.element(all)).style.color,
+        theme.colorScheme.onSecondaryContainer,
+      );
+      final outline =
+          tester
+                  .widget<Material>(
+                    find
+                        .descendant(
+                          of: modes,
+                          matching: find.byWidgetPredicate(
+                            (widget) =>
+                                widget is Material &&
+                                widget.shape is RoundedRectangleBorder,
+                          ),
+                        )
+                        .first,
+                  )
+                  .shape!
+              as RoundedRectangleBorder;
+      expect(outline.borderRadius, UtenFilterRow.borderRadius);
+      expect(outline.side.color, theme.colorScheme.outline);
+      expect(
+        tester
+            .widget<UtenSegmentRow<bool>>(
+              find.byKey(const Key('material-bom-layout-segments')),
+            )
+            .selected,
+        {false},
+      );
+      final reads = harness.requests.length;
+      await tester.tap(all);
+      await tester.pumpAndSettle();
+      expect(harness.requests.length, reads);
+      expect(tester.widget<Text>(all).data, '全部 BOM 3');
+      expect(
         tester
             .getSize(
-              find.byKey(const ValueKey('master-table-fullscreen-toggle')),
+              find
+                  .ancestor(
+                    of: find.byKey(
+                      const ValueKey('material-bom-layout-product'),
+                    ),
+                    matching: find.byType(InkWell),
+                  )
+                  .first,
             )
             .height,
+        UtenFilterRow.minHeight,
       );
 
       // 布局切换组：按产品看/按物料汇总 左右各一条竖分割线。
       final group = find.byKey(const Key('material-bom-layout-switch-group'));
       expect(group, findsOneWidget);
       expect(
-        find.descendant(of: group, matching: find.byType(Container)),
-        findsNWidgets(2),
+        find.descendant(
+          of: group,
+          matching: find.byKey(const Key('material-bom-layout-divider-start')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: group,
+          matching: find.byKey(const Key('material-bom-layout-divider-end')),
+        ),
+        findsOneWidget,
       );
 
       // 顶部按钮初始为「全部收起」（默认整树展开）。
@@ -8432,6 +8509,22 @@ void main() {
       expect(
         find.byKey(const ValueKey('material-table-row-make-path-2')),
         findsOneWidget,
+      );
+      final materialLayout = find.byKey(
+        const ValueKey('material-bom-layout-material'),
+      );
+      await tester.tap(materialLayout);
+      await tester.pumpAndSettle();
+      final layout = find.byKey(const Key('material-bom-layout-segments'));
+      expect(tester.widget<UtenSegmentRow<bool>>(layout).selected, {true});
+      final layoutReads = harness.requests.length;
+      await tester.tap(materialLayout);
+      await tester.pumpAndSettle();
+      expect(tester.widget<UtenSegmentRow<bool>>(layout).selected, {true});
+      expect(harness.requests.length, layoutReads);
+      expect(
+        harness.requests.where((request) => request.method == 'POST'),
+        isEmpty,
       );
     },
   );

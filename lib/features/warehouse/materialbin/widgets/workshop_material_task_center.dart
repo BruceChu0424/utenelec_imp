@@ -319,7 +319,7 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           widget.header,
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<WmRequisition>(
@@ -598,7 +598,7 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           widget.header,
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<_BinStatusRow>(

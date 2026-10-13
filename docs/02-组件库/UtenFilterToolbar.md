@@ -14,21 +14,23 @@
 > 同日补记 `UtenFilterSegment.inProgressCount`: 双维度页大类行并排两枚、黄左红右)
 > 相关：[UtenSearchBar](UtenSearchBar.md) · [UtenHistoryTimeFilter](UtenHistoryTimeFilter.md) · UtenSegmentBadgeLabel（`components/feedback/`）
 > 更新：2026-10-07（用户口径「搜索栏高度和分类栏一样、长度缩小一半」：默认
-> `searchWidth` 360 → **180**。高度根因修复——InputDecorator 的药丸描边只按
-> 内容高绘制、不吃外部 minHeight，compact 密度空框实测药丸 33 vs 分段 40；两侧
-> 共用下限令牌 `UtenFilterRow.minHeight`(36)（分段 `minCellHeight` 默认值与搜索
-> 图标约束同源）后恒同高。工具条外手摆宽度的 6 处页面级搜索框同步减半）
+> `searchWidth` 360 → **180**。当时旧胶囊空框实测33、分段40，修复了
+> InputDecorator 描边只按内容绘制、不吃外部 minHeight 的根因；两侧内部使用
+> 同源高度角色。2026-10-13 外观与默认值改为control10矩形、桌面最低36、
+> 触控实际目标至少48及8×4内容padding，旧33/40仅保留为历史诊断记录。
+> 工具条外手摆宽度的6处页面级搜索框仍保留减半后的宽度）
 
 ## 一、定位
 
 页面上凡有「分类/状态筛选」的地方一律用本组件，不再手写筛选按钮、Chip 行或
 自成一套的分段样式：
 
-- **分段导航**：M3 胶囊 StadiumBorder、**选中只变背景色不出 ✓ 图标**，
-  与搜索框**严格同高**：两侧描边共用下限令牌 `UtenFilterRow.minHeight`(36)，
-  高度恒等于 `max(36, 文本内容高)`，密度/字号档变化下恒成立（机制见
-  [UtenSearchBar](UtenSearchBar.md)——InputDecorator 描边不吃外部 minHeight，
-  不能靠 stretch 单侧拉齐）；
+- **分段导航**：control10圆角矩形、**选中只变背景色不出 ✓ 图标**，
+  与搜索共用 `UtenFilterRow` 高度角色：桌面最低36，触控实际目标至少48窗口像素，
+  缩小界面时按倍率补偿。8×4内容padding、文字、图标与徽章都参与实际高度；
+  并排字段组使用 IntrinsicHeight+stretch 对齐，换行布局的每行按内容增高。
+  搜索描边通过内部图标约束使用同源角色，不能只拉高外盒（见
+  [UtenSearchBar](UtenSearchBar.md)）；
 - **分段计数**：分段可挂数量(`count`)，呈现有**三种形态**
   （`UtenFilterSegment.countForm` → `UtenSegmentBadgeLabel`，见 §三）：
   **默认中性括号 `(N)`**（浏览型，0 显示 `(0)` 保持队形，`> 999` 显 `999+`）；
@@ -42,8 +44,8 @@
   只在一个大类里**同时**装着「等我动手」和「在办中」两批活时才传；该传不传的后果是大类行
   只显红数、点进去的小类行却有黄数，「大类 = 各小类之和」当场对不上(见 §三)。两枚各自
   遵守 0 与 null 不渲染；小屏收成「分类」下拉时两枚的总量也已自动合并，不必另行接线；
-- **搜索框**：全平台唯一组件 `UtenSearchBar`（胶囊 + 清除 + 300ms 防抖，药丸
-  描边与分类栏共用统一控件高度令牌恒同高（桌面40、触控至少48）），宽屏默认宽 **180**（2026-10-07 用户口径
+- **搜索框**：全平台唯一组件`UtenSearchBar`（同圆角矩形 + 清除 + 300ms防抖，
+  描边与分类栏共用`UtenFilterRow`角色（桌面36、触控实际宽高至少48窗口像素）），宽屏默认宽 **180**（2026-10-07 用户口径
   「长度缩小一半」，原 360），`searchHint` 不传且无 controller 时不渲染
   （纯分类工具条）；
 - **响应式**：宽屏一行 `分段 | 搜索 | trailing`；窄屏（默认 <840）搜索和行尾换行。
@@ -57,7 +59,7 @@
   enabled和回调，避免范围或权限已变化后应用旧选择。
 
 2026-10-13：分类分段直接消费者和`UtenSegmentedFilter`也使用同一适配逻辑。
-标准高度由`UtenControlMetrics`统一：桌面40、触控至少48，文字增长时高度可增加。
+分类/搜索尺寸由`UtenFilterRow`统一：control10，padding8×4，图文间距4，层级及分类/搜索间距6；桌面36、触控至少48，缩小档补偿、文字增长时高度可增加。自然逐格宽、每类计数、禁用、空选、多选、层级解锁和完整窄屏面板保留；不新增业务计数，也不影响浮动底部导航遮挡契约。
 分类按钮属于导航控件，测量分支不注册到祖先`SelectionArea`；面板只提供一个可交互的呈现。
 
 ## 二、层级与选中规则（2026-09-01 统一；2026-09-03 收紧）
@@ -197,11 +199,13 @@ UtenFilterSegment(
 分类较短时，空白留在搜索和行尾之间，动作仍贴页面右侧（此前裸 `trailing` 会让 `Wrap` 拿到
 无界宽度，840~1000px 宽度带出现溢出）。
 
-`UtenSearchBar` 药丸描边高度 = `max(前后缀图标约束高, contentPadding + 文本行高)`
+`UtenSearchBar` 矩形描边高度由 `max(前后缀图标约束高, contentPadding + 文本行高)`
+和InputDecorator的密度规则共同决定
 （InputDecorator 只按内容高绘制、不吃外部 minHeight——外部约束拉高的只是盒子，
 描边居中浮在盒里）；图标约束下限与分段 `minCellHeight` 同源取
-`UtenFilterRow.minHeight`(36)，两侧描边恒相等，宽屏字段组内 `IntrinsicHeight +
-stretch` 同高兜底。**行尾不参与字段组的高度计算**：44px 动作按钮或多行
+`UtenFilterRow`的桌面36/触控至少48角色，缩小档按窗口目标补偿，文字及8×4内容padding
+可进一步撑高。宽屏字段组内 `IntrinsicHeight + stretch` 对齐相邻外盒，不将所有
+内容高度写死为36。**行尾不参与字段组的高度计算**：普通40、主要48动作按钮或多行
 `Wrap` 只增加工具条整体高度，不能把分类描边撑厚，分类和搜索在整条工具条内垂直居中。
 行尾筛选字段（`UtenFilterPickerField`）按同一口径算内边距，表单下拉传紧凑
 `contentPadding`（2026-09-10 回退过「搜索框强拉 48」；2026-09-23 修复行尾撑高分类）。

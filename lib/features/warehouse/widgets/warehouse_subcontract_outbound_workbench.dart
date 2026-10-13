@@ -242,7 +242,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
             ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           if (!widget.embedded) ...[
             _buildStandaloneSearch(result),
@@ -260,7 +260,7 @@ class _WarehouseSubcontractOutboundWorkbenchState
               ),
             ),
           ],
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<OutboundTask>(

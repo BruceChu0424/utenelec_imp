@@ -23,6 +23,7 @@ import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
@@ -427,34 +428,17 @@ class _EmployeePermTabState extends ConsumerState<_EmployeePermTab> {
           ),
         ),
         // 状态筛选（单选：全部/正常/锁定/停用）
-        SizedBox(
-          height: 38,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
-                child: ChoiceChip(
-                  label: const Text('全部'),
-                  selected: _statusFilter == null,
-                  onSelected: (_) => _changeStatusFilter(null),
-                ),
-              ),
-              for (final key in _statusKeys)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s4,
-                  ),
-                  child: ChoiceChip(
-                    label: Text(accountStatusLabel(key)),
-                    selected: _statusFilter == key,
-                    onSelected: (_) =>
-                        _changeStatusFilter(_statusFilter == key ? null : key),
-                  ),
-                ),
-            ],
-          ),
+        UtenSegmentRow<String?>(
+          showSelectedIcon: false,
+          emptySelectionAllowed: true,
+          segments: [
+            const ButtonSegment(value: null, label: Text('全部')),
+            for (final key in _statusKeys)
+              ButtonSegment(value: key, label: Text(accountStatusLabel(key))),
+          ],
+          selected: {_statusFilter},
+          onSelectionChanged: (next) =>
+              _changeStatusFilter(next.isEmpty ? null : next.single),
         ),
         const SizedBox(height: UtenSpacing.s4),
         // 开通账号入口：为还没有登录账号的在册员工补开（同人事-员工详情页端点）。

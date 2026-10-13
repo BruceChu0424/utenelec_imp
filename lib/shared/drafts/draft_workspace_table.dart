@@ -594,9 +594,18 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 for (var i = 0; i < header.length; i++) ...[
-                  if (i > 0) const SizedBox(height: UtenSpacing.s12),
+                  if (i > 0)
+                    SizedBox(
+                      height:
+                          i == 1 &&
+                              widget.externalHeader != null &&
+                              widget.showSearch
+                          ? UtenFilterRow.rowGap
+                          : UtenSpacing.s8,
+                    ),
                   header[i],
                 ],
+                const SizedBox(height: UtenSpacing.s8),
               ],
             ),
       body: table,

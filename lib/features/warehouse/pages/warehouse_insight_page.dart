@@ -16,6 +16,7 @@
 // 估算带「≈」, 没称显示「未称」。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -705,34 +706,45 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
     switch (_segment) {
       case WarehouseInsightSegment.health:
         children.addAll([
-          FilterChip(
-            key: const Key('insight-only-dead'),
-            label: const Text('仅呆滞'),
-            selected: _onlyDead,
-            onSelected: (v) {
-              setState(() => _onlyDead = v);
+          UtenSegmentRow<String>(
+            key: const Key('insight-health-flags'),
+            multiSelectionEnabled: true,
+            emptySelectionAllowed: true,
+            segments: const [
+              ButtonSegment(
+                value: 'dead',
+                label: Text('仅呆滞', key: Key('insight-only-dead')),
+              ),
+              ButtonSegment(
+                value: 'aged180',
+                label: Text('库龄>180天', key: Key('insight-aged-180')),
+              ),
+            ],
+            selected: {if (_onlyDead) 'dead', if (_agedOver180) 'aged180'},
+            onSelectionChanged: (values) {
+              setState(() {
+                _onlyDead = values.contains('dead');
+                _agedOver180 = values.contains('aged180');
+              });
               _loadHealth(1);
             },
           ),
-          FilterChip(
-            key: const Key('insight-aged-180'),
-            label: const Text('库龄>180天'),
-            selected: _agedOver180,
-            onSelected: (v) {
-              setState(() => _agedOver180 = v);
+          UtenSegmentRow<String>(
+            key: const Key('insight-abc-filter'),
+            emptySelectionAllowed: true,
+            segments: [
+              for (final abc in const ['A', 'B', 'C'])
+                ButtonSegment(
+                  value: abc,
+                  label: Text(abc, key: ValueKey('insight-abc-$abc')),
+                ),
+            ],
+            selected: {?_abc},
+            onSelectionChanged: (values) {
+              setState(() => _abc = values.firstOrNull);
               _loadHealth(1);
             },
           ),
-          for (final abc in const ['A', 'B', 'C'])
-            ChoiceChip(
-              key: ValueKey('insight-abc-$abc'),
-              label: Text(abc),
-              selected: _abc == abc,
-              onSelected: (v) {
-                setState(() => _abc = v ? abc : null);
-                _loadHealth(1);
-              },
-            ),
           _countText('共 ${_health?.rows.total ?? 0} 项'),
         ]);
       case WarehouseInsightSegment.cycleCount:
@@ -742,39 +754,59 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
         ]);
       case WarehouseInsightSegment.weightAlerts:
         children.addAll([
-          for (final days in const [7, 30, 90])
-            ChoiceChip(
-              key: ValueKey('insight-alert-days-$days'),
-              label: Text('近$days天'),
-              selected: _alertDays == days,
-              onSelected: (v) {
-                if (!v || days == _alertDays) return;
-                setState(() => _alertDays = days);
-                _loadAlerts(1);
-              },
-            ),
-          FilterChip(
+          UtenSegmentRow<int>(
+            key: const Key('insight-alert-period'),
+            segments: [
+              for (final days in const [7, 30, 90])
+                ButtonSegment(
+                  value: days,
+                  label: Text(
+                    '近$days天',
+                    key: ValueKey('insight-alert-days-$days'),
+                  ),
+                ),
+            ],
+            selected: {_alertDays},
+            onSelectionChanged: (values) {
+              final days = values.single;
+              if (days == _alertDays) return;
+              setState(() => _alertDays = days);
+              _loadAlerts(1);
+            },
+          ),
+          UtenSegmentRow<bool>(
             key: const Key('insight-group-by-counterpart'),
-            label: const Text('按往来方汇总'),
-            selected: _groupByCounterpart,
-            onSelected: (v) => setState(() => _groupByCounterpart = v),
+            emptySelectionAllowed: true,
+            segments: const [ButtonSegment(value: true, label: Text('按往来方汇总'))],
+            selected: {if (_groupByCounterpart) true},
+            onSelectionChanged: (values) =>
+                setState(() => _groupByCounterpart = values.isNotEmpty),
           ),
           _countText('共 ${_alerts?.rows.total ?? 0} 条'),
         ]);
       case WarehouseInsightSegment.learning:
         final coverage = _health?.overview.weighedCoveragePct;
         children.addAll([
-          for (final filter in InsightLearningFilter.values)
-            ChoiceChip(
-              key: ValueKey('insight-learning-${filter.code}'),
-              label: Text(filter.label),
-              selected: _learningFilter == filter,
-              onSelected: (v) {
-                if (!v || filter == _learningFilter) return;
-                setState(() => _learningFilter = filter);
-                _loadLearning(1);
-              },
-            ),
+          UtenSegmentRow<InsightLearningFilter>(
+            key: const Key('insight-learning-filter'),
+            segments: [
+              for (final filter in InsightLearningFilter.values)
+                ButtonSegment(
+                  value: filter,
+                  label: Text(
+                    filter.label,
+                    key: ValueKey('insight-learning-${filter.code}'),
+                  ),
+                ),
+            ],
+            selected: {_learningFilter},
+            onSelectionChanged: (values) {
+              final filter = values.single;
+              if (filter == _learningFilter) return;
+              setState(() => _learningFilter = filter);
+              _loadLearning(1);
+            },
+          ),
           if (coverage != null)
             _countText(
               '称重覆盖率 ${formatMeasurementValue(coverage, scale: 1)}% (库存行重量为实称的占比)',
@@ -783,8 +815,8 @@ class _WarehouseInsightPageState extends ConsumerState<WarehouseInsightPage> {
         ]);
     }
     return Wrap(
-      spacing: UtenSpacing.s8,
-      runSpacing: UtenSpacing.s8,
+      spacing: UtenFilterRow.rowGap,
+      runSpacing: UtenFilterRow.rowGap,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: children,
     );

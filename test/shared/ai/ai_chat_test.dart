@@ -2208,66 +2208,103 @@ void main() {
   }
 
   for (final (zoom, systemText) in [(0.85, 1.0), (2.0, 2.0)]) {
-    testWidgets('attachment removal preserves touch target and payload zoom=$zoom', (tester) async {
-      final file = PlatformFile(name: 'a-long-original-customer-quotation-name.xlsx',
-        size: 4, bytes: Uint8List.fromList([1, 2, 3, 4]));
-      FilePicker.platform = _Picker(file);
-      addTearDown(() => FilePicker.platform = _Picker(null));
-      final jobs = _FakeJobRepository();
-      final repository = _FakeChatRepository();
-      await _pump(tester, size: const Size(390, 1000), interfaceZoom: zoom,
-        textScaler: TextScaler.linear(systemText), theme: buildLightTheme(),
-        repository: repository, jobs: jobs);
-      await _open(tester);
-      Future<void> reach(Finder finder) async {
-        final whole = find.byKey(const ValueKey('ai-chat-accessible-scroll'));
-        if (tester.any(whole)) {
-          await tester.scrollUntilVisible(finder.hitTestable(), 100,
-            scrollable: find.descendant(of: whole, matching: find.byType(Scrollable)).first);
-        } else {
-          await tester.ensureVisible(finder);
+    testWidgets(
+      'attachment removal preserves touch target and payload zoom=$zoom',
+      (tester) async {
+        final file = PlatformFile(
+          name: 'a-long-original-customer-quotation-name.xlsx',
+          size: 4,
+          bytes: Uint8List.fromList([1, 2, 3, 4]),
+        );
+        FilePicker.platform = _Picker(file);
+        addTearDown(() => FilePicker.platform = _Picker(null));
+        final jobs = _FakeJobRepository();
+        final repository = _FakeChatRepository();
+        await _pump(
+          tester,
+          size: const Size(390, 1000),
+          interfaceZoom: zoom,
+          textScaler: TextScaler.linear(systemText),
+          theme: buildLightTheme(),
+          repository: repository,
+          jobs: jobs,
+        );
+        await _open(tester);
+        Future<void> reach(Finder finder) async {
+          final whole = find.byKey(const ValueKey('ai-chat-accessible-scroll'));
+          if (tester.any(whole)) {
+            await tester.scrollUntilVisible(
+              finder.hitTestable(),
+              100,
+              scrollable: find
+                  .descendant(of: whole, matching: find.byType(Scrollable))
+                  .first,
+            );
+          } else {
+            await tester.ensureVisible(finder);
+          }
+          await tester.pump();
         }
-        await tester.pump();
-      }
-      final attach = find.byKey(const ValueKey('ai-chat-attach'));
-      await reach(attach);
-      await tester.tap(attach.hitTestable());
-      await tester.pumpAndSettle();
-      expect(find.byTooltip(file.name), findsOneWidget);
-      final remove = find.byKey(const ValueKey('ai-chat-remove-attachment'));
-      await reach(remove);
-      final hit = tester.getRect(remove);
-      expect(hit.width, greaterThanOrEqualTo(47.9));
-      expect(hit.height, greaterThanOrEqualTo(47.9));
-      const ordinary = 'Keep the original request after removing the file';
-      await tester.enterText(find.byKey(const ValueKey('ai-chat-input')), ordinary);
-      await tester.pumpAndSettle();
-      await reach(remove);
-      await tester.tap(remove.hitTestable());
-      await tester.pumpAndSettle();
-      expect(find.text(file.name), findsNothing);
-      expect(tester.widget<TextField>(find.byKey(const ValueKey('ai-chat-input'))).controller!.text, ordinary);
-      final send = find.byKey(const ValueKey('ai-chat-send'));
-      await reach(send);
-      await tester.tap(send.hitTestable());
-      await tester.pumpAndSettle();
-      expect(repository.messages.single['message'], ordinary);
-      expect(jobs.requests, isEmpty, reason: 'removed attachments cannot start document work');
-      await reach(attach);
-      await tester.tap(attach.hitTestable());
-      await tester.pumpAndSettle();
-      const fileMessage = 'Prepare an order from the original file';
-      await tester.enterText(find.byKey(const ValueKey('ai-chat-input')), fileMessage);
-      await tester.pumpAndSettle();
-      await reach(send);
-      await tester.tap(send.hitTestable());
-      await tester.pumpAndSettle();
-      expect(jobs.requests.single.kind, 'ERP_DOCUMENT_ROUTE');
-      expect(jobs.requests.single.params, {'message': fileMessage, 'pageRoute': '/sales/orders/new'});
-      expect(jobs.requests.single.bytes, file.bytes);
-      expect(repository.messages, hasLength(1));
-      expect(tester.takeException(), isNull);
-    });
+
+        final attach = find.byKey(const ValueKey('ai-chat-attach'));
+        await reach(attach);
+        await tester.tap(attach.hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.byTooltip(file.name), findsOneWidget);
+        final remove = find.byKey(const ValueKey('ai-chat-remove-attachment'));
+        await reach(remove);
+        final hit = tester.getRect(remove);
+        expect(hit.width, greaterThanOrEqualTo(47.9));
+        expect(hit.height, greaterThanOrEqualTo(47.9));
+        const ordinary = 'Keep the original request after removing the file';
+        await tester.enterText(
+          find.byKey(const ValueKey('ai-chat-input')),
+          ordinary,
+        );
+        await tester.pumpAndSettle();
+        await reach(remove);
+        await tester.tap(remove.hitTestable());
+        await tester.pumpAndSettle();
+        expect(find.text(file.name), findsNothing);
+        expect(
+          tester
+              .widget<TextField>(find.byKey(const ValueKey('ai-chat-input')))
+              .controller!
+              .text,
+          ordinary,
+        );
+        final send = find.byKey(const ValueKey('ai-chat-send'));
+        await reach(send);
+        await tester.tap(send.hitTestable());
+        await tester.pumpAndSettle();
+        expect(repository.messages.single['message'], ordinary);
+        expect(
+          jobs.requests,
+          isEmpty,
+          reason: 'removed attachments cannot start document work',
+        );
+        await reach(attach);
+        await tester.tap(attach.hitTestable());
+        await tester.pumpAndSettle();
+        const fileMessage = 'Prepare an order from the original file';
+        await tester.enterText(
+          find.byKey(const ValueKey('ai-chat-input')),
+          fileMessage,
+        );
+        await tester.pumpAndSettle();
+        await reach(send);
+        await tester.tap(send.hitTestable());
+        await tester.pumpAndSettle();
+        expect(jobs.requests.single.kind, 'ERP_DOCUMENT_ROUTE');
+        expect(jobs.requests.single.params, {
+          'message': fileMessage,
+          'pageRoute': '/sales/orders/new',
+        });
+        expect(jobs.requests.single.bytes, file.bytes);
+        expect(repository.messages, hasLength(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   test(

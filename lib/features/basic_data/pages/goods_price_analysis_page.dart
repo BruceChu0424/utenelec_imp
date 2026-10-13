@@ -22,6 +22,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/exact_decimal.dart';
@@ -458,64 +459,9 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
       drawerWidth: 500,
       builder: (panelContext) => trackNativeReadDialog(
         panelContext,
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      priceText(context, 'explain'),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(panelContext),
-                    tooltip: priceText(context, 'close'),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(data.text('explanation')),
-                    const SizedBox(height: UtenSpacing.s16),
-                    Text(
-                      '${priceText(context, 'asOf')}: ${utenFmtIsoTime(data.text('dataAsOf'))}',
-                    ),
-                    Text(
-                      '${priceText(context, 'samples')}: ${data.text('sampleCount')} / ${data.text('independentOrderCount')}',
-                    ),
-                    if (data.reasons.isNotEmpty)
-                      Text(
-                        data.reasons
-                            .map((reason) => priceText(context, reason))
-                            .toSet()
-                            .join(' · '),
-                      ),
-                    if (data.cost.isNotEmpty) ...[
-                      const SizedBox(height: UtenSpacing.s16),
-                      Text(
-                        data.cost['explanation']?.toString() ??
-                            priceText(context, 'quoteBasis'),
-                      ),
-                      Text(priceText(context, 'estimateOnly')),
-                    ],
-                    const SizedBox(height: UtenSpacing.s16),
-                    Text(priceText(context, 'chartHint')),
-                  ],
-                ),
-              ),
-            ),
-          ],
+        _PriceBasisPanel(
+          data: data,
+          onClose: () => Navigator.pop(panelContext),
         ),
         readOnly: true,
       ),
@@ -918,9 +864,16 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
 
   Widget _controls(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
-      final optionWidth = box.maxWidth < 400
-          ? (box.maxWidth - UtenSpacing.s12) / 2
-          : 170.0;
+      final style =
+          Theme.of(context).textTheme.bodyMedium ??
+          const TextStyle(fontSize: 14);
+      final fontSize = style.fontSize ?? 14;
+      final textFactor =
+          MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
+      final minimumWidth = 170 * textFactor;
+      final optionWidth = box.maxWidth < minimumWidth * 2 + UtenSpacing.s12
+          ? box.maxWidth
+          : minimumWidth;
       return Wrap(
         spacing: UtenSpacing.s12,
         runSpacing: UtenSpacing.s12,
@@ -928,22 +881,26 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
         children: [
           if (!_historyOnly)
             SizedBox(
-              width: 150,
-              child: DropdownButtonFormField<int>(
-                initialValue: _days,
-                decoration: InputDecoration(
-                  labelText: priceText(context, 'days'),
-                ),
+              width: optionWidth,
+              child: UtenDropdownField(
+                key: const ValueKey('price-analysis-days'),
+                label: priceText(context, 'days'),
+                value: _days.toString(),
+                selectedMaxLines: null,
+                menuMatchContentWidth: true,
+                allowClear: false,
+                searchable: false,
                 items: [
                   for (final days in [30, 90, 180, 365])
-                    DropdownMenuItem(
-                      value: days,
-                      child: Text(priceDaysText(context, days)),
+                    UtenDropdownItem(
+                      value: days.toString(),
+                      label: priceDaysText(context, days),
                     ),
                 ],
                 onChanged: (value) {
-                  if (value != null) {
-                    _days = value;
+                  final days = int.tryParse(value ?? '');
+                  if (days != null) {
+                    _days = days;
                     _edited();
                     _load();
                   }
@@ -953,8 +910,9 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
           if (!_historyOnly &&
               !(_kind == 'SUBCONTRACT' && _subcontractView == 'suppliers'))
             SizedBox(
-              width: 150,
+              width: optionWidth,
               child: TextField(
+                key: const ValueKey('price-analysis-quantity'),
                 controller: _quantity,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
@@ -981,33 +939,27 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
                 !(_kind == 'SALES' && entry.$1 == 'supplierId'))
               SizedBox(
                 width: optionWidth,
-                child: DropdownButtonFormField<String>(
+                child: UtenDropdownField(
                   key: ValueKey('${entry.$1}-${_filters[entry.$1]}'),
-                  initialValue: _choiceValue(entry.$1),
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: priceText(context, entry.$2),
-                  ),
+                  value: _choiceValue(entry.$1),
+                  label: priceText(context, entry.$2),
+                  hintText: priceText(context, 'auto'),
+                  selectedMaxLines: null,
+                  menuMatchContentWidth: true,
+                  allowClear: false,
                   items: [
-                    DropdownMenuItem<String>(
-                      child: Text(priceText(context, 'auto')),
-                    ),
+                    UtenDropdownItem(label: priceText(context, 'auto')),
                     for (final option in _options[entry.$1]!.entries)
-                      DropdownMenuItem(
-                        value: option.key,
-                        child: Text(
-                          option.value,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
+                      UtenDropdownItem(value: option.key, label: option.value),
                   ],
                   onChanged: (value) => _selectContext(entry.$1, value),
                 ),
               ),
           if (_kind == 'SALES' && !_historyOnly)
             SizedBox(
-              width: 180,
+              width: optionWidth,
               child: TextField(
+                key: const ValueKey('price-analysis-margin'),
                 controller: _margin,
                 decoration: InputDecoration(
                   labelText: priceText(context, 'margin'),
@@ -1031,7 +983,10 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
 
   Widget _summary(GoodsPriceAnalysis data, double width) {
     final available = width - (width < 720 ? 24 : 48);
-    final largeText = MediaQuery.textScalerOf(context).scale(1) > 1.2;
+    final summaryFont =
+        Theme.of(context).textTheme.headlineSmall?.fontSize ?? 20;
+    final largeText =
+        MediaQuery.textScalerOf(context).scale(summaryFont) > summaryFont * 1.2;
     final columns = width < 360 || largeText && width < 980
         ? 1
         : width < 980 || largeText
@@ -1093,7 +1048,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
               for (final entry in entries)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-                  child: largeText
+                  child: largeText || width < 360
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -1311,6 +1266,100 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PriceBasisPanel extends StatefulWidget {
+  const _PriceBasisPanel({required this.data, required this.onClose});
+  final GoodsPriceAnalysis data;
+  final VoidCallback onClose;
+  @override
+  State<_PriceBasisPanel> createState() => _PriceBasisPanelState();
+}
+
+class _PriceBasisPanelState extends State<_PriceBasisPanel> {
+  final _scroll = ScrollController();
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = widget.data;
+    return Scrollbar(
+      controller: _scroll,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        key: const ValueKey('price-basis-scroll'),
+        controller: _scroll,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      priceText(context, 'explain'),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  IconButton(
+                    key: const ValueKey('price-basis-close'),
+                    onPressed: widget.onClose,
+                    tooltip: priceText(context, 'close'),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(UtenSpacing.s16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(data.text('explanation')),
+                  const SizedBox(height: UtenSpacing.s16),
+                  Text(
+                    '${priceText(context, 'asOf')}: ${utenFmtIsoTime(data.text('dataAsOf'))}',
+                  ),
+                  Text(
+                    '${priceText(context, 'samples')}: ${data.text('sampleCount')} / ${data.text('independentOrderCount')}',
+                  ),
+                  if (data.reasons.isNotEmpty)
+                    Text(
+                      data.reasons
+                          .map((reason) => priceText(context, reason))
+                          .toSet()
+                          .join(' · '),
+                      key: const ValueKey('price-basis-reasons'),
+                    ),
+                  if (data.cost.isNotEmpty) ...[
+                    const SizedBox(height: UtenSpacing.s16),
+                    Text(
+                      data.cost['explanation']?.toString() ??
+                          priceText(context, 'quoteBasis'),
+                      key: const ValueKey('price-basis-cost-explanation'),
+                    ),
+                    Text(priceText(context, 'estimateOnly')),
+                  ],
+                  const SizedBox(height: UtenSpacing.s16),
+                  Text(
+                    priceText(context, 'chartHint'),
+                    key: const ValueKey('price-basis-chart-hint'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

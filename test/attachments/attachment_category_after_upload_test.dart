@@ -15,6 +15,8 @@ import 'package:uten_imp/shared/attachments/attachment_section.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
+import '../support/filter_segment_tap.dart';
 
 /// 分类改成「上传之后在文件旁边可选设置」：
 /// 上传本身不带分类，也没有任何决定上传归类的芯片；每个文件旁边一个安静的入口。
@@ -96,7 +98,11 @@ void main() {
     ]);
     await pump(tester, service, attachments: [file('旧附件.pdf')]);
 
-    expect(find.byType(ChoiceChip), findsNothing, reason: '文件太少不出筛选，更没有上传分类开关');
+    expect(
+      find.byType(UtenSegmentRow<String?>),
+      findsNothing,
+      reason: '文件太少不出筛选，更没有上传分类开关',
+    );
     for (final c in categories) {
       expect(find.text(c), findsNothing);
     }
@@ -223,7 +229,7 @@ void main() {
         file('c.pdf'),
       ],
     );
-    expect(find.byType(ChoiceChip), findsNothing);
+    expect(find.byType(UtenSegmentRow<String?>), findsNothing);
 
     await pump(
       tester,
@@ -238,16 +244,34 @@ void main() {
     expect(find.text('只看'), findsOneWidget);
     expect(find.byIcon(Icons.filter_alt_outlined), findsOneWidget);
     // 只列用上了的分类：「客户确认」「其他」没人用，不进筛选行。
-    expect(find.widgetWithText(ChoiceChip, '全部 4'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, '合同 1'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, '图片 2'), findsOneWidget);
-    expect(find.widgetWithText(ChoiceChip, '客户确认'), findsNothing);
+    expect(
+      find.widgetWithText(UtenSegmentRow<String?>, '全部 4'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(UtenSegmentRow<String?>, '合同 1'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(UtenSegmentRow<String?>, '图片 2'),
+      findsOneWidget,
+    );
+    expect(find.widgetWithText(UtenSegmentRow<String?>, '客户确认'), findsNothing);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '图片 2'));
+    await selectFilterSegment(tester, '图片 2');
     await tester.pumpAndSettle();
     expect(find.text('a.pdf'), findsNothing);
     expect(find.text('b.pdf'), findsOneWidget);
     expect(find.text('c.pdf'), findsOneWidget);
+    await selectFilterSegment(tester, '图片 2');
+    await tester.pumpAndSettle();
+    expect(find.text('a.pdf'), findsNothing);
+    expect(find.text('b.pdf'), findsOneWidget);
+    expect(find.text('c.pdf'), findsOneWidget);
+    await selectFilterSegment(tester, '全部 4');
+    await tester.pumpAndSettle();
+    expect(find.text('a.pdf'), findsOneWidget);
+    expect(find.text('d.pdf'), findsOneWidget);
     expect(service.categoryCalls, isEmpty, reason: '筛选只是查看，不改任何文件');
   });
 }

@@ -2,6 +2,8 @@
 
 > 源码：[uten_input.dart](../../lib/components/inputs/uten_input.dart)。文本、密码、数字等通用输入，带客户端校验与全站框内提示约定。
 
+关联下拉的普通表单选值可通过 `UtenDropdownField.selectedMaxLines: null` 自然换行显示完整名称。默认值仍为1；dense和flat表格变体继续保持单行。打开后的菜单候选项完整换行，`menuMatchContentWidth: true` 另按内容扩宽；菜单仍不超出当前安全区和键盘上方的可用空间，矮窗口中搜索、添加和选项共同滚动。选项及添加入口补足实际触控目标；深层缩进按剩余可读宽收敛，原层级/Tooltip/选项身份保留。参数只影响展示，不改变清除语义或 `onChanged`。
+
 ## 参数速查
 
 | 参数 | 说明 |

@@ -486,3 +486,7 @@ return MasterDataTableView<Map<String, dynamic>>(
 normal/fullscreen共用表面圆角12，嵌入表也使用同一外框；装饰不增加列宽/padding，内部列与冻结边界保持直线。正文密集数据14，列宽测量采用完整TextScaler并缓存其策略，非线性变化不能只比较scale(1)。
 
 短视口工具栏独立受限且可纵向滚动，极短窗口保留表头/可用行区并允许舞台滚动。工具栏与舞台chrome滚动不触发业务翻页；实际数据行的分页、主滚动和吸顶契约保持。每个presentation的chrome拥有自己的controller，正常页与全屏过渡不能把同一ScrollController同时挂到两棵树。业务表体controllers和工具栏输入GlobalKey仍保留状态。
+
+全屏退出通过该route的PopScope同帧交还唯一keyed surface，全屏树同时退为空占位。不能等route dispose后的下一帧重建，否则行输入State会先销毁。独立owner保护晚退出回调，纵向偏移按本次切换、查询范围和页码恢复；正常视图与全屏仍只有一份表格。回归覆盖同一行State、非零偏移、原文本和选区。
+
+有界外壳的LayoutBuilder只选择普通/短视口结构；表体舞台与footer在每次表格build中创建一次，不能在每次高度变化时重新创建。这样内部按宽度缓存才有效，原滚动成本约束（收头部每格≤4个新行构建、放头部0个、body布局一次）继续执行。

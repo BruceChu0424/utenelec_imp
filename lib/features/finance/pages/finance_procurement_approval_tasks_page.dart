@@ -699,7 +699,7 @@ class _FinanceProcurementApprovalTasksPageState
     children: [
       if (widget.externalHeader != null) ...[
         widget.externalHeader!,
-        const SizedBox(height: UtenSpacing.s12),
+        const SizedBox(height: UtenSpacing.s8),
       ],
       Expanded(child: child),
     ],
@@ -732,7 +732,7 @@ class _FinanceProcurementApprovalTasksPageState
           // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           _buildToolbar(),
           if (!widget.embedded)
@@ -746,7 +746,7 @@ class _FinanceProcurementApprovalTasksPageState
             const SizedBox(height: UtenSpacing.s12),
             _InlineError(message: _error!, onRetry: () => _load(result.page)),
           ],
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<FinanceProcurementApprovalTask>(

@@ -13,6 +13,7 @@ import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1714,10 +1715,34 @@ void main() {
       await _selectDefaultAuditScope(tester);
 
       await _expandAuditFilters(tester);
-      await _scrollAuditPageUntilVisible(
-        tester,
-        find.byKey(const ValueKey('audit-target-suppliers')),
+      final targetCategories = find.byWidgetPredicate(
+        (widget) =>
+            widget is UtenSegmentRow<String?> &&
+            widget.segments.any((segment) => segment.value == 'suppliers'),
       );
+      await _scrollAuditPageUntilVisible(tester, targetCategories);
+      final supplier = find.byKey(const ValueKey('audit-target-suppliers'));
+      if (supplier.hitTestable().evaluate().isEmpty) {
+        await tester.tap(
+          find.descendant(
+            of: targetCategories,
+            matching: find.byType(OutlinedButton),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          supplier,
+          200,
+          scrollable: find
+              .descendant(
+                of: find.byType(ListView),
+                matching: find.byType(Scrollable),
+              )
+              .last,
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(supplier.hitTestable(), findsOneWidget);
       expect(find.text('系统/迁移'), findsNothing);
       expect(find.text('数据库变更'), findsNothing);
       expect(find.text('供应商'), findsOneWidget);

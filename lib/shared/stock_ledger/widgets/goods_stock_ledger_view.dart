@@ -8,6 +8,7 @@
 // 重量悬停说明来源: 实称 / 按数量(精确) / 按比例分摊 / ≈按库存均重 / ≈按单重估算;
 // 重量调整行: 重量起算 / 重量尾差调整 / 盘点定重 / 人工核重 / 撤销盘点重量。
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_filter_chip.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -267,7 +268,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView> {
               : names.warehouseEntries[_warehouseId],
           onTap: _pickWarehouse,
         ),
-        FilterChip(
+        UtenFilterChip(
           key: const ValueKey('stock-ledger-show-adjustments'),
           label: const Text('显示重量调整'),
           selected: _includeAdjustments,

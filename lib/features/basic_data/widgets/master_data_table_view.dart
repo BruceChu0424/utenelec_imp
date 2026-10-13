@@ -2158,6 +2158,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 「预览打印 / 下载表格」对话框会正常叠在全屏之上（手动 OverlayEntry 会压住路由弹窗）。
   /// [_fsTick] 驱动全屏内容重建（数据/列宽/显隐变化时 bump）。
   bool _fullscreen = false;
+  Object? _fullscreenOwner;
+  int _fullscreenScrollEpoch = 0;
   final GlobalKey _presentationKey = GlobalKey();
   final ValueNotifier<int> _fsTick = ValueNotifier<int>(0);
 
@@ -2704,53 +2706,110 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   /// 全屏切换：进入时弹全屏路由（正常树让位）；全屏里再点「退出全屏」pop 该路由。
-  /// 注意：正常树重新接管表格的时机必须绑在全屏路由彻底 dispose（含退出动画结束）
-  /// 之后，不能挂在 await 返回点——否则退出动画播放期间正常树一旦挂回，同一批
-  /// ScrollController 会同时挂在全屏路由和正常树两棵树上，Scrollbar 每帧断言
-  /// "attached to more than one ScrollPosition"（2026-07-29 现场报错）。
+  /// 同一个 keyed surface 在 pop 时同帧交还正常树，全屏 route 同时退为空占位。
+  /// 等到 dispose 后才挂回会先销毁行输入 State；保留两份表格则会双挂滚动位置。
   Future<void> _toggleFullscreen() async {
     // 切全屏会换渲染树，进行中的拖拽手势可能不再回调 onEnd，浮层 target 也在旧树，
     // 统一重置卸下（FM6）。
     columnHeaderDragReset();
     if (_fullscreen) {
-      // 在全屏路由内点击：pop 全屏对话框（路由 dispose 后统一复位标志）。
+      // PopScope 同帧交还表面，再由路由完成退出。
       Navigator.of(context, rootNavigator: true).pop();
       return;
     }
-    setState(() => _fullscreen = true);
+    final sourceController = _verticalScrollController;
+    final sourceOffset = sourceController?.hasClients == true
+        ? sourceController!.position.pixels
+        : 0.0;
+    final owner = Object();
+    setState(() {
+      _fullscreen = true;
+      _fullscreenOwner = owner;
+    });
+    void returnSurface() {
+      if (!mounted || !identical(_fullscreenOwner, owner)) return;
+      final targetOffset = _bodyV.hasClients
+          ? _bodyV.position.pixels
+          : sourceOffset;
+      setState(() {
+        _fullscreen = false;
+        _fullscreenOwner = null;
+      });
+      _fsTick.value++;
+      _restoreFullscreenScroll(targetOffset, fullscreen: false);
+      widget.onFullscreenChanged?.call(false);
+    }
+
     widget.onFullscreenChanged?.call(true);
+    _restoreFullscreenScroll(sourceOffset, fullscreen: true);
     await showGeneralDialog<void>(
       context: context,
       barrierLabel: '全屏表格', // TODO(l10n): 补 arb
       barrierColor: Colors.transparent, // 内容整屏不透明，无需遮罩色
       pageBuilder: (ctx, _, _) => _FullscreenDisposer(
-        // 路由完全移除后再让正常树接管同一批 ScrollController（见上方注释）。
+        // 异常移除 route 的兜底只属于本次全屏，不能关闭后来打开的表面。
         onDisposed: () {
           if (!mounted) return;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() => _fullscreen = false);
-              widget.onFullscreenChanged?.call(false);
-            }
+            returnSurface();
           });
         },
-        child: ValueListenableBuilder<int>(
-          valueListenable: _fsTick,
-          builder: (ctx2, _, _) {
-            final theme = Theme.of(ctx2);
-            return Material(
-              color: theme.colorScheme.surface,
-              child: SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(UtenSpacing.s12),
-                  child: _buildBoundedPresentation(ctx2),
-                ),
-              ),
-            );
+        child: PopScope<void>(
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) returnSurface();
           },
+          child: ValueListenableBuilder<int>(
+            valueListenable: _fsTick,
+            builder: (ctx2, _, _) {
+              if (!identical(_fullscreenOwner, owner)) {
+                return const SizedBox.shrink();
+              }
+              final theme = Theme.of(ctx2);
+              return Material(
+                color: theme.colorScheme.surface,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: _buildBoundedPresentation(ctx2),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
+  }
+
+  void _restoreFullscreenScroll(double offset, {required bool fullscreen}) {
+    final epoch = ++_fullscreenScrollEpoch;
+    final scope = widget.paginationScope;
+    final page = _currentPage;
+    var attempts = 0;
+    void schedule() {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            epoch != _fullscreenScrollEpoch ||
+            _fullscreen != fullscreen ||
+            widget.paginationScope != scope ||
+            _currentPage != page) {
+          return;
+        }
+        final controller = _verticalScrollController;
+        if (controller == null ||
+            !controller.hasClients ||
+            !controller.position.hasContentDimensions) {
+          if (++attempts < 4) schedule();
+          return;
+        }
+        final position = controller.position;
+        controller.jumpTo(
+          offset.clamp(position.minScrollExtent, position.maxScrollExtent),
+        );
+      });
+    }
+
+    schedule();
   }
 
   /// 两列集合的 key 序列是否一致（用于判定是否需要重置/重算列宽）。
@@ -3343,37 +3402,40 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     ),
   );
 
-  Widget _buildBoundedPresentation(BuildContext context) => _wrapPresentation(
-    LayoutBuilder(
-      builder: (context, constraints) {
-        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-        final footer = [
-          if (widget.summaryBar != null && !widget.summaryBarInline)
-            _buildSummaryBar(context),
-          if (widget.totalPages > 1) _buildPager(context),
-        ];
-        if (footer.isNotEmpty && constraints.maxHeight < 240 * textScale) {
-          return _ShortTablePresentation(
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 168 * textScale,
-                  child: _buildTableStage(context),
-                ),
-                ...footer,
-              ],
-            ),
+  Widget _buildBoundedPresentation(BuildContext context) {
+    // Capture the stage once per table rebuild. Header scrolling only changes
+    // height; recreating this stage from the outer LayoutBuilder discards the
+    // body's width-only cache and rebuilds every visible cell on each wheel.
+    final stage = _buildTableStage(context);
+    final footer = [
+      if (widget.summaryBar != null && !widget.summaryBarInline)
+        _buildSummaryBar(context),
+      if (widget.totalPages > 1) _buildPager(context),
+    ];
+    return _wrapPresentation(
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          if (footer.isNotEmpty && constraints.maxHeight < 240 * textScale) {
+            return _ShortTablePresentation(
+              child: Column(
+                children: [
+                  SizedBox(height: 168 * textScale, child: stage),
+                  ...footer,
+                ],
+              ),
+            );
+          }
+          return Column(
+            children: [
+              Expanded(child: stage),
+              ...footer,
+            ],
           );
-        }
-        return Column(
-          children: [
-            Expanded(child: _buildTableStage(context)),
-            ...footer,
-          ],
-        );
-      },
-    ),
-  );
+        },
+      ),
+    );
+  }
 
   /// 表体舞台：横滚区 + 竖向 ListView(+ 表内合计条)。
   ///

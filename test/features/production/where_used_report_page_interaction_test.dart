@@ -14,6 +14,7 @@ import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.d
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/production/pages/where_used_report_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import '../../support/filter_segment_tap.dart';
 
 const _materialId = '11111111-1111-4111-8111-111111111111';
 const _productId = '22222222-2222-4222-8222-222222222222';
@@ -229,7 +230,7 @@ void main() {
       final api = _WhereUsedApi();
       await _pumpSimplePage(tester, api, size: const Size(1400, 900));
       await _selectMaterial(tester);
-      await tester.tap(find.byKey(const Key('where-used-custom-history')));
+      await selectFilterSegment(tester, '自定义');
       await tester.pumpAndSettle();
       // Invoke the real control callback: this regression targets date-carrier
       // boundaries, independently of the existing collapsible-header layout.

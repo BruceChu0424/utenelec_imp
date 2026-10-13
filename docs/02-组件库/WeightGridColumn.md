@@ -79,6 +79,8 @@
     页面只在有带货品 id 的行时创建参数缓存，首帧后一次性取全部行参数。
 - 读侧只读显示不用本列，用 [WeightText](WeightText.md)。
 
+`outboundWeightColumn(context:)` 将同一称重格适配成读表内联编辑列时，宿主传当前上下文，将动态按钮槽宽加入初始列宽；领料、单据详情与销售出库单笔/批量使用同一口径。省略上下文的兼容调用按桌面槽保留，精确千克、监听器与数量开关仍直接委托原采集列。
+
 ## 六、测试
 
 - `test/shared/measurement/weight_grid_column_test.dart`(后缀解析、EXACT 只读、不批量生效、推算数量黄框)、`weight_unit_test.dart`、`weight_predictor_golden_test.dart`。

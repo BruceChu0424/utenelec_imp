@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -92,75 +93,70 @@ class GoodsSubcontractSupplierTable extends StatelessWidget {
             }
           : null,
     );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-          child: Text(
-            priceText(context, 'supplierLossTitle'),
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-        ),
-        if (result['status'] != 'READY')
-          Padding(
-            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Text(
-              priceText(context, result['status']?.toString() ?? 'UNAVAILABLE'),
-            ),
-          ),
-        Expanded(
-          child: MasterDataTableView<Map<String, dynamic>>(
-            key: const Key('subcontract-supplier-table'),
-            tableKey: 'goods.subcontract-suppliers',
-            primary: true,
-            virtualized: true,
-            items: groups,
-            facets: const {},
-            nullCounts: const {},
-            filters: const {},
-            onFilterChanged: (_, _) {},
-            rowKeyOf: (row) => _text(row, 'key'),
-            rowWidgetKeyOf: (row) => ValueKey('supplier-group-${row['key']}'),
-            onRowTap: (group) =>
-                onOpen({...group, '_planLabel': planLabel(group)}),
-            paginationScope: result['goodsId'],
-            emptyMessage: priceText(
-              context,
-              result['status']?.toString() ?? 'noData',
-            ),
-            columns: [
-              column('supplierName', 'supplier', 160),
-              column(
-                'confirmedLossRatePct',
-                'confirmedLossRate',
-                150,
-                ratio: true,
+    return MasterDataTableView<Map<String, dynamic>>(
+      key: const Key('subcontract-supplier-table'),
+      toolbarLeadingActions: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                priceText(context, 'supplierLossTitle'),
+                style: Theme.of(context).textTheme.titleSmall,
               ),
-              column('settledSourceOrderCount', 'settledOrders', 110),
-              column(
-                'settledConfirmedLossQty',
-                'confirmedLossQty',
-                160,
-                quantity: true,
-              ),
-              column('settledOrderQty', 'basisQty', 160, quantity: true),
-              MasterColumnDef(
-                key: 'features',
-                label: priceText(context, 'supplierFeatures'),
-                width: 190,
-                sortable: true,
-                filterFromRows: true,
-                value: (row) =>
-                    '${planLabel(row)} · ${row['materialKindCount'] ?? 0} ${priceText(context, 'materialKinds')} · ${priceText(context, 'conversion')} ${priceNumber(row['unitRate'])}',
-              ),
-              column('pendingLineCount', 'pendingLines', 100),
-              column('excludedLineCount', 'reviewLines', 100),
-              column('colorName', 'color', 85),
-              column('lastOrderDate', 'lastOrderDate', 130),
+              if (result['status'] != 'READY')
+                Text(
+                  priceText(
+                    context,
+                    result['status']?.toString() ?? 'UNAVAILABLE',
+                  ),
+                ),
             ],
           ),
         ),
+      ],
+      tableKey: 'goods.subcontract-suppliers',
+      primary: true,
+      virtualized: true,
+      items: groups,
+      facets: const {},
+      nullCounts: const {},
+      filters: const {},
+      onFilterChanged: (_, _) {},
+      rowKeyOf: (row) => _text(row, 'key'),
+      rowWidgetKeyOf: (row) => ValueKey('supplier-group-${row['key']}'),
+      onRowTap: (group) => onOpen({...group, '_planLabel': planLabel(group)}),
+      paginationScope: result['goodsId'],
+      emptyMessage: priceText(
+        context,
+        result['status']?.toString() ?? 'noData',
+      ),
+      columns: [
+        column('supplierName', 'supplier', 160),
+        column('confirmedLossRatePct', 'confirmedLossRate', 150, ratio: true),
+        column('settledSourceOrderCount', 'settledOrders', 110),
+        column(
+          'settledConfirmedLossQty',
+          'confirmedLossQty',
+          160,
+          quantity: true,
+        ),
+        column('settledOrderQty', 'basisQty', 160, quantity: true),
+        MasterColumnDef(
+          key: 'features',
+          label: priceText(context, 'supplierFeatures'),
+          width: 190,
+          sortable: true,
+          filterFromRows: true,
+          value: (row) =>
+              '${planLabel(row)} · ${row['materialKindCount'] ?? 0} ${priceText(context, 'materialKinds')} · ${priceText(context, 'conversion')} ${priceNumber(row['unitRate'])}',
+        ),
+        column('pendingLineCount', 'pendingLines', 100),
+        column('excludedLineCount', 'reviewLines', 100),
+        column('colorName', 'color', 85),
+        column('lastOrderDate', 'lastOrderDate', 130),
       ],
     );
   }
@@ -189,6 +185,8 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
   String? _error;
   bool _loading = false;
   String _summary = '';
+  final _chromeKey = GlobalKey();
+  final _bodyKey = GlobalKey();
   bool get _allowed =>
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).containsAll({
@@ -321,131 +319,140 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
     );
     return Stack(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      group == null
-                          ? priceText(context, 'supplierLossTitle')
-                          : '${_text(group, 'supplierName')} · ${_text(widget.group, '_planLabel')}',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+        UtenCollapsingHeaderScrollView(
+          compactBodyMinHeight: 320,
+          collapsingHeader: KeyedSubtree(
+            key: _chromeKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          group == null
+                              ? priceText(context, 'supplierLossTitle')
+                              : '${_text(group, 'supplierName')} · ${_text(widget.group, '_planLabel')}',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        tooltip: priceText(context, 'close'),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    tooltip: priceText(context, 'close'),
-                    icon: const Icon(Icons.close),
+                ),
+                if (group != null)
+                  ExpansionTile(
+                    title: Text(priceText(context, 'lossBasis')),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
+                        child: Text(_summary),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+              ],
             ),
-            if (group != null)
-              ExpansionTile(
-                title: Text(priceText(context, 'lossBasis')),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(UtenSpacing.s16),
-                    child: Text(_summary),
+          ),
+          body: KeyedSubtree(
+            key: _bodyKey,
+            child: _error != null
+                ? UtenEmpty(
+                    message: _error!,
+                    isError: true,
+                    actionLabel: priceText(context, 'reloadHistory'),
+                    onAction: widget.onRefresh,
+                  )
+                : group == null
+                ? const SizedBox.shrink()
+                : MasterDataTableView<Map<String, dynamic>>(
+                    tableKey: 'goods.subcontract-supplier-detail',
+                    primary: true,
+                    virtualized: true,
+                    items: priceMaps(group['lines']),
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    rowKeyOf: (row) =>
+                        '${row['orderId']}|${row['orderItemId']}',
+                    columns: [
+                      col('orderNo', 'number', 145),
+                      col('orderDate', 'date', 115),
+                      col('orderedQty', 'basisQty', 155, qty: true),
+                      col(
+                        'qualifiedStockedNetQty',
+                        'qualifiedNetQty',
+                        170,
+                        qty: true,
+                      ),
+                      col(
+                        'confirmedLossQty',
+                        'confirmedLossQty',
+                        155,
+                        qty: true,
+                      ),
+                      col(
+                        'issuedEquivalentQty',
+                        'issuedEquivalentQty',
+                        160,
+                        qty: true,
+                      ),
+                      col('receivedQty', 'receivedQty', 160, qty: true),
+                      col('returnedQty', 'returnedQty', 155, qty: true),
+                      col(
+                        'legacyConfirmedLossQty',
+                        'legacyLossQty',
+                        160,
+                        qty: true,
+                      ),
+                      MasterColumnDef(
+                        key: 'status',
+                        label: priceText(context, 'recordStatus'),
+                        width: 100,
+                        sortable: true,
+                        filterFromRows: true,
+                        value: (row) =>
+                            priceText(context, _text(row, 'status')),
+                      ),
+                      MasterColumnDef(
+                        key: 'reason',
+                        label: priceText(context, 'basis'),
+                        width: 250,
+                        sortable: true,
+                        filterFromRows: true,
+                        value: (row) => priceStrings(
+                          row['reasonCodes'],
+                        ).map((code) => priceText(context, code)).join(' · '),
+                      ),
+                      MasterColumnDef(
+                        key: 'action',
+                        label: priceText(context, 'openSource'),
+                        width: 105,
+                        value: (_) => '',
+                        cellBuilder: (_, row) => _canOpen(row)
+                            ? TextButton(
+                                onPressed: () {
+                                  if (_canOpen(row)) {
+                                    Navigator.pop(
+                                      context,
+                                      _text(row, 'orderId'),
+                                    );
+                                  }
+                                },
+                                child: Text(priceText(context, 'openSource')),
+                              )
+                            : const Text('—'),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            Expanded(
-              child: _error != null
-                  ? UtenEmpty(
-                      message: _error!,
-                      isError: true,
-                      actionLabel: priceText(context, 'reloadHistory'),
-                      onAction: widget.onRefresh,
-                    )
-                  : group == null
-                  ? const SizedBox.shrink()
-                  : MasterDataTableView<Map<String, dynamic>>(
-                      tableKey: 'goods.subcontract-supplier-detail',
-                      virtualized: true,
-                      items: priceMaps(group['lines']),
-                      facets: const {},
-                      nullCounts: const {},
-                      filters: const {},
-                      onFilterChanged: (_, _) {},
-                      rowKeyOf: (row) =>
-                          '${row['orderId']}|${row['orderItemId']}',
-                      columns: [
-                        col('orderNo', 'number', 145),
-                        col('orderDate', 'date', 115),
-                        col('orderedQty', 'basisQty', 155, qty: true),
-                        col(
-                          'qualifiedStockedNetQty',
-                          'qualifiedNetQty',
-                          170,
-                          qty: true,
-                        ),
-                        col(
-                          'confirmedLossQty',
-                          'confirmedLossQty',
-                          155,
-                          qty: true,
-                        ),
-                        col(
-                          'issuedEquivalentQty',
-                          'issuedEquivalentQty',
-                          160,
-                          qty: true,
-                        ),
-                        col('receivedQty', 'receivedQty', 160, qty: true),
-                        col('returnedQty', 'returnedQty', 155, qty: true),
-                        col(
-                          'legacyConfirmedLossQty',
-                          'legacyLossQty',
-                          160,
-                          qty: true,
-                        ),
-                        MasterColumnDef(
-                          key: 'status',
-                          label: priceText(context, 'recordStatus'),
-                          width: 100,
-                          sortable: true,
-                          filterFromRows: true,
-                          value: (row) =>
-                              priceText(context, _text(row, 'status')),
-                        ),
-                        MasterColumnDef(
-                          key: 'reason',
-                          label: priceText(context, 'basis'),
-                          width: 250,
-                          sortable: true,
-                          filterFromRows: true,
-                          value: (row) => priceStrings(
-                            row['reasonCodes'],
-                          ).map((code) => priceText(context, code)).join(' · '),
-                        ),
-                        MasterColumnDef(
-                          key: 'action',
-                          label: priceText(context, 'openSource'),
-                          width: 105,
-                          value: (_) => '',
-                          cellBuilder: (_, row) => _canOpen(row)
-                              ? TextButton(
-                                  onPressed: () {
-                                    if (_canOpen(row)) {
-                                      Navigator.pop(
-                                        context,
-                                        _text(row, 'orderId'),
-                                      );
-                                    }
-                                  },
-                                  child: Text(priceText(context, 'openSource')),
-                                )
-                              : const Text('—'),
-                        ),
-                      ],
-                    ),
-            ),
-          ],
+          ),
         ),
         if (_loading)
           UtenBusyOverlay(title: priceText(context, 'loadingDetail')),

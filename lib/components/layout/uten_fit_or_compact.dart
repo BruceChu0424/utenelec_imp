@@ -121,7 +121,9 @@ class _FitRenderBox extends RenderBox
   @override
   Size computeDryLayout(BoxConstraints constraints) {
     final child = _needsCompact(constraints.maxWidth) ? _compact : _expanded;
-    return constraints.constrain(child.getDryLayout(constraints.loosen()));
+    return constraints.constrain(
+      child.getDryLayout(constraints.copyWith(minWidth: 0)),
+    );
   }
 
   @override
@@ -132,7 +134,9 @@ class _FitRenderBox extends RenderBox
       markNeedsSemanticsUpdate();
       onChanged(compact);
     }
-    _active.layout(constraints.loosen(), parentUsesSize: true);
+    // Natural width must remain free, while a toolbar's shared height must
+    // reach the painted control rather than only stretching this outer box.
+    _active.layout(constraints.copyWith(minWidth: 0), parentUsesSize: true);
     size = constraints.constrain(_active.size);
   }
 

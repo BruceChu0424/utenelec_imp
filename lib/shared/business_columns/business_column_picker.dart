@@ -8,6 +8,7 @@ import '../../components/inputs/uten_dropdown_field.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../components/layout/uten_segment_row.dart';
 import '../formatters/exact_decimal.dart';
 import '../widgets/column_editor_dialog.dart';
 import 'business_column.dart';
@@ -645,30 +646,30 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              children: [
+            UtenSegmentRow<_ColumnView>(
+              showSelectedIcon: false,
+              emptySelectionAllowed: true,
+              selected: {_view},
+              onSelectionChanged: _saving
+                  ? null
+                  : (next) => setState(() {
+                      _view = next.isEmpty ? _view : next.single;
+                      _removeColumnId = null;
+                      _saveError = null;
+                    }),
+              segments: [
                 for (final e in {
                   _ColumnView.existing: text.businessColumnBrowse,
                   _ColumnView.create: text.businessColumnNew,
                   _ColumnView.manage: text.businessColumnManage,
                 }.entries)
-                  ChoiceChip(
-                    key: ValueKey('business-column-view-${e.key.name}'),
-                    label: Text(e.value),
-                    labelStyle: Theme.of(context).textTheme.labelLarge,
-                    selectedColor: Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer,
-                    selected: _view == e.key,
-                    onSelected: _saving
-                        ? null
-                        : (_) => setState(() {
-                            _view = e.key;
-                            _removeColumnId = null;
-                            _saveError = null;
-                          }),
+                  ButtonSegment(
+                    value: e.key,
+                    enabled: !_saving,
+                    label: Text(
+                      e.value,
+                      key: ValueKey('business-column-view-${e.key.name}'),
+                    ),
                   ),
               ],
             ),

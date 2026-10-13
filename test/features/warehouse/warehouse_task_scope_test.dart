@@ -12,6 +12,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_center_scaffold.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
@@ -91,6 +95,82 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+
+  testWidgets(
+    'embedded parent and child categories share one compact gap and keep IDs',
+    (tester) async {
+      final selected = <String>[];
+      final seen = <(WarehouseTaskScope, int)>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            apiClientProvider.overrideWithValue(_SilentApi()),
+            myWarehouseScopeProvider.overrideWith((ref) async => _supervisor),
+          ],
+          child: MaterialApp(
+            theme: buildLightTheme().copyWith(platform: TargetPlatform.windows),
+            home: Scaffold(
+              body: WarehouseTaskCenterScaffold(
+                embedded: true,
+                location: '/warehouse/tasks/hierarchy',
+                title: '子类任务',
+                searchHint: '搜索',
+                initialSegment: 'pending',
+                externalHeader: UtenSegmentRow<String>(
+                  key: const Key('warehouse-parent-category'),
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 'inbound', label: Text('入库')),
+                    ButtonSegment(value: 'outbound', label: Text('出库')),
+                  ],
+                  selected: const {'inbound'},
+                  onSelectionChanged: (_) {},
+                ),
+                segments: const [
+                  WarehouseTaskSegmentSpec(
+                    value: 'pending',
+                    label: '待办',
+                    count: 7,
+                  ),
+                  WarehouseTaskSegmentSpec(value: 'done', label: '已完成'),
+                ],
+                bodyBuilder: (value, keyword, tick, header) {
+                  selected.add(value);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      header,
+                      _ScopeProbe(refreshTick: tick, seen: seen),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final parent = tester.getRect(
+        find.byKey(const Key('warehouse-parent-category')),
+      );
+      final child = tester.getRect(find.byType(UtenFilterToolbar<String>));
+      expect(child.top - parent.bottom, UtenFilterRow.rowGap);
+      expect(parent.height, greaterThanOrEqualTo(36));
+      expect(selected.last, 'pending');
+      expect(seen.last.$1, const WarehouseTaskScope.all());
+      await tester.tap(find.text('已完成').hitTestable());
+      await tester.pumpAndSettle();
+      expect(selected.last, 'done');
+      final toolbar = tester.widget<UtenFilterToolbar<String>>(
+        find.byType(UtenFilterToolbar<String>),
+      );
+      expect(toolbar.selected, {'done'});
+      expect(toolbar.segments.first.value, 'pending');
+      expect(toolbar.segments.first.count, 7);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('supervisor picks any warehouse from the side panel', (
     tester,

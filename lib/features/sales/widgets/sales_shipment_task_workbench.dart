@@ -21,6 +21,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -701,7 +702,7 @@ class _SalesShipmentTaskWorkbenchState
     children: [
       if (widget.externalHeader != null) ...[
         widget.externalHeader!,
-        const SizedBox(height: UtenSpacing.s12),
+        const SizedBox(height: UtenSpacing.s8),
       ],
       Expanded(child: child),
     ],
@@ -754,7 +755,7 @@ class _SalesShipmentTaskWorkbenchState
         // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
         if (widget.externalHeader != null) ...[
           widget.externalHeader!,
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenFilterRow.rowGap),
         ],
         // 2026-10-02 用户口径：「共 N 笔」说明卡退役（与全站提示卡口径一致）。
         _filters(),
@@ -769,7 +770,7 @@ class _SalesShipmentTaskWorkbenchState
           const SizedBox(height: UtenSpacing.s8),
           _InlineTaskError(message: _error!, onRetry: _load),
         ],
-        const SizedBox(height: UtenSpacing.s12),
+        const SizedBox(height: UtenSpacing.s8),
       ],
     );
     final table = AbsorbPointer(
@@ -902,7 +903,7 @@ class _SalesShipmentTaskWorkbenchState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SizedBox(width: double.infinity, child: search),
-              const SizedBox(height: UtenSpacing.s8),
+              const SizedBox(height: UtenFilterRow.rowGap),
               _warehouseChips(),
             ],
           );
@@ -911,7 +912,7 @@ class _SalesShipmentTaskWorkbenchState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             search,
-            const SizedBox(width: UtenSpacing.s12),
+            const SizedBox(width: UtenFilterRow.rowGap),
             Expanded(child: _warehouseChips()),
           ],
         );
@@ -942,20 +943,26 @@ class _SalesShipmentTaskWorkbenchState
     _load(1);
   }
 
-  Widget _warehouseChips() => Wrap(
-    spacing: UtenSpacing.s4,
-    runSpacing: UtenSpacing.s4,
-    children: [
-      _warehouseChip('待出库', SalesWarehouseWorkStatus.pendingPick),
-      _warehouseChip('已出库', SalesWarehouseWorkStatus.shipped),
+  Widget _warehouseChips() => UtenSegmentRow<String>(
+    showSelectedIcon: false,
+    emptySelectionAllowed: true,
+    segments: const [
+      ButtonSegment(
+        value: SalesWarehouseWorkStatus.pendingPick,
+        label: Text('待出库'),
+      ),
+      ButtonSegment(
+        value: SalesWarehouseWorkStatus.shipped,
+        label: Text('已出库'),
+      ),
     ],
-  );
-
-  Widget _warehouseChip(String label, String? value) => ChoiceChip(
-    label: Text(label),
-    selected: _warehouseWorkStatus == value,
-    onSelected: (_) {
-      setState(() => _warehouseWorkStatus = value);
+    selected: _warehouseWorkStatus == null ? const {} : {_warehouseWorkStatus!},
+    onSelectionChanged: (next) {
+      setState(
+        () => _warehouseWorkStatus = next.isEmpty
+            ? _warehouseWorkStatus
+            : next.single,
+      );
       _load(1);
     },
   );

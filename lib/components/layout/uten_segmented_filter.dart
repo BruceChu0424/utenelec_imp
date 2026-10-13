@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 import 'uten_segment_row.dart';
 
-/// 紧凑分段筛选器；桌面40、触控48，支持完整分类面板、键盘与选中态语义。
+/// 圆角矩形分段筛选器；桌面36、触控48，支持完整分类面板、键盘与选中态语义。
 class UtenSegmentedFilter<T> extends StatelessWidget {
   const UtenSegmentedFilter({
     super.key,
@@ -28,7 +28,12 @@ class UtenSegmentedFilter<T> extends StatelessWidget {
         for (final segment in segments)
           ButtonSegment(
             value: segment.value,
-            label: Text(segment.displayLabel),
+            label: Text(
+              segment.displayLabel,
+              style: const TextStyle(
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
           ),
       ],
       selected: {selected},

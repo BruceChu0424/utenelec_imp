@@ -493,6 +493,7 @@ class _WarehouseSalesOutboundDetailPageState
                             bottomContentPadding:
                                 UtenFloatingActionGroup.scrollClearance,
                             columns: warehouseSalesOutboundTableColumns(
+                              context: context,
                               l10n:
                                   Localizations.of<AppLocalizations>(
                                     context,

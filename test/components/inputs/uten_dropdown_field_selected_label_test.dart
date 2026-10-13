@@ -113,14 +113,14 @@ void main() {
   }
 
   testWidgets(
-    'ordinary truncated menu option reveals its full label on hover',
+    'ordinary menu option wraps fully and preserves its exact hover label',
     (tester) async {
       await _pumpField(tester, selectedLabel: _name);
       await tester.tap(find.byType(UtenDropdownField));
       await tester.pumpAndSettle();
       final label = tester.widget<Text>(find.text(_firstLabel));
-      expect(label.maxLines, 1);
-      expect(label.overflow, TextOverflow.ellipsis);
+      expect(label.maxLines, isNull);
+      expect(label.overflow, TextOverflow.clip);
       expect(
         find.byWidgetPredicate(
           (widget) => widget is Tooltip && widget.message == _firstLabel,

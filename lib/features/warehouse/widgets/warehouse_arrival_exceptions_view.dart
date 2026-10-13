@@ -445,7 +445,7 @@ class _WarehouseArrivalExceptionsViewState
       children: [
         if (widget.externalHeader != null) ...[
           widget.externalHeader!,
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
         Expanded(child: fallback),
       ],
@@ -473,7 +473,7 @@ class _WarehouseArrivalExceptionsViewState
         children: [
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           _buildToolbar(result),
           if (_error != null) ...[
@@ -486,7 +486,7 @@ class _WarehouseArrivalExceptionsViewState
               ),
             ),
           ],
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<ProcurementArrivalException>(

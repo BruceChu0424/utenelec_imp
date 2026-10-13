@@ -13,6 +13,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -422,23 +423,22 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           ),
           const SizedBox(height: UtenSpacing.s16),
           _filterLabel('历史日期范围'),
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s4,
-            children: [
-              ChoiceChip(
-                key: const Key('where-used-all-history'),
-                label: const Text('全部历史'),
-                selected: !_limitHistoryDates,
-                onSelected: _loading ? null : (_) => _setAllHistory(true),
+          UtenSegmentRow<bool>(
+            key: const Key('where-used-history-range'),
+            segments: const [
+              ButtonSegment(
+                value: true,
+                label: Text('全部历史', key: Key('where-used-all-history')),
               ),
-              ChoiceChip(
-                key: const Key('where-used-custom-history'),
-                label: const Text('自定义'),
-                selected: _limitHistoryDates,
-                onSelected: _loading ? null : (_) => _setAllHistory(false),
+              ButtonSegment(
+                value: false,
+                label: Text('自定义', key: Key('where-used-custom-history')),
               ),
             ],
+            selected: {!_limitHistoryDates},
+            onSelectionChanged: _loading
+                ? null
+                : (values) => _setAllHistory(values.single),
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(

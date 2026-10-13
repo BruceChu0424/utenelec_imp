@@ -34,6 +34,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -911,7 +912,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                 // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
                 if (widget.externalHeader != null) ...[
                   widget.externalHeader!,
-                  const SizedBox(height: UtenSpacing.s12),
+                  const SizedBox(height: UtenFilterRow.rowGap),
                 ],
                 Padding(
                   padding: const EdgeInsets.only(
@@ -1070,18 +1071,27 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                         const SizedBox(height: UtenSpacing.s8),
                         Align(
                           alignment: Alignment.centerLeft,
-                          child: ChoiceChip(
-                            label: const Text('可发货置顶'),
-                            avatar: Icon(
-                              Icons.vertical_align_top_rounded,
-                              size: 16,
-                              color: _shippableFirst
-                                  ? theme.colorScheme.primary
-                                  : null,
-                            ),
-                            selected: _shippableFirst,
-                            onSelected: (v) {
-                              setState(() => _shippableFirst = v);
+                          child: UtenSegmentRow<bool>(
+                            showSelectedIcon: false,
+                            emptySelectionAllowed: true,
+                            segments: [
+                              ButtonSegment(
+                                value: true,
+                                label: const Text('可发货置顶'),
+                                icon: Icon(
+                                  Icons.vertical_align_top_rounded,
+                                  size: 16,
+                                  color: _shippableFirst
+                                      ? theme.colorScheme.primary
+                                      : null,
+                                ),
+                              ),
+                            ],
+                            selected: _shippableFirst ? {true} : const {},
+                            onSelectionChanged: (next) {
+                              setState(
+                                () => _shippableFirst = next.contains(true),
+                              );
                               _reload(1);
                             },
                           ),

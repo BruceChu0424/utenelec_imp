@@ -662,7 +662,7 @@ class FormDraftCategoryList extends ConsumerStatefulWidget {
   final String search;
 
   /// 宿主前缀行（任务中心大类行等）：挂进折叠头随上滑一起收走（与
-  /// WarehouseStockDocSegment 等分段视图同一口径：前缀后补 s12 间距）。
+  /// WarehouseStockDocSegment 等分段视图同一口径：相邻分类行使用 rowGap）。
   final Widget? externalHeader;
 
   /// false = 宿主已自带联动容器（如资产与待摊工作台的面板区），本列表不再
@@ -786,12 +786,13 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
       children: [
         if (widget.externalHeader != null) ...[
           widget.externalHeader!,
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenFilterRow.rowGap),
         ],
         UtenFilterToolbar<String>(
           searchHint: '搜索类别、草稿或备注',
           onSearchChanged: (value) => setState(() => _search = value),
         ),
+        const SizedBox(height: UtenSpacing.s8),
       ],
     );
     if (!widget.linkedScroll) {
@@ -799,7 +800,6 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           header,
-          const SizedBox(height: UtenSpacing.s12),
           Expanded(child: table),
         ],
       );

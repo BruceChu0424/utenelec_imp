@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -51,6 +52,8 @@ class _GoodsPriceObservationDetailState
   String? _error;
   bool _loading = false;
   bool _reloadRequired = false;
+  final _chromeKey = GlobalKey();
+  final _bodyKey = GlobalKey();
   bool get _allowed =>
       ref.read(isSuperAdminProvider) ||
       ref.read(currentPermissionsProvider).containsAll({
@@ -147,145 +150,140 @@ class _GoodsPriceObservationDetailState
     final detail = nativeReadAccessConfirmed && _allowed ? _detail : null;
     return Stack(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      detail?.title.isNotEmpty == true
-                          ? detail!.title
-                          : priceText(context, 'priceDetail'),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    tooltip: priceText(context, 'close'),
-                    icon: const Icon(Icons.close),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: detail == null
-                  ? (_error != null
-                        ? UtenEmpty(
-                            message: _error!,
-                            isError: true,
-                            actionLabel: priceText(
-                              context,
-                              _reloadRequired ? 'reloadHistory' : 'retry',
-                            ),
-                            onAction: _reloadRequired
-                                ? widget.onReloadHistory
-                                : _load,
-                          )
-                        : _loading
-                        ? const SizedBox.shrink()
-                        : nativeReadAccessNotice())
-                  : Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s16,
+        UtenCollapsingHeaderScrollView(
+          compactBodyMinHeight: 320,
+          collapsingHeader: KeyedSubtree(
+            key: _chromeKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          detail?.title.isNotEmpty == true
+                              ? detail!.title
+                              : priceText(context, 'priceDetail'),
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (detail.summary.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: UtenSpacing.s12,
-                              ),
-                              child: Text(detail.summary),
-                            ),
-                          Expanded(
-                            child: MasterDataTableView<Map<String, dynamic>>(
-                              tableKey: 'goods.price-detail',
-                              virtualized: true,
-                              showFullscreenToggle: false,
-                              items: [
-                                for (final field in detail.fields)
-                                  if (!{
-                                    'unitName',
-                                    'currencyName',
-                                  }.contains(field['key']))
-                                    {
-                                      ...field,
-                                      if ({
-                                        'quantity',
-                                        'amount',
-                                        'unitPrice',
-                                      }.contains(field['key']))
-                                        'value': priceObservationValue(
-                                          detail.observation,
-                                          field['key'] as String,
-                                        ),
-                                    },
-                              ],
-                              facets: const {},
-                              nullCounts: const {},
-                              filters: const {},
-                              onFilterChanged: (_, _) {},
-                              rowKeyOf: (row) => row['key']?.toString(),
-                              paginationScope: widget.row.identity,
-                              columns: [
-                                MasterColumnDef(
-                                  key: 'label',
-                                  sortable: true,
-                                  filterFromRows: true,
-                                  label: priceText(context, 'field'),
-                                  width: 150,
-                                  value: (row) =>
-                                      row['label']?.toString() ?? '',
-                                ),
-                                MasterColumnDef(
-                                  key: 'value',
-                                  sortable: true,
-                                  filterFromRows: true,
-                                  label: priceText(context, 'value'),
-                                  width: 300,
-                                  aiSensitive: true,
-                                  value: (row) =>
-                                      row['value']?.toString() ?? '—',
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (detail.reasons.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: UtenSpacing.s12,
-                              ),
-                              child: Text(
-                                detail.reasons
-                                    .map((reason) => priceText(context, reason))
-                                    .toSet()
-                                    .join(' · '),
-                              ),
-                            ),
-                        ],
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        tooltip: priceText(context, 'close'),
+                        icon: const Icon(Icons.close),
                       ),
-                    ),
-            ),
-
-            if (detail != null && _canOpen(detail.observation))
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                child: FilledButton.tonalIcon(
-                  onPressed: () {
-                    if (_canOpen(detail.observation)) {
-                      Navigator.pop(context, detail.observation);
-                    }
-                  },
-                  icon: const Icon(Icons.open_in_new),
-                  label: Text(priceText(context, 'openSource')),
+                    ],
+                  ),
                 ),
-              ),
-          ],
+                const Divider(height: 1),
+                if (detail?.summary.isNotEmpty == true)
+                  Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s16),
+                    child: Text(detail!.summary),
+                  ),
+                if (detail?.reasons.isNotEmpty == true)
+                  Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s16),
+                    child: Text(
+                      detail!.reasons
+                          .map((reason) => priceText(context, reason))
+                          .toSet()
+                          .join(' · '),
+                    ),
+                  ),
+                if (detail != null && _canOpen(detail.observation))
+                  Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s16),
+                    child: FilledButton.tonalIcon(
+                      onPressed: () {
+                        if (_canOpen(detail.observation)) {
+                          Navigator.pop(context, detail.observation);
+                        }
+                      },
+                      icon: const Icon(Icons.open_in_new),
+                      label: Text(priceText(context, 'openSource')),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          body: KeyedSubtree(
+            key: _bodyKey,
+            child: detail == null
+                ? (_error != null
+                      ? UtenEmpty(
+                          message: _error!,
+                          isError: true,
+                          actionLabel: priceText(
+                            context,
+                            _reloadRequired ? 'reloadHistory' : 'retry',
+                          ),
+                          onAction: _reloadRequired
+                              ? widget.onReloadHistory
+                              : _load,
+                        )
+                      : _loading
+                      ? const SizedBox.shrink()
+                      : nativeReadAccessNotice())
+                : Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s16,
+                    ),
+                    child: MasterDataTableView<Map<String, dynamic>>(
+                      tableKey: 'goods.price-detail',
+                      primary: true,
+                      virtualized: true,
+                      showFullscreenToggle: false,
+                      items: [
+                        for (final field in detail.fields)
+                          if (!{
+                            'unitName',
+                            'currencyName',
+                          }.contains(field['key']))
+                            {
+                              ...field,
+                              if ({
+                                'quantity',
+                                'amount',
+                                'unitPrice',
+                              }.contains(field['key']))
+                                'value': priceObservationValue(
+                                  detail.observation,
+                                  field['key'] as String,
+                                ),
+                            },
+                      ],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      rowKeyOf: (row) => row['key']?.toString(),
+                      paginationScope: widget.row.identity,
+                      columns: [
+                        MasterColumnDef(
+                          key: 'label',
+                          sortable: true,
+                          filterFromRows: true,
+                          label: priceText(context, 'field'),
+                          width: 150,
+                          value: (row) => row['label']?.toString() ?? '',
+                        ),
+                        MasterColumnDef(
+                          key: 'value',
+                          sortable: true,
+                          filterFromRows: true,
+                          label: priceText(context, 'value'),
+                          width: 300,
+                          aiSensitive: true,
+                          value: (row) => row['value']?.toString() ?? '—',
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
         ),
         if (_loading)
           UtenBusyOverlay(

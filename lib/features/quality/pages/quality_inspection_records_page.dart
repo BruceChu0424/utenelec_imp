@@ -395,7 +395,7 @@ class _QualityInspectionRecordsPageState
                           const SizedBox(height: UtenSpacing.s12),
                           inlineError,
                         ],
-                        const SizedBox(height: UtenSpacing.s12),
+                        const SizedBox(height: UtenSpacing.s8),
                       ],
                     ),
                   ),
@@ -440,10 +440,10 @@ class _QualityInspectionRecordsPageState
             ),
           ),
         ),
-        const SizedBox(height: UtenSpacing.s12),
+        const SizedBox(height: UtenFilterRow.rowGap),
         Wrap(
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s12,
+          spacing: UtenFilterRow.rowGap,
+          runSpacing: UtenFilterRow.rowGap,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             ConstrainedBox(

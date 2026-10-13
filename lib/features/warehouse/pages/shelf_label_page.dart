@@ -6,6 +6,7 @@
 // 顶部工具条+货架图随上滑收起、表格置顶后表内滚动（UtenCollapsingHeaderScrollView）。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_filter_chip.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
@@ -525,7 +526,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                   : names.warehouseEntries[_warehouseId],
               onTap: _pickWarehouse,
             ),
-            FilterChip(
+            UtenFilterChip(
               key: const Key('shelf-label-include-disabled'),
               label: const Text('显示已禁用货品'), // TODO(l10n): 补 arb
               selected: _includeDisabled,
@@ -535,7 +536,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
               },
             ),
             if (unparsed > 0)
-              FilterChip(
+              UtenFilterChip(
                 key: const Key('shelf-label-unparsed-chip'),
                 avatar: const Icon(Icons.help_outline_rounded, size: 16),
                 label: Text('$_kUnparsedLabel $unparsed'), // TODO(l10n): 补 arb

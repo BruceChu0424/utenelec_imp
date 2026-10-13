@@ -569,14 +569,14 @@ class _WarehouseStockDocSegmentState
             children: [
               if (widget.externalHeader != null) ...[
                 widget.externalHeader!,
-                const SizedBox(height: UtenSpacing.s12),
+                const SizedBox(height: UtenFilterRow.rowGap),
               ],
               // 小类行 1：单据状态（无「全部」段；末尾历史单据时间门控段）。
               // 进页面不预选（未选不发请求，显示引导占位）。
               // 徽章口径：草稿不计入待办数，各段不挂。
               Padding(
                 padding: const EdgeInsets.only(
-                  bottom: UtenSpacing.s8,
+                  bottom: UtenFilterRow.rowGap,
                   left: UtenSpacing.s4,
                   right: UtenSpacing.s4,
                 ),

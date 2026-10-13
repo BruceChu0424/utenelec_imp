@@ -196,65 +196,6 @@ abstract class _MaterialAnalysisBomTreeState
             !_isEmbeddedMakeChildProduct(product));
   }
 
-  /// 树顶筛选按钮（全部 BOM/只看缺料/待确认路线 + 按产品看/按物料汇总）。
-  /// 与「表头设置/全屏」按钮同高（[UtenTableToolbar.controlHeight]，2026-10-08
-  /// 用户口径：工具条按钮高度统一）、纯文字无图标；选中态用主题深绿实底 +
-  /// 白字——默认 ChoiceChip 的选中色偏淡，年长用户看不出当前选中了哪个视图。
-  Widget _bomViewChip(
-    ThemeData theme, {
-    Key? key,
-    required bool selected,
-    required VoidCallback? onSelected,
-    required String label,
-  }) {
-    final scheme = theme.colorScheme;
-    final foreground = selected ? scheme.onPrimary : scheme.onSurfaceVariant;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: Material(
-        key: key,
-        color: selected ? scheme.primary : scheme.surface,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(UtenRadius.control),
-          side: BorderSide(
-            color: selected ? scheme.primary : scheme.outlineVariant,
-          ),
-        ),
-        child: InkWell(
-          onTap: onSelected,
-          canRequestFocus: onSelected != null,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: UtenControlMetrics.controlHeight(context),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: UtenSpacing.s16,
-                vertical: UtenSpacing.s4,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: foreground,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// View controls live in the shared table toolbar, including fullscreen.
   /// 查找框常驻顶部卡片（更新时间右侧）；全屏时顶部卡片不可见，才在工具条
   /// 里补挂一个（与顶部卡片共享同一控制器 [_bomSearch]，两处不会同时出现）。
@@ -272,61 +213,96 @@ abstract class _MaterialAnalysisBomTreeState
           onChanged: _bomSearchChanged,
         ),
       ),
-    for (final mode in _BomViewMode.values)
-      _bomViewChip(
-        theme,
-        key: ValueKey('material-bom-view-${mode.name}'),
-        selected: _bomViewMode == mode,
+    UtenSegmentRow<_BomViewMode>(
+      key: const Key('material-bom-view-segments'),
+      showSelectedIcon: false,
+      emptySelectionAllowed: true,
+      segments: [
+        for (final mode in _BomViewMode.values)
+          ButtonSegment(
+            value: mode,
+            label: Text(
+              '${mode.label} ${_bomModeCount(analysis, mode)}',
+              key: ValueKey('material-bom-view-${mode.name}'),
+            ),
+          ),
+      ],
+      selected: {_bomViewMode},
+      onSelectionChanged: (values) {
+        final mode = values.isEmpty ? _bomViewMode : values.single;
         // 切视图后桶集合会变（如「待确认路线」视图里没有「已齐套」桶）：
         // 只移除失效的表头筛选值，仍有效的保留。
-        onSelected: () => setState(() {
+        // 重复点当前视图仍执行原刷新投影回调，不清空当前视图。
+        setState(() {
           _bomViewMode = mode;
           _pruneMaterialTableFilters();
-        }),
-        label: '${mode.label} ${_bomModeCount(analysis, mode)}',
-      ),
+        });
+      },
+    ),
     _bomLayoutSwitchGroup(theme),
     ?_materialAggregateToolbarAction(),
   ];
 
   /// 布局切换组（按产品看/按物料汇总）左右各一条竖分割线：与前面的视图
-  /// 筛选 chip、后面的动作按钮明确分组（2026-10-08 用户口径「要有区分」）。
+  /// 条件分段、后面的动作按钮明确分组（2026-10-08 用户口径「要有区分」）。
   Widget _bomLayoutSwitchGroup(ThemeData theme) => Row(
     key: const Key('material-bom-layout-switch-group'),
     mainAxisSize: MainAxisSize.min,
     children: [
-      _bomToolbarGroupDivider(theme),
-      const SizedBox(width: UtenSpacing.s8),
-      _bomViewChip(
+      _bomToolbarGroupDivider(
         theme,
-        key: const ValueKey('material-bom-layout-product'),
-        selected: !_bomAggregateByMaterial,
-        onSelected: () => setState(() {
-          _bomAggregateByMaterial = false;
-          _pruneMaterialTableFilters();
-        }),
-        label: _l10n.materialByProduct,
+        key: const Key('material-bom-layout-divider-start'),
       ),
-      const SizedBox(width: UtenSpacing.s4),
-      _bomViewChip(
+      const SizedBox(width: UtenFilterRow.rowGap),
+      Flexible(
+        child: UtenSegmentRow<bool>(
+          key: const Key('material-bom-layout-segments'),
+          showSelectedIcon: false,
+          emptySelectionAllowed: true,
+          segments: [
+            ButtonSegment(
+              value: false,
+              label: Text(
+                _l10n.materialByProduct,
+                key: const ValueKey('material-bom-layout-product'),
+              ),
+            ),
+            ButtonSegment(
+              value: true,
+              label: Text(
+                _l10n.materialByMaterial,
+                key: const ValueKey('material-bom-layout-material'),
+              ),
+            ),
+          ],
+          selected: {_bomAggregateByMaterial},
+          onSelectionChanged: (values) {
+            final aggregate = values.isEmpty
+                ? _bomAggregateByMaterial
+                : values.single;
+            // 汇总视图的进度桶是「已覆盖/部分覆盖/未覆盖」三档，与产品视图不同；
+            // 路线桶两边同键（BUY/SUBCONTRACT/MAKE/MIXED）可跨视图保留。
+            setState(() {
+              _bomAggregateByMaterial = aggregate;
+              _pruneMaterialTableFilters();
+            });
+          },
+        ),
+      ),
+      const SizedBox(width: UtenFilterRow.rowGap),
+      _bomToolbarGroupDivider(
         theme,
-        key: const ValueKey('material-bom-layout-material'),
-        selected: _bomAggregateByMaterial,
-        // 汇总视图的进度桶是「已覆盖/部分覆盖/未覆盖」三档，与产品视图不同；
-        // 路线桶两边同键（BUY/SUBCONTRACT/MAKE/MIXED）可跨视图保留。
-        onSelected: () => setState(() {
-          _bomAggregateByMaterial = true;
-          _pruneMaterialTableFilters();
-        }),
-        label: _l10n.materialByMaterial,
+        key: const Key('material-bom-layout-divider-end'),
       ),
-      const SizedBox(width: UtenSpacing.s8),
-      _bomToolbarGroupDivider(theme),
     ],
   );
 
-  Widget _bomToolbarGroupDivider(ThemeData theme) =>
-      Container(width: 1, height: 24, color: theme.colorScheme.outlineVariant);
+  Widget _bomToolbarGroupDivider(ThemeData theme, {Key? key}) => Container(
+    key: key,
+    width: 1,
+    height: 24,
+    color: theme.colorScheme.outlineVariant,
+  );
 
   /// chip 计数与表格同口径：视图条件 × 关键词 × 表头筛选（产品视图）。
   /// 汇总视图的表头筛选作用于聚合行，chip 仍按节点计数（不含表头筛选）。

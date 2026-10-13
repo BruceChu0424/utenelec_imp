@@ -15,6 +15,9 @@ import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/warehouse/models/outbound_weight_entry.dart';
+import 'package:uten_imp/features/warehouse/widgets/outbound_weight_columns.dart';
 import 'package:uten_imp/shared/attachments/attachment_category_control.dart';
 import 'package:uten_imp/shared/attachments/pending_attachment_controller.dart';
 import 'package:uten_imp/shared/attachments/pending_attachment_section.dart';
@@ -98,6 +101,113 @@ Future<Rect> _touchTarget(WidgetTester tester, Finder finder) async {
 
 void main() {
   for (final factor in [0.85, 2.0]) {
+    testWidgets(
+      '$factor: outbound weight column survives real resize and action edge tap',
+      (tester) async {
+        final row = OutboundWeightEntry(
+          goodsId: 'outbound-goods',
+          qtyOf: () => 10,
+          unitRate: 1,
+          kg: 12.3456,
+        );
+        addTearDown(row.dispose);
+        var weighs = 0;
+        double? minimum;
+        Finder header() {
+          final containers = find.ancestor(
+            of: find.text('实称重量(kg)'),
+            matching: find.byType(Container),
+          );
+          for (final element in containers.evaluate()) {
+            final container = element.widget as Container;
+            final constraints = container.constraints;
+            if (constraints != null &&
+                constraints.maxWidth.isFinite &&
+                constraints.minWidth == constraints.maxWidth) {
+              return find.byWidget(container);
+            }
+          }
+          throw TestFailure('The real weight column header is missing');
+        }
+
+        await _pump(
+          tester,
+          factor,
+          Builder(
+            builder: (context) {
+              final column = outboundWeightColumn<OutboundWeightEntry>(
+                context: context,
+                entryOf: (row) => row,
+                entryUnit: WeightUnit.kg,
+                onWeighCount: (_, entry) async {
+                  expect(entry, same(row));
+                  weighs++;
+                },
+              );
+              minimum = column.minimumWidthOf!(context);
+              expect(column.exactValueOf!(row), '12.3456');
+              return MasterDataTableView<OutboundWeightEntry>(
+                items: [row],
+                columns: [column],
+                facets: const {},
+                filters: const {},
+                nullCounts: const {},
+                onFilterChanged: (_, _) {},
+                rowKeyOf: (row) => row.goodsId,
+                showColumnChooser: false,
+                showFullscreenToggle: false,
+              );
+            },
+          ),
+          scaler: factor == 2
+              ? const TextScaler.linear(2)
+              : TextScaler.noScaling,
+        );
+        final grip = find.descendant(
+          of: header(),
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is GestureDetector &&
+                widget.onHorizontalDragUpdate != null &&
+                widget.onHorizontalDragStart == null &&
+                widget.behavior == HitTestBehavior.opaque,
+          ),
+        );
+        await tester.ensureVisible(grip);
+        await tester.pumpAndSettle();
+        final start = tester.getCenter(grip) - const Offset(2, 0);
+        final gripRender = tester.renderObject(grip);
+        expect(
+          tester
+              .hitTestOnBinding(start)
+              .path
+              .any((entry) => identical(entry.target, gripRender)),
+          isTrue,
+        );
+        await tester.dragFrom(start, const Offset(-500, 0));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(header()).width, closeTo(minimum!, 1e-6));
+        final target = find.byKey(const ValueKey('weight-cell-weigh'));
+        final bounds = await _touchTarget(tester, target);
+        expect(bounds.left, greaterThanOrEqualTo(0));
+        expect(bounds.right, lessThanOrEqualTo(390));
+        final inputRect = tester.getRect(
+          find.byKey(const ValueKey('weight-cell-input')),
+        );
+        expect(bounds.right, lessThanOrEqualTo(inputRect.right + 1e-6));
+        expect(
+          minimum! - bounds.width / factor - 25,
+          greaterThanOrEqualTo(factor == 2 ? 192 : 96),
+        );
+        await tester.tapAt(Offset(bounds.right - 2, bounds.center.dy));
+        await tester.pump();
+        expect(weighs, 1);
+        expect(row.weight.kg, 12.3456);
+        expect(row.qtyBase, 10);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets(
       '$factor: weighing and add-row edge taps keep their exact row',
       (tester) async {

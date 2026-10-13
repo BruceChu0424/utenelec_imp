@@ -6,6 +6,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/payables/repositories/supplier_settlement_repository.dart';
 import 'package:uten_imp/features/finance/payables/widgets/supplier_settlement_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import '../../support/filter_segment_tap.dart';
 
 void main() {
   testWidgets('375px monthly list remains usable', (tester) async {
@@ -58,18 +59,53 @@ void main() {
     expect(find.text('登记争议'), findsOneWidget);
     expect(find.text('反转批次'), findsOneWidget);
   });
+
+  testWidgets(
+    'monthly status re-tap reloads its same status and all removes only that query',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _Api();
+      await _pump(
+        tester,
+        const SupplierSettlementPanel(),
+        api: api,
+        permissions: const {Perm.supplierSettlementView},
+      );
+      await selectFilterSegment(tester, '已冻结');
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['status'], 'FROZEN');
+      expect(api.listQueries.last['page'], 1);
+      final reads = api.listQueries.length;
+      await selectFilterSegment(tester, '已冻结');
+      await tester.pumpAndSettle();
+      expect(api.listQueries.length, reads + 1);
+      expect(api.listQueries.last['status'], 'FROZEN');
+      await selectFilterSegment(tester, '全部');
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last.containsKey('status'), isFalse);
+      expect(find.text('人民币'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('supplier-settlement-create')),
+        findsNothing,
+      );
+    },
+  );
 }
 
 Future<void> _pump(
   WidgetTester tester,
   Widget child, {
   required Set<String> permissions,
+  _Api? api,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         supplierSettlementRepositoryProvider.overrideWithValue(
-          SupplierSettlementRepository(_Api()),
+          SupplierSettlementRepository(api ?? _Api()),
         ),
         currentPermissionsProvider.overrideWithValue(permissions),
       ],
@@ -103,6 +139,7 @@ const _summary = <String, dynamic>{
 
 class _Api extends ApiClient {
   _Api() : super(Dio());
+  final listQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -116,6 +153,7 @@ class _Api extends ApiClient {
         'events': <Map<String, dynamic>>[],
       };
     }
+    listQueries.add({...?query});
     return {
       'items': [_summary],
       'page': 1,

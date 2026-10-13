@@ -5,6 +5,8 @@ import 'package:uten_imp/features/basic_data/widgets/goods_price_facet_picker.da
 import 'package:uten_imp/features/basic_data/widgets/goods_subcontract_supplier_table.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_price_observation_detail.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -13,6 +15,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +28,9 @@ import 'package:uten_imp/shared/pricing/procurement_price_check.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
+import 'package:uten_imp/core/theme/uten_control_theme.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import '../../../support/audit_screenshot_support.dart';
 import 'package:uten_imp/features/basic_data/pages/goods_price_analysis_page.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_price_history_chart.dart';
@@ -32,6 +38,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/pricing/price_analysis_models.dart';
+import 'package:uten_imp/shared/pricing/price_analysis_l10n.dart';
 import 'package:uten_imp/shared/pricing/price_summary_value.dart';
 import 'package:uten_imp/shared/pricing/price_analysis_repository.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -45,6 +52,15 @@ final _grants = StateProvider<Set<String>>(
     Perm.materialCategoryView,
   },
 );
+
+class _PriceNonlinearScaler extends TextScaler {
+  const _PriceNonlinearScaler();
+  @override
+  double scale(double fontSize) =>
+      fontSize < 24 ? fontSize * 2 : fontSize * 1.4;
+  @override
+  double get textScaleFactor => 2;
+}
 
 class _Session extends SessionNotifier {
   @override
@@ -333,6 +349,11 @@ GoodsPriceAnalysis sample({String goodsId = 'a', String name = '测试货品'}) 
 void main() {
   late SharedPreferences prefs;
   setUp(() async {
+    final previousHitPolicy = WidgetController.hitTestWarningShouldBeFatal;
+    WidgetController.hitTestWarningShouldBeFatal = true;
+    addTearDown(
+      () => WidgetController.hitTestWarningShouldBeFatal = previousHitPolicy,
+    );
     UtenBusyOverlay.debugResetYield();
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
@@ -343,6 +364,9 @@ void main() {
     Size size = const Size(1440, 1000),
     Set<String>? permissions,
     Widget? child,
+    double factor = 1,
+    TextScaler? scaler,
+    Locale locale = const Locale('zh'),
   }) async {
     await loadAuditScreenshotFonts(tester);
     tester.view.physicalSize = size;
@@ -378,9 +402,18 @@ void main() {
             routerConfig: router,
             debugShowCheckedModeBanner: false,
             theme: auditScreenshotTheme(buildLightTheme()),
+            builder: (context, routed) => MediaQuery(
+              data: scaler == null
+                  ? MediaQuery.of(context)
+                  : MediaQuery.of(context).copyWith(textScaler: scaler),
+              child: UtenDisplayZoomBox(
+                fontFactor: factor,
+                child: UtenControlTheme(child: routed!),
+              ),
+            ),
             localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
-            locale: const Locale('zh'),
+            locale: locale,
           ),
         ),
       ),
@@ -419,6 +452,359 @@ void main() {
     await tester.tap(find.text(number));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();
+  }
+
+  testWidgets(
+    'price pressure: narrow controls keep full selections and original queries',
+    (tester) async {
+      final repository = _Repository();
+      await pump(
+        tester,
+        repository,
+        size: const Size(320, 640),
+        factor: 2,
+        scaler: const _PriceNonlinearScaler(),
+      );
+      await tester.pumpAndSettle();
+      final days = find.byKey(const ValueKey('price-analysis-days'));
+      await tester.ensureVisible(days);
+      await tester.pumpAndSettle();
+      final daysWidget = tester.widget<UtenDropdownField>(days);
+      expect(daysWidget.selectedMaxLines, isNull);
+      expect(tester.getRect(days).width, closeTo(272, 1e-6));
+      await tester.tap(days);
+      await tester.pumpAndSettle();
+      await Scrollable.ensureVisible(
+        tester.element(find.text('365天').last),
+        alignment: 0.5,
+      );
+      await tester.pumpAndSettle();
+      final optionRect = tester.getRect(find.text('365天').last);
+      expect(optionRect.top, greaterThanOrEqualTo(0));
+      expect(optionRect.bottom, lessThanOrEqualTo(640));
+      await tester.tap(find.text('365天').last);
+      await tester.pumpAndSettle();
+      expect(repository.queries.last['days'], 365);
+      expect(tester.widget<UtenDropdownField>(days).value, '365');
+      final visibleDay = find.descendant(of: days, matching: find.text('365天'));
+      expect(tester.widget<Text>(visibleDay).maxLines, isNull);
+      final quantity = find.byKey(const ValueKey('price-analysis-quantity'));
+      await tester.ensureVisible(quantity);
+      await tester.pumpAndSettle();
+      await tester.enterText(quantity, '12345.6789');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(repository.queries.last['quantity'], '12345.6789');
+      expect(tester.widget<TextField>(quantity).controller!.text, '12345.6789');
+      await tester.ensureVisible(find.text('更多筛选'));
+      await tester.pumpAndSettle();
+      final filterRect = tester.getRect(find.text('更多筛选'));
+      expect(filterRect.top, greaterThanOrEqualTo(0));
+      expect(filterRect.bottom, lessThanOrEqualTo(640));
+      await tester.tap(find.text('更多筛选'));
+      await tester.pumpAndSettle();
+      final choices = find.byWidgetPredicate(
+        (widget) => widget is UtenDropdownField && widget.label != '历史期间',
+      );
+      expect(choices, findsWidgets);
+      for (final element in choices.evaluate()) {
+        final widget = element.widget as UtenDropdownField;
+        expect(widget.selectedMaxLines, isNull);
+        expect(
+          (element.findRenderObject()! as RenderBox).size.width,
+          closeTo(136, 1e-6),
+        );
+      }
+      expect(tester.takeException(), isNull);
+      await _capture(tester, 'price-pressure-320-2x-nonlinear-controls');
+    },
+  );
+
+  testWidgets(
+    'price pressure: nonlinear chart axes pan without dropping facts',
+    (tester) async {
+      const scaler = _PriceNonlinearScaler();
+      final facts = [
+        observation('large-one', price: '999999999.123456'),
+        observation('large-two', price: '999999999.223456', day: 12),
+      ];
+      final analysis = GoodsPriceAnalysis({
+        ...sample().data,
+        'observations': facts,
+        'referencePrice': '999999999.123456',
+        'lowerReferencePrice': '999999999.1',
+        'upperReferencePrice': '999999999.3',
+      });
+      await pump(
+        tester,
+        _Repository(),
+        size: const Size(320, 640),
+        factor: 2,
+        scaler: scaler,
+        child: Scaffold(
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: PriceHistoryChart(analysis: analysis),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final chart = find.byKey(const ValueKey('price-history-chart-canvas'));
+      final referenceLabel = find.text('参考线');
+      final referenceParagraph = tester.renderObject<RenderParagraph>(
+        referenceLabel,
+      );
+      expect(referenceParagraph.maxLines, isNull);
+      expect(referenceParagraph.text.toPlainText(), '参考线');
+      expect(referenceParagraph.overflow, TextOverflow.clip);
+      final lastGlyph = referenceParagraph
+          .getBoxesForSelection(
+            const TextSelection(baseOffset: 2, extentOffset: 3),
+          )
+          .single;
+      expect(
+        lastGlyph.right,
+        lessThanOrEqualTo(referenceParagraph.size.width + 1e-6),
+      );
+      expect(
+        lastGlyph.bottom,
+        lessThanOrEqualTo(referenceParagraph.size.height + 1e-6),
+      );
+      final reference = tester.widget<FilterChip>(
+        find.ancestor(of: referenceLabel, matching: find.byType(FilterChip)),
+      );
+      expect(reference.selected, isTrue);
+      final paint = tester.widget<CustomPaint>(chart);
+      final painter = paint.painter! as PriceHistoryPainter;
+      expect(painter.textScaler, same(scaler));
+      expect(painter.points.length, 2);
+      final chartSize = tester.getSize(chart);
+      final geometry = painter.layout(chartSize);
+      final rect = geometry.$1;
+      expect(rect.left, greaterThanOrEqualTo(64));
+      final style = painter.textStyle;
+      TextPainter label(String value) => TextPainter(
+        text: TextSpan(text: value, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+      )..layout();
+      final low = geometry.$4, high = geometry.$5;
+      for (var i = 0; i <= 3; i++) {
+        final value = low + (high - low) * i / 3;
+        final tick = label(
+          value.abs() >= 1000000000
+              ? value.toStringAsExponential(2)
+              : value.toStringAsFixed(2),
+        );
+        expect(rect.left - 8 - tick.width, greaterThanOrEqualTo(0));
+        tick.dispose();
+      }
+      final start = label('2026-10-10'), end = label('2026-10-12');
+      expect(
+        rect.left + start.width,
+        lessThanOrEqualTo(rect.right - end.width),
+      );
+      start.dispose();
+      end.dispose();
+      final scrollable = find.descendant(
+        of: find.byType(PriceHistoryChart),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.right,
+        ),
+      );
+      final state = tester.state<ScrollableState>(scrollable);
+      expect(state.position.maxScrollExtent, greaterThan(0));
+      expect(
+        find.descendant(
+          of: find.byType(PriceHistoryChart),
+          matching: find.byType(Scrollbar),
+        ),
+        findsOneWidget,
+      );
+      final point = painter.points.last;
+      final position = painter.position(point, chartSize);
+      await Scrollable.ensureVisible(tester.element(chart));
+      await tester.pumpAndSettle();
+      state.position.jumpTo(
+        (position.dx - 70).clamp(0, state.position.maxScrollExtent),
+      );
+      await tester.pump();
+      final box = tester.renderObject<RenderBox>(chart);
+      final pointOnScreen = box.localToGlobal(position);
+      expect(pointOnScreen.dx, inInclusiveRange(0, 320));
+      expect(pointOnScreen.dy, inInclusiveRange(0, 640));
+      await tester.tapAt(pointOnScreen);
+      await tester.pump();
+      expect(find.textContaining('PO-large-two'), findsOneWidget);
+      expect(find.textContaining('999999999.223456'), findsOneWidget);
+      expect(analysis.data['observations'], same(facts));
+      expect(tester.takeException(), isNull);
+      await _capture(tester, 'price-pressure-320-2x-nonlinear-chart');
+    },
+  );
+
+  for (final scenario in [
+    (const Size(390, 1000), .85),
+    (const Size(640, 320), 2.0),
+  ]) {
+    testWidgets(
+      'price pressure: evidence target and short dialog preserve raw price $scenario',
+      (tester) async {
+        final repository = _Repository()
+          ..checkOverrides = {
+            'message': '完整服务端核对依据：' * 30,
+            'referencePrice': '123456.789123456',
+          };
+        final row = PurchaseGridRow(supportsTotalInput: true)
+          ..goods = const GoodsOption(id: 'g1', name: '原始料')
+          ..supplierId = 's1'
+          ..currencyId = 'cny'
+          ..unitId = 'piece'
+          ..unitRate = 1;
+        row.qty.text = '10';
+        row.price.text = '123456.789123456';
+        row.taxRate.text = '13';
+        final grid = UtenEditableGridController<PurchaseGridRow>(
+          initial: [row],
+        );
+        addTearDown(grid.dispose);
+        final (container, _) = await pump(
+          tester,
+          repository,
+          size: scenario.$1,
+          factor: scenario.$2,
+          scaler: const _PriceNonlinearScaler(),
+          child: ProcurementPriceCheckScope<PurchaseGridRow>(
+            grid: grid,
+            kind: 'PURCHASE',
+            bindingOf: purchasePriceCheckBinding,
+            child: Scaffold(
+              body: PriceCheckCell(
+                row: row,
+                child: TextField(controller: row.price),
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 301));
+        await tester.pump();
+        final evidence = find.byKey(
+          const ValueKey('price-evidence-price-row-1'),
+        );
+        final bounds = tester.getRect(evidence);
+        expect(bounds.width, greaterThanOrEqualTo(48 - 1e-6));
+        expect(bounds.height, greaterThanOrEqualTo(48 - 1e-6));
+        await tester.tapAt(Offset(bounds.right - 2, bounds.center.dy));
+        await tester.pumpAndSettle();
+        expect(find.byType(UtenAlertDialog), findsOneWidget);
+        expect(find.textContaining('123456.789123456'), findsWidgets);
+        expect(row.price.text, '123456.789123456');
+        expect(
+          repository.checkRequests.single.single['unitPrice'],
+          '123456.789123456',
+        );
+        container.read(_grants.notifier).state = {Perm.goodsView};
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('123456.789123456'),
+          findsOneWidget,
+          reason:
+              'only the employee\'s own unchanged input remains after revocation',
+        );
+        final close = find.text('关闭');
+        await tester.ensureVisible(close);
+        await tester.pumpAndSettle();
+        final closeBounds = tester.getRect(close);
+        expect(closeBounds.top, greaterThanOrEqualTo(0));
+        expect(closeBounds.bottom, lessThanOrEqualTo(scenario.$1.height));
+        await tester.tap(close);
+        await tester.pumpAndSettle();
+        expect(find.byType(UtenAlertDialog), findsNothing);
+        expect(row.price.text, '123456.789123456');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final locale in [const Locale('en'), const Locale('ko')]) {
+    testWidgets(
+      'price pressure: complete basis and close are reachable in short 2x $locale',
+      (tester) async {
+        const originalCost = '完整成本版本依据，不构成最终报价；保持服务端原文。';
+        final repository = _Repository()
+          ..overrides = {
+            'explanation': 'Original recorded transaction basis. ' * 30,
+            'reasonCodes': ['SUPPLIER_SCOPE_FALLBACK', 'OUTDATED'],
+            'costSummary': {...sample().cost, 'explanation': originalCost},
+          };
+        await pump(
+          tester,
+          repository,
+          size: const Size(640, 320),
+          factor: 2,
+          scaler: const _PriceNonlinearScaler(),
+          locale: locale,
+        );
+        await tester.pumpAndSettle();
+        final pageContext = tester.element(find.byType(GoodsPriceAnalysisPage));
+        final basis = find.text(priceText(pageContext, 'explain'));
+        await tester.ensureVisible(basis);
+        await tester.pumpAndSettle();
+        final queryCount = repository.queries.length;
+        await tester.tap(basis);
+        await tester.pumpAndSettle();
+        final scroll = find.byKey(const ValueKey('price-basis-scroll'));
+        expect(scroll, findsOneWidget);
+        final reasons = find.byKey(const ValueKey('price-basis-reasons'));
+        await Scrollable.ensureVisible(tester.element(reasons), alignment: 1);
+        await tester.pumpAndSettle();
+        final viewport = tester.getRect(scroll);
+        final reasonsRect = tester.getRect(reasons);
+        expect(reasonsRect.bottom, lessThanOrEqualTo(viewport.bottom + 1e-6));
+        expect(reasonsRect.bottom, greaterThan(viewport.top));
+        expect(
+          tester.widget<Text>(reasons).data,
+          [
+            priceText(pageContext, 'SUPPLIER_SCOPE_FALLBACK'),
+            priceText(pageContext, 'OUTDATED'),
+          ].join(' · '),
+        );
+        final footer = find.byKey(const ValueKey('price-basis-chart-hint'));
+        await Scrollable.ensureVisible(tester.element(footer), alignment: 1);
+        await tester.pumpAndSettle();
+        final footerRect = tester.getRect(footer);
+        expect(footerRect.bottom, lessThanOrEqualTo(viewport.bottom + 1e-6));
+        expect(footerRect.bottom, greaterThan(viewport.top));
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(const ValueKey('price-basis-cost-explanation')),
+              )
+              .data,
+          originalCost,
+        );
+        await _capture(
+          tester,
+          'price-pressure-basis-short-2x-${locale.languageCode}',
+        );
+        final close = find.byKey(const ValueKey('price-basis-close'));
+        await tester.ensureVisible(close);
+        await tester.pumpAndSettle();
+        final bounds = tester.getRect(close);
+        expect(bounds.width, greaterThanOrEqualTo(48));
+        expect(bounds.top, greaterThanOrEqualTo(0));
+        expect(bounds.bottom, lessThanOrEqualTo(320));
+        await tester.tapAt(Offset(bounds.right - 2, bounds.center.dy));
+        await tester.pumpAndSettle();
+        expect(scroll, findsNothing);
+        expect(repository.queries.length, queryCount);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   testWidgets(
@@ -712,27 +1098,23 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('更多筛选'));
       await tester.pumpAndSettle();
-      final unit = tester.widget<DropdownButtonFormField<String>>(
-        find.byWidgetPredicate(
-          (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == '单位',
-        ),
+      final unit = find.byWidgetPredicate(
+        (w) => w is UtenDropdownField && w.label == '单位',
       );
-      unit.onChanged!('box-id|24');
+      await tester.tap(unit);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('箱 ×24').last);
       await tester.pumpAndSettle();
       expect(repository.queries.last['unitId'], 'box-id');
       expect(repository.queries.last['unitRate'], '24');
       expect(find.text('box-id'), findsNothing);
       expect(find.text('red-id'), findsNothing);
-      final colour = tester.widget<DropdownButtonFormField<String>>(
-        find.byWidgetPredicate(
-          (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == '颜色',
-        ),
+      final colour = find.byWidgetPredicate(
+        (w) => w is UtenDropdownField && w.label == '颜色',
       );
-      colour.onChanged!('red-id');
+      await tester.tap(colour);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('红色').last);
       await tester.pumpAndSettle();
       expect(repository.queries.last['colorId'], 'red-id');
     },
@@ -1454,6 +1836,506 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.tableQueries.last['sort'], 'unitPrice');
   });
+
+  Future<void> revealPricePanel(
+    WidgetTester tester,
+    Finder target, {
+    BuildContext? scrollOrigin,
+  }) async {
+    if (target.evaluate().isEmpty) {
+      final outerState = scrollOrigin == null
+          ? tester.state<ScrollableState>(
+              find
+                  .descendant(
+                    of: find.byType(UtenCollapsingHeaderScrollView),
+                    matching: find.byWidgetPredicate(
+                      (w) =>
+                          w is Scrollable &&
+                          w.axisDirection == AxisDirection.down,
+                    ),
+                  )
+                  .first,
+            )
+          : Scrollable.of(scrollOrigin);
+      // Resolve the dialog's actual outer viewport once. Sliver onstage
+      // traversal changes as a long header leaves the viewport.
+      final outerScroll = find.byElementPredicate(
+        (element) => identical(element, outerState.context),
+        skipOffstage: false,
+      );
+      for (
+        var attempt = 0;
+        attempt < 120 && target.evaluate().isEmpty;
+        attempt++
+      ) {
+        await tester.drag(outerScroll, const Offset(0, -300));
+        await tester.pumpAndSettle();
+      }
+    }
+    expect(target, findsOneWidget);
+    await Scrollable.ensureVisible(tester.element(target), alignment: 0.5);
+    await tester.pumpAndSettle();
+  }
+
+  void expectVisiblePriceTarget(
+    WidgetTester tester,
+    Finder target,
+    Size viewport,
+  ) {
+    final rect = tester.getRect(target);
+    expect(rect.left, greaterThanOrEqualTo(0));
+    expect(rect.top, greaterThanOrEqualTo(0));
+    expect(rect.right, lessThanOrEqualTo(viewport.width));
+    expect(rect.bottom, lessThanOrEqualTo(viewport.height));
+    expect(target.hitTestable(), findsOneWidget);
+  }
+
+  Offset visiblePriceCellPoint(
+    WidgetTester tester,
+    Finder target,
+    Size viewport,
+  ) {
+    final rect = tester.getRect(target);
+    var visible = rect.intersect(Offset.zero & viewport);
+    tester.element(target).visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is ScrollableState) {
+        final box = element.findRenderObject();
+        if (box is RenderBox && box.hasSize) {
+          visible = visible.intersect(
+            MatrixUtils.transformRect(
+              box.getTransformTo(null),
+              Offset.zero & box.size,
+            ),
+          );
+        }
+      }
+      return true;
+    });
+    expect(visible.width, greaterThan(0));
+    expect(visible.height, greaterThan(0));
+    final point = visible.center;
+    final localAlignment = Alignment(
+      2 * (point.dx - rect.left) / rect.width - 1,
+      2 * (point.dy - rect.top) / rect.height - 1,
+    );
+    expect(target.hitTestable(at: localAlignment), findsOneWidget);
+    return point;
+  }
+
+  Widget panelHost(Widget panel, ValueChanged<Object?> returned) => Scaffold(
+    body: Builder(
+      builder: (context) => FilledButton(
+        onPressed: () async {
+          returned(
+            await showDialog<Object>(
+              context: context,
+              builder: (_) => UtenDialogFrame(child: panel),
+            ),
+          );
+        },
+        child: const Text('open-price-panel'),
+      ),
+    ),
+  );
+
+  for (final size in [const Size(320, 800), const Size(640, 320)]) {
+    testWidgets(
+      'price panel pressure: facet field/search/selection stay exact at $size',
+      (tester) async {
+        final repository = _Repository();
+        Object? returned;
+        await pump(
+          tester,
+          repository,
+          size: size,
+          factor: 2,
+          scaler: const TextScaler.linear(2),
+          child: panelHost(
+            const GoodsPriceFacetPicker(
+              goodsId: 'a',
+              query: {'kind': 'PURCHASE'},
+            ),
+            (value) => returned = value,
+          ),
+        );
+        await tester.tap(find.text('open-price-panel'));
+        await tester.pumpAndSettle();
+        final field = find.byWidgetPredicate(
+          (w) => w is UtenDropdownField && w.label == '项目',
+        );
+        await Scrollable.ensureVisible(tester.element(field), alignment: 0.5);
+        await tester.pumpAndSettle();
+        expectVisiblePriceTarget(tester, field, size);
+        await tester.tap(field);
+        await tester.pumpAndSettle();
+        final menuSearch = find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == '输入关键字搜索',
+        );
+        expect(menuSearch, findsOneWidget);
+        await tester.enterText(menuSearch, '往来单位');
+        await tester.pumpAndSettle();
+        final menuList = find.descendant(
+          of: find
+              .ancestor(of: menuSearch, matching: find.byType(Material))
+              .first,
+          matching: find.byType(ListView),
+        );
+        expect(menuList, findsOneWidget);
+        final menuScroll = find.descendant(
+          of: menuList,
+          matching: find.byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+          ),
+        );
+        expect(menuScroll, findsOneWidget);
+        final option = find.descendant(
+          of: menuList,
+          matching: find.byWidgetPredicate(
+            (w) => w is Text && w.data == '往来单位',
+          ),
+        );
+        await tester.scrollUntilVisible(option, 80, scrollable: menuScroll);
+        await Scrollable.ensureVisible(tester.element(option), alignment: 0.5);
+        await tester.pumpAndSettle();
+        expect(
+          (Offset.zero & size).contains(tester.getRect(option).center),
+          isTrue,
+        );
+        expect(option.hitTestable(), findsOneWidget);
+        await tester.tap(option);
+        await tester.pumpAndSettle();
+        expect(repository.facetQueries.last['column'], 'partnerName');
+        expect(
+          tester.widget<UtenDropdownField>(field).selectedMaxLines,
+          isNull,
+        );
+        final chosen = find.descendant(of: field, matching: find.text('往来单位'));
+        expect(tester.widget<Text>(chosen).maxLines, isNull);
+        await _capture(
+          tester,
+          'price-facet-selection-${size.width.toInt()}-${size.height.toInt()}',
+        );
+        final search = find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.hintText == '搜索全部可见取值',
+        );
+        await Scrollable.ensureVisible(tester.element(search), alignment: 0.5);
+        await tester.pumpAndSettle();
+        expectVisiblePriceTarget(tester, search, size);
+        await tester.enterText(search, '201');
+        await tester.pump(const Duration(milliseconds: 301));
+        await tester.pumpAndSettle();
+        expect(repository.facetQueries.last, containsPair('search', '201'));
+        expect(
+          repository.facetQueries.last,
+          containsPair('column', 'partnerName'),
+        );
+        final bucket = find.text('第201条单据');
+        await revealPricePanel(tester, bucket);
+        expect(
+          tester
+              .widget<MasterDataTableView<MasterFacetBucket>>(
+                find.byType(MasterDataTableView<MasterFacetBucket>),
+              )
+              .primary,
+          isTrue,
+        );
+        // A table column retains its natural width and scrolls horizontally.
+        // Select the visible part of this exact server-backed bucket cell.
+        final bucketPoint = visiblePriceCellPoint(tester, bucket, size);
+        await _capture(
+          tester,
+          'price-facet-pressure-${size.width.toInt()}-${size.height.toInt()}',
+        );
+        await tester.tapAt(bucketPoint);
+        await tester.pumpAndSettle();
+        expect(returned, isA<(String, MasterFacetBucket)>());
+        final selection = returned! as (String, MasterFacetBucket);
+        expect(selection.$1, 'partnerName');
+        expect(selection.$2.value, 'PO-201');
+        expect(selection.$2.count, 1);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'price panel pressure: detail long evidence preserves exact amounts/source at $size',
+      (tester) async {
+        final row = PriceObservation({
+          ...observation('one'),
+          'canOpenSource': true,
+          'sourceRevision': 'r1',
+        });
+        final repository = _Repository()..delayDetail = true;
+        Object? returned;
+        await pump(
+          tester,
+          repository,
+          size: size,
+          factor: 2,
+          scaler: const TextScaler.linear(2),
+          permissions: {
+            Perm.goodsView,
+            Perm.goodsPriceAnalysisView,
+            Perm.purchaseOrderView,
+          },
+          child: panelHost(
+            GoodsPriceObservationDetail(
+              goodsId: 'a',
+              kind: 'PURCHASE',
+              row: row,
+              onReloadHistory: () {},
+            ),
+            (value) => returned = value,
+          ),
+        );
+        await tester.tap(find.text('open-price-panel'));
+        await tester.pump();
+        await tester.pump();
+        final summary = List.filled(30, '已核对长说明及原币金额，不改变价格、数量和币种。').join();
+        repository.pendingDetails.single.complete(
+          PriceObservationDetail({
+            ...verifiedDetail(row).data,
+            'title': '完整原始价格记录与来源版本详情',
+            'summary': summary,
+            'reasonCodes': [
+              'NO_FINAL_INVOICE',
+              'MIXED_TAX_BASIS',
+              'FINAL_INVOICE_ONLY',
+            ],
+          }),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(summary), findsOneWidget);
+        await _capture(
+          tester,
+          'price-detail-evidence-${size.width.toInt()}-${size.height.toInt()}',
+        );
+        final tableFinder = find.byType(
+          MasterDataTableView<Map<String, dynamic>>,
+        );
+        await revealPricePanel(
+          tester,
+          tableFinder,
+          scrollOrigin: tester.element(find.text(summary)),
+        );
+        final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+          tableFinder,
+        );
+        expect(table.primary, isTrue);
+        expect(
+          table.items.singleWhere(
+            (item) => item['key'] == 'unitPrice',
+          )['value'],
+          '12.345678912345 人民币/个',
+        );
+        expect(
+          table.items.singleWhere((item) => item['key'] == 'amount')['value'],
+          '1234.5678912345 人民币',
+        );
+        final source = find.text('查看原单', skipOffstage: false);
+        await revealPricePanel(tester, source);
+        expectVisiblePriceTarget(tester, source, size);
+        await _capture(
+          tester,
+          'price-detail-source-${size.width.toInt()}-${size.height.toInt()}',
+        );
+        await tester.tap(source);
+        await tester.pumpAndSettle();
+        expect(returned, isA<PriceObservation>());
+        expect((returned! as PriceObservation).identity, row.identity);
+        expect((returned! as PriceObservation).text('sourceRevision'), 'r1');
+        expect(repository.detailQueries, hasLength(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'price panel pressure: supplier long basis/source and exact ratio remain available',
+    (tester) async {
+      final group = <String, dynamic>{
+        'key': 'group-long',
+        'supplierId': 'supplier',
+        'supplierName': '长名称委外加工供应商与材料计划',
+        'unitName': '个',
+        'unitRate': '1',
+        'materialBasisKey': 'one',
+        'materialKindCount': 1,
+        'confirmedLossRatePct': '0.000000000000001',
+        'settledOrderQty': '100.000000000000001',
+        'lines': [
+          {
+            'orderId': 'order',
+            'orderItemId': 'item',
+            'sourceRevision': 'r1',
+            'orderNo': 'WW-LONG',
+            'canOpenSource': true,
+            'orderedQty': '100.000000000000001',
+            'confirmedLossQty': '0.000000000000001',
+            'status': 'APPROVED',
+          },
+        ],
+      };
+      final summary = List.filled(30, '以完整订货日期和冻结用料方案核对损耗与净入库数量。').join();
+      final repository = _Repository()
+        ..supplierApplicable = true
+        ..supplierResponse = {
+          'goodsId': 'a',
+          'applicable': true,
+          'dataComplete': true,
+          'status': 'READY',
+          'summary': summary,
+          'groups': [group],
+        };
+      Object? returned;
+      await pump(
+        tester,
+        repository,
+        size: const Size(320, 800),
+        factor: 2,
+        scaler: const TextScaler.linear(2),
+        permissions: {
+          Perm.goodsView,
+          Perm.goodsPriceAnalysisView,
+          Perm.subcontractOrderView,
+        },
+        child: panelHost(
+          GoodsSubcontractSupplierDetail(
+            goodsId: 'a',
+            days: 90,
+            group: {...group, '_planLabel': '方案 1'},
+            onRefresh: () {},
+          ),
+          (value) => returned = value,
+        ),
+      );
+      await tester.tap(find.text('open-price-panel'));
+      await tester.pumpAndSettle();
+      await Scrollable.ensureVisible(
+        tester.element(find.text('损耗统计依据')),
+        alignment: 0.5,
+      );
+      await tester.pumpAndSettle();
+      expectVisiblePriceTarget(
+        tester,
+        find.text('损耗统计依据'),
+        const Size(320, 800),
+      );
+      await tester.tap(find.text('损耗统计依据'));
+      await tester.pumpAndSettle();
+      expect(find.text(summary), findsOneWidget);
+      await _capture(tester, 'price-supplier-expanded-basis-320-800');
+      final tableFinder = find.byType(
+        MasterDataTableView<Map<String, dynamic>>,
+      );
+      await revealPricePanel(tester, tableFinder);
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        tableFinder,
+      );
+      expect(table.primary, isTrue);
+      expect(
+        table.columns.singleWhere((c) => c.key == 'orderedQty').exactValueOf!(
+          table.items.single,
+        ),
+        '100.000000000000001',
+      );
+      expect(
+        table.columns
+            .singleWhere((c) => c.key == 'confirmedLossQty')
+            .exactValueOf!(table.items.single),
+        '0.000000000000001',
+      );
+      final source = find.widgetWithText(TextButton, '查看原单');
+      await revealPricePanel(tester, source);
+      expectVisiblePriceTarget(tester, source, const Size(320, 800));
+      await _capture(tester, 'price-supplier-source-320-800');
+      await tester.tap(source);
+      await tester.pumpAndSettle();
+      expect(returned, 'order');
+      expect(repository.supplierQueries.single['supplierId'], 'supplier');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'price panel pressure: supplier wheel collapses the sole page header before rows',
+    (tester) async {
+      final groups = [
+        for (var i = 0; i < 25; i++)
+          <String, dynamic>{
+            'key': 'group-$i',
+            'supplierId': 'supplier-$i',
+            'supplierName': '委外商$i',
+            'materialBasisKey': 'basis-$i',
+            'materialKindCount': 1,
+            'unitRate': '1',
+            'unitName': '个',
+            'confirmedLossRatePct': '0.000000000000001',
+            'settledOrderQty': '100.000000000000001',
+            'lines': [
+              {
+                'orderId': 'order-$i',
+                'orderItemId': 'item-$i',
+                'sourceRevision': 'r1',
+              },
+            ],
+          },
+      ];
+      final repository = _Repository()
+        ..supplierApplicable = true
+        ..supplierResponse = {
+          'goodsId': 'a',
+          'applicable': true,
+          'dataComplete': true,
+          'status': 'READY',
+          'groups': groups,
+        };
+      await pump(tester, repository);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('委外加工费'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('委外商损耗'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(UtenCollapsingHeaderScrollView),
+        findsOneWidget,
+        reason: '嵌入供应商表复用主页面联动，不能再注册第二个wheel gate',
+      );
+      final control = find.byKey(const ValueKey('price-analysis-days'));
+      final before = tester.getTopLeft(control).dy;
+      final tableFinder = find.byKey(const Key('subcontract-supplier-table'));
+      final point = tester.getRect(tableFinder).center;
+      await tester.sendEventToBinding(
+        PointerScrollEvent(position: point, scrollDelta: const Offset(0, 180)),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(control).dy,
+        lessThan(before),
+        reason: '真实table上的wheel先收起同一主页面控制区',
+      );
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        tableFinder,
+      );
+      expect(table.primary, isTrue);
+      expect(
+        table.columns
+            .singleWhere((c) => c.key == 'confirmedLossRatePct')
+            .exactValueOf!(table.items.first),
+        '0.000000000000001',
+      );
+      final row = find.byKey(const ValueKey('supplier-group-group-0'));
+      await Scrollable.ensureVisible(tester.element(row), alignment: 0.5);
+      await tester.pumpAndSettle();
+      await tester.tapAt(tester.getRect(row).center);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tapAt(tester.getRect(row).center);
+      await tester.pumpAndSettle();
+      expect(find.byType(GoodsSubcontractSupplierDetail), findsOneWidget);
+      expect(repository.supplierQueries.last['supplierId'], 'supplier-0');
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 Future<void> _capture(WidgetTester tester, String name) async {

@@ -109,7 +109,9 @@ void main() {
           theme.inputDecorationTheme.focusedBorder!.borderSide.color,
           scheme.primary,
         );
-        expect(theme.tabBarTheme.indicator, isA<UnderlineTabIndicator>());
+        final indicator = theme.tabBarTheme.indicator! as BoxDecoration;
+        expect(indicator.color, scheme.secondaryContainer);
+        expect(theme.tabBarTheme.labelColor, scheme.onSecondaryContainer);
       }
       expect(buildLightTheme().colorScheme.primary, const Color(0xFF0F766E));
     },

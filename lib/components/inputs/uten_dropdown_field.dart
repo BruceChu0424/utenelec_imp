@@ -63,6 +63,7 @@ class UtenDropdownField extends StatefulWidget {
     this.label,
     required this.value,
     this.selectedLabel,
+    this.selectedMaxLines = 1,
     required this.items,
     required this.onChanged,
     this.required = false,
@@ -103,6 +104,9 @@ class UtenDropdownField extends StatefulWidget {
   /// identity still use [UtenDropdownItem.label] and [UtenDropdownItem.value].
   /// Ignored when [value] is null; omitted preserves the original item label.
   final String? selectedLabel;
+
+  /// 普通表单选值可自然换行；null显示全文。密集/flat表格仍保留单行。
+  final int? selectedMaxLines;
   final List<UtenDropdownItem> items;
   final ValueChanged<String?> onChanged;
 
@@ -158,6 +162,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
   ScrollNotificationObserverState? _scrollObserver;
   TextEditingController? _searchCtl;
   FocusNode? _searchFocus;
+  ScrollController? _menuScroll;
   Object? _menuWidthSignature;
   List<UtenDropdownItem> _measuredMenuItems = const [];
   double _measuredMenuWidth = 0;
@@ -311,11 +316,12 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     if (_overlay != null || !widget.enabled) return;
     final search = _searchCtl = TextEditingController();
     final focus = _searchFocus = FocusNode();
+    final scroll = _menuScroll = ScrollController();
     final host = _overlayHost = Overlay.of(context, rootOverlay: true);
     late final OverlayEntry entry;
     entry = OverlayEntry(
       builder: (overlayContext) =>
-          _buildHostedOverlay(overlayContext, entry, search, focus),
+          _buildHostedOverlay(overlayContext, entry, search, focus, scroll),
     );
     _overlay = entry;
     host.insert(entry);
@@ -381,12 +387,14 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     final entry = _overlay;
     final search = _searchCtl;
     final focus = _searchFocus;
+    final scroll = _menuScroll;
     _overlay = null;
     _overlayHost = null;
     _lastAnchor = null;
     _pendingOverlayRebuild = null;
     _searchCtl = null;
     _searchFocus = null;
+    _menuScroll = null;
     WidgetsBinding.instance.removeObserver(this);
     for (final position in _scrollPositions) {
       position.removeListener(_refreshOverlay);
@@ -395,6 +403,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     if (entry == null) {
       search?.dispose();
       focus?.dispose();
+      scroll?.dispose();
       return;
     }
     // remove can defer unmount to the next frame. Keep the old resources alive
@@ -406,6 +415,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
       entry.removeListener(releaseResources);
       search?.dispose();
       focus?.dispose();
+      scroll?.dispose();
     }
 
     entry.addListener(releaseResources);
@@ -443,6 +453,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     OverlayEntry entry,
     TextEditingController search,
     FocusNode focus,
+    ScrollController scroll,
   ) {
     if (!mounted || !identical(_overlay, entry)) {
       return const SizedBox.shrink();
@@ -455,7 +466,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     final overlayMedia = MediaQuery.of(overlayContext);
     Widget menu = LayoutBuilder(
       builder: (menuContext, constraints) =>
-          _buildOverlay(menuContext, constraints, entry, search, focus),
+          _buildOverlay(menuContext, constraints, entry, search, focus, scroll),
     );
     menu = MediaQuery(
       data: fieldMedia.copyWith(
@@ -598,8 +609,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
             // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
             // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
             // 由网格列 textOf 自动加宽兜底，表单里就省略号。
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            maxLines: widget.dense ? 1 : widget.selectedMaxLines,
+            overflow: widget.dense || widget.selectedMaxLines != null
+                ? TextOverflow.ellipsis
+                : TextOverflow.clip,
             // 紧凑形态字号对齐同行 TextField 输入文本（bodyLarge）：表格里
             // 下拉值与数量/单价同一字号同一行高，整行等高（2026-10-06）。
             style:
@@ -678,6 +691,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     OverlayEntry entry,
     TextEditingController search,
     FocusNode focus,
+    ScrollController scroll,
   ) {
     bool current() => mounted && identical(_overlay, entry) && widget.enabled;
     void close() {
@@ -718,12 +732,38 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     final searchable = widget.searchable ?? widget.items.length >= 4;
     // Resolve the anchor during layout. A paint-only follower prevents nested
     // Tooltip overlays from positioning themselves when a menu item is hovered.
-    final down = overlaySize.height - anchor.bottom;
-    final up = anchor.top;
+    final media = MediaQuery.of(ctx);
+    final safeTop = media.padding.top + UtenSpacing.s8;
+    final safeBottom = math.max(
+      safeTop,
+      overlaySize.height -
+          math.max(media.padding.bottom, media.viewInsets.bottom) -
+          UtenSpacing.s8,
+    );
+    final safeHeight = math.max(0.0, safeBottom - safeTop);
+    final down = math.max(0.0, safeBottom - anchor.bottom - 2);
+    final up = math.max(0.0, anchor.top - safeTop - 2);
     final openAbove = up > down;
-    final maxHeight = ((openAbove ? up : down) - 8).clamp(120.0, 320.0);
+    final fontSize = theme.textTheme.bodyMedium?.fontSize ?? 14;
+    final textFactor = math.max(
+      1.0,
+      media.textScaler.scale(fontSize) / fontSize,
+    );
+    // When the anchor leaves too little room, use the usable viewport. The
+    // search/add controls join the same scroll area in short or enlarged menus.
+    final floating =
+        math.max(up, down) < math.min(160 * textFactor, safeHeight);
+    final maxHeight = math.min(
+      320.0,
+      floating ? safeHeight : (openAbove ? up : down),
+    );
     final defaultWidth = anchor.width.clamp(120.0, 480.0);
-    final viewportWidth = math.max(0.0, overlaySize.width - UtenSpacing.s16);
+    final safeLeft = media.padding.left + UtenSpacing.s8;
+    final safeRight = math.max(
+      safeLeft,
+      overlaySize.width - media.padding.right - UtenSpacing.s8,
+    );
+    final viewportWidth = math.max(0.0, safeRight - safeLeft);
     final fieldWidth = widget.menuMatchContentWidth
         ? math.min(
             viewportWidth,
@@ -732,18 +772,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
               _menuContentWidth(ctx, searchable),
             ),
           )
-        : defaultWidth;
-    final left = widget.menuMatchContentWidth
-        ? anchor.left
-              .clamp(
-                UtenSpacing.s8,
-                math.max(
-                  UtenSpacing.s8,
-                  overlaySize.width - UtenSpacing.s8 - fieldWidth,
-                ),
-              )
-              .toDouble()
-        : anchor.left;
+        : math.min(viewportWidth, defaultWidth);
+    final left = anchor.left
+        .clamp(safeLeft, math.max(safeLeft, safeRight - fieldWidth))
+        .toDouble();
     return Stack(
       children: [
         Positioned.fill(
@@ -754,8 +786,10 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
         ),
         Positioned(
           left: left,
-          top: openAbove ? null : anchor.bottom + 2,
-          bottom: openAbove ? overlaySize.height - anchor.top + 2 : null,
+          top: floating ? safeTop : (openAbove ? null : anchor.bottom + 2),
+          bottom: floating
+              ? null
+              : (openAbove ? overlaySize.height - anchor.top + 2 : null),
           child: TapRegion(
             onTapOutside: (_) => close(),
             child: Material(
@@ -776,105 +810,107 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                               (q.isEmpty || it.label.toLowerCase().contains(q)),
                         )
                         .toList();
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (searchable)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              UtenSpacing.s8,
-                              UtenSpacing.s8,
-                              UtenSpacing.s8,
-                              UtenSpacing.s4,
-                            ),
-                            child: TextField(
-                              controller: search,
-                              focusNode: focus,
-                              autofocus: true,
-                              style: theme.textTheme.bodyMedium,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                hintText: '输入关键字搜索',
-                                prefixIcon: const Icon(
-                                  Icons.search_rounded,
-                                  size: 18,
-                                ),
-                                prefixIconConstraints: const BoxConstraints(
-                                  minWidth: 32,
-                                  minHeight: 32,
-                                ),
-                                suffixIcon: q.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        icon: const Icon(
-                                          Icons.close_rounded,
-                                          size: 16,
-                                        ),
-                                        onPressed: () {
-                                          if (!current()) return;
-                                          search.clear();
-                                          setOverlayState(() {});
-                                        },
-                                      ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    UtenRadius.control,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: UtenSpacing.s8,
-                                  vertical: UtenSpacing.s8,
-                                ),
-                              ),
-                              onChanged: (_) => setOverlayState(() {}),
-                              onSubmitted: (_) {
-                                if (filtered.isNotEmpty) {
-                                  select(filtered.first.value);
-                                }
-                              },
-                            ),
+                    final header = <Widget>[
+                      if (searchable)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s8,
+                            UtenSpacing.s8,
+                            UtenSpacing.s8,
+                            UtenSpacing.s4,
                           ),
-                        if (widget.onAddNew != null)
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(
-                              UtenSpacing.s8,
-                              UtenSpacing.s4,
-                              UtenSpacing.s8,
-                              UtenSpacing.s4,
-                            ),
-                            child: InkWell(
-                              onTap: () {
-                                if (!current()) return;
-                                final onAddNew = widget.onAddNew;
-                                if (onAddNew == null) return;
-                                _close();
-                                onAddNew();
-                              },
-                              borderRadius: BorderRadius.circular(
-                                UtenRadius.sm,
+                          child: TextField(
+                            controller: search,
+                            focusNode: focus,
+                            autofocus: true,
+                            style: theme.textTheme.bodyMedium,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              hintText: '输入关键字搜索',
+                              prefixIcon: const Icon(
+                                Icons.search_rounded,
+                                size: 18,
                               ),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: UtenSpacing.s12,
-                                  vertical: UtenSpacing.s8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: UtenColors.successBg,
-                                  borderRadius: BorderRadius.circular(
-                                    UtenRadius.sm,
-                                  ),
-                                  border: Border.all(color: UtenColors.success),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.add_rounded,
-                                      size: 18,
-                                      color: theme.colorScheme.primary,
+                              prefixIconConstraints: const BoxConstraints(
+                                minWidth: 32,
+                                minHeight: 32,
+                              ),
+                              suffixIcon: q.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      icon: const Icon(
+                                        Icons.close_rounded,
+                                        size: 16,
+                                      ),
+                                      onPressed: () {
+                                        if (!current()) return;
+                                        search.clear();
+                                        setOverlayState(() {});
+                                      },
                                     ),
-                                    const SizedBox(width: UtenSpacing.s4),
-                                    Text(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(
+                                  UtenRadius.control,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: UtenSpacing.s8,
+                                vertical: UtenSpacing.s8,
+                              ),
+                            ),
+                            onChanged: (_) => setOverlayState(() {}),
+                            onSubmitted: (_) {
+                              if (filtered.isNotEmpty) {
+                                select(filtered.first.value);
+                              }
+                            },
+                          ),
+                        ),
+                      if (widget.onAddNew != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s8,
+                            UtenSpacing.s4,
+                            UtenSpacing.s8,
+                            UtenSpacing.s4,
+                          ),
+                          child: InkWell(
+                            onTap: () {
+                              if (!current()) return;
+                              final onAddNew = widget.onAddNew;
+                              if (onAddNew == null) return;
+                              _close();
+                              onAddNew();
+                            },
+                            borderRadius: BorderRadius.circular(UtenRadius.sm),
+                            child: Container(
+                              width: double.infinity,
+                              constraints: BoxConstraints(
+                                minHeight: UtenControlMetrics.minimumHitExtent(
+                                  ctx,
+                                ),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: UtenSpacing.s12,
+                                vertical: UtenSpacing.s8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: UtenColors.successBg,
+                                borderRadius: BorderRadius.circular(
+                                  UtenRadius.sm,
+                                ),
+                                border: Border.all(color: UtenColors.success),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.add_rounded,
+                                    size: 18,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: UtenSpacing.s4),
+                                  Flexible(
+                                    child: Text(
                                       widget.addNewLabel ?? '添加',
                                       style: theme.textTheme.bodyMedium
                                           ?.copyWith(
@@ -882,64 +918,89 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                                             fontWeight: FontWeight.w600,
                                           ),
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
-                        Flexible(
-                          child: ListView(
-                            shrinkWrap: true,
-                            padding: EdgeInsets.zero,
-                            children: <Widget>[
-                              if (widget.allowClear)
-                                _item(
-                                  ctx,
-                                  key: ValueKey((
-                                    'uten-dropdown-clear-option',
-                                    widget.key,
-                                  )),
-                                  label: '不选',
-                                  selected: widget.value == null,
-                                  onTap: () => select(null),
-                                  theme: theme,
-                                ),
-                              for (final it in filtered)
-                                _item(
-                                  ctx,
-                                  key: ValueKey((
-                                    'uten-dropdown-option',
-                                    widget.key,
-                                    it.value,
-                                  )),
-                                  label: it.label,
-                                  tooltip: it.tooltip,
-                                  selected: it.value == widget.value,
-                                  onTap: it.enabled
-                                      ? () => select(it.value)
-                                      : null,
-                                  theme: theme,
-                                  indent: it.indent,
-                                  error: it.error,
-                                ),
-                              if (filtered.isEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: UtenSpacing.s12,
-                                    vertical: UtenSpacing.s12,
+                        ),
+                    ];
+                    final options = <Widget>[
+                      if (widget.allowClear)
+                        _item(
+                          ctx,
+                          key: ValueKey((
+                            'uten-dropdown-clear-option',
+                            widget.key,
+                          )),
+                          label: '不选',
+                          selected: widget.value == null,
+                          onTap: () => select(null),
+                          theme: theme,
+                        ),
+                      for (final it in filtered)
+                        _item(
+                          ctx,
+                          key: ValueKey((
+                            'uten-dropdown-option',
+                            widget.key,
+                            it.value,
+                          )),
+                          label: it.label,
+                          tooltip: it.tooltip,
+                          selected: it.value == widget.value,
+                          onTap: it.enabled ? () => select(it.value) : null,
+                          theme: theme,
+                          indent: it.indent.clamp(
+                            0.0,
+                            math.max(
+                              0.0,
+                              fieldWidth -
+                                  46 -
+                                  math.max(
+                                    64.0,
+                                    media.textScaler.scale(fontSize) * 2,
                                   ),
-                                  child: Text(
-                                    '无匹配项',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                            ],
+                            ),
+                          ),
+                          error: it.error,
+                        ),
+                      if (filtered.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: UtenSpacing.s12,
+                            vertical: UtenSpacing.s12,
+                          ),
+                          child: Text(
+                            '无匹配项',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
                         ),
-                      ],
+                    ];
+                    final wholeScroll = maxHeight < 160 * textFactor;
+                    final list = Scrollbar(
+                      controller: scroll,
+                      thumbVisibility: true,
+                      child: ListView(
+                        controller: scroll,
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        children: wholeScroll
+                            ? [...header, ...options]
+                            : options,
+                      ),
                     );
+                    return wholeScroll
+                        ? list
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ...header,
+                              Flexible(child: list),
+                            ],
+                          );
                   },
                 ),
               ),
@@ -965,6 +1026,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     final item = InkWell(
       onTap: onTap,
       child: Container(
+        constraints: BoxConstraints(
+          minHeight: UtenControlMetrics.minimumHitExtent(ctx),
+        ),
         padding: EdgeInsets.only(
           left: UtenSpacing.s12 + indent,
           right: UtenSpacing.s12,
@@ -988,10 +1052,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
             Expanded(
               child: Text(
                 label,
-                maxLines: widget.menuMatchContentWidth ? null : 1,
-                overflow: widget.menuMatchContentWidth
-                    ? TextOverflow.clip
-                    : TextOverflow.ellipsis,
+                overflow: TextOverflow.clip,
                 style: error
                     ? theme.textTheme.bodyMedium?.copyWith(
                         color: theme.colorScheme.error,

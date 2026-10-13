@@ -240,7 +240,7 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       categoryBar,
-                      const SizedBox(height: UtenSpacing.s12),
+                      const SizedBox(height: UtenSpacing.s8),
                       const Expanded(child: _GroupPlaceholder()),
                     ],
                   )

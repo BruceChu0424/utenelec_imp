@@ -4,6 +4,12 @@
 > 分类：Layout
 > 关联：[MasterDataTableView](MasterDataTableView.md)（`primary` 模式）、[UtenSplitView](UtenSplitView.md)（主档页右详情面板）
 
+> 2026-10-13：紧凑与Nested布局向正文提供同一个primary代理，位置创建委托当前布局的真实控制器，detach始终归创建该位置的原控制器。保留同一正文/表格/行/输入State时，不能把旧普通位置直接挂到Nested控制器。既有到点截停、交接门和唯一滚轮换算保持；回归覆盖多轮窗口切换、非线性字号、Semantics、焦点/IME/选区/组合文本、偏移与真实连续滚轮。代理不释放由Nested协调器拥有的控制器。
+
+> 同日生命周期补充：组件持有头部和正文的保留根，调用方使用普通Key也能在紧凑/Nested/挤扁回退之间保留Element、输入控制器、焦点和组合文本。保留根真正离开旧渲染父节点后，才在`parent == null && !attached`的孤立根上调用公开`RenderObject.clearSemantics()`，清除旧视口的语义几何缓存；新视口由框架重建完整Semantics，不能清除已附着子树、禁用Semantics或略过渲染异常。`collapsingHeader`与`pinnedHeader`使用`PrimaryScrollController.none`隔离，头部独立滚动件不会借用正文或外层控制器。正文仍按API拾取primary代理。
+
+相关回归：[窗口切换/全屏/滚轮与IME](../../test/uten_collapsing_header_mode_transition_test.dart)、[普通Key与挤扁模式的语义切换](../../test/uten_collapsing_header_semantics_transition_test.dart)、[头部primary隔离](../../test/uten_collapsing_header_primary_isolation_test.dart)、[FQC原子报告与恢复](../../test/features/quality/production_fqc_submission_recovery_test.dart)。新增语义压力与最终稳定源码的通过记录按对应验证批次记录，不用旧批次替代。
+
 ---
 
 ## 一、用途

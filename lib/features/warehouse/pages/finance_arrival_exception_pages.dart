@@ -176,7 +176,7 @@ class _FinanceArrivalExceptionTasksPageState
     children: [
       if (widget.externalHeader != null) ...[
         widget.externalHeader!,
-        const SizedBox(height: UtenSpacing.s12),
+        const SizedBox(height: UtenFilterRow.rowGap),
       ],
       UtenFilterToolbar<String>(
         segmentsKey: const Key('finance-arrival-task-status'),

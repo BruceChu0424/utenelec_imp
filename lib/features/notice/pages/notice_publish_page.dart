@@ -10,6 +10,7 @@
 // 文档：docs/03-页面/通知发布页.md
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_filter_chip.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -979,7 +980,7 @@ class _CelebrationTemplateCurator extends StatelessWidget {
             runSpacing: UtenSpacing.s8,
             children: [
               for (final template in preview.suggestedTemplates)
-                FilterChip(
+                UtenFilterChip(
                   label: Text(template.replaceAll('{name}', subjectName)),
                   selected: selected.contains(template),
                   onSelected: (sel) => onToggle(template, sel),

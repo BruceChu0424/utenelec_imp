@@ -4,13 +4,15 @@
 // 宽度**（取最宽分段的固有宽度，或可用宽度均分，segmented_button.dart 的
 // _calculateHorizontalChildSize），两个字的小格被撑到和最长格一样宽，整条
 // 显得空。2026-10-04 用户口径：分类栏每格宽度跟随自身内容（字少格窄、
-// 字多或带徽章自动变长），本组件逐格复刻 M3 样式但宽度各自自适应。
+// 字多或带徽章自动变长）。本组件复用M3交互/语义，视觉统一平台矩形分类栏，
+// 每格宽度仍跟随自身内容。
 //
-// 视觉与交互 1:1 对齐 M3 默认（无主题定制时的 _SegmentedButtonDefaultsM3）：
-// - StadiumBorder 描边（enabled=outline，整条禁用=onSurface@12%）；
+// 保留M3交互与三态语义；视觉尺寸使用平台分类专用令牌：
+// - control10 圆角矩形描边（enabled=outline，整条禁用=onSurface@12%）；
 // - 选中格 secondaryContainer 填充、文字 onSecondaryContainer；未选格透明、
 //   文字 onSurface；禁用格文字 onSurface@38%、不填充；
-// - 格间 1px 分隔线（与描边同色）；高度下限 40，图标 18、图标与文字间距 8；
+// - 格间 1px 分隔线（与描边同色）；桌面高度下限36、触控48，内边距8×4；
+//   图标18、图标与文字间距4；
 // - 点选语义照抄 SDK _handleOnPressed：单选点已选段不回调，
 //   [emptySelectionAllowed] 放开空选（点已选段取消），[multiSelectionEnabled]
 //   放开多选；
@@ -71,8 +73,8 @@ class UtenSegmentRow<T> extends StatelessWidget {
   /// 默认不设限——宽度完全由内容决定。
   final double? minCellWidth;
 
-  /// 每格高度下限，默认 [UtenFilterRow.minHeight]（40）——与 UtenSearchBar 的
-  /// 图标约束下限同源，保证分类栏与搜索框药丸描边恒同高；工具条内由
+  /// 每格高度下限，默认 [UtenFilterRow.minHeight]（36）——与 UtenSearchBar 的
+  /// 图标约束下限同源，保证分类栏与搜索框描边同高；工具条内由
   /// IntrinsicHeight 拉齐搜索框。
   final double minCellHeight;
 
@@ -90,7 +92,10 @@ class UtenSegmentRow<T> extends StatelessWidget {
         : colors.onSurface.withValues(alpha: 0.12);
     final horizontal = Material(
       color: Colors.transparent,
-      shape: StadiumBorder(side: BorderSide(color: borderColor)),
+      shape: RoundedRectangleBorder(
+        borderRadius: UtenFilterRow.borderRadius,
+        side: BorderSide(color: borderColor),
+      ),
       clipBehavior: Clip.antiAlias,
       child: IntrinsicHeight(
         child: Row(
@@ -141,25 +146,32 @@ class UtenSegmentRow<T> extends StatelessWidget {
         : '已选择 ${picked.length} 项';
     return OutlinedButton(
       onPressed: enabled ? () => _showCategories(context) : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text(label, softWrap: true)),
-                const SizedBox(width: 8),
-                const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
-              ],
-            ),
-            if (compactSummary != null) ...[
-              const SizedBox(height: 4),
-              compactSummary!,
-            ],
-          ],
+      style: OutlinedButton.styleFrom(
+        minimumSize: Size(
+          UtenFilterRow.minimumWidthOf(context),
+          UtenFilterRow.heightOf(context),
         ),
+        padding: UtenFilterRow.contentPadding,
+        shape: const RoundedRectangleBorder(
+          borderRadius: UtenFilterRow.borderRadius,
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(label, softWrap: true)),
+              const SizedBox(width: UtenFilterRow.iconGap),
+              const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+            ],
+          ),
+          if (compactSummary != null) ...[
+            const SizedBox(height: 4),
+            compactSummary!,
+          ],
+        ],
       ),
     );
   }
@@ -213,12 +225,11 @@ class UtenSegmentRow<T> extends StatelessWidget {
                                 ).pop(_SegmentChoice(segment.value))
                               : null,
                           child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 48),
+                            constraints: BoxConstraints(
+                              minHeight: UtenFilterRow.heightOf(panelContext),
+                            ),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10,
-                              ),
+                              padding: UtenFilterRow.contentPadding,
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -231,7 +242,7 @@ class UtenSegmentRow<T> extends StatelessWidget {
                                           )
                                         : segment.icon,
                                   ),
-                                  const SizedBox(width: 8),
+                                  const SizedBox(width: UtenFilterRow.iconGap),
                                   Expanded(child: _panelLabel(segment)),
                                 ],
                               ),
@@ -353,7 +364,11 @@ class _SegmentCell<T> extends StatelessWidget {
     } else {
       content = Row(
         mainAxisSize: MainAxisSize.min,
-        children: [icon, const SizedBox(width: 8), label],
+        children: [
+          icon,
+          const SizedBox(width: UtenFilterRow.iconGap),
+          label,
+        ],
       );
     }
     return Semantics(
@@ -380,13 +395,15 @@ class _SegmentCell<T> extends StatelessWidget {
           }),
           child: Container(
             constraints: BoxConstraints(
-              minWidth: minCellWidth ?? 0,
+              minWidth: (minCellWidth ?? 0)
+                  .clamp(UtenFilterRow.minimumWidthOf(context), double.infinity)
+                  .toDouble(),
               minHeight: UtenControlMetrics.controlHeight(
                 context,
                 desktop: minCellHeight,
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: UtenFilterRow.contentPadding,
             alignment: Alignment.center,
             child: IconTheme.merge(
               data: IconThemeData(size: 18, color: foreground),

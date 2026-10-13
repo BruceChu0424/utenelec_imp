@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'uten_colors.dart';
 import 'uten_tokens.dart';
 import 'uten_typography.dart';
+import 'uten_category_tab_theme.dart';
 import 'uten_page_transitions.dart';
 import '../../shared/platform_branding/platform_branding.dart';
 import 'brand_theme.dart';
@@ -57,6 +58,11 @@ ThemeData buildLightTheme({PlatformBranding? branding}) {
     surfaceTint: UtenColors.teal700,
   );
 
+  final textTheme = buildUtenTextTheme(
+    primary: UtenColors.textPrimary,
+    secondary: UtenColors.textSecondary,
+    tertiary: UtenColors.textTertiary,
+  );
   final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
@@ -69,11 +75,7 @@ ThemeData buildLightTheme({PlatformBranding? branding}) {
     pageTransitionsTheme: utenPageTransitionsTheme(),
 
     // ===== 文字系统（Material type roles）=====
-    textTheme: buildUtenTextTheme(
-      primary: UtenColors.textPrimary,
-      secondary: UtenColors.textSecondary,
-      tertiary: UtenColors.textTertiary,
-    ),
+    textTheme: textTheme,
 
     // ===== AppBar：透明背景 + 细分隔线 =====
     appBarTheme: const AppBarTheme(
@@ -436,25 +438,7 @@ ThemeData buildLightTheme({PlatformBranding? branding}) {
       }),
     ),
 
-    tabBarTheme: const TabBarThemeData(
-      labelColor: UtenColors.textPrimary,
-      unselectedLabelColor: UtenColors.textSecondary,
-      labelStyle: TextStyle(
-        fontFamily: 'NotoSansSC',
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-      ),
-      unselectedLabelStyle: TextStyle(
-        fontFamily: 'NotoSansSC',
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-      ),
-      indicator: UnderlineTabIndicator(
-        borderSide: BorderSide(color: UtenColors.teal700, width: 2),
-      ),
-      indicatorSize: TabBarIndicatorSize.label,
-      dividerColor: UtenColors.border,
-    ),
+    tabBarTheme: buildUtenCategoryTabTheme(colorScheme, textTheme),
   );
   return applyPlatformBrandTheme(base, branding ?? PlatformBranding.defaults);
 }

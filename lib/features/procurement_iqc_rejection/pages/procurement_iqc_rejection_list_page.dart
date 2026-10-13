@@ -212,7 +212,7 @@ class _ProcurementIqcRejectionListPageState
               children: [
                 if (widget.externalHeader != null) ...[
                   widget.externalHeader!,
-                  const SizedBox(height: UtenSpacing.s12),
+                  const SizedBox(height: UtenSpacing.s8),
                 ],
                 Expanded(child: fallback),
               ],
@@ -257,7 +257,7 @@ class _ProcurementIqcRejectionListPageState
           // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           if (_counts != null) _buildCounts(_counts!),
           if (_counts != null) const SizedBox(height: UtenSpacing.s12),
@@ -282,7 +282,7 @@ class _ProcurementIqcRejectionListPageState
               ),
             ),
           ],
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       );
       if (expanded) {

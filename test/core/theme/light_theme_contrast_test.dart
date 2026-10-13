@@ -45,14 +45,17 @@ void main() {
     final theme = buildLightTheme();
     final focusedBorder =
         theme.inputDecorationTheme.focusedBorder! as OutlineInputBorder;
-    final tabIndicator = theme.tabBarTheme.indicator! as UnderlineTabIndicator;
+    final tabIndicator = theme.tabBarTheme.indicator! as BoxDecoration;
 
     expect(
       _contrastRatio(focusedBorder.borderSide.color, theme.colorScheme.surface),
       greaterThanOrEqualTo(3),
     );
     expect(
-      _contrastRatio(tabIndicator.borderSide.color, theme.colorScheme.surface),
+      _contrastRatio(
+        (tabIndicator.border! as Border).top.color,
+        theme.colorScheme.surface,
+      ),
       greaterThanOrEqualTo(3),
     );
   });

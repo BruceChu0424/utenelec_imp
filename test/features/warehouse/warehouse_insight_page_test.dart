@@ -14,6 +14,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
+import '../../support/filter_segment_tap.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/warehouse/models/stock_check_prefill.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_insight_page.dart';
@@ -498,11 +500,50 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.queriesOf('/stock/insights/health').last['onlyDead'], isTrue);
-    final chip = tester.widget<FilterChip>(
-      find.byKey(const Key('insight-only-dead')),
+    final flags = tester.widget<UtenSegmentRow<String>>(
+      find.byKey(const Key('insight-health-flags')),
     );
-    expect(chip.selected, isTrue);
+    expect(flags.selected, contains('dead'));
   });
+
+  testWidgets(
+    'health flags stay multi-select while ABC is optional and re-tap clears it',
+    (tester) async {
+      final (api, _) = await _open(tester);
+      await selectFilterSegment(tester, '仅呆滞');
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '库龄>180天');
+      await tester.pumpAndSettle();
+      expect(
+        api.queriesOf('/stock/insights/health').last,
+        containsPair('onlyDead', true),
+      );
+      expect(
+        api.queriesOf('/stock/insights/health').last,
+        containsPair('agedOver180', true),
+      );
+      await selectFilterSegment(tester, 'A');
+      await tester.pumpAndSettle();
+      expect(api.queriesOf('/stock/insights/health').last['abc'], 'A');
+      await selectFilterSegment(tester, 'A');
+      await tester.pumpAndSettle();
+      final cleared = api.queriesOf('/stock/insights/health').last;
+      expect(cleared.containsKey('abc'), isFalse);
+      expect(cleared['onlyDead'], isTrue);
+      expect(cleared['agedOver180'], isTrue);
+      await selectFilterSegment(tester, '仅呆滞');
+      await tester.pumpAndSettle();
+      expect(
+        api.queriesOf('/stock/insights/health').last.containsKey('onlyDead'),
+        isFalse,
+      );
+      expect(
+        api.queriesOf('/stock/insights/health').last['agedOver180'],
+        isTrue,
+      );
+      expect(api.posts, isEmpty);
+    },
+  );
 
   testWidgets(
     'cycle count asks which warehouse, then opens a prefilled CHECK',
@@ -567,13 +608,24 @@ void main() {
     expect(find.text('≈4,762个'), findsOneWidget);
     expect(find.text('少约238个 (-4.8%)'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('insight-group-by-counterpart')));
+    await selectFilterSegment(tester, '按往来方汇总');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('insight-counterpart-table')), findsOneWidget);
     expect(find.text('供应商来料'), findsOneWidget);
     expect(find.text('注塑车间'), findsOneWidget);
     expect(find.text('少 2.6%'), findsOneWidget);
     expect(find.text('多 1.9%'), findsOneWidget);
+    final requests = api.queriesOf('/stock/insights/weight-alerts').length;
+    await selectFilterSegment(tester, '近30天');
+    await tester.pumpAndSettle();
+    expect(api.queriesOf('/stock/insights/weight-alerts').length, requests);
+    await selectFilterSegment(tester, '近7天');
+    await tester.pumpAndSettle();
+    expect(api.queriesOf('/stock/insights/weight-alerts').last['days'], 7);
+    await selectFilterSegment(tester, '按往来方汇总');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('insight-counterpart-table')), findsNothing);
+    expect(api.posts, isEmpty);
   });
 
   testWidgets('learning batch sample saves and refreshes the row', (
@@ -654,11 +706,15 @@ void main() {
       tester,
       initial: '/warehouse/insights?segment=learning',
     );
-    await tester.tap(find.byKey(const ValueKey('insight-learning-CONFLICT')));
+    await selectFilterSegment(tester, '称重矛盾');
     await tester.pumpAndSettle();
     expect(
       api.queriesOf('/stock/insights/learning').last['filter'],
       'CONFLICT',
     );
+    final requests = api.queriesOf('/stock/insights/learning').length;
+    await selectFilterSegment(tester, '称重矛盾');
+    await tester.pumpAndSettle();
+    expect(api.queriesOf('/stock/insights/learning').length, requests);
   });
 }

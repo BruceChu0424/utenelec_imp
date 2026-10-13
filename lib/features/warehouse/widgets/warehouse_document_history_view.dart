@@ -263,7 +263,7 @@ class _WarehouseDocumentHistoryViewState
         children: [
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           _toolbar(result),
           if (_error != null && result.items.isNotEmpty) ...[
@@ -276,7 +276,7 @@ class _WarehouseDocumentHistoryViewState
               ),
             ),
           ],
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: MasterDataTableView<WarehouseDocumentHistorySummary>(

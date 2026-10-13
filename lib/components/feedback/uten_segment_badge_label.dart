@@ -181,9 +181,8 @@ class UtenSegmentBadgeLabel extends StatelessWidget {
       );
     }
     // 中性括号：与标签共用基线（字号不同也不会一高一低）。
-    // 颜色取**分段自身的前景色**再压半透明——选中段背景是 M3 secondaryContainer，
-    // 固定 onSurfaceVariant 在上面对比度不够；跟随前景色则选中/未选/置灰三态
-    // 都自动成立（禁止写死颜色）。
+    // 完整继承分段前景色。浅色选中容器里再乘透明度会使普通数字低于
+    // 4.5:1；宿主已经处理 disabled 三态，不再次降低其透明度。
     final inherited = DefaultTextStyle.of(context).style.color;
     final base = inherited ?? Theme.of(context).colorScheme.onSurface;
     return Row(
@@ -199,7 +198,7 @@ class UtenSegmentBadgeLabel extends StatelessWidget {
               count: count,
               // 分段标签保留 `(0)`：整行分段的数字位置不能忽有忽无。
               hideWhenZero: false,
-              color: base.withValues(alpha: base.a * 0.72),
+              color: base,
               semanticsLabel: '共 $count 条',
             ),
           ),

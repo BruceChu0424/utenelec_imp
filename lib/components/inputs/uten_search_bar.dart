@@ -1,10 +1,9 @@
 // UtenSearchBar - 搜索栏（带清除 + 防抖 + 输入法组合保护）——全平台唯一搜索框组件。
 // 文档：docs/02-组件库/UtenSearchBar.md
 //
-// 2026-09-01 全平台统一：搜索框只保留本组件一种形态——胶囊圆角
-//（半径远大于高度，RRect 自动收敛为高度一半，与 M3 SegmentedButton
-// StadiumBorder 分段导航条同形）。业务代码不得再手写搜索 TextField；
-// 圆角与高度也不另设参数，保证所有页面外观一致。
+// 全平台唯一搜索形态：与模块分类栏共用control10圆角矩形和紧凑间距。
+// 桌面高度下限36，触控实际目标至少48；放大字号可自然撑高。
+// 业务代码不再手写搜索 TextField，也不另设圆角或高度。
 //
 // 输入法组合保护（2026-10-09，中文输入「打一半拼音就被搜索/丢输入法」的根因）：
 // 框架的 TextField.onChanged 对 IME 组合中的每次拼音按键都会回调，直接防抖触发
@@ -15,14 +14,14 @@
 // 监听补发）。
 //
 // 高度机制（2026-10-07 根因结论，SDK input_decorator.dart 源码实证）：
-// InputDecorator 的药丸**描边**按 layout.containerHeight = clamp(内容高, 文本行高,
+// InputDecorator 的**描边**按 layout.containerHeight = clamp(内容高, 文本行高,
 // 外部 maxHeight) 绘制——只认 maxHeight，外部 minHeight 拉高的只是盒子、描边不跟
 //（_BorderContainer 被 tightFor(内容高) 布局后居中）。因此「与分类分段严格同高」
 // 不能靠外层约束，靠的是把**前后缀图标约束的 minHeight** 设为与分段行
 // minCellHeight 同源的 [UtenFilterRow.minHeight]：fixIconHeight 参与内容高计算，
-// 药丸下限即 36，两侧描边恒等于 max(36, 文本内容高)，任意密度/字号下相等。
-// （2026-09-10 曾加 minHeight 48 拉高整盒、分段被 stretch 带着变高，当日回退；
-// 这次只抬描边内容下限，分段行与药丸都不超出各自内容所需。）
+// 描边下限按分类角色36/48，两侧在同一工具条中由内容和拉伸一起对齐。
+// 2026-09-10 只加外盒 minHeight 的旧尝试已由内部图标高度角色接管：
+// 桌面36、触控至少48窗口像素；不限制触控使用48，也不只拉高外盒。
 
 import 'dart:async';
 
@@ -66,7 +65,7 @@ class UtenSearchBar extends StatefulWidget {
   final Duration debounce;
   final TextEditingController? controller;
 
-  /// 紧凑态：收紧内边距与图标（高约 30 而非 36）。
+  /// 密集筛选态：文字使用bodyMedium、图标18；保留同一36/48高度角色。
   ///
   /// 只给「筛选面板里的一格」用（报表/明细表的左侧筛选区）——那里搜索框是一堆
   /// 筛选项中的一项，默认高度显得笨重（2026-09-11 用户要求「搜索的框显示小点」）。
@@ -242,21 +241,22 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
     );
   }
 
-  /// 胶囊形输入装饰（全平台唯一搜索框形态）：半径取远大于可能高度，
-  /// RRect 归一化后即高度一半的 stadium，颜色对齐 M3 SegmentedButton
-  ///（描边 outline、聚焦主色）。
+  /// 与分类栏共用control10圆角矩形；描边outline，聚焦使用主色。
   ///
   /// 描边高度 = max(前后缀图标约束高, contentPadding + 文本行高 + 密度折减)，
-  /// 图标约束高与分类分段行 minCellHeight 同源取 UtenFilterRow.minHeight(36)
+  /// 图标约束高与分类分段同源取桌面36/触控至少48的 UtenFilterRow 角色
   ///（机制见文件头）；字号放大时行高自然增高，描边跟随、分段行同拉伸。
   InputDecoration _decoration(BuildContext context, ThemeData theme) {
-    final controlHeight = UtenControlMetrics.controlHeight(context);
+    final controlHeight = UtenFilterRow.heightOf(context);
     OutlineInputBorder border(Color color, [double width = 1]) =>
         OutlineInputBorder(
-          borderRadius: BorderRadius.circular(UtenRadius.pill),
+          borderRadius: UtenFilterRow.borderRadius,
           borderSide: BorderSide(color: color, width: width),
         );
     return InputDecoration(
+      // Override a generic theme's taller field floor for this role; the
+      // internal icon constraints below also set the actual painted outline.
+      constraints: BoxConstraints(minHeight: controlHeight),
       hintText: widget.hint,
       prefixIcon: Icon(
         Icons.search_rounded,
@@ -264,19 +264,17 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
         color: theme.colorScheme.onSurfaceVariant,
       ),
       prefixIconConstraints: BoxConstraints(
-        minWidth: widget.dense ? 34 : 40,
-        // 图标约束高 = 药丸描边的内容高下限（fixIconHeight 参与内容高计算，
-        // 见文件头机制说明）——与 UtenSegmentRow.minCellHeight 同源取
-        // UtenFilterRow.minHeight，分类栏与搜索框描边恒同高。
+        minWidth: widget.dense ? 32 : UtenFilterRow.minHeight,
+        // 内部图标高参与描边内容高度；桌面36、触控按48窗口目标补偿。
         minHeight: controlHeight,
       ),
       suffixIcon: _controller.text.isNotEmpty
           ? SizedBox(
               width: controlHeight,
               height: controlHeight,
-              // 清除钮默认 padded 触达目标最小约 40，会把有输入时的药丸顶高、
-              // 空框又回落，高度来回跳；外层紧约束统一收口到行高下限。
+              // 有值与空值共用同一描边下限；清除按钮使用完整角色触控目标。
               child: IconButton(
+                tooltip: '清除搜索',
                 icon: const Icon(Icons.close_rounded, size: 18),
                 splashRadius: 16,
                 visualDensity: VisualDensity.compact,
@@ -288,17 +286,13 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
         minWidth: controlHeight,
         minHeight: controlHeight,
       ),
-      // 描边高度机制见文件头：内容高下限由前后缀图标约束(36)提供，
-      // contentPadding 与文本行高决定随字号增长的部分，**不设 minHeight 48**：
-      // 外部 minHeight 拉高的只是盒子，描边不跟，还会经 stretch 把全站分类
-      // 分段一起带高（2026-09-10 用户反馈「分类变高了不正常」已回退）。
+      // 描边下限由内部图标角色提供，内容行高和padding可继续撑高。
+      // 单独设置外部minHeight不会改变InputDecorator描边高度。
       // 需要与本框等高的行尾下拉自行传紧凑 contentPadding（见即时库存页）。
       isDense: true,
       filled: true,
       fillColor: theme.inputDecorationTheme.fillColor,
-      contentPadding: widget.dense
-          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
-          : const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      contentPadding: UtenFilterRow.contentPadding,
       enabledBorder: border(theme.colorScheme.outline),
       focusedBorder: border(theme.colorScheme.primary, 2),
     );

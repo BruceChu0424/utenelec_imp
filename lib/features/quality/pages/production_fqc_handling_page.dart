@@ -37,6 +37,7 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
@@ -692,6 +693,8 @@ class _ProductionFqcSheetHandlingPageState
     extends ConsumerState<ProductionFqcSheetHandlingPage>
     with FormDraftMixin<ProductionFqcSheetHandlingPage> {
   String _draftReason = '';
+  final _sheetChromeKey = GlobalKey();
+  final _sheetBodyKey = GlobalKey();
   @override
   bool get formDraftBusy => _confirming || _submitting || _loading;
   @override
@@ -1072,125 +1075,132 @@ class _ProductionFqcSheetHandlingPageState
     return UtenContentContainer.wide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (fqcPreStockedNotice(
-                  activeRows.map((row) => row.inspection),
-                  key: const Key('fqc-sheet-pre-stocked-notice'),
-                )
-                case final notice?) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s16,
-                ),
-                child: notice,
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-            ],
-            _buildSummaryCard(theme, detail, activeRows.length),
-            if (_fqcSubmissionNotice(
-                  rows,
-                  key: const Key('fqc-sheet-submission-result'),
-                  canDecide: _canDecide,
-                )
-                case final notice?)
-              Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: notice,
-              ),
-            if (_error != null) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s16,
-                ),
-                child: Text(
-                  '刷新失败：$_error',
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
-              ),
-            ],
-            if (_submitting) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              const LinearProgressIndicator(key: Key('fqc-sheet-progress')),
-            ],
-            const SizedBox(height: UtenSpacing.s8),
-            Expanded(
-              child: activeRows.isEmpty
-                  ? UtenEmpty(
-                      icon: Icons.verified_outlined,
-                      message:
-                          _error == null && detail.activeLotInspections.isEmpty
-                          ? '本检查单当前待检已全部处理完成'
-                          : '本次提交已确认，待检状态尚未刷新',
-                      description:
-                          _error == null && detail.activeLotInspections.isEmpty
-                          ? '请以当前品质结果与仓库记录为准；返回待检处置继续下一单。'
-                          : '刷新后核对剩余待检数量，再继续办理。已确认的原提交不会重发。',
-                      actionLabel:
-                          _error == null && detail.activeLotInspections.isEmpty
-                          ? '返回待检处置'
-                          : '刷新待检状态',
-                      onAction:
-                          _error == null && detail.activeLotInspections.isEmpty
-                          ? () => popOrBackTo(
-                              context,
-                              defaultPath: RouteName.warehouseInspections,
-                            )
-                          : _load,
+        child: UtenCollapsingHeaderScrollView(
+          collapsingHeader: KeyedSubtree(
+            key: _sheetChromeKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (fqcPreStockedNotice(
+                      activeRows.map((row) => row.inspection),
+                      key: const Key('fqc-sheet-pre-stocked-notice'),
                     )
-                  : AbsorbPointer(
-                      absorbing: !_canDecide,
-                      child: MasterDataTableView<FqcReportRow>(
-                        tableKey:
-                            'features.quality.pages.production_fqc_handling_page.ProductionFqcSheetHandlingPageState._buildBody.1',
-                        key: const Key('fqc-sheet-report-table'),
-                        columns: _rowColumns(theme),
-                        items: activeRows,
-                        facets: const {},
-                        nullCounts: const {},
-                        filters: const {},
-                        onFilterChanged: (_, _) {},
-                        selectable: _canDecide,
-                        idOf: (row) => row.inspection.id,
-                        selectedIds: {
-                          for (final row in activeRows)
-                            if (row.selected) row.inspection.id,
-                        },
-                        onSelectedIdsChanged: (next) => setState(() {
-                          for (final row in activeRows) {
-                            row.selected = next.contains(row.inspection.id);
-                          }
-                        }),
-                        batchActionsBuilder: _canDecide ? _batchActions : null,
-                        rowMenuBuilder: (row) => [
-                          UtenMenuItem(
-                            label: '查看详情与证据',
-                            icon: Icons.visibility_outlined,
-                            // 单任务办理页里登记了决定的话，返回时重拉本检查单
-                            // （fire-and-forget push 此前不重载，行状态停在旧值）。
-                            // 一行是一批实物：详情页看批内第一份(证据挂在报工份上)。
-                            onTap: () async {
-                              final member =
-                                  row.inspection.lot?.members.firstOrNull;
-                              await context.push(
-                                RouteName.productionFqcInspectionHandling(
-                                  member?.inspectionId ?? row.inspection.id,
-                                ),
-                                extra: member == null ? row.inspection : null,
-                              );
-                              if (mounted) _load();
-                            },
-                          ),
-                        ],
-                        isLoading: _loading,
-                        emptyMessage: '本检查单已无待检行',
-                        showFullscreenToggle: false,
-                      ),
+                    case final notice?) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s16,
                     ),
+                    child: notice,
+                  ),
+                  const SizedBox(height: UtenSpacing.s8),
+                ],
+                _buildSummaryCard(theme, detail, activeRows.length),
+                if (_fqcSubmissionNotice(
+                      rows,
+                      key: const Key('fqc-sheet-submission-result'),
+                      canDecide: _canDecide,
+                    )
+                    case final notice?)
+                  Padding(
+                    padding: const EdgeInsets.all(UtenSpacing.s12),
+                    child: notice,
+                  ),
+                if (_error != null) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UtenSpacing.s16,
+                    ),
+                    child: Text(
+                      '刷新失败：$_error',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  ),
+                ],
+                if (_submitting) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  const LinearProgressIndicator(key: Key('fqc-sheet-progress')),
+                ],
+                const SizedBox(height: UtenSpacing.s8),
+              ],
             ),
-          ],
+          ),
+          body: KeyedSubtree(
+            key: _sheetBodyKey,
+            child: activeRows.isEmpty
+                ? UtenEmpty(
+                    icon: Icons.verified_outlined,
+                    message:
+                        _error == null && detail.activeLotInspections.isEmpty
+                        ? '本检查单当前待检已全部处理完成'
+                        : '本次提交已确认，待检状态尚未刷新',
+                    description:
+                        _error == null && detail.activeLotInspections.isEmpty
+                        ? '请以当前品质结果与仓库记录为准；返回待检处置继续下一单。'
+                        : '刷新后核对剩余待检数量，再继续办理。已确认的原提交不会重发。',
+                    actionLabel:
+                        _error == null && detail.activeLotInspections.isEmpty
+                        ? '返回待检处置'
+                        : '刷新待检状态',
+                    onAction:
+                        _error == null && detail.activeLotInspections.isEmpty
+                        ? () => popOrBackTo(
+                            context,
+                            defaultPath: RouteName.warehouseInspections,
+                          )
+                        : _load,
+                  )
+                : AbsorbPointer(
+                    absorbing: !_canDecide,
+                    child: MasterDataTableView<FqcReportRow>(
+                      tableKey:
+                          'features.quality.pages.production_fqc_handling_page.ProductionFqcSheetHandlingPageState._buildBody.1',
+                      key: const Key('fqc-sheet-report-table'),
+                      primary: true,
+                      columns: _rowColumns(theme),
+                      items: activeRows,
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      selectable: _canDecide,
+                      idOf: (row) => row.inspection.id,
+                      selectedIds: {
+                        for (final row in activeRows)
+                          if (row.selected) row.inspection.id,
+                      },
+                      onSelectedIdsChanged: (next) => setState(() {
+                        for (final row in activeRows) {
+                          row.selected = next.contains(row.inspection.id);
+                        }
+                      }),
+                      batchActionsBuilder: _canDecide ? _batchActions : null,
+                      rowMenuBuilder: (row) => [
+                        UtenMenuItem(
+                          label: '查看详情与证据',
+                          icon: Icons.visibility_outlined,
+                          // 单任务办理页里登记了决定的话，返回时重拉本检查单
+                          // （fire-and-forget push 此前不重载，行状态停在旧值）。
+                          // 一行是一批实物：详情页看批内第一份(证据挂在报工份上)。
+                          onTap: () async {
+                            final member =
+                                row.inspection.lot?.members.firstOrNull;
+                            await context.push(
+                              RouteName.productionFqcInspectionHandling(
+                                member?.inspectionId ?? row.inspection.id,
+                              ),
+                              extra: member == null ? row.inspection : null,
+                            );
+                            if (mounted) _load();
+                          },
+                        ),
+                      ],
+                      isLoading: _loading,
+                      emptyMessage: '本检查单已无待检行',
+                      showFullscreenToggle: false,
+                    ),
+                  ),
+          ),
         ),
       ),
     );
@@ -1231,8 +1241,10 @@ class _ProductionFqcSheetHandlingPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 UtenStatusBadge(
                   // ADR-169：待检=绿——本页是品质部自己的办理页，待检即
@@ -1242,13 +1254,10 @@ class _ProductionFqcSheetHandlingPageState
                       ? UtenStatusBadgeType.success
                       : UtenStatusBadgeType.neutral,
                 ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    '品质检查单 ${sheet.sheetNo}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                Text(
+                  '品质检查单 ${sheet.sheetNo}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -1327,7 +1336,8 @@ class _ProductionFqcSheetHandlingPageState
                     _canDecide
                         ? '一行是一批实物(需求份 / 计划公共 / 实际超产合在一起)，行内直接修改整批的'
                               '合格数量/不合格数量(默认全合格)，合格先满足需求份、不合格先扣实际超产；'
-                              '含不合格的行另选处置方式；勾选后点「提交报告」逐批登记，遇到未确认或拒绝时停止。'
+                              '含不合格的行另选处置方式；勾选后点「提交报告」整批一起提交，'
+                              '任一行失败则本次新增决定全部回滚；待核对行保留原内容继续办理。'
                         : '当前为只读查看；登记决定需要生产质检审批权限，且账号必须属于品质任务组织。',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.primary,

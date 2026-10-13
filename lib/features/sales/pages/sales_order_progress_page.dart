@@ -559,7 +559,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           // 宿主大类行随页滚走（2026-09-24「表格滑到顶」）。
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           Padding(
             padding: widget.embedded
@@ -627,7 +627,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
                   onSearchChanged: _applyKeyword,
                 ),
                 if (seg?.history == true) ...[
-                  const SizedBox(height: UtenSpacing.s8),
+                  const SizedBox(height: UtenFilterRow.rowGap),
                   UtenHistoryTimeFilter(
                     key: const Key('sales-order-progress-history-time'),
                     value: _historyTime,

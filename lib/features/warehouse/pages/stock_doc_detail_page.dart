@@ -1570,6 +1570,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           if (capturing) ...[
             // 生产退料收仓 (ADR-135 §3.9): 登记数量只读, 逐行录实称重量, 随收仓确认提交。
             outboundWeightColumn<StockDocItem>(
+              context: context,
               entryOf: (it) => _returnWeights[it.id],
               entryUnit: entryUnit,
               params: _weightCache,

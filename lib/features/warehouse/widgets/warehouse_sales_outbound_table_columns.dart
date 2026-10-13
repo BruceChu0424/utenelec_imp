@@ -87,6 +87,7 @@ String warehouseSalesOutboundReviewSnapshot(WarehouseSalesOutboundDetail d) =>
 
 List<MasterColumnDef<WarehouseSalesOutboundTableRow>>
 warehouseSalesOutboundTableColumns({
+  BuildContext? context,
   required AppLocalizations l10n,
   required List<WarehouseSalesOutboundTableRow> rows,
   bool includeShipment = false,
@@ -137,6 +138,7 @@ warehouseSalesOutboundTableColumns({
   final weightColumns = <MasterColumnDef<WarehouseSalesOutboundTableRow>>[
     if (rowOfEntry.isNotEmpty) ...[
       outboundWeightColumn<WarehouseSalesOutboundTableRow>(
+        context: context,
         entryOf: weightOf,
         entryUnit: weightEntryUnit,
         params: weightParams,

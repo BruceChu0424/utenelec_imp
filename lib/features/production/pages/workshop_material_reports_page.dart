@@ -31,6 +31,7 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -95,6 +96,8 @@ class _WorkshopMaterialReportsPageState
 
   /// 耗用差异率趋势当前看的料 (货品 + 颜色)。
   String? _trendMaterialKey;
+  final _reportHeaderKey = GlobalKey(debugLabel: 'wm-report-header');
+  final _reportBodyKey = GlobalKey(debugLabel: 'wm-report-body');
 
   WmReportCloseStatus? _closeStatus;
   String? _closeError;
@@ -536,19 +539,12 @@ class _WorkshopMaterialReportsPageState
         ),
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            UtenSpacing.s12,
-            UtenSpacing.s12,
-            UtenSpacing.s12,
-            0,
-          ),
-          child: _selectors(l10n),
-        ),
-        if (_statusPeriod != null)
+    return UtenCollapsingHeaderScrollView(
+      key: const Key('wm-report-coordinator'),
+      collapsingHeader: Column(
+        key: _reportHeaderKey,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(
               UtenSpacing.s12,
@@ -556,50 +552,70 @@ class _WorkshopMaterialReportsPageState
               UtenSpacing.s12,
               0,
             ),
-            child: _CloseStatusCard(
-              period: _statusPeriod!,
-              status: _closeStatus,
-              error: _closeError,
-              onRetry: _retryClose,
-              onReopen: _reopen,
-              onReload: _loadCloseStatus,
+            child: _selectors(l10n),
+          ),
+          if (_statusPeriod != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                UtenSpacing.s12,
+                UtenSpacing.s12,
+                UtenSpacing.s12,
+                0,
+              ),
+              child: _CloseStatusCard(
+                period: _statusPeriod!,
+                status: _closeStatus,
+                error: _closeError,
+                onRetry: _retryClose,
+                onReopen: _reopen,
+                onReload: _loadCloseStatus,
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s8,
+            ),
+            child: UtenFilterToolbar<WmReportView>(
+              segmentsKey: const Key('wm-report-view-segments'),
+              segments: [
+                UtenFilterSegment(
+                  value: WmReportView.usage,
+                  label: l10n.wmReportUsage,
+                ),
+                UtenFilterSegment(
+                  value: WmReportView.product,
+                  label: l10n.wmReportProduct,
+                ),
+                UtenFilterSegment(
+                  value: WmReportView.trend,
+                  label: l10n.wmReportTrend,
+                ),
+                UtenFilterSegment(
+                  value: WmReportView.missing,
+                  label: l10n.wmReportMissingWeight,
+                ),
+                UtenFilterSegment(
+                  value: WmReportView.ledger,
+                  label: l10n.wmReportLedger,
+                ),
+              ],
+              selected: {_view},
+              onSelectionChanged: _selectView,
             ),
           ),
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: UtenSpacing.s12,
-            vertical: UtenSpacing.s8,
-          ),
-          child: UtenFilterToolbar<WmReportView>(
-            segmentsKey: const Key('wm-report-view-segments'),
-            segments: [
-              UtenFilterSegment(
-                value: WmReportView.usage,
-                label: l10n.wmReportUsage,
+          if (_view == WmReportView.usage || _view == WmReportView.product)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+              child: UtenInlineNotice(
+                message:
+                    '耗用由期初和期末盘点推算；含容器估盘时只能作为估算。'
+                    '耗用差异还受单重、漏录及回收料影响，不等于报废率。产品用量为分摊或独占期平均。',
               ),
-              UtenFilterSegment(
-                value: WmReportView.product,
-                label: l10n.wmReportProduct,
-              ),
-              UtenFilterSegment(
-                value: WmReportView.trend,
-                label: l10n.wmReportTrend,
-              ),
-              UtenFilterSegment(
-                value: WmReportView.missing,
-                label: l10n.wmReportMissingWeight,
-              ),
-              UtenFilterSegment(
-                value: WmReportView.ledger,
-                label: l10n.wmReportLedger,
-              ),
-            ],
-            selected: {_view},
-            onSelectionChanged: _selectView,
-          ),
-        ),
-        Expanded(child: _viewBody(context, l10n)),
-      ],
+            ),
+        ],
+      ),
+      body: KeyedSubtree(key: _reportBodyKey, child: _viewBody(context, l10n)),
     );
   }
 
@@ -647,29 +663,13 @@ class _WorkshopMaterialReportsPageState
   }
 
   Widget _viewBody(BuildContext context, AppLocalizations l10n) {
-    final body = switch (_view) {
+    return switch (_view) {
       WmReportView.usage => _usageTable(l10n),
       WmReportView.product => _productTable(l10n),
       WmReportView.trend => _trendView(context, l10n),
       WmReportView.missing => _missingTable(l10n),
       WmReportView.ledger => _ledgerTable(l10n),
     };
-    if (_view != WmReportView.usage && _view != WmReportView.product) {
-      return body;
-    }
-    return Column(
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
-          child: UtenInlineNotice(
-            message:
-                '耗用由期初和期末盘点推算；含容器估盘时只能作为估算。'
-                '耗用差异还受单重、漏录及回收料影响，不等于报废率。产品用量为分摊或独占期平均。',
-          ),
-        ),
-        Expanded(child: body),
-      ],
-    );
   }
 
   // ---- 用量表 --------------------------------------------------------------
@@ -957,6 +957,7 @@ class _WorkshopMaterialReportsPageState
     final points = all.where((p) => p.materialKey == key).toList()
       ..sort((a, b) => (a.startDate ?? '').compareTo(b.startDate ?? ''));
     return ListView(
+      key: const Key('wm-trend-scroll'),
       padding: const EdgeInsets.all(UtenSpacing.s12),
       children: [
         Align(
@@ -966,7 +967,8 @@ class _WorkshopMaterialReportsPageState
             child: UtenDropdownField(
               key: const Key('wm-trend-material'),
               label: l10n.wmReportMaterial,
-              dense: true,
+              selectedMaxLines: null,
+              menuMatchContentWidth: true,
               allowClear: false,
               value: key,
               items: [
@@ -991,33 +993,26 @@ class _WorkshopMaterialReportsPageState
           ),
         ),
         const SizedBox(height: UtenSpacing.s8),
-        SizedBox(
-          key: const Key('wm-trend-chart'),
-          height: 240,
-          child: CustomPaint(
-            painter: _WasteTrendPainter(
-              points: points,
-              lineColor: theme.colorScheme.primary,
-              alertColor: theme.colorScheme.error,
-              gridColor: theme.colorScheme.outlineVariant,
-              labelStyle:
-                  theme.textTheme.labelSmall ?? const TextStyle(fontSize: 11),
-            ),
-            size: Size.infinite,
-          ),
-        ),
+        _WasteTrendChart(key: const Key('wm-trend-chart'), points: points),
         const SizedBox(height: UtenSpacing.s12),
         for (final p in points)
           Padding(
             padding: const EdgeInsets.only(bottom: 2),
-            child: Text(
-              '${_periodText(p.periodNo, p.startDate, p.endDate)}  '
-              '${l10n.wmWasteRate} ${p.hasEstimatedCount ? '≈ ' : ''}${_rate(p.wasteRate)}  '
-              '${p.countEvidenceLabel}',
+            child: DefaultTextStyle.merge(
               style: theme.textTheme.bodySmall?.copyWith(
                 color: _rateOutOfRange(p.wasteRate)
                     ? theme.colorScheme.error
                     : null,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_periodText(p.periodNo, p.startDate, p.endDate)),
+                  Text(
+                    '${l10n.wmWasteRate} ${p.hasEstimatedCount ? '≈ ' : ''}${_rate(p.wasteRate)}',
+                  ),
+                  Text(p.countEvidenceLabel),
+                ],
               ),
             ),
           ),
@@ -1592,13 +1587,78 @@ class _ReopenReasonDialogState extends State<_ReopenReasonDialog> {
 
 // ---- 耗用差异率折线 ----------------------------------------------------------
 
-class _WasteTrendPainter extends CustomPainter {
-  _WasteTrendPainter({
+class _WasteTrendChart extends StatefulWidget {
+  const _WasteTrendChart({super.key, required this.points});
+  final List<WmWasteTrendPoint> points;
+  @override
+  State<_WasteTrendChart> createState() => _WasteTrendChartState();
+}
+
+class _WasteTrendChartState extends State<_WasteTrendChart> {
+  final _horizontal = ScrollController();
+  @override
+  void dispose() {
+    _horizontal.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, box) {
+        final painter = WasteTrendPainter(
+          points: widget.points,
+          lineColor: theme.colorScheme.primary,
+          alertColor: theme.colorScheme.error,
+          gridColor: theme.colorScheme.outlineVariant,
+          labelStyle:
+              theme.textTheme.labelSmall ?? const TextStyle(fontSize: 11),
+          textScaler: MediaQuery.textScalerOf(context),
+          textDirection: Directionality.of(context),
+          locale: Localizations.maybeLocaleOf(context),
+        );
+        final chartSize = Size(
+          math.max(box.maxWidth, painter.minimumWidth),
+          painter.minimumHeight,
+        );
+        return SizedBox(
+          height: chartSize.height + UtenSpacing.s12,
+          child: Scrollbar(
+            controller: _horizontal,
+            thumbVisibility: true,
+            notificationPredicate: (notification) =>
+                notification.metrics.axis == Axis.horizontal,
+            child: SingleChildScrollView(
+              controller: _horizontal,
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: chartSize.width,
+                height: chartSize.height,
+                child: CustomPaint(
+                  key: const Key('wm-trend-chart-canvas'),
+                  painter: painter,
+                  size: chartSize,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class WasteTrendPainter extends CustomPainter {
+  WasteTrendPainter({
     required this.points,
     required this.lineColor,
     required this.alertColor,
     required this.gridColor,
     required this.labelStyle,
+    required this.textScaler,
+    required this.textDirection,
+    required this.locale,
   });
 
   final List<WmWasteTrendPoint> points;
@@ -1606,32 +1666,158 @@ class _WasteTrendPainter extends CustomPainter {
   final Color alertColor;
   final Color gridColor;
   final TextStyle labelStyle;
+  final TextScaler textScaler;
+  final TextDirection textDirection;
+  final Locale? locale;
 
   static const _low = -30.0;
   static const _high = 50.0;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    const left = 48.0;
-    const bottom = 28.0;
-    const top = 8.0;
-    const right = 12.0;
-    final width = size.width - left - right;
-    final height = size.height - top - bottom;
-    if (width <= 0 || height <= 0) return;
-
+  late final range = _range();
+  (double, double) _range() {
     final rates = [
       for (final p in points)
         if (p.wasteRate != null) p.wasteRate! * 100,
     ];
-    var lo = math.min(_low, rates.isEmpty ? _low : rates.reduce(math.min));
-    var hi = math.max(_high, rates.isEmpty ? _high : rates.reduce(math.max));
-    lo -= 10;
-    hi += 10;
-    double y(double v) => top + (hi - v) / (hi - lo) * height;
-    double x(int i) => points.length <= 1
-        ? left + width / 2
-        : left + i * width / (points.length - 1);
+    return (
+      math.min(_low, rates.isEmpty ? _low : rates.reduce(math.min)) - 10,
+      math.max(_high, rates.isEmpty ? _high : rates.reduce(math.max)) + 10,
+    );
+  }
+
+  TextPainter _labelPainter(String text) => TextPainter(
+    text: TextSpan(text: text, style: labelStyle),
+    textDirection: textDirection,
+    textScaler: textScaler,
+    locale: locale,
+    maxLines: 1,
+  )..layout();
+
+  Size _measure(String text) {
+    final painter = _labelPainter(text);
+    final result = painter.size;
+    painter.dispose();
+    return result;
+  }
+
+  String _date(int i) {
+    final end = points[i].endDate ?? points[i].startDate ?? '';
+    return end.length >= 10 ? end.substring(5, 10) : end;
+  }
+
+  late final _ticks = [
+    for (final v in [_low, 0.0, _high])
+      (
+        value: v,
+        text: '${v.toStringAsFixed(0)}%',
+        size: _measure('${v.toStringAsFixed(0)}%'),
+      ),
+  ];
+  late final _dates = [
+    for (var i = 0; i < points.length; i++)
+      if (i % math.max(1, (points.length / 8).ceil()) == 0 ||
+          i == points.length - 1)
+        (index: i, text: _date(i), size: _measure(_date(i))),
+  ];
+  late final _left = math.max(
+    48.0,
+    math.max(
+      _ticks.map((tick) => tick.size.width).reduce(math.max) + 8,
+      _dates.first.size.width / 2 + 4,
+    ),
+  );
+  late final _right = math.max(12.0, _dates.last.size.width / 2 + 4);
+  late final _tickHeight = _ticks
+      .map((tick) => tick.size.height)
+      .reduce(math.max);
+  late final _top = math.max(8.0, _tickHeight / 2 + 4);
+  late final _bottom = math.max(
+    28.0,
+    _dates.map((date) => date.size.height).reduce(math.max) + 12,
+  );
+
+  double get minimumWidth {
+    var plot = 120.0;
+    for (var i = 1; i < _dates.length; i++) {
+      final before = _dates[i - 1], after = _dates[i];
+      final needed = (before.size.width + after.size.width) / 2 + 8;
+      plot = math.max(
+        plot,
+        needed * (points.length - 1) / (after.index - before.index),
+      );
+    }
+    return _left + plot + _right;
+  }
+
+  double get minimumHeight =>
+      math.max(240.0, _tickHeight * 4 + 24 + _top + _bottom);
+
+  Rect plotRect(Size size) =>
+      Rect.fromLTRB(_left, _top, size.width - _right, size.height - _bottom);
+  double _x(int i, Rect rect) => points.length <= 1
+      ? rect.center.dx
+      : rect.left + i * rect.width / (points.length - 1);
+  double _y(double value, Rect rect) =>
+      rect.top + (range.$2 - value) / (range.$2 - range.$1) * rect.height;
+
+  List<Rect> _tickLabelBounds(Rect rect) {
+    // Extreme rates can cluster the unchanged -30/0/+50 threshold lines.
+    // Place readable labels in the axis slot with leaders to their actual y;
+    // the numeric domain must not make the painted surface arbitrarily tall.
+    final descending = _ticks.reversed.toList();
+    final centers = [for (final tick in descending) _y(tick.value, rect)];
+    final gap = _tickHeight + 8;
+    for (var i = 1; i < centers.length; i++) {
+      centers[i] = math.max(centers[i], centers[i - 1] + gap);
+    }
+    centers.last = math.min(centers.last, rect.bottom - _tickHeight / 2);
+    for (var i = centers.length - 2; i >= 0; i--) {
+      centers[i] = math.min(centers[i], centers[i + 1] - gap);
+    }
+    centers.first = math.max(centers.first, rect.top + _tickHeight / 2);
+    for (var i = 1; i < centers.length; i++) {
+      centers[i] = math.max(centers[i], centers[i - 1] + gap);
+    }
+    return [
+      for (var i = descending.length - 1; i >= 0; i--)
+        Rect.fromLTWH(
+          4,
+          centers[i] - descending[i].size.height / 2,
+          descending[i].size.width,
+          descending[i].size.height,
+        ),
+    ];
+  }
+
+  /// These are the actual painted label bounds, including the first/last dates.
+  List<({String text, Rect bounds, bool date})> labelBounds(Size size) {
+    final rect = plotRect(size);
+    final tickBounds = _tickLabelBounds(rect);
+    return [
+      for (var i = 0; i < _ticks.length; i++)
+        (text: _ticks[i].text, bounds: tickBounds[i], date: false),
+      for (final date in _dates)
+        (
+          text: date.text,
+          bounds: Rect.fromLTWH(
+            _x(date.index, rect) - date.size.width / 2,
+            rect.bottom + 8,
+            date.size.width,
+            date.size.height,
+          ),
+          date: true,
+        ),
+    ];
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = plotRect(size);
+    final left = rect.left, width = rect.width, height = rect.height;
+    if (width <= 0 || height <= 0) return;
+
+    double y(double v) => _y(v, rect);
+    double x(int i) => _x(i, rect);
 
     final grid = Paint()
       ..color = gridColor
@@ -1654,7 +1840,6 @@ class _WasteTrendPainter extends CustomPainter {
           );
         }
       }
-      _text(canvas, '${v.toStringAsFixed(0)}%', Offset(4, yy - 7));
     }
 
     final line = Paint()
@@ -1675,7 +1860,6 @@ class _WasteTrendPainter extends CustomPainter {
       }
     }
     canvas.drawPath(path, line);
-    final step = math.max(1, (points.length / 8).ceil());
     for (var i = 0; i < points.length; i++) {
       final r = points[i].wasteRate;
       if (r != null) {
@@ -1692,27 +1876,43 @@ class _WasteTrendPainter extends CustomPainter {
                 : PaintingStyle.fill,
         );
       }
-      if (i % step == 0 || i == points.length - 1) {
-        final end = points[i].endDate ?? points[i].startDate ?? '';
-        final label = end.length >= 10 ? end.substring(5, 10) : end;
-        _text(canvas, label, Offset(x(i) - 16, top + height + 8));
+    }
+    final labels = labelBounds(size);
+    for (var i = 0; i < _ticks.length; i++) {
+      final label = labels[i];
+      final actualY = y(_ticks[i].value);
+      if ((label.bounds.center.dy - actualY).abs() > 1e-6) {
+        final leader = _ticks[i].value == 0 ? grid : alertLine;
+        final gutter = Offset(left - 2, label.bounds.center.dy);
+        canvas.drawLine(
+          Offset(label.bounds.right + 2, label.bounds.center.dy),
+          gutter,
+          leader,
+        );
+        canvas.drawLine(gutter, Offset(left - 2, actualY), leader);
       }
+    }
+    for (final label in labels) {
+      _text(canvas, label.text, label.bounds.topLeft);
     }
   }
 
   void _text(Canvas canvas, String text, Offset at) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: labelStyle),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final painter = _labelPainter(text);
     painter.paint(canvas, at);
+    painter.dispose();
   }
 
   @override
-  bool shouldRepaint(covariant _WasteTrendPainter old) =>
+  bool shouldRepaint(covariant WasteTrendPainter old) =>
       old.points != points ||
       old.lineColor != lineColor ||
-      old.alertColor != alertColor;
+      old.alertColor != alertColor ||
+      old.gridColor != gridColor ||
+      old.labelStyle != labelStyle ||
+      old.textScaler != textScaler ||
+      old.textDirection != textDirection ||
+      old.locale != locale;
 }
 
 // ---- 文字与数字 --------------------------------------------------------------

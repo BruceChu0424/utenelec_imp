@@ -233,6 +233,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
     final weightColumns = _capturesWeight
         ? [
             outboundWeightColumn<ProductionDrawDetailRow>(
+              context: context,
               key: 'issueWeight',
               label: '本次重量',
               entryOf: _weightOf,

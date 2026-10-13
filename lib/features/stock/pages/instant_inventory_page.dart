@@ -21,6 +21,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_filter_chip.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -833,7 +834,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                     : names.warehouseEntries[_warehouseId],
                 onTap: _pickWarehouse,
               ),
-              FilterChip(
+              UtenFilterChip(
                 label: const Text('含不良品仓'), // TODO(l10n): 补 arb
                 selected: includeDefective,
                 onSelected: !aggregateWarehouse
@@ -854,7 +855,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
               // 要看车间料架上还有多少直送料时再打开。选定叶子仓时同样置灰。
               Tooltip(
                 message: '内料仓是车间的料架, 默认不计入即时库存',
-                child: FilterChip(
+                child: UtenFilterChip(
                   key: const Key('instant-inventory-line-side'),
                   // 本页其余文案尚未接 arb, 既有 widget 测试不挂本地化代理:
                   // 取不到时回落中文原文, 不因缺代理而抛错。

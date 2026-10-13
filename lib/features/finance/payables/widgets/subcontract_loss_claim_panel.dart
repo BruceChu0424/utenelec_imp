@@ -8,6 +8,7 @@ import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_segment_row.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -289,18 +290,25 @@ class _SubcontractLossClaimPanelState
                 onChanged: (value) => _changeFilter(() => _keyword = value),
               ),
               const SizedBox(height: UtenSpacing.s8),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _statusChip('全部', null),
-                    _statusChip('待处理', 'OPEN'),
-                    _statusChip('争议中', 'DISPUTED'),
-                    _statusChip('待履约', 'AWAITING_FULFILLMENT'),
-                    _statusChip('已解决', 'RESOLVED'),
-                    _statusChip('已反转', 'REVERSED'),
-                  ],
-                ),
+              UtenSegmentRow<String?>(
+                key: const ValueKey('subcontract-loss-claim-status'),
+                emptySelectionAllowed: true,
+                segments: const [
+                  ButtonSegment(value: null, label: Text('全部')),
+                  ButtonSegment(value: 'OPEN', label: Text('待处理')),
+                  ButtonSegment(value: 'DISPUTED', label: Text('争议中')),
+                  ButtonSegment(
+                    value: 'AWAITING_FULFILLMENT',
+                    label: Text('待履约'),
+                  ),
+                  ButtonSegment(value: 'RESOLVED', label: Text('已解决')),
+                  ButtonSegment(value: 'REVERSED', label: Text('已反转')),
+                ],
+                selected: {_status},
+                onSelectionChanged: (values) {
+                  final status = values.isEmpty ? _status : values.single;
+                  _changeFilter(() => _status = status);
+                },
               ),
             ],
           ),
@@ -347,13 +355,4 @@ class _SubcontractLossClaimPanelState
       ],
     );
   }
-
-  Widget _statusChip(String label, String? value) => Padding(
-    padding: const EdgeInsets.only(right: UtenSpacing.s4),
-    child: ChoiceChip(
-      label: Text(label),
-      selected: _status == value,
-      onSelected: (_) => _changeFilter(() => _status = value),
-    ),
-  );
 }

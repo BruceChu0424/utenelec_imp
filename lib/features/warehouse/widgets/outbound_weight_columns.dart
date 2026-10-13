@@ -8,6 +8,8 @@
 // - [weighOutboundEntry]: 出库反推称重计数 (需要 N 个 → 秤上应显示约 Y kg), 只回填重量;
 // - [OutboundWeightSummaryBar]: 表尾「明细 N 行 · 实称 X (未称 N 行) · 称重偏差 N 行」。
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
+import '../../../core/theme/uten_tokens.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -24,6 +26,7 @@ import '../models/outbound_weight_entry.dart';
 
 /// 可编辑「实称重量(单位)」列; [entryOf] 返回 null 的行显示「—」。
 MasterColumnDef<R> outboundWeightColumn<R>({
+  BuildContext? context,
   required OutboundWeightEntry? Function(R row) entryOf,
   required WeightUnit entryUnit,
   WeightParamsCache? params,
@@ -67,7 +70,24 @@ MasterColumnDef<R> outboundWeightColumn<R>({
   return MasterColumnDef<R>(
     key: key,
     label: column.label,
-    width: column.width + column.chromeWidth,
+    width:
+        column.width +
+        (context == null
+            ? (onWeighCount == null ? 0 : UtenControlMetrics.cellHeight)
+            : column.chromeWidthOf?.call(context) ?? column.chromeWidth),
+    minimumWidthOf: (context) {
+      // The read table injects bodyMedium into its inputs' bodyLarge role.
+      // Keep the original readable input slot alongside the independent action,
+      // even when the employee drags this particular column to its minimum.
+      final fontSize = Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14;
+      final textFactor = math.max(
+        1.0,
+        MediaQuery.textScalerOf(context).scale(fontSize) / fontSize,
+      );
+      final readableInput = math.max(80.0, column.width - UtenSpacing.s12 * 2);
+      final chrome = column.chromeWidthOf?.call(context) ?? column.chromeWidth;
+      return readableInput * textFactor + chrome + UtenSpacing.s12 * 2 + 1;
+    },
     type: 'number',
     info: column.headerInfo,
     cellBuilderHandlesSemantics: true,

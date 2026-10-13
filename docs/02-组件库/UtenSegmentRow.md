@@ -10,14 +10,14 @@ SDK `SegmentedButton` 的渲染对象把**每个分段强制铺成同一宽度**
 无任何开关）。两个字的小格被撑到和最长格一样宽，整条显得空（2026-10-04
 用户口径：每格宽度跟随自身内容，字多/带徽章自动变长）。
 
-`UtenSegmentRow` 逐格复刻 M3 默认样式，但每格宽度自适应：
+`UtenSegmentRow`复用M3交互和三态语义，视觉统一价格分析页的圆角矩形分段风格，每格宽度自适应：
 
-- StadiumBorder 描边（enabled=`outline`，整条禁用=`onSurface@12%`）；
+- `UtenFilterRow.borderRadius`圆角矩形描边（control10，enabled=`outline`，整条禁用=`onSurface@12%`）；
 - 选中格 `secondaryContainer` 填充、文字 `onSecondaryContainer`；未选透明、
   `onSurface`；禁用文字 `onSurface@38%`、不填充；
-- 格间 1px 分隔线（与描边同色）；桌面高度下限40、触控至少48（`minCellHeight` 默认
+- 格间1px分隔线；桌面高度下限36、触控实际目标宽高至少48窗口像素（`minCellHeight`默认
   `UtenFilterRow.minHeight`，与 UtenSearchBar 前后缀图标约束同源——InputDecorator
-  药丸描边只按内容高绘制，两侧共用同一枚下限才能恒同高）；图标 18、图标与文字间距 8；
+  描边只按内容高绘制，两侧共用同一角色）。每格内容padding水平8/垂直4，图标18、图文间距4；
 - 悬停/按压水波按 M3（选中 onSecondaryContainer@8%/10%，未选 onSurface 同比）。
 
 ## 二、API（与 SegmentedButton 同形，迁移只改组件名）
@@ -42,6 +42,11 @@ UtenSegmentRow<String>(
   纯图标分段也成立）。
 - 计数徽章走 label 槽位（`UtenSegmentBadgeLabel`），文字颜色经
   `DefaultTextStyle` 自动继承本组件三态前景色。
+- 浏览型括号计数完整继承宿主前景色，不再次降低透明度；红黄实底、零值、未知值、99+与完整语义计数保持原规则。
+- 迁移先核对原重复点击语义：需要重新执行当前选择回调的消费者可启用
+  `emptySelectionAllowed`，将空集映射回当前值，保留原回调且不清空业务选择。
+  BOM条件与布局分段采用这一适配，原计数与表头筛选修剪不变，见
+  [material_analysis_bom_tree.dart](../../lib/features/production/pages/material_analysis_bom_tree.dart)。
 
 ## 三、真实宽度与完整分类面板
 
@@ -49,6 +54,8 @@ UtenSegmentRow<String>(
 直接使用本组件也会适配，不需要调用方包装横向滚动条或缩字。
 超宽时显示当前分类（未选“选择分类”），点开纵向面板；长名称可换行。
 `compactSummary`可保留分类总量，面板中`UtenSegmentBadgeLabel`会把名称和计数分开排布。
+紧凑入口同样使用control10、36/48高度角色和8×4内容padding；触屏缩小档补偿后每项命中范围仍至少48窗口像素。
+36与48均为下限，系统文字、图标和徽章参与内容测量并可撑高；应用整体倍率由根缩放树处理，组件不重复乘倍率。
 
 隐藏分支排除焦点、语义和文本选择；选择面板返回时检查当前element仍挂载、当前值仍启用、
 当前回调仍有效。多选、空选、只读、逐项disabled和nullable值保留原契约。

@@ -204,11 +204,16 @@ class _UtenCollapsingHeaderScrollViewState
   late final ScrollController _ownedOuter = ScrollController();
   ScrollController get _outer => widget.controller ?? _ownedOuter;
 
-  /// NestedScrollView 注入给 body 的 inner controller（body 里 primary 可滚动件
-  /// 挂在它上面）。建 body 时记下，滚轮门要读表内位置。
-  ///
-  /// 紧凑回退分支同样上报：整页 CustomScrollView 的 inner 是 [_CompactPageScroll]
-  /// 自建的控制器（联动协调器不存在，滚轮门要把「页到顶后的余量」直接交给它）。
+  // Flutter attaches an old position before recreating it when a Scrollable's
+  // controller changes. A retained body must not hand a plain position to a
+  // NestedScrollView controller during a responsive layout transition.
+  final _bodyController = _BodyScrollController();
+  final _compactInner = ScrollController();
+  final _headerSurfaceKey = GlobalKey();
+  final _bodySurfaceKey = GlobalKey();
+
+  /// 两种布局都提供同一正文代理。滚轮门读取其当前位置；位置创建与附着
+  /// 由各模式的真实控制器负责，响应式切换不会更换表格看到的 controller。
   ScrollController? _innerController;
 
   /// 当前是否处于紧凑回退分支（整页滚 + body 定高内滚）。滚轮门的余量去向
@@ -232,6 +237,7 @@ class _UtenCollapsingHeaderScrollViewState
   @override
   void initState() {
     super.initState();
+    _innerController = _bodyController;
     _outer.addListener(_evaluateOuterPhase);
   }
 
@@ -251,6 +257,8 @@ class _UtenCollapsingHeaderScrollViewState
     widget.controller?.removeListener(_evaluateOuterPhase);
     _holdTimer?.cancel();
     _innerActive.dispose();
+    _bodyController.dispose();
+    _compactInner.dispose();
     _ownedOuter.dispose();
     super.dispose();
   }
@@ -525,17 +533,28 @@ class _UtenCollapsingHeaderScrollViewState
           // 桌面端压进紧凑分支后用户口径「表格不会滑到顶」即此。
           _compactMode =
               canFallBack && (smallViewport || _squeezedViewport == viewport);
+          final header = widget.collapsingHeader == null
+              ? null
+              : _RetainedScrollContent(
+                  key: _headerSurfaceKey,
+                  child: widget.collapsingHeader!,
+                );
+          final bodySurface = _RetainedScrollContent(
+            key: _bodySurfaceKey,
+            child: widget.body,
+          );
           final Widget content;
           if (_compactMode) {
+            _bodyController.useDelegate(_compactInner);
             content = _CompactPageScroll(
               viewportHeight: constraints.maxHeight,
-              collapsingHeader: widget.collapsingHeader,
+              collapsingHeader: header,
               pinnedHeader: widget.pinnedHeader,
               pinnedHeaderExtent: widget.pinnedHeaderExtent,
               controller: _outer,
               bodyMinHeight: widget.compactBodyMinHeight,
-              onInnerController: (controller) => _innerController = controller,
-              body: widget.body,
+              innerController: _bodyController,
+              body: bodySurface,
             );
           } else {
             final body = canFallBack
@@ -543,33 +562,38 @@ class _UtenCollapsingHeaderScrollViewState
                     viewport: viewport,
                     minHeight: widget.compactBodyMinHeight,
                     onSqueezed: _reportSqueezed,
-                    child: widget.body,
+                    child: bodySurface,
                   )
-                : widget.body;
+                : bodySurface;
             content = NestedScrollView(
               controller: _outer,
               headerSliverBuilder:
                   (BuildContext context, bool innerBoxIsScrolled) {
                     return <Widget>[
-                      if (widget.collapsingHeader != null)
-                        SliverToBoxAdapter(child: widget.collapsingHeader!),
+                      if (header != null)
+                        SliverToBoxAdapter(
+                          child: PrimaryScrollController.none(child: header),
+                        ),
                       if (widget.pinnedHeader != null)
                         SliverPersistentHeader(
                           pinned: true,
                           delegate: _PinnedHeaderDelegate(
                             extent: widget.pinnedHeaderExtent!,
-                            child: widget.pinnedHeader!,
+                            child: PrimaryScrollController.none(
+                              child: widget.pinnedHeader!,
+                            ),
                           ),
                         ),
                     ];
                   },
               body: Builder(
                 builder: (bodyContext) {
-                  // 记下 NestedScrollView 注入的 inner controller（滚轮门读表内位置）。
-                  _innerController = PrimaryScrollController.maybeOf(
-                    bodyContext,
+                  final delegate = PrimaryScrollController.of(bodyContext);
+                  _bodyController.useDelegate(delegate);
+                  return PrimaryScrollController(
+                    controller: _bodyController,
+                    child: body,
                   );
-                  return body;
                 },
               ),
             );
@@ -592,6 +616,82 @@ class _UtenCollapsingHeaderScrollViewState
         },
       ),
     );
+  }
+}
+
+/// Retains the content's Element/IME state when it moves between viewports.
+/// Its semantics geometry belongs to the receiving viewport, not the old
+/// Scrollable. Reset only after the render root has actually been orphaned.
+class _RetainedScrollContent extends SingleChildRenderObjectWidget {
+  const _RetainedScrollContent({super.key, required super.child});
+
+  @override
+  SingleChildRenderObjectElement createElement() =>
+      _RetainedScrollContentElement(this);
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => RenderProxyBox();
+}
+
+class _RetainedScrollContentElement extends SingleChildRenderObjectElement {
+  _RetainedScrollContentElement(super.widget);
+
+  @override
+  void detachRenderObject() {
+    super.detachRenderObject();
+    // RenderObject.clearSemantics is valid for an orphaned render root. The
+    // children remain mounted, retaining controllers, focus and composing text.
+    // Calling it before detach (or on an attached subtree) would violate that
+    // API contract and leave the old viewport's cached topology inconsistent.
+    assert(renderObject.parent == null && !renderObject.attached);
+    renderObject.clearSemantics();
+  }
+}
+
+/// Stable controller across compact and nested body ownership. Detach always
+/// belongs to the delegate that created a position, including during a mode
+/// transition. Delegates are owned by their respective scroll coordinators.
+class _BodyScrollController extends ScrollController {
+  ScrollController? _delegate;
+  final _owners = <ScrollPosition, ScrollController>{};
+
+  void useDelegate(ScrollController delegate) => _delegate = delegate;
+
+  @override
+  ScrollPosition createScrollPosition(
+    ScrollPhysics physics,
+    ScrollContext context,
+    ScrollPosition? oldPosition,
+  ) {
+    final delegate = _delegate!;
+    final position = delegate.createScrollPosition(
+      physics,
+      context,
+      oldPosition,
+    );
+    _owners[position] = delegate;
+    return position;
+  }
+
+  @override
+  void attach(ScrollPosition position) {
+    // Scrollable can temporarily reattach an existing foreign position before
+    // its factory runs. Keep it local; a plain position must never be given to
+    // the current nested delegate.
+    _owners[position]?.attach(position);
+    super.attach(position);
+  }
+
+  @override
+  void detach(ScrollPosition position) {
+    super.detach(position);
+    _owners.remove(position)?.detach(position);
+  }
+
+  @override
+  void dispose() {
+    _owners.clear();
+    super.dispose();
   }
 }
 
@@ -641,7 +741,7 @@ class _CompactPageScroll extends StatefulWidget {
     required this.viewportHeight,
     required this.body,
     required this.bodyMinHeight,
-    required this.onInnerController,
+    required this.innerController,
     this.collapsingHeader,
     this.pinnedHeader,
     this.pinnedHeaderExtent,
@@ -652,9 +752,7 @@ class _CompactPageScroll extends StatefulWidget {
   final Widget body;
   final double bodyMinHeight;
 
-  /// 把自建的 inner controller（body 里 primary 可滚动件挂在它上面）上报给宿主
-  /// ——滚轮交接门在紧凑分支要把「页到顶后的余量」直接交给它。
-  final ValueChanged<ScrollController> onInnerController;
+  final ScrollController innerController;
   final Widget? collapsingHeader;
   final Widget? pinnedHeader;
   final double? pinnedHeaderExtent;
@@ -665,18 +763,8 @@ class _CompactPageScroll extends StatefulWidget {
 }
 
 class _CompactPageScrollState extends State<_CompactPageScroll> {
-  final ScrollController _inner = ScrollController();
-
-  @override
-  void dispose() {
-    _inner.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    // 上报 inner controller（幂等）：宿主的滚轮门要读表内位置/直接驱动表内。
-    widget.onInnerController(_inner);
     // 顶部滚走后 body 几乎占满视口；预留 48 给页面自身的边距/底栏呼吸空间。
     final bodyHeight = math.max(
       widget.bodyMinHeight,
@@ -690,20 +778,24 @@ class _CompactPageScrollState extends State<_CompactPageScroll> {
       primary: false,
       slivers: [
         if (widget.collapsingHeader != null)
-          SliverToBoxAdapter(child: widget.collapsingHeader!),
+          SliverToBoxAdapter(
+            child: PrimaryScrollController.none(
+              child: widget.collapsingHeader!,
+            ),
+          ),
         if (widget.pinnedHeader != null)
           SliverPersistentHeader(
             pinned: true,
             delegate: _PinnedHeaderDelegate(
               extent: widget.pinnedHeaderExtent!,
-              child: widget.pinnedHeader!,
+              child: PrimaryScrollController.none(child: widget.pinnedHeader!),
             ),
           ),
         SliverToBoxAdapter(
           child: SizedBox(
             height: bodyHeight,
             child: PrimaryScrollController(
-              controller: _inner,
+              controller: widget.innerController,
               child: widget.body,
             ),
           ),

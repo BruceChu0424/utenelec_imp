@@ -509,7 +509,7 @@ class _WarehouseQualityResultsPageState
           children: [
             if (widget.externalHeader != null) ...[
               widget.externalHeader!,
-              const SizedBox(height: UtenSpacing.s12),
+              const SizedBox(height: UtenFilterRow.rowGap),
             ],
             _buildToolbars(result),
             if (_error != null && result.items.isNotEmpty) ...[
@@ -762,7 +762,7 @@ class _WarehouseQualityResultsPageState
           ),
         ),
         if (seg?.history == true) ...[
-          const SizedBox(height: UtenSpacing.s8),
+          const SizedBox(height: UtenFilterRow.rowGap),
           UtenHistoryTimeFilter(
             key: const Key('warehouse-quality-result-history-time'),
             value: _historyTime,

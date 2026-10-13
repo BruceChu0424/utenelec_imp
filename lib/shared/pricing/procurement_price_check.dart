@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
 import '../../components/layout/uten_editable_grid.dart';
+import '../../components/feedback/uten_dialog.dart';
 import '../../core/network/server_config.dart';
 import '../../core/ui/action_feedback.dart';
 import '../../core/theme/uten_colors.dart';
@@ -294,6 +295,10 @@ class PriceCheckCell extends StatelessWidget {
   const PriceCheckCell({super.key, required this.row, required this.child});
   final Object row;
   final Widget child;
+
+  /// 实际证据按钮与采购/委外列装饰估宽同源；不推导任何价格判断。
+  static double evidenceExtentOf(BuildContext context) =>
+      UtenControlMetrics.minimumHitExtent(context, desktop: 32);
   @override
   Widget build(BuildContext context) {
     final scope = context
@@ -332,9 +337,13 @@ class PriceCheckCell extends StatelessWidget {
                   child: IconButton(
                     key: ValueKey('price-evidence-${scope.keys[row]}'),
                     padding: const EdgeInsets.all(UtenSpacing.s4),
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 40,
+                    constraints: BoxConstraints.tightFor(
+                      width: evidenceExtentOf(context),
+                      height: evidenceExtentOf(context),
+                    ),
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.standard,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     icon: Icon(
                       warning
@@ -352,8 +361,8 @@ class PriceCheckCell extends StatelessWidget {
                           final current = scope.batch.result(
                             scope.keys[row] ?? '',
                           );
-                          return AlertDialog(
-                            scrollable: true,
+                          return UtenAlertDialog(
+                            maxWidth: 440,
                             title: Text(
                               priceText(
                                 context,
@@ -362,29 +371,26 @@ class PriceCheckCell extends StatelessWidget {
                                     : 'UNAVAILABLE',
                               ),
                             ),
-                            content: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 440),
-                              child: current == null
-                                  ? Text(priceText(context, 'UNAVAILABLE'))
-                                  : Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(_message(context, current)),
-                                        if (current.text('message').isNotEmpty)
-                                          ExpansionTile(
-                                            tilePadding: EdgeInsets.zero,
-                                            title: Text(
-                                              priceText(context, 'explain'),
-                                            ),
-                                            children: [
-                                              Text(current.text('message')),
-                                            ],
+                            content: current == null
+                                ? Text(priceText(context, 'UNAVAILABLE'))
+                                : Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(_message(context, current)),
+                                      if (current.text('message').isNotEmpty)
+                                        ExpansionTile(
+                                          tilePadding: EdgeInsets.zero,
+                                          title: Text(
+                                            priceText(context, 'explain'),
                                           ),
-                                      ],
-                                    ),
-                            ),
+                                          children: [
+                                            Text(current.text('message')),
+                                          ],
+                                        ),
+                                    ],
+                                  ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(dialogContext),

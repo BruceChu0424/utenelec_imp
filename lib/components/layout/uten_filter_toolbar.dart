@@ -3,7 +3,7 @@
 // 2026-09-01 全平台 UI 统一的标准范式：凡是页面上有「分类/状态筛选」的地方，
 // 一律用本组件呈现，不再手写各种筛选按钮、Chip 行或自成一套的分段样式——
 //
-// - 分段导航：胶囊 StadiumBorder、与搜索框**严格同高**（两侧共用下限令牌
+// - 分段导航：control10 圆角矩形、与搜索框**严格同高**（两侧共用下限令牌
 //   UtenFilterRow.minHeight，见 UtenSearchBar 头部机制说明）、
 //   选中只变背景色不出 ✓ 图标；2026-10-04 起分段行用 UtenSegmentRow 渲染
 //   （每格宽度跟随自身内容，字少的格不再被撑到最宽格的宽度）；
@@ -32,8 +32,8 @@
 //   · 「全部」与终态(已完结/已决定)一律不传 count；
 //   · 分段计数**永不**登记为徽章入口(服务端 WorkbenchBadgeCatalog, ADR-108)
 //     ——累加只认入口，分段是页面内的切片。
-// - 搜索框：全平台唯一组件 UtenSearchBar（胶囊圆角 + 清除 + 300ms 防抖），
-//   药丸描边与分类栏共用 40 下限恒同高；宽度 2026-10-07 起减半为 180
+// - 搜索框：全平台唯一组件 UtenSearchBar（同圆角矩形 + 清除 + 300ms 防抖），
+//   描边与分类栏共用桌面36/触控48角色；宽度 2026-10-07 起减半为180
 //   （用户口径「搜索栏长度缩小一半」）；
 // - 响应式：搜索和行尾按局部宽度换行；所有宽度下分段均按真实内容测量。
 //   放不下时显示当前分类入口，打开完整纵向面板；长名与计数不缩字、不横滚。
@@ -312,11 +312,12 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
                   child: button,
                 ),
               if (search != null) ...[
-                if (button != null) const SizedBox(height: UtenSpacing.s8),
+                if (button != null)
+                  const SizedBox(height: UtenFilterRow.rowGap),
                 search,
               ],
               if (widget.trailing != null) ...[
-                const SizedBox(height: UtenSpacing.s8),
+                const SizedBox(height: UtenFilterRow.rowGap),
                 widget.trailing!,
               ],
             ],
@@ -329,7 +330,7 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
         // 没有分类时行尾独占剩余宽度，保留 Wrap 的有界换行与横向滚动行为。
         final fixedWidth =
             (search != null ? widget.searchWidth : 0.0) +
-            (button != null && search != null ? UtenSpacing.s12 : 0.0);
+            (button != null && search != null ? UtenFilterRow.rowGap : 0.0);
         final trailingWidth = widget.trailing == null
             ? 0.0
             : ((constraints.maxWidth - fixedWidth) / (button == null ? 1 : 2))
@@ -349,7 +350,7 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
                       if (button != null) Flexible(child: button),
                       if (search != null) ...[
                         if (button != null)
-                          const SizedBox(width: UtenSpacing.s12),
+                          const SizedBox(width: UtenFilterRow.rowGap),
                         SizedBox(width: widget.searchWidth, child: search),
                       ],
                     ],

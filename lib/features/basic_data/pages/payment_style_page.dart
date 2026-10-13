@@ -23,6 +23,7 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
@@ -387,19 +388,18 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
               UtenSpacing.s12,
               UtenSpacing.s12,
             ),
-            child: Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              children: [
+            child: UtenSegmentRow<PaymentStyleCategory>(
+              showSelectedIcon: false,
+              segments: [
                 for (final category in PaymentStyleCategory.values)
-                  ChoiceChip(
-                    showCheckmark: false,
-                    avatar: Icon(_categoryIcon(category), size: 16),
+                  ButtonSegment(
+                    value: category,
+                    icon: Icon(_categoryIcon(category), size: 16),
                     label: Text(category.label),
-                    selected: category == _category,
-                    onSelected: (_) => _switchCategory(category),
                   ),
               ],
+              selected: {_category},
+              onSelectionChanged: (values) => _switchCategory(values.single),
             ),
           ),
           Divider(height: 1, color: theme.colorScheme.outlineVariant),

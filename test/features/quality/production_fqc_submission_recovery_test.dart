@@ -7,11 +7,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -36,6 +38,152 @@ final _scope = StateProvider<AuthenticatedScope?>(
 final _server = StateProvider<String>((ref) => 'https://fqc-test.example/api');
 
 void main() {
+  for (final outcome in ['unknown', 'rejected']) {
+    testWidgets(
+      'narrow 200% sheet keeps long $outcome header, exact report and reachable recovery',
+      (tester) async {
+        await loadAuditScreenshotFonts(tester);
+        final boundary = GlobalKey();
+        final longName = List.filled(8, '长名称成品质检批次').join();
+        final reason = List.filled(4, '同一批次外观复核依据').join();
+        final api = _FqcApi(ids: [_id, _id2, _id3], goodsName: longName)
+          ..preStocked = true
+          ..sheetRemark = List.filled(5, '长检查单备注及待处理说明').join();
+        final env = await _mount(
+          tester,
+          api,
+          sheet: true,
+          boundary: boundary,
+          size: const Size(320, 900),
+          textScale: 2,
+          interfaceZoom: 2,
+        );
+        await _revealSheetRegion(
+          tester,
+          find.byKey(const Key('fqc-sheet-report-table')),
+        );
+        final rows = _rows(tester, sheet: true);
+        rows.first.pass.text = '3.25';
+        rows.first.fail.text = '0.75';
+        final tableState = tester.state(
+          find.byKey(const Key('fqc-sheet-report-table')),
+        );
+        await tester.pumpAndSettle();
+        await tester.binding.setSurfaceSize(const Size(1600, 1600));
+        await tester.pumpAndSettle();
+        await _revealSheetRegion(
+          tester,
+          find.byKey(const Key('fqc-sheet-report-table')),
+        );
+        await tester.binding.setSurfaceSize(const Size(320, 900));
+        await tester.pumpAndSettle();
+        await _revealSheetRegion(
+          tester,
+          find.byKey(const Key('fqc-sheet-report-table')),
+        );
+        expect(
+          tester.state(find.byKey(const Key('fqc-sheet-report-table'))),
+          same(tableState),
+        );
+        expect(_rows(tester, sheet: true).first.pass.text, '3.25');
+        expect(_rows(tester, sheet: true).first.fail.text, '0.75');
+        expect(tester.takeException(), isNull);
+
+        // A real cancelled confirmation never dispatches a command.
+        final submit = find.byKey(
+          const Key('fqc-sheet-submit-report'),
+          skipOffstage: false,
+        );
+        await _pressureTap(tester, submit);
+        expect(
+          find.byKey(const Key('inspection-report-atomic-notice')),
+          findsOneWidget,
+        );
+        await _pressureTap(
+          tester,
+          find.byKey(const Key('inspection-report-confirm-cancel')),
+        );
+        expect(api.reportCalls, isEmpty);
+        expect(api.commits, 0);
+        expect(_rows(tester, sheet: true).first.pass.text, '3.25');
+        expect(_rows(tester, sheet: true).first.fail.text, '0.75');
+
+        api.outcomes.add(
+          outcome == 'unknown'
+              ? NetworkTimeoutException()
+              : ApiException('CONFLICT', '$longName 数量已变化', httpStatus: 409),
+        );
+        api.afterPost = () => api.failReads = true;
+        await _pressureTap(tester, submit);
+        final reasonField = find.descendant(
+          of: find.byWidgetPredicate((widget) => widget is AlertDialog),
+          matching: find.byType(TextField),
+        );
+        await tester.ensureVisible(reasonField);
+        await tester.enterText(reasonField, reason);
+        await _pressureTap(
+          tester,
+          find.byKey(const Key('inspection-report-confirm-submit')),
+        );
+        expect(api.reportCalls, hasLength(1));
+        expect(api.reportCalls.single, hasLength(3));
+        expect(api.reportCalls.single.first['targetType'], 'LOT');
+        expect(api.reportCalls.single.first['targetId'], _id);
+        expect(api.reportCalls.single.first['passQty'], 3.25);
+        expect(api.reportCalls.single.first['failQty'], 0.75);
+        expect(api.reportCalls.single.first['reason'], reason);
+        expect(api.reportCalls.single.last['passQty'], 10);
+        expect(api.commits, 0);
+        await _revealSheetRegion(
+          tester,
+          find.byKey(const Key('fqc-sheet-report-table')),
+        );
+        expect(
+          _rows(tester, sheet: true).every(
+            (row) => outcome == 'unknown'
+                ? row.needsReconciliation
+                : row.submissionState == FqcSubmissionState.rejected,
+          ),
+          isTrue,
+        );
+        await _revealSheetRegion(
+          tester,
+          find.textContaining('刷新失败：', skipOffstage: false),
+          header: true,
+        );
+        expect(find.textContaining('刷新失败：'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        final original = jsonEncode(api.reportCalls.single);
+
+        api.failReads = false;
+        api.afterPost = null;
+        await _pressureTap(tester, submit);
+        final confirm = outcome == 'unknown'
+            ? find.text('继续原提交')
+            : find.byKey(const Key('inspection-report-confirm-submit'));
+        await tester.ensureVisible(confirm);
+        await tester.pumpAndSettle();
+        if (const bool.fromEnvironment('UTEN_CAPTURE_UI')) {
+          await saveAuditScreenshot(
+            tester,
+            boundary,
+            'fqc-header-$outcome-320-2x',
+          );
+        }
+        await _pressureTap(tester, confirm);
+        expect(api.reportCalls, hasLength(2));
+        expect(jsonEncode(api.reportCalls.last), original);
+        expect(api.commits, 3);
+        expect(
+          env.container
+              .read(appNotificationProvider)
+              .where((notice) => notice.kind == AppNotificationKind.success),
+          isNotEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final sheet in [false, true]) {
     for (final change in ['account', 'server']) {
       Future<void> aba(WidgetTester tester, ProviderContainer container) async {
@@ -670,6 +818,13 @@ void main() {
             expect(_savedRow(env)['submission'], isNotNull);
           };
           await _submit(tester, sheet: sheet);
+          if (sheet) {
+            await _revealSheetRegion(
+              tester,
+              find.textContaining('待核对 1 行', skipOffstage: false),
+              header: true,
+            );
+          }
           expect(find.textContaining('待核对 1 行'), findsOneWidget);
           final original = Map<String, dynamic>.from(api.calls.single.body);
           api.outcomes.add(
@@ -685,6 +840,13 @@ void main() {
                 .data['_formDraftSubmissionPending'],
             isTrue,
           );
+          if (sheet) {
+            await _revealSheetRegion(
+              tester,
+              find.textContaining('待核对 1 行', skipOffstage: false),
+              header: true,
+            );
+          }
           expect(find.textContaining('待核对 1 行'), findsOneWidget);
           expect(find.textContaining('登记被拒'), findsNothing);
           expect(tester.takeException(), isNull);
@@ -796,6 +958,13 @@ void main() {
         api.outcomes.add(ApiException('FORBIDDEN', '审批权限已撤回', httpStatus: 403));
         api.afterPost = () => api.canDecide = false;
         await _submit(tester, sheet: sheet, recovery: true);
+        if (sheet) {
+          await _revealSheetRegion(
+            tester,
+            find.textContaining('当前无办理权限', skipOffstage: false),
+            header: true,
+          );
+        }
         expect(find.textContaining('当前无办理权限'), findsOneWidget);
         expect(_savedRow(env)['submission'], original['submission']);
         expect(_savedRow(env)['idempotencyKey'], original['idempotencyKey']);
@@ -1014,6 +1183,7 @@ Future<_Env> _mount(
   GlobalKey? boundary,
   Size size = const Size(1500, 1300),
   double textScale = 1,
+  double interfaceZoom = 1,
   bool settle = true,
 }) async {
   await tester.binding.setSurfaceSize(size);
@@ -1072,6 +1242,7 @@ Future<_Env> _mount(
       router: router,
       boundary: boundary,
       textScale: textScale,
+      interfaceZoom: interfaceZoom,
     ),
   );
   if (settle) {
@@ -1089,11 +1260,13 @@ class _OwnedHarness extends StatefulWidget {
     required this.router,
     this.boundary,
     this.textScale = 1,
+    this.interfaceZoom = 1,
   });
   final ProviderContainer container;
   final GoRouter router;
   final GlobalKey? boundary;
   final double textScale;
+  final double interfaceZoom;
   @override
   State<_OwnedHarness> createState() => _OwnedHarnessState();
 }
@@ -1113,12 +1286,23 @@ class _OwnedHarnessState extends State<_OwnedHarness> {
       container: widget.container,
       child: MaterialApp.router(
         debugShowCheckedModeBanner: false,
-        theme: widget.boundary == null ? null : _screenshotTheme(),
+        theme: widget.interfaceZoom != 1
+            ? auditScreenshotTheme(
+                buildLightTheme().copyWith(platform: TargetPlatform.android),
+              )
+            : widget.boundary == null
+            ? null
+            : _screenshotTheme(),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
           ).copyWith(textScaler: TextScaler.linear(widget.textScale)),
-          child: child!,
+          child: widget.interfaceZoom == 1
+              ? child!
+              : UtenDisplayZoomBox(
+                  fontFactor: widget.interfaceZoom,
+                  child: child!,
+                ),
         ),
         routerConfig: widget.router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -1141,6 +1325,49 @@ ThemeData _screenshotTheme() {
 Future<void> _unmount(WidgetTester tester, _Env env) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpAndSettle();
+}
+
+Future<void> _pressureTap(WidgetTester tester, Finder target) async {
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
+  await tester.tap(target.hitTestable());
+  await tester.pumpAndSettle();
+}
+
+Future<void> _revealSheetRegion(
+  WidgetTester tester,
+  Finder target, {
+  bool header = false,
+}) async {
+  final coordinator = find.byType(UtenCollapsingHeaderScrollView);
+  expect(coordinator, findsOneWidget);
+  // This is the page's outer scroll stage, before the header's embedded table
+  // or the business table's own row/toolbar scrollables.
+  final outer = find
+      .descendant(
+        of: coordinator,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              axisDirectionToAxis(widget.axisDirection) == Axis.vertical,
+        ),
+      )
+      .first;
+  if (target.evaluate().isNotEmpty) {
+    // Header widgets can remain mounted below the sliver's onstage range.
+    // Bring that exact element back before checking its visible contents.
+    await tester.ensureVisible(target);
+  } else {
+    await tester.scrollUntilVisible(
+      target,
+      header ? -240 : 240,
+      scrollable: outer,
+      maxScrolls: 160,
+    );
+  }
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
 }
 
 List<FqcReportRow> _rows(WidgetTester tester, {required bool sheet}) => tester
@@ -1173,7 +1400,7 @@ Future<void> _submit(
   if (reason != null) {
     await tester.enterText(
       find.descendant(
-        of: find.byType(AlertDialog),
+        of: find.byWidgetPredicate((widget) => widget is AlertDialog),
         matching: find.byType(TextField),
       ),
       reason,
@@ -1249,8 +1476,9 @@ class _MemoryStorage implements FormDraftStorage {
 }
 
 class _FqcApi extends ApiClient {
-  _FqcApi({this.ids = const [_id]}) : super(Dio());
+  _FqcApi({this.ids = const [_id], this.goodsName = '测试货品'}) : super(Dio());
   final List<String> ids;
+  final String goodsName;
   final outcomes = <Object?>[];
   final calls = <({String id, Map<String, dynamic> body})>[];
   final reportCalls = <List<Map<String, dynamic>>>[];
@@ -1260,6 +1488,7 @@ class _FqcApi extends ApiClient {
   bool failReads = false;
   bool canDecide = true;
   bool preStocked = false;
+  String? sheetRemark;
   String? statusOverride;
   VoidCallback? beforePost;
   VoidCallback? afterPost;
@@ -1270,7 +1499,7 @@ class _FqcApi extends ApiClient {
     'sourceReportId': 'report-$id',
     'sourceReportItemId': 'item-$id',
     'reportNo': 'RB-${ids.indexOf(id) + 1}',
-    'goodsName': '测试货品',
+    'goodsName': goodsName,
     'reportedQty': 10,
     'passedQty': events.containsKey(id) ? events[id]!['passQty'] ?? 0 : 0,
     'failedQty': events.containsKey(id) ? events[id]!['failQty'] ?? 0 : 0,
@@ -1348,6 +1577,7 @@ class _FqcApi extends ApiClient {
         'sheet': {
           'id': sheetId,
           'sheetNo': 'FQC-1',
+          if (sheetRemark != null) 'remark': sheetRemark,
           'itemCount': sheetRows.length,
           'activeCount': sheetRows
               .where((id) => !events.containsKey(id))

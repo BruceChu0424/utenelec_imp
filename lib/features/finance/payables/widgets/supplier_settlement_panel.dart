@@ -6,6 +6,7 @@ import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
+import '../../../../components/layout/uten_segment_row.dart';
 import '../../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/network/latest_request_guard.dart';
@@ -283,19 +284,28 @@ class _SupplierSettlementPanelState
               },
             ),
             const SizedBox(height: UtenSpacing.s8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _statusChip('全部', null),
-                  _statusChip('已冻结', 'FROZEN'),
-                  _statusChip('供应商确认', 'SUPPLIER_CONFIRMED'),
-                  _statusChip('公司确认', 'INTERNAL_CONFIRMED'),
-                  _statusChip('双方确认', 'BOTH_CONFIRMED'),
-                  _statusChip('争议', 'DISPUTED'),
-                  _statusChip('已反转', 'REVERSED'),
-                ],
-              ),
+            UtenSegmentRow<String?>(
+              key: const ValueKey('supplier-settlement-status'),
+              emptySelectionAllowed: true,
+              segments: const [
+                ButtonSegment(value: null, label: Text('全部')),
+                ButtonSegment(value: 'FROZEN', label: Text('已冻结')),
+                ButtonSegment(
+                  value: 'SUPPLIER_CONFIRMED',
+                  label: Text('供应商确认'),
+                ),
+                ButtonSegment(value: 'INTERNAL_CONFIRMED', label: Text('公司确认')),
+                ButtonSegment(value: 'BOTH_CONFIRMED', label: Text('双方确认')),
+                ButtonSegment(value: 'DISPUTED', label: Text('争议')),
+                ButtonSegment(value: 'REVERSED', label: Text('已反转')),
+              ],
+              selected: {_status},
+              onSelectionChanged: (values) {
+                // Original status chips reloaded their current status on a repeated tap.
+                final status = values.isEmpty ? _status : values.single;
+                setState(() => _status = status);
+                _load(1);
+              },
             ),
             const SizedBox(height: UtenSpacing.s8),
             Expanded(
@@ -329,18 +339,6 @@ class _SupplierSettlementPanelState
       ],
     );
   }
-
-  Widget _statusChip(String label, String? value) => Padding(
-    padding: const EdgeInsets.only(right: UtenSpacing.s4),
-    child: ChoiceChip(
-      label: Text(label),
-      selected: _status == value,
-      onSelected: (_) {
-        setState(() => _status = value);
-        _load(1);
-      },
-    ),
-  );
 }
 
 class SupplierSettlementDetailPanel extends ConsumerStatefulWidget {

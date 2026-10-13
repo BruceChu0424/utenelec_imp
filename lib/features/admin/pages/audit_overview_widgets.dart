@@ -521,21 +521,24 @@ class _AuditFilterChoiceGroup extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title, style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: UtenSpacing.s8),
-        Wrap(
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          children: [
+        const SizedBox(height: UtenFilterRow.rowGap),
+        UtenSegmentRow<String?>(
+          showSelectedIcon: false,
+          emptySelectionAllowed: true,
+          selected: {value},
+          onSelectionChanged: (next) =>
+              onChanged(next.isEmpty ? value : next.single),
+          segments: [
             for (final (label, optionValue) in options)
-              Semantics(
-                button: true,
-                selected: value == optionValue,
-                label: '$semanticPrefix：$label',
-                child: ChoiceChip(
-                  key: ValueKey('$keyPrefix-${optionValue ?? 'all'}'),
-                  label: Text(label),
-                  selected: value == optionValue,
-                  onSelected: (_) => onChanged(optionValue),
+              ButtonSegment(
+                value: optionValue,
+                tooltip: label,
+                label: Semantics(
+                  label: '$semanticPrefix：$label',
+                  child: Text(
+                    label,
+                    key: ValueKey('$keyPrefix-${optionValue ?? 'all'}'),
+                  ),
                 ),
               ),
           ],

@@ -163,7 +163,7 @@ class _FinanceAuditCenterPageState
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _categoryBar(segments),
-                            const SizedBox(height: UtenSpacing.s12),
+                            const SizedBox(height: UtenSpacing.s8),
                             const Expanded(child: _SegmentPlaceholder()),
                           ],
                         )

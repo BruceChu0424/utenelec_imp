@@ -386,7 +386,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
               // 无权态也钉住宿主分类栏（2026-10-01 用户口径：分类栏不得消失）。
               if (widget.externalHeader != null) ...[
                 widget.externalHeader!,
-                const SizedBox(height: UtenSpacing.s12),
+                const SizedBox(height: UtenSpacing.s8),
               ],
               const Expanded(child: Center(child: Text('未获本页盘点授权'))),
             ],
@@ -396,7 +396,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             children: [
               if (widget.externalHeader != null) ...[
                 widget.externalHeader!,
-                const SizedBox(height: UtenSpacing.s12),
+                const SizedBox(height: UtenSpacing.s8),
               ],
               if (widget.embedded && _detail != null)
                 Align(

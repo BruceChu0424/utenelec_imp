@@ -58,7 +58,8 @@ void main() {
     final menu = tester.getRect(find.byKey(_optionKey));
     expect(menu.top, moreOrLessEquals(before.top + 40));
     expect(menu.top, moreOrLessEquals(field.bottom + 2));
-    expect(menu.left, moreOrLessEquals(field.left));
+    expect(menu.left, moreOrLessEquals(before.left));
+    expect(menu.left, greaterThanOrEqualTo(field.left));
     expect(menu.width, moreOrLessEquals(field.width));
     expect(tester.takeException(), isNull);
   });

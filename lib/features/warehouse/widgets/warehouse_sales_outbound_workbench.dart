@@ -416,11 +416,11 @@ class _WarehouseSalesOutboundWorkbenchState
             ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenFilterRow.rowGap),
           ],
           _toolbar(result),
           if (_seg?.history == true) ...[
-            const SizedBox(height: UtenSpacing.s8),
+            const SizedBox(height: UtenFilterRow.rowGap),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
               child: UtenHistoryTimeFilter(
@@ -440,7 +440,7 @@ class _WarehouseSalesOutboundWorkbenchState
               ),
             ),
           ],
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s8),
         ],
       ),
       body: _seg == null

@@ -673,6 +673,7 @@ class _WarehouseSalesOutboundBatchPageState
                                       ),
                                       primary: true,
                                       columns: warehouseSalesOutboundTableColumns(
+                                        context: context,
                                         l10n: l10n,
                                         rows: rows,
                                         // V631：发出仓按行在表格里选，批量核对不再逐单选仓。

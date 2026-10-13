@@ -13,6 +13,7 @@ import 'package:flutter/services.dart';
 import 'uten_colors.dart';
 import 'uten_tokens.dart';
 import 'uten_typography.dart';
+import 'uten_category_tab_theme.dart';
 import 'uten_page_transitions.dart';
 import '../../shared/platform_branding/platform_branding.dart';
 import 'brand_theme.dart';
@@ -54,6 +55,11 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
     surfaceTint: UtenColors.teal400,
   );
 
+  final textTheme = buildUtenTextTheme(
+    primary: UtenColors.darkTextPrimary,
+    secondary: UtenColors.darkTextSecondary,
+    tertiary: UtenColors.darkTextTertiary,
+  );
   final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
@@ -65,11 +71,7 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
     // Web/桌面轻量淡入、移动端平台默认, 全部登记转场进行态(ADR-108)。
     pageTransitionsTheme: utenPageTransitionsTheme(),
 
-    textTheme: buildUtenTextTheme(
-      primary: UtenColors.darkTextPrimary,
-      secondary: UtenColors.darkTextSecondary,
-      tertiary: UtenColors.darkTextTertiary,
-    ),
+    textTheme: textTheme,
 
     appBarTheme: const AppBarTheme(
       backgroundColor: UtenColors.darkBackground,
@@ -421,25 +423,7 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
       }),
     ),
 
-    tabBarTheme: const TabBarThemeData(
-      labelColor: UtenColors.darkTextPrimary,
-      unselectedLabelColor: UtenColors.darkTextSecondary,
-      labelStyle: TextStyle(
-        fontFamily: 'NotoSansSC',
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-      ),
-      unselectedLabelStyle: TextStyle(
-        fontFamily: 'NotoSansSC',
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-      ),
-      indicator: UnderlineTabIndicator(
-        borderSide: BorderSide(color: UtenColors.teal400, width: 2),
-      ),
-      indicatorSize: TabBarIndicatorSize.label,
-      dividerColor: UtenColors.darkBorder,
-    ),
+    tabBarTheme: buildUtenCategoryTabTheme(colorScheme, textTheme),
   );
   return applyPlatformBrandTheme(base, branding ?? PlatformBranding.defaults);
 }

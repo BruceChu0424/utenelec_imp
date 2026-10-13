@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../shared/platform_branding/platform_branding.dart';
+import 'uten_category_tab_theme.dart';
 
 Color _hexColor(String value) =>
     Color(int.parse('FF${value.substring(1)}', radix: 16));
@@ -175,10 +176,6 @@ ThemeData applyPlatformBrandTheme(ThemeData base, PlatformBranding branding) {
             : base.radioTheme.fillColor?.resolve(states),
       ),
     ),
-    tabBarTheme: base.tabBarTheme.copyWith(
-      indicator: UnderlineTabIndicator(
-        borderSide: BorderSide(color: scheme.primary, width: 2),
-      ),
-    ),
+    tabBarTheme: buildUtenCategoryTabTheme(scheme, base.textTheme),
   );
 }

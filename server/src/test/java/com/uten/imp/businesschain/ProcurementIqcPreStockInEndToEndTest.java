@@ -4,6 +4,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.outbox.BusinessOutboxProcessor;
+import com.uten.imp.features.notice.outbox.BusinessOutboxScheduler;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
@@ -35,6 +36,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -104,6 +106,8 @@ class ProcurementIqcPreStockInEndToEndTest {
     @Autowired WarehouseQualityResultService qualityResults;
     @Autowired WarehouseArrivalRegistrationService arrivals;
     @Autowired BusinessOutboxProcessor outbox;
+    // Keep delivery transactions real while this fixture owns their deterministic scheduling.
+    @MockitoBean BusinessOutboxScheduler outboxScheduler;
     @MockitoSpyBean com.uten.imp.features.production.fulfillment.ProductionPurchaseSupplyTransitionService purchase;
     @MockitoSpyBean com.uten.imp.features.production.fulfillment.ProductionSubcontractSupplyTransitionService subcontract;
 
@@ -184,7 +188,7 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals(1, moved.stockedLineCount());
         assertEquals("B-03", jdbc.queryForObject("SELECT pre_stocked_place FROM procurement_inspection_items WHERE id=?", String.class, line2.inspectionId()));
         assertEquals(3, events(c.receipt(), "PRE_STOCKED"));
-        drainOutbox();
+        drainOutbox(c.type(), c.receipt());
 
         // ③ 品质合格(整行)：按上架位置自动转正——库存进 first，批次 origin=PRE_STOCKED_AUTO，
         //    不再投递「待仓库确认入库」事件，库位学习为 A-01。
@@ -219,7 +223,7 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals("B-03", jdbc.queryForObject("SELECT item.place_snapshot FROM procurement_iqc_stock_in_batch_items item WHERE item.inspection_item_id=?", String.class, line2.inspectionId()));
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM business_outbox WHERE event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND aggregate_id=?", Integer.class, line2.inspectionId()));
         assertEquals(1, events(c.receipt(), "RECEIPT_RESOLVED"), "整单结案事件照常");
-        drainOutbox();
+        drainOutbox(c.type(), c.receipt());
 
         // ⑤ 出了结论就不能再改上架位置(服务 + 数据库触发器双闸)。
         conflict(() -> preStock.preStockIn("PURCHASE", c.receipt(), new PreStockInRequest(List.of(
@@ -272,7 +276,7 @@ class ProcurementIqcPreStockInEndToEndTest {
         for(var line:detail.lines())assertEquals(jdbc.queryForObject(
                 "SELECT quantity_tranche FROM procurement_inspection_items WHERE id=? AND receipt_type=? AND receipt_id=?",
                 String.class,line.inspectionItemId(),"SUBCONTRACT",c.receipt()),line.quantityTranche());
-        drainOutbox();
+        drainOutbox(c.type(), c.receipt());
     }
 
     // ------------------------------------------------------------------ 守卫：非叶仓 / 空库位 / 不存在的明细
@@ -347,7 +351,7 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals(0, new BigDecimal("1.25").compareTo(balance(leaf, w.goodsD())));
         assertEquals("R-07", jdbc.queryForObject("SELECT place_snapshot FROM procurement_iqc_stock_in_batch_items WHERE inspection_item_id=?", String.class, inspectionId));
         assertEquals("PRE_STOCKED_AUTO", jdbc.queryForObject("SELECT origin FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", String.class, receipt));
-        drainOutbox();
+        drainOutbox("PURCHASE", receipt);
     }
 
     /**
@@ -422,7 +426,8 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals(0, jdbc.queryForObject(
                 "SELECT count(*) FROM warehouse_arrival_registration_commands WHERE batch_idempotency_key=?",
                 Integer.class, broken));
-        drainOutbox();
+        result.items().stream().map(ProcurementArrivalContracts.WarehouseArrivalBatchRegisterItem::receiptId)
+                .distinct().forEach(id -> drainOutbox("PURCHASE", id));
     }
 
     private static ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest batchRequest(
@@ -621,13 +626,71 @@ class ProcurementIqcPreStockInEndToEndTest {
     }
 
     private Case prepareMixedOrdinaryReceipt() {
+        return prepareMixedOrdinaryReceipt(true);
+    }
+
+    private Case prepareMixedOrdinaryReceipt(boolean deliver) {
         Case c = prepare("PURCHASE");
         inspections.decideBatch(c.type(), c.receipt(), new BatchInspectionDecideRequest(List.of(
                 new BatchInspectionDecideRequest.Item(c.rows().getFirst().inspectionId(), RECEIPT_QTY,
                         new BigDecimal("0.75"), new BigDecimal("0.50"), "authority-mixed-" + UUID.randomUUID())),
                 "genuine mixed quality conclusion"));
-        drainOutbox();
+        if (deliver) drainOutbox(c.type(), c.receipt());
         return c;
+    }
+
+    @Test
+    void receiptOutboxCompletionWaitsForAClaimedRejectionInsteadOfTreatingSkipLockedAsIdle() throws Exception {
+        Case c = prepareMixedOrdinaryReceipt(false);
+        UUID inspectionId = c.rows().getFirst().inspectionId();
+        UUID eventId = jdbc.queryForObject("""
+                SELECT id FROM business_outbox
+                WHERE event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND aggregate_id=? AND status=0
+                """, UUID.class, inspectionId);
+        assertNotNull(eventId);
+        var worker = java.util.concurrent.Executors.newSingleThreadExecutor(Thread.ofPlatform()
+                .name("iqc-fixture-delivery").inheritInheritableThreadLocals(false).factory());
+        try (var claim = jdbc.getDataSource().getConnection()) {
+            claim.setAutoCommit(false);
+            try (var lock = claim.prepareStatement("SELECT id FROM business_outbox WHERE id=? FOR UPDATE")) {
+                lock.setObject(1, eventId);
+                try (var locked = lock.executeQuery()) { assertTrue(locked.next()); }
+            }
+            try {
+                boolean noClaimableEvent = false;
+                for (int index = 0; index < 200; index++) {
+                    if (!outbox.processNext()) {
+                        noClaimableEvent = true;
+                        break;
+                    }
+                }
+                assertTrue(noClaimableEvent, "real SKIP LOCKED can report idle while the target event is claimed");
+                assertEquals(0, jdbc.queryForObject("SELECT status FROM business_outbox WHERE id=?", Integer.class, eventId));
+                assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_rejection_cases WHERE inspection_item_id=?",
+                        Integer.class, inspectionId));
+                assertTrue(qualityResults.detail(c.type(), c.receipt()).rejections().isEmpty());
+
+                var started = new java.util.concurrent.CountDownLatch(1);
+                var completion = worker.submit(() -> {
+                    started.countDown();
+                    drainOutbox(c.type(), c.receipt());
+                });
+                assertTrue(started.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                assertThrows(java.util.concurrent.TimeoutException.class,
+                        () -> completion.get(200, java.util.concurrent.TimeUnit.MILLISECONDS),
+                        "delivery completion must wait for the receipt's durable projection, not global idle");
+                assertEquals(0, jdbc.queryForObject("SELECT status FROM business_outbox WHERE id=?", Integer.class, eventId));
+                claim.commit();
+                completion.get(20, java.util.concurrent.TimeUnit.SECONDS);
+                assertEquals(1, jdbc.queryForObject("SELECT status FROM business_outbox WHERE id=?", Integer.class, eventId));
+                assertEquals(1, qualityResults.detail(c.type(), c.receipt()).rejections().size());
+            } finally {
+                claim.rollback();
+            }
+        } finally {
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+        }
     }
 
     private org.springframework.test.web.servlet.MockMvc nativeWarehouseMvc() {
@@ -720,10 +783,38 @@ class ProcurementIqcPreStockInEndToEndTest {
                         FullChainEndToEndTest.World world) {
     }
 
-    private void drainOutbox() {
-        int guard = 0;
-        while (outbox.processNext() && guard++ < 200) {
-            // 通知投递失败会抛出；这里只要求所有事件(含 PRE_STOCKED 通知)都能被处理完。
+    private void drainOutbox(String receiptType, UUID receiptId) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+        while (true) {
+            var pending = jdbc.queryForList("""
+                    SELECT event.id,event.event_type,event.status
+                    FROM business_outbox event
+                    WHERE event.status<>1 AND (
+                        event.aggregate_id=? OR event.payload->>'receiptId'=? OR EXISTS (
+                            SELECT 1 FROM procurement_inspection_items inspection
+                            WHERE inspection.receipt_type=? AND inspection.receipt_id=?
+                              AND (inspection.id=event.aggregate_id OR EXISTS (
+                                  SELECT 1 FROM procurement_inspection_events resolution
+                                  WHERE resolution.inspection_item_id=inspection.id AND resolution.id=event.aggregate_id))))
+                    ORDER BY event.created_at,event.id
+                    """, receiptId, receiptId.toString(), receiptType, receiptId);
+            var missingRejections = jdbc.queryForList("""
+                    SELECT inspection.id FROM procurement_inspection_items inspection
+                    WHERE inspection.receipt_type=? AND inspection.receipt_id=?
+                      AND inspection.status IN ('PARTIAL','RESOLVED') AND inspection.failed_base_qty>0
+                      AND NOT EXISTS (SELECT 1 FROM procurement_iqc_rejection_cases rejection
+                          WHERE rejection.inspection_item_id=inspection.id AND NOT rejection.is_deleted)
+                    """, UUID.class, receiptType, receiptId);
+            if (pending.isEmpty() && missingRejections.isEmpty()) return;
+            if (System.nanoTime() >= deadline) {
+                throw new AssertionError("Receipt outbox delivery did not commit: " + receiptType + "/" + receiptId
+                        + "; pending=" + pending + "; missingRejections=" + missingRejections);
+            }
+            // SKIP LOCKED false says nothing about a sibling worker's uncommitted projection.
+            if (!outbox.processNext()) {
+                java.util.concurrent.locks.LockSupport.parkNanos(java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(10));
+                if (Thread.currentThread().isInterrupted()) throw new AssertionError("Receipt outbox delivery interrupted");
+            }
         }
     }
 

@@ -142,7 +142,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
 
   /// 按物料汇总视图顶层产品行的办理格（2026-10-09 用户口径「明明已下单，
   /// 顶层的物料办理不该还是调拨」）：已下单后与聚合行同一撤回口径——有可
-  /// 撤回任务给撤回按钮、自制计划给「查看计划 + 整批撤回」；一张单
+  /// 撤回任务给「整批撤回 + 单号」文字入口；一张单
   /// 都没下时返回 null，调用方回落到调拨入口（2026-10-10 根供给行开放
   /// 跨计划调拨后与按产品视图同一枚按钮）。
   Widget? topLevelWithdrawCell(_MaterialGroup group) => withdrawCell(
@@ -152,7 +152,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
     groups: [group],
   );
 
-  /// 顶层、普通子件和共享批次共用真实计划号与撤回图标；
+  /// 顶层、普通子件和共享批次共用「整批撤回 + 真实计划号」文字入口；
   /// 展示引用与撤回身份分开，历史供给行动仍按原 UUID 办理。
   Widget? withdrawCell({
     required Iterable<String> materialLineIds,
@@ -199,7 +199,6 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
           entries.add(
             _planHandleEntry(
               plan,
-              viewKey: '$keyPrefix-view-plan-$id$suffix',
               cancelKey: '$keyPrefix-cancel-$id$suffix',
               canCancel: shared
                   ? owner._canCancelSpecificAction(id) &&
@@ -238,23 +237,22 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
       }
       // 采购、委外、公共认领和待核对冲正沿用其原单据与撤回流程。
       entries.add(
-        TextButton(
-          key: ValueKey('$keyPrefix-cancel-$id'),
-          onPressed:
+        _withdrawHandleButton(
+          key: '$keyPrefix-cancel-$id',
+          onTap:
               owner._busy ||
                   sources?.complete != true ||
                   !owner._canCancelSpecificAction(id)
               ? null
               : () => unawaited(owner._cancelMaterialAction(id)),
-          child: Text(
-            '${pendingReversals.contains(id)
-                ? owner._l10n.materialNotificationReversalReconcile
-                : action.operationType == 'AGGREGATE_SUPPLY'
-                ? '整批撤回'
-                : owner._isSharedFutureClaimAction(id)
-                ? '撤回认领'
-                : '撤回'} ${action.documentNo ?? ''}',
-          ),
+          label:
+              '${pendingReversals.contains(id)
+                  ? owner._l10n.materialNotificationReversalReconcile
+                  : action.operationType == 'AGGREGATE_SUPPLY'
+                  ? '整批撤回'
+                  : owner._isSharedFutureClaimAction(id)
+                  ? '撤回认领'
+                  : '撤回'} ${action.documentNo ?? ''}',
         ),
       );
     }
@@ -272,7 +270,6 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
         entries.add(
           _planHandleEntry(
             plan,
-            viewKey: '$keyPrefix-view-plan$suffix',
             cancelKey: '$keyPrefix-cancel-plan$suffix',
             canCancel: owner._canWithdrawIssuedAnalysisPlan(plan),
             cancelTooltip:
@@ -409,92 +406,64 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
   }
 
   String _planLabel(MaterialAnalysisPlanReference plan) =>
-      plan.planNo?.trim().isNotEmpty == true ? plan.planNo!.trim() : '查看计划';
+      plan.planNo?.trim().isNotEmpty == true
+      ? plan.planNo!.trim()
+      : '生产计划（单号待核对）';
 
-  /// 相同的单行布局：计划号只显示一次，查看权限和撤回权限各自核对。
+  /// 相同的文字入口：计划号只显示一次，点击后先弹窗核对撤回。
   Widget _planHandleEntry(
     MaterialAnalysisPlanReference plan, {
-    required String viewKey,
     required String cancelKey,
     required bool canCancel,
     required String cancelTooltip,
     required VoidCallback? onCancel,
   }) {
-    final label = _planLabel(plan);
-    final view = owner._canViewPlans
-        ? Tooltip(
-            message: '查看计划 $label',
-            child: TextButton(
-              key: ValueKey(viewKey),
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s4,
-                  vertical: UtenSpacing.s8,
-                ),
-              ),
-              onPressed: owner._busy
-                  ? null
-                  : () => unawaited(
-                      owner.context.push(
-                        RoutePath.productionPlanDetail(plan.planId),
-                      ),
-                    ),
-              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ),
-          )
-        : Tooltip(
-            message: label,
-            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-          );
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(flex: 3, child: view),
-        if (canCancel)
-          Flexible(
-            child: IconButton(
-              key: ValueKey(cancelKey),
-              tooltip: cancelTooltip,
-              onPressed: onCancel,
-              icon: const FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Icon(Icons.undo_rounded, size: 18),
-              ),
-              style: IconButton.styleFrom(
-                foregroundColor: Theme.of(owner.context).colorScheme.primary,
-                padding: EdgeInsets.zero,
-                minimumSize: const Size(48, 48),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-          ),
-      ],
+    return _withdrawHandleButton(
+      key: cancelKey,
+      label: '整批撤回 ${_planLabel(plan)}',
+      tooltip: canCancel
+          ? cancelTooltip
+          : '当前没有整批撤回权限或计划审核状态尚未完整返回。$cancelTooltip',
+      onTap: canCancel ? onCancel : null,
     );
   }
+
+  /// 各供给路线使用同一紧凑按钮，长单号省略但悬浮说明保持完整。
+  Widget _withdrawHandleButton({
+    required String key,
+    required String label,
+    String? tooltip,
+    required VoidCallback? onTap,
+  }) => Tooltip(
+    message: tooltip ?? label,
+    child: TextButton(
+      key: ValueKey(key),
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(
+          horizontal: UtenSpacing.s4,
+          vertical: UtenSpacing.s8,
+        ),
+        minimumSize: const Size(0, 48),
+      ),
+      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+    ),
+  );
 
   Widget _unresolvedMakeTaskEntry(
     MaterialAnalysisSupplyAction action, {
     required String keyPrefix,
     required bool complete,
-  }) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      const Flexible(
-        child: Tooltip(
-          message: '没有完整的生产计划关联，请刷新核对后查看计划。',
-          child: Text('生产任务待核对', maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
-      ),
-      if (owner._canCancelSpecificAction(action.actionId))
-        IconButton(
-          key: ValueKey('$keyPrefix-cancel-${action.actionId}'),
-          tooltip: '整批撤回生产任务；确认时核对全部来源和实际执行事实',
-          onPressed: complete && !owner._busy
-              ? () => unawaited(owner._cancelMaterialAction(action.actionId))
-              : null,
-          icon: const Icon(Icons.undo_rounded, size: 18),
-        ),
-    ],
+  }) => _withdrawHandleButton(
+    key: '$keyPrefix-cancel-${action.actionId}',
+    label: '整批撤回 · 生产任务待核对',
+    tooltip: '没有完整的生产计划关联，请刷新核对。整批撤回生产任务时核对全部来源和实际执行事实。',
+    onTap:
+        complete &&
+            !owner._busy &&
+            owner._canCancelSpecificAction(action.actionId)
+        ? () => unawaited(owner._cancelMaterialAction(action.actionId))
+        : null,
   );
 
   Future<bool> cancelAction(String actionId) async {

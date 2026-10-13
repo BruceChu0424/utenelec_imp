@@ -111,6 +111,40 @@ class GoodsPriceSourcePostgresTest {
         db.update("INSERT INTO purchase_order_items(id,order_id,goods_id,unit_id,qty,price,amount_original) SELECT gen_random_uuid(),?,?,?,1,10,10 FROM generate_series(1,500)",ids[0],goods,unit);
         var data=read(scope(owner));assertThat(data.complete()).isFalse();assertThat(data.observations()).hasSize(500);
     }
+    @Test void detailRevalidatesBothAnalysisAndActiveHistoryWithoutChangingExactPriceText() throws Exception {
+        var ids=order("purchase",owner,"0.6666666667","3");
+        db.update("UPDATE purchase_order_items SET amount_original=2,total_amount_input=2 WHERE id=?",ids[1]);approve(ids,1,"APPROVED");
+        Observation window=read(scope(owner)).observations().getFirst(),history=history(scope(owner),null,5).observations().getFirst();
+        assertThat(window.historyVersionId()).isNull();assertThat(history.historyVersionId()).isNotNull();
+        assertThat(reader.detail(goods,detailQuery(Kind.PURCHASE,window),scope(owner),false,true)).isEqualTo(window);
+        assertThat(reader.detail(goods,detailQuery(Kind.PURCHASE,history),scope(owner),false,true)).isEqualTo(history);
+        assertThat(window.unitPrice()).isEqualTo(history.unitPrice());assertThat(window.amount()).isEqualTo("2");
+        // A changed source is not silently shown under the old double-clicked row.
+        db.update("UPDATE purchase_order_items SET qty=4,amount_original=3,total_amount_input=3 WHERE id=?",ids[1]);
+        assertThatThrownBy(()->reader.detail(goods,detailQuery(Kind.PURCHASE,window),scope(owner),false,true)).hasMessageContaining("已变化");
+        assertThatThrownBy(()->reader.detail(goods,detailQuery(Kind.PURCHASE,history),scope(owner),false,true)).hasMessageContaining("已变化");
+    }
+    @Test void detailBindsGoodsItemSourceTypeAndExactHistoricalVersion() throws Exception {
+        var ids=order("purchase",owner,"10","1");UUID old=approve(ids,1,"APPROVED");
+        db.update("UPDATE purchase_order_items SET qty=2,amount_original=20 WHERE id=?",ids[1]);approve(ids,2,"APPROVED");
+        Observation row=history(scope(owner),null,10).observations().stream().filter(r->old.equals(r.historyVersionId())).findFirst().orElseThrow();
+        DetailQuery request=detailQuery(Kind.PURCHASE,row);
+        Observation detail=reader.detail(goods,request,scope(owner),false,true);
+        assertThat(detail.quantity()).isEqualTo("1");assertThat(detail.amount()).isEqualTo("10");assertThat(detail.canOpenSource()).isFalse();
+        assertThatThrownBy(()->reader.detail(UUID.randomUUID(),request,scope(owner),false,true)).hasMessageContaining("不存在或无权");
+        for(DetailQuery wrong:List.of(
+                new DetailQuery(Kind.PURCHASE,row.sourceType(),UUID.randomUUID(),row.sourceItemId(),old,row.sourceRevision()),
+                new DetailQuery(Kind.PURCHASE,row.sourceType(),row.sourceId(),UUID.randomUUID(),old,row.sourceRevision()),
+                new DetailQuery(Kind.PURCHASE,row.sourceType(),row.sourceId(),row.sourceItemId(),UUID.randomUUID(),row.sourceRevision()),
+                new DetailQuery(Kind.PURCHASE,"PURCHASE_ORDER",row.sourceId(),row.sourceItemId(),old,row.sourceRevision())))
+            assertThatThrownBy(()->reader.detail(goods,wrong,scope(owner),false,true)).hasMessageContaining("不存在或无权");
+        UUID recipient=UUID.randomUUID();db.update("UPDATE purchase_orders SET maker_id=? WHERE id=?",recipient,ids[0]);
+        assertThatThrownBy(()->reader.detail(goods,request,scope(owner),false,true)).hasMessageContaining("不存在或无权");
+        // The new owner must reload: even the old immutable snapshot's authorization provenance changed.
+        assertThatThrownBy(()->reader.detail(goods,request,scope(recipient),false,true)).hasMessageContaining("已变化");
+        Observation refreshed=history(scope(recipient),null,10).observations().stream().filter(r->old.equals(r.historyVersionId())).findFirst().orElseThrow();
+        assertThat(reader.detail(goods,detailQuery(Kind.PURCHASE,refreshed),scope(recipient),false,true).amount()).isEqualTo("10");
+    }
     private GoodsPriceSourceReader.Data read(OwnerVisibility.OwnerScope scope){return reader.read(query(),reader.goods(goods),180,scope);}
     private History history(OwnerVisibility.OwnerScope scope,String cursor,int size){return reader.history(new HistoryQuery(query(),null,null,cursor,size),scope,false,true);}
     @Test void explicitNullColorDoesNotFallBackToCurrentMasterColor(){
@@ -134,7 +168,26 @@ class GoodsPriceSourcePostgresTest {
         assertThat(reader.history(request,scope(owner),true,true).observations()).extracting(Observation::sourceType).containsExactly("SALES_QUOTE_CONFIRMED");
         assertThat(reader.history(request,scope(owner),true,false).observations()).extracting(Observation::partnerName).containsExactly("Frozen client");
         assertThat(reader.history(request,scope(owner),false,true).observations()).isEmpty();
+        Observation row=reader.history(request,scope(owner),true,false).observations().getFirst();
+        assertThat(reader.detail(goods,detailQuery(Kind.SALES,row),scope(owner),true,false)).isEqualTo(row);
+        assertThatThrownBy(()->reader.detail(goods,detailQuery(Kind.SALES,row),scope(owner),false,true)).hasMessageContaining("不存在或无权");
+        assertThatThrownBy(()->reader.detail(goods,new DetailQuery(Kind.SALES,"SALES_ORDER",sale[0],sale[1],null,row.sourceRevision()),scope(owner),true,false))
+                .hasMessageContaining("不存在或无权");
     }
+    @Test void quoteFinanceOnlyCannotOpenEvenAnOwnSalesOrderDetail() {
+        UUID client=UUID.randomUUID();db.update("INSERT INTO clients VALUES(?,'Own client',?)",client,owner);
+        var sale=order("sales",owner,"10","1");
+        db.update("UPDATE sales_orders SET owner_employee_id=?,client_id=? WHERE id=?",owner,client,sale[0]);
+        Query sales=new Query(goods,Kind.SALES,180,null,null,unit,currency,"0",null,null,client,null,null,"1");
+        Observation row=reader.read(sales,reader.goods(goods),180,scope(owner)).observations().getFirst();
+        assertThat(row.sourceId()).isEqualTo(sale[0]);
+        assertThatThrownBy(()->reader.detail(goods,detailQuery(Kind.SALES,row),scope(owner),true,false))
+                .isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,error->{
+                    assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.NOT_FOUND);
+                    assertThat(error.getMessage()).contains("不存在或无权");
+                });
+    }
+    private static DetailQuery detailQuery(Kind kind,Observation row){return new DetailQuery(kind,row.sourceType(),row.sourceId(),row.sourceItemId(),row.historyVersionId(),row.sourceRevision());}
     private Query query(){return new Query(goods,Kind.PURCHASE,180,null,null,unit,currency,"0",null,null,null,null,null,"1");}
     private static OwnerVisibility.OwnerScope scope(UUID owner){return new OwnerVisibility.OwnerScope(false,Set.of(owner));}
     private UUID[] order(String kind,UUID maker,String price,String qty){

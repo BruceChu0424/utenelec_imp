@@ -80,6 +80,8 @@ public class AuditEventInterpreter {
             Map.entry("view_goods_detail", "查看货品详情"),
             Map.entry("view_goods_price_analysis", "查看货品价格分析"),
             Map.entry("view_goods_price_analysis_history", "查看货品价格历史"),
+            Map.entry("view_goods_price_detail", "查看货品价格详情"),
+            Map.entry("view_goods_subcontract_supplier_loss", "查看货品委外商损耗"),
             Map.entry("view_goods_cost_sheet_detail", "查看货品成本单详情"),
             Map.entry("view_goods_cost_snapshot_detail", "查看货品成本版本详情"),
             Map.entry("view_mould_detail", "查看模具详情"),

@@ -42,6 +42,37 @@ public class GoodsPriceAnalysisService {
         access.requireHistory(request.context().kind());references.requireVisibleGoods(request.context().goodsId());
         return sources.history(request,access.sourceScope(request.context().kind()),access.has("sales_quote_finance:view"),access.available(request.context().kind()));
     }
+    public Detail detail(UUID goodsId,DetailQuery request) {
+        if(goodsId==null||request==null||request.kind()==null||request.sourceId()==null||request.sourceItemId()==null
+                ||request.sourceType()==null||request.expectedSourceRevision()==null||!request.expectedSourceRevision().matches("[0-9a-f]{64}"))
+            throw invalid("价格详情缺少有效来源或版本，请重新加载");
+        Set<String> types=switch(request.kind()) {
+            case PURCHASE -> Set.of("PURCHASE_ORDER","PURCHASE_ORDER_APPROVAL");
+            case SUBCONTRACT -> Set.of("SUBCONTRACT_ORDER","SUBCONTRACT_ORDER_APPROVAL");
+            case SALES -> Set.of("SALES_ORDER","SALES_ORDER_ARCHIVED","SALES_QUOTE_CONFIRMED");
+        };
+        if(!types.contains(request.sourceType())||request.historyVersionId()==null&&!request.sourceType().equals(request.kind().name()+"_ORDER"))
+            throw invalid("价格来源类型或历史版本不正确，请重新加载");
+        access.requireHistory(request.kind());references.requireVisibleGoods(goodsId);
+        Observation row=sources.detail(goodsId,request,access.sourceScope(request.kind()),access.has("sales_quote_finance:view"),access.available(request.kind()));
+        String summary=!"ACTIVE".equals(row.lifecycle())?"保留当时的价格记录，仅供追溯，不纳入当前参考价。"
+                :row.comparable()?"已审核原币价格；比较时须保持币种、税率、单位和批量条件一致。":"本条计价依据尚待核对，暂不纳入参考价。";
+        String partner=request.kind()==Kind.SALES?"客户":request.kind()==Kind.SUBCONTRACT?"委外商":"供应商";
+        List<DetailField> fields=List.of(
+                new DetailField("sourceNo","来源单号",row.sourceNo()),
+                new DetailField("businessDate","单据日期",row.businessDate()==null?null:row.businessDate().toString()),
+                new DetailField("recordedAt","批准或记录时间",row.recordedAt()==null?null:row.recordedAt().toString()),
+                new DetailField("partnerName",partner,row.partnerName()),
+                new DetailField("goodsCodeSnapshot","当时货品编号",row.goodsCodeSnapshot()),
+                new DetailField("goodsNameSnapshot","当时货品名称",row.goodsNameSnapshot()),
+                new DetailField("colorName","颜色",row.colorName()),new DetailField("unitName","计价单位",row.unitName()),
+                new DetailField("unitRate","单位换算率",row.unitRate()),new DetailField("currencyName","币种",row.currencyName()),
+                new DetailField("taxRate","原记录税率",row.taxRate()==null?null:row.taxRate()+"%"),
+                new DetailField("quantity","计价数量",row.quantity()),new DetailField("unitPrice","本行折合单价",row.unitPrice()),
+                new DetailField("amount","原币金额",row.amount()),
+                new DetailField("exchangeRateToLocal","FINANCE_APPROVAL_CASE".equals(row.exchangeRateSource())?"财审汇率":"原记录汇率",row.exchangeRateToLocal()));
+        return new Detail(row,"价格详情",summary,row.reasonCodes(),fields);
+    }
     public Analysis analysis(Query q) {
         return analysis(q,new ReadSession());
     }
@@ -116,7 +147,7 @@ public class GoodsPriceAnalysisService {
                 if(("INSUFFICIENT".equals(a.status())||"STALE".equals(a.status()))&&"READY".equals(peer.status())){a=peer;fallback=true;}
             }
             if(!"READY".equals(a.status())){
-                rows.add(new CheckRow(item.rowKey(),item.goodsId(),a.status(),"INSUFFICIENT",decimalText(price),a.referencePrice(),a.weightedAveragePrice(),null,null,a.reasonCodes(),"可比记录不足、过旧或尚未查全，暂不能判断价格是否正常",a.evidenceToken(),a.sampleCount(),"INSUFFICIENT",null,null));continue;
+                rows.add(new CheckRow(item.rowKey(),item.goodsId(),a.status(),"INSUFFICIENT",decimalText(price),a.referencePrice(),a.weightedAveragePrice(),null,null,a.reasonCodes(),"可比记录不足、过旧或尚未查全，暂不能判断价格是否正常",a.evidenceToken(),a.sampleCount(),"INSUFFICIENT",null,null,a.context().currencyName(),a.context().unitName()));continue;
             }
             BigDecimal reference=new BigDecimal(a.referencePrice());
             boolean high=price.compareTo(new BigDecimal(a.upperReferencePrice()))>0,low=price.compareTo(new BigDecimal(a.lowerReferencePrice()))<0;
@@ -136,7 +167,7 @@ public class GoodsPriceAnalysisService {
                     decimalText(deviation.setScale(2,RoundingMode.HALF_UP)),decimalText(impact),List.copyOf(alerts),
                     (fallback?"当前供应商证据不足，采用同条件授权范围内供应商历史。":"")+"本次单价"+direction+"历史参考区间；近期参考 "+a.referencePrice()+"，加权均价 "+a.weightedAveragePrice()+"，共 "+a.independentOrderCount()+" 张独立订单。"
                     +(peerDeviation==null?"":"同条件授权范围内全部供应商参考 "+peer.referencePrice()+"，偏差 "+peerDeviation+"%。")
-                    +"请结合批量及特殊条款核对。",a.evidenceToken(),a.sampleCount(),"REFERENCE_ONLY",peerDeviation==null?null:peer.referencePrice(),peerDeviation));
+                    +"请结合批量及特殊条款核对。",a.evidenceToken(),a.sampleCount(),"REFERENCE_ONLY",peerDeviation==null?null:peer.referencePrice(),peerDeviation,a.context().currencyName(),a.context().unitName()));
         }
         return new CheckResult(List.copyOf(rows),GoodsPriceStatistics.VERSION,OffsetDateTime.now());
     }

@@ -42,8 +42,23 @@ public final class GoodsPriceContracts {
     public record CheckRow(String rowKey, UUID goodsId, String status, String severity, String inputPrice,
             String referencePrice, String weightedAveragePrice, String percentageDeviation,
             String estimatedImpact, List<String> reasonCodes, String message, String evidenceToken,
-            int sampleCount, String confidence, String peerReferencePrice, String peerPercentageDeviation) {}
+            int sampleCount, String confidence, String peerReferencePrice, String peerPercentageDeviation,
+            String currencyName, String unitName) {
+        public CheckRow(String rowKey, UUID goodsId, String status, String severity, String inputPrice,
+                String referencePrice, String weightedAveragePrice, String percentageDeviation,
+                String estimatedImpact, List<String> reasonCodes, String message, String evidenceToken,
+                int sampleCount, String confidence, String peerReferencePrice, String peerPercentageDeviation) {
+            this(rowKey,goodsId,status,severity,inputPrice,referencePrice,weightedAveragePrice,percentageDeviation,
+                    estimatedImpact,reasonCodes,message,evidenceToken,sampleCount,confidence,peerReferencePrice,peerPercentageDeviation,null,null);
+        }
+    }
     public record CheckResult(List<CheckRow> rows, String algorithmVersion, OffsetDateTime checkedAt) {}
     public record HistoryQuery(Query context, LocalDate from, LocalDate to, String cursor, Integer pageSize) {}
     public record History(List<Observation> observations, String nextCursor, boolean hasMore, OffsetDateTime dataAsOf) {}
+    /** Identity comes from one rendered row; a missing history version means the analysis-window projection. */
+    public record DetailQuery(Kind kind, String sourceType, UUID sourceId, UUID sourceItemId,
+            UUID historyVersionId, String expectedSourceRevision) {}
+    public record DetailField(String key, String label, String value) {}
+    public record Detail(Observation observation, String title, String summary,
+            List<String> reasonCodes, List<DetailField> fields) {}
 }

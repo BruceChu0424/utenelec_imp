@@ -353,6 +353,7 @@ class PriceCheckCell extends StatelessWidget {
                             scope.keys[row] ?? '',
                           );
                           return AlertDialog(
+                            scrollable: true,
                             title: Text(
                               priceText(
                                 context,
@@ -363,11 +364,26 @@ class PriceCheckCell extends StatelessWidget {
                             ),
                             content: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 440),
-                              child: Text(
-                                current == null
-                                    ? priceText(context, 'UNAVAILABLE')
-                                    : _message(context, current),
-                              ),
+                              child: current == null
+                                  ? Text(priceText(context, 'UNAVAILABLE'))
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(_message(context, current)),
+                                        if (current.text('message').isNotEmpty)
+                                          ExpansionTile(
+                                            tilePadding: EdgeInsets.zero,
+                                            title: Text(
+                                              priceText(context, 'explain'),
+                                            ),
+                                            children: [
+                                              Text(current.text('message')),
+                                            ],
+                                          ),
+                                      ],
+                                    ),
                             ),
                             actions: [
                               TextButton(
@@ -389,18 +405,43 @@ class PriceCheckCell extends StatelessWidget {
     );
   }
 
-  static String _message(BuildContext context, PriceCheckResult result) => [
-    result.text('message').isEmpty
-        ? priceText(context, result.text('status'))
-        : result.text('message'),
-    if (result.text('weightedAveragePrice').isNotEmpty)
-      '${priceText(context, 'average')}: ${priceNumber(result.text('weightedAveragePrice'))}',
-    if (result.text('percentageDeviation').isNotEmpty)
-      '${priceText(context, 'deviation')}: ${priceNumber(result.text('percentageDeviation'))}%',
-    if (result.text('estimatedImpact').isNotEmpty)
-      '${priceText(context, 'impact')}: ${priceNumber(result.text('estimatedImpact'))}',
-    priceText(context, 'advisory'),
-  ].join('\n');
+  static String _message(BuildContext context, PriceCheckResult result) {
+    final reasons = priceStrings(result.data['reasonCodes']).toSet();
+    final fallback = reasons.contains('SUPPLIER_SCOPE_FALLBACK');
+    final peerWarning =
+        reasons.contains('PEER_PRICE_ABOVE_REFERENCE') &&
+        result.text('peerReferencePrice').isNotEmpty;
+    final denomination = [
+      result.text('currencyName'),
+      result.text('unitName'),
+    ].where((v) => v.isNotEmpty).join('/');
+    String unitPrice(String key) =>
+        '${priceNumber(result.text(key))}${denomination.isEmpty ? '' : ' $denomination'}';
+    return [
+      if (!result.available)
+        reasons.isEmpty
+            ? priceText(context, result.text('status'))
+            : reasons.map((reason) => priceText(context, reason)).join(' · '),
+      if (fallback) priceText(context, 'SUPPLIER_SCOPE_FALLBACK'),
+      if (result.text('referencePrice').isNotEmpty)
+        '${priceText(context, fallback
+            ? 'peerReference'
+            : peerWarning
+            ? 'supplierReference'
+            : 'baseline')}: ${unitPrice('referencePrice')}',
+      if (result.text('weightedAveragePrice').isNotEmpty)
+        '${priceText(context, fallback ? 'peerAverage' : 'average')}: ${unitPrice('weightedAveragePrice')}',
+      if (result.text('percentageDeviation').isNotEmpty)
+        '${priceText(context, 'deviation')}: ${priceNumber(result.text('percentageDeviation'))}%',
+      if (result.text('estimatedImpact').isNotEmpty)
+        '${priceText(context, 'impact')}: ${priceNumber(result.text('estimatedImpact'))}${result.text('currencyName').isEmpty ? '' : ' ${result.text('currencyName')}'}',
+      if (peerWarning && !fallback) ...[
+        '${priceText(context, 'peerReference')}: ${unitPrice('peerReferencePrice')}',
+        if (result.text('peerPercentageDeviation').isNotEmpty)
+          '${priceText(context, 'peerDeviation')}: ${priceNumber(result.text('peerPercentageDeviation'))}%',
+      ],
+    ].join('\n');
+  }
 }
 
 /// A completed save remains successful. Only its server-authored assessment

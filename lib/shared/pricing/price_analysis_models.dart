@@ -1,4 +1,5 @@
 import '../../shared/formatters/exact_decimal.dart';
+import '../models/paged_result.dart';
 
 /// Financial values stay decimal text. Only chart coordinates use doubles.
 class PriceObservation {
@@ -8,6 +9,12 @@ class PriceObservation {
   String get price => text('unitPrice');
   DateTime? get date => DateTime.tryParse(text('businessDate'));
   bool get comparable => data['comparable'] == true;
+  String get identity => [
+    'sourceType',
+    'sourceId',
+    'sourceItemId',
+    'historyVersionId',
+  ].map(text).join('|');
 }
 
 class GoodsPriceAnalysis {
@@ -64,4 +71,53 @@ class PriceHistoryPage {
   ).map(PriceObservation.new).toList(growable: false);
   String? get nextCursor => data['nextCursor'] as String?;
   bool get hasMore => data['hasMore'] == true;
+}
+
+class PriceHistoryTableResult extends PagedResult<PriceObservation> {
+  PriceHistoryTableResult.fromResponse(Map<String, dynamic> raw)
+    : this._(
+        PagedResult.fromJson({
+          ...raw,
+          'items': raw['observations'],
+          'facetNullCounts': raw['nullCounts'],
+        }, PriceObservation.new),
+        raw,
+      );
+  PriceHistoryTableResult._(PagedResult<PriceObservation> page, this.metadata)
+    : super(
+        items: page.items,
+        page: page.page,
+        size: page.size,
+        total: page.total,
+        totalPages: page.totalPages,
+        facets: page.facets,
+        facetNullCounts: page.facetNullCounts,
+      );
+  final Map<String, dynamic> metadata;
+  bool hasMoreFacetValues(String key) =>
+      priceMap(metadata['facetsHasMore'])[key] == true;
+}
+
+class PriceObservationDetail {
+  PriceObservationDetail(this.data);
+  final Map<String, dynamic> data;
+  PriceObservation get observation =>
+      PriceObservation(priceMap(data['observation']));
+  String get title => data['title']?.toString() ?? '';
+  String get summary => data['summary']?.toString() ?? '';
+  List<Map<String, dynamic>> get fields => priceMaps(data['fields']);
+  List<String> get reasons => priceStrings(data['reasonCodes']);
+}
+
+/// Display projection only; row/exactValueOf continue to expose the raw decimal.
+String priceObservationValue(PriceObservation row, String key) {
+  final amount = priceNumber(row.data[key]);
+  final currency = row.text('currencyName'), unit = row.text('unitName');
+  final suffix = switch (key) {
+    'quantity' => unit,
+    'amount' => currency,
+    'unitPrice' => [currency, unit].where((v) => v.isNotEmpty).join('/'),
+    _ => '',
+  };
+  return suffix.isEmpty ? amount : '$amount $suffix';
 }

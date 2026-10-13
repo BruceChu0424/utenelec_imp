@@ -29,6 +29,14 @@ public class GoodsPriceAnalysisController {
     }
     @PostMapping("/price-analysis/check")
     public CheckResult check(@RequestBody CheckRequest request){return prices.check(request);}
+    @GetMapping("/{goodsId}/price-analysis/detail")
+    public Detail detail(@PathVariable UUID goodsId,@RequestParam Kind kind,@RequestParam String sourceType,
+            @RequestParam UUID sourceId,@RequestParam UUID sourceItemId,@RequestParam(required=false) UUID historyVersionId,
+            @RequestParam String expectedSourceRevision) {
+        Detail result=prices.detail(goodsId,new DetailQuery(kind,sourceType,sourceId,sourceItemId,historyVersionId,expectedSourceRevision));
+        audit.record("view_goods_price_detail","goods",goodsId,result.observation().goodsCodeSnapshot(),null,"货品价格详情");
+        return result;
+    }
     @GetMapping("/{goodsId}/price-analysis/history")
     public History history(@PathVariable UUID goodsId,@RequestParam Kind kind,@RequestParam(required=false) UUID supplierId,
             @RequestParam(required=false) UUID clientId,@RequestParam(required=false) UUID colorId,@RequestParam(required=false) UUID unitId,

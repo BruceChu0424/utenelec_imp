@@ -68,10 +68,12 @@ class PriceSummaryValue extends StatefulWidget {
     required this.compact,
     required this.exact,
     required this.semanticLabel,
+    this.suffix = '',
   });
   final String compact;
   final String exact;
   final String semanticLabel;
+  final String suffix;
   @override
   State<PriceSummaryValue> createState() => _PriceSummaryValueState();
 }
@@ -90,10 +92,17 @@ class _PriceSummaryValueState extends State<PriceSummaryValue> {
       child: Semantics(
         label: widget.semanticLabel,
         excludeSemantics: true,
-        child: Text(
-          widget.compact,
-          maxLines: 1,
-          softWrap: false,
+        child: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: widget.compact),
+              if (widget.suffix.isNotEmpty)
+                TextSpan(
+                  text: ' ${widget.suffix}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+            ],
+          ),
           style: Theme.of(context).textTheme.headlineSmall,
         ),
       ),

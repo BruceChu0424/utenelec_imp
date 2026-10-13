@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/pricing/price_analysis_models.dart';
 import '../../../shared/pricing/price_analysis_l10n.dart';
 
-/// Native, bounded scatter chart: no synthetic dates or smoothed fake prices.
+/// Native, bounded transaction trend: no synthetic dates or smoothed prices.
 /// Exact values are provided beside the visual and in the source table.
 class PriceHistoryChart extends StatefulWidget {
   const PriceHistoryChart({super.key, required this.analysis});
@@ -14,6 +14,7 @@ class PriceHistoryChart extends StatefulWidget {
 
 class _PriceHistoryChartState extends State<PriceHistoryChart> {
   PriceObservation? _selected;
+  bool _showReference = true;
   @override
   void didUpdateWidget(covariant PriceHistoryChart oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -22,14 +23,19 @@ class _PriceHistoryChartState extends State<PriceHistoryChart> {
 
   @override
   Widget build(BuildContext context) {
-    final points = widget.analysis.observations
-        .where(
-          (e) =>
-              e.comparable &&
-              e.date != null &&
-              double.tryParse(e.price)?.isFinite == true,
-        )
-        .toList();
+    final points =
+        widget.analysis.observations
+            .where(
+              (e) =>
+                  e.comparable &&
+                  e.date != null &&
+                  double.tryParse(e.price)?.isFinite == true,
+            )
+            .toList()
+          ..sort((a, b) {
+            final date = a.date!.compareTo(b.date!);
+            return date != 0 ? date : a.identity.compareTo(b.identity);
+          });
     if (points.isEmpty) {
       return SizedBox(
         height: 180,
@@ -40,6 +46,35 @@ class _PriceHistoryChartState extends State<PriceHistoryChart> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.show_chart,
+                  size: 18,
+                  color: theme.colorScheme.primary,
+                ),
+                const SizedBox(width: 6),
+                Text(priceText(context, 'actualTrend')),
+              ],
+            ),
+            if (widget.analysis.ready)
+              FilterChip(
+                label: Text(priceText(context, 'referenceToggle')),
+                selected: _showReference,
+                onSelected: (value) => setState(() => _showReference = value),
+              ),
+            Text(
+              widget.analysis.denomination,
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+        ),
         SizedBox(
           height: 250,
           child: LayoutBuilder(
@@ -50,6 +85,7 @@ class _PriceHistoryChartState extends State<PriceHistoryChart> {
                 theme.colorScheme,
                 theme.textTheme.bodySmall ?? const TextStyle(fontSize: 12),
                 _selected,
+                _showReference,
               );
               void select(Offset local) {
                 final nearest = painter.nearest(local, Size(box.maxWidth, 250));
@@ -90,14 +126,16 @@ class _PricePainter extends CustomPainter {
     this.colors,
     this.textStyle,
     this.selected,
+    this.showReference,
   );
   final List<PriceObservation> points;
   final GoodsPriceAnalysis analysis;
   final ColorScheme colors;
   final TextStyle textStyle;
   final PriceObservation? selected;
+  final bool showReference;
   double? number(String key) {
-    if (!analysis.ready) return null;
+    if (!analysis.ready || !showReference) return null;
     final n = double.tryParse(analysis.text(key));
     return n?.isFinite == true ? n : null;
   }
@@ -177,7 +215,7 @@ class _PricePainter extends CustomPainter {
     if (lower != null && upper != null) {
       canvas.drawRect(
         Rect.fromLTRB(rect.left, y(upper), rect.right, y(lower)),
-        Paint()..color = colors.primary.withValues(alpha: .10),
+        Paint()..color = colors.primary.withValues(alpha: .055),
       );
     }
     for (var i = 0; i <= 3; i++) {
@@ -199,12 +237,33 @@ class _PricePainter extends CustomPainter {
       );
     }
     if (reference != null) {
-      canvas.drawLine(
-        Offset(rect.left, y(reference)),
-        Offset(rect.right, y(reference)),
+      final pen = Paint()
+        ..color = colors.primary.withValues(alpha: .38)
+        ..strokeWidth = 1;
+      for (double x = rect.left; x < rect.right; x += 12) {
+        canvas.drawLine(
+          Offset(x, y(reference)),
+          Offset(math.min(x + 6, rect.right), y(reference)),
+          pen,
+        );
+      }
+    }
+    if (points.length > 1) {
+      final path = Path();
+      for (var i = 0; i < points.length; i++) {
+        final point = position(points[i], size);
+        if (i == 0) {
+          path.moveTo(point.dx, point.dy);
+        } else {
+          path.lineTo(point.dx, point.dy);
+        }
+      }
+      canvas.drawPath(
+        path,
         Paint()
-          ..color = colors.primary
-          ..strokeWidth = 1.5,
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.2
+          ..color = colors.primary,
       );
     }
     for (final point in points) {
@@ -224,6 +283,7 @@ class _PricePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _PricePainter old) =>
       old.analysis != analysis ||
+      old.showReference != showReference ||
       old.selected != selected ||
       old.colors != colors ||
       old.textStyle != textStyle;

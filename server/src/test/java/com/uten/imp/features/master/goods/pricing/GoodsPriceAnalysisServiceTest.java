@@ -58,6 +58,7 @@ class GoodsPriceAnalysisServiceTest {
         ready();UUID currentOrder=UUID.randomUUID();
         var result=service.check(new CheckRequest(Kind.PURCHASE,180,currentOrder,List.of(item("gift","0","0"),item("charged","100","50"))));
         assertThat(result.rows().getFirst().reasonCodes()).contains("NO_CHARGED_QUANTITY");assertThat(result.rows().get(1).severity()).isEqualTo("WARNING");
+        assertThat(result.rows().get(1).currencyName()).isEqualTo("CNY");assertThat(result.rows().get(1).unitName()).isEqualTo("件");
         verify(sources,atLeastOnce()).read(argThat(q->currentOrder.equals(q.excludeOrderId())),any(),eq(180),any());
     }
     @Test void clientClaimOfNoOperationOnAnExtraColumnCannotSuppressFeeUncertainty(){
@@ -68,6 +69,36 @@ class GoodsPriceAnalysisServiceTest {
     @Test void quotePagePermissionAloneCannotReadFinanceQuoteHistory(){
         when(access.has("sales_quote:view")).thenReturn(true);var request=new HistoryQuery(sales("100"),null,null,null,50);
         service.history(request);verify(sources).history(eq(request),any(),eq(false),eq(false));
+    }
+    @Test void detailRequiresCurrentGoodsAccessBeforeReadingAnySource() {
+        var query=new DetailQuery(Kind.PURCHASE,"PURCHASE_ORDER",UUID.randomUUID(),UUID.randomUUID(),null,"a".repeat(64));
+        doThrow(new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.NOT_FOUND,"货品不可访问"))
+                .when(references).requireVisibleGoods(goods);
+        assertThatThrownBy(()->service.detail(goods,query)).hasMessageContaining("货品不可访问");
+        verify(access).requireHistory(Kind.PURCHASE);verify(sources,never()).detail(any(),any(),any(),anyBoolean(),anyBoolean());
+    }
+    @Test void detailKeepsExactAmountsAndUnknownHistoricalLabelsInItsLimitedFieldProjection() {
+        ObjectMapper mapper=new ObjectMapper().findAndRegisterModules();Map<String,Object> facts=new HashMap<>();
+        facts.put("sourceType","PURCHASE_ORDER_APPROVAL");facts.put("sourceId",UUID.randomUUID());facts.put("sourceItemId",UUID.randomUUID());
+        facts.put("sourceRevision","a".repeat(64));facts.put("historyVersionId",UUID.randomUUID());facts.put("lifecycle","SUPERSEDED_APPROVED_VERSION");
+        facts.put("quantity","3");facts.put("unitPrice","0.6666666666666666666666666666666667");facts.put("amount","2");
+        facts.put("reasonCodes",List.of("HISTORICAL_VERSION_ONLY","SOURCE_IDENTITY_INCOMPLETE"));
+        Observation row=mapper.convertValue(facts,Observation.class);
+        var query=new DetailQuery(Kind.PURCHASE,row.sourceType(),row.sourceId(),row.sourceItemId(),row.historyVersionId(),row.sourceRevision());
+        when(sources.detail(eq(goods),eq(query),any(),eq(false),eq(false))).thenReturn(row);
+        Detail detail=service.detail(goods,query);
+        assertThat(detail.observation()).isEqualTo(row);assertThat(detail.reasonCodes()).contains("SOURCE_IDENTITY_INCOMPLETE");
+        assertThat(detail.fields()).filteredOn(f->f.key().equals("unitPrice")).singleElement().extracting(DetailField::value).isEqualTo(row.unitPrice());
+        assertThat(detail.fields()).filteredOn(f->f.key().equals("goodsNameSnapshot")).singleElement().extracting(DetailField::value).isNull();
+        assertThat(mapper.valueToTree(detail).toString()).doesNotContain("approval_snapshot","submission_snapshot","finance_total_local");
+    }
+    @Test void detailCannotUseAnUnversionedHistoricalSourceOrMalformedRevision() {
+        for(var query:List.of(
+                new DetailQuery(Kind.PURCHASE,"PURCHASE_ORDER_APPROVAL",UUID.randomUUID(),UUID.randomUUID(),null,"a".repeat(64)),
+                new DetailQuery(Kind.PURCHASE,"SALES_QUOTE_CONFIRMED",UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),"a".repeat(64)),
+                new DetailQuery(Kind.PURCHASE,"PURCHASE_ORDER",UUID.randomUUID(),UUID.randomUUID(),null,"invalid")))
+            assertThatThrownBy(()->service.detail(goods,query)).hasMessageContaining("重新加载");
+        verifyNoInteractions(sources);
     }
     @Test void stableEvidenceIgnoresReadTimeButDetectsSourceVersionChanges(){
         ready();Query q=new Query(goods,Kind.PURCHASE,180,null,null,unit,currency,"0","100",null,null,null,null,"1");

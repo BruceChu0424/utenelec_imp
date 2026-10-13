@@ -82,11 +82,7 @@ final class GoodsPriceSourceReader {
         var p=new MapSqlParameterSource().addValue("kind",q.kind().name()).addValue("goods",q.goodsId()).addValue("to",to).addValue("size",size+1)
                 .addValue("procurementFilter","{\"items\":[{\"goodsId\":\""+q.goodsId()+"\"}]}")
                 .addValue("quoteFilter","{\"lines\":[{\"goodsId\":\""+q.goodsId()+"\"}]}");
-        String ordinaryScope=includeOrders?"history_kind<>'QUOTE_CONFIRMATION'"+ownerClause(scope,p)
-                +clientClause(q.kind(),p).replace("v_goods_price_observations.client_id","v_goods_price_history.client_id"):"false";
-        // Existing quote-finance history authority is its own scope; it never opens the order branches.
-        String where="kind=:kind AND goods_id=:goods AND business_date<=:to AND (("+ordinaryScope+") OR ("
-                +(includeQuotes?"history_kind='QUOTE_CONFIRMATION'":"false")+"))"
+        String where="kind=:kind AND goods_id=:goods AND business_date<=:to"+historyVisibility(q.kind(),scope,includeQuotes,includeOrders,p)
                 +" AND (history_kind<>'PROCUREMENT_CASE' OR snapshot_filter @> CAST(:procurementFilter AS jsonb))"
                 +" AND (history_kind<>'QUOTE_CONFIRMATION' OR snapshot_filter @> CAST(:quoteFilter AS jsonb))"
                 ;
@@ -110,6 +106,29 @@ final class GoodsPriceSourceReader {
         if(more){var last=observations.getLast();next=Base64.getUrlEncoder().withoutPadding().encodeToString((last.businessDate()+"|"+last.historyVersionId()+"|"+last.sourceItemId()+"|"+last.sourceType()).getBytes(StandardCharsets.UTF_8));}
         return new History(observations,next,more,OffsetDateTime.now());
     }
+    /** Resolve exactly one currently authorized row, never a current document substituted for an old version. */
+    Observation detail(UUID goodsId,DetailQuery request,OwnerVisibility.OwnerScope scope,boolean includeQuotes,boolean includeOrders) {
+        var p=new MapSqlParameterSource().addValue("kind",request.kind().name()).addValue("goods",goodsId)
+                .addValue("sourceType",request.sourceType()).addValue("source",request.sourceId()).addValue("item",request.sourceItemId())
+                .addValue("version",request.historyVersionId()).addValue("today",BusinessTime.today());
+        boolean history=request.historyVersionId()!=null;
+        String view=history?"v_goods_price_history":"v_goods_price_observations";
+        String where="kind=:kind AND goods_id=:goods AND source_type=:sourceType AND source_id=:source AND source_item_id=:item AND business_date<=:today";
+        if(history)where+=" AND history_version_id=:version"+historyVisibility(request.kind(),scope,includeQuotes,includeOrders,p);
+        else where+=includeOrders?ownerClause(scope,p)+clientClause(request.kind(),p):" AND 1=0";
+        var rows=db.queryForList("SELECT * FROM "+view+" WHERE "+where+" LIMIT 2",p);
+        if(rows.size()!=1)throw new ApiException(com.uten.imp.common.web.ErrorCode.NOT_FOUND,"价格记录不存在或无权查看，请重新加载");
+        Observation result=observation(rows.getFirst());
+        if(!Objects.equals(request.expectedSourceRevision(),result.sourceRevision()))
+            throw new ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"价格记录或访问范围已变化，请重新加载");
+        return result;
+    }
+    String historyVisibility(Kind kind,OwnerVisibility.OwnerScope scope,boolean includeQuotes,boolean includeOrders,MapSqlParameterSource p) {
+        String ordinary=includeOrders?"history_kind<>'QUOTE_CONFIRMATION'"+ownerClause(scope,p)
+                +clientClause(kind,p).replace("v_goods_price_observations.client_id","v_goods_price_history.client_id"):"false";
+        // Existing quote-finance history authority is its own scope; it never opens the order branches.
+        return " AND (("+ordinary+") OR ("+(includeQuotes?"history_kind='QUOTE_CONFIRMATION'":"false")+"))";
+    }
     static String ownerClause(OwnerVisibility.OwnerScope scope,MapSqlParameterSource p) {
         if(scope.seeAll())return " AND 1=1";
         if(scope.visibleOwners().isEmpty())return " AND 1=0";
@@ -122,7 +141,7 @@ final class GoodsPriceSourceReader {
         if(scope.viewerParameter()!=null)p.addValue(scope.viewerParameter(),scope.viewerEmployeeId());
         return " AND EXISTS(SELECT 1 FROM clients price_client WHERE price_client.id=v_goods_price_observations.client_id AND "+scope.predicate()+")";
     }
-    private Observation observation(Map<String,Object> r) {
+    Observation observation(Map<String,Object> r) {
         List<String> reasons=new ArrayList<>();
         boolean historical=Boolean.TRUE.equals(r.get("historical_only"));
         if(historical)reasons.add("HISTORICAL_VERSION_ONLY");

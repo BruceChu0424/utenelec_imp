@@ -697,12 +697,40 @@ class SubcontractStepDrawMigrationPostgresTest {
                       JOIN permissions draw ON draw.id = draw_grant.permission_id AND draw.code = 'subcontract_order:draw'
                       WHERE draw_grant.user_id = holder.user_id AND draw_grant.effect = 'grant' AND draw_grant.active)
                 """), "个人加授了送财务的账号都必须同时加授领料");
-        // 这些是系统种子授权配置, 不是业务事实: 空库(首导目标)迁移后部门授权不能留下永久记录身份或删除历史
-        // (CLEAR 表), 否则首导守卫判「目标已有业务事实」; 两个保留触发器按 V775 原样恢复 ENABLE ALWAYS。
-        assertEquals(0, count("SELECT count(*) FROM business_record_identities WHERE source_table = 'department_permissions'"),
+        // V798 suppresses retention only for its draw seed / retired close grants.
+        // A later independently registered configuration grant (V860 Finance
+        // price analysis) legitimately has a V775 parent identity. The current
+        // bootstrap guard distinguishes PRESERVE configuration from business sources.
+        assertEquals(0, count("""
+                SELECT count(*) FROM business_record_identities identity
+                JOIN permissions permission ON permission.id::text = identity.source_id::jsonb->>'permission_id'
+                WHERE identity.source_table = 'department_permissions' AND permission.code = 'subcontract_order:draw'
+                """),
                 "V798 种子授权不绑定永久记录身份");
-        assertEquals(0, count("SELECT count(*) FROM business_record_history WHERE source_table = 'department_permissions'"),
+        assertEquals(0, count("""
+                SELECT count(*) FROM business_record_history history
+                WHERE history.source_table = 'department_permissions'
+                  AND history.source_id::jsonb->>'permission_id' IN (
+                      SELECT id::text FROM permissions WHERE code = 'subcontract_order:draw'
+                      UNION
+                      SELECT target_id FROM audit_log
+                      WHERE target_type = 'permissions' AND action = 'delete'
+                        AND before->>'code' = 'subcontract_outbound:close')
+                """),
                 "V798 退役「不再出仓」级联删的部门授权不留删除历史");
+        assertEquals(1, count("""
+                SELECT count(*) FROM business_record_identities identity
+                JOIN department_permissions grant_row ON identity.source_id::jsonb = jsonb_build_object(
+                    'department_id', grant_row.department_id, 'permission_id', grant_row.permission_id)
+                JOIN departments department ON department.id = grant_row.department_id
+                JOIN permissions permission ON permission.id = grant_row.permission_id
+                WHERE identity.source_table = 'department_permissions'
+                  AND identity.parent_table = 'departments' AND identity.parent_id = department.id::text
+                  AND department.code = 'DEPT_FIN' AND permission.code = 'goods:price_analysis:view'
+                  AND grant_row.created_by IS NULL
+                """), "V860 独立财务价格分析种子保留精确的授权父级身份");
+        assertEquals(1, count("SELECT count(*) FROM business_record_identities WHERE source_table = 'department_permissions'"),
+                "当前完整目录仅包含独立验证的 V860 配置身份，不得归因于 V798 领料种子");
         assertEquals(2, count("""
                 SELECT count(*) FROM pg_trigger
                 WHERE tgrelid = 'department_permissions'::regclass

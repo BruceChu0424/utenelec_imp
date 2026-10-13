@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_adaptive_hierarchy_pane.dart';
+import '../../components/layout/uten_hierarchy_content_width.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../models/uten_tree_node.dart';
@@ -124,7 +125,7 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 明度、四档起转中性灰，4 及更深固定第五档（至少 5 个层级色差、最深层固定
   /// 一色、色差拉开且协调，2026-09-24 第二轮口径）；方角、行距收紧、行间 1px
   /// 分隔线；选中 = 左缘 3px 强调条 + 加粗 + 勾选图标（深绿行上反白）。
-  /// 层级同时由父级名称、层数与选中路径表达；颜色只作辅助。
+  /// 完整祖先路径由名称提示与外部选中路径表达；行内只保留单行节点标题。
   final bool flatLevelColors;
 
   @override
@@ -137,6 +138,10 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   final _searchCtl = TextEditingController();
   late Set<String> _expanded;
   String _query = '';
+  UtenHierarchyContentWidthController? _widthController;
+  Object? _forestWidthKey;
+  double _forestTitleWidth = 0;
+  int _fontRevision = 0;
 
   bool get _searching => _query.trim().isNotEmpty;
 
@@ -152,6 +157,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   @override
   void initState() {
     super.initState();
+    PaintingBinding.instance.systemFonts.addListener(_onSystemFontsChanged);
     _expanded = _defaultExpanded();
     // 拼音组合中（composing 非空）不过滤：半截拼音把树闪成「未找到」、也打断
     // 组合节奏；组合结束会再通知一次，届时按完整词过滤（2026-10-09 根因修复）。
@@ -174,8 +180,92 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
   @override
   void dispose() {
+    PaintingBinding.instance.systemFonts.removeListener(_onSystemFontsChanged);
+    _widthController?.reportLabelWidth(this, null);
+    _widthController = null;
     _searchCtl.dispose();
     super.dispose();
+  }
+
+  void _onSystemFontsChanged() {
+    _fontRevision++;
+    _forestWidthKey = null;
+    if (mounted) setState(() {});
+  }
+
+  /// Measure model titles, including collapsed and virtualized rows. The cache
+  /// belongs to this tree's immutable node snapshot; controls are still measured
+  /// from real rows, never from hidden widgets or a second selection subtree.
+  void _reportForestWidth(BuildContext context, ThemeData theme) {
+    final controller = UtenHierarchyContentWidthScope.maybeOf(context);
+    if (controller != _widthController) {
+      _widthController?.reportLabelWidth(this, null);
+      _widthController = controller;
+    }
+    if (controller == null) return;
+    final style = DefaultTextStyle.of(context).style
+        .merge(theme.textTheme.bodyMedium)
+        .copyWith(fontWeight: FontWeight.w600);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final locale = Localizations.maybeLocaleOf(context);
+    final key = (
+      widget.nodes,
+      widget.labelOf,
+      widget.passThrough,
+      style,
+      scaler,
+      direction,
+      locale,
+      _fontRevision,
+    );
+    if (key != _forestWidthKey) {
+      final painter = TextPainter(
+        textDirection: direction,
+        textScaler: scaler,
+        locale: locale,
+        maxLines: 1,
+      );
+      var width = 0.0;
+      void measure(List<T> nodes) {
+        for (final node in nodes) {
+          if (!_passes(node)) {
+            painter.text = TextSpan(
+              text: widget.labelOf?.call(node) ?? node.name,
+              style: style,
+            );
+            painter.layout();
+            if (painter.maxIntrinsicWidth > width) {
+              width = painter.maxIntrinsicWidth;
+            }
+          }
+          measure(node.children);
+        }
+      }
+
+      try {
+        measure(widget.nodes);
+      } finally {
+        painter.dispose();
+      }
+      _forestTitleWidth = width;
+      _forestWidthKey = key;
+    }
+    controller.reportLabelWidth(
+      this,
+      _forestTitleWidth > 0 ? _forestTitleWidth : null,
+      metricsKey: (
+        key,
+        theme,
+        widget.mode,
+        widget.flatLevelColors,
+        widget.leadingBuilder,
+        widget.trailingBuilder,
+        widget.nodeEnabledPredicate,
+        UtenControlMetrics.usesTouchTargets(context),
+        UtenControlMetrics.minimumHitExtent(context, desktop: 32),
+      ),
+    );
   }
 
   /// 实际成行的顶层节点：透传节点换成它的子级。
@@ -307,7 +397,6 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
 
     final row = LayoutBuilder(
       builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 260;
         final indent = flat
             ? 0.0
             : (depth * 16.0).clamp(0.0, constraints.maxWidth * 0.12);
@@ -316,147 +405,128 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           desktop: 32,
         );
         final label = widget.labelOf?.call(node) ?? node.name;
-        final metadata = [
-          ?leading,
-          ?trailing,
-          if (enabled && widget.mode == UtenTreeSelectMode.multi)
-            Checkbox(
-              value: isSelected,
-              onChanged: (_) => widget.onToggleSelect?.call(node),
-              materialTapTargetSize:
-                  UtenControlMetrics.usesTouchTargets(context)
-                  ? MaterialTapTargetSize.padded
-                  : MaterialTapTargetSize.shrinkWrap,
-            )
-          else if (enabled &&
-              widget.mode == UtenTreeSelectMode.single &&
-              isSelected)
-            Icon(Icons.check_circle_rounded, size: 18, color: rowAccent),
-        ];
-        return Semantics(
-          selected: isSelected,
-          expanded: node.hasChildren ? expanded : null,
-          child: Material(
-            color: rowBg,
-            borderRadius: flat
-                ? BorderRadius.zero
-                : BorderRadius.circular(UtenRadius.md),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: enabled || node.hasChildren ? () => _onRowTap(node) : null,
-              child: DecoratedBox(
-                decoration: flat
-                    ? BoxDecoration(
-                        border: Border(
-                          left: BorderSide(
-                            width: 3,
-                            color: isSelected ? rowAccent : Colors.transparent,
+        final Widget? selection;
+        if (enabled && widget.mode == UtenTreeSelectMode.multi) {
+          selection = Checkbox(
+            value: isSelected,
+            onChanged: (_) => widget.onToggleSelect?.call(node),
+            materialTapTargetSize: UtenControlMetrics.usesTouchTargets(context)
+                ? MaterialTapTargetSize.padded
+                : MaterialTapTargetSize.shrinkWrap,
+          );
+        } else if (enabled && widget.mode == UtenTreeSelectMode.single) {
+          selection = isSelected
+              ? Icon(Icons.check_circle_rounded, size: 18, color: rowAccent)
+              : const SizedBox(width: 18, height: 18);
+        } else {
+          selection = null;
+        }
+        return UtenHierarchyRowWidth(
+          child: Semantics(
+            selected: isSelected,
+            expanded: node.hasChildren ? expanded : null,
+            child: Material(
+              color: rowBg,
+              borderRadius: flat
+                  ? BorderRadius.zero
+                  : BorderRadius.circular(UtenRadius.md),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: enabled || node.hasChildren
+                    ? () => _onRowTap(node)
+                    : null,
+                child: DecoratedBox(
+                  decoration: flat
+                      ? BoxDecoration(
+                          border: Border(
+                            left: BorderSide(
+                              width: 3,
+                              color: isSelected
+                                  ? rowAccent
+                                  : Colors.transparent,
+                            ),
+                            bottom: BorderSide(
+                              color: onDarkRow
+                                  ? theme.colorScheme.surface
+                                  : theme.colorScheme.outlineVariant,
+                            ),
                           ),
-                          bottom: BorderSide(
-                            color: onDarkRow
-                                ? theme.colorScheme.surface
-                                : theme.colorScheme.outlineVariant,
+                        )
+                      : const BoxDecoration(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: UtenControlMetrics.controlHeight(context),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(8 + indent, 6, 8, 6),
+                      child: Row(
+                        children: [
+                          // A leaf keeps the same expand slot as its siblings, so
+                          // selecting or expanding a row never shifts its title.
+                          SizedBox(
+                            width: hitExtent,
+                            height: hitExtent,
+                            child: node.hasChildren
+                                ? IconButton(
+                                    tooltip: expanded ? '收起$label' : '展开$label',
+                                    constraints: BoxConstraints.tightFor(
+                                      width: hitExtent,
+                                      height: hitExtent,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    onPressed: () => _toggleExpand(node),
+                                    icon: Icon(
+                                      expanded
+                                          ? Icons.expand_more_rounded
+                                          : Icons.chevron_right_rounded,
+                                      size: 20,
+                                      color: onDarkRow
+                                          ? Colors.white
+                                          : theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  )
+                                : null,
                           ),
-                        ),
-                      )
-                    : const BoxDecoration(),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: UtenControlMetrics.controlHeight(context),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(8 + indent, 6, 8, 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (node.hasChildren)
-                              SizedBox(
-                                width: hitExtent,
-                                height: hitExtent,
-                                child: IconButton(
-                                  tooltip: expanded ? '收起$label' : '展开$label',
-                                  constraints: BoxConstraints.tightFor(
-                                    width: hitExtent,
-                                    height: hitExtent,
-                                  ),
-                                  padding: EdgeInsets.zero,
-                                  onPressed: () => _toggleExpand(node),
-                                  icon: Icon(
-                                    expanded
-                                        ? Icons.expand_more_rounded
-                                        : Icons.chevron_right_rounded,
-                                    size: 20,
-                                    color: onDarkRow
-                                        ? Colors.white
+                          const SizedBox(width: 4),
+                          if (leading != null) ...[
+                            leading,
+                            const SizedBox(width: 8),
+                          ],
+                          Expanded(
+                            child: UtenHierarchyLabelWidth(
+                              child: Tooltip(
+                                message: [...ancestors, label].join(' / '),
+                                child: Text(
+                                  label,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontWeight: isSelected || onDarkRow
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: enabled
+                                        ? (onDarkRow
+                                              ? Colors.white
+                                              : isSelected
+                                              ? theme.colorScheme.primary
+                                              : null)
                                         : theme.colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ),
-                            if (node.hasChildren) const SizedBox(width: 4),
-                            Expanded(
-                              child: Tooltip(
-                                message: [...ancestors, label].join(' / '),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      label,
-                                      softWrap: true,
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(
-                                            fontWeight: isSelected || onDarkRow
-                                                ? FontWeight.w600
-                                                : FontWeight.w400,
-                                            color: enabled
-                                                ? (onDarkRow
-                                                      ? Colors.white
-                                                      : isSelected
-                                                      ? theme
-                                                            .colorScheme
-                                                            .primary
-                                                      : null)
-                                                : theme
-                                                      .colorScheme
-                                                      .onSurfaceVariant,
-                                          ),
-                                    ),
-                                    if (ancestors.isNotEmpty &&
-                                        (flat || depth > 2))
-                                      Text(
-                                        isSelected
-                                            ? '第${depth + 1}层 · ${ancestors.join(' / ')}'
-                                            : '第${depth + 1}层 · ${ancestors.last}',
-                                        softWrap: true,
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: onDarkRow
-                                                  ? Colors.white
-                                                  : theme
-                                                        .colorScheme
-                                                        .onSurfaceVariant,
-                                            ),
-                                      ),
-                                  ],
-                                ),
-                              ),
                             ),
-                            if (!narrow && metadata.isNotEmpty) ...[
-                              const SizedBox(width: 8),
-                              ...metadata,
-                            ],
-                          ],
-                        ),
-                        if (narrow && metadata.isNotEmpty)
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            alignment: WrapAlignment.end,
-                            children: metadata,
                           ),
-                      ],
+                          if (trailing != null) ...[
+                            const SizedBox(width: 8),
+                            trailing,
+                          ],
+                          if (selection != null) ...[
+                            const SizedBox(width: 8),
+                            selection,
+                          ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -481,6 +551,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    _reportForestWidth(context, theme);
     final roots = _ordered(widget.nodes);
     final internal = _searching ? _visibleIds() : null;
     final external = widget.visibleFilterIds;

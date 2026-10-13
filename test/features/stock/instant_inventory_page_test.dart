@@ -578,7 +578,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tree, findsOneWidget);
-      await tester.tap(find.text('原材料(RAW)'));
+      // Landscape leaves only a short scroll viewport below the drawer header.
+      // Reach the row through the real tree scroll before selecting it.
+      final rawCategory = find.text('原材料(RAW)');
+      await tester.ensureVisible(rawCategory);
+      await tester.pumpAndSettle();
+      expect(rawCategory.hitTestable(), findsOneWidget);
+      await tester.tap(rawCategory);
       await tester.pumpAndSettle();
       expect(stock.lastCategoryId, 'raw');
       expect(tester.takeException(), isNull);

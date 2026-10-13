@@ -693,6 +693,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
   }
 
   Widget _jobs(List<ServerJob> jobs) => UtenCard(
+    showBorder: false,
     child: MasterDataTableView<ServerJob>(
       tableKey:
           'features.admin.pages.server_status_page.ServerStatusPageState._jobs.1',

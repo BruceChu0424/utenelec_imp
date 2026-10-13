@@ -40,9 +40,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import jakarta.persistence.EntityManagerFactory;
@@ -91,6 +94,15 @@ class BusinessDataResetServicePostgresTest {
                 new Driver(), POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         // The installed function equals the reviewed oracle: BusinessDataResetCatalogPostgresTest.
         Map<String, String> expectedPolicy = BusinessDataResetSqlContractTest.expectedCurrentPolicy();
+        Map<String, Long> migratedClearBaseline = nonemptyClearTableCounts(dataSource);
+        // V775 registers every department grant's permanent parent identity.
+        // The V860 Finance seed is legitimate configuration; the current
+        // bootstrap guard ignores identities whose sources are PRESERVE tables.
+        assertThat(migratedClearBaseline).isEqualTo(Map.of("business_record_identities", 1L));
+        assertFinancePriceAnalysisSeedIdentity(dataSource);
+        verifySchemaOnlyBootstrapTarget(dataSource);
+        List<String> financePriceAnalysisGrantBefore = financePriceAnalysisGrant(dataSource);
+        assertThat(financePriceAnalysisGrantBefore).as("V860 finance price-analysis seed grant").hasSize(1);
 
         insertSeedDepartment(dataSource);
         insertSeedEmployee(dataSource);
@@ -175,6 +187,14 @@ class BusinessDataResetServicePostgresTest {
             removeFailingReceiptTrigger(dataSource);
         }
 
+        Map<String, Long> expectedClearFixture = new LinkedHashMap<>(migratedClearBaseline);
+        expectedClearFixture.putAll(Map.of(
+                "business_outbox", 2L, "stock_balances", 1L, "stock_value_pools", 1L));
+        assertThat(nonemptyClearTableCounts(dataSource)).containsExactlyInAnyOrderEntriesOf(expectedClearFixture);
+        SQLException bootstrapRefused = assertThrows(SQLException.class,
+                () -> verifySchemaOnlyBootstrapTarget(dataSource));
+        assertThat(bootstrapRefused.getSQLState()).isEqualTo("P0001");
+        assertThat(bootstrapRefused.getMessage()).contains("bootstrap requires a fresh schema-only target");
         var result = service.reset(operator, account, attempt);
         assertThat(drain.blockingNewRequests()).isFalse();
         var receipt = service.lastResult(operator, attempt);
@@ -221,10 +241,14 @@ class BusinessDataResetServicePostgresTest {
         // V741 删除政策情报表 -1, V742 保留 AI 服务商配置/客户货品对照/客户文件版式 +3: 102→104。
         assertThat(result.preservedTableCount()).isEqualTo(Math.toIntExact(
                 expectedPolicy.values().stream().filter("PRESERVE"::equals).count()));
-        // cleared_rows 只统计 CLEAR 表：2 条 outbox、1 条库存余额、1 条待核历史价值池。
+        // Four explicit business fixture rows plus the independently verified
+        // V860 configuration identity. The testing reset clears identities;
+        // it preserves the actual department grant and ordinary audit policy.
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）
-        assertThat(result.clearedRows()).isEqualTo(4);
+        assertThat(result.clearedRows()).isEqualTo(4L + migratedClearBaseline.values().stream()
+                .mapToLong(Long::longValue).sum());
+        assertThat(nonemptyClearTableCounts(dataSource)).isEmpty();
         assertThat(result.authorizationEpochAfter()).isEqualTo(epochBefore + 1);
 
         // 业务事实清空 + identity 序列重启（TRUNCATE RESTART IDENTITY 的直接证据：
@@ -238,6 +262,7 @@ class BusinessDataResetServicePostgresTest {
         assertThat(countAccounts(dataSource)).isEqualTo(1);
         assertThat(countFullyZeroedAccounts(dataSource)).isEqualTo(1);
         assertThat(queryZeroedPaymentStyle(dataSource)).isEqualTo(1);
+        assertThat(financePriceAnalysisGrant(dataSource)).isEqualTo(financePriceAnalysisGrantBefore);
 
         // 全员下线：epoch 已递增、refresh_tokens 已清空
         assertThat(readEpoch(dataSource)).isEqualTo(epochBefore + 1);
@@ -465,6 +490,70 @@ class BusinessDataResetServicePostgresTest {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
             statement.execute("INSERT INTO departments(code, name, level) VALUES ('TEST', '清空测试部', '一级部门')");
+        }
+    }
+
+    private Map<String, Long> nonemptyClearTableCounts(SimpleDriverDataSource dataSource) throws SQLException {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("""
+                     SELECT table_name, row_count FROM (
+                         SELECT table_name,
+                                ((xpath('/row/count/text()', query_to_xml(
+                                    format('SELECT count(*) FROM public.%I', table_name), false, true, '')))[1])::text::bigint AS row_count
+                         FROM public.fn_business_reset_table_policy() WHERE disposition = 'CLEAR'
+                     ) counts WHERE row_count > 0 ORDER BY table_name
+                     """)) {
+            while (rows.next()) counts.put(rows.getString(1), rows.getLong(2));
+        }
+        return counts;
+    }
+
+    private List<String> financePriceAnalysisGrant(SimpleDriverDataSource dataSource) throws SQLException {
+        List<String> grants = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("""
+                     SELECT grant_row.department_id::text || ':' || grant_row.permission_id::text
+                     FROM department_permissions grant_row
+                     JOIN departments department ON department.id = grant_row.department_id
+                     JOIN permissions permission ON permission.id = grant_row.permission_id
+                     WHERE department.code = 'DEPT_FIN' AND permission.code = 'goods:price_analysis:view'
+                     ORDER BY grant_row.department_id, grant_row.permission_id
+                     """)) {
+            while (rows.next()) grants.add(rows.getString(1));
+        }
+        return grants;
+    }
+
+    private void assertFinancePriceAnalysisSeedIdentity(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("""
+                     SELECT identity.parent_table, identity.parent_id,
+                            identity.source_id::jsonb = jsonb_build_object(
+                                'department_id', grant_row.department_id, 'permission_id', grant_row.permission_id),
+                            department.id::text, grant_row.created_by
+                     FROM business_record_identities identity
+                     JOIN department_permissions grant_row
+                       ON identity.source_table = 'department_permissions'
+                      AND identity.source_id::jsonb->>'department_id' = grant_row.department_id::text
+                      AND identity.source_id::jsonb->>'permission_id' = grant_row.permission_id::text
+                     JOIN departments department ON department.id = grant_row.department_id
+                     JOIN permissions permission ON permission.id = grant_row.permission_id
+                     WHERE department.code = 'DEPT_FIN' AND permission.code = 'goods:price_analysis:view'
+                     """)) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString(1)).isEqualTo("departments");
+            assertThat(rows.getString(2)).isEqualTo(rows.getString(4));
+            assertThat(rows.getBoolean(3)).isTrue();
+            assertThat(rows.getObject(5)).isNull();
+            assertThat(rows.next()).isFalse();
+        }
+    }
+
+    private void verifySchemaOnlyBootstrapTarget(SimpleDriverDataSource dataSource) throws Exception {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute(Files.readString(
+                    Path.of("legacy_migration", "migrate_bootstrap_target_guard.sql"), StandardCharsets.UTF_8));
         }
     }
 

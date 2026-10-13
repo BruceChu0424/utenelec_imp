@@ -24,13 +24,19 @@ class PreplanFutureSupplyMigrationPostgresTest {
             var db=new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
             String definition=db.queryForObject("SELECT pg_get_viewdef('v_preplan_public_surplus_source_state'::regclass,true)",String.class);
             assertThat(definition).contains("fn_preplan_public_surplus_sources(NULL::uuid)");
-            String canonical=db.queryForObject("SELECT pg_get_functiondef('fn_preplan_public_surplus_sources(uuid)'::regprocedure)",String.class);
+            String compatibility=db.queryForObject("SELECT pg_get_functiondef('fn_preplan_public_surplus_sources(uuid)'::regprocedure)",String.class);
+            assertThat(compatibility).contains("fn_preplan_public_surplus_sources(p_target_analysis,NULL::uuid,NULL::uuid,NULL::uuid)");
+            String canonical=db.queryForObject("SELECT pg_get_functiondef('fn_preplan_public_surplus_sources(uuid,uuid,uuid,uuid)'::regprocedure)",String.class);
             assertThat(canonical).contains("fn_preplan_public_source_approved_capacity", "fn_preplan_public_source_open_qty",
                     "fn_procurement_order_source_pending_qty", "fn_preplan_action_received_qty");
+            assertThat(canonical).contains("action.goods_id=p_goods", "action.color_id IS NOT DISTINCT FROM p_color", "action.unit_id=p_unit");
             UUID absent=UUID.randomUUID();
             assertThat(db.queryForObject("SELECT fn_procurement_order_source_pending_qty('PURCHASE',?,?)",BigDecimal.class,absent,absent)).isEqualByComparingTo("0");
             assertThat(db.queryForObject("SELECT fn_procurement_order_source_pending_qty('SUBCONTRACT',?,?)",BigDecimal.class,absent,absent)).isEqualByComparingTo("0");
             assertThat(db.queryForObject("SELECT COUNT(*) FROM v_preplan_public_surplus_source_state",Integer.class)).isZero();
+            assertThat(db.queryForList("SELECT * FROM fn_preplan_public_surplus_sources(NULL::uuid)"))
+                    .isEqualTo(db.queryForList("SELECT * FROM fn_preplan_public_surplus_sources(NULL::uuid,NULL::uuid,NULL::uuid,NULL::uuid)"));
+            assertThat(db.queryForList("SELECT * FROM fn_preplan_public_surplus_sources(NULL::uuid,?::uuid,NULL::uuid,?::uuid)",absent,absent)).isEmpty();
         }
     }
 }

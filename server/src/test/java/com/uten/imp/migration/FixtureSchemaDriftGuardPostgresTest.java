@@ -104,6 +104,10 @@ class FixtureSchemaDriftGuardPostgresTest {
             // 事务完整性/状态锁探针（tx_test_* 影子表）。
             "tx_test_inventory",
             "tx_test_reservations",
+            // InventoryValueWriteSetPostgresTest owns these tiny relations to
+            // prove command ordering and rollback; neither models a business table.
+            "write_parent",
+            "write_child",
             // WorkshopMaterialReportCountBasisPostgresTest 的行数探针桩：把报表行与
             // 逐产品参数叉乘断言计数用，不属于业务 schema。
             "product_reference",

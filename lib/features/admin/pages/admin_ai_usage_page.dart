@@ -397,6 +397,7 @@ class _AdminAiUsagePageState extends ConsumerState<_AdminAiUsageSession> {
     final pageRows = people.skip(page * _pageSize).take(_pageSize).toList();
     return UtenCard(
       key: const ValueKey('ai-usage-people-card'),
+      showBorder: false,
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

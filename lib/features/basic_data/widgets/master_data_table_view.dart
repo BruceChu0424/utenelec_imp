@@ -4526,14 +4526,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         : UtenFrozenTrailingColumn(
             horizontal: _headerH,
             width: 48,
-            // 左线隔开滚过的列头（与行内形态靠末列右线分隔等价），右线收表格
-            // 右缘（2026-10-04 用户口径「最后操作列右边没竖杠」）。
+            // 左线隔开滚过的列头；视口最右缘不画外框线。
             cell: DecoratedBox(
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHigh,
                 border: Border(
                   left: BorderSide(color: theme.colorScheme.outline),
-                  right: BorderSide(color: theme.colorScheme.outline),
                 ),
               ),
               child: _platformAddButton(),
@@ -4543,6 +4541,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   Widget _buildHeaderRowBody(ThemeData theme) {
+    final visibleIndices = _visibleIndices;
+    final lastVisibleIndex = visibleIndices.isEmpty
+        ? null
+        : visibleIndices.last;
+    bool showRightDivider(int index) =>
+        widget.showColumnChooser || index != lastVisibleIndex;
     // 多选表头三态全选格（合成单元格）：false=本页全未选 / true=全选 / 空=部分。
     // 横滚时钉在视口左缘（[UtenFrozenLeadingColumn]），行内留等宽占位保持列对齐。
     // showSelectionColumn=false 时不渲染（该格与整列一起退场，本变量不再挂载）。
@@ -4575,7 +4579,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             if (_hasSelectionColumn)
               SizedBox(width: _selectionColWidth, child: headerSelectionCell),
             for (final i in pinnedIndices)
-              _headerColumnCell(theme, i, frozen: true),
+              _headerColumnCell(
+                theme,
+                i,
+                frozen: true,
+                showRightDivider: showRightDivider(i),
+              ),
           ],
         ),
       ),
@@ -4593,23 +4602,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             children: [
               if (_hasSelectionColumn)
                 SizedBox(width: _selectionColWidth, child: headerSelectionCell),
-              for (final i in _visibleIndices)
-                _headerColumnCell(theme, i, frozen: false),
-              if (widget.showColumnChooser)
-                SizedBox(
-                  width: 48,
-                  height: 48,
-                  // 尾部 48px 列设置格补右线：末列右线之后这一格原先不描边，
-                  // 表头右缘没封口（与数据行行级右线同位收口）。
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        right: BorderSide(color: theme.colorScheme.outline),
-                      ),
-                    ),
-                    child: _platformAddButton(),
-                  ),
+              for (final i in visibleIndices)
+                _headerColumnCell(
+                  theme,
+                  i,
+                  frozen: false,
+                  showRightDivider: showRightDivider(i),
                 ),
+              if (widget.showColumnChooser)
+                SizedBox(width: 48, height: 48, child: _platformAddButton()),
             ],
           ),
         ),
@@ -4641,7 +4642,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 锚定错乱），但保留筛选点按、右键菜单（固定/移动/隐藏）与列宽手柄。
   /// 已固定的列表头标签前显图钉（18px、与标签行垂直居中，2026-09-25 用户口径
   /// 「icon 大一点、上下居中」——旧版 12px 右上角小角标太小）。
-  Widget _headerColumnCell(ThemeData theme, int i, {required bool frozen}) {
+  Widget _headerColumnCell(
+    ThemeData theme,
+    int i, {
+    required bool frozen,
+    required bool showRightDivider,
+  }) {
     final pinned = _pinnedKeys.contains(_columns[i].key);
     // filterFromRows 列：桶由当前行就地构建、值与回调走组件内部状态；
     // 否则维持宿主 facets/filters/onFilterChanged 的服务端链路。
@@ -4720,7 +4726,11 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       width: _widths[i],
       // 表头竖线分隔（与 UtenEditableGrid 表头一致：outline/width1）。
       decoration: BoxDecoration(
-        border: Border(right: BorderSide(color: theme.colorScheme.outline)),
+        border: Border(
+          right: showRightDivider
+              ? BorderSide(color: theme.colorScheme.outline)
+              : BorderSide.none,
+        ),
       ),
       child: Stack(
         children: [
@@ -4789,8 +4799,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     int columnIndex,
     T item,
     bool selected,
-    TextStyle textStyle,
-  ) {
+    TextStyle textStyle, {
+    required bool showRightDivider,
+  }) {
     final column = _columns[columnIndex];
     // 选中行整行青绿实底（utenTableSelectedRowColor，与编辑网格同款，2026-09-13
     // 全站统一口径、2026-09-22 加深），文字保持常态深色——语义底色（cellColor）在
@@ -4825,10 +4836,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           color: cellColor,
           border: cellColor == null
               ? Border(
-                  right: BorderSide(
-                    color: theme.colorScheme.outline,
-                    width: 0.5,
-                  ),
+                  right: showRightDivider
+                      ? BorderSide(color: theme.colorScheme.outline, width: 0.5)
+                      : BorderSide.none,
                 )
               : Border(
                   top: BorderSide(color: theme.colorScheme.outline, width: 0.5),
@@ -4836,10 +4846,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     color: theme.colorScheme.outline,
                     width: 0.5,
                   ),
-                  right: BorderSide(
-                    color: theme.colorScheme.outline,
-                    width: 0.5,
-                  ),
+                  right: showRightDivider
+                      ? BorderSide(color: theme.colorScheme.outline, width: 0.5)
+                      : BorderSide.none,
                 ),
         ),
         child: Padding(
@@ -4867,6 +4876,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   Widget _buildDataRow(ThemeData theme, T item) {
+    final visibleIndices = _visibleIndices;
+    final lastVisibleIndex = visibleIndices.isEmpty
+        ? null
+        : visibleIndices.last;
+    bool showRightDivider(int index) =>
+        widget.showColumnChooser || index != lastVisibleIndex;
     // selectable 多选：选中由 selectedIds（业务键）驱动，单选 _selectedItem 失效。
     // 否则沿用单选：外部 isSelected 谓词优先，回落内部 _selectedItem 引用相等。
     final String? multiId = widget.selectable ? widget.idOf?.call(item) : null;
@@ -4970,7 +4985,14 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     if (_hasSelectionColumn)
                       SizedBox(width: _selectionColWidth, child: selectionCell),
                     for (final i in pinnedIndices)
-                      _buildDataCell(theme, i, item, selected, textStyle),
+                      _buildDataCell(
+                        theme,
+                        i,
+                        item,
+                        selected,
+                        textStyle,
+                        showRightDivider: showRightDivider(i),
+                      ),
                   ],
                 ),
               ),
@@ -4978,16 +5000,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           );
     final undecoratedRow = DecoratedBox(
       // 行间横线：逐行分隔；选中行也用常态横线（底色由下面的 ColoredBox 统一给）。
-      // 右缘竖线：showColumnChooser 时末列右线之后还有 48px 列设置空档（行内
-      // SizedBox 无内容无高度、描不了边），行级补一条把表格右缘收口；无 chooser
-      // 的表末格右线已在原位，行级再画会同位叠加变粗，故条件关掉。
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: lineColor, width: 0.5),
-          right: widget.showColumnChooser
-              ? BorderSide(color: lineColor, width: 0.5)
-              : BorderSide.none,
-        ),
+        border: Border(bottom: BorderSide(color: lineColor, width: 0.5)),
       ),
       child: ColoredBox(
         color: rowBg,
@@ -5001,8 +5015,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               children: [
                 if (_hasSelectionColumn)
                   SizedBox(width: _selectionColWidth, child: selectionCell),
-                for (final i in _visibleIndices)
-                  _buildDataCell(theme, i, item, selected, textStyle),
+                for (final i in visibleIndices)
+                  _buildDataCell(
+                    theme,
+                    i,
+                    item,
+                    selected,
+                    textStyle,
+                    showRightDivider: showRightDivider(i),
+                  ),
                 if (widget.showColumnChooser) const SizedBox(width: 48),
               ],
             ),

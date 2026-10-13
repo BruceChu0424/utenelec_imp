@@ -7,6 +7,7 @@
 // 入仓状态)、退货单、损耗单、委外商处物料台账与应付摘要；单号可点进只读详情(委外视角
 // 不进入仓库作业页面)。金额是否可见只看服务端的 priceMasked。
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -77,6 +78,7 @@ class _SubcontractOrderProgressSectionState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Card(
+      shape: utenTableCardShape(context),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Column(
@@ -208,10 +210,7 @@ class _SubcontractOrderProgressSectionState
       key: ValueKey('subcontract-progress-item-${item.orderItemId}'),
       width: double.infinity,
       padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: UtenRadius.mdAll,
-      ),
+      decoration: const BoxDecoration(borderRadius: UtenRadius.mdAll),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

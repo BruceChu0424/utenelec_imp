@@ -277,10 +277,7 @@ class _ProductionDailyProductDetailsCardState
       margin: EdgeInsets.zero,
       color: background,
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: UtenRadius.lgAll,
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.lgAll),
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: UtenSpacing.s12,
@@ -949,7 +946,9 @@ class _ProductDetailsTable extends StatelessWidget {
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           border: BorderDirectional(
-                            end: BorderSide(color: colors.outline),
+                            end: column == headers.length - 1
+                                ? BorderSide.none
+                                : BorderSide(color: colors.outline),
                           ),
                         ),
                         child: Stack(

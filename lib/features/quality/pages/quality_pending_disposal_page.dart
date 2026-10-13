@@ -12,6 +12,7 @@
 // 权限分别门控：IQC 读 procurement_inspection:view、写 :handle；
 // FQC 读 production_quality_inspection:view、决定 :approve + 服务端品质组织校验。
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import '../../../core/network/authenticated_request_scope.dart';
 import '../presentation/procurement_inspection_guidance.dart';
@@ -1663,6 +1664,7 @@ class _ProcurementInspectionDetailPageState
         );
     return Card(
       margin: EdgeInsets.zero,
+      shape: utenTableCardShape(context),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s16),
         child: Column(

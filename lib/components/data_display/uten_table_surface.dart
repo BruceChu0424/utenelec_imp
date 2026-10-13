@@ -2,9 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 
-/// A single frame around the table viewport, including connected toolbars and
-/// footers. Cells stay rectangular so column boundaries remain aligned while
-/// scrolling, pinning and resizing. Foreground decoration changes no geometry.
+/// Table-owned cards retain their theme's shape without a decorative outer line.
+OutlinedBorder utenTableCardShape(BuildContext context) {
+  final shape = Theme.of(context).cardTheme.shape;
+  if (shape is OutlinedBorder) return shape.copyWith(side: BorderSide.none);
+  return const RoundedRectangleBorder(borderRadius: UtenRadius.tableAll);
+}
+
+/// A rounded table viewport without an outer stroke. Cells stay rectangular so
+/// their internal dividers remain aligned while scrolling, pinning and resizing.
 class UtenTableSurface extends StatelessWidget {
   const UtenTableSurface({super.key, required this.child});
 
@@ -13,10 +19,7 @@ class UtenTableSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DecoratedBox(
     position: DecorationPosition.foreground,
-    decoration: BoxDecoration(
-      borderRadius: UtenRadius.tableAll,
-      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-    ),
+    decoration: const BoxDecoration(borderRadius: UtenRadius.tableAll),
     child: ClipRRect(borderRadius: UtenRadius.tableAll, child: child),
   );
 }

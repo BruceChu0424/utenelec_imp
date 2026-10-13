@@ -424,10 +424,7 @@ class _ProductionExecutionCardPrintDialogState
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: UtenRadius.mdAll,
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.mdAll),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Column(

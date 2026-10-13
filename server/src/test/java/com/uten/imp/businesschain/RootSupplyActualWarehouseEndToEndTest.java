@@ -290,7 +290,8 @@ class RootSupplyActualWarehouseEndToEndTest {
                                 UUID salesOrder,UUID salesItem,UUID receipt,UUID goods) { }
 
     private Fixture manualFixture() { return manualFixture(true); }
-    Fixture manualFixture(boolean mainScope) {
+    Fixture manualFixture(boolean mainScope) { return manualFixture(mainScope,false); }
+    Fixture manualFixture(boolean mainScope, boolean skipAutoClaim) {
         String tag="root-actual-"+UUID.randomUUID();
         var world=harness.seedWorld(tag);harness.loginAs(world.superAdminUserId());
         UUID main=world.warehouseId();
@@ -310,7 +311,7 @@ class RootSupplyActualWarehouseEndToEndTest {
         var routed=analyses.saveRoutes(preview.analysisId(),new RouteRequest(preview.version(),preview.fingerprint(),
                 "root-actual-route-"+tag,roots.stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),"BUY",null)).toList()));
         commands.notifySupply(routed.analysisId(),new NotifyRequest(routed.version(),routed.fingerprint(),
-                "root-actual-notify-"+tag,"BUY",roots.stream().map(MaterialView::materialLineId).toList(),List.of(),null));
+                "root-actual-notify-"+tag,"BUY",roots.stream().map(MaterialView::materialLineId).toList(),List.of(),null,skipAutoClaim));
         List<Map<String,Object>> sources=db.queryForList("""
                 SELECT item.id,item.goods_id,item.qty FROM preplan_supply_actions action
                 JOIN purchase_requests request ON request.id=action.external_document_id

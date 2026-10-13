@@ -4,6 +4,7 @@
 // 财务退回红(要本人改)、待客户同意青 sky(第二等待档：等客户)、待转订货绿
 // (就绪可动手)、已核价绿。文字全部走 arb，列表、详情、财务核价页共用这一份。
 import 'package:flutter/material.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_progress_timeline.dart';
@@ -185,6 +186,7 @@ class SalesQuoteRevisionTimeline extends StatelessWidget {
     final theme = Theme.of(context);
     return Card(
       key: const Key('sales-quote-revision-timeline'),
+      shape: utenTableCardShape(context),
       child: ExpansionTile(
         initiallyExpanded:
             revisions.length <= 3 ||

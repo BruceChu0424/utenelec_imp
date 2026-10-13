@@ -24,8 +24,8 @@ UtenSplitView 把这套布局下沉为统一组件：**分割线可左右拖动*
 |---|---|
 | 常驻握把 | 中央始终可见的圆角小块 + 抓握纹（2×3 圆点），一眼示「可拖」（触屏无 hover 也能看出） |
 | 悬停分割线 | 出 `resizeColumn` 光标；线加粗染 primary；握把染主色并轻微放大 |
-| 左右拖动 | 实时改左栏宽；clamp 在 `[minLeadingWidth, maxLeadingWidth]`，且右栏永远保底 `minTrailingWidth` |
-| 双击分割线 | 复位到 `initialLeadingWidth` |
+| 左右拖动 | 最小宽为配置值与分类完整单行实测宽的较大值；右栏保底 `minTrailingWidth` |
+| 双击分割线 | 复位到 `initialLeadingWidth`，仍遵守完整单行下限 |
 | 聚焦后 ←/→ | 每次 ±16px（无鼠标 / 无障碍场景） |
 | RTL | 拖动与箭头方向自动翻转 |
 
@@ -48,8 +48,8 @@ UtenSplitView(
 | 参数 | 默认 | 说明 |
 |---|---|---|
 | `initialLeadingWidth` | 300 | 初始宽，也是双击复位值（对齐旧版固定宽） |
-| `minLeadingWidth` | 220 | 左栏最小宽 |
-| `maxLeadingWidth` | 520 | 左栏最大宽（另受右栏保底约束） |
+| `minLeadingWidth` | 220 | 左栏最小宽基准；不能覆盖共享树的完整单行下限 |
+| `maxLeadingWidth` | 520 | 常规最大宽；完整单行下限更大时优先保留内容，并检查两栏是否能同时容纳 |
 | `minTrailingWidth` | 360 | 右栏保底宽：不足时切为单内容区和完整目录 |
 | `persistenceKey` | null | 传页面级唯一 key → 宽度存本地 shared_preferences（`uten.splitView.<key>`），下次进页面自动恢复 |
 | `onWidthChanged` | null | 宽度变化回调 |
@@ -59,7 +59,7 @@ UtenSplitView(
 ## 四、边界与注意
 
 - 回退由共享`UtenAdaptiveHierarchyPane`统一处理，判定使用`LayoutBuilder`实际内容宽度，
-  不是整屏宽度。两栏所需宽度至少为`max(minTwoPaneWidth, minLeadingWidth + 12 + minTrailingWidth)`。
+  不是整屏宽度。两栏所需宽度至少为`max(minTwoPaneWidth, 实际左栏下限 + 12 + minTrailingWidth)`。
   主档页使用840；选择器默认600并继续检查左右最低宽度。空间不足不再压窄树或产生负宽度。
 - 窄屏正文显示当前完整路径和目录入口，目录在本面板内全宽打开。
   树与内容通过稳定key保持挂载；关闭、返回、Escape或明确选树行后回到原内容。
@@ -104,3 +104,16 @@ UtenSplitView(
 `UtenSegmentedFilter`消费者文件；共享适配无需按业务页复制。销售接单审核原非flex Row已改为
 窄宽上下排布、宽宽给分类真实有界宽度；AppBar分类中央区域由共享AppBar提供真实局部约束。
 未更改仓储调用、业务模型、权限谓词、数量统计、UUID选择和确认流程。
+
+## 七、2026-10-13 分类行与拖动下限修正
+
+分类树的展开箭头、名称、徽标与选择控件始终同行居中。叶节点保留同尺寸展开空位，
+同层文字起点一致；展开后只显示原分类标题，不额外显示层数或父级副行，完整路径保留在提示中。
+
+`UtenHierarchyContentWidthScope` 统一收集分类标题与实际行装具尺寸，
+包含文字缩放、触屏点击区域、复选框、选中标记、内边距和滚动条余量。
+拖动、键盘微调、双击和恢复旧偏好都遵守这一真实下限；空间不足时改为完整目录入口，
+不通过把选中标记移到下一行或压窄分类来挤出双栏。
+
+页面表格只保留内部行列分隔线，统一表格表面及冻结操作列最外缘不绘制外框；
+圆角裁切与单元格交互反馈保持。

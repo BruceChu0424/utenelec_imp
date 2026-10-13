@@ -394,6 +394,55 @@ class InventoryPositionPostgresTest {
         store(key,List.of(slice(moved.get(0).positionRootId(),"1"),slice(moved.get(2).positionRootId(),"1")));balance(key,"2","0.0002");
     }
 
+    @Test void allPendingBatchSkipsGlobalPublicationReadWithoutChangingSourcesQuantitiesOrReplay(){
+        PoolKey key=key();PositionValue source=acquire(key,"5",null,"0",false,List.of());
+        var jdbc=new ValueWriteProbe(db);var service=new InventoryPositionService(jdbc,mutex,Optional.empty());
+        List<Move> commands=List.of(
+                new Move(context(),key,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(source.positionRootId(),"2"))),
+                new Move(context(),key,Owner.REJECTED_HOLD,UUID.randomUUID(),List.of(slice(source.positionRootId(),"3"))));
+        List<PositionValue> moved=locked(key,()->service.moveBatch(commands));
+        assertThat(jdbc.publicationFenceReads).isZero();
+        assertThat(moved).hasSize(2).allMatch(value->value.state()==State.PENDING&&!value.replayed());
+        money(moved.get(0).qtyBase(),"2");money(moved.get(1).qtyBase(),"3");
+        moved.forEach(value->money(value.knownValueLocal(),"0"));
+        money(positions.position(source.positionRootId()).remainingQtyBase(),"0");
+        money(db.queryForObject("SELECT SUM(qty_base) FROM stock_value_position_transfers WHERE source_root_id=?",
+                BigDecimal.class,source.positionRootId()),"5");
+        List<PositionValue> replay=locked(key,()->service.moveBatch(commands));
+        assertThat(replay).allMatch(value->value.replayed()&&value.state()==State.PENDING);
+        assertThat(replay.stream().map(PositionValue::eventId)).containsExactlyElementsOf(moved.stream().map(PositionValue::eventId).toList());
+        assertThat(jdbc.publicationFenceReads).isZero();
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_value_position_transfers WHERE source_root_id=?",
+                Integer.class,source.positionRootId())).isEqualTo(2);
+    }
+
+    @Test void mixedPendingAndPotentialFinalBatchStillReadsOneRealPublicationFence(){
+        PoolKey key=key(),unrelated=key();
+        PositionValue known=acquire(key,"3","30","0",true,List.of());
+        PositionValue unknown=acquire(key,"2",null,"0",false,List.of());
+        PositionValue other=acquire(unrelated,"5","50","0",true,List.of());
+        PositionValue passed=move(unrelated,other.positionRootId(),"5",Owner.QUALITY_PASSED);
+        store(unrelated,List.of(slice(passed.positionRootId(),"5")));
+        adjust(unrelated,other.fundingSourceNodeId(),"1");
+        assertThat(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_jobs WHERE source_node_id=? AND status='PENDING')",
+                Boolean.class,other.fundingSourceNodeId())).isTrue();
+        var jdbc=new ValueWriteProbe(db);var service=new InventoryPositionService(jdbc,mutex,Optional.empty());
+        List<Move> commands=List.of(
+                new Move(context(),key,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(known.positionRootId(),"3"))),
+                new Move(context(),key,Owner.REJECTED_HOLD,UUID.randomUUID(),List.of(slice(unknown.positionRootId(),"2"))));
+        List<PositionValue> moved=locked(key,()->service.moveBatch(commands));
+        assertThat(jdbc.publicationFenceReads).isEqualTo(1);
+        assertThat(moved).hasSize(2).allMatch(value->value.state()==State.PENDING&&!value.replayed());
+        money(moved.get(0).knownValueLocal(),"30");money(moved.get(1).knownValueLocal(),"0");
+        money(positions.position(known.positionRootId()).remainingQtyBase(),"0");
+        money(positions.position(unknown.positionRootId()).remainingQtyBase(),"0");
+        List<PositionValue> replay=locked(key,()->service.moveBatch(commands));
+        assertThat(replay).allMatch(value->value.replayed()&&value.state()==State.PENDING);
+        assertThat(jdbc.publicationFenceReads).isEqualTo(1);
+        assertThat(replay.stream().map(PositionValue::eventId)).containsExactlyElementsOf(moved.stream().map(PositionValue::eventId).toList());
+        drain();
+    }
+
     @Test void batchLateOverdrawRollsBackEveryPlannedEventAndNextInvocationRereadsTheHead(){
         PoolKey key=key();PositionValue source=acquire(key,"5","50","0",true,List.of());
         Move first=new Move(context(),key,Owner.QUALITY_PASSED,UUID.randomUUID(),List.of(slice(source.positionRootId(),"4")));
@@ -705,6 +754,7 @@ class InventoryPositionPostgresTest {
         private final List<String> writes=new ArrayList<>();
         private int nodeAuthorityReads;
         private int poolIdentityReads;
+        private int publicationFenceReads;
         private final List<UUID> lockedNodeIds=new ArrayList<>();
         private ValueWriteProbe(JdbcTemplate jdbc){super(jdbc);}
         @Override public int update(String sql,Map<String,?> params){writes.add(sql.replaceAll("\\s+"," ").trim());return super.update(sql,params);}
@@ -719,6 +769,10 @@ class InventoryPositionPostgresTest {
         @Override public List<Map<String,Object>> queryForList(String sql,Map<String,?> params){
             if(sql.startsWith("SELECT * FROM stock_value_nodes WHERE id="))nodeAuthorityReads++;
             return super.queryForList(sql,params);
+        }
+        @Override public <T>T queryForObject(String sql,Map<String,?> params,Class<T> type){
+            if(sql.startsWith("SELECT EXISTS(SELECT 1 FROM stock_value_jobs WHERE status='PENDING')"))publicationFenceReads++;
+            return super.queryForObject(sql,params,type);
         }
     }
 

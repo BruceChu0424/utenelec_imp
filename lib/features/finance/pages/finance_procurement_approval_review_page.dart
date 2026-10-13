@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 // 订货审批审核详情页（财务专用视图，与采购/委外业务订货详情页分离）。
 //
 // 设计目标（对齐销售订单财务审核页 V300 范式 = 大公司审批中心：单据信息 +
@@ -1141,6 +1142,7 @@ class _FinanceProcurementApprovalReviewPageState
           ],
     ];
     return Card(
+      shape: utenTableCardShape(context),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Column(

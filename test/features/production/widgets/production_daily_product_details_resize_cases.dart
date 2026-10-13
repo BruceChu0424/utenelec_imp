@@ -142,6 +142,20 @@ void _registerProductDetailsResizeTests() {
         _resizeWidth(tester, DailyRowGroup.allocations, 1),
         greaterThan(600),
       );
+      final table = tester.widget<Table>(
+        _resizeTable(DailyRowGroup.allocations),
+      );
+      final headerBorders = table.children.first.children.map((cell) {
+        final box = (cell as SizedBox).child! as DecoratedBox;
+        return (box.decoration as BoxDecoration).border! as BorderDirectional;
+      }).toList();
+      expect(headerBorders.last.end, BorderSide.none);
+      expect(
+        headerBorders
+            .take(headerBorders.length - 1)
+            .every((border) => border.end.style == BorderStyle.solid),
+        isTrue,
+      );
       final field = find.byKey(
         ValueKey(
           'daily-allocation-destination-${identityHashCode(data.allocations.first)}',

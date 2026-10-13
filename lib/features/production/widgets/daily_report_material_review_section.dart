@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -63,6 +64,7 @@ class DailyReportMaterialReviewSection extends StatelessWidget {
         review.rows.length <= 6 ? table : SizedBox(height: 380, child: table);
     return Card(
       key: const ValueKey('daily-report-material-review'),
+      shape: utenTableCardShape(context),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: UtenCollapsibleSection(

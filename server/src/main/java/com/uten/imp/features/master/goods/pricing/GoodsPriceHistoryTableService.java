@@ -133,7 +133,7 @@ public class GoodsPriceHistoryTableService {
         var p=new MapSqlParameterSource().addValue("kind",q.kind().name()).addValue("goods",q.goodsId()).addValue("to",to)
                 .addValue("procurementFilter","{\"items\":[{\"goodsId\":\""+q.goodsId()+"\"}]}")
                 .addValue("quoteFilter","{\"lines\":[{\"goodsId\":\""+q.goodsId()+"\"}]}");
-        String where="kind=:kind AND goods_id=:goods AND business_date<=:to"
+        String where="kind=:kind AND goods_id=:goods AND business_date<=:to "
                 +sources.historyVisibility(q.kind(),access.sourceScope(q.kind()),access.has("sales_quote_finance:view"),access.available(q.kind()),p)
                 +" AND (history_kind<>'PROCUREMENT_CASE' OR snapshot_filter @> CAST(:procurementFilter AS jsonb))"
                 +" AND (history_kind<>'QUOTE_CONFIRMATION' OR snapshot_filter @> CAST(:quoteFilter AS jsonb))";

@@ -29,28 +29,13 @@ class GoodsPriceSourcePostgresTest {
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void schema() throws Exception {
         db.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
-        db.execute("CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text,unit_id uuid,color_id uuid,is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false)");
-        for(String table:List.of("units","currencies","suppliers","colors"))db.execute("CREATE TABLE "+table+"(id uuid PRIMARY KEY,name text)");
-        db.execute("CREATE TABLE clients(id uuid PRIMARY KEY,name text,owner_employee_id uuid)");
-        for(String kind:List.of("purchase","subcontract","sales")){
-            db.execute("CREATE TABLE "+kind+"_orders(id uuid PRIMARY KEY,bill_no text,bill_date date,updated_at timestamptz DEFAULT now(),supplier_id uuid,client_id uuid,currency_id uuid,tax_rate numeric,exchange_rate numeric,purchaser_id uuid,maker_id uuid,owner_employee_id uuid,status smallint DEFAULT 1,is_deleted boolean DEFAULT false,approved_at timestamptz DEFAULT now())");
-            db.execute("CREATE TABLE "+kind+"_order_items(id uuid PRIMARY KEY,order_id uuid,goods_id uuid,goods_code_snapshot text DEFAULT 'FROZEN-CODE',goods_name_snapshot text DEFAULT 'Frozen item',color_id uuid,unit_id uuid,unit_rate numeric DEFAULT 1,qty numeric,price numeric,amount_original numeric,total_amount_input numeric,gift_qty numeric DEFAULT 0,discount numeric DEFAULT 0,extra_columns jsonb DEFAULT '[]',updated_at timestamptz DEFAULT now(),is_deleted boolean DEFAULT false,chain_status smallint DEFAULT 0)");
-        }
-        db.execute("CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text,order_id uuid,status text,attempt integer,finance_exchange_rate numeric,finance_total_local numeric,submission_snapshot jsonb,display_snapshot jsonb,decided_at timestamptz DEFAULT now())");
-        db.execute("CREATE TABLE procurement_order_approval_events(case_id uuid,event_type text)");
-        db.execute("CREATE TABLE sales_quotes(id uuid PRIMARY KEY,bill_no text,maker_id uuid)");
-        db.execute("CREATE TABLE sales_quote_revision_logs(id uuid PRIMARY KEY,quote_id uuid,action text,snapshot jsonb,created_at timestamptz DEFAULT now())");
-        db.execute("CREATE TABLE permissions(id uuid DEFAULT gen_random_uuid() PRIMARY KEY,code text UNIQUE,name text,module text,category text,sort_order integer,action_type text,description text,grant_policy text[],sensitivity text)");
-        db.execute("CREATE TABLE permission_surfaces(id uuid PRIMARY KEY,surface_key text,enabled boolean)");
-        db.execute("CREATE TABLE permission_surface_permissions(surface_id uuid,permission_id uuid,UNIQUE(surface_id,permission_id))");
-        db.execute("CREATE TABLE departments(id uuid PRIMARY KEY,code text,is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE department_permissions(department_id uuid,permission_id uuid,UNIQUE(department_id,permission_id))");
+        GoodsPriceProjectionFixture.history(db,"FROZEN-CODE");
         try(var in=getClass().getResourceAsStream("/db/migration/V860__goods_price_analysis.sql")){db.execute(new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8));}
         var clients=mock(ClientAccessPolicy.class);when(clients.nativeReadScope(anyString(),any())).thenReturn(new ClientAccessPolicy.NativeReadScope("1=1",null,Set.of(),null,null));
         reader=new GoodsPriceSourceReader(new NamedParameterJdbcTemplate(db),json,clients,mock(GoodsPriceAccess.class));
         goods=UUID.randomUUID();unit=UUID.randomUUID();currency=UUID.randomUUID();supplier=UUID.randomUUID();owner=UUID.randomUUID();
         db.update("INSERT INTO goods(id,code,name,unit_id) VALUES(?,'NOW','Current name',?)",goods,unit);
-        db.update("INSERT INTO units VALUES(?,'件')",unit);db.update("INSERT INTO currencies VALUES(?,'CNY')",currency);db.update("INSERT INTO suppliers VALUES(?,'Supplier')",supplier);
+        db.update("INSERT INTO units(id,name) VALUES(?,'件')",unit);db.update("INSERT INTO currencies(id,name) VALUES(?,'CNY')",currency);db.update("INSERT INTO suppliers(id,name) VALUES(?,'Supplier')",supplier);
     }
     @Test void ownerFilterRunsBeforeLimitAndNullOwnerIsNotPublic(){
         var own=order("purchase",owner,"10","1");var hidden=order("purchase",UUID.randomUUID(),"999","1");
@@ -155,9 +140,9 @@ class GoodsPriceSourcePostgresTest {
     }
     @Test void financeQuoteScopeIncludesOtherOwnersAndDeletedClientsWithoutOpeningTheirOrders() throws Exception {
         UUID other=UUID.randomUUID(),client=UUID.randomUUID(),quote=UUID.randomUUID(),log=UUID.randomUUID();
-        db.update("INSERT INTO clients VALUES(?,'Current client',?)",client,other);
+        db.update("INSERT INTO clients(id,name,owner_employee_id) VALUES(?,'Current client',?)",client,other);
         var sale=order("sales",other,"999","1");db.update("UPDATE sales_orders SET owner_employee_id=?,client_id=? WHERE id=?",other,client,sale[0]);
-        db.update("INSERT INTO sales_quotes VALUES(?,'Q-HISTORY',?)",quote,other);
+        db.update("INSERT INTO sales_quotes(id,bill_no,maker_id) VALUES(?,'Q-HISTORY',?)",quote,other);
         Map<String,Object> line=Map.of("id",UUID.randomUUID(),"goodsId",goods,"goodsCode","OLD","goodsName","Quote original","unitId",unit,"unitRate","1","qty","1","price","15","amount","15");
         Map<String,Object> snapshot=Map.of("billDate",BusinessTime.today(),"clientId",client,"clientName","Frozen client","currencyId",currency,"lines",List.of(line));
         db.update("INSERT INTO sales_quote_revision_logs(id,quote_id,action,snapshot) VALUES(?,?,'CONFIRM',?::jsonb)",log,quote,json.writeValueAsString(snapshot));
@@ -175,7 +160,7 @@ class GoodsPriceSourcePostgresTest {
                 .hasMessageContaining("不存在或无权");
     }
     @Test void quoteFinanceOnlyCannotOpenEvenAnOwnSalesOrderDetail() {
-        UUID client=UUID.randomUUID();db.update("INSERT INTO clients VALUES(?,'Own client',?)",client,owner);
+        UUID client=UUID.randomUUID();db.update("INSERT INTO clients(id,name,owner_employee_id) VALUES(?,'Own client',?)",client,owner);
         var sale=order("sales",owner,"10","1");
         db.update("UPDATE sales_orders SET owner_employee_id=?,client_id=? WHERE id=?",owner,client,sale[0]);
         Query sales=new Query(goods,Kind.SALES,180,null,null,unit,currency,"0",null,null,client,null,null,"1");
@@ -192,7 +177,11 @@ class GoodsPriceSourcePostgresTest {
     private static OwnerVisibility.OwnerScope scope(UUID owner){return new OwnerVisibility.OwnerScope(false,Set.of(owner));}
     private UUID[] order(String kind,UUID maker,String price,String qty){
         UUID id=UUID.randomUUID(),item=UUID.randomUUID();
-        db.update("INSERT INTO "+kind+"_orders(id,bill_no,bill_date,supplier_id,currency_id,tax_rate,exchange_rate,maker_id) VALUES(?,? ,?,?,?,0,1,?)",id,"ORD-"+id,BusinessTime.today(),supplier,currency,maker);
+        if("sales".equals(kind)) {
+            UUID client=GoodsPriceProjectionFixture.salesClient(db,maker);
+            db.update("INSERT INTO sales_orders(id,bill_no,bill_date,client_id,currency_id,tax_rate,exchange_rate,maker_id,owner_employee_id) VALUES(?,?,?,?,?,0,1,?,?)",id,"ORD-"+id,BusinessTime.today(),client,currency,maker,maker);
+        } else
+            db.update("INSERT INTO "+kind+"_orders(id,bill_no,bill_date,supplier_id,currency_id,tax_rate,exchange_rate,maker_id) VALUES(?,? ,?,?,?,0,1,?)",id,"ORD-"+id,BusinessTime.today(),supplier,currency,maker);
         db.update("INSERT INTO "+kind+"_order_items(id,order_id,goods_id,unit_id,qty,price,amount_original) VALUES(?,?,?,?,?,?,?)",item,id,goods,unit,new BigDecimal(qty),new BigDecimal(price),new BigDecimal(qty).multiply(new BigDecimal(price)));
         return new UUID[]{id,item};
     }
@@ -204,6 +193,6 @@ class GoodsPriceSourcePostgresTest {
         snapshot.put("supplierId",supplier);snapshot.put("currencyId",currency);snapshot.put("taxRate","0");snapshot.put("exchangeRate","1");snapshot.put("makerEmployeeId",owner);snapshot.put("items",List.of(item));
         Map<String,Object> display=new HashMap<>(item);display.put("goodsCode","APPROVED");display.put("goodsName","Approved name");display.put("unitName","件");
         UUID id=UUID.randomUUID();db.update("INSERT INTO procurement_order_approval_cases(id,order_type,order_id,status,attempt,finance_exchange_rate,finance_total_local,submission_snapshot,display_snapshot) VALUES(?,'PURCHASE',?,?,?,7,70,?::jsonb,?::jsonb)",id,ids[0],state,attempt,json.writeValueAsString(snapshot),json.writeValueAsString(Map.of("items",List.of(display),"currencyName","CNY","supplierName","Approved supplier")));
-        if(state.equals("APPROVED"))db.update("INSERT INTO procurement_order_approval_events VALUES(?,'APPROVED')",id);return id;
+        if(state.equals("APPROVED"))db.update("INSERT INTO procurement_order_approval_events(case_id,event_type) VALUES(?,'APPROVED')",id);return id;
     }
 }

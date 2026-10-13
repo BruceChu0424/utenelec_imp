@@ -26,11 +26,9 @@ class InventoryOwnerPositionsPostgresTest {
     @BeforeAll static void start(){
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);named=new NamedParameterJdbcTemplate(source);
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db,"stock_value_nodes");
         db.execute("""
-                CREATE TABLE stock_value_nodes(id uuid PRIMARY KEY,root_issue_id uuid NOT NULL,return_head_id uuid,
-                    owner_kind text NOT NULL,owner_id uuid NOT NULL,active boolean NOT NULL,
-                    range_from numeric NOT NULL,range_to numeric NOT NULL,created_at timestamptz NOT NULL,
-                    kind text NOT NULL DEFAULT 'ISSUE_POSITION');
+                ALTER TABLE stock_value_nodes ALTER COLUMN kind SET DEFAULT 'ISSUE_POSITION';
                 CREATE INDEX idx_stock_value_nodes_owner ON stock_value_nodes(owner_kind,owner_id,id) WHERE active;
                 """);
     }

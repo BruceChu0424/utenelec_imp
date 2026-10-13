@@ -40,6 +40,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'uten_adaptive_hierarchy_pane.dart';
+import 'uten_hierarchy_content_width.dart';
 
 /// 左右分栏布局：左面板固定宽（可拖调），右面板占满剩余。
 class UtenSplitView extends StatefulWidget {
@@ -110,16 +111,24 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   bool _hovering = false;
   bool _dragging = false;
   final FocusNode _handleFocus = FocusNode();
+  final _contentWidths = UtenHierarchyContentWidthController();
 
   /// 最近一次布局的总宽（拖动 clamp 用）。build 时刷新。
   double _totalWidth = double.infinity;
 
   bool get _active => _hovering || _dragging;
+  double get _minimumWidth =>
+      math.max(widget.minLeadingWidth, _contentWidths.minimumWidth);
 
   @override
   void initState() {
     super.initState();
+    _contentWidths.addListener(_onContentWidthChanged);
     _restore();
+  }
+
+  void _onContentWidthChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -149,9 +158,12 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   double _clamp(double width) {
     final maxBySpace =
         _totalWidth - UtenSplitView.gutterWidth - widget.minTrailingWidth;
-    final upper = math.max(0.0, math.min(widget.maxLeadingWidth, maxBySpace));
+    final upper = math.max(
+      0.0,
+      math.min(math.max(widget.maxLeadingWidth, _minimumWidth), maxBySpace),
+    );
     // 计算始终合法；真正空间不足时build切为完整目录，不压窄左栏。
-    final lower = math.min(widget.minLeadingWidth, upper);
+    final lower = math.min(_minimumWidth, upper);
     return width.clamp(lower, upper);
   }
 
@@ -168,16 +180,17 @@ class _UtenSplitViewState extends State<UtenSplitView> {
       Directionality.of(context) == TextDirection.rtl ? -1.0 : 1.0;
 
   void _onDragUpdate(DragUpdateDetails d) =>
-      _applyWidth(_width + d.delta.dx * _dirSign, persist: false);
+      _applyWidth(_clamp(_width) + d.delta.dx * _dirSign, persist: false);
 
   void _nudge(double delta) =>
-      _applyWidth(_width + delta * _dirSign, persist: true);
+      _applyWidth(_clamp(_width) + delta * _dirSign, persist: true);
 
   void _reset() => _applyWidth(widget.initialLeadingWidth, persist: true);
 
   @override
   void dispose() {
     _handleFocus.dispose();
+    _contentWidths.dispose();
     super.dispose();
   }
 
@@ -188,7 +201,10 @@ class _UtenSplitViewState extends State<UtenSplitView> {
         _totalWidth = constraints.maxWidth;
         final width = _clamp(_width);
         return UtenAdaptiveHierarchyPane(
-          leading: widget.leading,
+          leading: UtenHierarchyContentWidthScope(
+            controller: _contentWidths,
+            child: widget.leading,
+          ),
           trailing: widget.trailing,
           selectedLabel: widget.selectedLeadingLabel,
           selectionKey: widget.selectedLeadingKey,
@@ -199,7 +215,7 @@ class _UtenSplitViewState extends State<UtenSplitView> {
               constraints.maxWidth >=
               math.max(
                 widget.minTwoPaneWidth,
-                widget.minLeadingWidth +
+                _minimumWidth +
                     widget.minTrailingWidth +
                     UtenSplitView.gutterWidth,
               ),

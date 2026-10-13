@@ -417,6 +417,7 @@ class _AdminAiUsageRecordsPageState
     final page = _page.clamp(0, totalPages - 1);
     return UtenCard(
       key: const ValueKey('ai-records-card'),
+      showBorder: false,
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -454,6 +455,7 @@ class _AdminAiUsageRecordsPageState
   Widget _peopleCard(AppLocalizations l10n, AiUsageAuditResult? data) {
     return UtenCard(
       key: const ValueKey('ai-records-people-card'),
+      showBorder: false,
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

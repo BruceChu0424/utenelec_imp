@@ -416,7 +416,9 @@ Future<void> _pumpPicker(
   ValueChanged<GoodsListItem?>? onSelected,
 }) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = const Size(1200, 900);
+  // Leave enough room for the fixture's longest complete category row and
+  // the right pane. A 720px drawer now correctly falls back to its directory.
+  tester.view.physicalSize = const Size(1800, 900);
   addTearDown(() {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
@@ -440,7 +442,7 @@ Future<void> _pumpMultiPicker(
   List<List<GoodsListItem>> results,
 ) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = const Size(1200, 900);
+  tester.view.physicalSize = const Size(1800, 900);
   addTearDown(() {
     tester.view.resetPhysicalSize();
     tester.view.resetDevicePixelRatio();
@@ -461,7 +463,7 @@ Future<void> _pumpMultiPicker(
 Finder _widePickerSheet() => find.byWidgetPredicate(
   (widget) =>
       widget is SizedBox &&
-      widget.width == 720 &&
+      widget.width == 900 &&
       widget.height == double.infinity,
 );
 

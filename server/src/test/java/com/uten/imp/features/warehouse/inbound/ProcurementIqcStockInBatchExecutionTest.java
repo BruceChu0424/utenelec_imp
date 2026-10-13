@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,6 +66,9 @@ class ProcurementIqcStockInBatchExecutionTest {
         verify(f.warehouses, times(1)).require(WAREHOUSE, "入库仓库", com.uten.imp.application.port.WarehouseUse.GOOD_IN);
         verify(f.production, times(1)).afterInspectionStockInConfirmed(anyList());
         verify(f.allocations, times(1)).actualForBatches(anyList());
+        verify(f.consideration, times(2)).withStockInAllocations(anyList(), any());
+        assertThat(f.settledStockInIds).hasSize(2);
+        assertThat(f.postedMovementIds).doesNotHaveDuplicates().hasSize(2);
     }
 
     @Test
@@ -79,6 +83,28 @@ class ProcurementIqcStockInBatchExecutionTest {
 
         assertThat(f.writeSql).isEmpty();
         verifyNoInteractions(f.stock, f.consideration, f.production, f.peg);
+    }
+
+    @Test
+    void fundingSettlementFailureStopsPhysicalPostingAndProductionAdvance() {
+        Fixture f = new Fixture();
+        BatchConfirmEntry entry = f.entry(1, "funding-settlement-fails", "2");
+        doAnswer(call -> {
+            Consumer<ProcurementReceiptConsiderationService.StockInAllocationWriter> action = call.getArgument(1);
+            action.accept(stockInId -> {
+                assertThat(f.stockInMovementIds).containsKey(stockInId);
+                throw new ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT, "资金份额结算失败");
+            });
+            return null;
+        }).when(f.consideration).withStockInAllocations(anyList(), any());
+
+        assertThatThrownBy(() -> f.service.batchConfirm(new BatchConfirmRequest(List.of(entry))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("资金份额结算失败");
+
+        assertThat(f.movements).isEmpty();
+        assertThat(f.postedMovementIds).isEmpty();
+        verify(f.stock, never()).recordMovementWithId(any(), any());
+        verifyNoInteractions(f.production, f.peg, f.allocations);
     }
 
     @Test
@@ -216,6 +242,9 @@ class ProcurementIqcStockInBatchExecutionTest {
         final List<UUID> readSlices = new ArrayList<>();
         final List<String> writeSql = new ArrayList<>();
         final List<StockService.MovementRequest> movements = new ArrayList<>();
+        final Map<UUID, UUID> stockInMovementIds = new HashMap<>();
+        final List<UUID> settledStockInIds = new ArrayList<>();
+        final List<UUID> postedMovementIds = new ArrayList<>();
         final List<UUID> stockItemWarehouses = new ArrayList<>();
         final ProcurementIqcStockInService service;
         boolean productionAdvanced;
@@ -241,7 +270,30 @@ class ProcurementIqcStockInBatchExecutionTest {
                 assertThat(productionAdvanced).isTrue();
                 return List.of();
             });
-            doAnswer(call -> { movements.add(call.getArgument(1)); return null; })
+            doAnswer(call -> {
+                List<ProcurementReceiptConsiderationService.StockInInput> inputs = call.getArgument(0);
+                Consumer<ProcurementReceiptConsiderationService.StockInAllocationWriter> action = call.getArgument(1);
+                int[] cursor = {0};
+                action.accept(stockInId -> {
+                    assertThat(productionAdvanced).as("funding settles before production advances").isFalse();
+                    assertThat(stockInId).isEqualTo(inputs.get(cursor[0]++).stockInItemId());
+                    assertThat(stockInMovementIds).as("physical stock-in identity exists before settlement")
+                            .containsKey(stockInId);
+                    settledStockInIds.add(stockInId);
+                });
+                assertThat(cursor[0]).as("every planned funding allocation is settled").isEqualTo(inputs.size());
+                return null;
+            }).when(consideration).withStockInAllocations(anyList(), any());
+            doAnswer(call -> {
+                UUID movementId = call.getArgument(0);
+                StockService.MovementRequest movement = call.getArgument(1);
+                assertThat(productionAdvanced).as("physical posting precedes production follow-up").isFalse();
+                assertThat(settledStockInIds).contains(movement.sourceItemId());
+                assertThat(stockInMovementIds.get(movement.sourceItemId())).isEqualTo(movementId);
+                postedMovementIds.add(movementId);
+                movements.add(movement);
+                return null;
+            })
                     .when(stock).recordMovementWithId(any(), any());
         }
 
@@ -288,7 +340,10 @@ class ProcurementIqcStockInBatchExecutionTest {
             });
             when(query.executeUpdate()).thenAnswer(call -> {
                 writeSql.add(sql);
-                if(sql.contains("INSERT INTO procurement_iqc_stock_in_batch_items("))stockItemWarehouses.add((UUID)params.get("warehouseId"));
+                if(sql.contains("INSERT INTO procurement_iqc_stock_in_batch_items(")) {
+                    stockItemWarehouses.add((UUID)params.get("warehouseId"));
+                    stockInMovementIds.put((UUID)params.get("id"), (UUID)params.get("movementId"));
+                }
                 return 1;
             });
             return query;

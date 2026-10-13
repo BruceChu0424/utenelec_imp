@@ -2194,9 +2194,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
   }
 
   /// 表头行尾操作列的冻结包裹：无行尾操作列时原样返回。占位格与行内同款
-  /// surfaceContainerHigh 底 + 左右竖线（右线收表格右缘，2026-10-04 用户口径
-  /// 「最后操作列右边没竖杠」——行内尾格自带右线，冻结副本原先只画左线，
-  /// 横滚态下右缘就整条没线了），横滚时钉在视口右缘盖住滚过的列头。
+  /// surfaceContainerHigh 底 + 左侧内部竖线；视口最右缘不画外框线。
+  /// 横滚时钉在视口右缘盖住滚过的列头。
   Widget _withFrozenTrailingAction(ThemeData theme, Widget row) {
     if (!widget._showRowActionColumn) return row;
     return UtenFrozenTrailingColumn(
@@ -2205,10 +2204,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       cell: DecoratedBox(
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHigh,
-          border: Border(
-            left: BorderSide(color: theme.colorScheme.outline),
-            right: BorderSide(color: theme.colorScheme.outline),
-          ),
+          border: Border(left: BorderSide(color: theme.colorScheme.outline)),
         ),
         child: _addColumnHeader(),
       ),
@@ -3141,6 +3137,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     double total,
     List<int> visibleColumnIndices,
   ) {
+    bool showRightDivider(int index) =>
+        widget._showRowActionColumn || index != visibleColumnIndices.last;
     final pinnedIndices = _pinnedVisibleColumnIndices;
     // 横滚时钉在视口左缘的冻结区副本：全选格 + 已固定列的表头格。副本格不挂
     // 换位/移除拖拽（避免同一 LayerLink 双挂载），但保留表头筛选点按、右键
@@ -3148,7 +3146,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final frozenHeaderRegion = _withSelectHeaderRegion(
       theme,
       pinnedIndices: pinnedIndices,
-      cell: (i) => _headerColumnCell(theme, i, frozen: true),
+      cell: (i) => _headerColumnCell(
+        theme,
+        i,
+        frozen: true,
+        showRightDivider: showRightDivider(i),
+      ),
     );
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -3178,18 +3181,18 @@ class _UtenEditableGridState<T extends EditableGridRow>
                             child: _selectAllHeaderCell(theme),
                           ),
                         for (final i in visibleColumnIndices)
-                          _headerColumnCell(theme, i, frozen: false),
+                          _headerColumnCell(
+                            theme,
+                            i,
+                            frozen: false,
+                            showRightDivider: showRightDivider(i),
+                          ),
                         if (widget._showRowActionColumn)
                           SizedBox(
                             width: _deleteColWidth,
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 color: theme.colorScheme.surfaceContainerHigh,
-                                border: Border(
-                                  right: BorderSide(
-                                    color: theme.colorScheme.outline,
-                                  ),
-                                ),
                               ),
                               child: _addColumnHeader(),
                             ),
@@ -3218,7 +3221,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 锚定错乱），但保留筛选点按、右键菜单（固定/移动/隐藏）与列宽手柄。
   /// 已固定的列表头标签前显图钉（[_headerLabel] 内渲染，18px、与标签行垂直
   /// 居中，2026-09-25 用户口径「icon 大一点、上下居中」）。
-  Widget _headerColumnCell(ThemeData theme, int i, {required bool frozen}) {
+  Widget _headerColumnCell(
+    ThemeData theme,
+    int i, {
+    required bool frozen,
+    required bool showRightDivider,
+  }) {
     Widget content = _headerLabel(theme, i);
     if (!frozen) {
       content = columnHeaderGestureArea(i, columnHeaderCell(i, content));
@@ -3232,7 +3240,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHigh,
-          border: Border(right: BorderSide(color: theme.colorScheme.outline)),
+          border: Border(
+            right: showRightDivider
+                ? BorderSide(color: theme.colorScheme.outline)
+                : BorderSide.none,
+          ),
         ),
         child: Stack(
           children: [
@@ -3481,6 +3493,9 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
   final double deleteColWidth;
   final BorderSide divider;
 
+  BorderSide _columnDivider(int index) =>
+      showDelete || index != columnIndices.last ? divider : BorderSide.none;
+
   /// 固定在左侧的列下标（可见序列前缀；表头右键菜单维护）。
   final List<int> pinnedColumnIndices;
 
@@ -3578,7 +3593,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
                         width: widths[i],
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            border: Border(right: divider),
+                            border: Border(right: _columnDivider(i)),
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -3633,13 +3648,7 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
               onDelete!();
             },
           );
-    final deleteCell = SizedBox(
-      width: deleteColWidth,
-      child: DecoratedBox(
-        decoration: BoxDecoration(border: Border(right: divider)),
-        child: deleteButton,
-      ),
-    );
+    final deleteCell = SizedBox(width: deleteColWidth, child: deleteButton);
     final frozenDeleteCell = ColoredBox(
       color: Color.alphaBlend(
         rowBg ?? Colors.transparent,
@@ -3647,8 +3656,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          // 右线与行内尾格对齐：冻结副本贴在视口右缘，没它表格右缘整条没竖线。
-          border: Border(left: divider, right: divider, bottom: divider),
+          // 冻结副本保留内部列/行分隔线，最右缘没有外框线。
+          border: Border(left: divider, bottom: divider),
         ),
         child: deleteButton,
       ),
@@ -3738,8 +3747,8 @@ class _DataRow<T extends EditableGridRow> extends StatelessWidget {
         decoration: BoxDecoration(
           color: cellColor,
           border: cellColor == null
-              ? Border(right: divider)
-              : Border(top: divider, bottom: divider, right: divider),
+              ? Border(right: _columnDivider(i))
+              : Border(top: divider, bottom: divider, right: _columnDivider(i)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(

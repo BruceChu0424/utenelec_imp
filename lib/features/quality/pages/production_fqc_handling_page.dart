@@ -12,6 +12,7 @@
 //     详情 + 办理页。摘要卡展示送检登记事实，检验图片/文件就近挂载；决定表单
 //     与检查单页同一套数量/处置口径。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -2107,6 +2108,7 @@ class _ProductionFqcInspectionPageState
   /// 决定表单：合格/不合格数量 + 不合格处置；提交前由总结弹窗收结论原因。
   Widget _buildDecisionForm(ThemeData theme, FqcReportRow row) {
     return Card(
+      shape: utenTableCardShape(context),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s16),
         child: Column(

@@ -169,7 +169,10 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         writes.flush();
         // Publish each result from the complete batch graph and the current
         // publication fence. A pending ancestor never becomes a guessed FINAL.
-        boolean publicationPending=propagationPending();
+        // Preserve state(Node)'s short circuit: an output with pending inputs
+        // cannot publish FINAL, so an all-pending window needs no global fence.
+        boolean publicationPending=plans.stream().anyMatch(plan->!effectivePending(plan.position()))
+                &&propagationPending();
         Map<PlannedMove,PositionValue> completed=new IdentityHashMap<>();
         for(PlannedMove plan:plans){
             Node position=plan.position();State state=state(position,publicationPending);

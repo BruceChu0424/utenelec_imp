@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_table_surface.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -310,6 +311,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
     return Card(
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
+      shape: utenTableCardShape(context),
       child: Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Column(

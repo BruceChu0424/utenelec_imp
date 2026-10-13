@@ -247,7 +247,16 @@ void main() {
         scrollable: find.byType(Scrollable),
       );
       final leaf = tester.widget<Text>(find.text('$childName(LONG-CODE)'));
-      expect(leaf.overflow, isNot(TextOverflow.ellipsis));
+      expect(leaf.maxLines, 1);
+      expect(leaf.softWrap, isFalse);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip &&
+              (widget.message?.endsWith('$childName(LONG-CODE)') ?? false),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.text('$childName(LONG-CODE)'));
       await tester.pumpAndSettle();
       expect(selected, 'leaf');

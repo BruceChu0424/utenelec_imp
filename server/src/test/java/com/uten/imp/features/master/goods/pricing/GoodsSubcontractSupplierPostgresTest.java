@@ -28,26 +28,28 @@ class GoodsSubcontractSupplierPostgresTest {
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void schema() throws Exception {
         db.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
-        db.execute("CREATE TABLE goods(id uuid PRIMARY KEY,source_type text,is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false)");
-        for(String t:List.of("suppliers","units","colors"))db.execute("CREATE TABLE "+t+"(id uuid PRIMARY KEY,name text)");
-        db.execute("CREATE TABLE subcontract_orders(id uuid PRIMARY KEY,bill_no text,bill_date date,supplier_id uuid,maker_id uuid,status int DEFAULT 1,is_deleted boolean DEFAULT false,updated_at timestamptz DEFAULT now())");
-        db.execute("CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY,order_id uuid,goods_id uuid,goods_code_snapshot text DEFAULT 'SC',goods_name_snapshot text DEFAULT '委外件',color_id uuid,unit_id uuid,unit_rate numeric,qty numeric,allowed_loss_pct numeric,updated_at timestamptz DEFAULT now(),is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY,status text DEFAULT 'OPEN',is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY,plan_id uuid,order_item_id uuid,parent_goods_id uuid,parent_color_id uuid,goods_id uuid,color_id uuid,unit_id uuid,unit_rate numeric,bom_unit_qty numeric,planned_qty numeric,issued_qty numeric,draw_closed_at timestamptz,is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE subcontract_receipts(id uuid PRIMARY KEY,status int DEFAULT 1,is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE subcontract_receipt_items(id uuid PRIMARY KEY,receipt_id uuid,order_item_id uuid,goods_id uuid,color_id uuid,unit_id uuid,unit_rate numeric,qty numeric,is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE procurement_inspection_items(id uuid PRIMARY KEY,receipt_type text,receipt_item_id uuid,status text DEFAULT 'RESOLVED',quantity_tranche text DEFAULT 'LEGACY',received_base_qty numeric,passed_base_qty numeric,failed_base_qty numeric,warehouse_stocked_base_qty numeric)");
-        db.execute("CREATE TABLE subcontract_returns(id uuid PRIMARY KEY,status int DEFAULT 1,is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE subcontract_return_items(id uuid PRIMARY KEY,return_id uuid,order_item_id uuid,goods_id uuid,color_id uuid,unit_id uuid,unit_rate numeric,qty numeric,is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE subcontract_wastes(id uuid PRIMARY KEY,status int DEFAULT 1,is_deleted boolean DEFAULT false)");
-        db.execute("CREATE TABLE subcontract_short_delivery_cases(id uuid PRIMARY KEY,order_item_id uuid,supplier_id uuid,goods_id uuid,color_id uuid,unit_id uuid,goods_code_snapshot text DEFAULT 'SC',goods_name_snapshot text DEFAULT '委外件',ordered_qty numeric,status text DEFAULT 'ACCEPTED_LOSS',decision text DEFAULT 'ACCEPT_LOSS',closed_at timestamptz DEFAULT now(),loss_qty numeric,qty_change_log_id uuid,waste_id uuid)");
-        db.execute("CREATE TABLE procurement_order_approval_cases(id uuid PRIMARY KEY,order_type text DEFAULT 'SUBCONTRACT',order_id uuid,status text DEFAULT 'APPROVED',attempt int DEFAULT 1,submission_snapshot jsonb,decided_at timestamptz DEFAULT now())");
-        db.execute("CREATE TABLE procurement_arrival_exceptions(order_type text,order_item_id uuid,status text,decision text,approved_excess_qty numeric)");
-        db.execute("CREATE TABLE procurement_iqc_rejection_cases(order_item_id uuid,failed_base_qty numeric,return_recorded_at timestamptz,status text)");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db,"goods","suppliers","units","colors",
+                "subcontract_orders","subcontract_order_items","subcontract_material_plans","subcontract_material_plan_items",
+                "subcontract_receipts","subcontract_receipt_items","procurement_inspection_items","subcontract_returns","subcontract_return_items",
+                "subcontract_wastes","subcontract_short_delivery_cases","procurement_order_approval_cases","procurement_arrival_exceptions",
+                "procurement_iqc_rejection_cases");
+        db.execute("""
+                ALTER TABLE subcontract_orders ALTER COLUMN status SET DEFAULT 1;
+                ALTER TABLE subcontract_order_items ALTER COLUMN goods_code_snapshot SET DEFAULT 'SC', ALTER COLUMN goods_name_snapshot SET DEFAULT '委外件';
+                ALTER TABLE subcontract_receipts ALTER COLUMN status SET DEFAULT 1;
+                ALTER TABLE subcontract_returns ALTER COLUMN status SET DEFAULT 1;
+                ALTER TABLE subcontract_wastes ALTER COLUMN status SET DEFAULT 1;
+                ALTER TABLE subcontract_material_plans ALTER COLUMN status SET DEFAULT 'OPEN';
+                ALTER TABLE procurement_inspection_items ALTER COLUMN status SET DEFAULT 'RESOLVED', ALTER COLUMN quantity_tranche SET DEFAULT 'LEGACY';
+                ALTER TABLE subcontract_short_delivery_cases ALTER COLUMN goods_code_snapshot SET DEFAULT 'SC', ALTER COLUMN goods_name_snapshot SET DEFAULT '委外件',
+                    ALTER COLUMN status SET DEFAULT 'ACCEPTED_LOSS', ALTER COLUMN decision SET DEFAULT 'ACCEPT_LOSS', ALTER COLUMN closed_at SET DEFAULT now();
+                ALTER TABLE procurement_order_approval_cases ALTER COLUMN order_type SET DEFAULT 'SUBCONTRACT', ALTER COLUMN status SET DEFAULT 'APPROVED',
+                    ALTER COLUMN attempt SET DEFAULT 1, ALTER COLUMN decided_at SET DEFAULT now();
+                """);
         db.execute(function("V688__subcontract_loss_fulfillment_without_order_revision.sql","fn_subcontract_settled_loss_qty"));
         db.execute(function("V798__subcontract_step_draw.sql","fn_subcontract_draw_sets"));
         goods=UUID.randomUUID();material=UUID.randomUUID();unit=UUID.randomUUID();supplier=UUID.randomUUID();owner=UUID.randomUUID();
-        db.update("INSERT INTO goods(id,source_type) VALUES(?,'委外')",goods);db.update("INSERT INTO units VALUES(?,'件')",unit);db.update("INSERT INTO suppliers VALUES(?,'委外商')",supplier);
+        db.update("INSERT INTO goods(id,source_type) VALUES(?,'委外')",goods);db.update("INSERT INTO units(id,name) VALUES(?,'件')",unit);db.update("INSERT INTO suppliers(id,name) VALUES(?,'委外商')",supplier);
         references=mock(MasterReferenceValidationPort.class);access=mock(GoodsPriceAccess.class);
         when(access.sourceScope(GoodsPriceContracts.Kind.SUBCONTRACT)).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(owner)));
         when(access.has("subcontract_order:view")).thenReturn(true);
@@ -86,7 +88,7 @@ class GoodsSubcontractSupplierPostgresTest {
     @Test void rejectedQualityReturnIsNeverSubtractedAgainFromAlreadyQualifiedStock() throws Exception {
         F f=order("100","100","1","1");loss(f,"10",null,false);
         db.update("UPDATE procurement_inspection_items SET passed_base_qty=90,failed_base_qty=10,warehouse_stocked_base_qty=90 WHERE id=?",f.inspection());
-        db.update("INSERT INTO procurement_iqc_rejection_cases VALUES(?,10,now(),'RETURN_RECORDED')",f.item());
+        db.update("INSERT INTO procurement_iqc_rejection_cases(order_item_id,failed_base_qty,return_recorded_at,status) VALUES(?,10,now(),'RETURN_RECORDED')",f.item());
         var g=read().groups().getFirst();assertThat(g.confirmedLossRatePct()).isEqualTo("10");assertThat(g.lines().getFirst().qualifiedStockedNetQty()).isEqualTo("90");
     }
     @Test void receiptsWithoutQualityEvidenceOrPendingQualityAreNotSettledProof() throws Exception {
@@ -118,13 +120,13 @@ class GoodsSubcontractSupplierPostgresTest {
         db.update("UPDATE procurement_order_approval_cases SET status='APPROVED',decided_at=now()+interval '1 day' WHERE id=?",f.approval());
         assertThat(read().groups().getFirst().reasonCodes()).contains("APPROVAL_NOT_EFFECTIVE");
         db.update("UPDATE procurement_order_approval_cases SET decided_at=now() WHERE id=?",f.approval());
-        db.update("INSERT INTO procurement_arrival_exceptions VALUES('SUBCONTRACT',?,'RECEIPT_POSTED','APPROVE_ALL',1)",f.item());
+        db.update("INSERT INTO procurement_arrival_exceptions(order_type,order_item_id,status,decision,approved_excess_qty) VALUES('SUBCONTRACT',?,'RECEIPT_POSTED','APPROVE_ALL',1)",f.item());
         assertThat(read().groups().getFirst().reasonCodes()).contains("SUPPLIER_OWN_MATERIAL_BASIS");
     }
     @Test void unitRatesColorsAndFrozenMaterialVersionsAreSeparateButIdenticalPlanRowsDoNotInventVersions() throws Exception {
         F first=order("100","90","1","1");loss(first,"10",null,false);
         F duplicate=order("100","90","1","1");loss(duplicate,"10",null,false);
-        db.update("INSERT INTO subcontract_material_plan_items SELECT gen_random_uuid(),plan_id,order_item_id,parent_goods_id,parent_color_id,goods_id,color_id,unit_id,unit_rate,bom_unit_qty,planned_qty,issued_qty,draw_closed_at,is_deleted FROM subcontract_material_plan_items WHERE id=?",duplicate.materialLine());
+        db.update("INSERT INTO subcontract_material_plan_items(id,plan_id,order_item_id,parent_goods_id,parent_color_id,goods_id,color_id,unit_id,unit_rate,bom_unit_qty,planned_qty,issued_qty,draw_closed_at,is_deleted) SELECT gen_random_uuid(),plan_id,order_item_id,parent_goods_id,parent_color_id,goods_id,color_id,unit_id,unit_rate,bom_unit_qty,planned_qty,issued_qty,draw_closed_at,is_deleted FROM subcontract_material_plan_items WHERE id=?",duplicate.materialLine());
         assertThat(read().groups()).hasSize(1);assertThat(read().groups().getFirst().materialKindCount()).isEqualTo(1);
         order("100","100","2","1");order("100","100","1","2");
         assertThat(read().groups()).hasSize(3);

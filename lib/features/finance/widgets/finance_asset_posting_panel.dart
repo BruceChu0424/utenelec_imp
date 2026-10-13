@@ -486,11 +486,6 @@ class _FinanceAssetPostingPanelState
             ? theme.colorScheme.errorContainer.withValues(alpha: 0.35)
             : theme.colorScheme.surfaceContainerLowest,
         borderRadius: UtenRadius.xlAll,
-        border: Border.all(
-          color: hasErrors
-              ? theme.colorScheme.error
-              : theme.colorScheme.outlineVariant,
-        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

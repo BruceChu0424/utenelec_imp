@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -21,6 +22,7 @@ import '../repositories/procurement_iqc_rejection_repository.dart';
 import '../widgets/procurement_iqc_rejection_action_dialog.dart';
 import '../widgets/procurement_iqc_actual_credit_dialog.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
 import '../widgets/procurement_iqc_rejection_status_badge.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -215,11 +217,7 @@ class _ProcurementIqcRejectionDetailPageState
           builder: (context, constraints) {
             final expanded = constraints.maxWidth >= 960;
             final facts = <Widget>[
-              _buildStatusHeader(detail.caseItem),
-              const SizedBox(height: UtenSpacing.s12),
-              _buildSourceFacts(detail.caseItem),
-              const SizedBox(height: UtenSpacing.s12),
-              _buildQuantityAndAmount(detail.caseItem),
+              _buildSummary(detail.caseItem),
               const SizedBox(height: UtenSpacing.s12),
               _buildReturnAndCredit(detail.caseItem),
               if (detail.resolution != null) ...[
@@ -290,87 +288,94 @@ class _ProcurementIqcRejectionDetailPageState
     );
   }
 
-  Widget _buildStatusHeader(ProcurementIqcRejectionCase item) {
+  Widget _buildSummary(ProcurementIqcRejectionCase item) {
     final theme = Theme.of(context);
     final error = item.financeExceptionMessage?.trim();
     return Semantics(
       container: true,
       label: '任务状态 ${item.status.label}，版本 ${item.version}',
-      child: Container(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: item.status == ProcurementIqcRejectionStatus.financeException
-              ? theme.colorScheme.errorContainer.withValues(alpha: 0.46)
-              : theme.colorScheme.surfaceContainerLow,
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
+      child: UtenDetailSummaryCard(
+        heading: UtenSummaryField(
+          label: '货品',
+          value: item.goodsLabel,
+          emphasis: true,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '${item.goodsLabel} · ${item.receiptBillNo ?? '—'}',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+        status: ProcurementIqcRejectionStatusBadge(status: item.status),
+        primary: [
+          UtenSummaryField(
+            label: '不合格单据量',
+            value: '${item.failedQty ?? '—'} ${item.unitName ?? ''}'.trim(),
+            emphasis: true,
+            danger: true,
+          ),
+          UtenSummaryField(
+            label: '原币金额',
+            value:
+                item.priceMasked ||
+                    item.failedAmountOriginal?.trim().isNotEmpty != true
+                ? item.originalAmountLabel(item.failedAmountOriginal)
+                : financeMoneyWithUnitSuffix(
+                    item.failedAmountOriginal,
+                    currencyName: item.currencyName,
+                    currencyCode: item.currencyCode,
+                    fullCurrencyName: true,
                   ),
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                ProcurementIqcRejectionStatusBadge(status: item.status),
-              ],
+          ),
+          UtenSummaryField(
+            label: '本币金额',
+            value: item.priceMasked
+                ? '***'
+                : item.failedAmountLocal ?? '金额未生成，按来源记录保留份额',
+          ),
+        ],
+        facts: [
+          UtenSummaryField(label: '来源类型', value: item.receiptType?.label),
+          UtenSummaryField(label: '收货 / 回厂单', value: item.receiptBillNo),
+          UtenSummaryField(label: '订货单', value: item.orderBillNo),
+          UtenSummaryField(label: '供应商 / 委外商', value: item.supplierName),
+          if (item.colorName?.isNotEmpty == true)
+            UtenSummaryField(label: '颜色', value: item.colorName),
+        ],
+        notices: [
+          Text(
+            error?.isNotEmpty == true
+                ? '${item.financeExceptionCode ?? 'FINANCE_EXCEPTION'} · $error'
+                : _detail?.resolution?.state == 'SETTLED'
+                ? '退回份额已通过合格补回入库或实际贷项完成结清。'
+                : item.holdReason ?? _detailNextStep(item.status),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: error?.isNotEmpty == true
+                  ? theme.colorScheme.error
+                  : theme.colorScheme.onSurfaceVariant,
+              fontWeight: error?.isNotEmpty == true ? FontWeight.w600 : null,
             ),
-            const SizedBox(height: UtenSpacing.s8),
+          ),
+          if (item.priceMasked)
             Text(
-              error?.isNotEmpty == true
-                  ? '${item.financeExceptionCode ?? 'FINANCE_EXCEPTION'} · $error'
-                  : _detail?.resolution?.state == 'SETTLED'
-                  ? '退回份额已通过合格补回入库或实际贷项完成结清。'
-                  : item.holdReason ?? _detailNextStep(item.status),
+              '金额已由服务端按权限脱敏；view_all 不自动授予金额。',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: error?.isNotEmpty == true
-                    ? theme.colorScheme.error
-                    : theme.colorScheme.onSurfaceVariant,
-                fontWeight: error?.isNotEmpty == true ? FontWeight.w600 : null,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-          ],
-        ),
+        ],
+        details: [
+          UtenSummaryFacts(
+            children: [
+              UtenSummaryField(label: '不合格基础量', value: item.failedBaseQty),
+              UtenSummaryField(label: '任务版本', value: item.version.toString()),
+            ],
+          ),
+          if (!item.priceMasked)
+            Text(
+              '来源金额保留品质记录中的名义份额。供应商实际贷项按原始凭证另行填写和确认。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
       ),
     );
   }
-
-  Widget _buildSourceFacts(ProcurementIqcRejectionCase item) => _section(
-    title: '来源与责任对象',
-    icon: Icons.account_tree_outlined,
-    children: [
-      _Fact('来源类型', item.receiptType?.label ?? '—'),
-      _Fact('收货 / 回厂单', item.receiptBillNo ?? '—'),
-      _Fact('订货单', item.orderBillNo ?? '—'),
-      _Fact('供应商 / 委外商', item.supplierName ?? '—'),
-      _Fact('货品', item.goodsLabel.isEmpty ? '—' : item.goodsLabel),
-      _Fact('任务版本', item.version.toString()),
-    ],
-  );
-
-  Widget _buildQuantityAndAmount(ProcurementIqcRejectionCase item) => _section(
-    title: '不合格数量与来源金额',
-    icon: Icons.rule_folder_outlined,
-    description: item.priceMasked
-        ? '金额已由服务端按权限脱敏；view_all 不自动授予金额。'
-        : '来源金额保留品质记录中的名义份额。供应商实际贷项按原始凭证另行填写和确认。',
-    children: [
-      _Fact('不合格基础量', item.failedBaseQty ?? '—'),
-      _Fact('不合格单据量', '${item.failedQty ?? '—'} ${item.unitName ?? ''}'.trim()),
-      _Fact('原币金额', item.originalAmountLabel(item.failedAmountOriginal)),
-      _Fact(
-        '本币金额',
-        item.priceMasked ? '***' : item.failedAmountLocal ?? '金额未生成，按来源记录保留份额',
-      ),
-    ],
-  );
 
   Widget _buildReturnAndCredit(ProcurementIqcRejectionCase item) => _section(
     title: '实物退回与财务闭环',

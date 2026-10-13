@@ -113,7 +113,7 @@ void main() {
     expect(find.byType(MasterDataTableView<FinanceDocItem>), findsOneWidget);
     await expectUtenHeaderCollapses(
       tester,
-      headerAnchor: find.text('单据号'),
+      headerAnchor: find.text('SK-20260911-001'),
       bodyAnchor: find.byType(MasterDataTableView<FinanceDocItem>),
     );
     expect(find.byType(MasterDataTableView<FinanceDocItem>), findsOneWidget);
@@ -125,7 +125,7 @@ void main() {
 
     expect(find.byType(UtenCollapsingHeaderScrollView), findsNothing);
     expect(find.byType(MasterDataTableView<FinanceDocItem>), findsNothing);
-    expect(find.text('单据号'), findsOneWidget);
+    expect(find.text('SK-20260911-001'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

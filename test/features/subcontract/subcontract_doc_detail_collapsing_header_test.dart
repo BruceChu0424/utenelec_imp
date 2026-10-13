@@ -109,7 +109,7 @@ void main() {
     );
     await expectUtenHeaderCollapses(
       tester,
-      headerAnchor: find.text('单据号'),
+      headerAnchor: find.text('WR-2026-777'),
       bodyAnchor: find.byType(MasterDataTableView<SubcontractDocItem>),
     );
     expect(

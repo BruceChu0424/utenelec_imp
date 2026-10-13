@@ -15,8 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/cards/uten_card.dart';
-import '../../../components/data_display/uten_info_row.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
@@ -430,66 +429,54 @@ class _BatchDetailState extends State<_BatchDetail> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          UtenCard(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-            child: Column(
-              children: [
-                UtenInfoRow(label: '工资月份', value: batch.periodLabel),
-                UtenInfoRow(label: '生成范围', value: batch.scopeLabel),
-                UtenInfoRow(
-                  label: '状态',
-                  value: null,
-                  valueWidget: Align(
-                    alignment: Alignment.centerRight,
-                    child: UtenStatusBadge(
-                      label: batch.status.label,
-                      type: batch.status.badgeType,
-                    ),
-                  ),
-                ),
-                UtenInfoRow(label: '员工人数', value: '${batch.headcount} 人'),
-                UtenInfoRow(
-                  label: '应发合计',
-                  value: financeLocalMoneyWithUnitSuffix(
-                    batch.grossIncome.toStringAsFixed(2),
-                  ),
-                ),
-                UtenInfoRow(
-                  label: '扣除合计',
-                  value: financeLocalMoneyWithUnitSuffix(
-                    batch.totalDeduction.toStringAsFixed(2),
-                  ),
-                ),
-                UtenInfoRow(
-                  label: '实发合计',
-                  value: financeLocalMoneyWithUnitSuffix(
-                    batch.netIncome.toStringAsFixed(2),
-                  ),
-                  isImportant: true,
-                  showDivider: false,
-                ),
-              ],
+          UtenDetailSummaryCard(
+            key: ValueKey('payroll-batch-summary-${batch.id}'),
+            heading: Text('${batch.periodLabel} · ${batch.scopeLabel}'),
+            status: UtenStatusBadge(
+              label: batch.status.label,
+              type: batch.status.badgeType,
             ),
-          ),
-          if (batch.rejectReason != null &&
-              batch.rejectReason!.trim().isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            UtenCard(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.error_outline, color: theme.colorScheme.error),
-                  const SizedBox(width: UtenSpacing.s8),
-                  Expanded(
-                    child: Text(
-                      '驳回原因：${batch.rejectReason}',
-                      style: TextStyle(color: theme.colorScheme.error),
-                    ),
-                  ),
-                ],
+            primary: [
+              UtenSummaryField(label: '员工人数', value: '${batch.headcount} 人'),
+              UtenSummaryField(
+                label: '应发合计',
+                value: financeLocalMoneyWithUnitSuffix(
+                  batch.grossIncome.toStringAsFixed(2),
+                ),
               ),
-            ),
-          ],
+              UtenSummaryField(
+                label: '扣除合计',
+                value: financeLocalMoneyWithUnitSuffix(
+                  batch.totalDeduction.toStringAsFixed(2),
+                ),
+              ),
+              UtenSummaryField(
+                label: '实发合计',
+                value: financeLocalMoneyWithUnitSuffix(
+                  batch.netIncome.toStringAsFixed(2),
+                ),
+                emphasis: true,
+                danger: true,
+              ),
+            ],
+            notices: [
+              if (batch.rejectReason != null &&
+                  batch.rejectReason!.trim().isNotEmpty)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.error_outline, color: theme.colorScheme.error),
+                    const SizedBox(width: UtenSpacing.s8),
+                    Expanded(
+                      child: Text(
+                        '驳回原因：${batch.rejectReason}',
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
           const SizedBox(height: UtenSpacing.s16),
           const UtenSectionHeader(title: '员工工资明细'),
           const SizedBox(height: UtenSpacing.s8),

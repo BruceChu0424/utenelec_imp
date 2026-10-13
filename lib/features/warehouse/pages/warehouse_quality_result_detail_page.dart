@@ -9,6 +9,7 @@ import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
@@ -608,108 +609,99 @@ class _WarehouseQualityResultDetailPageState
 
   Widget _headerCard(WarehouseQualityResultDetail detail) {
     final theme = Theme.of(context);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return UtenDetailSummaryCard(
+      heading: UtenSummaryField(
+        label: '单据号',
+        value: detail.billNo ?? detail.receiptId,
+        emphasis: true,
+        inline: true,
+      ),
+      status: Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          UtenStatusBadge(
+            label: detail.workStatus.label,
+            type: warehouseQualityWorkStatusBadgeType(detail.workStatus),
+            icon: _workStatusIcon(detail.workStatus),
+          ),
+          UtenStatusBadge(
+            label: detail.receiptType.label,
+            type: UtenStatusBadgeType.accent,
+          ),
+          UtenStatusBadge(
+            label: detail.qualityStatusLabel,
+            type: detail.qualityStatus == 'REVERSED'
+                ? UtenStatusBadgeType.danger
+                : UtenStatusBadgeType.info,
+          ),
+        ],
+      ),
+      primary: [
+        UtenSummaryField(
+          label: '待入库批次',
+          value: '${detail.pendingSliceCount} 个放行批次',
+          emphasis: true,
+        ),
+        UtenSummaryField(
+          label: '不合格待退回',
+          value: '${detail.pendingReturnCount} 笔',
+          emphasis: true,
+          danger: detail.pendingReturnCount > 0,
+        ),
+      ],
+      facts: [
+        UtenSummaryField(label: '收货日期', value: detail.billDate),
+        if (detail.preStockedLineCount > 0 || detail.canPreStockIn)
+          UtenSummaryField(
+            label: '先入库后检',
+            value: detail.preStockedLineCount > 0
+                ? '已上架 ${detail.preStockedLineCount} 行 · 合格自动转正'
+                : '可先入库上架(右下角按钮)',
+          ),
+      ],
+      notices: [
+        Wrap(
+          spacing: UtenSpacing.s16,
+          runSpacing: UtenSpacing.s4,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Wrap(
-              spacing: UtenSpacing.s8,
-              runSpacing: UtenSpacing.s8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                UtenStatusBadge(
-                  label: detail.workStatus.label,
-                  type: warehouseQualityWorkStatusBadgeType(detail.workStatus),
-                  icon: _workStatusIcon(detail.workStatus),
-                ),
-                UtenStatusBadge(
-                  label: detail.receiptType.label,
-                  type: UtenStatusBadgeType.accent,
-                ),
-                UtenStatusBadge(
-                  label: detail.qualityStatusLabel,
-                  type: detail.qualityStatus == 'REVERSED'
-                      ? UtenStatusBadgeType.danger
-                      : UtenStatusBadgeType.info,
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
             Text(
-              detail.billNo ?? detail.receiptId,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
+              '品质结论',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final width = constraints.maxWidth >= 900
-                    ? (constraints.maxWidth - UtenSpacing.s24) / 3
-                    : constraints.maxWidth >= 560
-                    ? (constraints.maxWidth - UtenSpacing.s12) / 2
-                    : constraints.maxWidth;
-                return Wrap(
-                  spacing: UtenSpacing.s12,
-                  runSpacing: UtenSpacing.s12,
-                  children: [
-                    SizedBox(
-                      width: width,
-                      child: _InfoTile(
-                        label: '收货日期',
-                        value: detail.billDate ?? '—',
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: _InfoTile(
-                        label: '品质结论',
-                        value:
-                            '合格 ${detail.passedLineCount} 行 · 不合格 '
-                            '${detail.failedLineCount} 行 · 待检 '
-                            '${detail.openItemCount} 行 / 共 '
-                            '${detail.goodsLineCount} 行',
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: _InfoTile(
-                        label: '待入库批次',
-                        value: detail.pendingSliceCount > 0
-                            ? '${detail.pendingSliceCount} 个放行批次'
-                            : '无',
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: _InfoTile(
-                        label: '不合格待退回',
-                        value: detail.pendingReturnCount > 0
-                            ? '${detail.pendingReturnCount} 笔'
-                            : '无',
-                      ),
-                    ),
-                    SizedBox(
-                      width: width,
-                      child: _InfoTile(
-                        label: '先入库后检',
-                        value: detail.preStockedLineCount > 0
-                            ? '已上架 ${detail.preStockedLineCount} 行 · 合格自动转正'
-                            : detail.canPreStockIn
-                            ? '可先入库上架(右下角按钮)'
-                            : '未启用（原流程）',
-                      ),
-                    ),
-                  ],
-                );
-              },
+            Text(
+              '合格 ${detail.passedLineCount} 行',
+              style: theme.textTheme.bodyMedium,
+            ),
+            Text(
+              '不合格 ${detail.failedLineCount} 行',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: detail.failedLineCount > 0
+                    ? theme.colorScheme.error
+                    : null,
+              ),
+            ),
+            Text(
+              '待检 ${detail.openItemCount} 行',
+              style: theme.textTheme.bodyMedium,
+            ),
+            Text(
+              '共 ${detail.goodsLineCount} 行',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
-      ),
+      ],
+      details: [
+        if (detail.preStockedLineCount == 0 && !detail.canPreStockIn)
+          const UtenSummaryField(label: '先入库后检', value: '未启用（原流程）'),
+      ],
     );
   }
 
@@ -1065,31 +1057,6 @@ class _MessagePanel extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  const _InfoTile({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: UtenSpacing.s4),
-        Text(value, style: theme.textTheme.bodyMedium),
-      ],
     );
   }
 }

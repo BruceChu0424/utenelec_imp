@@ -32,6 +32,7 @@ import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_review_input_cell.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -47,7 +48,6 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
@@ -1022,8 +1022,6 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           ),
           const SizedBox(height: UtenSpacing.s12),
         ],
-        _statusStrip(theme, l10n, review),
-        const SizedBox(height: UtenSpacing.s12),
         if (!review.hasFinanceActions) ...[
           UtenInlineNotice(message: l10n.quoteFinanceReadOnlyNotice),
           const SizedBox(height: UtenSpacing.s12),
@@ -1086,80 +1084,43 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       statusBucket: review.statusBucket,
       financeReturnReason: review.financeReturnReason,
     );
-    final (color, icon, text) = switch (stage) {
+    final (type, icon, text) = switch (stage) {
       SalesQuoteStage.approved when review.convertedOrderNo != null => (
-        theme.colorScheme.primary,
+        UtenStatusBadgeType.success,
         Icons.verified_rounded,
-        l10n.quoteFinanceStripConverted(review.convertedOrderNo!),
+        '已转订货单',
       ),
       SalesQuoteStage.approved => (
-        theme.colorScheme.primary,
+        UtenStatusBadgeType.success,
         Icons.verified_rounded,
-        l10n.quoteFinanceStripConfirmed(
-          review.financeConfirmedByName ?? '—',
-          utenFmtIsoTime(review.financeConfirmedAt),
-        ),
+        '已核价',
       ),
       SalesQuoteStage.financeRejected => (
-        theme.colorScheme.error,
+        UtenStatusBadgeType.danger,
         Icons.undo_rounded,
-        l10n.quoteFinanceStripReturned(review.financeReturnReason ?? '—'),
+        '财务已退回',
       ),
       SalesQuoteStage.draft => (
-        theme.colorScheme.onSurfaceVariant,
+        UtenStatusBadgeType.neutral,
         Icons.edit_note_rounded,
         l10n.quoteFinanceStripDraft,
       ),
       SalesQuoteStage.reversed => (
-        theme.colorScheme.onSurfaceVariant,
+        UtenStatusBadgeType.neutral,
         Icons.block_rounded,
         l10n.quoteFinanceStripReversed,
       ),
       _ => (
-        theme.colorScheme.tertiary,
+        UtenStatusBadgeType.warning,
         Icons.pending_actions_rounded,
         l10n.quoteFinanceStripPending,
       ),
     };
-    return Container(
+    return UtenStatusBadge(
       key: const Key('quote-finance-status-strip'),
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: UtenRadius.lgAll,
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(width: UtenSpacing.s12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  review.billNo,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: UtenSpacing.s2),
-                Text(
-                  text,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: color,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          UtenStatusBadge(
-            label: l10n.quoteFinanceRevisionBadge(review.reviewRevision),
-            type: UtenStatusBadgeType.neutral,
-          ),
-        ],
-      ),
+      label: text,
+      type: type,
+      icon: icon,
     );
   }
 
@@ -1168,22 +1129,8 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     AppLocalizations l10n,
     SalesQuoteFinanceReview review,
   ) {
-    Widget kv(String label, String? value) => Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 96,
-          child: Text(
-            label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(child: Text((value?.isNotEmpty ?? false) ? value! : '—')),
-      ],
-    );
+    Widget kv(String label, String? value) =>
+        UtenSummaryField(label: label, value: value);
     final editable = _editable;
     final settlementItems = [
       ..._settlementItems,
@@ -1194,104 +1141,121 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           label: review.settlementMethodName ?? '—',
         ),
     ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return UtenDetailSummaryCard(
+      heading: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(review.billNo),
+          Text(
+            '${review.clientName ?? '—'}${review.clientCode == null ? '' : '(${review.clientCode})'}',
+            style: theme.textTheme.titleSmall,
+          ),
+        ],
+      ),
+      status: _statusStrip(theme, l10n, review),
+      primary: [
+        UtenSummaryField(
+          label: '报价金额（已保存）',
+          value: financeMoneyWithUnitSuffix(
+            review.totalOriginal,
+            currencyName: review.currencyName,
+            fullCurrencyName: true,
+          ),
+          emphasis: true,
+          danger: true,
+        ),
+      ],
+      facts: [
+        kv(l10n.quoteFinanceFieldSeller, review.sellerName),
+        kv(l10n.quoteFinanceFieldBillDate, review.billDate),
+        kv(l10n.quoteFinanceFieldDeliverDate, review.deliverDate),
+        kv('核价版本', l10n.quoteFinanceRevisionBadge(review.reviewRevision)),
+        if (review.convertedOrderNo != null)
+          kv('核价结果', l10n.quoteFinanceStripConverted(review.convertedOrderNo!)),
+        if (review.clientFileCurrency != null)
+          kv(
+            l10n.quoteFinanceFieldFileCurrency,
+            review.financeRateMissing
+                ? l10n.quoteFinanceFileRateMissing(
+                    financeCurrencyText(name: review.clientFileCurrency),
+                  )
+                : review.financeRate == null
+                ? financeCurrencyDisplayLabel(name: review.clientFileCurrency)
+                : l10n.quoteFinanceFileRateHint(
+                    financeCurrencyText(name: review.clientFileCurrency),
+                    financeExactTrimmed(review.financeRate) ??
+                        review.financeRate!,
+                  ),
+          ),
+      ],
+      details: [
+        UtenSummaryFacts(
           children: [
-            Text(
-              l10n.quoteFinanceInfoTitle,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+            kv(l10n.quoteFinanceFieldMaker, review.makerName),
+            kv(
+              l10n.quoteFinanceFieldSubmittedAt,
+              review.submittedAt == null
+                  ? null
+                  : utenFmtIsoTime(review.submittedAt),
+            ),
+            kv(l10n.quoteFinanceFieldContractNo, review.contractNo),
+            kv(l10n.quoteFinanceFieldRemark, review.remark),
+            if (review.financeConfirmedAt != null)
+              kv(
+                '核价记录',
+                l10n.quoteFinanceStripConfirmed(
+                  review.financeConfirmedByName ?? '—',
+                  utenFmtIsoTime(review.financeConfirmedAt),
+                ),
               ),
+          ],
+        ),
+      ],
+      notices: [
+        if (review.financeReturnReason != null)
+          UtenInlineNotice(
+            level: UtenInlineNoticeLevel.error,
+            message: l10n.quoteFinanceStripReturned(
+              review.financeReturnReason!,
             ),
-            const SizedBox(height: UtenSpacing.s8),
-            UtenFormGrid(
-              children: [
-                kv(
-                  l10n.quoteFinanceFieldClient,
-                  review.clientCode == null
-                      ? review.clientName
-                      : '${review.clientName ?? '—'}(${review.clientCode})',
-                ),
-                kv(l10n.quoteFinanceFieldSeller, review.sellerName),
-                kv(l10n.quoteFinanceFieldMaker, review.makerName),
-                kv(l10n.quoteFinanceFieldBillDate, review.billDate),
-                kv(
-                  l10n.quoteFinanceFieldSubmittedAt,
-                  review.submittedAt == null
-                      ? null
-                      : utenFmtIsoTime(review.submittedAt),
-                ),
-                kv(l10n.quoteFinanceFieldDeliverDate, review.deliverDate),
-                kv(l10n.quoteFinanceFieldContractNo, review.contractNo),
-                kv(
-                  l10n.quoteFinanceFieldCurrency,
-                  financeCurrencyDisplayLabel(name: review.currencyName),
-                ),
-                if (review.clientFileCurrency != null)
-                  kv(
-                    l10n.quoteFinanceFieldFileCurrency,
-                    review.financeRateMissing
-                        ? l10n.quoteFinanceFileRateMissing(
-                            financeCurrencyText(
-                              name: review.clientFileCurrency,
-                            ),
-                          )
-                        : review.financeRate == null
-                        ? financeCurrencyDisplayLabel(
-                            name: review.clientFileCurrency,
-                          )
-                        : l10n.quoteFinanceFileRateHint(
-                            financeCurrencyText(
-                              name: review.clientFileCurrency,
-                            ),
-                            financeExactTrimmed(review.financeRate) ??
-                                review.financeRate!,
-                          ),
-                  ),
-                kv(l10n.quoteFinanceFieldRemark, review.remark),
-              ],
+          ),
+        UtenSummaryFacts(
+          children: [
+            UtenDateField(
+              key: const Key('quote-finance-valid-until'),
+              label: l10n.quoteFinanceFieldValidUntil,
+              value: _validUntil,
+              enabled: editable,
+              onChanged: (value) => setState(() => _validUntil = value),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            UtenFormGrid(
-              children: [
-                UtenDateField(
-                  key: const Key('quote-finance-valid-until'),
-                  label: l10n.quoteFinanceFieldValidUntil,
-                  value: _validUntil,
-                  enabled: editable,
-                  onChanged: (value) => setState(() => _validUntil = value),
+            UtenDropdownField(
+              key: const Key('quote-finance-settlement'),
+              label: l10n.quoteFinanceFieldSettlement,
+              value: _settlementId,
+              items: settlementItems,
+              enabled: editable,
+              hintText: l10n.quoteFinanceSettlementNone,
+              onChanged: (value) => setState(() => _settlementId = value),
+            ),
+            TextField(
+              key: const Key('quote-finance-remark'),
+              controller: _financeRemark,
+              enabled: editable,
+              maxLength: 500,
+              onChanged: (_) => setState(() {}),
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  labelText: l10n.quoteFinanceFieldFinanceRemark,
+                  hintText: l10n.quoteFinanceFinanceRemarkHint,
+                  counterText: '',
                 ),
-                UtenDropdownField(
-                  key: const Key('quote-finance-settlement'),
-                  label: l10n.quoteFinanceFieldSettlement,
-                  value: _settlementId,
-                  items: settlementItems,
-                  enabled: editable,
-                  hintText: l10n.quoteFinanceSettlementNone,
-                  onChanged: (value) => setState(() => _settlementId = value),
-                ),
-                TextField(
-                  key: const Key('quote-finance-remark'),
-                  controller: _financeRemark,
-                  enabled: editable,
-                  maxLength: 500,
-                  onChanged: (_) => setState(() {}),
-                  decoration: UtenInputDecoration(
-                    InputDecoration(
-                      labelText: l10n.quoteFinanceFieldFinanceRemark,
-                      hintText: l10n.quoteFinanceFinanceRemarkHint,
-                      counterText: '',
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
-      ),
+      ],
     );
   }
 

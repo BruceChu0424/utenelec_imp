@@ -50,8 +50,8 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -109,6 +109,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       : SalesDocConfig.by(widget.docType);
   SalesDocDetail? _detail;
   bool _loading = false;
+  bool _summaryExpanded = false;
   bool _busy = false;
   String? _error;
   List<SalesReturnQualityItem>? _returnQualitySnapshot;
@@ -151,6 +152,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       return;
     }
     ++_viewEpoch;
+    _summaryExpanded = false;
     _detail = null;
     _myLocation = null;
     _busy = false;
@@ -1390,7 +1392,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                               widget.docType.pathSegment,
                               widget.id,
                             ),
-                            _headerCard(theme, names),
+                            _headerCard(
+                              theme,
+                              names,
+                              canViewMoneySummary: canViewMoneySummary,
+                            ),
                             if (_cfg.type == SalesDocType.order &&
                                 _detail!.financeConfirmed) ...[
                               const SizedBox(height: UtenSpacing.s12),
@@ -1407,13 +1413,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                                     !_detail!.stopped,
                                 onChanged: _load,
                                 shipmentActions: _shipmentActions,
-                              ),
-                            ],
-                            if (_cfg.type == SalesDocType.order &&
-                                canViewMoneySummary) ...[
-                              const SizedBox(height: UtenSpacing.s12),
-                              SalesOrderMoneySummaryCard(
-                                salesOrderId: widget.id,
                               ),
                             ],
                             if (_cfg.type == SalesDocType.order &&
@@ -1673,7 +1672,11 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     );
   }
 
-  Widget _headerCard(ThemeData theme, SalesMasterNameService names) {
+  Widget _headerCard(
+    ThemeData theme,
+    SalesMasterNameService names, {
+    required bool canViewMoneySummary,
+  }) {
     final d = _detail!;
     // 报价核价字段与订单「来源报价」徽章走 arb；其它单据不取本地化实例。
     final l10n = _isQuote || d.sourceQuoteId != null
@@ -1695,9 +1698,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
       _KV('客户', names.client(d.clientId)),
       if (_cfg.hasWarehouse) _KV('仓库', names.warehouse(d.warehouseId)),
-      // 币种加粗红色（一眼看清结算币种，避免外币单看错币种族金额）。
-      if (_cfg.hasCurrency)
-        _KV('币种', names.currency(d.currencyId), highlight: true),
+      if (_cfg.hasCurrency &&
+          (d.priceMasked ||
+              d.shipmentWorkflow.isFree ||
+              (_cfg.type != SalesDocType.order &&
+                  !d.shipmentWorkflow.isDirect) ||
+              (d.exactDecimals['totalOriginal'] == null &&
+                  d.totalOriginal == null)))
+        _KV('单据币种', names.currency(d.currencyId)),
       if (_cfg.hasCurrency && _cfg.hasExchangeRate && d.exchangeRate != null)
         _KV('汇率', d.exchangeRate?.toString()),
       // 业务员/发货人：按 id 经员工字典解析姓名（_load 已预载）。
@@ -1766,12 +1774,14 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       // 价格脱敏（SOP §三8）：无 sales_order:price:view 时价格族渲染 ***
       if (_cfg.type == SalesDocType.order)
         _KV(
-          '订单金额($orderCurrency)',
+          '订单金额',
           d.priceMasked
               ? '***'
-              : financeExactMoneyDisplay(
+              : financeMoneyWithUnitSuffix(
                   d.exactDecimals['totalOriginal'] ??
                       financeExactDecimal(d.totalOriginal),
+                  currencyName: orderCurrency,
+                  fullCurrencyName: true,
                 ),
         )
       else if (d.shipmentWorkflow.isDirect)
@@ -1781,16 +1791,23 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
               ? '不收费（货款 0）'
               : d.priceMasked
               ? '***'
-              : '${financeExactTrimmed(d.exactDecimals['totalOriginal'] ?? d.totalOriginal?.toString()) ?? '—'}（所选币种）',
+              : financeMoneyWithUnitSuffix(
+                  d.exactDecimals['totalOriginal'] ??
+                      d.totalOriginal?.toString(),
+                  currencyName: resolvedCurrency,
+                  fullCurrencyName: true,
+                ),
         )
       else
         _KV(
           '合计(本币)',
           d.priceMasked
               ? '***'
-              : financeExactMoneyDisplay(
+              : financeMoneyWithUnitSuffix(
                   d.exactDecimals['totalLocal'] ??
                       financeExactDecimal(d.totalLocal),
+                  currencyName: '人民币',
+                  fullCurrencyName: true,
                 ),
         ),
       if (d.shipmentWorkflow.isDirect)
@@ -1957,12 +1974,85 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
           ),
         ),
     ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: UtenFormGrid(
+    const primaryLabels = {'订单金额', '本次货款', '合计(本币)'};
+    const factLabels = {
+      '日期',
+      '客户',
+      '仓库',
+      '业务员',
+      '有效期',
+      '交货日',
+      '发运策略',
+      '财务确认',
+      '销售确认',
+      '发货用途',
+      '财务审核',
+      '仓库作业',
+      '分批确认',
+    };
+    const noticeLabels = {
+      '只读原因',
+      '财务驳回',
+      '财务退回',
+      '驳回原因',
+      '退货反审限制',
+      '取消限制',
+      '反审限制',
+      '编辑限制',
+      '仓库异常',
+      '仓库下一步',
+      '不收费原因',
+    };
+    final statusRow = rows.firstWhere((row) => row.label == '状态');
+    Widget summaryCard(
+      List<Widget> moneyMetrics,
+      List<Widget> moneyDetails,
+      List<Widget> moneyNotices,
+    ) => UtenDetailSummaryCard(
+      expanded: _summaryExpanded,
+      onExpandedChanged: (value) => setState(() => _summaryExpanded = value),
+      heading: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(d.billNo ?? '—'),
+          if (_cfg.hasClient)
+            Text(names.client(d.clientId), style: theme.textTheme.titleSmall),
+        ],
+      ),
+      status: statusRow.badge,
+      primary: [
+        for (final r in rows)
+          if (primaryLabels.contains(r.label)) _kvRow(theme, r),
+        ...moneyMetrics,
+        if (_cfg.type == SalesDocType.order)
+          UtenSummaryField(label: '交货日', value: d.deliverDate, emphasis: true),
+      ],
+      facts: [
+        for (final r in rows)
+          if (factLabels.contains(r.label) &&
+              r.label != '客户' &&
+              !(_cfg.type == SalesDocType.order && r.label == '交货日'))
+            _kvRow(theme, r),
+      ],
+      notices: [
+        for (final r in rows)
+          if (noticeLabels.contains(r.label) || r.highlight)
+            _kvRow(theme, r, inline: true),
+        ...moneyNotices,
+      ],
+      details: [
+        UtenSummaryFacts(
           children: [
-            for (final r in rows) _kvRow(theme, r),
+            for (final r in rows)
+              if (r.label != '单据号' &&
+                  r.label != '状态' &&
+                  !primaryLabels.contains(r.label) &&
+                  !factLabels.contains(r.label) &&
+                  !noticeLabels.contains(r.label) &&
+                  !r.highlight)
+                _kvRow(theme, r),
             if ((_cfg.type.isShipment ||
                     _cfg.type == SalesDocType.otherShipment) &&
                 (d.sourceOrderId != null ||
@@ -1998,38 +2088,41 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
               SourceDocLink(label: '物流单号', billNo: d.logisticsNo),
           ],
         ),
-      ),
+        ...moneyDetails,
+      ],
     );
+    if (_cfg.type == SalesDocType.order && canViewMoneySummary) {
+      return SalesOrderMoneySummaryCard(
+        salesOrderId: widget.id,
+        showOrderTotal: false,
+        summaryBuilder: (context, metrics, details, notices) =>
+            summaryCard(metrics, details, notices),
+      );
+    }
+    return summaryCard(const [], const [], const []);
   }
 
-  Widget _kvRow(ThemeData theme, _KV r) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 84,
-          child: Text(
-            r.label,
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        const SizedBox(width: UtenSpacing.s8),
-        Expanded(
-          child:
-              r.badge ??
-              Text(
-                r.value ?? '—',
-                style: r.highlight
-                    ? theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: theme.colorScheme.error,
-                      )
-                    : null,
-              ),
-        ),
-      ],
+  Widget _kvRow(ThemeData theme, _KV r, {bool? inline}) {
+    if (r.badge != null) {
+      return Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s4,
+        children: [
+          Text(r.label, style: theme.textTheme.labelMedium),
+          r.badge!,
+        ],
+      );
+    }
+    return UtenSummaryField(
+      label: r.label,
+      value: r.value,
+      inline: inline,
+      danger: r.highlight || r.label == '订单金额' || r.label == '本次货款',
+      emphasis:
+          r.highlight ||
+          r.label == '订单金额' ||
+          r.label == '本次货款' ||
+          r.label == '合计(本币)',
     );
   }
 

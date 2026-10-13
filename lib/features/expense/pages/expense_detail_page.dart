@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -183,8 +184,6 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
                             ).expenseFlowInvoiceGuide,
                           ),
                         ),
-                      const SizedBox(height: UtenSpacing.s16),
-                      _infoCard(context, claim),
                       const SizedBox(height: UtenSpacing.s16),
                       ExpenseSubmissionChangeSummary(claim: claim),
                       _itemsSection(context, claim),
@@ -366,62 +365,6 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
     );
   }
 
-  Widget _infoCard(BuildContext context, ExpenseClaim claim) {
-    final rows = <(String, String)>[
-      ('报销单号', claim.claimNo),
-      ('申请人', claim.applicantName),
-      ('部门', claim.departmentName ?? '—'),
-      ('创建时间', _fmtDateTime(claim.createdAt)),
-      if (claim.submittedAt != null) ('提交时间', _fmtDateTime(claim.submittedAt!)),
-      if (claim.approvedAt != null)
-        (
-          '审批通过',
-          '${claim.approvedByName ?? '—'} · ${_fmtDateTime(claim.approvedAt!)}',
-        ),
-    ];
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s16,
-          vertical: UtenSpacing.s8,
-        ),
-        child: Column(
-          children: [
-            for (var i = 0; i < rows.length; i++)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 96,
-                      child: Text(
-                        rows[i].$1,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        rows[i].$2,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: rows[i].$1 == '报销单号'
-                              ? FontWeight.w600
-                              : null,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _itemsSection(BuildContext context, ExpenseClaim claim) {
     final revision = ExpenseSubmissionRevision.fromClaim(claim);
     return Column(
@@ -529,7 +472,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   }
 }
 
-/// 头卡：状态徽章 + 金额大字 + 大写 + 驳回/打款横幅。
+/// 头部合并报销金额与申请信息；驳回及付款结果始终可见。
 class _HeroCard extends StatelessWidget {
   const _HeroCard({required this.claim});
 
@@ -537,95 +480,86 @@ class _HeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return UtenDetailSummaryCard(
+      key: ValueKey('expense-summary-${claim.id}'),
+      heading: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (expenseIsSubmittedModification(claim)) const Text('报销单修改'),
+          Text('${claim.claimNo} · ${claim.title}'),
+        ],
+      ),
+      status: UtenStatusBadge(
+        label: claim.status.label,
+        type: _statusBadgeType(claim.status),
+      ),
+      primary: [
+        UtenSummaryField(
+          label: '报销总额',
+          value: '${claim.totalAmount.toStringAsFixed(2)} 元',
+          emphasis: true,
+          danger: true,
+        ),
+      ],
+      facts: [
+        UtenSummaryField(label: '申请人', value: claim.applicantName),
+        UtenSummaryField(label: '部门', value: claim.departmentName),
+      ],
+      details: [
+        UtenSummaryFacts(
           children: [
-            if (expenseIsSubmittedModification(claim)) ...[
-              Text(
-                '报销单修改',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-            ],
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    claim.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                UtenStatusBadge(
-                  label: claim.status.label,
-                  type: _statusBadgeType(claim.status),
-                ),
-              ],
+            UtenSummaryField(
+              label: '创建时间',
+              value: _fmtDateTime(claim.createdAt),
             ),
-            const SizedBox(height: UtenSpacing.s12),
-            SizedBox(
-              width: double.infinity,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '${claim.totalAmount.toStringAsFixed(2)} 元',
-                  style: theme.textTheme.displaySmall?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
+            if (claim.submittedAt != null)
+              UtenSummaryField(
+                label: '提交时间',
+                value: _fmtDateTime(claim.submittedAt!),
               ),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              '${AppLocalizations.of(context).expenseFlowCapital}: ${rmbCapital(claim.totalAmount)}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+            if (claim.approvedAt != null)
+              UtenSummaryField(
+                label: '审批通过',
+                value:
+                    '${claim.approvedByName ?? '—'} · ${_fmtDateTime(claim.approvedAt!)}',
               ),
-            ),
-            if (claim.status == ExpenseClaimStatus.rejected &&
-                claim.rejectReason != null) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              _banner(
-                context,
-                icon: Icons.warning_amber_rounded,
-                color: UtenColors.error,
-                title:
-                    '已驳回'
-                    '${claim.rejectedByName == null ? '' : '（${claim.rejectedByName}）'}'
-                    '：${claim.rejectReason}',
-                hint: '点右下「编辑」修订后重新提交。',
-              ),
-            ],
-            if (claim.status == ExpenseClaimStatus.paid) ...[
-              const SizedBox(height: UtenSpacing.s12),
-              _banner(
-                context,
-                icon: Icons.payments_outlined,
-                color: UtenColors.teal600,
-                title:
-                    '已付款：'
-                    '${claim.paymentAccountName ?? '—'} · '
-                    '${claim.paymentExpenseStyleName ?? '—'} · '
-                    '付款日期 ${claim.paymentDate == null ? '—' : _fmtDate(claim.paymentDate!)}',
-                hint:
-                    '出纳 ${claim.paidByName ?? '—'}'
-                    '${claim.financeExpenseId == null ? '' : ' · 关联财务费用单已生成'}',
-              ),
-            ],
           ],
         ),
-      ),
+        UtenSummaryField(
+          label: AppLocalizations.of(context).expenseFlowCapital,
+          value: rmbCapital(claim.totalAmount),
+        ),
+      ],
+      notices: [
+        if (claim.status == ExpenseClaimStatus.rejected &&
+            claim.rejectReason != null)
+          _banner(
+            context,
+            icon: Icons.warning_amber_rounded,
+            color: UtenColors.error,
+            title:
+                '已驳回'
+                '${claim.rejectedByName == null ? '' : '（${claim.rejectedByName}）'}'
+                '：${claim.rejectReason}',
+            hint: '点右下「编辑」修订后重新提交。',
+          ),
+        if (claim.status == ExpenseClaimStatus.paid)
+          _banner(
+            context,
+            icon: Icons.payments_outlined,
+            color: UtenColors.teal600,
+            title:
+                '已付款：'
+                '${claim.paymentAccountName ?? '—'} · '
+                '${claim.paymentExpenseStyleName ?? '—'} · '
+                '付款日期 ${claim.paymentDate == null ? '—' : _fmtDate(claim.paymentDate!)}',
+            hint:
+                '出纳 ${claim.paidByName ?? '—'}'
+                '${claim.financeExpenseId == null ? '' : ' · 关联财务费用单已生成'}',
+          ),
+      ],
     );
   }
 

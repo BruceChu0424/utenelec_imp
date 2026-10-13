@@ -173,14 +173,19 @@ String partyNetText(
   String? netOriginal, {
   String? currencyName,
   required PartyBalanceSide side,
+  bool fullCurrencyName = false,
 }) {
   final net = financeExactDecimal(netOriginal);
   if (net == null) return '—';
   if (_sign(net) >= 0) {
-    return financeMoneyWithUnitSuffix(net, currencyName: currencyName);
+    return financeMoneyWithUnitSuffix(
+      net,
+      currencyName: currencyName,
+      fullCurrencyName: fullCurrencyName,
+    );
   }
   final surplus = side == PartyBalanceSide.customer ? '预收有余' : '可抵有余';
-  return '$surplus ${financeMoneyWithUnitSuffix(net.substring(1), currencyName: currencyName)}';
+  return '$surplus ${financeMoneyWithUnitSuffix(net.substring(1), currencyName: currencyName, fullCurrencyName: fullCurrencyName)}';
 }
 
 int _sign(String? decimal) => financeAmountUnits(decimal)?.sign ?? 0;

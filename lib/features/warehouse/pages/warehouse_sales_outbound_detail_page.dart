@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -460,7 +461,6 @@ class _WarehouseSalesOutboundDetailPageState
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                _OutboundStatusBanner(detail: detail),
                                 if (_error != null) ...[
                                   const SizedBox(height: UtenSpacing.s8),
                                   Semantics(
@@ -584,70 +584,24 @@ class _WarehouseSalesOutboundDetailPageState
   }
 
   Widget _factsCard(WarehouseSalesOutboundDetail detail) {
+    final pendingShipment = detail.header.allows(
+      WarehouseSalesOutboundAction.confirmShipment,
+    );
     final facts = <(String, String?)>[
-      ('出货单号', detail.header.billNo),
       ('业务日期', detail.header.billDate),
       ('客户', detail.header.clientName),
       // V631：表头仓只是默认/主发出仓，实际发出仓按行在表格里选。
-      (
-        detail.header.allows(WarehouseSalesOutboundAction.confirmShipment)
-            ? '默认发出仓'
-            : '仓库',
-        detail.header.warehouseName,
-      ),
-      ('收货地址', detail.shipAddress),
+      (pendingShipment ? '默认发出仓' : '仓库', detail.header.warehouseName),
       ('联系电话', detail.contactPhone),
-      ('物流单号', detail.logisticsNo),
-      ('件数', detail.parcelCount?.toString()),
-      ('作业状态', detail.header.statusLabel),
+      if (!pendingShipment) ('物流单号', detail.logisticsNo),
+      if (!pendingShipment) ('件数', detail.parcelCount?.toString()),
+    ].where((fact) => _present(fact.$2)).toList(growable: false);
+    final additionalFacts = <(String, String?)>[
+      if (pendingShipment) ('物流单号', detail.logisticsNo),
+      if (pendingShipment) ('件数', detail.parcelCount?.toString()),
       ('出库时间', _wallTime(detail.handedOverAt)),
       ('作业更新', _wallTime(detail.warehouseWorkUpdatedAt)),
     ].where((fact) => _present(fact.$2)).toList(growable: false);
-    final theme = Theme.of(context);
-    return Card(
-      elevation: 0,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: UtenRadius.lgAll,
-        side: BorderSide(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final columns = constraints.maxWidth >= 1080
-                ? 3
-                : constraints.maxWidth >= 640
-                ? 2
-                : 1;
-            final width =
-                (constraints.maxWidth - UtenSpacing.s12 * (columns - 1)) /
-                columns;
-            return Wrap(
-              spacing: UtenSpacing.s12,
-              runSpacing: UtenSpacing.s12,
-              children: [
-                for (final fact in facts)
-                  SizedBox(
-                    width: width,
-                    child: _OutboundFact(label: fact.$1, value: fact.$2!),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _OutboundStatusBanner extends StatelessWidget {
-  const _OutboundStatusBanner({required this.detail});
-
-  final WarehouseSalesOutboundDetail detail;
-
-  @override
-  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Semantics(
       container: true,
@@ -655,73 +609,52 @@ class _OutboundStatusBanner extends StatelessWidget {
       label:
           '仓库状态 ${detail.header.statusLabel}。'
           '${WarehouseSalesOutboundStatus.nextStep(detail.header.warehouseWorkStatus)}',
-      child: Container(
+      child: UtenDetailSummaryCard(
         key: const Key('warehouse-sales-outbound-detail-boundary'),
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.5),
-          borderRadius: UtenRadius.lgAll,
+        heading: UtenSummaryField(
+          label: '出货单号',
+          value: detail.header.billNo,
+          emphasis: true,
+          inline: true,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              detail.header.statusLabel,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            Text(
-              WarehouseSalesOutboundStatus.nextStep(
-                detail.header.warehouseWorkStatus,
-              ),
-              style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
-            ),
-          ],
+        status: Text(
+          detail.header.statusLabel,
+          style: theme.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _OutboundFact extends StatelessWidget {
-  const _OutboundFact({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      label: '$label：$value',
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 64),
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLowest,
-          borderRadius: UtenRadius.mdAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+        facts: [
+          for (final fact in facts)
+            UtenSummaryField(label: fact.$1, value: fact.$2, selectable: true),
+        ],
+        notices: [
+          if (_present(detail.shipAddress))
+            UtenSummaryField(
+              label: '收货地址',
+              value: detail.shipAddress,
+              inline: true,
+              selectable: true,
             ),
-            const SizedBox(height: UtenSpacing.s4),
-            SelectableText(
-              value,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+          Text(
+            WarehouseSalesOutboundStatus.nextStep(
+              detail.header.warehouseWorkStatus,
             ),
-          ],
-        ),
+            style: theme.textTheme.bodySmall?.copyWith(height: 1.45),
+          ),
+        ],
+        details: [
+          if (additionalFacts.isNotEmpty)
+            UtenSummaryFacts(
+              children: [
+                for (final fact in additionalFacts)
+                  UtenSummaryField(
+                    label: fact.$1,
+                    value: fact.$2,
+                    selectable: true,
+                  ),
+              ],
+            ),
+        ],
       ),
     );
   }

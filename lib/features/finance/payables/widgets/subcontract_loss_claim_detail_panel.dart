@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
+import '../../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
@@ -12,6 +13,7 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/formatters/money_display.dart';
 import '../../../../shared/attachments/business_attachment_section.dart';
 import '../models/subcontract_loss_claim.dart';
 import '../repositories/subcontract_loss_claim_repository.dart';
@@ -361,56 +363,55 @@ class _SubcontractLossClaimDetailPanelState
   }
 
   Widget _summaryCard(ThemeData theme, SubcontractLossClaimSummary summary) {
-    final values = <(String, String?)>[
-      ('损耗单号', summary.wasteBillNo),
-      (
-        '委外商',
-        [
-          summary.supplierCode,
-          summary.supplierName,
-        ].whereType<String>().where((value) => value.isNotEmpty).join(' · '),
-      ),
-      ('责任状态', summary.statusLabel),
-      ('实际损耗', summary.actualLossQty),
-      ('允许损耗', summary.allowedLossQty),
-      ('超耗数量', summary.excessLossQty),
-      if (_canViewFinancialAmounts) ...[
-        ('账面损失(本币)', summary.lossBookValueLocal),
-        ('索赔额(本币)', summary.claimAmountLocal),
+    return UtenDetailSummaryCard(
+      heading: Text(summary.wasteBillNo ?? '委外超耗责任'),
+      status: Text(summary.statusLabel, style: theme.textTheme.labelMedium),
+      primary: [
+        UtenSummaryField(
+          label: '超耗数量',
+          value: summary.excessLossQty,
+          emphasis: true,
+          danger: true,
+        ),
+        if (_canViewFinancialAmounts) ...[
+          UtenSummaryField(
+            label: '账面损失',
+            value: financeMoneyWithUnitSuffix(
+              summary.lossBookValueLocal,
+              currencyName: '人民币',
+              fullCurrencyName: true,
+            ),
+            emphasis: true,
+          ),
+          UtenSummaryField(
+            label: '索赔额',
+            value: financeMoneyWithUnitSuffix(
+              summary.claimAmountLocal,
+              currencyName: '人民币',
+              fullCurrencyName: true,
+            ),
+            emphasis: true,
+          ),
+        ],
       ],
-      ('版本', summary.version.toString()),
-    ];
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        child: Wrap(
-          spacing: UtenSpacing.s16,
-          runSpacing: UtenSpacing.s8,
+      facts: [
+        UtenSummaryField(
+          label: '委外商',
+          value: [
+            summary.supplierCode,
+            summary.supplierName,
+          ].whereType<String>().where((value) => value.isNotEmpty).join(' · '),
+        ),
+        UtenSummaryField(label: '实际损耗', value: summary.actualLossQty),
+        UtenSummaryField(label: '允许损耗', value: summary.allowedLossQty),
+      ],
+      details: [
+        UtenSummaryFacts(
           children: [
-            for (final (label, value) in values)
-              SizedBox(
-                width: 230,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    Text(
-                      value?.isNotEmpty == true ? value! : '—',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            UtenSummaryField(label: '版本', value: summary.version.toString()),
           ],
         ),
-      ),
+      ],
     );
   }
 

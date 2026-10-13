@@ -24,6 +24,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_skeleton.dart';
@@ -1177,13 +1178,6 @@ class _ProductionPlanDetailPageState
                           widget.id,
                         ),
                         _summaryHeroCard(theme, names),
-                        // 草稿态额外保留产品明细摘要（含编号/颜色/来源销售订单这些
-                        // 主卡放不下的核对信息）；已审计划的权威口径在执行子计划里，
-                        // 因此仍只对草稿展示，沿用原有可见性。
-                        if (_detail!.status == kProductionStatusDraft) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          _planProductSummary(theme, names),
-                        ],
                         // ② 主体区：执行子计划卡自带标题与状态计数，不再另加区块标题。
                         const SizedBox(height: UtenSpacing.s16),
                         ProductionExecutionSegmentsCard(
@@ -1664,14 +1658,9 @@ class _ProductionPlanDetailPageState
   /// 摘要主卡（信息层级第一层）：进这张单最先要回答的六件事——
   /// 哪张单(单号) / 现在什么状态 / 做什么(产品) / 做多少(数量) / 什么时候要(交期) /
   /// 谁在做(车间)。它们独占全页最高视觉权重：单号用 titleLarge+w800 当标题，
-  /// 状态徽章钉在右上角，三个关键值用带底色的指标块 titleMedium+w800 呈现，
-  /// 这样"重点"是被字号和留白推出来的，而不是让人在等权重的字段表里自己找。
-  ///
-  /// 制单员/制单时间/跟单员/备注等审计型字段不推进任何决策，降级到卡片下半区
-  /// 的小字双列（宽屏两列、窄屏一列），内容一个不少，但不再和关键事实抢视线。
+  /// 单号、状态、数量、交期和车间常显；审计及草稿产品核对信息在同卡展开。
   Widget _summaryHeroCard(ThemeData theme, MasterNameService names) {
     final d = _detail!;
-    final scheme = theme.colorScheme;
     final items = d.items;
 
     final workshop = d.departmentId != null
@@ -1706,175 +1695,37 @@ class _ProductionPlanDetailPageState
           ].where((value) => value.isNotEmpty && value != '—').join(' · ')
         : '${names.goods(items.first.goodsId)} 等 ${items.length} 项';
 
-    return Card(
+    return UtenDetailSummaryCard(
       key: const Key('production-plan-summary-hero'),
-      child: Padding(
-        padding: const EdgeInsets.all(UtenSpacing.s16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 主色条：与折叠分区同款 4px 色条，一眼区分"这是主卡、下面是参考"。
-                Container(
-                  width: 4,
-                  height: 34,
-                  margin: const EdgeInsets.only(
-                    right: UtenSpacing.s8,
-                    top: UtenSpacing.s2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.primary,
-                    borderRadius: UtenRadius.xsAll,
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '生产计划单',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: UtenSpacing.s2),
-                      Text(
-                        (d.billNo ?? '').isEmpty ? '—' : d.billNo!,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                ProductionStatusBadge(
-                  status: d.status,
-                  closed: d.closed,
-                  stopped: d.stopped,
-                  canceled: d.canceled,
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.widgets_outlined, size: 18, color: scheme.primary),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(
-                  child: Text(
-                    productLine.isEmpty ? '—' : productLine,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      height: 1.35,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            _heroMetrics(
-              theme,
-              totalQty: totalQty,
-              delivery: delivery.isEmpty ? '—' : delivery,
-              workshop: workshop.isEmpty ? '—' : workshop,
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            Divider(height: 1, color: scheme.outlineVariant),
-            const SizedBox(height: UtenSpacing.s8),
-            _secondaryFactsGrid(theme, names),
-          ],
-        ),
+      heading: UtenSummaryField(label: '单据号', value: d.billNo, emphasis: true),
+      status: ProductionStatusBadge(
+        status: d.status,
+        closed: d.closed,
+        stopped: d.stopped,
+        canceled: d.canceled,
       ),
-    );
-  }
-
-  /// 三个关键指标（数量/交期/车间）：宽屏一行三格、窄屏逐行铺满，
-  /// 用带底色的小块把数字从字段表里"抬"出来。
-  Widget _heroMetrics(
-    ThemeData theme, {
-    required String totalQty,
-    required String delivery,
-    required String workshop,
-  }) {
-    final tiles = <(String, String, IconData)>[
-      ('计划数量', totalQty, Icons.straighten_rounded),
-      ('交货日', delivery, Icons.event_outlined),
-      ('车间', workshop, Icons.factory_outlined),
-    ];
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const gap = UtenSpacing.s8;
-        final threeUp = constraints.maxWidth >= 520;
-        final width = threeUp
-            ? (constraints.maxWidth - gap * 2) / 3
-            : constraints.maxWidth;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (final tile in tiles)
-              SizedBox(
-                width: width,
-                child: _heroMetricTile(theme, tile.$1, tile.$2, tile.$3),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _heroMetricTile(
-    ThemeData theme,
-    String label,
-    String value,
-    IconData icon,
-  ) {
-    final scheme = theme.colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s12,
-        vertical: UtenSpacing.s8,
-      ),
-      decoration: BoxDecoration(
-        color: scheme.primary.withValues(alpha: 0.06),
-        borderRadius: UtenRadius.controlAll,
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: scheme.onSurfaceVariant),
-              const SizedBox(width: UtenSpacing.s4),
-              Flexible(
-                child: Text(
-                  label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+      primary: [
+        UtenSummaryField(label: '计划数量', value: totalQty, emphasis: true),
+        UtenSummaryField(label: '交货日', value: delivery),
+        UtenSummaryField(label: '车间', value: workshop),
+      ],
+      facts: [
+        UtenSummaryField(label: '计划产品', value: productLine),
+        UtenSummaryField(label: '单据日期', value: d.billDate),
+        if (d.workerId != null || (d.workerName ?? '').isNotEmpty)
+          UtenSummaryField(
+            label: '计划负责人',
+            value: names.employeeOr(d.workerName, d.workerId),
           ),
-          const SizedBox(height: UtenSpacing.s2),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
+        if ((d.sourceDocNo ?? '').isNotEmpty)
+          UtenSummaryField(label: '来源单号', value: d.sourceDocNo),
+      ],
+      details: [
+        _secondaryFactsGrid(theme, names),
+        // 草稿产品核对信息合并到主卡展开区；已审执行口径仍在子计划中。
+        if (d.status == kProductionStatusDraft)
+          _planProductSummary(theme, names),
+      ],
     );
   }
 
@@ -1882,16 +1733,11 @@ class _ProductionPlanDetailPageState
   List<_KV> _secondaryFacts(MasterNameService names) {
     final d = _detail!;
     return <_KV>[
-      _KV('单据日期', d.billDate),
       if ((d.fStyle ?? '').isNotEmpty) _KV('生产类型', d.fStyle),
-      // 姓名优先用服务端随单给的，缺了才退回按 id 补查的结果。
-      if (d.workerId != null || (d.workerName ?? '').isNotEmpty)
-        _KV('计划负责人', names.employeeOr(d.workerName, d.workerId)),
       if (d.sellerId != null || (d.sellerName ?? '').isNotEmpty)
         _KV('跟单员', names.employeeOr(d.sellerName, d.sellerId)),
       _KV('制单员', d.makerName),
       _KV('制单时间', utenFmtIsoTime(d.createdAt)),
-      if ((d.sourceDocNo ?? '').isNotEmpty) _KV('来源单号', d.sourceDocNo),
       // 备注长度不可控，独占整行，免得把右列挤成竖条。
       if ((d.remark ?? '').isNotEmpty) _KV('备注', d.remark, fullWidth: true),
     ];
@@ -1899,45 +1745,18 @@ class _ProductionPlanDetailPageState
 
   Widget _secondaryFactsGrid(ThemeData theme, MasterNameService names) {
     final facts = _secondaryFacts(names);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const gap = UtenSpacing.s12;
-        final twoColumns = constraints.maxWidth >= 480;
-        final width = twoColumns
-            ? (constraints.maxWidth - gap) / 2
-            : constraints.maxWidth;
-        return Wrap(
-          spacing: gap,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenSummaryFacts(
           children: [
-            for (final fact in facts)
-              SizedBox(
-                width: fact.fullWidth ? constraints.maxWidth : width,
-                child: _kvRow(theme, fact),
-              ),
+            for (final fact in facts.where((fact) => !fact.fullWidth))
+              UtenSummaryField(label: fact.label, value: fact.value),
           ],
-        );
-      },
-    );
-  }
-
-  Widget _kvRow(ThemeData theme, _KV r) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              r.label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(child: Text(r.value ?? '—')),
-        ],
-      ),
+        ),
+        for (final fact in facts.where((fact) => fact.fullWidth))
+          UtenSummaryField(label: fact.label, value: fact.value),
+      ],
     );
   }
 
@@ -1987,53 +1806,48 @@ class _ProductionPlanDetailPageState
         '${items.length > 3 ? ' 等 ${items.length} 项' : ''}'
         ' · 排产量 $totalQty';
 
-    return Card(
+    return Padding(
       key: const Key('production-plan-draft-product-summary'),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s12,
-          vertical: UtenSpacing.s8,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.inventory_2_outlined,
-              size: 20,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '计划产品摘要',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 20,
+            color: theme.colorScheme.primary,
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '计划产品摘要',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
-                  if (items.isEmpty)
+                ),
+                if (items.isEmpty)
+                  Text(
+                    '暂无计划产品',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                else if (items.length == 1)
+                  Text(singleSummary)
+                else
+                  Text(multiSummary),
+                if (items.length > 1)
+                  for (final item in items)
                     Text(
-                      '暂无计划产品',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    )
-                  else if (items.length == 1)
-                    Text(singleSummary)
-                  else
-                    Text(multiSummary),
-                  if (items.length > 1)
-                    for (final item in items)
-                      Text(
-                        '${names.goods(item.goodsId)} · 允许超产 ${productionRateText(item.allowedOverproductionRate)}',
-                      ),
-                ],
-              ),
+                      '${names.goods(item.goodsId)} · 允许超产 ${productionRateText(item.allowedOverproductionRate)}',
+                    ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

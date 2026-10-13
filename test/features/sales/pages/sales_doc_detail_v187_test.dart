@@ -391,10 +391,10 @@ void main() {
       },
     );
 
-    expect(find.text('币种'), findsOneWidget);
+    expect(find.text('币种'), findsNothing);
     expect(find.text('汇率'), findsNothing);
-    expect(find.text('订单金额(美元)'), findsOneWidget);
-    expect(find.text('160.00'), findsWidgets);
+    expect(find.text('订单金额'), findsOneWidget);
+    expect(find.text('160.00 美元'), findsWidgets);
     expect(find.text('200.00'), findsNothing);
     expect(find.text('合计(本币)'), findsNothing);
     expect(find.text('1152.00'), findsNothing);
@@ -419,13 +419,47 @@ void main() {
         'writable': true,
         'currencyId': 'currency-usd',
         'exchangeRate': 7.2,
+        'totalLocal': 1152,
         'items': <Map<String, dynamic>>[],
       },
     );
 
-    expect(find.text('币种'), findsOneWidget);
+    expect(find.text('单据币种'), findsNothing);
+    expect(find.text('1152.00 人民币'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('detail-summary-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('单据币种'), findsOneWidget);
+    expect(find.text('美元'), findsOneWidget);
     expect(find.text('汇率'), findsOneWidget);
   });
+
+  testWidgets(
+    'masked order keeps its currency available without exposing money',
+    (tester) async {
+      await _pumpDetail(
+        tester,
+        type: SalesDocType.order,
+        detail: const {
+          'id': 'order-masked-currency',
+          'status': 0,
+          'writable': true,
+          'currencyId': 'currency-usd',
+          'priceMasked': true,
+          'totalOriginal': 160,
+          'items': <Map<String, dynamic>>[],
+        },
+      );
+      expect(find.text('订单金额'), findsOneWidget);
+      expect(find.text('***'), findsWidgets);
+      expect(find.text('单据币种'), findsNothing);
+      expect(find.text('160.00 美元'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('detail-summary-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.text('单据币种'), findsOneWidget);
+      expect(find.text('美元'), findsOneWidget);
+      expect(find.text('160.00 美元'), findsNothing);
+    },
+  );
 }
 
 Future<_DetailApi> _pumpDetail(

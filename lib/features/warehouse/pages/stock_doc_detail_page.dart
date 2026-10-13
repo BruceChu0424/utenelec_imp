@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
+import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -29,7 +30,6 @@ import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -1192,116 +1192,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),
                                 ],
-                                Card(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(
-                                      UtenSpacing.s12,
-                                    ),
-                                    child: UtenFormGrid(
-                                      children: [
-                                        _kv('单据号', _d!.billNo, theme),
-                                        _kv('日期', _d!.billDate, theme),
-                                        _kv('制单员', _d!.makerName, theme),
-                                        _kv(
-                                          '制单时间',
-                                          utenFmtIsoTime(_d!.createdAt),
-                                          theme,
-                                        ),
-                                        // V787 行级仓库：这几类的实际仓在各明细行上，
-                                        // 表头仓只是首行仓的回显，不再单列展示。
-                                        if (widget.docType !=
-                                                StockDocType.draw &&
-                                            !_usesLineWarehouse)
-                                          _kv(
-                                            _d!.productionMaterialReturn
-                                                ? '实际收料仓库'
-                                                : '仓库',
-                                            _d!.productionMaterialReturn &&
-                                                    _d!.warehouseId == null
-                                                ? '待仓库确认'
-                                                : names.warehouse(
-                                                    _d!.warehouseId,
-                                                  ),
-                                            theme,
-                                          ),
-                                        if (widget.docType ==
-                                            StockDocType.transfer)
-                                          _kv(
-                                            '调入仓',
-                                            names.warehouse(_d!.toWarehouseId),
-                                            theme,
-                                          ),
-                                        // ADR-146 不良品专门通道: 调拨类型与原因。
-                                        if (widget.docType ==
-                                                StockDocType.transfer &&
-                                            _d!.transferKind != null &&
-                                            _d!.transferKind != 'NORMAL') ...[
-                                          _kv(
-                                            _detailL10n.stockTransferKindLabel,
-                                            _d!.transferKind == 'TO_DEFECTIVE'
-                                                ? _detailL10n
-                                                      .defectiveMoveToDefective
-                                                : _detailL10n
-                                                      .defectiveMoveRelease,
-                                            theme,
-                                          ),
-                                          _kv(
-                                            _detailL10n.defectiveMoveReason,
-                                            _d!.defectReason,
-                                            theme,
-                                          ),
-                                        ],
-                                        if (_d!.remark?.isNotEmpty == true)
-                                          _kv('备注', _d!.remark, theme),
-                                        _kv(
-                                          '状态',
-                                          widget.docType ==
-                                                      StockDocType.finishedIn &&
-                                                  _d!.status == -1 &&
-                                                  _d!.finishedInboundDecision ==
-                                                      'REJECTED'
-                                              ? '仓库拒收 · 待生产更正'
-                                              : stockStatusLabel(_d!.status),
-                                          theme,
-                                        ),
-                                        if (widget.docType ==
-                                                StockDocType.finishedIn &&
-                                            (_d!
-                                                    .finishedInboundVarianceReason
-                                                    ?.isNotEmpty ==
-                                                true))
-                                          _kv(
-                                            '差异原因',
-                                            _d!.finishedInboundVarianceReason,
-                                            theme,
-                                          ),
-                                        if (widget.docType != StockDocType.draw)
-                                          SourceDocLink(
-                                            label: '生产计划',
-                                            billNo: _d!.planNo,
-                                            onTap: _d!.sourcePlanId == null
-                                                ? null
-                                                : () => context.push(
-                                                    RoutePath.productionPlanDetail(
-                                                      _d!.sourcePlanId!,
-                                                    ),
-                                                  ),
-                                          ),
-                                        if (widget.docType != StockDocType.draw)
-                                          SourceDocLink(
-                                            label: '来源报工',
-                                            billNo: _d!.sourceDocNo,
-                                            onTap:
-                                                _d!.sourceDailyReportId == null
-                                                ? null
-                                                : () => context.push(
-                                                    '/production/daily-reports/${_d!.sourceDailyReportId}',
-                                                  ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                                _summaryCard(names),
                                 if (widget.docType == StockDocType.draw) ...[
                                   const SizedBox(height: UtenSpacing.s12),
                                   // 出库凭证常驻单据详情（2026-09-10）：此前只在出库弹窗内，出完
@@ -1631,22 +1522,92 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     );
   }
 
-  Widget _kv(String label, String? value, ThemeData theme) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      SizedBox(
-        width: 84,
-        child: Text(
-          label,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
+  Widget _summaryCard(MasterNameService names) {
+    final d = _d!;
+    final rejectedInbound =
+        widget.docType == StockDocType.finishedIn &&
+        d.status == -1 &&
+        d.finishedInboundDecision == 'REJECTED';
+    return UtenDetailSummaryCard(
+      heading: UtenSummaryField(label: '单据号', value: d.billNo, emphasis: true),
+      status: UtenSummaryField(
+        label: '状态',
+        value: rejectedInbound ? '仓库拒收 · 待生产更正' : stockStatusLabel(d.status),
+        danger: rejectedInbound,
       ),
-      const SizedBox(width: UtenSpacing.s8),
-      Expanded(child: Text(value ?? '—')),
-    ],
-  );
+      facts: [
+        UtenSummaryField(label: '日期', value: d.billDate),
+        // 行级仓的表头只是首行回显，继续以明细实际仓为准。
+        if (widget.docType != StockDocType.draw && !_usesLineWarehouse)
+          UtenSummaryField(
+            label: d.productionMaterialReturn ? '实际收料仓库' : '仓库',
+            value: d.productionMaterialReturn && d.warehouseId == null
+                ? '待仓库确认'
+                : names.warehouse(d.warehouseId),
+          ),
+        if (widget.docType == StockDocType.transfer)
+          UtenSummaryField(
+            label: '调入仓',
+            value: names.warehouse(d.toWarehouseId),
+          ),
+        if (widget.docType == StockDocType.transfer &&
+            d.transferKind != null &&
+            d.transferKind != 'NORMAL')
+          UtenSummaryField(
+            label: _detailL10n.stockTransferKindLabel,
+            value: d.transferKind == 'TO_DEFECTIVE'
+                ? _detailL10n.defectiveMoveToDefective
+                : _detailL10n.defectiveMoveRelease,
+          ),
+        if (widget.docType != StockDocType.draw)
+          SourceDocLink(
+            label: '生产计划',
+            billNo: d.planNo,
+            onTap: d.sourcePlanId == null
+                ? null
+                : () => context.push(
+                    RoutePath.productionPlanDetail(d.sourcePlanId!),
+                  ),
+          ),
+        if (widget.docType != StockDocType.draw)
+          SourceDocLink(
+            label: '来源报工',
+            billNo: d.sourceDocNo,
+            onTap: d.sourceDailyReportId == null
+                ? null
+                : () => context.push(
+                    '/production/daily-reports/${d.sourceDailyReportId}',
+                  ),
+          ),
+      ],
+      notices: [
+        if (widget.docType == StockDocType.transfer &&
+            d.transferKind != null &&
+            d.transferKind != 'NORMAL')
+          UtenSummaryField(
+            label: _detailL10n.defectiveMoveReason,
+            value: d.defectReason,
+          ),
+        if (widget.docType == StockDocType.finishedIn &&
+            d.finishedInboundVarianceReason?.isNotEmpty == true)
+          UtenSummaryField(
+            label: '差异原因',
+            value: d.finishedInboundVarianceReason,
+            danger: true,
+          ),
+      ],
+      details: [
+        UtenSummaryFacts(
+          children: [
+            UtenSummaryField(label: '制单员', value: d.makerName),
+            UtenSummaryField(label: '制单时间', value: utenFmtIsoTime(d.createdAt)),
+          ],
+        ),
+        if (d.remark?.isNotEmpty == true)
+          UtenSummaryField(label: '备注', value: d.remark),
+      ],
+    );
+  }
 
   Widget _actions() {
     final detail = _d!;

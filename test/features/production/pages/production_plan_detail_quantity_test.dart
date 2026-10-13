@@ -75,8 +75,22 @@ Future<void> _open(
   );
   await tester.pumpAndSettle();
   expect(find.byKey(const Key('production-plan-summary-hero')), findsOneWidget);
+  final summary = find.byKey(const Key('production-plan-summary-hero'));
+  expect(
+    find.descendant(of: summary, matching: find.byType(Card)),
+    findsOneWidget,
+  );
   expect(
     find.byKey(const Key('production-plan-draft-product-summary')),
+    findsNothing,
+  );
+  await tester.tap(find.descendant(of: summary, matching: find.text('查看更多')));
+  await tester.pumpAndSettle();
+  expect(
+    find.descendant(
+      of: summary,
+      matching: find.byKey(const Key('production-plan-draft-product-summary')),
+    ),
     findsOneWidget,
   );
 }

@@ -10,6 +10,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/finance/payables/repositories/subcontract_loss_claim_repository.dart';
 import 'package:uten_imp/features/finance/payables/widgets/subcontract_loss_claim_detail_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 
 void main() {
   for (final scenario in [
@@ -117,8 +118,8 @@ void main() {
       expect(find.text('登记履约'), findsNWidgets(2));
       expect(find.text('反转责任决定'), findsOneWidget);
       expect(find.text('责任决定'), findsNothing);
-      expect(find.text('账面损失(本币)'), findsNothing);
-      expect(find.text('索赔额(本币)'), findsNothing);
+      expect(find.text('账面损失'), findsNothing);
+      expect(find.text('索赔额'), findsNothing);
       expect(find.text('单位账面价值'), findsNothing);
       expect(find.textContaining('金额 ¥'), findsNothing);
 
@@ -183,8 +184,20 @@ void main() {
       permissions: const {Perm.subcontractLossClaimView, Perm.financeViewAll},
     );
 
-    expect(find.text('账面损失(本币)'), findsOneWidget);
-    expect(find.text('索赔额(本币)'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(UtenDetailSummaryCard),
+        matching: find.text('账面损失'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(UtenDetailSummaryCard),
+        matching: find.text('索赔额'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('单位账面价值'), findsOneWidget);
     expect(find.textContaining('金额 ¥'), findsWidgets);
   });

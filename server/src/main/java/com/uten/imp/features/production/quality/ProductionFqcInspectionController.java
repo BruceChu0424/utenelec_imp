@@ -104,6 +104,14 @@ public class ProductionFqcInspectionController {
         return service.passAll(request);
     }
 
+    @PostMapping("/decisions/report")
+    @PreAuthorize("hasAuthority('production_quality_inspection:view')"
+            + " and hasAuthority('production_quality_inspection:approve')")
+    public ProductionFqcContracts.ReportDecisionResult decideReport(
+            @Valid @RequestBody ProductionFqcContracts.ReportDecisionRequest request) {
+        return service.decideReport(request);
+    }
+
     /** ADR-148 一批实物(需求 / 计划公共 / 实际超产各份)的当前判定；须声明在 /{id} 之前。 */
     @GetMapping("/lots/{lotId}")
     @PreAuthorize("hasAuthority('production_quality_inspection:view')")

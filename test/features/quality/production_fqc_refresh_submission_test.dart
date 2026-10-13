@@ -268,6 +268,7 @@ class _FqcApi extends ApiClient {
   final List<String> ids = const [_id];
   final outcomes = <Object?>[];
   final calls = <({String id, Map<String, dynamic> body})>[];
+  final reportCalls = <List<Map<String, dynamic>>>[];
   final events = <String, Map<String, dynamic>>{};
   final decisions = <String, Map<String, dynamic>>{};
   int commits = 0;
@@ -390,6 +391,65 @@ class _FqcApi extends ApiClient {
     Map<String, dynamic>? query,
     Map<String, dynamic>? headers,
   }) async {
+    if (path ==
+        '${ApiEndpoints.productionQualityInspections}/decisions/report') {
+      beforePost?.call();
+      final items = [
+        for (final value in (body! as Map)['items'] as List)
+          Map<String, dynamic>.from(value as Map),
+      ];
+      reportCalls.add(items);
+      for (final item in items) {
+        final command = Map<String, dynamic>.from(item)
+          ..remove('targetType')
+          ..remove('targetId');
+        calls.add((id: item['targetId'] as String, body: command));
+      }
+      await responseGate;
+      final outcome = outcomes.isEmpty ? null : outcomes.removeAt(0);
+      if (outcome is Exception) {
+        afterPost?.call();
+        throw outcome;
+      }
+      final receipts = <Map<String, dynamic>>[];
+      for (final item in items) {
+        final id = item['targetId'] as String;
+        final command = Map<String, dynamic>.from(item)
+          ..remove('targetType')
+          ..remove('targetId');
+        final key = '$id/${command['idempotencyKey']}';
+        final replay = decisions.containsKey(key);
+        if (replay) {
+          expect(command, decisions[key]);
+        } else {
+          decisions[key] = command;
+          final previous = events[id];
+          events[id] = {
+            'passQty':
+                ((previous?['passQty'] as num?) ?? 0) +
+                ((command['passQty'] as num?) ?? 0),
+            'failQty':
+                ((previous?['failQty'] as num?) ?? 0) +
+                ((command['failQty'] as num?) ?? 0),
+          };
+          commits++;
+        }
+        receipts.add({
+          'targetType': item['targetType'],
+          'targetId': id,
+          'idempotencyKey': item['idempotencyKey'],
+          'commandId': 'decision-$id',
+          'replay': replay,
+          if (item['targetType'] == 'LOT')
+            'lot': lot(id)
+          else
+            'inspection': inspection(id),
+        });
+      }
+      afterPost?.call();
+      if (outcome == 'commit-timeout') throw NetworkTimeoutException();
+      return {'items': receipts};
+    }
     expect(path.endsWith('/decisions'), isTrue);
     beforePost?.call();
     // 检查单页按批判定(/lots/{lotId}/decisions)；单份详情页仍逐份(/{id}/decisions)。

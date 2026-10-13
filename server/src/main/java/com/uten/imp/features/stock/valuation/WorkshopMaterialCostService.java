@@ -229,16 +229,9 @@ public class WorkshopMaterialCostService {
     /** 期间用量行名下还有剩余的在制位置, 先进先出。 */
     private Deque<Held> wipRoots(UUID periodLineId) {
         Deque<Held> out = new ArrayDeque<>();
-        for (Map<String, Object> row : db.queryForList("""
-                SELECT root.id, head.range_to - head.range_from AS remaining
-                FROM stock_value_nodes root
-                JOIN stock_value_nodes head ON head.id = root.return_head_id
-                WHERE root.kind = 'ISSUE_POSITION' AND root.root_issue_id = root.id
-                  AND head.owner_kind = 'WIP' AND head.owner_id = :line AND head.active
-                  AND head.range_to > head.range_from
-                ORDER BY root.created_at, root.id
-                """, Map.of("line", periodLineId))) {
-            out.addLast(new Held((UUID) row.get("id"), (BigDecimal) row.get("remaining")));
+        for (var row : InventoryOwnerPositions.remaining(db,Owner.WIP,List.of(periodLineId))) {
+            if(!"ISSUE_POSITION".equals(row.kind()))continue;
+            out.addLast(new Held(row.rootId(),row.quantity()));
         }
         return out;
     }
@@ -264,8 +257,8 @@ public class WorkshopMaterialCostService {
     private void requireNoWipLeft(UUID periodId) {
         for (UUID root : db.queryForList("""
                 SELECT root.id
-                FROM stock_value_nodes root
-                JOIN stock_value_nodes head ON head.id = root.return_head_id
+                FROM stock_value_nodes head JOIN stock_value_nodes root
+                  ON root.id=head.root_issue_id AND root.return_head_id=head.id
                 WHERE root.kind = 'ISSUE_POSITION' AND root.root_issue_id = root.id
                   AND head.owner_kind = 'WIP'
                   AND head.owner_id IN (SELECT line.id FROM workshop_material_period_lines line

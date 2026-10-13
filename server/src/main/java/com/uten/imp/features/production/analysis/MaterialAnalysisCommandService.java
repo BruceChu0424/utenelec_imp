@@ -500,7 +500,7 @@ public class MaterialAnalysisCommandService {
                 SELECT source_action_id, available_to_claim_qty, expected_date,
                        claim_external_item_id, external_document_type,
                        external_document_id, external_document_no, route
-                FROM fn_preplan_public_surplus_sources(:analysisId)
+                FROM fn_preplan_public_surplus_sources(:analysisId,:goodsId,CAST(:colorId AS uuid),:unitId)
                 WHERE fn_warehouse_same_main(warehouse_id, :warehouseId)
                   AND goods_id = :goodsId
                   AND color_id IS NOT DISTINCT FROM CAST(:colorId AS uuid)
@@ -1155,6 +1155,7 @@ public class MaterialAnalysisCommandService {
                 if (growable != null) {
                     generated.add(growPlan(analysisId, product, growable, quantity, allowance, defaults,
                             demandQty, surplusQty, request));
+                    detachCompletedPlan();
                     continue;
                 }
                 CommandResult plan = createDraftPlan(analysisId, product, quantity, defaults, surplusQty);
@@ -1168,6 +1169,7 @@ public class MaterialAnalysisCommandService {
                 }
                     generated.add(toGenerated(plan, draft, applied));
                 }
+                detachCompletedPlan();
             }
         }
         MaterialAnalysisService.AnalysisHeader postPlanHeader =
@@ -1187,6 +1189,12 @@ public class MaterialAnalysisCommandService {
                                 .map(GeneratedPlan::planId).toList()));
         return new GenerateResult(analysisService.detailInternal(analysisId, false), false,
                 List.copyOf(generated));
+    }
+
+    /** Completed plans expose only immutable results; keep later queries from scanning prior drafts. */
+    private void detachCompletedPlan() {
+        em.flush();
+        em.clear();
     }
 
     /** ADR-104：可并入的既有计划(见 {@link #growablePlanFor})。 */

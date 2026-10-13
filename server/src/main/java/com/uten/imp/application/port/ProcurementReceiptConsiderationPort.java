@@ -66,6 +66,10 @@ public interface ProcurementReceiptConsiderationPort {
     /** Exact commercial partition of one already recorded PASS or FAIL event. */
     List<QualityPart> quality(UUID inspectionEventId);
 
+    default List<QualityPart> qualityBatch(List<UUID> inspectionEventIds) {
+        return inspectionEventIds.stream().flatMap(event -> quality(event).stream()).toList();
+    }
+
     /** Exact commercial partition of one actual warehouse stock-in item. */
     List<StockPart> stock(UUID stockInItemId);
 }

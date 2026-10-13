@@ -458,6 +458,45 @@ class ProductionFqcInspectionSheetDetail {
   );
 }
 
+/// A frozen report row. The per-row key and nullable quantities are preserved
+/// when an interrupted single-row command is retried through the report API.
+class ProductionFqcReportDecisionCommand {
+  const ProductionFqcReportDecisionCommand({
+    required this.targetType,
+    required this.targetId,
+    required this.idempotencyKey,
+    this.decision,
+    this.passQty,
+    this.failQty,
+    this.dispositionCode,
+    this.reason,
+    this.sheetId,
+    this.sheetNo,
+  });
+
+  final String targetType;
+  final String targetId;
+  final String idempotencyKey;
+  final String? decision;
+  final double? passQty;
+  final double? failQty;
+  final String? dispositionCode;
+  final String? reason;
+  final String? sheetId;
+  final String? sheetNo;
+
+  Map<String, dynamic> toJson() => {
+    'targetType': targetType,
+    'targetId': targetId,
+    'idempotencyKey': idempotencyKey,
+    'decision': ?decision,
+    'passQty': ?passQty,
+    'failQty': ?failQty,
+    'dispositionCode': ?dispositionCode,
+    if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
+  };
+}
+
 class ProductionFqcDecisionResult {
   const ProductionFqcDecisionResult({
     required this.decisionEventId,

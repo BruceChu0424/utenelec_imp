@@ -522,7 +522,7 @@ void main() {
     expect(api.sheetDetailCalls, 1);
     expect(find.textContaining('登记备注：整托入库'), findsOneWidget);
     expect(find.text('CP-A-01'), findsWidgets);
-    // 默认全勾 + 合格默认=待检：一次提交即「全部合格」（逐行 decide）。
+    // 默认全勾 + 合格默认=待检：整份报告一次提交。
     await tester.tap(find.byKey(const Key('fqc-sheet-submit-report')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
@@ -943,6 +943,26 @@ class _FqcApi extends ApiClient {
             'inspectionId': _inspectionId,
             'decisionEventId': '10000000-0000-0000-0000-000000000011',
             'inspection': _decidedInspection,
+          },
+        ],
+      };
+    }
+    if (path ==
+        '${ApiEndpoints.productionQualityInspections}/decisions/report') {
+      final item = Map<String, dynamic>.from(
+        ((body! as Map)['items'] as List).single as Map,
+      );
+      decisionBody = item;
+      decided = true;
+      return {
+        'items': [
+          {
+            'targetType': item['targetType'],
+            'targetId': item['targetId'],
+            'idempotencyKey': item['idempotencyKey'],
+            'commandId': '10000000-0000-0000-0000-000000000012',
+            'lot': _lotOf(_decidedInspection),
+            'replay': false,
           },
         ],
       };

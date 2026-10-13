@@ -228,7 +228,7 @@ void main() {
         final sheet = shot == 'sheet-partial' || shot == 'partial-remainder';
         final api = _FqcApi(ids: sheet ? [_id, _id2, _id3] : [_id]);
         if (shot != 'partial-remainder') {
-          api.outcomes.addAll([if (sheet) null, NetworkTimeoutException()]);
+          api.outcomes.add(NetworkTimeoutException());
         }
         await _mount(
           tester,
@@ -433,7 +433,7 @@ void main() {
               'A route-pattern pageKey does not separate document draft owners',
         );
         expect(displayedIds, [nextInspection]);
-        expect(api.calls.map((call) => call.id), [_id]);
+        expect(api.calls.map((call) => call.id), [_id, if (sheet) _id2]);
         expect(
           env.router.routeInformationProvider.value.uri.path,
           nextLocation,
@@ -750,7 +750,7 @@ void main() {
         storage.failWrites = true;
         await _submit(tester, sheet: sheet);
         expect(api.calls, isEmpty);
-        expect(find.textContaining('本行未发送'), findsOneWidget);
+        expect(find.textContaining(sheet ? '本报告未发送' : '本行未发送'), findsOneWidget);
         expect(find.textContaining('待核对 1 行'), findsNothing);
         storage.failWrites = false;
         await tester.pumpAndSettle();
@@ -832,19 +832,50 @@ void main() {
     );
   }
 
+  testWidgets('sheet persists every frozen row before dispatching one report', (
+    tester,
+  ) async {
+    final api = _FqcApi(ids: [_id, _id2, _id3]);
+    final storage = _MemoryStorage();
+    await _mount(tester, api, sheet: true, storage: storage);
+    var dispatches = 0;
+    api.beforePost = () {
+      dispatches++;
+      final data =
+          (jsonDecode(storage.records.values.single) as Map)['data'] as Map;
+      expect(data['_formDraftSubmissionPending'], isTrue);
+      final rows = data['rows'] as List;
+      expect(rows, hasLength(3));
+      expect(
+        rows.cast<Map<String, dynamic>>().every(
+          (row) =>
+              row['submission'] != null && row['submissionState'] == 'unknown',
+        ),
+        isTrue,
+      );
+    };
+    await _submit(tester, sheet: true);
+    expect(dispatches, 1);
+    expect(api.reportCalls, hasLength(1));
+    expect(api.reportCalls.single, hasLength(3));
+    expect(api.commits, 3);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
-    'sheet stops at uncertain second line; confirmed first is never resent; third stays unsent',
+    'sheet report timeout preserves all original rows and replays once after reopening',
     (tester) async {
       final api = _FqcApi(ids: [_id, _id2, _id3])
-        ..outcomes.addAll([null, NetworkTimeoutException()]);
+        ..outcomes.add('commit-timeout');
       final env = await _mount(tester, api, sheet: true);
       await _submit(tester, sheet: true);
-      expect(api.calls.map((call) => call.id), [_id, _id2]);
+      expect(api.calls.map((call) => call.id), [_id, _id2, _id3]);
+      expect(api.reportCalls, hasLength(1));
       expect(
-        find.textContaining('已确认 1 次提交 · 明确拒绝 0 行 · 待核对 1 行 · 未提交 1 行'),
+        find.textContaining('已确认 0 次提交 · 明确拒绝 0 行 · 待核对 3 行 · 未提交 0 行'),
         findsOneWidget,
       );
-      final original = api.calls.last.body;
+      final original = jsonEncode(api.reportCalls.single);
       final resume = env.container
           .read(formDraftsProvider)
           .single
@@ -858,10 +889,8 @@ void main() {
         initial: resume,
       );
       await _submit(tester, sheet: true, recovery: true);
-      expect(api.calls.map((call) => call.id), [_id, _id2, _id2]);
-      expect(api.calls.last.body, original);
-      await _submit(tester, sheet: true);
-      expect(api.calls.map((call) => call.id), [_id, _id2, _id2, _id3]);
+      expect(api.reportCalls, hasLength(2));
+      expect(jsonEncode(api.reportCalls.last), original);
       expect(api.commits, 3);
       expect(tester.takeException(), isNull);
     },
@@ -907,6 +936,9 @@ void main() {
         ..outcomes.addAll([null, NetworkTimeoutException()]);
       await _mount(tester, api, sheet: true);
       _rows(tester, sheet: true).first.pass.text = '3';
+      await _select(tester, {_id});
+      await _submit(tester, sheet: true);
+      await _select(tester, {_id2});
       await _submit(tester, sheet: true);
       final unknownBody = Map<String, dynamic>.from(api.calls.last.body);
       final remainder = _rows(
@@ -929,7 +961,7 @@ void main() {
     },
   );
   testWidgets(
-    'sheet route change during confirmed checkpoint stops before second request',
+    'sheet route change during one confirmed checkpoint never publishes into the new page',
     (tester) async {
       final entered = Completer<void>();
       final release = Completer<void>();
@@ -946,12 +978,20 @@ void main() {
       };
       await _startSubmit(tester, sheet: true);
       expect(entered.isCompleted, isTrue);
-      expect(api.calls.map((call) => call.id), [_id]);
+      expect(api.calls.map((call) => call.id), [_id, _id2]);
+      expect(api.reportCalls, hasLength(1));
       unawaited(env.router.push('/other'));
       await tester.pump(const Duration(milliseconds: 400));
       release.complete();
       await tester.pumpAndSettle();
-      expect(api.calls.map((call) => call.id), [_id]);
+      expect(api.calls.map((call) => call.id), [_id, _id2]);
+      expect(api.reportCalls, hasLength(1));
+      expect(
+        env.container
+            .read(appNotificationProvider)
+            .where((notice) => notice.kind == AppNotificationKind.success),
+        isEmpty,
+      );
       expect(find.text('新页面'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -1213,6 +1253,7 @@ class _FqcApi extends ApiClient {
   final List<String> ids;
   final outcomes = <Object?>[];
   final calls = <({String id, Map<String, dynamic> body})>[];
+  final reportCalls = <List<Map<String, dynamic>>>[];
   final events = <String, Map<String, dynamic>>{};
   final decisions = <String, Map<String, dynamic>>{};
   int commits = 0;
@@ -1332,6 +1373,65 @@ class _FqcApi extends ApiClient {
     Map<String, dynamic>? query,
     Map<String, dynamic>? headers,
   }) async {
+    if (path ==
+        '${ApiEndpoints.productionQualityInspections}/decisions/report') {
+      beforePost?.call();
+      final items = [
+        for (final value in (body! as Map)['items'] as List)
+          Map<String, dynamic>.from(value as Map),
+      ];
+      reportCalls.add(items);
+      for (final item in items) {
+        final command = Map<String, dynamic>.from(item)
+          ..remove('targetType')
+          ..remove('targetId');
+        calls.add((id: item['targetId'] as String, body: command));
+      }
+      await responseGate;
+      final outcome = outcomes.isEmpty ? null : outcomes.removeAt(0);
+      if (outcome is Exception) {
+        afterPost?.call();
+        throw outcome;
+      }
+      final receipts = <Map<String, dynamic>>[];
+      for (final item in items) {
+        final id = item['targetId'] as String;
+        final command = Map<String, dynamic>.from(item)
+          ..remove('targetType')
+          ..remove('targetId');
+        final key = '$id/${command['idempotencyKey']}';
+        final replay = decisions.containsKey(key);
+        if (replay) {
+          expect(command, decisions[key]);
+        } else {
+          decisions[key] = command;
+          final previous = events[id];
+          events[id] = {
+            'passQty':
+                ((previous?['passQty'] as num?) ?? 0) +
+                ((command['passQty'] as num?) ?? 0),
+            'failQty':
+                ((previous?['failQty'] as num?) ?? 0) +
+                ((command['failQty'] as num?) ?? 0),
+          };
+          commits++;
+        }
+        receipts.add({
+          'targetType': item['targetType'],
+          'targetId': id,
+          'idempotencyKey': item['idempotencyKey'],
+          'commandId': 'decision-$id',
+          'replay': replay,
+          if (item['targetType'] == 'LOT')
+            'lot': lot(id)
+          else
+            'inspection': inspection(id),
+        });
+      }
+      afterPost?.call();
+      if (outcome == 'commit-timeout') throw NetworkTimeoutException();
+      return {'items': receipts};
+    }
     expect(path.endsWith('/decisions'), isTrue);
     beforePost?.call();
     // 检查单页按批判定(/lots/{lotId}/decisions)；单份详情页仍逐份(/{id}/decisions)。

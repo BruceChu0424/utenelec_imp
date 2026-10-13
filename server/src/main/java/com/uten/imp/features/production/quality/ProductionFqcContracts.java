@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.quality;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
@@ -211,6 +212,36 @@ public final class ProductionFqcContracts {
             UUID lotCommandId,
             InspectionLotView lot,
             boolean replay) {
+    }
+
+    /** Exact row commands retain their original endpoint's idempotency identity. */
+    public record ReportDecisionRequest(
+            @NotNull @Size(min = 1, max = 100)
+            List<@NotNull @Valid ReportDecisionItem> items) {
+    }
+
+    public record ReportDecisionItem(
+            @NotBlank @Pattern(regexp = "LOT|INSPECTION") String targetType,
+            @NotNull UUID targetId,
+            @Pattern(regexp = "PASS|PARTIAL|FAIL") String decision,
+            @DecimalMin("0") @Digits(integer = 14, fraction = 4) BigDecimal passQty,
+            @DecimalMin("0") @Digits(integer = 14, fraction = 4) BigDecimal failQty,
+            @Size(max = 32) String dispositionCode,
+            @Size(max = 1000) String reason,
+            @NotBlank @Size(min = 8, max = 128)
+            @Pattern(regexp = "[A-Za-z0-9._:-]+") String idempotencyKey) {
+    }
+
+    public record ReportDecisionItemResult(
+            String targetType, UUID targetId, String idempotencyKey,
+            UUID commandId, boolean replay,
+            InspectionLotView lot, InspectionView inspection) {
+    }
+
+    public record ReportDecisionResult(List<ReportDecisionItemResult> items) {
+        public ReportDecisionResult {
+            items = List.copyOf(items);
+        }
     }
 
     public record DecisionResult(

@@ -77,7 +77,150 @@ public class InventoryPositionService extends InventoryValueLedger implements In
 
     @Override @Transactional(propagation = Propagation.MANDATORY)
     public PositionValue move(Move command) {
-        return move(command,false);
+        return moveBatch(List.of(command)).getFirst();
+    }
+
+    /**
+     * Prepare the whole locked command, then write every original event in its
+     * original order. Heads below belong only to this invocation: each subsequent
+     * invocation reads the database again, including after a savepoint rollback.
+     */
+    @Override @Transactional(propagation = Propagation.MANDATORY)
+    public List<PositionValue> moveBatch(List<Move> commands) {
+        transaction();Objects.requireNonNull(commands,"value moves");
+        List<PositionValue> result=new ArrayList<>();
+        // Each source list is already bounded at 100. Bound SQL bind lists as
+        // well, without imposing a new limit on the business receipt/report.
+        for(int start=0;start<commands.size();start+=100)
+            result.addAll(moveWindow(List.copyOf(commands.subList(start,Math.min(start+100,commands.size())))));
+        return List.copyOf(result);
+    }
+
+    private record MoveInput(EventContext context,PoolKey key,Owner owner,UUID ownerId,List<Slice> slices,Request request) { }
+    private record MoveReceipt(Event event,UUID item,UUID sourceEvent,String key) { }
+    private record MoveIdentity(UUID item,Object identity) { }
+    private record PlannedMove(MoveInput input,Pool pool,UUID event,Node position,BigDecimal qty) { }
+    private record MoveOutcome(PositionValue replay,PlannedMove planned,boolean duplicate) { }
+
+    private List<PositionValue> moveWindow(List<Move> commands) {
+        List<MoveInput> inputs=new ArrayList<>();
+        for(Move command:commands){
+            EventContext c=context(command.context());PoolKey key=key(command.pool());requireHeld(key);
+            owner(command.owner(),command.ownerId());List<Slice> sources=slices(command.sources(),false);
+            Request request=request("POSITION_MOVE",c,args("pool",keyText(key),"owner",command.owner().name(),
+                    "ownerId",command.ownerId(),"slices",sliceBody(sources)));
+            inputs.add(new MoveInput(c,key,command.owner(),command.ownerId(),sources,request));
+        }
+        Map<MoveInput,Event> initialReplay=moveReplays(inputs);
+        List<MoveInput> pending=inputs.stream().filter(input->!initialReplay.containsKey(input)).toList();
+        if(pending.isEmpty()){
+            Map<UUID,Node> replayNodes=moveNodes(initialReplay.values().stream().map(Event::resultNodeId)
+                    .collect(java.util.stream.Collectors.toSet()),false);
+            return inputs.stream().map(input->moveReplayResult(initialReplay.get(input),replayNodes)).toList();
+        }
+        Set<UUID> rootIds=new LinkedHashSet<>();
+        pending.forEach(input->input.slices().forEach(slice->rootIds.add(slice.positionRootId())));
+        // Immutable dimension admission precedes any pool/node row lock, exactly
+        // as in the single command. Actual quantities come from the locked reads.
+        Map<UUID,Node> declared=moveNodes(rootIds,false);
+        for(MoveInput input:pending)for(Slice slice:input.slices()){
+            Node root=declared.get(slice.positionRootId());requireRoot(root);requireHeld(root.key());
+            if(!sameGoods(root.key(),input.key()))throw conflict("实物价值携转必须保持原货品和颜色；跨产品须使用生产成本分配");
+        }
+        declared.clear();
+        Map<PoolKey,Pool> pools=new LinkedHashMap<>();
+        pending.stream().map(MoveInput::key).distinct().sorted(Comparator.comparing(InventoryValueLedger::keyText))
+                .forEach(key->pools.put(key,lockPool(key)));
+        // Retain the lock-then-replay boundary; changed keys/bodies never acquire a
+        // second ledger identity even when another command completed beforehand.
+        Map<MoveInput,Event> prior=moveReplays(inputs);
+        Map<UUID,Node> replayNodes=moveNodes(prior.values().stream().map(Event::resultNodeId)
+                .collect(java.util.stream.Collectors.toSet()),false);
+        Map<UUID,Node> roots=moveNodes(rootIds,true);
+        Set<UUID> extraHeads=new LinkedHashSet<>();
+        for(Node root:roots.values()){requireRoot(root);if(!roots.containsKey(root.returnHeadId()))extraHeads.add(root.returnHeadId());}
+        Map<UUID,Node> headsById=new HashMap<>(roots);headsById.putAll(moveNodes(extraHeads,true));
+        Map<UUID,Node> heads=new HashMap<>();roots.forEach((id,root)->heads.put(id,headsById.get(root.returnHeadId())));
+        var writes=new InventoryValueWriteSet(db);
+        Map<MoveIdentity,PlannedMove> plannedEvents=new HashMap<>(),plannedKeys=new HashMap<>();
+        List<PlannedMove> plans=new ArrayList<>();List<MoveOutcome> outcomes=new ArrayList<>();
+        for(MoveInput input:inputs){
+            Event existing=prior.get(input);
+            if(existing!=null){outcomes.add(new MoveOutcome(moveReplayResult(existing,replayNodes),null,false));continue;}
+            MoveIdentity eventIdentity=new MoveIdentity(input.context().sourceItemId(),input.context().sourceEventId());
+            MoveIdentity keyIdentity=new MoveIdentity(input.context().sourceItemId(),input.context().idempotencyKey());
+            PlannedMove byEvent=plannedEvents.get(eventIdentity),byKey=plannedKeys.get(keyIdentity);
+            if(byEvent!=null&&byKey!=null&&byEvent!=byKey)throw conflict("来源事件与防重复提交标识指向不同的库存价值记录");
+            PlannedMove duplicate=byEvent!=null?byEvent:byKey;
+            if(duplicate!=null){
+                if(!duplicate.input().request().hash().equals(input.request().hash()))
+                    throw conflict("同一防重复提交标识对应不同的库存价值请求");
+                outcomes.add(new MoveOutcome(null,duplicate,true));continue;
+            }
+            List<Take> takes=new ArrayList<>();
+            for(Slice slice:input.slices())takes.add(take(slice,roots.get(slice.positionRootId()),heads.get(slice.positionRootId()),input.key(),false));
+            UUID event=UUID.randomUUID();BigDecimal qty=totalQty(takes);Pool pool=pools.get(input.key());
+            Node position=newPosition(pool,input.owner(),input.ownerId(),qty,totalValue(takes),totalPending(takes),event,transferContributions(takes),writes);
+            heads.putAll(finishTransfer(takes,position,event,writes));
+            PlannedMove plan=new PlannedMove(input,pool,event,position,qty);plans.add(plan);
+            plannedEvents.put(eventIdentity,plan);plannedKeys.put(keyIdentity,plan);
+            outcomes.add(new MoveOutcome(null,plan,false));
+        }
+        writes.flush();
+        // Publish each result from the complete batch graph and the current
+        // publication fence. A pending ancestor never becomes a guessed FINAL.
+        boolean publicationPending=propagationPending();
+        Map<PlannedMove,PositionValue> completed=new IdentityHashMap<>();
+        for(PlannedMove plan:plans){
+            Node position=plan.position();State state=state(position,publicationPending);
+            insertEvent(plan.event(),"POSITION_MOVE",plan.input().context(),plan.input().request(),plan.pool().id(),null,
+                    plan.qty(),null,position.value(),position.id(),null,state,null,null,null,null,null,null,null,writes);
+            posting(plan.event(),null,position.id(),position.ownerKind(),position.ownerId(),position.value(),writes);
+            completed.put(plan,new PositionValue(plan.event(),position.id(),null,plan.qty(),position.value(),state,false));
+        }
+        writes.flush();
+        return outcomes.stream().map(outcome->{
+            if(outcome.replay()!=null)return outcome.replay();
+            PositionValue value=completed.get(outcome.planned());
+            return outcome.duplicate()?new PositionValue(value.eventId(),value.positionRootId(),value.fundingSourceNodeId(),
+                    value.qtyBase(),value.knownValueLocal(),value.state(),true):value;
+        }).toList();
+    }
+
+    private Map<MoveInput,Event> moveReplays(List<MoveInput> inputs){
+        List<MoveReceipt> receipts=db.query("""
+                SELECT * FROM stock_value_events WHERE operation='POSITION_MOVE' AND source_item_id IN (:items)
+                  AND (source_event_id IN (:events) OR idempotency_key IN (:keys))
+                """,args("items",inputs.stream().map(input->input.context().sourceItemId()).distinct().toList(),
+                "events",inputs.stream().map(input->input.context().sourceEventId()).distinct().toList(),
+                "keys",inputs.stream().map(input->input.context().idempotencyKey()).distinct().toList()),
+                (row,index)->new MoveReceipt(eventRow(row),uuid(row,"source_item_id"),uuid(row,"source_event_id"),row.getString("idempotency_key")));
+        Map<MoveInput,Event> result=new HashMap<>();
+        for(MoveInput input:inputs){
+            var matches=receipts.stream().filter(receipt->receipt.item().equals(input.context().sourceItemId())
+                    &&(receipt.sourceEvent().equals(input.context().sourceEventId())||receipt.key().equals(input.context().idempotencyKey()))).toList();
+            if(matches.size()>1)throw conflict("来源事件与防重复提交标识指向不同的库存价值记录");
+            if(matches.isEmpty())continue;
+            Event event=matches.getFirst().event();
+            if(!event.hash().equals(input.request().hash()))throw conflict("同一防重复提交标识对应不同的库存价值请求");
+            result.put(input,event);
+        }
+        return result;
+    }
+
+    private PositionValue moveReplayResult(Event event,Map<UUID,Node> nodes){
+        Node root=nodes.get(event.resultNodeId());
+        return new PositionValue(event.id(),root.id(),event.sourceNodeId(),root.qty(),event.knownValue(),event.state(),true);
+    }
+
+    private Map<UUID,Node> moveNodes(Set<UUID> ids,boolean lock){
+        if(ids.isEmpty())return Map.of();
+        Map<UUID,Node> result=new HashMap<>();
+        for(Node node:db.query("""
+                SELECT n.*,p.warehouse_id,p.goods_id,p.color_id FROM stock_value_nodes n
+                JOIN stock_value_pools p ON p.id=n.pool_id WHERE n.id IN (:ids) ORDER BY n.id
+                """+(lock?" FOR UPDATE OF n":""),args("ids",ids),(row,index)->nodeRow(row)))result.put(node.id(),node);
+        if(result.size()!=ids.size())throw conflict("价值来源节点不存在");return result;
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
@@ -139,11 +282,15 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         requireSourceLocks(slices,key); Pool pool=lockPool(key);
         prior=replay("POSITION_MOVE",c,request);if(prior!=null)return result(prior,true);
         List<Take> takes=take(slices,key,restoringUnallocatedConsumed);UUID eventId=UUID.randomUUID();BigDecimal qty=totalQty(takes);
-        Node position=newPosition(pool,command.owner(),command.ownerId(),qty,totalValue(takes),totalPending(takes),eventId,transferContributions(takes));
-        finishTransfer(takes,position,eventId);State state=state(position);
+        var writes=new InventoryValueWriteSet(db);
+        Node position=newPosition(pool,command.owner(),command.ownerId(),qty,totalValue(takes),totalPending(takes),eventId,transferContributions(takes),writes);
+        finishTransfer(takes,position,eventId,writes);
+        // Publication observes the completed graph, including immediate trigger effects.
+        writes.flush();State state=state(position);
         insertEvent(eventId,"POSITION_MOVE",c,request,pool.id(),null,qty,null,position.value(),position.id(),null,state,
-                null,null,null,null,null,null);
-        posting(eventId,null,position.id(),position.ownerKind(),position.ownerId(),position.value());
+                null,null,null,null,null,null,null,writes);
+        posting(eventId,null,position.id(),position.ownerKind(),position.ownerId(),position.value(),writes);
+        writes.flush();
         return new PositionValue(eventId,position.id(),null,qty,position.value(),state,false);
     }
 
@@ -163,17 +310,20 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         // consumed positions need their actual business transition first.
         requireStorableOwners(takes);
         UUID eventId=UUID.randomUUID();BigDecimal qty=totalQty(takes),cost=totalValue(takes);
-        Node source=createDerivedNode(pool,"RETURN_SOURCE",null,null,command.movementId(),null,
-                qty,ZERO,ZERO,cost,totalPending(takes)+(command.pendingOwnMaterialCost()?1:0),false,!command.pendingOwnMaterialCost(),eventId,transferContributions(takes));
-        finishTransfer(takes,source,eventId);
-        Node next=createDerivedNode(pool,"POOL",null,null,null,null,before.add(qty),ZERO,before.add(qty),
-                value(inventory).add(cost),pending(inventory)+pending(source),true,true,eventId,poolContributions(inventory,source));
-        if(inventory!=null)deactivate(inventory);
-        head(pool,next.id(),pool.headId());
+        var writes=new InventoryValueWriteSet(db);
+        Node source=planDerivedNode(UUID.randomUUID(),pool.identity(),"RETURN_SOURCE",null,null,command.movementId(),null,
+                qty,ZERO,ZERO,cost,totalPending(takes)+(command.pendingOwnMaterialCost()?1:0),false,!command.pendingOwnMaterialCost(),eventId,transferContributions(takes),writes);
+        finishTransfer(takes,source,eventId,writes);
+        Node next=planDerivedNode(UUID.randomUUID(),pool.identity(),"POOL",null,null,null,null,before.add(qty),ZERO,before.add(qty),
+                value(inventory).add(cost),pending(inventory)+pending(source),true,true,eventId,poolContributions(inventory,source),writes);
+        if(inventory!=null)deactivate(inventory,writes);
+        head(pool,next.id(),pool.headId(),writes);
+        writes.flush();
         State state=state(source);
         insertEvent(eventId,"POSITION_STORE",c,request,pool.id(),command.movementId(),qty,before,cost,source.id(),next.id(),state,
-                null,null,null,null,null,null);
-        posting(eventId,null,next.id(),"INVENTORY",pool.id(),cost);
+                null,null,null,null,null,null,null,writes);
+        posting(eventId,null,next.id(),"INVENTORY",pool.id(),cost,writes);
+        writes.flush();
         return new MovementValue(eventId,command.movementId(),source.id(),next.id(),cost,state,false);
     }
 
@@ -493,8 +643,11 @@ public class InventoryPositionService extends InventoryValueLedger implements In
     private PositionValue result(Event e,boolean replayed){Node root=node(e.resultNodeId(),false);
         return new PositionValue(e.id(),root.id(),e.sourceNodeId(),root.qty(),e.knownValue(),e.state(),replayed);}
     private Node newPosition(Pool pool,Owner owner,UUID ownerId,BigDecimal qty,BigDecimal value,int pending,UUID event,List<Contribution> inputs){
-        UUID id=UUID.randomUUID();return createDerivedNode(id,pool,"ISSUE_POSITION",owner.name(),ownerId,null,id,
-                qty,ZERO,qty,value,pending,true,true,event,inputs);
+        return newPosition(pool,owner,ownerId,qty,value,pending,event,inputs,null);
+    }
+    private Node newPosition(Pool pool,Owner owner,UUID ownerId,BigDecimal qty,BigDecimal value,int pending,UUID event,List<Contribution> inputs,InventoryValueWriteSet writes){
+        UUID id=UUID.randomUUID();return planDerivedNode(id,pool.identity(),"ISSUE_POSITION",owner.name(),ownerId,null,id,
+                qty,ZERO,qty,value,pending,true,true,event,inputs,writes);
     }
     private void requireSourceLocks(List<Slice> slices,PoolKey target){
         // Read the complete, immutable key set before taking any row locks.
@@ -513,34 +666,42 @@ public class InventoryPositionService extends InventoryValueLedger implements In
             // The root is already locked and no write intervenes. When it is
             // also the current head, a second SELECT would read the same row.
             Node head=root.id().equals(root.returnHeadId())?root:node(root.returnHeadId(),lock);
-            if("COST_WIP".equals(head.ownerKind())&&!restoringUnallocatedConsumed)throw conflict("已确认实耗成本须通过生产分配版本处理，不能再次按实物携转");
-            BigDecimal through=head.from().add(s.qtyBase());
-            if(!head.active()||!sameGoods(head.key(),target)||through.compareTo(head.to())>0)
-                throw conflict("原价值位置已转移或本次数量超过剩余数量");
-            result.add(new Take(s,root,head,through,interval(head.value(),head.from(),through,head.qty())));}
+            result.add(take(s,root,head,target,restoringUnallocatedConsumed));}
         return result;
+    }
+    private Take take(Slice slice,Node root,Node head,PoolKey target,boolean restoringUnallocatedConsumed){
+        if("COST_WIP".equals(head.ownerKind())&&!restoringUnallocatedConsumed)throw conflict("已确认实耗成本须通过生产分配版本处理，不能再次按实物携转");
+        BigDecimal through=head.from().add(slice.qtyBase());
+        if(!head.active()||!sameGoods(head.key(),target)||through.compareTo(head.to())>0)
+            throw conflict("原价值位置已转移或本次数量超过剩余数量");
+        return new Take(slice,root,head,through,interval(head.value(),head.from(),through,head.qty()));
     }
     private static List<Contribution> transferContributions(List<Take> takes){
         return takes.stream().map(t->fraction(t.head(),t.head().from(),t.through(),t.head().qty())).toList();
     }
     /** Target already owns every frozen input edge; finish the original remainder/CAS/posting sequence. */
     private void finishTransfer(List<Take> takes,Node target,UUID event){
+        finishTransfer(takes,target,event,null);
+    }
+    private Map<UUID,Node> finishTransfer(List<Take> takes,Node target,UUID event,InventoryValueWriteSet writes){
+        Map<UUID,Node> remainders=new HashMap<>();
         for(Take t:takes){Node old=t.head();
-            Node remainder=createDerivedNode(old.poolIdentity(),"ISSUE_POSITION",old.ownerKind(),old.ownerId(),null,t.root().id(),
-                    old.qty(),t.through(),old.to(),old.value(),pending(old),true,true,event,List.of(whole(old)));
-            deactivate(old);
-            if(db.update("UPDATE stock_value_nodes SET return_head_id=:head WHERE id=:root AND return_head_id=:before",
-                    args("root",t.root().id(),"head",remainder.id(),"before",old.id()))!=1)
-                throw conflict("原价值位置已变化，请重新读取来源");
-            db.update("""
+            Node remainder=planDerivedNode(UUID.randomUUID(),old.poolIdentity(),"ISSUE_POSITION",old.ownerKind(),old.ownerId(),null,t.root().id(),
+                    old.qty(),t.through(),old.to(),old.value(),pending(old),true,true,event,List.of(whole(old)),writes);
+            deactivate(old,writes);
+            InventoryValueWriteSet.update(db,writes,"UPDATE stock_value_nodes SET return_head_id=:head WHERE id=:root AND return_head_id=:before",
+                    args("root",t.root().id(),"head",remainder.id(),"before",old.id()),"原价值位置已变化，请重新读取来源");
+            InventoryValueWriteSet.update(db,writes,"""
                     INSERT INTO stock_value_position_transfers(id,event_id,source_slice_id,source_root_id,source_node_id,
                         remaining_node_id,target_node_id,qty_base,range_from,range_to,quantity_basis,source_revision,initial_value_local)
                     VALUES (:id,:event,:slice,:root,:source,:remaining,:target,:qty,:from,:to,:basis,:revision,:value)
                     """,args("id",UUID.randomUUID(),"event",event,"slice",t.slice().sourceSliceId(),"root",t.root().id(),
                     "source",old.id(),"remaining",remainder.id(),"target",target.id(),"qty",t.slice().qtyBase(),
-                    "from",old.from(),"to",t.through(),"basis",old.qty(),"revision",old.revision(),"value",t.value()));
-            posting(event,null,old.id(),old.ownerKind(),old.ownerId(),t.value().negate());
+                    "from",old.from(),"to",t.through(),"basis",old.qty(),"revision",old.revision(),"value",t.value()),"价值携转来源写入失败");
+            posting(event,null,old.id(),old.ownerKind(),old.ownerId(),t.value().negate(),writes);
+            remainders.put(t.root().id(),remainder);
         }
+        return remainders;
     }
     private static void requireRoot(Node n){if(!"ISSUE_POSITION".equals(n.kind())||!n.id().equals(n.rootIssueId())||n.returnHeadId()==null)
         throw conflict("必须引用准确的原价值位置UUID");}

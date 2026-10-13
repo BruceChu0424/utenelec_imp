@@ -36,19 +36,22 @@ public class PreplanMakePublicSupplyService {
     private static Map<UUID,List<Candidate>> candidates(EntityManager em,UUID analysisId,java.util.function.Predicate<UUID> readableOwner,Collection<UUID> targetIds) {
         Map<UUID,List<Candidate>> result=new HashMap<>();
         if(targetIds!=null&&targetIds.isEmpty())return result;
+        String sources=targetIds==null?"fn_preplan_make_public_supply_sources(:analysis)"
+                :"fn_preplan_make_public_supply_sources(:analysis,NULL::uuid,CAST(string_to_array(:targetScope,',') AS uuid[]))";
         var query=em.createNativeQuery("""
                 SELECT material.id,source.source_plan_item_id,source.source_plan_id,source.source_analysis_id,
                        source.document_no,source.available_to_claim_qty,source.expected_date,plan.maker_id,NOT fn_preplan_make_public_target_is_source(source.source_plan_item_id,material.id)
                 FROM production_material_analysis_materials material
                 JOIN production_material_analyses analysis ON analysis.id=material.analysis_id
-                JOIN fn_preplan_make_public_supply_sources(:analysis) source ON source.goods_id=material.goods_id
+                JOIN %s source ON source.goods_id=material.goods_id
                   AND source.color_id IS NOT DISTINCT FROM material.color_id AND source.unit_id=material.unit_id
                   AND fn_warehouse_same_main(source.warehouse_id,analysis.warehouse_id)
                 JOIN production_plans plan ON plan.id=source.source_plan_id
                 WHERE material.analysis_id=:analysis AND material.active AND source.available_to_claim_qty>0
-                """+(targetIds==null?"":" AND material.id IN(:targets)")+
+                """.formatted(sources)+(targetIds==null?"":" AND material.id IN(:targets)")+
                 " ORDER BY source.expected_date NULLS LAST,source.source_plan_item_id,material.id").setParameter("analysis",analysisId);
-        if(targetIds!=null)query.setParameter("targets",targetIds);
+        if(targetIds!=null)query.setParameter("targets",targetIds).setParameter("targetScope",
+                targetIds.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(",")));
         for(Object[] row:NativeQueryResults.objectArrayRows(query)) {
             UUID sourceAnalysis=(UUID)row[3];boolean reveal=readableOwner.test((UUID)row[7]);
             result.computeIfAbsent((UUID)row[0],ignored->new ArrayList<>()).add(new Candidate((UUID)row[1],reveal?(UUID)row[2]:null,reveal?sourceAnalysis:null,

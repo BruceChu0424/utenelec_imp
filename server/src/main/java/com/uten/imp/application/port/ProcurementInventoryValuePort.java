@@ -6,6 +6,10 @@ import java.util.UUID;
 public interface ProcurementInventoryValuePort {
     void receiptApproved(String receiptType,UUID receiptId,UUID actorUserId);
     void qualityRecorded(UUID inspectionEventId,UUID actorUserId);
+    /** Ordered events from one locked quality command; all writes remain in its transaction. */
+    default void qualityRecordedBatch(java.util.List<UUID> inspectionEventIds,UUID actorUserId) {
+        inspectionEventIds.forEach(event -> qualityRecorded(event,actorUserId));
+    }
     void receiptReversed(String receiptType,UUID receiptId,UUID actorUserId);
     void qualityReversed(UUID inspectionEventId,UUID actorUserId);
     void creditConfirmed(UUID creditDocumentId,UUID actorUserId);

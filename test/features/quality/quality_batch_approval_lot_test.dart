@@ -200,6 +200,12 @@ void main() {
 
     await tester.tap(find.byKey(const Key('batch-approval-submit-report')));
     await tester.pumpAndSettle();
+    expect(find.textContaining('已上架的合格部分自动点收入库'), findsOneWidget);
+    expect(find.textContaining('均不直接增加库存'), findsNothing);
+    expect(
+      find.byKey(const Key('inspection-report-atomic-notice')),
+      findsNothing,
+    );
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pump();
     for (var i = 0; i < 12; i++) {

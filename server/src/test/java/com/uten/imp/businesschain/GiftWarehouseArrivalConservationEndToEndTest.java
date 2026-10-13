@@ -13,6 +13,8 @@ import com.uten.imp.features.warehouse.inbound.ProcurementInspectionService;
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInService;
 import com.uten.imp.features.warehouse.inbound.WarehouseArrivalRegistrationService;
 import com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest;
+import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionDecideRequest;
+import com.uten.imp.features.warehouse.inbound.dto.BatchInspectionReportRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -156,6 +158,65 @@ class GiftWarehouseArrivalConservationEndToEndTest {
         assertThat(number("SELECT gift_received_qty FROM purchase_order_items WHERE id=?", f.orderItem()))
                 .isEqualByComparingTo("1");
         assertThat(number("SELECT count(*) FROM procurement_arrival_exceptions WHERE receipt_id IN (?,?)", free.receiptId(), pending)).isZero();
+    }
+
+    @Test void mixedBatchQualityKeepsChargedAndGiftCostIntervalsSeparateAndReplaysExactly() {
+        F f = fixture(harness.seedWorld("gift-quality-batch-" + UUID.randomUUID()));
+        UUID receipt = arrival.registerBatch(batch("gift-quality-arrival-" + f.order(), f, "10", "1", null))
+                .items().getFirst().receiptId();
+        assertTranches(receipt, "CHARGED", "GIFT");
+        var items = db.queryForList("SELECT id,quantity_tranche FROM procurement_inspection_items WHERE receipt_id=? ORDER BY quantity_tranche", receipt)
+                .stream().map(row -> {
+                    UUID id = (UUID) row.get("id");
+                    boolean charged = "CHARGED".equals(row.get("quantity_tranche"));
+                    return new BatchInspectionDecideRequest.Item(id, new BigDecimal(charged ? "10" : "1"),
+                            new BigDecimal(charged ? "8" : "0.4"), new BigDecimal(charged ? "2" : "0.6"), "gift-quality-decision-" + id);
+                }).toList();
+        var command = new BatchInspectionReportRequest(List.of(
+                new BatchInspectionReportRequest.Receipt("PURCHASE", receipt, items)), "收费与免费份额分别部分合格");
+        var result = inspection.decideReport(command);
+        assertThat(result.replay()).isFalse();
+        assertThat(result.lineCount()).isEqualTo(2);
+        assertThat(number("SELECT count(*) FROM procurement_inspection_items WHERE receipt_id=? AND status='RESOLVED'", receipt))
+                .isEqualByComparingTo("2");
+        assertThat(number("""
+                SELECT count(*) FROM procurement_iqc_quality_consideration_parts quality
+                JOIN procurement_receipt_consideration_parts part ON part.id=quality.consideration_part_id
+                JOIN procurement_inspection_events event ON event.id=quality.inspection_event_id
+                JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id
+                JOIN stock_value_events value ON value.source_doc_type='PROCUREMENT_QUALITY' AND value.source_event_id=quality.id
+                WHERE inspection.receipt_id=? AND (part.quantity_tranche<>inspection.quantity_tranche
+                    OR value.source_doc_id<>event.id OR value.source_item_id<>quality.id
+                    OR value.qty_base<>quality.base_qty OR value.known_value_local<>quality.amount_local)
+                """, receipt)).isZero();
+        for (String tranche : List.of("CHARGED", "GIFT")) {
+            for (String action : List.of("PASS", "FAIL")) {
+                BigDecimal amount = number("""
+                        SELECT sum(quality.amount_local) FROM procurement_iqc_quality_consideration_parts quality
+                        JOIN procurement_inspection_events event ON event.id=quality.inspection_event_id
+                        JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id
+                        WHERE inspection.receipt_id=? AND inspection.quantity_tranche=? AND event.action=?
+                        """, receipt, tranche, action);
+                assertThat(amount).isEqualByComparingTo(tranche.equals("GIFT") ? "0" : action.equals("PASS") ? "80" : "20");
+            }
+        }
+        List<String> before = qualityCostFacts(receipt);
+        assertThat(before).hasSize(4);
+        assertThat(inspection.decideReport(command).replay()).isTrue();
+        assertThat(qualityCostFacts(receipt)).isEqualTo(before);
+        assertThat(ap(receipt)).isEqualByComparingTo("100");
+        assertThat(stock(f)).isZero();
+    }
+
+    private List<String> qualityCostFacts(UUID receipt) {
+        return db.queryForList("""
+                SELECT jsonb_build_object('quality',to_jsonb(quality),'value',to_jsonb(value))::text
+                FROM procurement_iqc_quality_consideration_parts quality
+                JOIN procurement_inspection_events event ON event.id=quality.inspection_event_id
+                JOIN procurement_inspection_items inspection ON inspection.id=event.inspection_item_id
+                JOIN stock_value_events value ON value.source_doc_type='PROCUREMENT_QUALITY' AND value.source_event_id=quality.id
+                WHERE inspection.receipt_id=? ORDER BY quality.id
+                """, String.class, receipt);
     }
 
     private F fixture(FullChainEndToEndTest.World w) {

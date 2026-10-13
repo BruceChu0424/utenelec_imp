@@ -6,7 +6,7 @@
 //   - ProductionFqcSheetHandlingPage：一张品质检查单（V547 同仓一次送检）的
 //     办理页。一行 = 一批实物(ADR-148：同一报工、同一产出批次、同一去向的需求份 /
 //     计划公共 / 实际超产)，行内直接改整批的合格/不合格数量(默认全合格)，含不合格
-//     时行内选处置方式、确认弹窗收结论原因；提交按批逐条整批判定(服务端瀑布：合格先
+//     时行内选处置方式、确认弹窗收结论原因；一份报告一次提交(服务端每批瀑布：合格先
 //     满足需求份，不良先扣实际超产)，批级幂等键重试不重复。
 //   - ProductionFqcInspectionPage：单条 FQC 任务（含无检查单的历史任务）的
 //     详情 + 办理页。摘要卡展示送检登记事实，检验图片/文件就近挂载；决定表单
@@ -41,6 +41,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -206,6 +207,98 @@ class FqcReportRow {
           FqcSubmissionState.unknown => '待核对',
           FqcSubmissionState.confirmed => '已确认',
         };
+
+  /// Freeze the entire reviewed report before the guard saves its draft. The
+  /// server keeps each original command key/hash, including old unknown rows.
+  /// No row is confirmed until the complete response has passed validation.
+  static Future<List<ProductionFqcDecisionResult>?> sendReport({
+    required List<FqcReportRow> rows,
+    required String reason,
+    required ProductionFqcRepository repository,
+    required Future<List<ProductionFqcDecisionResult>> Function(
+      Future<List<ProductionFqcDecisionResult>> Function() send,
+      bool Function(ApiException) isDefiniteRejection,
+    )
+    guard,
+  }) async {
+    final wasUnknown = {for (final row in rows) row: row.needsReconciliation};
+    var dispatched = false;
+    try {
+      final commands = <ProductionFqcReportDecisionCommand>[];
+      for (final row in rows) {
+        if (row.completed || row.idempotencyKey.trim().isEmpty) {
+          throw StateError('原提交编号不完整，请保留草稿并联系管理员核对');
+        }
+        row.freezeSubmission(reason);
+        row.submissionState = FqcSubmissionState.unknown;
+        row.submissionMessage = null;
+        final value = row.command;
+        final isLot = row.inspection.lot != null;
+        commands.add(
+          ProductionFqcReportDecisionCommand(
+            targetType: isLot ? 'LOT' : 'INSPECTION',
+            targetId: row.inspection.id,
+            idempotencyKey: row.idempotencyKey,
+            decision: isLot ? null : value.decision,
+            passQty: isLot ? value.passQty ?? 0 : value.passQty,
+            failQty: isLot ? value.failQty ?? 0 : value.failQty,
+            dispositionCode: row.submission?['disposition'] as String?,
+            reason: row.submission?['reason'] as String?,
+            sheetId: row.inspection.sheetId,
+            sheetNo: row.inspection.sheetNo,
+          ),
+        );
+      }
+      final results = await guard(
+        () {
+          dispatched = true;
+          return repository.decideReport(items: commands);
+        },
+        (error) =>
+            !wasUnknown.values.any((value) => value) && _isFqcRejection(error),
+      );
+      // Keep this fence even for alternate repository implementations.
+      if (results.length != rows.length ||
+          !List.generate(rows.length, (i) => i).every(
+            (index) =>
+                results[index].decisionEventId.isNotEmpty &&
+                results[index].inspection.id == rows[index].inspection.id,
+          )) {
+        throw StateError('服务器返回的报告结果不完整，请继续原提交核对');
+      }
+      for (var index = 0; index < rows.length; index++) {
+        rows[index]
+          ..completed = true
+          ..selected = false
+          ..submissionState = FqcSubmissionState.confirmed
+          ..decisionEventId = results[index].decisionEventId;
+      }
+      return results;
+    } catch (error) {
+      for (final row in rows) {
+        if (!wasUnknown[row]! &&
+            error is ApiException &&
+            _isFqcRejection(error)) {
+          row
+            ..submissionState = FqcSubmissionState.rejected
+            ..submission = null
+            ..submissionMessage = error.message;
+        } else if (!dispatched && !wasUnknown[row]!) {
+          row
+            ..submissionState = FqcSubmissionState.notSent
+            ..submission = null
+            ..submissionMessage = '本机草稿尚未保存或页面已变化，本报告未发送，请保留页面后重试。';
+        } else {
+          row
+            ..submissionState = FqcSubmissionState.unknown
+            ..submissionMessage = error is ApiException
+                ? error.message
+                : '暂时未收到完整的报告回执，请继续原提交核对';
+        }
+      }
+      return null;
+    }
+  }
 
   /// The guard durably checkpoints this row before the network closure begins.
   /// Its return value confirms the business write; later local work is separate.
@@ -523,7 +616,7 @@ Future<bool> _confirmOriginalFqcReport(
         title: const Text('核对并继续原提交'),
         content: Text(
           [
-            '将按以下原内容继续办理。服务器已登记的决定会返回已有结果，其余行继续登记；遇到未确认或拒绝时停止。',
+            '将按以下原内容继续办理。服务器已登记的决定会返回已有结果；本次尚未登记的行一起提交，任一行失败则本次新增决定全部回滚。',
             for (final row in rows)
               '${row.label}：合格 ${fqty(row.command.passQty ?? 0)}，不合格 ${fqty(row.command.failQty ?? 0)}'
                   '${row.submission?['reason'] == null ? '' : '；${row.submission!['reason']}'}',
@@ -770,6 +863,14 @@ class _ProductionFqcSheetHandlingPageState
       context.appWarning('请先勾选要提交的明细行');
       return;
     }
+    final taskCount = selected.fold<int>(
+      0,
+      (count, row) => count + (row.inspection.lot?.members.length ?? 1),
+    );
+    if (selected.length > 100 || taskCount > 100) {
+      context.appWarning('一次报告最多包含 100 份质检任务（含批内各份），请缩小勾选范围后提交');
+      return;
+    }
     final problems = <String, List<String>>{};
     for (final row in selected) {
       final problem = row.problem;
@@ -797,7 +898,13 @@ class _ProductionFqcSheetHandlingPageState
     ++_loadGeneration;
     setState(() => _confirming = true);
     String? reason;
+    AuthenticatedRequestScope? requestScope;
     try {
+      requestScope = await ref
+          .read(productionFqcRepositoryProvider)
+          .api
+          .captureRequestScope(isCurrent: canPublish);
+      if (!mounted || !canPublish()) return;
       if (pending.isNotEmpty) {
         if (!await _confirmOriginalFqcReport(context, selected) || !mounted) {
           return;
@@ -806,6 +913,7 @@ class _ProductionFqcSheetHandlingPageState
       } else {
         reason = await showInspectionReportConfirmDialog(
           context,
+          atomicReport: true,
           lineCount: selected.length,
           passTotalText: _fqcTotalsText(selected, (row) => row.passValue),
           failTotalText: _fqcTotalsText(selected, (row) => row.failValue),
@@ -823,6 +931,8 @@ class _ProductionFqcSheetHandlingPageState
           ],
         );
       }
+    } on ApiException catch (error) {
+      if (mounted && canPublish()) context.appWarning(error.message);
     } finally {
       if (mounted) setState(() => _confirming = false);
     }
@@ -848,40 +958,39 @@ class _ProductionFqcSheetHandlingPageState
       return;
     }
     setState(() => _submitting = true);
-    var confirmed = 0;
     try {
-      for (final row in selected) {
-        if (!mounted || !canPublish()) return;
-        final result = await row.send(
-          reason: reason,
-          repository: ref.read(productionFqcRepositoryProvider),
-          guard: (send, reject) => runFormDraftSubmission(() {
-            if (!canPublish() || !_hasFqcApprovalPermission(ref)) {
-              throw const _FqcSubmissionNotSent();
-            }
-            return send();
-          }, isDefiniteRejection: reject),
-        );
-        if (!mounted || !canPublish()) return;
-        setState(() {});
-        if (result == null) {
-          try {
-            await saveFormDraftNow();
-          } catch (_) {
-            _error = '本机恢复记录暂存失败，请保留页面；提交结果见上方说明';
+      if (!mounted || !canPublish()) return;
+      final result = await FqcReportRow.sendReport(
+        rows: selected,
+        reason: reason,
+        repository: ref.read(productionFqcRepositoryProvider),
+        guard: (send, reject) => runFormDraftSubmission(() {
+          if (!canPublish() || !_hasFqcApprovalPermission(ref)) {
+            throw const _FqcSubmissionNotSent();
           }
-          await _load(afterSubmission: true);
-          return;
+          return requestScope!.run(send);
+        }, isDefiniteRejection: reject),
+      );
+      await requestScope!.verify();
+      if (!mounted || !canPublish()) return;
+      setState(() {});
+      if (result == null) {
+        try {
+          await saveFormDraftNow();
+        } catch (_) {
+          _error = '本机恢复记录暂存失败，请保留页面；提交结果见上方说明';
         }
-        confirmed++;
-        // Confirmed rows are fenced in memory before any local checkpoint.
-        await checkpointFormDraftAfterCreation();
+        await _load(afterSubmission: true);
+        return;
       }
+      // All acknowledged rows are fenced before the one local checkpoint.
+      await checkpointFormDraftAfterCreation();
+      await requestScope.verify();
       if (!mounted || !canPublish()) return;
       context.appSuccess(
         pending.isNotEmpty
-            ? '原提交已确认：$confirmed 行；请以当前任务状态为准'
-            : '检验报告已确认：$confirmed 行决定已登记',
+            ? '原提交已确认：${result.length} 行；请以当前任务状态为准'
+            : '检验报告已确认：${result.length} 行决定已登记',
       );
       refreshBadges(ref);
       await _load(afterSubmission: true);
@@ -892,7 +1001,7 @@ class _ProductionFqcSheetHandlingPageState
     } catch (_) {
       // This boundary contains only local persistence, refresh and navigation.
       // Every successful response has already fenced its row as confirmed.
-      if (canPublish()) {
+      if (canPublish() && requestScope?.isCurrent != false) {
         setState(() => _error = '提交结果已保留，页面更新或本机保存未完成，请刷新查看；已确认行不会再次提交');
       }
     } finally {
@@ -939,12 +1048,11 @@ class _ProductionFqcSheetHandlingPageState
                       absorbing: _loading || _confirming || _submitting,
                       child: _buildBody(context),
                     ),
-                    // 2026-09-12 用户口径：逐行提交期间屏幕中间加载动画。
                     if (_submitting)
                       const Positioned.fill(
                         child: UtenBusyOverlay(
                           title: '正在提交检验报告',
-                          description: '逐行登记质检决定，已完成行不会重复提交。',
+                          description: '本报告一起提交，已登记的原决定不会重复。',
                         ),
                       ),
                   ],

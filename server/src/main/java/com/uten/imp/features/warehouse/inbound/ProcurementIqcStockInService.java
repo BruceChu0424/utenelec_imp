@@ -570,6 +570,7 @@ public class ProcurementIqcStockInService {
                 .setParameter("at", now)
                 .executeUpdate();
         int position = 0;
+        List<PlannedStockIn> planned=new ArrayList<>();
         for (NormalizedItem item : command.items()) {
             position++;
             PassSlice slice = locked.get(item.passEventId());
@@ -587,12 +588,7 @@ public class ProcurementIqcStockInService {
 
             UUID stockInItemId = UUID.randomUUID();
             UUID movementId = UUID.randomUUID();
-            // The deferred physical FK and source guard validate this reserved UUID
-            // at commit. Cost resolution can now read the real PASS/funding parts.
-            insertStockInItem(
-                    stockInItemId, batchId, position, slice, movementId,
-                    item, amount, weight, now);
-            stockService.recordMovementWithId(movementId,new StockService.MovementRequest(
+            var movement=new StockService.MovementRequest(
                     now, movementType(type), sourceDocType(type),
                     receiptId, stockInItemId,
                     slice.goodsId(), slice.colorId(), item.warehouseId(),
@@ -603,14 +599,26 @@ public class ProcurementIqcStockInService {
                             : "仓库确认 IQC 合格品入库；库位：") + item.place(),
                     // ADR-135: 放行切片来自到货实称(千克)的累计分摊; 没称则由库存账推算。
                     com.uten.imp.features.stock.weight.CapturedWeight.slice(weight),
-                    new com.uten.imp.application.port.InventoryMovementCostReference.ProcurementStockIn(stockInItemId)));
-            incrementStockedProjection(slice, item.baseQty(), amount, weight, now);
-
-            preplanAnalysisPeg.attributeInspectionStockIn(
-                    type, receiptId, slice.inspectionItemId(),
-                    slice.passEventId(), stockInItemId,
-                    item.baseQty(), item.warehouseId());
+                    new com.uten.imp.application.port.InventoryMovementCostReference.ProcurementStockIn(stockInItemId));
+            planned.add(new PlannedStockIn(position,slice,item,stockInItemId,movementId,amount,weight,movement));
         }
+        consideration.withStockInAllocations(planned.stream().map(line ->
+                new com.uten.imp.common.finance.ProcurementReceiptConsiderationService.StockInInput(
+                        line.stockInItemId(),line.slice().inspectionItemId(),line.slice().passEventId(),line.item().baseQty())).toList(),
+                allocations -> {
+                    for(PlannedStockIn line:planned){
+                        PassSlice slice=line.slice();NormalizedItem item=line.item();
+                        // Preserve the original per-source physical write/allocation order.
+                        // Only bounded consideration reads were shared before the first write.
+                        insertStockInItem(line.stockInItemId(),batchId,line.position(),slice,line.movementId(),
+                                item,line.amount(),line.weight(),now);
+                        allocations.settle(line.stockInItemId());
+                        stockService.recordMovementWithId(line.movementId(),line.movement());
+                        incrementStockedProjection(slice,item.baseQty(),line.amount(),line.weight(),now);
+                        preplanAnalysisPeg.attributeInspectionStockIn(type,receiptId,slice.inspectionItemId(),
+                                slice.passEventId(),line.stockInItemId(),item.baseQty(),item.warehouseId());
+                    }
+                });
         // ADR-103: 「子件到货叫醒委外出仓」不在这里调——recordMovementWithId 走的是库存内核
         // 的入库分支, 内核已经在同一事务里按每笔入库维度叫醒过了(StockService.recordMovementInternal)。
         // ADR-101：货已上架，累计回厂落在本单约定的允许损耗范围内就直接结案(损耗单 + 受控
@@ -775,6 +783,9 @@ public class ProcurementIqcStockInService {
             UUID warehouseId, UUID goodsId, UUID colorId) {
     }
 
+    private record PlannedStockIn(int position,PassSlice slice,NormalizedItem item,UUID stockInItemId,
+                                  UUID movementId,BigDecimal amount,BigDecimal weight,StockService.MovementRequest movement) {}
+
     private void insertStockInItem(
             UUID stockInItemId,
             UUID batchId,
@@ -817,7 +828,6 @@ public class ProcurementIqcStockInService {
                 .setParameter("place", item.place())
                 .setParameter("at", now)
                 .executeUpdate();
-        consideration.settleStockIn(stockInItemId);
     }
 
     private void incrementStockedProjection(

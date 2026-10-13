@@ -365,14 +365,9 @@ public class ProductionInventoryValueService implements ProductionCostTargetPort
 
     private List<Slice> takeIssue(UUID issue,BigDecimal qty){
         BigDecimal left=qty;List<Slice> result=new ArrayList<>();
-        for(var row:db.queryForList("""
-                SELECT root.id,head.range_to-head.range_from qty FROM stock_value_nodes root
-                JOIN stock_value_nodes head ON head.id=root.return_head_id
-                WHERE root.root_issue_id=root.id AND head.owner_kind='WIP' AND head.owner_id=:issue
-                    AND head.range_to>head.range_from ORDER BY root.created_at,root.id
-                """,Map.of("issue",issue))){
-            if(left.signum()==0)break;BigDecimal take=left.min((BigDecimal)row.get("qty"));
-            result.add(new Slice((UUID)row.get("id"),take,(UUID)row.get("id")));left=left.subtract(take);
+        for(var row:InventoryOwnerPositions.remaining(db,Owner.WIP,List.of(issue))){
+            if(left.signum()==0)break;BigDecimal take=left.min(row.quantity());
+            result.add(new Slice(row.rootId(),take,row.rootId()));left=left.subtract(take);
         }
         if(left.signum()!=0)throw conflict("原领料切片缺少足额未耗用成本位置");
         return result.size()==1?List.of(new Slice(result.getFirst().positionRootId(),qty,issue)):result;

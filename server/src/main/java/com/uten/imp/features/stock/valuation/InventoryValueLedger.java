@@ -155,6 +155,13 @@ abstract class InventoryValueLedger {
                 qty,from,to,value,pending,active,finalValue,event,inputs);
     }
 
+    protected Node planDerivedNode(UUID id,PoolIdentity pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
+                                     BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
+                                     boolean active,boolean finalValue,UUID event,List<Contribution> inputs,InventoryValueWriteSet writes){
+        return createDerivedNode(id,pool,kind,ownerKind,ownerId,movement,rootIssue,qty,from,to,value,pending,
+                active,finalValue,event,inputs,null,writes);
+    }
+
     /**
      * Compute the entire expression in the established input order, then persist
      * a complete child and every immutable input edge before exposing its Node.
@@ -188,6 +195,12 @@ abstract class InventoryValueLedger {
     private Node createDerivedNode(UUID id,PoolIdentity pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
                                      BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
                                      boolean active,boolean finalValue,UUID event,List<Contribution> inputs,UUID referenceRoot){
+        return createDerivedNode(id,pool,kind,ownerKind,ownerId,movement,rootIssue,qty,from,to,value,pending,
+                active,finalValue,event,inputs,referenceRoot,null);
+    }
+    private Node createDerivedNode(UUID id,PoolIdentity pool,String kind,String ownerKind,UUID ownerId,UUID movement,UUID rootIssue,
+                                     BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,
+                                     boolean active,boolean finalValue,UUID event,List<Contribution> inputs,UUID referenceRoot,InventoryValueWriteSet writes){
         if("SOURCE".equals(kind))throw conflict("取得来源必须使用独立的原额初始化入口");
         if(inputs==null||inputs.isEmpty())throw conflict("派生价值节点必须保留完整输入来源");
         List<PreparedContribution> prepared=new ArrayList<>(inputs.size());
@@ -206,10 +219,10 @@ abstract class InventoryValueLedger {
         }
         UUID returnHead="ISSUE_POSITION".equals(kind)&&id.equals(rootIssue)?id:null;
         Node child=insertNode(id,pool,kind,ownerKind,ownerId,movement,rootIssue,qty,from,to,value,pending,
-                active,finalValue,event,total,returnHead,referenceRoot);
+                active,finalValue,event,total,returnHead,referenceRoot,writes);
         // Child must already exist: edge parent/child FKs and the BEFORE sequence
         // and fan-out guard are immediate. Parent order and edge facts stay intact.
-        for(PreparedContribution part:prepared)insertEdge(part,child,event);
+        for(PreparedContribution part:prepared)insertEdge(part,child,event,writes);
         return child;
     }
 
@@ -223,7 +236,13 @@ abstract class InventoryValueLedger {
     private Node insertNode(UUID id,PoolIdentity p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
                             BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,
                             boolean finalValue,UUID event,ValueBounds initial,UUID returnHead,UUID referenceRoot){
-        db.update("""
+        return insertNode(id,p,kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,active,
+                finalValue,event,initial,returnHead,referenceRoot,null);
+    }
+    private Node insertNode(UUID id,PoolIdentity p,String kind,String ownerKind,UUID ownerId,UUID movementId,UUID rootIssueId,
+                            BigDecimal qty,BigDecimal from,BigDecimal to,BigDecimal value,int pending,boolean active,
+                            boolean finalValue,UUID event,ValueBounds initial,UUID returnHead,UUID referenceRoot,InventoryValueWriteSet writes){
+        InventoryValueWriteSet.update(db,writes,"""
                 INSERT INTO stock_value_nodes(id,pool_id,kind,owner_kind,owner_id,movement_id,root_issue_id,
                     quantity_basis,range_from,range_to,initial_known_value,initial_pending,creation_event_id,
                     basis_value_local,pending_parents,active,source_final,return_head_id%s%s)
@@ -234,13 +253,13 @@ abstract class InventoryValueLedger {
                         referenceRoot==null?"":",:referenceRoot"),
                 args("id",id,"pool",p.id(),"kind",kind,"ownerKind",ownerKind,"owner",ownerId,"movement",movementId,"root",rootIssueId,
                 "qty",qty,"start",from,"end",to,"value",value,"pending",pending,"event",event,"active",active,"final",finalValue,
-                "returnHead",returnHead,"referenceRoot",referenceRoot,"lower",ValueAuthorityStore.lower(initial),"upper",ValueAuthorityStore.upper(initial),"scale",ValueAuthorityStore.scale(initial)));
+                "returnHead",returnHead,"referenceRoot",referenceRoot,"lower",ValueAuthorityStore.lower(initial),"upper",ValueAuthorityStore.upper(initial),"scale",ValueAuthorityStore.scale(initial)),"价值节点写入失败");
         return new Node(id,p.id(),p.key(),kind,ownerKind,ownerId,movementId,rootIssueId,qty,from,to,value,pending,1,active,
                 finalValue,returnHead,null,ZERO,ZERO,null,initial,authority.installed?1L:null);
     }
-    private void insertEdge(PreparedContribution part,Node child,UUID event){
+    private void insertEdge(PreparedContribution part,Node child,UUID event,InventoryValueWriteSet writes){
         Contribution input=part.input();Node parent=input.parent();ValueBounds contribution=part.bound();
-        db.update("""
+        InventoryValueWriteSet.update(db,writes,"""
                 INSERT INTO stock_value_edges(id,parent_node_id,child_node_id,interval_from,interval_to,denominator,
                     creation_event_id,initial_parent_revision,initial_allocated_amount,last_parent_revision,
                     allocated_amount_local,pending_contribution%s)
@@ -250,7 +269,7 @@ abstract class InventoryValueLedger {
                 args("id",UUID.randomUUID(),"parent",parent.id(),"child",child.id(),"start",input.from(),"end",input.to(),"denom",input.denominator(),
                 "event",event,"revision",parent.revision(),"amount",part.projected(),
                 "pending",parent.pending()>0&&input.to().compareTo(input.from())>0,"lower",ValueAuthorityStore.lower(contribution),
-                "upper",ValueAuthorityStore.upper(contribution),"scale",ValueAuthorityStore.scale(contribution)));
+                "upper",ValueAuthorityStore.upper(contribution),"scale",ValueAuthorityStore.scale(contribution)),"价值来源边写入失败");
     }
     protected Edge edge(UUID id,boolean lock){
         List<Edge> rows=db.query("SELECT * FROM stock_value_edges WHERE id=:id"+(lock?" FOR UPDATE":""),args("id",id),(r,i)->edgeRow(r));
@@ -260,12 +279,18 @@ abstract class InventoryValueLedger {
             r.getBigDecimal("interval_from"),r.getBigDecimal("interval_to"),r.getBigDecimal("denominator"),r.getLong("last_parent_revision"),
             r.getBigDecimal("allocated_amount_local"),r.getBoolean("pending_contribution"));}
     protected void deactivate(Node node){
-        if(db.update("UPDATE stock_value_nodes SET active=false WHERE id=:id AND active",args("id",node.id()))!=1)
-            throw conflict("价值位置已经转移，不能重复使用");
+        deactivate(node,null);
+    }
+    protected void deactivate(Node node,InventoryValueWriteSet writes){
+        InventoryValueWriteSet.update(db,writes,"UPDATE stock_value_nodes SET active=false WHERE id=:id AND active",args("id",node.id()),
+                "价值位置已经转移，不能重复使用");
     }
     protected void head(Pool pool,UUID head,UUID expected){
-        if(db.update("UPDATE stock_value_pools SET head_node_id=:head WHERE id=:id AND head_node_id IS NOT DISTINCT FROM CAST(:before AS uuid)",
-                args("id",pool.id(),"head",head,"before",expected))!=1)throw conflict("价值池头已变化");
+        head(pool,head,expected,null);
+    }
+    protected void head(Pool pool,UUID head,UUID expected,InventoryValueWriteSet writes){
+        InventoryValueWriteSet.update(db,writes,"UPDATE stock_value_pools SET head_node_id=:head WHERE id=:id AND head_node_id IS NOT DISTINCT FROM CAST(:before AS uuid)",
+                args("id",pool.id(),"head",head,"before",expected),"价值池头已变化");
     }
 
     protected Node revise(Node before,BigDecimal value,int pending,boolean finalValue,UUID event,UUID task){
@@ -318,11 +343,14 @@ abstract class InventoryValueLedger {
         return count;
     }
     protected void posting(UUID event,UUID task,UUID node,String ownerKind,UUID ownerId,BigDecimal delta){
+        posting(event,task,node,ownerKind,ownerId,delta,null);
+    }
+    protected void posting(UUID event,UUID task,UUID node,String ownerKind,UUID ownerId,BigDecimal delta,InventoryValueWriteSet writes){
         if(delta.signum()==0)return;
-        db.update("""
+        InventoryValueWriteSet.update(db,writes,"""
                 INSERT INTO stock_value_postings(id,event_id,task_id,node_id,owner_kind,owner_id,amount_delta_local)
                 VALUES (:id,:event,:task,:node,:kind,:owner,:delta)
-                """,args("id",UUID.randomUUID(),"event",event,"task",task,"node",node,"kind",ownerKind,"owner",ownerId,"delta",delta));
+                """,args("id",UUID.randomUUID(),"event",event,"task",task,"node",node,"kind",ownerKind,"owner",ownerId,"delta",delta),"价值分录写入失败");
     }
 
     protected void insertEvent(UUID id,String operation,EventContext c,Request request,UUID pool,UUID movement,
@@ -333,7 +361,14 @@ abstract class InventoryValueLedger {
     protected void insertEvent(UUID id,String operation,EventContext c,Request request,UUID pool,UUID movement,
                              BigDecimal qty,BigDecimal before,BigDecimal known,UUID result,UUID head,State state,
                              UUID sourceNode,Long sourceRevision,UUID previous,UUID reverses,Boolean beforeFinal,Boolean afterFinal,BigDecimal sourceDeltaExact){
-        db.update("""
+        insertEvent(id,operation,c,request,pool,movement,qty,before,known,result,head,state,sourceNode,sourceRevision,
+                previous,reverses,beforeFinal,afterFinal,sourceDeltaExact,null);
+    }
+    protected void insertEvent(UUID id,String operation,EventContext c,Request request,UUID pool,UUID movement,
+                             BigDecimal qty,BigDecimal before,BigDecimal known,UUID result,UUID head,State state,
+                             UUID sourceNode,Long sourceRevision,UUID previous,UUID reverses,Boolean beforeFinal,Boolean afterFinal,
+                             BigDecimal sourceDeltaExact,InventoryValueWriteSet writes){
+        InventoryValueWriteSet.update(db,writes,"""
                 INSERT INTO stock_value_events(id,operation,source_event_id,source_doc_type,source_doc_id,source_item_id,source_version,
                     actor_user_id,actor_employee_id,occurred_at,idempotency_key,request_hash,request_payload,pool_id,movement_id,
                     qty_base,qty_before,known_value_local,result_node_id,result_head_id,result_state,source_node_id,result_source_revision,
@@ -344,7 +379,7 @@ abstract class InventoryValueLedger {
                 "version",c.sourceVersion(),"user",c.actorUserId(),"employee",c.actorEmployeeId(),"at",c.occurredAt(),"key",c.idempotencyKey(),
                 "hash",request.hash(),"payload",request.json(),"pool",pool,"movement",movement,"qty",qty,"before",before,"known",known,
                 "result",result,"head",head,"state",state.name(),"sourceNode",sourceNode,"sourceRevision",sourceRevision,"previous",previous,
-                "reverses",reverses,"beforeFinal",beforeFinal,"afterFinal",afterFinal,"sourceDeltaExact",sourceDeltaExact));
+                "reverses",reverses,"beforeFinal",beforeFinal,"afterFinal",afterFinal,"sourceDeltaExact",sourceDeltaExact),"价值事件写入失败");
     }
     protected Event replay(String operation,EventContext c,Request request){
         List<Event> rows=db.query("SELECT * FROM stock_value_events WHERE operation=:op AND source_item_id=:item AND (source_event_id=:event OR idempotency_key=:key)",
@@ -373,7 +408,8 @@ abstract class InventoryValueLedger {
         return Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_value_jobs WHERE status='PENDING')"
                 +(productionCostInstalled?" OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks WHERE status='PENDING') OR EXISTS(SELECT 1 FROM stock_value_production_cost_dirty WHERE observed_revision>cleared_revision)":""),Map.of(),Boolean.class));
     }
-    protected State state(Node n){return (effectivePending(n)||propagationPending()
+    protected State state(Node n){return effectivePending(n)?State.PENDING:state(n,propagationPending());}
+    protected State state(Node n,boolean publicationPending){return (effectivePending(n)||publicationPending
             ||(authority.installed&&nodeBound(n)==null))?State.PENDING:State.FINAL;}
     /** Immutable reversal facts describe this source closure, not other pools' publication work. */
     protected State sourceClosureState(Node n){

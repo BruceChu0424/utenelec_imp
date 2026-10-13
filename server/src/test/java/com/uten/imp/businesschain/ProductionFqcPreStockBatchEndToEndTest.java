@@ -44,6 +44,7 @@ import static org.mockito.Mockito.*;
         "uten.reporting.materialized-view-refresh.enabled=false",
         "uten.production.readiness-reconcile.enabled=false", "uten.workshop-material.auto-close.enabled=false",
         "uten.policy-intelligence.enabled=false",
+        "uten.inventory.value-work.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
 
         "uten.concurrency.verify-nested-footprint=${uten.fqc.batch.verifyNestedFootprint:true}"})
@@ -304,18 +305,264 @@ class ProductionFqcPreStockBatchEndToEndTest {
             assertEquals(4,statementCount(measured,"stock.plan_close"),"Plan closeout uses the final posted state once per document");
             assertEquals(4,statementCount(measured,"stock.document_items"),"Confirmation and approval reuse each document's exact locked items");
             assertEquals(1, measured.analysisRefreshes(), "The real shared observer analysis refreshes once after all four receipts");
-            assertFourHandoffFacts(scenarios);
+            assertHandoffFacts(scenarios);
             Measured replay = measure(scenarios, "four-handoffs-replay-" + repetition, () -> quality.passAll(request));
             assertTrue(replay.result().replay());
             assertEquals(measured.result().items(), replay.result().items());
             assertEquals(0, replay.analysisRefreshes());
-            assertFourHandoffFacts(scenarios);
+            assertHandoffFacts(scenarios);
         }
     }
 
-    private void assertFourHandoffFacts(List<Scenario> scenarios) {
+    @Test void twentyPreStockedReportsMeasureFirstWarmupAndSteadyCommandsWithExactReplay() throws Exception {
+        outboxScheduler.close();
+        int steadySamples = Integer.getInteger("uten.fqc.twenty.steadySamples", 1);
+        assertTrue(steadySamples >= 1 && steadySamples <= 5);
+        List<String> phases = new ArrayList<>(List.of("first", "warmup"));
+        for (int sample = 1; sample <= steadySamples; sample++) phases.add("steady-" + sample);
+        for (String phase : phases) {
+            // Fixture preparation exercises production services. "first" is the
+            // first measured command, not a claim of a cold JVM/database cache.
+            List<Scenario> scenarios = prepareReports(1, "prestock", 20);
+            Scenario first = scenarios.getFirst();
+            List<UUID> inspections = scenarios.stream().flatMap(row -> row.inspections().stream()).toList();
+            assertEquals(20, scenarios.stream().map(Scenario::reportId).distinct().count());
+            assertEquals(20, inspections.size());
+            assertEquals(0, balance(first).signum(), "Pre-stock registration must not masquerade as accepted good stock");
+            var request = new PassAllBatchRequest(inspections, "fqc-twenty-handoffs-" + first.reportId());
+            Measured measured = measure(scenarios, "twenty-handoffs-" + phase + "-pass", () -> quality.passAll(request));
+            assertFalse(measured.result().replay());
+            assertEquals(20, measured.result().items().size());
+            assertEquals(1, measured.sql().commits, "All twenty physical receipts must commit atomically");
+            assertFreshLotStatementBudget(measured);
+            assertEquals(1, statementCount(measured, "stock.confirm_graph"));
+            assertEquals(20, statementCount(measured, "stock.prestock_proof"));
+            assertEquals(20, statementCount(measured, "stock.document_items"));
+            assertEquals(1, measured.analysisRefreshes());
+            assertHandoffFacts(scenarios);
+            var facts = handoffFacts(scenarios);
+            Measured replay = measure(scenarios, "twenty-handoffs-" + phase + "-replay", () -> quality.passAll(request));
+            assertTrue(replay.result().replay());
+            assertEquals(measured.result().batchId(), replay.result().batchId());
+            assertEquals(measured.result().items(), replay.result().items());
+            assertEquals(0, replay.analysisRefreshes());
+            assertEquals(0, statementCount(replay, "stock.confirm_graph"));
+            assertEquals(facts, handoffFacts(scenarios), "Original-key replay preserves every quality, release, stock and ownership fact");
+            assertHandoffFacts(scenarios);
+        }
+    }
+
+    @Test void twentyLotsOnOneSheetCompareSequentialCommandsWithAtomicReport() throws Exception {
+        outboxScheduler.close();
+        boolean before = "before".equals(System.getProperty("uten.fqc.report.run", "after"));
+        int samples = Integer.getInteger("uten.fqc.report.samples", 1);
+        assertTrue(samples >= 1 && samples <= 5);
+        for (int sample = 1; sample <= samples; sample++) {
+            Scenario scenario = prepare(20, "prestock");
+            List<UUID> lots = db.queryForList("""
+                    SELECT source.output_lot_id FROM production_fqc_inspections inspection
+                    JOIN production_daily_report_items source ON source.id=inspection.source_report_item_id
+                    WHERE inspection.source_report_id=? ORDER BY source.line_no,source.id
+                    """, UUID.class, scenario.reportId());
+            assertEquals(20, lots.size());
+            assertEquals(20, new HashSet<>(lots).size(), "The screen fixture must contain twenty actual output lots");
+            assertEquals(1, db.queryForObject("""
+                    SELECT count(DISTINCT sheet_item.sheet_id) FROM production_fqc_inspection_sheet_items sheet_item
+                    JOIN production_fqc_inspections inspection ON inspection.id=sheet_item.inspection_id
+                    WHERE inspection.source_report_id=?
+                    """, Integer.class, scenario.reportId()), "All twenty rows belong to one real inspection sheet");
+            assertEquals(0, balance(scenario).signum());
+            List<LotSubmission> submissions = lots.stream().map(lot -> new LotSubmission(lot,
+                    new LotDecisionRequest(BigDecimal.ONE, BigDecimal.ZERO, null, null,
+                            "fqc-report-lot-" + lot))).toList();
+            // Resolve the new request type only in the candidate branch. The exact
+            // same test bytecode also runs against V858, where that type is absent.
+            java.util.function.Supplier<Object> command = before
+                    ? () -> submissions.stream().map(row -> quality.decideLot(row.lotId(), row.request())).toList()
+                    : reportCommand(submissions);
+            ReportMeasured fresh = measureReport(scenario, submissions, "sample-" + sample + "-submit", before, command);
+            assertEquals(before ? 20 : 1, fresh.sql().commits,
+                    "The old row loop commits twenty real transactions; the report commits exactly once");
+            assertEquals(before ? 20 : 1, fresh.analysisRefreshes());
+            assertTrue(fresh.receipts().stream().noneMatch(ReportReceipt::replay));
+            assertReportFacts(scenario, fresh.receipts(), before ? 20 : 1);
+            var facts = reportFacts(scenario);
+            ReportMeasured replay = measureReport(scenario, submissions, "sample-" + sample + "-replay", before, command);
+            assertEquals(before ? 20 : 1, replay.sql().commits);
+            assertEquals(0, replay.analysisRefreshes());
+            assertTrue(replay.receipts().stream().allMatch(ReportReceipt::replay));
+            for (int index = 0; index < submissions.size(); index++) {
+                assertEquals(fresh.receipts().get(index).commandId(), replay.receipts().get(index).commandId());
+                assertEquals(fresh.receipts().get(index).lot(), replay.receipts().get(index).lot());
+            }
+            assertEquals(facts, reportFacts(scenario), "Original row keys cannot duplicate physical or quality facts");
+            assertReportFacts(scenario, replay.receipts(), before ? 20 : 1);
+        }
+    }
+
+    private java.util.function.Supplier<Object> reportCommand(List<LotSubmission> submissions) throws Exception {
+        List<Map<String, Object>> items = submissions.stream().map(row -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("targetType", "LOT"); item.put("targetId", row.lotId());
+            item.put("decision", null); item.put("passQty", row.request().passQty());
+            item.put("failQty", row.request().failQty()); item.put("dispositionCode", row.request().dispositionCode());
+            item.put("reason", row.request().reason()); item.put("idempotencyKey", row.request().idempotencyKey());
+            return item;
+        }).toList();
+        Class<?> requestType = Class.forName("com.uten.imp.features.production.quality.ProductionFqcContracts$ReportDecisionRequest");
+        Object request = json.convertValue(Map.of("items", items), requestType);
+        java.lang.reflect.Method method = quality.getClass().getMethod("decideReport", requestType);
+        return () -> {
+            try { return method.invoke(quality, request); }
+            catch (java.lang.reflect.InvocationTargetException failed) {
+                if (failed.getCause() instanceof RuntimeException runtime) throw runtime;
+                if (failed.getCause() instanceof Error error) throw error;
+                throw new IllegalStateException(failed.getCause());
+            } catch (ReflectiveOperationException failed) { throw new IllegalStateException(failed); }
+        };
+    }
+
+    private ReportMeasured measureReport(Scenario scenario, List<LotSubmission> submissions, String action,
+                                         boolean before, java.util.function.Supplier<Object> command) throws Exception {
+        Object spy = AopTestUtils.getUltimateTargetObject(analyses);
+        clearInvocations(spy);
+        ProductionJdbcMeasurement.Sample sql = ProductionJdbcMeasurement.begin();
+        var resources = CommandResourceMeasurement.begin(DATABASE);
+        long started = System.nanoTime();
+        Object result;
+        long elapsed;
+        Map<String, Object> resourceMetrics;
+        try { result = command.get(); }
+        finally {
+            elapsed = System.nanoTime() - started;
+            resourceMetrics = resources.finish();
+            ProductionJdbcMeasurement.end();
+        }
+        long refreshes = mockingDetails(spy).getInvocations().stream().filter(call ->
+                call.getMethod().getName().equals("refreshLocked") && call.getArguments().length == 1
+                        && scenario.watcherAnalysis().equals(call.getArgument(0))).count();
+        var output = new LinkedHashMap<String, Object>(sql.result());
+        output.put("action", action); output.put("size", submissions.size()); output.put("reportCount", 1);
+        output.put("fixture", "one approved production report; one inspection sheet; twenty distinct pre-stocked lots; one goods/warehouse and one unrelated observer analysis");
+        output.put("candidate", before ? "before" : "after");
+        output.put("entryPoint", before ? "twenty sequential decideLot transactions" : "one decideReport transaction");
+        output.put("watcherRefreshes", refreshes); output.put("wallMillis", elapsed / 1_000_000.0);
+        output.put("resources", resourceMetrics);
+        output.put("verifyNestedFootprint", environment.getProperty("uten.concurrency.verify-nested-footprint", Boolean.class, true));
+        output.put("sourceIdentity", System.getProperty("uten.perf.source-identity", "unspecified"));
+        output.put("scope", "service proxy calls through every real commit; request construction, reflection lookup, fixtures, assertions, HTTP and rendering excluded; samples are not cold-JVM proof");
+        output.put("backgroundWork", "outbox closed; inventory value worker, audit retention, view refresh, readiness, workshop auto-close and policy intelligence disabled");
+        output.put("stockBytecodeSha256", bytecodeHash(StockDocService.class));
+        output.put("qualityBytecodeSha256", bytecodeHash(ProductionFqcInspectionService.class));
+        var databaseSettings = db.queryForMap("SELECT current_setting('server_version') AS version,current_setting('fsync') AS fsync,current_setting('synchronous_commit') AS synchronous_commit,current_setting('full_page_writes') AS full_page_writes");
+        for (String setting : List.of("fsync", "synchronous_commit", "full_page_writes")) assertEquals("on", databaseSettings.get(setting));
+        output.put("databaseSettings", databaseSettings);
+        System.out.println("FQC-REPORT-PROFILE " + json.writeValueAsString(output));
+        com.fasterxml.jackson.databind.JsonNode tree = json.valueToTree(result);
+        com.fasterxml.jackson.databind.JsonNode rows = before ? tree : tree.path("items");
+        assertTrue(rows.isArray());
+        assertEquals(submissions.size(), rows.size());
+        List<ReportReceipt> receipts = new ArrayList<>();
+        for (int index = 0; index < submissions.size(); index++) {
+            var expected = submissions.get(index);
+            var row = rows.get(index);
+            if (!before) {
+                assertEquals("LOT", row.path("targetType").asText());
+                assertEquals(expected.lotId().toString(), row.path("targetId").asText());
+                assertEquals(expected.request().idempotencyKey(), row.path("idempotencyKey").asText());
+                assertTrue(row.path("inspection").isNull());
+            }
+            InspectionLotView lot = json.treeToValue(row.path("lot"), InspectionLotView.class);
+            assertEquals(expected.lotId(), lot.lotId());
+            receipts.add(new ReportReceipt(UUID.fromString(row.path(before ? "lotCommandId" : "commandId").asText()),
+                    row.path("replay").asBoolean(), lot));
+        }
+        return new ReportMeasured(List.copyOf(receipts), sql, refreshes);
+    }
+
+    private Map<String, List<String>> reportFacts(Scenario scenario) {
+        var facts = new LinkedHashMap<>(handoffFacts(List.of(scenario)));
+        facts.put("lotCommands", db.queryForList("SELECT to_jsonb(c)::text FROM production_fqc_lot_decision_commands c WHERE source_report_id=? ORDER BY id", String.class, scenario.reportId()));
+        facts.put("inspections", db.queryForList("SELECT to_jsonb(i)::text FROM production_fqc_inspections i WHERE source_report_id=? ORDER BY id", String.class, scenario.reportId()));
+        return facts;
+    }
+
+    private void assertReportFacts(Scenario scenario, List<ReportReceipt> receipts, int expectedDocuments) {
+        assertEquals(20, receipts.size());
+        assertEquals(expectedDocuments, sourceCount("stock_documents", "source_daily_report_id", scenario));
+        assertEquals(expectedDocuments, approvedDocs(scenario));
+        assertEquals(0, new BigDecimal("20").compareTo(balance(scenario)));
+        assertEquals(expectedDocuments, db.queryForObject("""
+                SELECT count(*) FROM production_finished_in_confirmations confirmation
+                JOIN stock_documents document ON document.id=confirmation.stock_document_id
+                WHERE document.source_daily_report_id=? AND confirmation.origin='PRE_STOCKED_AUTO'
+                """, Integer.class, scenario.reportId()));
+        assertEquals(20, db.queryForObject("""
+                SELECT count(*) FROM stock_document_items item
+                JOIN stock_documents document ON document.id=item.doc_id
+                WHERE document.source_daily_report_id=? AND NOT item.is_deleted
+                """, Integer.class, scenario.reportId()));
+        assertEquals(0, new BigDecimal("20").compareTo(db.queryForObject("""
+                SELECT sum(movement.qty) FROM stock_movements movement
+                JOIN stock_documents document ON document.id=movement.source_doc_id
+                WHERE document.source_daily_report_id=? AND movement.source_doc_type='STOCK_DOC' AND movement.direction=1
+                """, BigDecimal.class, scenario.reportId())));
+        assertEquals(20, db.queryForObject("""
+                SELECT count(*) FROM production_fqc_release_commands command
+                JOIN production_fqc_inspections inspection ON inspection.id=command.inspection_id
+                JOIN stock_document_items item ON item.id=command.stock_document_item_id
+                WHERE inspection.source_report_id=? AND inspection.status='RESOLVED'
+                  AND command.source_report_item_id=inspection.source_report_item_id
+                  AND item.source_daily_report_item_id=inspection.source_report_item_id AND command.requested_qty=1
+                """, Integer.class, scenario.reportId()));
+        assertEquals(20, db.queryForObject("""
+                SELECT count(*) FROM production_fqc_decision_events event
+                JOIN production_fqc_inspections inspection ON inspection.id=event.inspection_id
+                WHERE inspection.source_report_id=? AND event.pass_qty=1 AND event.fail_qty=0
+                """, Integer.class, scenario.reportId()));
+        assertEquals(0, new BigDecimal("20").compareTo(db.queryForObject("""
+                SELECT sum(allocation.qty) FROM production_fqc_release_allocations allocation
+                JOIN production_fqc_inspections inspection ON inspection.id=allocation.inspection_id
+                WHERE inspection.source_report_id=?
+                """, BigDecimal.class, scenario.reportId())));
+        assertEquals(20, sourceCount("production_fqc_lot_decision_commands", "source_report_id", scenario));
+        for (ReportReceipt receipt : receipts) {
+            assertEquals("RESOLVED", receipt.lot().status());
+            assertEquals(0, BigDecimal.ONE.compareTo(receipt.lot().passedQty()));
+            assertEquals(0, receipt.lot().remainingQty().signum());
+            // Both candidate and baseline responses were normalized through JSON;
+            // compare the same representation, preserving numeric value rather than BigDecimal scale.
+            assertEquals(json.valueToTree(receipt.lot()), json.valueToTree(quality.lotDetail(receipt.lot().lotId())));
+            assertEquals(receipt.commandId(), db.queryForObject("""
+                    SELECT id FROM production_fqc_lot_decision_commands WHERE source_report_id=? AND lot_id=?
+                    """, UUID.class, scenario.reportId(), receipt.lot().lotId()));
+        }
+        assertEquals(0, db.queryForObject("""
+                SELECT count(*) FROM stock_reservations WHERE owner_type='PREPLAN_ANALYSIS' AND owner_id=?
+                  AND goods_id=? AND NOT is_deleted AND status=0 AND qty>consumed_qty+released_qty
+                """, Integer.class, scenario.watcherAnalysis(), scenario.world().goodsA()));
+    }
+
+    private record LotSubmission(UUID lotId, LotDecisionRequest request) { }
+    private record ReportReceipt(UUID commandId, boolean replay, InspectionLotView lot) { }
+    private record ReportMeasured(List<ReportReceipt> receipts, ProductionJdbcMeasurement.Sample sql,
+                                  long analysisRefreshes) { }
+
+    private Map<String, List<String>> handoffFacts(List<Scenario> scenarios) {
+        UUID[] reports = scenarios.stream().map(Scenario::reportId).toArray(UUID[]::new);
+        var facts = new LinkedHashMap<String, List<String>>();
+        facts.put("documents", db.queryForList("SELECT to_jsonb(d)::text FROM stock_documents d WHERE source_daily_report_id=ANY(?) ORDER BY id", String.class, (Object) reports));
+        facts.put("documentItems", db.queryForList("SELECT to_jsonb(i)::text FROM stock_document_items i WHERE doc_id IN (SELECT id FROM stock_documents WHERE source_daily_report_id=ANY(?)) ORDER BY id", String.class, (Object) reports));
+        facts.put("movements", db.queryForList("SELECT to_jsonb(m)::text FROM stock_movements m WHERE source_doc_id IN (SELECT id FROM stock_documents WHERE source_daily_report_id=ANY(?)) ORDER BY id", String.class, (Object) reports));
+        facts.put("decisions", db.queryForList("SELECT to_jsonb(e)::text FROM production_fqc_decision_events e WHERE inspection_id IN (SELECT id FROM production_fqc_inspections WHERE source_report_id=ANY(?)) ORDER BY id", String.class, (Object) reports));
+        facts.put("releases", db.queryForList("SELECT to_jsonb(a)::text FROM production_fqc_release_allocations a WHERE inspection_id IN (SELECT id FROM production_fqc_inspections WHERE source_report_id=ANY(?)) ORDER BY id", String.class, (Object) reports));
+        facts.put("releaseCommands", db.queryForList("SELECT to_jsonb(c)::text FROM production_fqc_release_commands c WHERE inspection_id IN (SELECT id FROM production_fqc_inspections WHERE source_report_id=ANY(?)) ORDER BY id", String.class, (Object) reports));
+        return facts;
+    }
+
+    private void assertHandoffFacts(List<Scenario> scenarios) {
         Scenario first = scenarios.getFirst();
-        assertEquals(0, BigDecimal.valueOf(4).compareTo(balance(first)));
+        assertEquals(0, BigDecimal.valueOf(scenarios.size()).compareTo(balance(first)));
         for (Scenario scenario : scenarios) {
             assertEquals(1, sourceCount("stock_documents", "source_daily_report_id", scenario));
             assertEquals(1, approvedDocs(scenario));
@@ -332,6 +579,19 @@ class ProductionFqcPreStockBatchEndToEndTest {
                     """, BigDecimal.class, scenario.reportId())));
             UUID inspection = scenario.inspections().getFirst();
             assertEquals("RESOLVED", quality.detail(inspection).status());
+            UUID originalReportItem = db.queryForObject("SELECT source_report_item_id FROM production_fqc_inspections WHERE id=?",
+                    UUID.class, inspection);
+            assertEquals(originalReportItem, db.queryForObject("""
+                    SELECT item.source_daily_report_item_id FROM stock_document_items item
+                    JOIN stock_documents document ON document.id=item.doc_id
+                    WHERE document.source_daily_report_id=? AND NOT item.is_deleted
+                    """, UUID.class, scenario.reportId()));
+            assertEquals(1, db.queryForObject("""
+                    SELECT count(*) FROM production_fqc_release_commands command
+                    JOIN stock_document_items item ON item.id=command.stock_document_item_id
+                    WHERE command.inspection_id=? AND command.source_report_item_id=?
+                      AND item.source_daily_report_item_id=command.source_report_item_id AND command.requested_qty=1
+                    """, Integer.class, inspection, originalReportItem));
             assertEquals(0, BigDecimal.ONE.compareTo(db.queryForObject(
                     "SELECT SUM(qty) FROM production_fqc_release_allocations WHERE inspection_id=?", BigDecimal.class, inspection)));
         }
@@ -457,28 +717,43 @@ class ProductionFqcPreStockBatchEndToEndTest {
         Object spy = AopTestUtils.getUltimateTargetObject(analyses);
         clearInvocations(spy);
         ProductionJdbcMeasurement.Sample sql = ProductionJdbcMeasurement.begin();
+        var resources = CommandResourceMeasurement.begin(DATABASE);
         long started = System.nanoTime();
         PassAllBatchResult result;
+        long elapsed;
+        Map<String,Object> resourceMetrics;
         try { result = command.get(); }
-        finally { ProductionJdbcMeasurement.end(); }
-        long elapsed = System.nanoTime() - started;
+        finally {
+            elapsed = System.nanoTime() - started;
+            resourceMetrics = resources.finish();
+            ProductionJdbcMeasurement.end();
+        }
         long refreshes = mockingDetails(spy).getInvocations().stream().filter(call ->
                 call.getMethod().getName().equals("refreshLocked") && call.getArguments().length == 1
                         && scenario.watcherAnalysis().equals(call.getArgument(0))).count();
         var output = new LinkedHashMap<String, Object>(sql.result());
         output.put("action", action); output.put("size", scenarios.stream().mapToInt(row -> row.inspections().size()).sum());
         output.put("reportCount", scenarios.size());
+        output.put("fixture", "one real production plan; separate approved reports; one goods/warehouse dimension; one private owner and one unrelated observer analysis");
         output.put("mode", scenario.mode()); output.put("watcherRefreshes", refreshes);
         output.put("wallMillis", elapsed / 1_000_000.0);
+        output.put("resources", resourceMetrics);
         output.put("candidate", System.getProperty("uten.fqc.batch.run", "after"));
         output.put("verifyNestedFootprint", environment.getProperty("uten.concurrency.verify-nested-footprint", Boolean.class, true));
         var databaseSettings = db.queryForMap("SELECT current_setting('server_version') AS version,current_setting('fsync') AS fsync,current_setting('synchronous_commit') AS synchronous_commit,current_setting('full_page_writes') AS full_page_writes");
         for (String setting : List.of("fsync", "synchronous_commit", "full_page_writes")) assertEquals("on", databaseSettings.get(setting));
         output.put("databaseSettings", databaseSettings);
         output.put("sourceIdentity", System.getProperty("uten.perf.source-identity", "unspecified"));
-        output.put("backgroundWork", "four-handoff method closes outbox; audit retention, materialized-view refresh, readiness reconcile, workshop auto-close and policy intelligence disabled; value worker delayed one hour");
+        output.put("backgroundWork", "handoff methods close outbox; inventory value worker, audit retention, materialized-view refresh, readiness reconcile, workshop auto-close and policy intelligence disabled");
+        output.put("scope", "service through real commit; excludes fixture preparation, HTTP and client rendering; first sample is not cold JVM/database proof");
         output.put("stockBytecodeSha256", bytecodeHash(StockDocService.class));
         output.put("qualityBytecodeSha256", bytecodeHash(ProductionFqcInspectionService.class));
+        Map<String,String> valueClasses = new LinkedHashMap<>();
+        for (String name : List.of("InventoryPositionService", "InventoryValueLedger", "InventoryValueWriteSet")) {
+            try { valueClasses.put(name, bytecodeHash(Class.forName("com.uten.imp.features.stock.valuation." + name))); }
+            catch (ClassNotFoundException absentInBaseline) { valueClasses.put(name, "ABSENT"); }
+        }
+        output.put("valueBytecodeSha256", valueClasses);
         System.out.println("FQC-BATCH-PROFILE " + json.writeValueAsString(output));
         return new Measured(result, sql, refreshes);
     }

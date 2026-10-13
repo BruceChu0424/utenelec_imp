@@ -256,9 +256,33 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
     }
 
     private void freezeQuality(UUID inspectionItemId,UUID actorId) {
-        List<Object[]> parts = rows("""
+        freezeQualityEvents(List.of(inspectionItemId),List.of(),actorId);
+    }
+
+    /** Bound to the caller's locked inspection set; command order preserves PASS/FAIL cost intervals. */
+    public void freezeQualityEvents(List<UUID> inspectionItemIds,List<UUID> eventOrder) {
+        freezeQualityEvents(inspectionItemIds,eventOrder,currentUser.requireId());
+    }
+
+    private void freezeQualityEvents(List<UUID> inspectionItemIds,List<UUID> eventOrder,UUID actorId) {
+        if(inspectionItemIds.isEmpty())return;
+        List<Object[]> qualityEvents = rows("""
+                SELECT event.id,event.base_qty,event.inspection_item_id FROM procurement_inspection_events event
+                WHERE event.inspection_item_id IN (:ids) AND event.action IN ('PASS','FAIL')
+                  AND NOT EXISTS(SELECT 1 FROM procurement_iqc_quality_consideration_parts frozen
+                    WHERE frozen.inspection_event_id=event.id)
+                ORDER BY event.occurred_at,event.id
+                """, Map.of("ids", inspectionItemIds));
+        if(qualityEvents.isEmpty())return;
+        // Historical unfrozen events precede this command, just as singleton freezing did.
+        Map<UUID,Integer> order=new java.util.HashMap<>();
+        for(int i=0;i<eventOrder.size();i++)order.put(eventOrder.get(i),i);
+        qualityEvents=new ArrayList<>(qualityEvents);
+        qualityEvents.sort(java.util.Comparator.comparingInt(event -> order.getOrDefault(uuid(event[0]),-1)));
+        Map<UUID,List<Object[]>> partsByInspection=new java.util.HashMap<>();
+        for(Object[] row:rows("""
                 SELECT part.id,part.base_qty,part.nominal_original,part.nominal_local,
-                       COALESCE(used.qty,0)
+                       COALESCE(used.qty,0),inspection.id
                 FROM procurement_inspection_items inspection
                 JOIN procurement_receipt_consideration_parts part
                   ON part.receipt_type=inspection.receipt_type AND part.receipt_item_id=inspection.receipt_item_id
@@ -268,18 +292,15 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                     WHERE quality.consideration_part_id=part.id
                       AND fn_procurement_consideration_active('QUALITY',quality.id)
                 ) used ON TRUE
-                WHERE inspection.id=:id AND fn_procurement_consideration_active('CONSIDERATION',part.id)
+                WHERE inspection.id IN (:ids) AND fn_procurement_consideration_active('CONSIDERATION',part.id)
                 ORDER BY part.id
-                """, Map.of("id", inspectionItemId));
-        if (parts.isEmpty()) return; // Legacy evidence is diagnosed, never guessed.
-        List<Object[]> qualityEvents = rows("""
-                SELECT event.id,event.base_qty FROM procurement_inspection_events event
-                WHERE event.inspection_item_id=:id AND event.action IN ('PASS','FAIL')
-                  AND NOT EXISTS(SELECT 1 FROM procurement_iqc_quality_consideration_parts frozen
-                    WHERE frozen.inspection_event_id=event.id)
-                ORDER BY event.occurred_at,event.id
-                """, Map.of("id", inspectionItemId));
+                """, Map.of("ids", inspectionItemIds))) {
+            partsByInspection.computeIfAbsent(uuid(row[5]),ignored->new ArrayList<>()).add(row);
+        }
+        List<QualityFreeze> frozen=new ArrayList<>();
         for (Object[] event : qualityEvents) {
+            List<Object[]> parts=partsByInspection.getOrDefault(uuid(event[2]),List.of());
+            if(parts.isEmpty())continue; // Legacy evidence is diagnosed, never guessed.
             BigDecimal left = decimal(event[1]);
             BigDecimal available = parts.stream()
                     .map(part -> decimal(part[1]).subtract(decimal(part[4])))
@@ -296,19 +317,38 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 BigDecimal used = decimal(part[4]);
                 BigDecimal original = portion(nullableDecimal(part[2]), take, decimal(part[1]));
                 BigDecimal local = ProcurementConsiderationBasis.finiteBookPortion(nullableDecimal(part[3]), take, decimal(part[1]));
-                em.createNativeQuery("""
-                        INSERT INTO procurement_iqc_quality_consideration_parts(
-                            id,inspection_event_id,consideration_part_id,base_qty,
-                            amount_original,amount_local,created_by)
-                        VALUES(:id,:event,:part,:qty,:original,:local,:actor)
-                        """).setParameter("id", UUID.randomUUID()).setParameter("event", uuid(event[0]))
-                        .setParameter("part", uuid(part[0])).setParameter("qty", take)
-                        .setParameter("original", original).setParameter("local", local)
-                        .setParameter("actor", actorId).executeUpdate();
+                frozen.add(new QualityFreeze(UUID.randomUUID(),uuid(event[0]),uuid(part[0]),take,original,local,actorId));
                 part[4] = used.add(take);
                 left = left.subtract(take);
             }
             if (left.signum() != 0) throw conflict("品质事件的最后一个资金份额未完全分配");
+        }
+        insertQualityParts(frozen);
+    }
+
+    private record QualityFreeze(UUID id,UUID event,UUID part,BigDecimal qty,
+                                 BigDecimal original,BigDecimal local,UUID actor) {}
+
+    private void insertQualityParts(List<QualityFreeze> parts) {
+        // Bound the bind message; each original event/part identity and its row
+        // trigger still exists, without one protocol exchange per funding part.
+        for(int offset=0;offset<parts.size();offset+=500){
+            List<QualityFreeze> chunk=parts.subList(offset,Math.min(offset+500,parts.size()));
+            var values=new java.util.StringJoiner(",");
+            for(int i=0;i<chunk.size();i++)values.add("(:id"+i+",:event"+i+",:part"+i+",:qty"+i+",:original"+i+",:local"+i+",:actor"+i+")");
+            Query insert=em.createNativeQuery("""
+                    INSERT INTO procurement_iqc_quality_consideration_parts(
+                        id,inspection_event_id,consideration_part_id,base_qty,
+                        amount_original,amount_local,created_by) VALUES
+                    """+values);
+            for(int i=0;i<chunk.size();i++){
+                QualityFreeze part=chunk.get(i);
+                insert.setParameter("id"+i,part.id()).setParameter("event"+i,part.event())
+                        .setParameter("part"+i,part.part()).setParameter("qty"+i,part.qty())
+                        .setParameter("original"+i,part.original()).setParameter("local"+i,part.local())
+                        .setParameter("actor"+i,part.actor());
+            }
+            if(insert.executeUpdate()!=chunk.size())throw conflict("品质资金份额未完整写入");
         }
     }
 
@@ -526,8 +566,64 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 WHERE quality.inspection_event_id=:id AND fn_procurement_consideration_active('QUALITY',quality.id)
                 ORDER BY quality.id
                 """, Map.of("id", uuid(source[1])));
+        writeStockInParts(stockInItemId,decimal(source[2]),parts,currentUser.requireId());
+    }
+
+    public record StockInInput(UUID stockInItemId,UUID inspectionItemId,UUID passEventId,BigDecimal quantity) {
+        public StockInInput {
+            if(stockInItemId==null||inspectionItemId==null||passEventId==null||quantity==null||quantity.signum()<=0)
+                throw conflict("入库资金分配缺少有效的来源和数量");
+        }
+    }
+    @FunctionalInterface public interface StockInAllocationWriter { void settle(UUID stockInItemId); }
+
+    /** Fresh stock items in one already locked command; each allocation is persisted immediately in caller order. */
+    public void withStockInAllocations(List<StockInInput> raw,java.util.function.Consumer<StockInAllocationWriter> action) {
+        List<StockInInput> inputs=new ArrayList<>(raw);
+        if(inputs.stream().map(StockInInput::stockInItemId).distinct().count()!=inputs.size())
+            throw conflict("本次入库资金分配重复引用入库明细");
+        if(inputs.isEmpty()){action.accept(id->{throw conflict("本次入库没有该资金分配来源");});return;}
+        UUID actor=currentUser.requireId();
+        freezeQualityEvents(inputs.stream().map(StockInInput::inspectionItemId).distinct().toList(),List.of(),actor);
+        if(number("SELECT COUNT(*) FROM procurement_iqc_stock_consideration_parts WHERE stock_in_item_id IN (:ids)",
+                Map.of("ids",inputs.stream().map(StockInInput::stockInItemId).toList())).signum()!=0)
+            throw conflict("本次入库明细已经有资金分配，请按原命令核对");
+        Map<UUID,List<Object[]>> partsByEvent=new java.util.HashMap<>();
+        for(Object[] part:rows("""
+                SELECT quality.id,quality.consideration_part_id,quality.base_qty,
+                       quality.amount_original,quality.amount_local,COALESCE(used.qty,0),
+                       part.billing_mode,part.funding_slice_id,quality.inspection_event_id
+                FROM procurement_iqc_quality_consideration_parts quality
+                JOIN procurement_receipt_consideration_parts part ON part.id=quality.consideration_part_id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(base_qty) qty FROM procurement_iqc_stock_consideration_parts stock
+                    WHERE stock.quality_part_id=quality.id AND fn_procurement_consideration_active('STOCK',stock.id)
+                ) used ON TRUE
+                WHERE quality.inspection_event_id IN (:ids) AND fn_procurement_consideration_active('QUALITY',quality.id)
+                ORDER BY quality.id
+                """,Map.of("ids",inputs.stream().map(StockInInput::passEventId).distinct().toList()))) {
+            partsByEvent.computeIfAbsent(uuid(part[8]),ignored->new ArrayList<>()).add(part);
+        }
+        int[] cursor={0};boolean[] active={true},failed={false};Thread owner=Thread.currentThread();
+        try {
+            action.accept(id->{
+                if(!active[0]||Thread.currentThread()!=owner||cursor[0]>=inputs.size()||!inputs.get(cursor[0]).stockInItemId().equals(id)) {
+                    failed[0]=true;
+                    throw conflict("入库资金分配须遵循本命令的原明细顺序");
+                }
+                StockInInput input=inputs.get(cursor[0]);
+                try {
+                    writeStockInParts(id,input.quantity(),partsByEvent.getOrDefault(input.passEventId(),List.of()),actor);
+                    cursor[0]++;
+                } catch(RuntimeException|Error failure) {failed[0]=true;throw failure;}
+            });
+            if(failed[0]||cursor[0]!=inputs.size())throw conflict("本次入库资金分配未完整执行");
+        } finally {active[0]=false;partsByEvent.clear();inputs.clear();}
+    }
+
+    private void writeStockInParts(UUID stockInItemId,BigDecimal quantity,List<Object[]> parts,UUID actor) {
         if (parts.isEmpty()) return;
-        BigDecimal left = decimal(source[2]);
+        BigDecimal left = quantity;
         BigDecimal available = parts.stream().map(part -> decimal(part[2]).subtract(decimal(part[5])))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (left.compareTo(available) > 0) throw conflict("实际入库超过该合格事件的资金份额");
@@ -548,10 +644,11 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                     """).setParameter("id", stockPartId).setParameter("stock", stockInItemId)
                     .setParameter("quality", uuid(part[0])).setParameter("qty", take)
                     .setParameter("original", original).setParameter("local", local)
-                    .setParameter("actor", currentUser.requireId()).executeUpdate();
+                    .setParameter("actor", actor).executeUpdate();
             if ("NO_CHARGE".equals(part[6])) {
                 settleAncestors(uuid(part[7]), "STOCK_IN", stockPartId, uuid(part[1]), take, original, local);
             }
+            part[5]=used.add(take);
             left = left.subtract(take);
         }
         if (left.signum() != 0) throw conflict("实际入库的资金份额未完全分配");
@@ -871,14 +968,21 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
     @Override
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public List<QualityPart> quality(UUID inspectionEventId) {
+        return qualityBatch(List.of(inspectionEventId));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public List<QualityPart> qualityBatch(List<UUID> inspectionEventIds) {
+        if(inspectionEventIds.isEmpty())return List.of();
         return rows("""
                 SELECT part.id,part.consideration_part_id,event.inspection_item_id,
                        event.id,event.action,part.base_qty
                 FROM procurement_iqc_quality_consideration_parts part
                 JOIN procurement_inspection_events event ON event.id=part.inspection_event_id
-                WHERE event.id=:id AND fn_procurement_consideration_active('QUALITY',part.id)
+                WHERE event.id IN (:ids) AND fn_procurement_consideration_active('QUALITY',part.id)
                 ORDER BY part.id
-                """,Map.of("id",inspectionEventId)).stream().map(row -> new QualityPart(
+                """,Map.of("ids",inspectionEventIds)).stream().map(row -> new QualityPart(
                         uuid(row[0]),uuid(row[1]),uuid(row[2]),uuid(row[3]),text(row[4]),decimal(row[5]))).toList();
     }
 

@@ -69,6 +69,52 @@ class MaterialAggregateOrderScalePostgresTest {
         exerciseExternalBatch(8,false,true);
     }
 
+    @Test void topLevelWorkshopBatchConservesEverySalesSourceAtConfiguredScale() throws Exception {
+        for(int repetition=0;repetition<measurementRepetitions();repetition++)exerciseTopLevelWorkshopBatch();
+    }
+
+    private void exerciseTopLevelWorkshopBatch() throws Exception {
+        int size=Integer.getInteger("uten.material.root.size",10);
+        assertTrue(size>=1&&size<=100);
+        String tag="root-order-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
+        Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);
+        UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
+        UUID raw=goods(world,"共同采购原料",false);List<PreviewItem> sources=new ArrayList<>();
+        for(int index=0;index<size;index++) {
+            UUID root=goods(world,"顶层产品"+index,true);fixture.insertBom(root,raw,"2");
+            UUID order=fixture.createApprovedOrder(world,root,"10","100");
+            UUID item=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
+            sources.add(new PreviewItem("SALES_ORDER_ITEM",item,null,null,null,null,null,BusinessTime.today().plusDays(10),BigDecimal.TEN));
+        }
+        AnalysisView initial=analysis.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),tag,sources));
+        AnalysisView before=analysis.saveRoutes(initial.analysisId(),new RouteRequest(initial.version(),initial.fingerprint(),tag+"-routes",
+                initial.flatMaterials().stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.level()==0?"MAKE":"BUY",null)).toList()));
+        List<IssueWorkshopPlansRequest.IssuePlanLine> lines=before.products().stream()
+                .filter(product->"SALES_ORDER_ITEM".equals(product.sourceType()))
+                .map(product->new IssueWorkshopPlansRequest.IssuePlanLine(null,product.analysisLineId(),BigDecimal.TEN,
+                        BusinessTime.today(),BusinessTime.today().plusDays(10),workshop,null,worker,null,null,false,BigDecimal.ZERO)).toList();
+        assertEquals(size,lines.size());
+        var request=new IssueWorkshopPlansRequest(before.version(),before.fingerprint(),tag+"-submit",world.warehouseId(),
+                BusinessTime.today(),BusinessTime.today().plusDays(10),true,lines);
+        Scenario scenario=new Scenario(world,before.analysisId(),raw,workshop,worker,size,false,Map.of(),Map.of());
+        if(measureAllPreviews()) {
+            String factsBefore=previewFacts(before.analysisId());
+            var previewRequest=new PreviewIssuePlansRequest(request.version(),request.fingerprint(),request.idempotencyKey(),request.warehouseId(),
+                    request.billDate(),request.deliveryDate(),request.approveNow(),request.lines(),List.of());
+            var projected=measure(scenario,"root-preview",()->commands.previewIssuePlans(before.analysisId(),previewRequest));
+            assertEquals(before.analysisId(),projected.value().analysisId());
+            assertEquals(factsBefore,previewFacts(before.analysisId()),"root preview must not change durable analysis or order facts");
+        }
+        var submitted=measure(scenario,"root-submit",()->commands.issueWorkshopPlans(before.analysisId(),request));
+        assertFalse(submitted.value().replayed());assertEquals(size,submitted.value().plans().size());
+        var facts=db.queryForList("SELECT link.id,link.analysis_item_id,link.plan_id,link.submitted_qty FROM production_material_analysis_plan_links link WHERE link.analysis_id=? ORDER BY link.id",before.analysisId());
+        assertEquals(size,facts.size());facts.forEach(row->amount(BigDecimal.TEN,(BigDecimal)row.get("submitted_qty")));
+        var replayed=measure(scenario,"root-replay",()->commands.issueWorkshopPlans(before.analysisId(),request));
+        assertTrue(replayed.value().replayed());
+        assertEquals(submitted.value().plans().stream().map(GeneratedPlan::planId).toList(),replayed.value().plans().stream().map(GeneratedPlan::planId).toList());
+        assertEquals(facts,db.queryForList("SELECT link.id,link.analysis_item_id,link.plan_id,link.submitted_qty FROM production_material_analysis_plan_links link WHERE link.analysis_id=? ORDER BY link.id",before.analysisId()));
+    }
+
     private void exerciseExternalBatch(int size,boolean partial) throws Exception {
         exerciseExternalBatch(size,partial,false);
     }
@@ -102,7 +148,10 @@ class MaterialAggregateOrderScalePostgresTest {
                             null,null,null,null,null,null,null,BigDecimal.ZERO,input.materialLineIds().stream()
                             .collect(Collectors.toMap(id->id,id->new BigDecimal("5"))))).toList();
             var request=new AggregateMaterialOrderContracts.PreviewRequest(before.version(),before.fingerprint(),"external-order-"+UUID.randomUUID(),world.warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,groups);
-            var reviewed=preview.preview(scenario.analysisId(),request);
+            String factsBefore=measureAllPreviews()?previewFacts(scenario.analysisId()):null;
+            var reviewed=measureAllPreviews()?measure(scenario,route+"-preview",()->preview.preview(scenario.analysisId(),request)).value()
+                    :preview.preview(scenario.analysisId(),request);
+            if(measureAllPreviews())assertEquals(factsBefore,previewFacts(scenario.analysisId()),"external preview must not change durable analysis or order facts");
             var command=new SubmitRequest(request.version(),request.fingerprint(),request.idempotencyKey(),request.warehouseId(),request.billDate(),request.deliveryDate(),true,groups,reviewed.previewFingerprint());
             var ordered=measure(scenario,route+"-submit",()->writer.submit(scenario.analysisId(),command));
             assertFalse(ordered.value().replayed());assertEquals(size,ordered.value().batches().size());
@@ -120,6 +169,8 @@ class MaterialAggregateOrderScalePostgresTest {
             if(!"before".equals(System.getProperty("uten.material.order.run"))) {
                 assertTrue(ordered.analysisCalls().getOrDefault("refreshLocked/2",0L)<=3,"external sibling refresh count "+ordered.analysisCalls());
                 assertTrue(ordered.analysisCalls().getOrDefault("detailInternal/2",0L)<=3,"external sibling detail count "+ordered.analysisCalls());
+                assertEquals(1L,ordered.sqlCalls().getOrDefault("insert.preplan_supply_actions",0L),
+                        "one proven stage must create its supply facts in one statement");
             }
             if(partial) {
                 AnalysisView remaining=ordered.value().analysis();
@@ -215,15 +266,17 @@ class MaterialAggregateOrderScalePostgresTest {
         List<String> shapes=Arrays.stream(System.getProperty("uten.material.order.shapes","independent,mixed").split(","))
             .map(String::trim).toList();
         List<String> incomplete=new ArrayList<>();
-        for(int size:scales)for(String shape:shapes){
+        for(int repetition=0;repetition<measurementRepetitions();repetition++)for(int size:scales)for(String shape:shapes){
             assertTrue(size>=1&&size<=100);assertTrue(Set.of("independent","mixed").contains(shape));
             Scenario scenario=create(size,shape.equals("mixed"));
             AnalysisView before=analysis.detail(scenario.analysisId());
             List<GroupInput> groups=scenario.manufacturedQty().entrySet().stream().map(entry->group(scenario,before,entry.getKey(),"MAKE",entry.getValue())).collect(Collectors.toCollection(ArrayList::new));
             groups.add(group(scenario,before,scenario.raw(),"BUY",BigDecimal.valueOf(size*40L)));
             var request=new AggregateMaterialOrderContracts.PreviewRequest(before.version(),before.fingerprint(),"scale-order-"+UUID.randomUUID(),scenario.world().warehouseId(),BusinessTime.today(),BusinessTime.today().plusDays(10),true,groups);
+            String factsBefore=measureAllPreviews()?previewFacts(scenario.analysisId()):null;
             preview.preview(scenario.analysisId(),request); // Read-only warmup, excluded from command timing.
             var reviewed=measure(scenario,"preview",()->preview.preview(scenario.analysisId(),request));
+            if(measureAllPreviews())assertEquals(factsBefore,previewFacts(scenario.analysisId()),"manufacturing previews must not change durable analysis or order facts");
             SubmitRequest command=new SubmitRequest(request.version(),request.fingerprint(),request.idempotencyKey(),request.warehouseId(),request.billDate(),request.deliveryDate(),true,groups,reviewed.value().previewFingerprint());
             Measured<SubmitResult> ordered;
             try{ordered=measure(scenario,"submit",()->writer.submit(scenario.analysisId(),command));}
@@ -251,6 +304,34 @@ class MaterialAggregateOrderScalePostgresTest {
             if(budget>0)assertTrue(ordered.millis()<=budget,"batch order took "+ordered.millis()+"ms, budget "+budget);
         }
         assertTrue(incomplete.isEmpty(),"requested scenarios did not complete: "+incomplete);
+    }
+
+    private static int measurementRepetitions() {
+        int repetitions=Integer.getInteger("uten.material.order.repetitions",1);
+        assertTrue(repetitions>=1&&repetitions<=5,"measurement repetitions must be between one and five");
+        return repetitions;
+    }
+
+    private static boolean measureAllPreviews() {
+        return Boolean.getBoolean("uten.material.order.measureAllPreviews");
+    }
+
+    /** Read outside the resource window; compare identities, quantities and versions, not just row counts. */
+    private String previewFacts(UUID analysisId) {
+        return db.queryForObject("""
+                WITH target AS (SELECT CAST(? AS uuid) id)
+                SELECT md5(jsonb_build_object(
+                    'header',(SELECT to_jsonb(header) FROM production_material_analyses header WHERE header.id=target.id),
+                    'items',(SELECT jsonb_agg(to_jsonb(item) ORDER BY item.id) FROM production_material_analysis_items item WHERE item.analysis_id=target.id),
+                    'materials',(SELECT jsonb_agg(to_jsonb(material) ORDER BY material.id) FROM production_material_analysis_materials material WHERE material.analysis_id=target.id),
+                    'actions',(SELECT jsonb_agg(to_jsonb(action) ORDER BY action.id) FROM preplan_supply_actions action WHERE action.analysis_id=target.id),
+                    'allocations',(SELECT jsonb_agg(to_jsonb(allocation) ORDER BY allocation.id) FROM preplan_supply_action_allocations allocation WHERE allocation.analysis_id=target.id),
+                    'makeClaims',(SELECT jsonb_agg(to_jsonb(claim) ORDER BY claim.id) FROM preplan_make_public_claims claim WHERE claim.target_analysis_id=target.id),
+                    'plans',(SELECT jsonb_agg(to_jsonb(plan) ORDER BY plan.id) FROM production_plans plan WHERE plan.material_analysis_id=target.id),
+                    'batches',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM preplan_aggregate_batches batch WHERE batch.analysis_id=target.id),
+                    'commands',(SELECT jsonb_agg(to_jsonb(command) ORDER BY command.id) FROM production_material_analysis_commands command WHERE command.analysis_id=target.id)
+                )::text) FROM target
+                """,String.class,analysisId);
     }
 
     private record Scenario(FullChainEndToEndTest.World world,UUID analysisId,UUID raw,
@@ -288,23 +369,26 @@ class MaterialAggregateOrderScalePostgresTest {
         return new GroupInput(goods.toString(),rows.stream().map(MaterialView::materialLineId).toList(),route,qty,false,
             "MAKE".equals(route)?scenario.workshop():null,"MAKE".equals(route)?scenario.worker():null,null,null,null,null,BigDecimal.ZERO,BigDecimal.ZERO,intent);
     }
-    private record Measured<T>(T value,double millis,long statements,Map<String,Long> analysisCalls){}
+    private record Measured<T>(T value,double millis,long statements,Map<String,Long> analysisCalls,Map<String,Long> sqlCalls){}
     private <T> Measured<T> measure(Scenario scenario,String phase,Supplier<T> operation) throws Exception {
         clearInvocations(spy());ProductionJdbcMeasurement.Sample sql=ProductionJdbcMeasurement.begin();MaterialOrderServiceTiming.begin();
+        var resources=CommandResourceMeasurement.begin((org.testcontainers.containers.GenericContainer<?>)
+                ReflectionTestUtils.getField(FullChainEndToEndTest.class,"POSTGRES"));Map<String,Object> resourceMetrics;
         long started=System.nanoTime();T result=null;RuntimeException failure=null;
-        Map<String,Map<String,Number>> timings;
-        try{result=operation.get();}catch(RuntimeException rejected){failure=rejected;}finally{ProductionJdbcMeasurement.end();timings=MaterialOrderServiceTiming.end();}
-        double millis=(System.nanoTime()-started)/1_000_000.0;
+        Map<String,Map<String,Number>> timings;double millis;
+        try{result=operation.get();}catch(RuntimeException rejected){failure=rejected;}
+        finally{millis=(System.nanoTime()-started)/1_000_000.0;resourceMetrics=resources.finish();ProductionJdbcMeasurement.end();timings=MaterialOrderServiceTiming.end();}
         Map<String,Long> methods=new TreeMap<>();
         mockingDetails(spy()).getInvocations().forEach(call->{
             String name=call.getMethod().getName();int args=call.getMethod().getParameterCount();
             if(Set.of("detailInternal","issuePreviewView","refreshLocked","refreshWithAnchorGrowth","projectIssuePreviewBase").contains(name))methods.merge(name+"/"+args,1L,Long::sum);
         });
         Map<String,Object> record=new LinkedHashMap<>();record.put("timestamp",Instant.now().toString());record.put("run",System.getProperty("uten.material.order.run","measurement"));
-        record.put("phase",phase);record.put("shape",scenario.mixed()?"mixed":"independent");record.put("components",scenario.size());record.put("expectedPlans",scenario.manufacturedQty().size());record.put("elapsedMillis",millis);record.put("analysisCalls",methods);
+        record.put("phase",phase);record.put("shape",scenario.mixed()?"mixed":"independent");record.put("components",scenario.size());record.put("expectedPlans",phase.startsWith("root-")?scenario.size():scenario.manufacturedQty().size());record.put("elapsedMillis",millis);record.put("analysisCalls",methods);
         record.put("outcome",failure==null?"completed":failure.getClass().getSimpleName());
         record.put("verifyNestedFootprint",environment.getProperty("uten.concurrency.verify-nested-footprint",Boolean.class));
         record.put("serviceTimings",timings);
+        record.put("resources",resourceMetrics);
         record.put("writerClassSha256",classHash(AggregateMaterialOrderWriteService.class));record.put("analysisClassSha256",classHash(MaterialAnalysisService.class));record.put("sql",sql.result());
         Map<String,String> dependencies=new TreeMap<>();
         for(String name:List.of("com.uten.imp.features.production.analysis.MaterialAnalysisCommandService",
@@ -323,7 +407,9 @@ class MaterialAggregateOrderScalePostgresTest {
         Path path=Path.of(System.getProperty("uten.build.directory","target")).resolve(System.getProperty("uten.material.order.evidenceFile","material-order-scale.jsonl"));Files.createDirectories(path.getParent());Files.writeString(path,mapper.writeValueAsString(record)+System.lineSeparator(),StandardOpenOption.CREATE,StandardOpenOption.APPEND);
         System.out.println("MATERIAL-ORDER-SCALE "+mapper.writeValueAsString(Map.of("phase",phase,"shape",record.get("shape"),"components",scenario.size(),"millis",millis,"statements",sql.logicalStatements,"analysisCalls",methods,"hotSql",hot,"outcome",record.get("outcome"))));
         if(failure!=null)throw failure;
-        return new Measured<>(result,millis,sql.logicalStatements,Map.copyOf(methods));
+        Map<String,Long> sqlCalls=new TreeMap<>();
+        sql.fingerprints.forEach((fingerprint,calls)->sqlCalls.merge(sql.labelsByFingerprint.get(fingerprint),calls,Long::sum));
+        return new Measured<>(result,millis,sql.logicalStatements,Map.copyOf(methods),Map.copyOf(sqlCalls));
     }
     private void verifyWorkBudget(Scenario scenario,Measured<?> previewed,Measured<?> ordered,Measured<?> replayed){
         int levels=scenario.mixed()?2:1;

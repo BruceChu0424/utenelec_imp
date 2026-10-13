@@ -17,7 +17,10 @@ final class MaterialOrderServiceTiming {
             "ProductionPlanningDraftService","ChainNoticeService","ProductionFulfillmentLedgerService",
             "ProductionMaterialAllocationFacade","ProductionPlanningRequestValidator",
             "ProductionExecutionPlanningService","PreplanAnalysisStockPegService",
-            "ProductionPlanMutationFootprintService");
+            "ProductionPlanMutationFootprintService","MaterialAnalysisService",
+            "AggregateMaterialOrderPreviewService","AggregateMaterialBatchLookup",
+            "ProductionPurchaseRequestFacade","ProductionSubcontractRequestFacade",
+            "DocNumberService");
     private static final class Frame { long children; }
     private static final class Totals { long calls,nanos,self,max; }
     private static final class Sample {

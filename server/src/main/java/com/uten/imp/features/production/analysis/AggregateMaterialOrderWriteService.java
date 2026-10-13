@@ -243,6 +243,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             entitlements.delegateAggregateMakeEntitlements(analysisId,batch.action());
             var plan=commands.issueAggregateAnchor(analysisId,batch.id(),batch.anchor(),group,input.allowedOverproductionRate(),
                     request.warehouseId(),request.approveNow(),stepKey(request.idempotencyKey(),group.clientGroupKey(),"PLAN"));
+            em.flush();em.clear();
             analysis.refreshWithAnchorGrowth(analysisId);
             results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),"PRODUCTION_PLAN",plan.planId(),plan.planNo(),plan.planId(),batch.anchor(),group.requestedQty(),group.publicExtraQty(),group.sources(),plan));
         }
@@ -270,14 +271,30 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         List<GroupPreview> groups=previews.resolve(analysisId,step,current).groups();
         if(independentExternalPrefix(groups,inputs,current).size()!=groups.size())
             throw conflict("汇总来源或可用供给已变化，请重新核对");
-        List<BatchResult> results=new ArrayList<>();
+        Map<String,Batch> batches=new HashMap<>();List<BatchInput> newBatches=new ArrayList<>();
         for(GroupPreview group:groups) {
             requireExecutableGroup(group,request);
             GroupInput input=inputs.get(group.clientGroupKey());
             Map<UUID,Map<UUID,BigDecimal>> flow=originalPrivateFlow(input,group,current);
             Map<UUID,BigDecimal> privateProof=flow==null||!hasOriginalBeneficiaryProof(input,current)?null:originalFlowTotals(input,flow);
-            results.add(writeExternalBatch(analysisId,request,group,input,current,hash,privateProof,flow));
+            Batch existing=findReusable(analysisId,group,false,request.approveNow());
+            if(existing==null)newBatches.add(new BatchInput(group,input,privateProof,flow));
+            else {appendBatch(existing,group,input,request,hash,privateProof,flow);batches.put(group.clientGroupKey(),existing);}
         }
+        Map<String,Batch> created=createBatches(analysisId,newBatches,request,hash,false,current);
+        batches.putAll(created);List<BatchResult> results=new ArrayList<>();List<ExternalLink> links=new ArrayList<>();
+        String source=created.isEmpty()?null:analysisSourceLabel(analysisId);
+        for(GroupPreview group:groups) {
+            Batch batch=batches.get(group.clientGroupKey());
+            External external;
+            if(created.containsKey(group.clientGroupKey())) {
+                ExternalLink link=createExternalDocument(batch,group,request.warehouseId(),source);links.add(link);external=link.external();
+            } else external=growExternal(batch,group);
+            results.add(new BatchResult(batch.id(),group.clientGroupKey(),group.route(),external.type(),external.id(),external.no(),
+                    null,null,group.requestedQty().add(group.safetyQty()),group.publicExtraQty(),group.sources()));
+        }
+        markExternals(links);
+        results.forEach(result->notices.notifyPreplanSupplyDocumentCreated(result.documentId(),result.documentType()));
         analysis.refreshLocked(analysisId);
         return results;
     }
@@ -324,6 +341,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         if(!independentManufacturing(ordered.stream().map(group->resolved.get(group.clientGroupKey())).toList(),inputs,current))return null;
         record Prepared(Batch batch,GroupPreview group,Map<UUID,CapacitySnapshot> capacities) { }
         List<Prepared> prepared=new ArrayList<>();
+        Map<String,Batch> batches=new HashMap<>();List<BatchInput> newBatches=new ArrayList<>();
         Map<UUID,CapacitySnapshot> capacities=captureSourceCapacities(
                 ordered.stream().map(group->resolved.get(group.clientGroupKey())).toList(),current);
         for(GroupPreview original:ordered) {
@@ -333,10 +351,11 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             GroupInput originalInput=inputs.get(group.clientGroupKey());
             Map<UUID,Map<UUID,BigDecimal>> flow=originalPrivateFlow(originalInput,group,current);
             Map<UUID,BigDecimal> privateProof=flow==null?null:originalFlowTotals(originalInput,flow);
-            if(batch==null)batch=createBatch(analysisId,group,originalInput,request,hash,true,current,privateProof,flow);
-            else appendBatch(batch,group,originalInput,request,hash,privateProof,flow);
-            prepared.add(new Prepared(batch,group,capacities));
+            if(batch==null)newBatches.add(new BatchInput(group,originalInput,privateProof,flow));
+            else {appendBatch(batch,group,originalInput,request,hash,privateProof,flow);batches.put(group.clientGroupKey(),batch);}
         }
+        batches.putAll(createBatches(analysisId,newBatches,request,hash,true,current));
+        for(GroupPreview original:ordered)prepared.add(new Prepared(batches.get(original.clientGroupKey()),resolved.get(original.clientGroupKey()),capacities));
         analysis.refreshLocked(analysisId);
         Map<UUID,AliasReadSnapshot> aliasReads=readAliasSnapshots(prepared.stream()
                 .map(item->new AliasReadRequest(item.batch(),item.group())).toList());
@@ -521,48 +540,112 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 group.requestedQty(),group.publicExtraQty(),group.sources());
     }
 
+    private record BatchInput(GroupPreview group,GroupInput original,Map<UUID,BigDecimal> privateProof,
+                              Map<UUID,Map<UUID,BigDecimal>> privateFlow) { }
+
     private Batch createBatch(UUID analysisId,GroupPreview group,GroupInput original,SubmitRequest request,String hash,boolean manufacturing,AnalysisView current,Map<UUID,BigDecimal> privateProof,Map<UUID,Map<UUID,BigDecimal>> privateFlow) {
-        UUID id=UUID.randomUUID(),action=UUID.randomUUID(),anchor=manufacturing?UUID.randomUUID():null;
-        String actionKey=CanonicalFingerprint.sha256(List.of("AGGREGATE-ACTION",group.compatibilityKey()));
-        int generation=((Number)em.createNativeQuery("SELECT COALESCE(MAX(generation),0)+1 FROM preplan_supply_actions WHERE analysis_id=:analysis AND action_group_key=:key AND route=:route")
-                .setParameter("analysis",analysisId).setParameter("key",actionKey).setParameter("route",group.route()).getSingleResult()).intValue();
-        var material=current.flatMaterials().stream().filter(row->row.materialLineId().equals(group.sources().getFirst().materialLineId())).findFirst().orElseThrow();
-        ObjectNode config=mapper.valueToTree(original);config.set("originalMaterialLineIds",mapper.valueToTree(original.materialLineIds()));
-        if(privateProof!=null){config.set("sourcePrivateQtyByMaterialLineId",mapper.valueToTree(privateProof));
-            config.set("sourcePrivateQtyByTargetMaterialLineId",mapper.valueToTree(privateFlow));}
-        config.set("materialLineIds",mapper.valueToTree(group.sources().stream().map(SourcePreview::materialLineId).toList()));config.put("manufacturing",manufacturing);
-        if(manufacturing){config.put("departmentId",group.departmentId().toString());config.put("workerId",group.workerId().toString());}
+        return createBatches(analysisId,List.of(new BatchInput(group,original,privateProof,privateFlow)),request,hash,manufacturing,current).get(group.clientGroupKey());
+    }
+
+    /** The same ledger kernel persists one command or an independently proven stage. */
+    private Map<String,Batch> createBatches(UUID analysisId,List<BatchInput> inputs,SubmitRequest request,String hash,
+            boolean manufacturing,AnalysisView current) {
+        if(inputs.isEmpty())return Map.of();
+        Set<UUID> snapshotIds=inputs.stream().map(input->input.group().sources().getFirst().materialLineId()).collect(Collectors.toSet());
+        Map<UUID,MaterialView> materials=current.flatMaterials().stream().filter(row->snapshotIds.contains(row.materialLineId()))
+                .collect(Collectors.toMap(MaterialView::materialLineId,row->row));
+        var rows=mapper.createArrayNode();var allocations=mapper.createArrayNode();Map<String,Batch> result=new LinkedHashMap<>();
+        Set<String> compatibilityKeys=new HashSet<>();
+        for(BatchInput input:inputs) {
+            GroupPreview group=input.group();GroupInput original=input.original();
+            // One compatibility key owns one generation. Admission and the cohort's physical
+            // dimension proof already enforce this; retain the invariant at the write boundary.
+            if(!compatibilityKeys.add(group.compatibilityKey()))throw invalid("同一物料及相同办理规则只能提交一组，请合并来源和总量后重新核对");
+            UUID id=UUID.randomUUID(),action=UUID.randomUUID(),anchor=manufacturing?UUID.randomUUID():null;
+            MaterialView material=Objects.requireNonNull(materials.get(group.sources().getFirst().materialLineId()));
+            ObjectNode config=mapper.valueToTree(original);config.set("originalMaterialLineIds",mapper.valueToTree(original.materialLineIds()));
+            if(input.privateProof()!=null){config.set("sourcePrivateQtyByMaterialLineId",mapper.valueToTree(input.privateProof()));
+                config.set("sourcePrivateQtyByTargetMaterialLineId",mapper.valueToTree(input.privateFlow()));}
+            config.set("materialLineIds",mapper.valueToTree(group.sources().stream().map(SourcePreview::materialLineId).toList()));config.put("manufacturing",manufacturing);
+            if(manufacturing){config.put("departmentId",group.departmentId().toString());config.put("workerId",group.workerId().toString());}
+            ObjectNode row=rows.addObject();row.put("id",id.toString());row.put("action",action.toString());row.put("anchor",anchor==null?null:anchor.toString());
+            row.put("route",group.route());row.put("compatibility",group.compatibilityKey());row.set("configuration",config);
+            row.put("goods",group.goodsId().toString());row.put("color",group.colorId()==null?null:group.colorId().toString());row.put("unit",group.unitId().toString());
+            row.put("need_date",group.deliveryDate()==null?null:group.deliveryDate().toString());row.put("qty",sum(group.sources()));
+            row.put("public_qty",group.publicExtraQty());row.put("safety",group.safetyQty());row.put("safety_stock",material.safetyStockQty());
+            row.put("available",material.mainWarehousePublicAvailableQty());row.put("open_safety",material.mainWarehouseOpenSafetySupplyQty());
+            row.put("action_key",stepKey(request.idempotencyKey(),group.clientGroupKey(),"ACTION"));
+            row.put("group_key",CanonicalFingerprint.sha256(List.of("AGGREGATE-ACTION",group.compatibilityKey())));
+            row.put("business_key",CanonicalFingerprint.sha256(List.of("AGGREGATE-BATCH",id.toString())));
+            row.put("source_ref","共享制造 "+BusinessTime.today()+" "+id.toString().substring(0,8));row.put("document_no","共享制造 "+id.toString().substring(0,8));
+            row.put("priority",group.sources().stream().mapToInt(SourcePreview::allocationPriority).min().orElse(1));
+            ObjectNode deltas=mapper.createObjectNode();
+            for(SourcePreview source:group.sources())if(source.allocatedQty().signum()>0) {
+                deltas.put(source.materialLineId().toString(),source.allocatedQty());
+                ObjectNode allocation=allocations.addObject();allocation.put("action",action.toString());allocation.put("material",source.materialLineId().toString());
+                allocation.put("qty",source.allocatedQty());
+            }
+            row.set("allocations",deltas);row.set("intent",eventIntent(group,original,input.privateProof(),input.privateFlow()));
+            if(result.put(group.clientGroupKey(),new Batch(id,analysisId,action,anchor,null,group.route(),1))!=null)
+                throw invalid("同批新建物料组标识重复");
+        }
+        String payload=rows.toString();UUID actor=user.requireId();
         em.createNativeQuery("""
                 INSERT INTO preplan_aggregate_batches(id,analysis_id,action_id,anchor_analysis_item_id,route,compatibility_key,configuration_snapshot,created_by)
-                VALUES(:id,:analysis,:action,:anchor,:route,:compatibility,CAST(:configuration AS jsonb),:actor)
-                """).setParameter("id",id).setParameter("analysis",analysisId).setParameter("action",action).setParameter("anchor",anchor).setParameter("route",group.route())
-                .setParameter("compatibility",group.compatibilityKey()).setParameter("configuration",config.toString()).setParameter("actor",user.requireId()).executeUpdate();
+                SELECT input.id,:analysis,input.action,input.anchor,input.route,input.compatibility,input.configuration,:actor
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(id uuid,action uuid,anchor uuid,route text,compatibility text,configuration jsonb)
+                """).setParameter("analysis",analysisId).setParameter("actor",actor).setParameter("rows",payload).executeUpdate();
         em.createNativeQuery("""
                 INSERT INTO preplan_supply_actions(id,analysis_id,warehouse_id,goods_id,color_id,unit_id,need_date,route,requested_qty,
                     public_surplus_qty,safety_replenishment_qty,safety_stock_snapshot_qty,public_available_snapshot_qty,open_safety_supply_snapshot_qty,
                     status,idempotency_key,action_group_key,request_business_key,generation,request_hash,created_by)
-                VALUES(:id,:analysis,:warehouse,:goods,:color,:unit,:date,:route,:qty,:public,:safety,:safetyStock,:available,:openSafety,
-                    'OPEN',:key,:group,:business,:generation,:hash,:actor)
-                """).setParameter("id",action).setParameter("analysis",analysisId).setParameter("warehouse",request.warehouseId())
-                .setParameter("goods",group.goodsId()).setParameter("color",group.colorId()).setParameter("unit",group.unitId()).setParameter("date",group.deliveryDate())
-                .setParameter("route",group.route()).setParameter("qty",sum(group.sources())).setParameter("public",group.publicExtraQty()).setParameter("safety",group.safetyQty())
-                .setParameter("safetyStock",material.safetyStockQty()).setParameter("available",material.mainWarehousePublicAvailableQty()).setParameter("openSafety",material.mainWarehouseOpenSafetySupplyQty())
-                .setParameter("key",stepKey(request.idempotencyKey(),group.clientGroupKey(),"ACTION")).setParameter("group",actionKey)
-                .setParameter("business",CanonicalFingerprint.sha256(List.of("AGGREGATE-BATCH",id.toString()))).setParameter("generation",generation).setParameter("hash",hash).setParameter("actor",user.requireId()).executeUpdate();
-        Batch batch=new Batch(id,analysisId,action,anchor,null,group.route(),0);
-        allocations(batch,group.sources(),false);
+                SELECT input.action,:analysis,:warehouse,input.goods,input.color,input.unit,input.need_date,input.route,input.qty,
+                    input.public_qty,input.safety,input.safety_stock,input.available,input.open_safety,'OPEN',input.action_key,input.group_key,input.business_key,
+                    COALESCE(prior.generation,0)+1,:hash,:actor
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(action uuid,goods uuid,color uuid,unit uuid,need_date date,route text,qty numeric,
+                    public_qty numeric,safety numeric,safety_stock numeric,available numeric,open_safety numeric,action_key text,group_key text,business_key text)
+                LEFT JOIN LATERAL (SELECT MAX(previous.generation) generation FROM preplan_supply_actions previous
+                    WHERE previous.analysis_id=:analysis AND previous.action_group_key=input.group_key AND previous.route=input.route) prior ON TRUE
+                """).setParameter("analysis",analysisId).setParameter("warehouse",request.warehouseId()).setParameter("hash",hash)
+                .setParameter("actor",actor).setParameter("rows",payload).executeUpdate();
+        if(!allocations.isEmpty())em.createNativeQuery("""
+                INSERT INTO preplan_supply_action_allocations(analysis_id,action_id,analysis_material_id,allocated_qty,external_item_id,created_by)
+                SELECT :analysis,input.action,input.material,input.qty,NULL,:actor
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(action uuid,material uuid,qty numeric)
+                ORDER BY input.action,input.material
+                """).setParameter("analysis",analysisId).setParameter("actor",actor).setParameter("rows",allocations.toString()).executeUpdate();
         if(manufacturing) {
             em.createNativeQuery("""
                     INSERT INTO production_material_analysis_items(id,analysis_id,source_type,goods_id,color_id,unit_id,source_ref,source_reason,
                         requested_qty,delivery_date,line_priority,created_by,updated_by)
-                    VALUES(:id,:analysis,'AGGREGATE_MAKE',:goods,:color,:unit,:ref,'同料汇总共享制造批次',:qty,:date,:priority,:actor,:actor)
-                    """).setParameter("id",anchor).setParameter("analysis",analysisId).setParameter("goods",group.goodsId()).setParameter("color",group.colorId()).setParameter("unit",group.unitId())
-                    .setParameter("ref","共享制造 "+BusinessTime.today()+" "+id.toString().substring(0,8)).setParameter("qty",sum(group.sources())).setParameter("date",group.deliveryDate())
-                    .setParameter("priority",group.sources().stream().mapToInt(SourcePreview::allocationPriority).min().orElse(1)).setParameter("actor",user.requireId()).executeUpdate();
-            markExternal(batch,"PREPLAN_MAKE_TASK",anchor,"共享制造 "+id.toString().substring(0,8),anchor,null,null);
+                    SELECT input.anchor,:analysis,'AGGREGATE_MAKE',input.goods,input.color,input.unit,input.source_ref,'同料汇总共享制造批次',
+                        input.qty,input.need_date,input.priority,:actor,:actor
+                    FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(anchor uuid,goods uuid,color uuid,unit uuid,source_ref text,qty numeric,need_date date,priority integer)
+                    """).setParameter("analysis",analysisId).setParameter("actor",actor).setParameter("rows",payload).executeUpdate();
+            em.createNativeQuery("""
+                    UPDATE preplan_supply_actions action SET status='CREATED',external_document_type='PREPLAN_MAKE_TASK',
+                        external_document_id=input.anchor,external_document_no=input.document_no
+                    FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(action uuid,anchor uuid,document_no text)
+                    WHERE action.id=input.action
+                    """).setParameter("rows",payload).executeUpdate();
+            em.createNativeQuery("""
+                    UPDATE preplan_supply_action_allocations allocation SET external_item_id=input.anchor
+                    FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(action uuid,anchor uuid)
+                    WHERE allocation.action_id=input.action
+                    """).setParameter("rows",payload).executeUpdate();
         }
-        event(batch,"CREATE",group,original,request.idempotencyKey(),hash,privateProof,privateFlow);
-        return new Batch(id,analysisId,action,anchor,null,group.route(),1);
+        em.createNativeQuery("""
+                INSERT INTO preplan_aggregate_batch_events(batch_id,event_type,allocation_deltas,intent_snapshot,public_delta,safety_delta,
+                    expected_version,resulting_version,idempotency_key,request_hash,created_by)
+                SELECT input.id,'CREATE',input.allocations,input.intent,input.public_qty,input.safety,0,1,:key,:hash,:actor
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(id uuid,allocations jsonb,intent jsonb,public_qty numeric,safety numeric)
+                """).setParameter("rows",payload).setParameter("key",request.idempotencyKey()).setParameter("hash",hash).setParameter("actor",actor).executeUpdate();
+        int advanced=em.createNativeQuery("""
+                UPDATE preplan_aggregate_batches batch SET row_version=1
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(id uuid) WHERE batch.id=input.id AND batch.row_version=0
+                """).setParameter("rows",payload).executeUpdate();
+        if(advanced!=inputs.size())throw conflict("汇总批次版本已变化，请刷新后重试");
+        return result;
     }
 
     private Batch findReusable(UUID analysisId,GroupPreview group,boolean manufacturing,boolean approveNow) {
@@ -598,10 +681,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
     private UUID externalItem(Batch batch){return batch.anchor()!=null?batch.anchor():(UUID)em.createNativeQuery("SELECT COALESCE((SELECT external_item_id FROM preplan_supply_action_allocations WHERE action_id=:id AND external_item_id IS NOT NULL ORDER BY id LIMIT 1),public_surplus_external_item_id) FROM preplan_supply_actions WHERE id=:id").setParameter("id",batch.action()).getSingleResult();}
     private void event(Batch batch,String kind,GroupPreview group,GroupInput original,String key,String hash,Map<UUID,BigDecimal> privateProof,Map<UUID,Map<UUID,BigDecimal>> privateFlow) {
         ObjectNode deltas=mapper.createObjectNode();group.sources().stream().filter(source->source.allocatedQty().signum()>0).forEach(source->deltas.put(source.materialLineId().toString(),source.allocatedQty()));
-        ObjectNode intent=mapper.valueToTree(group);if(privateProof!=null){intent.set("sourcePrivateQtyByMaterialLineId",mapper.valueToTree(privateProof));
-            intent.set("sourcePrivateQtyByTargetMaterialLineId",mapper.valueToTree(privateFlow));}intent.set("materialLineIds",mapper.valueToTree(group.sources().stream().map(SourcePreview::materialLineId).toList()));
-        intent.set("originalMaterialLineIds",mapper.valueToTree(original.materialLineIds()));
-        intent.set("sourceRequestedQtyByMaterialLineId",mapper.valueToTree(original.sourceRequestedQtyByMaterialLineId()));
+        ObjectNode intent=eventIntent(group,original,privateProof,privateFlow);
         em.createNativeQuery("""
                 INSERT INTO preplan_aggregate_batch_events(batch_id,event_type,allocation_deltas,intent_snapshot,public_delta,safety_delta,expected_version,resulting_version,idempotency_key,request_hash,created_by)
                 VALUES(:batch,:type,CAST(:allocations AS jsonb),CAST(:intent AS jsonb),:public,:safety,:version,:result,:key,:hash,:actor)
@@ -609,14 +689,29 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
                 .setParameter("intent",intent.toString()).setParameter("version",batch.version()).setParameter("result",batch.version()+1).setParameter("key",key).setParameter("hash",hash).setParameter("actor",user.requireId()).executeUpdate();
         em.createNativeQuery("UPDATE preplan_aggregate_batches SET row_version=row_version+1 WHERE id=:id AND row_version=:version").setParameter("id",batch.id()).setParameter("version",batch.version()).executeUpdate();
     }
+    private ObjectNode eventIntent(GroupPreview group,GroupInput original,Map<UUID,BigDecimal> privateProof,Map<UUID,Map<UUID,BigDecimal>> privateFlow) {
+        ObjectNode intent=mapper.valueToTree(group);if(privateProof!=null){intent.set("sourcePrivateQtyByMaterialLineId",mapper.valueToTree(privateProof));
+            intent.set("sourcePrivateQtyByTargetMaterialLineId",mapper.valueToTree(privateFlow));}
+        intent.set("materialLineIds",mapper.valueToTree(group.sources().stream().map(SourcePreview::materialLineId).toList()));
+        intent.set("originalMaterialLineIds",mapper.valueToTree(original.materialLineIds()));
+        intent.set("sourceRequestedQtyByMaterialLineId",mapper.valueToTree(original.sourceRequestedQtyByMaterialLineId()));
+        return intent;
+    }
     private External createExternal(Batch batch,GroupPreview group,UUID warehouse) {
-        UUID publicSlice=UUID.randomUUID(),safetySlice=UUID.randomUUID();BigDecimal regular=group.requestedQty();
+        ExternalLink link=createExternalDocument(batch,group,warehouse,analysisSourceLabel(batch.analysis()));
+        markExternals(List.of(link));return link.external();
+    }
+    private String analysisSourceLabel(UUID analysisId) {
         // 来源标签（V719/V720）：汇总批次锚定单一分析，直接用其 WL 编号——采购/委外
         // 「计划号/来源计划」列与经典通道同值可排序；无编号的夹具行回退旧日期标签。
         Object noRow=em.createNativeQuery("SELECT analysis_no FROM production_material_analyses WHERE id=:id")
-                .setParameter("id",batch.analysis()).getSingleResult();
-        String source=noRow==null||noRow.toString().isBlank()
+                .setParameter("id",analysisId).getSingleResult();
+        return noRow==null||noRow.toString().isBlank()
                 ?"物料分析汇总 "+BusinessTime.today():noRow.toString();
+    }
+    private record ExternalLink(Batch batch,External external,UUID privateItem,UUID safetyItem,UUID surplusItem) { }
+    private ExternalLink createExternalDocument(Batch batch,GroupPreview group,UUID warehouse,String source) {
+        UUID safetySlice=UUID.randomUUID();BigDecimal regular=group.requestedQty();
         UUID item=null,safetyItem=null;External result;
         if("BUY".equals(group.route())) {
             List<ProductionPurchaseRequestFacade.DraftLine> lines=new ArrayList<>();
@@ -629,7 +724,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
             var made=subcontract.createProductionDraft(source,batch.analysis(),group.deliveryDate(),warehouse,List.of(new ProductionSubcontractRequestPort.DraftLine(batch.action(),group.goodsId(),group.colorId(),group.unitId(),regular,group.deliveryDate(),"同料多来源汇总委外")),user.requireEmployeeId(),user.requireEmployeeId());
             item=made.lines().getFirst().applicationItemId();result=new External("SUBCONTRACT_APPLICATION",made.applicationId(),made.billNo(),item);
         }
-        markExternal(batch,result.type(),result.id(),result.no(),sum(group.sources()).signum()>0?item:null,safetyItem,group.publicExtraQty().signum()>0?item:null);return result;
+        return new ExternalLink(batch,result,sum(group.sources()).signum()>0?item:null,safetyItem,group.publicExtraQty().signum()>0?item:null);
     }
     private External growExternal(Batch batch,GroupPreview group) {
         Object[] row=NativeQueryResults.objectArrayRows(em.createNativeQuery("SELECT external_document_type,external_document_id,external_document_no FROM preplan_supply_actions WHERE id=:id").setParameter("id",batch.action())).getFirst();UUID item=externalItem(batch);
@@ -637,10 +732,28 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         if(group.publicExtraQty().signum()>0)em.createNativeQuery("UPDATE preplan_supply_actions SET public_surplus_external_item_id=COALESCE(public_surplus_external_item_id,:item) WHERE id=:id").setParameter("item",item).setParameter("id",batch.action()).executeUpdate();
         return new External((String)row[0],(UUID)row[1],(String)row[2],item);
     }
-    private void markExternal(Batch batch,String type,UUID document,String no,UUID item,UUID safety,UUID surplus) {
-        em.createNativeQuery("UPDATE preplan_supply_actions SET status='CREATED',external_document_type=:type,external_document_id=:doc,external_document_no=:no,safety_external_item_id=:safety,public_surplus_external_item_id=:public WHERE id=:id")
-                .setParameter("type",type).setParameter("doc",document).setParameter("no",no).setParameter("safety",safety).setParameter("public",surplus).setParameter("id",batch.action()).executeUpdate();
-        if(item!=null)em.createNativeQuery("UPDATE preplan_supply_action_allocations SET external_item_id=:item WHERE action_id=:id").setParameter("item",item).setParameter("id",batch.action()).executeUpdate();
+    private void markExternals(List<ExternalLink> links) {
+        if(links.isEmpty())return;
+        var rows=mapper.createArrayNode();
+        for(ExternalLink link:links) {
+            ObjectNode row=rows.addObject();row.put("action",link.batch().action().toString());row.put("type",link.external().type());
+            row.put("document",link.external().id().toString());row.put("document_no",link.external().no());
+            row.put("private_item",link.privateItem()==null?null:link.privateItem().toString());
+            row.put("safety_item",link.safetyItem()==null?null:link.safetyItem().toString());
+            row.put("surplus_item",link.surplusItem()==null?null:link.surplusItem().toString());
+        }
+        String payload=rows.toString();
+        em.createNativeQuery("""
+                UPDATE preplan_supply_actions action SET status='CREATED',external_document_type=input.type,external_document_id=input.document,
+                    external_document_no=input.document_no,safety_external_item_id=input.safety_item,public_surplus_external_item_id=input.surplus_item
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(action uuid,type text,document uuid,document_no text,safety_item uuid,surplus_item uuid)
+                WHERE action.id=input.action
+                """).setParameter("rows",payload).executeUpdate();
+        if(links.stream().anyMatch(link->link.privateItem()!=null))em.createNativeQuery("""
+                UPDATE preplan_supply_action_allocations allocation SET external_item_id=input.private_item
+                FROM jsonb_to_recordset(CAST(:rows AS jsonb)) input(action uuid,private_item uuid)
+                WHERE allocation.action_id=input.action AND input.private_item IS NOT NULL
+                """).setParameter("rows",payload).executeUpdate();
     }
 
     private Map<UUID,CapacitySnapshot> captureSourceCapacities(GroupPreview group,AnalysisView view) {

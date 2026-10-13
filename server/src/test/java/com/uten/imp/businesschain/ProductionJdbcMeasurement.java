@@ -218,6 +218,14 @@ final class ProductionJdbcMeasurement {
             if (name.equals("addBatch")) queued[0]++;
             if (name.equals("clearBatch")) queued[0] = 0;
             boolean batch = name.equals("executeBatch") || name.equals("executeLargeBatch");
+            if (sample != null && name.equals("getMoreResults")) {
+                Object result=invoke(target,method,args);
+                // One bound protocol exchange may contain several ordered DML
+                // statements. Reading the received results is not another call.
+                if(Boolean.TRUE.equals(result)||target.getUpdateCount()!=-1)sample.logicalStatements++;
+                sample.instrumentationNanos+=System.nanoTime()-accountingStarted;
+                return result;
+            }
             if (sample == null || !name.startsWith("execute")) {
                 if (sample != null) sample.instrumentationNanos += System.nanoTime() - accountingStarted;
                 return invoke(target, method, args);

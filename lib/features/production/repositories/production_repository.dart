@@ -1364,6 +1364,7 @@ class ProductionPlanRepository {
   }) async => MaterialAggregateOrderPreview.fromJson(
     await api.postCancellable(
       '$_materialAnalysesBase/${request.analysisId}/aggregate-orders/preview',
+      query: _materialAnalysisProjection,
       cancelToken: cancelToken,
       body: request.toJson(),
     ),
@@ -1375,6 +1376,7 @@ class ProductionPlanRepository {
   }) async => MaterialAggregateOrderResult.fromJson(
     await api.post(
       '$_materialAnalysesBase/${request.analysisId}/aggregate-orders/submit',
+      query: _materialAnalysisProjection,
       body: request.toJson(previewFingerprint: previewFingerprint),
     ),
   );

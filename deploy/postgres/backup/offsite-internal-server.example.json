@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "direction": "RECEIVER_PULL",
+  "source": {
+    "machineId": null,
+    "host": null,
+    "addresses": [],
+    "systemIdentifier": null,
+    "timeline": null,
+    "postgresMajorVersion": 16,
+    "repositoryNumber": 2,
+    "repositoryRoot": "/srv/uten-backup/pgbackrest",
+    "pairedBackupRoot": "/data/uten-imp-backups/paired",
+    "attachmentRoot": "/var/lib/uten-imp-media/attachments",
+    "privateOriginalRoot": null
+  },
+  "receiver": {
+    "machineId": null,
+    "addresses": [],
+    "repositoryRoot": null,
+    "receiveAccount": "uten-backup-receive",
+    "retentionAccount": "uten-backup-retain"
+  },
+  "ssh": {
+    "sourceReadAccount": "uten-backup-source",
+    "port": 22,
+    "identityFile": null,
+    "knownHostsFile": null,
+    "hostKeySha256": null,
+    "strictHostKeyChecking": true,
+    "passwordAuthentication": false,
+    "agentForwarding": false,
+    "portForwarding": false,
+    "sourceCommand": "uten-offsite-source-read-v1"
+  },
+  "recovery": {
+    "rpoSeconds": 900,
+    "rtoSeconds": 14400,
+    "publicationMaxSeconds": 300,
+    "pullIntervalSeconds": 300,
+    "transferMaxSeconds": 180,
+    "retryBudgetSeconds": 120
+  },
+  "retention": {
+    "pitrDays": 35,
+    "weeklyRestorePoints": 12,
+    "monthlyRestorePoints": 12,
+    "immutableDays": 35,
+    "cleanupAuthority": "RECEIVER_RETENTION_ACCOUNT",
+    "referenceClosureRequired": true
+  },
+  "isolation": {
+    "sourceCanDeleteReceiverHistory": false,
+    "receiveAccountCanDeleteHistory": false,
+    "sourceReadAccountCanMutateSource": false,
+    "physicalFailureDomain": "UNVERIFIED",
+    "siteFailureDomain": "UNVERIFIED",
+    "immutabilityVerification": "UNVERIFIED"
+  }
+}

@@ -11,7 +11,7 @@
 > **占位符约定**：文中 `<服务器IP>` 等尖括号占位符代表真实环境值（不入库防泄露），
 > 操作时替换为本机 Tailscale IP / 真实账号等。
 > **2026-10-06 服务器安全基线** (ADR-157)：目录与保留规范、密钥纪律、离线托管件、删除流程、告警、
-> 恢复演练和维护窗口顺序见第九节；所有备份只保留 3 天；systemd 单元与主机配置的唯一来源是
+> 恢复演练和维护窗口顺序见第九节；本地默认保留十四天、健康恢复点下限仍为三，按[本地政策](../postgres/backup/LOCAL_BACKUP_POLICY.zh-CN.md)执行；systemd 单元与主机配置的唯一来源是
 > `deploy/simple/units/` 与 `deploy/simple/host/`。执行记录见
 > [2026-10-06 服务器安全整改](../../docs/99-项目治理/2026-10-06-服务器安全整改.md)。
 
@@ -152,26 +152,27 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 
 日常备份统一使用[配套备份](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)，以同一数据库快照和原件校验生成可恢复集合；数据库另有 pgBackRest 全量 + WAL。旧 `uten-backup-daily` 入口及 `uten-backup.{service,timer}` 已于 2026-10-06 从仓库删除，服务器上按整改计划同步删除。安装配套备份前必须配齐 `/usr/local/lib/uten-imp/paired_internal_backup.py`、系统依赖和 `/etc/uten-imp/paired-internal-backup.json`；配置保持 root:root、0600，备份集合保持私有权限。现役单元只来自 `deploy/simple/units/` (`uten-pgbackup.{service,timer}` 与 `uten-paired-internal-backup.{service,timer}`，整文件安装到 `/etc/systemd/system/` 后 `daemon-reload`、`enable --now` 两个 timer；用 `deploy/setup/phase2-postgres.sh` 新装的专用主机沿用它自己的备份单元，不混装)。修改前查实际 unit、最后成功时间与恢复结果，不能从脚本存在推断已生效。
 
-### 备份布局与保留 (2026-10-06 起, 所有备份只保留 3 天)
+### 备份布局与保留 (2026-10-13 起，本地十四天与最低三点分开)
 
 每份备份都和它保护的数据放在不同的物理盘上。三类备份各自保留，互不代管：
 
 | 备份 | 位置 (所在盘) | 频率 | 保留 | 谁来删 |
 |---|---|---|---|---|
-| pgBackRest repo1 全量 + WAL | `/data/backups/pgbackrest` (md0 机械盘阵列, 与库同盘) | 每天 02:17 (`uten-pgbackup.timer`) | `repo1-retention-full=3` | backup 结束时 pgBackRest 自动 expire |
-| pgBackRest repo2 全量 + WAL, aes-256-cbc | `/srv/uten-backup/pgbackrest` (本机 NVMe 独立卷) | 同一单元紧接 repo1 | `repo2-retention-full=3` | 同上 |
-| 配套备份 (库 + 附件原件) | `/data/uten-imp-backups/paired` (md0) | 每天 03:40 与 13:10 (`uten-paired-internal-backup.timer`) | 最近 3 个日历日 (含当天)，且至少保留最新 3 份；`retention_days` 可调 1..365 | 每次成功后由配套备份程序自己清理，结果计数写进 `last-attempt.json`，清理跳过/失败时服务器状态页报红；规则见[配套备份手册](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)「自动保留」 |
-| 升级前 dump | `/srv/uten-backup/pre-activation` (NVMe) | 仅含迁移的激活 | 最近 `UTEN_BACKUP_KEEP_DAYS` 个日历日 (默认 3)，最新一份永远保留 | 更新器激活且健康检查通过后清理，见第四节 |
-| 异地仓 repo3 | 独立 OSS bucket + WORM (待建, 治理记录 D6/C2) | - | 至少 3 天 | - |
+| pgBackRest repo1 全量 + WAL | `/data/backups/pgbackrest` (md0 机械盘阵列, 与库同盘) | 每天 02:17 (`uten-pgbackup.timer`) | `repo1-retention-full-type=time`、`repo1-retention-full=14`、历史 manifest 180 天 | backup 结束时 pgBackRest 自动 expire |
+| pgBackRest repo2 全量 + WAL, aes-256-cbc | `/srv/uten-backup/pgbackrest` (本机 NVMe 独立卷) | 同一单元紧接 repo1 | 同样 `type=time`、`full=14`、`history=180` | 同上 |
+| 配套备份 (库 + 附件原件) | `/data/uten-imp-backups/paired` (md0) | 每天 03:40 与 13:10 (`uten-paired-internal-backup.timer`) | 最近 14 个日历日 (含当天)，独立 `min_complete_sets=3`；两项可调 1..365 | 每次成功后由配套备份程序自己清理，结果计数写进 `last-attempt.json`，清理跳过/失败时服务器状态页报红；规则见[配套备份手册](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)「自动保留」 |
+| 升级前 dump | `/srv/uten-backup/pre-activation` (NVMe) | 仅含迁移的激活 | 最近 `UTEN_BACKUP_KEEP_DAYS` 个日历日 (默认 14)，最新一份永远保留 | 更新器激活且健康检查通过后清理，见第四节 |
+| 独立异机副本 | 公司另一台服务器 (接口已预留、连接和验收待完成)；异地不可变副本仍需另行接入 | 五分钟增量目标 | 三十五天连续恢复、十二个月月度点为目标，未验收不得声称有效 | 独立目标端按完整恢复点及引用管理；见[异机交接](../postgres/backup/OFFSITE_INTERNAL_SERVER.zh-CN.md) |
 
 **repo 编号**：repo1 = `/data` 机械盘阵列 (现有)；repo2 = 本机 NVMe 加密仓 (`deploy/simple/host/pgbackrest-20-uten-imp-repo2.conf.example`)；repo3 = 异地 OSS (待建)。已退役的 `deploy/postgres/backup/README.zh-CN.md` 里 "repo2=OSS" 的编号作废，以本表为准。WAL 归档保持同步 (不开 archive-async)，archive-push 同时推 repo1 与 repo2。
 
-repo1 保留期改为 3 之前，先验收仓库化的[本地双仓只读健康入口](../postgres/backup/LOCAL_BACKUP_HEALTH.zh-CN.md)：
+repo1 改为十四天时间窗之前，先验收仓库化的[本地双仓只读健康入口](../postgres/backup/LOCAL_BACKUP_HEALTH.zh-CN.md)：
 `deploy/postgres/backup/local_backup_health.py` 与 `deploy/simple/units/uten-pgbackup-health.{service,timer}`。
 新入口共用 3 个恢复点门槛，仍输出 `/var/lib/uten-imp-backup-health/health.json` 给状态页。
 实际服务器若还指向 `/usr/local/libexec/uten-imp-monitoring/local_backup_health.py`，说明仍是旧的未版本化脚本，
 按交接手册先备份旧单元/脚本，再完整安装、只读验收新入口；不能仅凭仓库已有文件推断现场已切换。
-确认新健康入口与两仓恢复点通过后，才调整 repo1 的 `repo1-retention-full=3`；下一次 02:17 备份结束自动 expire。
+确认新健康入口与两仓恢复点通过后，才调整 repo1 为 `repo1-retention-full-type=time`、`repo1-retention-full=14`；下一次 02:17 备份结束自动 expire。
+最低三个成功全量点与十四天历史是两项条件；当前已有三点不表示已有十四天覆盖。长期失败后时间模式可能少于三个点，健康检查应如实失败，恢复处置见[本地政策](../postgres/backup/LOCAL_BACKUP_POLICY.zh-CN.md)。
 旧受控双仓链的门禁 (`pgbackrest_repo2`、`backup_commissioner`、`backup_acceptance`、`release_updater`) 同样保持 3 个恢复点。
 
 repo2 口令只在服务器上由管道生成并直接写进正式文件，不进命令行参数、不落临时文件 (下面整段经 SSH 标准输入执行)，写完立即重做离线托管件 (第九节)：
@@ -179,7 +180,7 @@ repo2 口令只在服务器上由管道生成并直接写进正式文件，不�
 ```bash
 sudo install -d -o root -g postgres -m 0750 /etc/pgbackrest /etc/pgbackrest/conf.d
 sudo sh -c 'umask 027; f=/etc/pgbackrest/conf.d/20-uten-imp-repo2.conf;
-  { printf "[global]\nrepo2-path=/srv/uten-backup/pgbackrest\nrepo2-retention-full-type=count\nrepo2-retention-full=3\nrepo2-bundle=y\nrepo2-cipher-type=aes-256-cbc\nrepo2-cipher-pass=";
+  { printf "[global]\nrepo2-path=/srv/uten-backup/pgbackrest\nrepo2-retention-full-type=time\nrepo2-retention-full=14\nrepo2-retention-history=180\nrepo2-bundle=y\nrepo2-cipher-type=aes-256-cbc\nrepo2-cipher-pass=";
     openssl rand -base64 48 | tr -d "\n"; printf "\n"; } > "$f.new" && chown root:postgres "$f.new" && mv "$f.new" "$f"'
 sudo -u postgres pgbackrest info | grep -q 'repo2' || echo 'repo2 未被读取: 把上面几行并入 /etc/pgbackrest.conf 的 [global]'
 sudo -u postgres pgbackrest --stanza=uten-imp stanza-create && sudo -u postgres pgbackrest --stanza=uten-imp check
@@ -264,7 +265,7 @@ git tag v1.4.1 && git push origin v1.4.1
 
 迁移前备份默认放 `/srv/uten-backup/pre-activation` (本机 NVMe 备份卷，与库所在的 `/data` 阵列不同盘；2026-10-06 起，旧默认 `/var/backups/uten-imp`)。含迁移的激活在**停应用之前**先确认该目录可建可写，备份盘没挂载时直接报错退出，应用照常运行、数据库不动。
 
-迁移前备份的保留 (2026-10-05 起)：每次激活**健康检查通过后** (紧跟旧版本目录清理 `prune_old`) 执行 `prune_database_backups`，只处理 `UTEN_BACKUP_DIR` 下一层、名称严格为更新器自己生成格式 `<库名>-vX.Y.Z-YYYYMMDD-HHMMSS.<6位随机>.dump` 的普通文件 (符号链接、子目录、人工 dump 如 `uten_imp-pre-rollback-*.dump`、`ocr-before-*` 目录一律不碰)。年龄取文件名里的服务器本地日期 (不看 mtime)，保留最近 `UTEN_BACKUP_KEEP_DAYS` 个日历日 (默认 3，含当天；只接受 1..365，非法值记日志并整轮跳过)，时间戳最新的一份**已完成的非空** dump (含同秒并列) 无论多旧都保留；`.partial` (更新器被强杀时留下) 和空文件不参与「最新一份」的判定，只按日期清理，目录里一份完成的 dump 都没有时整轮不删。每删一个都在更新器日志记文件名和释放字节数；激活失败、回滚或迁移失败时不清理。备份目录本身是符号链接或不存在时也跳过。对应回归在 `deploy/updater/test_simple_release_backup.py` 与 `test_simple_release_activation.py`。
+迁移前备份的保留 (2026-10-05 起)：每次激活**健康检查通过后** (紧跟旧版本目录清理 `prune_old`) 执行 `prune_database_backups`，只处理 `UTEN_BACKUP_DIR` 下一层、名称严格为更新器自己生成格式 `<库名>-vX.Y.Z-YYYYMMDD-HHMMSS.<6位随机>.dump` 的普通文件 (符号链接、子目录、人工 dump 如 `uten_imp-pre-rollback-*.dump`、`ocr-before-*` 目录一律不碰)。年龄取文件名里的服务器本地日期 (不看 mtime)，保留最近 `UTEN_BACKUP_KEEP_DAYS` 个日历日 (默认 14，含当天；只接受 1..365，非法值记日志并整轮跳过)，时间戳最新的一份**已完成的非空** dump (含同秒并列) 无论多旧都保留；`.partial` (更新器被强杀时留下) 和空文件不参与「最新一份」的判定，只按日期清理，目录里一份完成的 dump 都没有时整轮不删。每删一个都在更新器日志记文件名和释放字节数；激活失败、回滚或迁移失败时不清理。备份目录本身是符号链接或不存在时也跳过。对应回归在 `deploy/updater/test_simple_release_backup.py` 与 `test_simple_release_activation.py`。
 
 升级旧更新器时，另行只读列出实际`UTEN_BACKUP_DIR`及其已有dump的所有者/权限，确认后按明确路径收紧旧备份为`0600`、目录为`0700`；新代码不会自动重写历史文件。恢复时由root读取私有dump并流入postgres的`pg_restore`，不需要把备份临时开放给普通用户。相关回归为`deploy/updater/test_simple_release_backup.py`，文件权限验证必须在Linux执行。
 
@@ -429,18 +430,18 @@ systemd 单元只来自 `deploy/simple/units/`，其它主机配置只来自 `de
 ### 9.1 目录与保留规范
 
 原则：每份备份都和它保护的数据放在不同的物理盘上；秘密只放在 root 可读的地方，另有一份离线托管件。
-**服务器上所有备份只保留 3 天。**
+**本地恢复历史默认十四天，最低健康恢复点为三。** 现役政策见[本地备份政策](../postgres/backup/LOCAL_BACKUP_POLICY.zh-CN.md)，不把本地成功状态当作异机保护或十五分钟恢复目标达标。
 
 | 用途 | 路径 | 所在盘 | 属主/权限 | 保留 |
 |---|---|---|---|---|
 | 在线附件 | `/var/lib/uten-imp-media/attachments/{staging,final,scratch,preview}/<类别>/<YYYYMM>/...` (文件名由服务端随机生成) | NVMe 独立卷, `nodev,nosuid,noexec,errors=remount-ro` | 目录 uten-imp 0700, 文件 0600 | 业务决定 |
 | 数据库 PGDATA | `/data/postgresql/16/main` | md0 RAID1 机械盘 | postgres 0700 | 迁 NVMe 见治理记录 C11 |
-| pgBackRest repo1 | `/data/backups/pgbackrest` | md0 | postgres 0750 | 3 份全量 + WAL |
-| pgBackRest repo2 (加密) | `/srv/uten-backup/pgbackrest` | NVMe 独立卷 `uten-backup` | postgres 0750, aes-256-cbc | 3 份全量 + WAL |
-| 配套备份 (库 + 附件) | `/data/uten-imp-backups/paired/<UTC时间>Z-<12hex>/` | md0 | root 0700 / 文件 0600 | 3 天且至少 3 份, 每天 2 次 |
-| 升级前 dump | `/srv/uten-backup/pre-activation/` | NVMe `uten-backup` | root 0700 / 文件 0600 | 3 天 (最新一份永远保留, 更新器自动清理) |
+| pgBackRest repo1 | `/data/backups/pgbackrest` | md0 | postgres 0750 | 十四天时间窗 + WAL；历史 manifest 180 天 |
+| pgBackRest repo2 (加密) | `/srv/uten-backup/pgbackrest` | NVMe 独立卷 `uten-backup` | postgres 0750, aes-256-cbc | 同上 |
+| 配套备份 (库 + 附件) | `/data/uten-imp-backups/paired/<UTC时间>Z-<12hex>/` | md0 | root 0700 / 文件 0600 | 十四个日历日，独立最低三份，每天两次 |
+| 升级前 dump | `/srv/uten-backup/pre-activation/` | NVMe `uten-backup` | root 0700 / 文件 0600 | 十四个日历日 (最新一份永远保留，健康激活后清理) |
 | 临时导出 / 恢复演练 | `/srv/uten-backup/adhoc`, `/srv/uten-backup/drill` | NVMe `uten-backup` | root 0700 / postgres 0700 | 用完即删, 不过夜 |
-| 异地仓 repo3 (待建) | 独立 OSS bucket, 开 WORM | 云 | 专用 RAM 子账号, 无删除权限 | 至少 3 天 |
+| 异地不可变副本 (待建) | 独立目标端或 OSS WORM | 独立故障域 | 独立身份，源主机无历史删除权限 | 依新政策与目标端验收，不沿用旧三天 |
 | 配置与密钥 | `/etc/uten-imp/*.env`, `/etc/uten-imp-updater.env`, `/etc/pgbackrest.conf`, `/etc/pgbackrest/conf.d/*.conf` | NVMe 根 | root 0600 / root:postgres 0640 | 另有离线托管件 |
 | 程序 | `/opt/uten-imp/releases/vX.Y.Z` (`current` 为 symlink) | NVMe 根 | root:uten-imp 0751, `web/` root:uten-web 0750 | 更新器保留 5 版 |
 | 告警状态 | `/var/lib/uten-alert` | NVMe 根 | root:uten-imp 0750 / 事件文件 0640 | 最多 128 条, 保留 7 天 |

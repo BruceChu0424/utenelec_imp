@@ -9,4 +9,12 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 ChallengeResponseAuthentication no
 AuthenticationMethods publickey
+# 管理会话只用于运维命令, 不提供通往数据库/内网或 agent 的转发通道。
+MaxAuthTries 3
+LoginGraceTime 30
+X11Forwarding no
+AllowTcpForwarding no
+AllowStreamLocalForwarding no
+AllowAgentForwarding no
+PermitTunnel no
 AllowUsers __ADMIN_USER__

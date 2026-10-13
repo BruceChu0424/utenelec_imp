@@ -1,6 +1,6 @@
 # 每日 pgBackRest 全量备份: repo1 (/data 机械盘阵列) + repo2 (本机 NVMe 备份卷, aes-256-cbc 加密)
 # 安装为 /etc/systemd/system/uten-pgbackup.service (整文件替换 2026-08-11 的两行简版, ADR-157)
-# 保留: repo1-retention-full=3 / repo2-retention-full=3 (/etc/pgbackrest.conf 与
+# 保留: 两仓 repo-retention-full-type=time / repo-retention-full=14 (/etc/pgbackrest.conf 与
 #   /etc/pgbackrest/conf.d/20-uten-imp-repo2.conf), backup 结束时 pgBackRest 自动 expire,
 #   所以这里不再单独跑 expire。
 # 两个仓各跑一次: 任一仓失败不影响另一个仓照常备份, 但整个单元记为失败并触发告警。

@@ -39,22 +39,26 @@ def covered(path: str, grants: list) -> bool:
     return any(path == grant or path.startswith(grant.rstrip("/") + "/") for grant in grants)
 
 
-class RetentionIsThreeDaysEverywhereTest(unittest.TestCase):
-    def test_every_backup_keeps_three_days(self):
+class LocalBackupRetentionPolicyTest(unittest.TestCase):
+    def test_local_history_is_fourteen_days_with_independent_three_point_health_floor(self):
         paired = read(DEPLOY / "postgres/backup/paired_internal_backup.py")
-        self.assertRegex(paired, r"(?m)^    retention_days: int = 3$")
+        self.assertRegex(paired, r"(?m)^    retention_days: int = 14$")
+        self.assertRegex(paired, r"(?m)^    min_complete_sets: int = 3$")
         example = json.loads(read(DEPLOY / "postgres/backup/paired-internal-backup.example.json"))
-        self.assertEqual(3, example["retention_days"])
+        self.assertEqual((14, 3), (example["retention_days"], example["min_complete_sets"]))
         updater = read(DEPLOY / "simple/uten-imp-updater.sh")
-        self.assertIn('"${UTEN_BACKUP_KEEP_DAYS:=3}"', updater)
-        self.assertIn("\nUTEN_BACKUP_KEEP_DAYS=3\n", read(DEPLOY / "simple/updater.env.example"))
+        self.assertIn('"${UTEN_BACKUP_KEEP_DAYS:=14}"', updater)
+        self.assertIn("\nUTEN_BACKUP_KEEP_DAYS=14\n", read(DEPLOY / "simple/updater.env.example"))
         repo2 = read(HOST / "pgbackrest-20-uten-imp-repo2.conf.example")
-        self.assertIn("\nrepo2-retention-full=3\n", repo2)
-        self.assertIn("\nrepo2-retention-full-type=count\n", repo2)
-        self.assertIn("\nrepo1-retention-full=3\n", read(DEPLOY / "setup/phase2-postgres.sh"))
+        self.assertIn("\nrepo2-retention-full=14\n", repo2)
+        self.assertIn("\nrepo2-retention-full-type=time\n", repo2)
+        self.assertIn("\nrepo2-retention-history=180\n", repo2)
+        phase2 = read(DEPLOY / "setup/phase2-postgres.sh")
+        self.assertIn("\nrepo1-retention-full=14\n", phase2)
+        self.assertIn("\nrepo1-retention-full-type=time\n", phase2)
 
     def test_dual_repo_commissioning_gates_accept_three_restore_points(self):
-        # A fresh phase2 host keeps 3 full backups; every legacy health/acceptance gate must accept 3.
+        # A fourteen-day time window does not raise the commissioning/health minimum from three points.
         backup = DEPLOY / "postgres/backup"
         self.assertIn("\nMINIMUM_RESTORE_POINTS = 3\n", read(backup / "pgbackrest_repo2.py"))
         self.assertIn("\nMINIMUM_RESTORE_POINTS = 3\n", read(backup / "backup_commissioner.py"))
@@ -63,7 +67,8 @@ class RetentionIsThreeDaysEverywhereTest(unittest.TestCase):
         self.assertEqual(3, policy["repo2"]["retentionFull"])
         self.assertEqual(3, policy["repo2"]["retentionArchive"])
         self.assertEqual(3, policy["health"]["minimumSuccessfulFullRestorePoints"])
-        self.assertIn('"repo1-retention-full=3\\n"', read(backup / "internal_test_first_backup_commissioner.py"))
+        self.assertIn('"repo1-retention-full=14\\n"', read(backup / "internal_test_first_backup_commissioner.py"))
+        self.assertIn('"repo1-retention-full-type=time\\n"', read(backup / "internal_test_first_backup_commissioner.py"))
         for path in (backup / "pgbackrest_repo2.py", backup / "backup_commissioner.py",
                      backup / "backup_acceptance.py", DEPLOY / "updater/release_updater.py"):
             text = read(path)
@@ -227,6 +232,21 @@ class AlertingAndHostFilesTest(unittest.TestCase):
         for line in ("PasswordAuthentication no", "KbdInteractiveAuthentication no", "AuthenticationMethods publickey"):
             self.assertIn("\n" + line + "\n", sshd)
         self.assertIn("\nssh_pwauth: false\n", read(HOST / "cloud-init-99-uten-ssh-pwauth.cfg"))
+
+    def test_manual_and_both_installer_ssh_modes_disable_every_forwarding_channel(self):
+        installer = read(DEPLOY / "setup/phase1b-ssh-key-only.sh")
+        generated = re.findall(r'cat >"\$transaction_dir/new-config" <<EOF\n(.*?)\nEOF',
+                               installer, re.DOTALL)
+        self.assertEqual(2, len(generated), "staged and key-only modes must both ship")
+        snippets = [read(HOST / "sshd-00-uten-imp.conf.example"), *generated]
+        for snippet in snippets:
+            active = [line.strip().split(maxsplit=1) for line in snippet.splitlines()
+                      if line.strip() and not line.lstrip().startswith("#")]
+            for directive in ("AllowAgentForwarding no", "AllowTcpForwarding no",
+                              "AllowStreamLocalForwarding no", "X11Forwarding no",
+                              "PermitTunnel no", "MaxAuthTries 3", "LoginGraceTime 30"):
+                name, expected = directive.split(maxsplit=1)
+                self.assertEqual([expected], [value for key, value in active if key == name])
 
     @unittest.skipUnless(bash_path(), "bash is required for the syntax check")
     def test_shell_scripts_parse(self):

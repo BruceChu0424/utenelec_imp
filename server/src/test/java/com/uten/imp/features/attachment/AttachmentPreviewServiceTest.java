@@ -14,7 +14,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -173,6 +175,59 @@ class AttachmentPreviewServiceTest {
         assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class, () -> service.render(UUID.randomUUID())).getCode());
         assertEquals(0, runs.get());
         verify(attachments, never()).delete(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test void realConversionChildReceivesNoServerCredentialsAndUsesItsPrivateWorkDirectory() throws Exception {
+        Path work = Files.createDirectory(root.resolve("private conversion work"));
+        Path report = root.resolve("child-environment-names.txt");
+        List<String> credentials = List.of("UTEN_DB_PASSWORD", "UTEN_MIGRATOR_DB_PASSWORD",
+                "UTEN_PGP_MASTER_KEY", "UTEN_JWT_SECRET", "UTEN_HMAC_KEY", "UTEN_SECRET_CIPHER_KEY",
+                "BOOTSTRAP_ADMIN_PASSWORD", "UTEN_AI_API_KEY",
+                "AWS_SECRET_ACCESS_KEY", "SSH_AUTH_SOCK", "FUTURE_PROVIDER_SECRET");
+        ProcessBuilder parent = new ProcessBuilder(EnvironmentProbe.command("convert", work, report))
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        credentials.forEach(name -> parent.environment().put(name, "synthetic-regression-sentinel"));
+        parent.environment().put("HOME", root.resolve("inherited-home").toString());
+        parent.environment().put("TMPDIR", root.resolve("inherited-tmp").toString());
+        parent.environment().put("LANG", "zh_CN.UTF-8");
+        Process process = parent.start();
+        try {
+            assertTrue(process.waitFor(30, TimeUnit.SECONDS), "conversion probe must finish");
+            assertTrue(Files.isRegularFile(report), "real conversion child must write its environment names");
+            List<String> names = Files.readAllLines(report, StandardCharsets.UTF_8);
+            for (String credential : credentials) {
+                assertFalse(names.contains(credential), credential + " must never reach the conversion child");
+            }
+            assertEquals(0, process.exitValue(), "private HOME/TMP and locale must be available to the child");
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
+        }
+    }
+
+    /** Separate JVMs exercise the production launcher; only environment names are written, never values. */
+    public static class EnvironmentProbe {
+        public static void main(String[] args) throws Exception {
+            Path work = Path.of(args[1]).toAbsolutePath().normalize();
+            Path report = Path.of(args[2]);
+            if ("convert".equals(args[0])) {
+                System.exit(AttachmentPreviewService.runSoffice(
+                        command("inspect", work, report), work, Duration.ofSeconds(15)));
+            }
+            Files.write(report, System.getenv().keySet().stream().sorted().toList(), StandardCharsets.UTF_8);
+            for (String name : List.of("HOME", "TMPDIR", "TMP", "TEMP")) {
+                if (!work.toString().equals(System.getenv(name))) System.exit(91);
+            }
+            if (!"zh_CN.UTF-8".equals(System.getenv("LANG"))) System.exit(92);
+        }
+
+        static List<String> command(String mode, Path work, Path report) {
+            String executable = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")
+                    ? "java.exe" : "java";
+            return List.of(Path.of(System.getProperty("java.home"), "bin", executable).toString(),
+                    "-cp", System.getProperty("java.class.path"), EnvironmentProbe.class.getName(),
+                    mode, work.toString(), report.toString());
+        }
     }
 
     private AttachmentService source(String name, String contentType) {

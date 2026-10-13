@@ -121,7 +121,8 @@ class ServerStatusExportTest(unittest.TestCase):
                 no_evidence, {**self.paired(), "retention": "APPLIED"},
                 self.paired(cleanup="PENDING"),  # Completed 12h ago: the cleanup never reported back.
                 self.paired(cleanup="DONE"), self.paired(retentionDays=True), self.paired(retentionDays=0),
-                self.paired(retentionDays=366), self.paired(completeSets="6"), self.paired(failedDeletes=-1),
+                self.paired(retentionDays=366), self.paired(minCompleteSets=True), self.paired(minCompleteSets=0),
+                self.paired(minCompleteSets=366), self.paired(completeSets="6"), self.paired(failedDeletes=-1),
                 self.paired(unrecognizedEntries=None)],
             "PAIRED_RETENTION_NOT_APPLIED": [
                 self.paired(cleanup="SKIPPED"), self.paired(cleanup="FAILED"), self.paired(failedDeletes=1),
@@ -140,11 +141,25 @@ class ServerStatusExportTest(unittest.TestCase):
         self.assertEqual((stale["lastAttemptStatus"], stale["reason"]), ("CHECK_FAILED", "PAIRED_RETENTION_NOT_APPLIED"))
 
     def test_applied_retention_within_bounds_stays_green(self):
-        # 3 days x 2 runs a day = 6 normally; up to 12 tolerates manual extra runs.
+        # Older installed three-day records omit minCompleteSets and remain compatible.
         for sets in (1, 6, 12):
             with self.subTest(sets=sets):
                 result = summarize_pair(summarize(self.report()), self.paired(completeSets=sets), self.observed())
                 self.assertEqual((result["lastAttemptStatus"], result["reason"]), ("SUCCESS", "PG_AND_PAIRED_VERIFIED"))
+
+    def test_fourteen_day_policy_and_independent_count_floor_are_observed(self):
+        for sets in (3, 28, 56):
+            result = summarize_pair(summarize(self.report()),
+                                    self.paired(retentionDays=14, minCompleteSets=3, completeSets=sets), self.observed())
+            self.assertEqual(result["lastAttemptStatus"], "SUCCESS")
+        result = summarize_pair(summarize(self.report()),
+                                self.paired(retentionDays=14, minCompleteSets=3, completeSets=57), self.observed())
+        self.assertEqual(result["reason"], "PAIRED_RETENTION_NOT_APPLIED")
+        # A short time window can deliberately retain more old sets than its normal calendar bound.
+        for sets in (6, 7, 8):
+            result = summarize_pair(summarize(self.report()),
+                                    self.paired(retentionDays=1, minCompleteSets=6, completeSets=sets), self.observed())
+            self.assertEqual(result["lastAttemptStatus"], "SUCCESS")
 
     def test_cleanup_still_running_right_after_success_is_unknown_not_red(self):
         paired = self.paired(cleanup="PENDING")

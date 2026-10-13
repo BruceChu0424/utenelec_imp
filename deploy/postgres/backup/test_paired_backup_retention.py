@@ -67,10 +67,11 @@ class RetentionFixture(unittest.TestCase):
         (self.root / "latest-success.json").write_text(
             json.dumps({"set_id": name, "completed_at": NOW.isoformat()}), encoding="utf-8")
 
-    def prune(self, current: str, days=7, moment=NOW):
+    def prune(self, current: str, days=7, moment=NOW, minimum=3):
         stream = io.StringIO()
         with contextlib.redirect_stderr(stream):
-            result = paired.prune_expired_sets(self.root, days, current, moment)
+            result = paired.prune_expired_sets(self.root, days, current, moment,
+                                                min_complete_sets=minimum)
         return result, [json.loads(line) for line in stream.getvalue().splitlines()]
 
     def names(self) -> set:
@@ -130,33 +131,33 @@ class PairedRetentionTest(RetentionFixture):
         current = self.days_ago(20)
         newest = self.days_ago(10)
         self.point_to(current)
-        # One day keeps a count floor of one, so only the explicit newest/current/pointer rules protect.
-        result, events = self.prune(current, days=1)
+        # Explicitly select a one-set floor to exercise the separate current/pointer protections.
+        result, events = self.prune(current, days=1, minimum=1)
         self.assertEqual([oldest], [item["name"] for item in result["removed"]])
         self.assertTrue({current, newest} <= self.names())
         self.assertEqual(newest, events[0]["newest"])
         # A wrong future clock still cannot remove the only remaining protected sets.
-        result, _ = self.prune(current, days=1, moment=NOW + timedelta(days=3650))
+        result, _ = self.prune(current, days=1, moment=NOW + timedelta(days=3650), minimum=1)
         self.assertEqual([], result["removed"])
         self.assertTrue({current, newest} <= self.names())
 
-    def test_shipped_default_keeps_three_calendar_days_of_twice_daily_sets(self):
-        # 2026-10-06 owner decision: 3 days for every backup; the timer runs at 03:40 and 13:10.
+    def test_shipped_default_keeps_fourteen_calendar_days_and_three_set_floor(self):
+        # The timer runs at 03:40 and 13:10; the safety floor is independent of the 14-day window.
         days = paired.Config().retention_days
-        self.assertEqual(3, days)
+        self.assertEqual((14, 3), (days, paired.Config().min_complete_sets))
         moment = datetime(2026, 10, 6, 5, 10, 0, tzinfo=timezone.utc)  # 13:10 at UTC+8
-        runs = [datetime(2026, 9, 28, 19, 40, tzinfo=timezone.utc) + timedelta(hours=offset)
-                for day in range(9) for offset in (24 * day, 24 * day + 9.5)]
+        runs = [datetime(2026, 9, 15, 19, 40, tzinfo=timezone.utc) + timedelta(hours=offset)
+                for day in range(22) for offset in (24 * day, 24 * day + 9.5)]
         sets = [self.add_set(created) for created in runs if created <= moment]
         current = sets[-1]
         self.point_to(current)
         result, _ = self.prune(current, days=days, moment=moment.astimezone(timezone(timedelta(hours=8))))
         kept = sorted(self.names() - {"latest-success.json"})
-        # Local 10-04, 10-05 and 10-06: two sets each = 6; everything dated 10-03 or earlier is gone.
-        self.assertEqual(6, len(kept))
-        self.assertEqual(6, result["complete_sets"])
-        self.assertEqual(sorted(sets[-6:]), kept)
-        self.assertEqual(sorted(sets[:-6]), sorted(item["name"] for item in result["removed"]))
+        # Local 09-23..10-06: two sets each = 28; everything dated 09-22 or earlier is gone.
+        self.assertEqual(28, len(kept))
+        self.assertEqual(28, result["complete_sets"])
+        self.assertEqual(sorted(sets[-28:]), kept)
+        self.assertEqual(sorted(sets[:-28]), sorted(item["name"] for item in result["removed"]))
 
     def test_count_floor_survives_a_week_of_failures_before_the_next_success(self):
         # Daily sets 09-09..10-06, every run 10-07..10-13 failed, 10-14 is the first success again.
@@ -170,24 +171,48 @@ class PairedRetentionTest(RetentionFixture):
         current = self.add_set(moment)
         self.point_to(current)
         result, events = self.prune(current, moment=moment)
-        # The last clean sets before the failure window survive: 7 complete sets remain, not 1.
+        # The last two clean sets before the failure window survive: 3 complete sets remain, not 1.
         # Failed-run evidence keeps the plain calendar window (10-07 is the 8th day back).
-        kept = {current, *daily[-6:]}
-        self.assertEqual(sorted(daily[:-6] + failed[:1]), sorted(item["name"] for item in result["removed"]))
+        kept = {current, *daily[-2:]}
+        self.assertEqual(sorted(daily[:-2] + failed[:1]), sorted(item["name"] for item in result["removed"]))
         self.assertEqual(kept | set(failed[1:]) | {"latest-success.json"}, self.names())
-        self.assertEqual(7, result["complete_sets"])
-        self.assertEqual(sorted(daily[-6:]), events[0]["kept_by_count"])
-        self.assertEqual(7, events[-1]["remaining_sets"])
+        self.assertEqual(3, result["complete_sets"])
+        self.assertEqual(sorted(daily[-2:]), events[0]["kept_by_count"])
+        self.assertEqual(3, events[-1]["remaining_sets"])
 
-    def test_forward_clock_jump_removes_one_set_not_the_whole_history(self):
+    def test_forward_clock_jump_preserves_three_sets_not_the_whole_history(self):
         week = [self.days_ago(days) for days in range(7)]
         jumped = NOW + timedelta(days=30)
         current = self.add_set(jumped)
         self.point_to(current)
         result, _ = self.prune(current, moment=jumped)
-        self.assertEqual([week[-1]], [item["name"] for item in result["removed"]])
-        self.assertEqual({current, *week[:-1], "latest-success.json"}, self.names())
-        self.assertEqual(7, result["complete_sets"])
+        self.assertEqual(sorted(week[2:]), sorted(item["name"] for item in result["removed"]))
+        self.assertEqual({current, *week[:2], "latest-success.json"}, self.names())
+        self.assertEqual(3, result["complete_sets"])
+
+    def test_fourteen_day_policy_after_long_failure_gap_keeps_only_three_complete_sets(self):
+        history = [self.days_ago(days) for days in range(20)]
+        moment = NOW + timedelta(days=45)
+        current = self.add_set(moment)
+        self.point_to(current)
+        result, events = self.prune(current, days=14, moment=moment)
+        self.assertEqual({current, *history[:2], "latest-success.json"}, self.names())
+        self.assertEqual(sorted(history[2:]), sorted(item["name"] for item in result["removed"]))
+        self.assertEqual((14, 3), (events[0]["retention_days"], events[0]["min_complete_sets"]))
+        self.assertEqual(3, result["complete_sets"])
+
+    def test_explicit_count_floor_and_calendar_boundary_are_independent(self):
+        current = self.days_ago(0)
+        on_boundary = self.days_ago(13)
+        expired = [self.days_ago(days) for days in (14, 15, 16)]
+        self.point_to(current)
+        result, _ = self.prune(current, days=14, minimum=4)
+        self.assertEqual([expired[-1]], [item["name"] for item in result["removed"]])
+        self.assertTrue({current, on_boundary, *expired[:2]} <= self.names())
+
+    def test_older_json_configuration_uses_three_set_floor(self):
+        config = paired.Config(**json.loads('{"retention_days":14}'))
+        self.assertEqual(3, config.min_complete_sets)
 
     def test_nothing_is_removed_without_a_recognized_new_set_and_success_pointer(self):
         old = self.days_ago(30)
@@ -265,7 +290,7 @@ class PairedRetentionTest(RetentionFixture):
             os.symlink(self.outside / outside_set / "manifest.json", self.root / linked_manifest / "manifest.json")
         except OSError:
             linked_manifest = None  # File symlinks need extra Windows privilege; directory junctions are still covered.
-        result, events = self.prune(current, days=1)
+        result, events = self.prune(current, days=1, minimum=1)
         self.assertEqual([expired], [item["name"] for item in result["removed"]])
         self.assertEqual(self.sizes[expired], result["freed_bytes"])
         self.assertEqual(b"outside the backup root", (self.outside / "keep.txt").read_bytes())
@@ -313,7 +338,7 @@ class PairedRetentionTest(RetentionFixture):
         self.assertTrue({recent_failed, "last-attempt.json", ".backup.lock", ".latest-0123", ".attempt-0123"} <= self.names())
 
     def test_retention_days_must_be_an_integer_from_1_to_365(self):
-        self.assertEqual(3, paired.Config().retention_days)
+        self.assertEqual(14, paired.Config().retention_days)
         for value in (1, 7, 365):
             self.assertEqual(value, paired.check_retention_days(value))
         current = self.days_ago(0)
@@ -329,11 +354,23 @@ class PairedRetentionTest(RetentionFixture):
                         self.assertRaisesRegex(ValueError, "retention_days"):
                     paired.validate_config(paired.Config(retention_days=value))
         self.assertIn(old, self.names())
-        # 365 is accepted; with only two sets its count floor of 365 still keeps both.
+        # 365 is accepted; the independent three-set floor still keeps both available sets.
         result, _ = self.prune(current, days=365)
         self.assertEqual([], result["removed"])
-        result, _ = self.prune(current, days=1)
+        result, _ = self.prune(current, days=1, minimum=1)
         self.assertEqual([old], [item["name"] for item in result["removed"]])
+
+    def test_count_floor_rejects_invalid_configuration_before_deletion(self):
+        current, old = self.days_ago(0), self.days_ago(400)
+        self.point_to(current)
+        for value in (0, -1, 366, "3", 3.0, True, None):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "min_complete_sets"):
+                    self.prune(current, days=14, minimum=value)
+                with patch.object(paired.os, "geteuid", create=True, return_value=0), \
+                        self.assertRaisesRegex(ValueError, "min_complete_sets"):
+                    paired.validate_config(paired.Config(min_complete_sets=value))
+        self.assertIn(old, self.names())
 
     def test_one_failed_delete_is_logged_and_the_rest_continue(self):
         current = self.days_ago(0)
@@ -346,7 +383,7 @@ class PairedRetentionTest(RetentionFixture):
                 raise PermissionError("simulated busy directory")
             return real_rmtree(path, *args, **kwargs)
         with patch.object(paired.shutil, "rmtree", side_effect=failing_rmtree):
-            result, events = self.prune(current, days=1)
+            result, events = self.prune(current, days=1, minimum=1)
         self.assertEqual([removable], [item["name"] for item in result["removed"]])
         self.assertEqual([{"name": blocked, "error": "PermissionError"}], result["failed"])
         self.assertEqual(result["failed"], events[-1]["failed"])
@@ -354,7 +391,7 @@ class PairedRetentionTest(RetentionFixture):
         leftover = ".expired-" + blocked
         self.assertIn(leftover, self.names())
         self.assertNotIn(blocked, self.names())
-        result, _ = self.prune(current, days=1)
+        result, _ = self.prune(current, days=1, minimum=1)
         self.assertEqual([leftover], [item["name"] for item in result["removed"]])
 
     def test_retention_problem_never_escapes_the_success_path(self):
@@ -365,7 +402,7 @@ class PairedRetentionTest(RetentionFixture):
             state = paired.retain_after_success(self.root, paired.Config(), published)
         event = json.loads(stream.getvalue())
         self.assertEqual(("paired_backup_retention_failed", "RuntimeError"), (event["event"], event["error"]))
-        self.assertEqual({"status": "FAILED", "retentionDays": 3}, state)
+        self.assertEqual({"status": "FAILED", "retentionDays": 14, "minCompleteSets": 3}, state)
         with patch.object(paired, "prune_expired_sets", side_effect=InterruptedError("signal")), \
                 contextlib.redirect_stderr(io.StringIO()):
             state = paired.retain_after_success(self.root, paired.Config(), published)
@@ -378,13 +415,14 @@ class PairedRetentionTest(RetentionFixture):
         (self.root / stale).mkdir()
         (self.root / (NOW.strftime("%Y%m%dT%H%M%SZ") + "-" + "d" * 12)).mkdir()  # Set-like, no manifest.
         self.point_to(current)
-        config = paired.Config(retention_days=1)
+        config = paired.Config(retention_days=1, min_complete_sets=1)
         def retain():
             with patch.object(paired, "datetime", wraps=datetime) as clock, contextlib.redirect_stderr(io.StringIO()):
                 clock.now.return_value = NOW
                 return paired.retain_after_success(self.root, config, self.root / current)
         state = retain()
-        self.assertEqual({"status": "APPLIED", "retentionDays": 1, "completeSets": 1, "removedSets": 1,
+        self.assertEqual({"status": "APPLIED", "retentionDays": 1, "minCompleteSets": 1,
+                          "completeSets": 1, "removedSets": 1,
                           "removedUnpublished": 1, "failedDeletes": 0, "unrecognizedEntries": 1,
                           "freedBytes": self.sizes[expired]}, state)
         self.assertNotIn(current, json.dumps(state))
@@ -409,8 +447,8 @@ class PairedRetentionAfterBackupTest(RetentionFixture):
         return self.root / name
 
     def run_backup(self):
-        # One day keeps a one-set count floor, so the 10-day-old set is beyond both limits.
-        config = paired.Config(backup_root=str(self.root), retention_days=1)
+        # Explicit one-day/one-set policy leaves the ten-day-old set beyond both limits.
+        config = paired.Config(backup_root=str(self.root), retention_days=1, min_complete_sets=1)
         stream = io.StringIO()
         with patch.object(paired, "validate_config"), patch.object(paired, "_backup_locked", side_effect=self.publish), \
                 contextlib.redirect_stderr(stream):
@@ -427,7 +465,8 @@ class PairedRetentionAfterBackupTest(RetentionFixture):
         self.assertNotIn(old, self.names())
         attempt = self.attempt()
         self.assertEqual("SUCCESS", attempt["status"])
-        self.assertEqual({"status": "APPLIED", "retentionDays": 1, "completeSets": 1, "removedSets": 1,
+        self.assertEqual({"status": "APPLIED", "retentionDays": 1, "minCompleteSets": 1,
+                          "completeSets": 1, "removedSets": 1,
                           "removedUnpublished": 0, "failedDeletes": 0, "unrecognizedEntries": 0,
                           "freedBytes": self.sizes[old]}, attempt["retention"])
         self.assertEqual("paired_backup_retention_done", events[-1]["event"])
@@ -440,7 +479,7 @@ class PairedRetentionAfterBackupTest(RetentionFixture):
         self.assertIn(old, self.names())
         attempt = self.attempt()
         self.assertEqual("SUCCESS", attempt["status"])
-        self.assertEqual({"status": "FAILED", "retentionDays": 1}, attempt["retention"])
+        self.assertEqual({"status": "FAILED", "retentionDays": 1, "minCompleteSets": 1}, attempt["retention"])
         self.assertEqual("paired_backup_retention_failed", events[-1]["event"])
         self.assertEqual(0o600, stat.S_IMODE((self.root / "last-attempt.json").stat().st_mode))
 
@@ -454,7 +493,7 @@ class PairedRetentionAfterBackupTest(RetentionFixture):
         with patch.object(paired, "record_attempt", side_effect=record):
             published, events = self.run_backup()
         self.assertTrue(published.is_dir())
-        self.assertEqual(("SUCCESS", {"status": "PENDING", "retentionDays": 1}),
+        self.assertEqual(("SUCCESS", {"status": "PENDING", "retentionDays": 1, "minCompleteSets": 1}),
                          (self.attempt()["status"], self.attempt()["retention"]))
         self.assertEqual("paired_backup_retention_state_unwritten", events[-1]["event"])
 

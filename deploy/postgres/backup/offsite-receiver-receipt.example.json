@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "status": "UNVERIFIED",
+  "configCanonicalSha256": null,
+  "observedAtUtc": null,
+  "sourceMachineId": null,
+  "receiverMachineId": null,
+  "database": {
+    "systemIdentifier": null,
+    "timeline": null,
+    "repositoryNumber": 2,
+    "baseBackupLabel": null,
+    "baseBackupManifestSha256": null,
+    "baseBackupStartedAtUtc": null,
+    "baseBackupCompletedAtUtc": null,
+    "baseBackupWalStart": null,
+    "baseBackupWalStop": null,
+    "walStart": null,
+    "walStop": null,
+    "walSegmentBytes": 16777216,
+    "walSegments": [],
+    "walInventorySha256": null,
+    "confirmedThroughUtc": null
+  },
+  "originals": {
+    "mode": "CONTINUOUS_IMMUTABLE_JOURNAL",
+    "scopes": ["attachments", "private-originals"],
+    "objectManifestSha256": null,
+    "recoveryReferenceManifestSha256": null,
+    "immutabilityReceiptSha256": null,
+    "journalReceiptSha256": null,
+    "referenceCoverageFromUtc": null,
+    "confirmedThroughUtc": null
+  },
+  "paired": {
+    "setId": null,
+    "manifestSha256": null,
+    "databaseSha256": null,
+    "startedAtUtc": null,
+    "completedAtUtc": null
+  },
+  "durability": {
+    "fsyncVerified": false,
+    "immutableSnapshotId": null,
+    "accessReviewSha256": null
+  }
+}

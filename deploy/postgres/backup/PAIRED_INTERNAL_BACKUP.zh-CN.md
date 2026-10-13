@@ -60,20 +60,20 @@ local 裸文件在 `media/local/final/`，按数据库原始大小和 SHA-256 �
 实现验证包括真实硬链接、版本变化、在线/旧备份损坏、拒绝链接在线 inode、跨文件系统回退与旧集合删除后的独立
 原件校验；这不替代目标服务器的真实数据库恢复演练和新版脚本安装验收。
 
-## 自动保留 (默认 3 天)
+## 自动保留 (默认 14 天，至少 3 套)
 
 2026-10-05 起，每次备份**发布成功并写好 `latest-success.json` 与 `last-attempt.json` 的 SUCCESS 之后**，
 同一进程在仍持有单任务锁时清理旧集。规则全部是保守方向：
 
-- 保留期 = 配置项 `retention_days` (默认 3，2026-10-06 用户定的口径：服务器上所有备份只留 3 天；只接受 1..365 的整数；`"3"`、`3.0`、`true`、0、366 等
+- 保留期 = 配置项 `retention_days` (默认 14；2026-10-13 起按[本地备份政策](LOCAL_BACKUP_POLICY.zh-CN.md)管理；只接受 1..365 的整数；`"14"`、`14.0`、`true`、0、366 等
   非法值在启动校验时直接失败并记 FAILED，不会悄悄放宽或关闭清理)。一份完整集合**同时满足两条**
-  才删除：(1) 早于服务器本地时间最近 N 个日历日 (含当天)；(2) 不在时间最新的 N 份完整集合之内。
-  定时器每天 03:40、13:10 各跑一次，N=3 时 10-06 13:10 运行后留 10-04..10-06 共 6 份，10-03 及更早删除。
+  才删除：(1) 早于服务器本地时间最近 N 个日历日 (含当天)；(2) 不在最新 `min_complete_sets` 份完整集合之内。
+  定时器每天 03:40、13:10 各跑一次，N=14 时 10-06 13:10 运行后留 09-23..10-06 共 28 份，09-22 及更早才有资格删除。
   年龄只看集合名里自带的 UTC 时间戳换算成本地日期，**不看目录 mtime**。
-- 第 (2) 条是数量下限 (与 pgBackRest `repo-retention-full=3` 按份数保留同理)：连续失败多天后
-  第一次成功、或系统时钟向前跳了很多天时，不会把历史一次删到只剩当次 1 份。例如 10-07..10-13
-  全部失败、10-14 恢复成功，会保留 10-14 这份与失败前最后 2 份；时钟前跳 30 天只多删最旧的几份，
-  不会少于 3 份。时钟回拨不会误删 (未来日期不算过期)。手工补跑会多出 1 份，3 天后自然回落。
+- 第 (2) 条是独立数量下限 `min_complete_sets` (默认 3，缺键仍为 3；只接受 1..365 的整数)：连续失败多天后
+  第一次成功、或系统时钟向前跳了很多天时，不会把历史一次删到只剩当次 1 份。例如连续失败超过十四天，
+  旧集合已经都在时间窗外后再恢复成功，仍会保留当次与失败前最后 2 份；时钟前跳 30 天也
+  不会把已存在的完整集合清到少于 3 份。时钟回拨不会误删 (未来日期不算过期)。手工补跑增加的集合到期后自然回落。
 - 只有同时满足以下条件的目录才算可删的完整集合：名称严格为 `YYYYMMDDTHHMMSSZ-12位小写十六进制`
   且日期真实存在；是 `backup_root` 下一层的真实目录 (非符号链接/junction)，属主与 `backup_root`
   相同；自带 `manifest.json` (逐级 NOFOLLOW 打开、不超过 64KiB)，其 `format` 为 v1/v2、`set_id`
@@ -100,7 +100,7 @@ local 裸文件在 `media/local/final/`，按数据库原始大小和 SHA-256 �
 
 `last-attempt.json` 在 SUCCESS 时多一个只含计数的 `retention` 对象 (不含集合名、路径或异常文本)：
 先写 `{"status":"PENDING"}`，清理结束后改写为 `APPLIED`、`SKIPPED` 或 `FAILED`，并带
-`retentionDays`、`completeSets` (清理后剩余完整集合数)、`removedSets`、`removedUnpublished`、
+`retentionDays`、`minCompleteSets`、`completeSets` (清理后剩余完整集合数)、`removedSets`、`removedUnpublished`、
 `failedDeletes`、`unrecognizedEntries`、`freedBytes`。改写失败时保持 PENDING，并记
 `paired_backup_retention_state_unwritten`。
 
@@ -111,15 +111,15 @@ local 裸文件在 `media/local/final/`，按数据库原始大小和 SHA-256 �
 | reason | 触发条件 |
 |---|---|
 | `PAIRED_RETENTION_UNPROVEN` | 没有 `retention` (例如仍是不清理的旧脚本)、字段非法、或 PENDING 超过 35 分钟 (单元超时上限，说明清理进程已不在) |
-| `PAIRED_RETENTION_NOT_APPLIED` | `SKIPPED`/`FAILED`、`failedDeletes` 或 `unrecognizedEntries` 大于 0、`completeSets` 为 0 或超过 `4 × retentionDays` |
+| `PAIRED_RETENTION_NOT_APPLIED` | `SKIPPED`/`FAILED`、`failedDeletes` 或 `unrecognizedEntries` 大于 0、`completeSets` 为 0 或超过 `max(minCompleteSets + 2, 4 × retentionDays)` |
 
 PENDING 在 35 分钟内只显示「未知」(reason `PAIRED_RETENTION_RUNNING`)，与备份运行中一致。
-集合数上限取 `4 × retentionDays` (= 每天 2 次 × 2 倍余量)：正常每天两份最多 2N 份，再留同样多的
+集合数上限取 `max(minCompleteSets + 2, 4 × retentionDays)` (= 每天 2 次 × 2 倍余量，兼顾时钟回拨后数量下限外受保护的当次和指针)：正常每天两份最多 2N 份，再留同样多的
 手工补跑余量，避免补跑几次就报红；清理逻辑若悄悄失效，最多 N 天后也会报红。
 
 查看最近一次清理：`journalctl -u uten-paired-internal-backup.service -n 50 | grep retention`。
-该规则只管本目录的配套备份；pgBackRest (`repo1/repo2-retention-full=3`) 和更新器升级前 dump
-(`UTEN_BACKUP_KEEP_DAYS=3`) 各自保留，见 [简化发布链 Runbook](../../simple/RUNBOOK.zh-CN.md)「备份布局与保留」。
+该规则只管本目录的配套备份；pgBackRest (`repo1/repo2-retention-full-type=time`、`retention-full=14`) 和更新器升级前 dump
+(`UTEN_BACKUP_KEEP_DAYS=14`) 各自保留，见 [简化发布链 Runbook](../../simple/RUNBOOK.zh-CN.md)「备份布局与保留」。
 
 ## 安装前核对
 
@@ -142,7 +142,7 @@ PENDING 在 35 分钟内只显示「未知」(reason `PAIRED_RETENTION_RUNNING`)
    数据库物理扫描始终不超过 20MiB/s。首次执行必须监测业务延迟，必要时降低限额或另选时段。
 5. 定时每天两次：03:40 与 13:10 (避开 02:17 pgBackRest 与周日 05:00 更新器)；13:10 落在营业时段，
    依赖上面的 cgroup 限速，首次启用当天观察业务延迟。旧 01:30 rsync 任务已退役删除。
-6. 配置里可选 `retention_days` (缺省即 3)。旧版脚本不认识该键和 `local_media_root`，会以
+6. 配置里可选 `retention_days` (缺省即 14) 和 `min_complete_sets` (缺省即 3)。旧版脚本不认识新增键和 `local_media_root`，会以
    `TypeError` 拒绝整个配置；必须**先装新脚本，再改配置**。监控导出脚本要在新备份脚本成功跑过
    一次之后再装，否则旧脚本的记录没有 `retention`，状态页会按设计报红。
 7. 从 v1 脚本 (2026-09-09 安装版) 升级到 v2 前，先只读核对私有文档引用：`PRIVATE_TABLES` 五张表
@@ -192,7 +192,7 @@ v2 恢复须同时恢复 `media/local/final/` 到独立的 local 根，并创建
 该测试尚未使用公司整库/真实附件卷，也没有证明公司 systemd I/O 限速或公司负载下的响应时间。
 
 2026-10-05 自动保留另有 `test_paired_backup_retention.py` (真实临时目录，不用数据库)：超期删除与
-最近 N 个日历日保留 (2026-10-06 起另验证出厂默认 3 天、每天两次时恰好留 6 份)、按名称时间而非 mtime、成功指针与最新集合保护、指针/新集合无法确认时整轮不删、
+最近 N 个日历日保留 (出厂默认 14 天、每天两次时恰好留 28 份，数量下限独立为 3)、连续失败超过窗口后仍保留三套、按名称时间而非 mtime、成功指针与最新集合保护、指针/新集合无法确认时整轮不删、
 非法名称/无清单/清单不符/普通文件不删、符号链接与 junction 不跟随不删除、`backup_root` 外路径
 与链接根目录拒绝、`retention_days` 校验、单个删除失败继续其余且留 `.expired-*` 下次完成、失败目录
 保守清理；Linux root 下另验证真实 `backup()` 入口成功后清理、清理异常不改 SUCCESS、备份失败不清理。

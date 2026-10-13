@@ -1359,7 +1359,9 @@ MaxAuthTries 3
 LoginGraceTime 30
 X11Forwarding no
 AllowTcpForwarding no
+AllowStreamLocalForwarding no
 AllowAgentForwarding no
+PermitTunnel no
 AllowUsers $admin_user
 EOF
 else
@@ -1378,7 +1380,9 @@ MaxAuthTries 3
 LoginGraceTime 30
 X11Forwarding no
 AllowTcpForwarding no
+AllowStreamLocalForwarding no
 AllowAgentForwarding no
+PermitTunnel no
 AllowUsers $admin_user
 EOF
 fi

@@ -94,7 +94,7 @@ class SimpleReleaseBackupRetentionTest(unittest.TestCase):
         (self.directory / name).write_bytes(b"d" * (days_ago + 1) if content is None else content)
         return name
 
-    def prune(self, keep="3", directory=None):
+    def prune(self, keep="14", directory=None):
         env = dict(os.environ, UTEN_BACKUP_DIR=(directory or self.directory).as_posix(),
                    UTEN_PG_DATABASE="uten_fixture", UTEN_BACKUP_KEEP_DAYS=keep)
         script = ("set -euo pipefail\nlog() { printf '%s\\n' \"$*\"; }\n"
@@ -107,18 +107,17 @@ class SimpleReleaseBackupRetentionTest(unittest.TestCase):
     def names(self):
         return {path.name for path in self.directory.iterdir()}
 
-    def test_keeps_the_last_three_calendar_days_and_logs_freed_bytes(self):
-        # 2026-10-06 owner decision: every server backup keeps 3 days (default UTEN_BACKUP_KEEP_DAYS).
-        kept = {self.dump(days) for days in (0, 1, 2)}
-        expired = {self.dump(3, suffix="Old003"), self.dump(30, suffix="Old030")}
+    def test_keeps_the_last_fourteen_calendar_days_and_logs_freed_bytes(self):
+        kept = {self.dump(days) for days in (0, 1, 13)}
+        expired = {self.dump(14, suffix="Old014"), self.dump(30, suffix="Old030")}
         output = self.prune()
         self.assertEqual(kept, self.names())
         for name in expired:
             self.assertIn(name, output)
-        self.assertIn("释放 4 字节", output)
+        self.assertIn("释放 15 字节", output)
         self.assertIn("释放 31 字节", output)
 
-    def test_an_explicit_longer_window_is_still_honoured(self):
+    def test_an_explicit_shorter_window_is_still_honoured(self):
         kept = {self.dump(days) for days in (0, 3, 6)}
         expired = self.dump(7, suffix="Old007")
         self.prune(keep="7")
@@ -207,12 +206,12 @@ class SimpleReleaseBackupRetentionTest(unittest.TestCase):
         healthy = activate[activate.index("if systemctl start"):activate.index('log "启动或健康检查失败')]
         self.assertIn("prune_database_backups", healthy)
         self.assertEqual(1, source.count("\n    prune_database_backups\n"))
-        self.assertIn('"${UTEN_BACKUP_KEEP_DAYS:=3}"', source)
+        self.assertIn('"${UTEN_BACKUP_KEEP_DAYS:=14}"', source)
         # Pre-activation dumps live on the local NVMe backup volume, not on the database's /data array.
         self.assertIn('"${UTEN_BACKUP_DIR:=/srv/uten-backup/pre-activation}"', source)
         example = (SCRIPT.parent / "updater.env.example").read_text(encoding="utf-8")
         self.assertIn("\nUTEN_BACKUP_DIR=/srv/uten-backup/pre-activation\n", example)
-        self.assertIn("\nUTEN_BACKUP_KEEP_DAYS=3\n", example)
+        self.assertIn("\nUTEN_BACKUP_KEEP_DAYS=14\n", example)
 
 
 if __name__ == "__main__":

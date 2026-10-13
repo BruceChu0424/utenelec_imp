@@ -12,6 +12,9 @@
 > 本文 "repo2=OSS" 的编号已作废：现役 repo2 是本机 NVMe 加密仓，异地 OSS 排为 repo3，见
 > [RUNBOOK「备份布局与保留」](../../simple/RUNBOOK.zh-CN.md)。
 
+> **2026-10-13 现役政策**：本地历史采用十四天时间窗、最低健康点仍为三，详见
+> [本地备份政策](LOCAL_BACKUP_POLICY.zh-CN.md)。上面的三天决定及下文退役链仅记载历史，不能覆盖现役默认。
+
 <!-- CURRENT-ERP-TEST-SERVER-SCOPE-20260812 -->
 > 2026-08-12 的最后只读快照显示 repo1 full timer 当时为每天 02:17；该状态尚未通过当前 OOB authority
 > 和新只读会话刷新。用户指定的 03:00 是未来正式使用后的维护/自检

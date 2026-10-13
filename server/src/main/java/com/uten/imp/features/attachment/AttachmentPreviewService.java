@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -91,6 +92,10 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
     private static final String SCRATCH_DIRECTORY = "scratch";
     private static final String WORK_PREFIX = "preview-";
     private static final long SLOT_WAIT_SECONDS = 5;
+    private static final Set<String> CONVERTER_ENVIRONMENT = Set.of(
+            "PATH", "LANG", "LANGUAGE", "TZ", "LC_ALL", "LC_CTYPE", "LC_COLLATE", "LC_MESSAGES",
+            "LC_MONETARY", "LC_NUMERIC", "LC_TIME", "LC_ADDRESS", "LC_IDENTIFICATION",
+            "LC_MEASUREMENT", "LC_NAME", "LC_PAPER", "LC_TELEPHONE", "SYSTEMROOT", "WINDIR");
 
     private final AttachmentService attachments;
     private final AttachmentPreviewProperties properties;
@@ -461,13 +466,29 @@ public class AttachmentPreviewService implements AttachmentPreviewEvictor {
         return new ApiException(ErrorCode.BUSINESS, "暂不支持预览：" + reason + "，请下载原件查看");
     }
 
-    /** 真实进程：丢弃输出，超时强杀。 */
-    private static int runSoffice(List<String> command, Path workingDirectory, Duration timeout)
+    /**
+     * 真实进程：不继承应用凭据, 只保留平台运行/区域设置, HOME 与临时文件落本次私有目录。
+     * 输出丢弃, 超时强杀。环境最小化不改变 OS 用户: 文件与进程隔离仍需独立的转换 worker。
+     */
+    static int runSoffice(List<String> command, Path workingDirectory, Duration timeout)
             throws IOException, InterruptedException, TimeoutException {
         ProcessBuilder builder = new ProcessBuilder(command)
                 .directory(workingDirectory.toFile())
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD);
+        var environment = builder.environment();
+        var runtimeEnvironment = new HashMap<String, String>();
+        environment.forEach((name, value) -> {
+            if (CONVERTER_ENVIRONMENT.contains(name.toUpperCase(Locale.ROOT))) {
+                runtimeEnvironment.put(name, value);
+            }
+        });
+        environment.clear();
+        environment.putAll(runtimeEnvironment);
+        String privateDirectory = workingDirectory.toAbsolutePath().normalize().toString();
+        for (String name : List.of("HOME", "TMPDIR", "TMP", "TEMP")) {
+            environment.put(name, privateDirectory);
+        }
         Process process = builder.start();
         try {
             if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {

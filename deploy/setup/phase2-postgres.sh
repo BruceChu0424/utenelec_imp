@@ -709,8 +709,9 @@ cat >/etc/pgbackrest.conf <<EOF
 repo1-path=$PGBACKREST_REPO
 repo1-cipher-type=aes-256-cbc
 repo1-cipher-pass=$repo1_cipher
-repo1-retention-full-type=count
-repo1-retention-full=3
+repo1-retention-full-type=time
+repo1-retention-full=14
+repo1-retention-history=180
 repo1-retention-archive-type=full
 repo1-hardlink=y
 repo1-bundle=y
@@ -744,8 +745,9 @@ cat >/etc/uten-imp/templates/pgbackrest-offsite-repo2.conf.example <<'EOF'
 # repo2-s3-key-secret=REPLACE
 # repo2-cipher-type=aes-256-cbc
 # repo2-cipher-pass=REPLACE_WITH_INDEPENDENT_ESCROWED_KEY
-# repo2-retention-full-type=count
-# repo2-retention-full=3
+# repo2-retention-full-type=time
+# repo2-retention-full=14
+# repo2-retention-history=180
 EOF
 chmod 0600 /etc/uten-imp/templates/pgbackrest-offsite-repo2.conf.example
 
@@ -847,7 +849,7 @@ systemctl is-enabled --quiet uten-pgbackup.timer \
 systemctl is-active --quiet uten-pgbackup.timer \
   && die 'backup timer must remain inactive until the separate backup commissioner passes'
 phase2_complete_tmp="$(mktemp "$COMMISSIONING_DIR/.phase2-complete.XXXXXX")"
-printf 'state=COMPLETE\ncompleted_utc=%s\ncluster=%s/%s\nbackup_retention_full=3\n' \
+printf 'state=COMPLETE\ncompleted_utc=%s\ncluster=%s/%s\nbackup_retention_full_type=time\nbackup_retention_full=14\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PG_VERSION" "$PG_CLUSTER" >"$phase2_complete_tmp"
 chown root:root "$phase2_complete_tmp"
 chmod 0600 "$phase2_complete_tmp"
@@ -859,7 +861,7 @@ sync -f "$COMMISSIONING_DIR"
 phase2_complete=true
 trap - EXIT
 printf '%s\n' \
-  'LOCAL_BACKUP_BASELINE_OK: retention is 3 successful full restore points (count), with required WAL.' \
+  'LOCAL_BACKUP_BASELINE_OK: retention is at least 14 days (time), with required WAL; health still requires 3 successful full restore points.' \
   'OFFSITE_BACKUP_NOT_CONFIGURED: /data database and repo1 remain one failure domain.' \
   'BACKUP_TIMER_DISABLED: the separate existing-host backup commissioner must prove repo2, retention, alerting, and power-loss recovery before enabling any timer.' \
   'KEY_ESCROW_NOT_COMPLETE: escrow the repo1 cipher key and application PGP/HMAC keys outside this host before production.' \

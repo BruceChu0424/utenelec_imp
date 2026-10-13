@@ -12,5 +12,6 @@
   "bytes_per_second": 20971520,
   "max_seconds": 1800,
   "max_object_bytes": 1073741824,
-  "retention_days": 3
+  "retention_days": 14,
+  "min_complete_sets": 3
 }

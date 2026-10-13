@@ -71,15 +71,21 @@ class Config:
     bytes_per_second: int = 20 * 1024**2
     max_seconds: int = 1800
     max_object_bytes: int = 1024**3
-    # 2026-10-06 owner decision: every server backup keeps 3 days (pgBackRest repos, paired sets,
-    # pre-activation dumps). With two runs a day that is up to 6 sets, never fewer than 3.
-    retention_days: int = 3
+    # Local recovery history and the failure-gap safety floor are independent policies.
+    retention_days: int = 14
+    min_complete_sets: int = 3
 
 
 def check_retention_days(value) -> int:
     # bool is an int subclass; "3" or 3.0 are typos that must never silently change deletion.
     if type(value) is not int or not 1 <= value <= 365:
         raise ValueError("retention_days must be an integer from 1 to 365")
+    return value
+
+
+def check_min_complete_sets(value) -> int:
+    if type(value) is not int or not 1 <= value <= 365:
+        raise ValueError("min_complete_sets must be an integer from 1 to 365")
     return value
 
 
@@ -533,6 +539,7 @@ def validate_config(config: Config):
     if os.geteuid() != 0:
         raise PermissionError("Paired backup requires the root-owned launcher")
     check_retention_days(config.retention_days)
+    check_min_complete_sets(config.min_complete_sets)
     if (not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,62}", config.database)
             or config.postgres_user != "postgres" or not 1 <= config.port <= 65535
             or not 1 <= config.bytes_per_second <= 100 * 1024**2
@@ -640,7 +647,7 @@ def _backup_locked(config: Config) -> Path:
                "resource_limits": dataclasses.asdict(config),
                "retention": ("Automatic after each successful run: keep complete sets dated within the last "
                              + str(config.retention_days) + " server-local calendar days (today included) and "
-                             "always at least the " + str(config.retention_days) + " newest complete sets; "
+                             "always at least the " + str(config.min_complete_sets) + " newest complete sets; "
                              "older complete sets beyond both limits and stale unpublished work are removed; "
                              "the success-pointer set and the newest complete set are always kept"),
                "scope": "Database snapshot, CLEAN attachments and all immutable private document references; unfinished uploads must be retried"}
@@ -800,19 +807,21 @@ def remove_owned_directory(root: Path, name: str, owner: int) -> int:
     return size
 
 
-def prune_expired_sets(root: Path, retention_days: int, current: str, moment: datetime | None = None) -> dict:
+def prune_expired_sets(root: Path, retention_days: int, current: str, moment: datetime | None = None,
+                       *, min_complete_sets: int = 3) -> dict:
     """Remove complete sets that are both outside the window and beyond the count floor.
 
     A complete set is removed only when it is dated retention_days or more local calendar days
-    ago AND it is not one of the retention_days newest complete sets. The count floor keeps a
-    failure gap or a forward clock jump from collapsing history to a single set (pgBackRest keeps
-    by count for the same reason). Only strict set names with their own manifest are candidates.
+    ago AND it is not one of the min_complete_sets newest complete sets. The independent count
+    floor keeps a failure gap or a forward clock jump from collapsing history to a single set.
+    Only strict set names with their own manifest are candidates.
     The set just published, the success-pointer set and the newest complete set are always kept;
     nothing is deleted unless the new set and the pointer are both recognized as complete. Stale
     .incomplete-* work older than the window and leftover .expired-* trees are removed. Unknown
     names are never touched.
     """
     check_retention_days(retention_days)
+    check_min_complete_sets(min_complete_sets)
     real_directory(root)
     owner = os.lstat(root).st_uid
     moment = moment or datetime.now(timezone.utc).astimezone()
@@ -840,14 +849,15 @@ def prune_expired_sets(root: Path, retention_days: int, current: str, moment: da
     pointer = success_pointer_set(root)
     if current not in complete or pointer not in complete:
         log_event("paired_backup_retention_skipped", reason="new set or success pointer is not a complete set",
-                  retention_days=retention_days, unrecognized=unrecognized)
+                  retention_days=retention_days, min_complete_sets=min_complete_sets, unrecognized=unrecognized)
         return {"removed": [], "failed": [], "freed_bytes": 0, "skipped": True,
                 "complete_sets": len(complete), "unrecognized": unrecognized}
     ranked = sorted(complete, key=lambda name: (complete[name], name), reverse=True)
-    newest, floor = ranked[0], ranked[:retention_days]
+    newest, floor = ranked[0], ranked[:min_complete_sets]
     keep = {current, pointer, *floor}
     expire = [name for name in sorted(complete) if name not in keep and expired(complete[name])]
-    log_event("paired_backup_retention_plan", retention_days=retention_days, current=current, pointer=pointer,
+    log_event("paired_backup_retention_plan", retention_days=retention_days, min_complete_sets=min_complete_sets,
+              current=current, pointer=pointer,
               newest=newest, complete_sets=len(complete), kept_by_count=sorted(
                   name for name in floor if expired(complete[name])),
               expire=expire, stale_unpublished=stale, unrecognized=unrecognized)
@@ -875,9 +885,11 @@ def retain_after_success(root: Path, config: Config, published: Path) -> dict:
     Returns the counts-only retention state recorded in last-attempt.json for monitoring, so a
     skipped or failing cleanup is visible instead of silently accumulating sets.
     """
-    state = {"status": "FAILED", "retentionDays": config.retention_days}
+    state = {"status": "FAILED", "retentionDays": config.retention_days,
+             "minCompleteSets": config.min_complete_sets}
     try:
-        result = prune_expired_sets(root, config.retention_days, published.name)
+        result = prune_expired_sets(root, config.retention_days, published.name,
+                                    min_complete_sets=config.min_complete_sets)
         state.update(
             status="SKIPPED" if result["skipped"] else ("FAILED" if result["failed"] else "APPLIED"),
             completeSets=result["complete_sets"],
@@ -915,7 +927,8 @@ def backup(config: Config) -> Path:
             completed = now()
             # PENDING until cleanup reports back: a run killed in between stays visible to monitoring.
             record_attempt(root, "SUCCESS", started, completed,
-                           {"status": "PENDING", "retentionDays": config.retention_days})
+                           {"status": "PENDING", "retentionDays": config.retention_days,
+                            "minCompleteSets": config.min_complete_sets})
         except BaseException:
             try:
                 record_attempt(root, "FAILED", started, now())

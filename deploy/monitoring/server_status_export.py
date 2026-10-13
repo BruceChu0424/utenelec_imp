@@ -78,6 +78,10 @@ def paired_retention_reason(paired: dict, completed: datetime, observed: datetim
         days = counter(retention["retentionDays"])
         if not 1 <= days <= 365:
             raise ValueError("Retention window out of range")
+        # Older installed recorders omit this additive field and retain the three-set default.
+        minimum = counter(retention.get("minCompleteSets", 3))
+        if not 1 <= minimum <= 365:
+            raise ValueError("Retention count floor out of range")
         status = retention["status"]
         if status == "PENDING":
             elapsed = (observed - completed).total_seconds()
@@ -90,9 +94,9 @@ def paired_retention_reason(paired: dict, completed: datetime, observed: datetim
         problems = counter(retention["failedDeletes"]) + counter(retention["unrecognizedEntries"])
     except (ValueError, KeyError, TypeError):
         return "PAIRED_RETENTION_UNPROVEN"
-    # Normal: two sets a day keep at most 2 x `days`; the same again is headroom for manual extra runs.
-    # A silently broken cleanup still turns red within `days` days.
-    if problems or not 1 <= sets <= 2 * PAIRED_RUNS_PER_DAY * days:
+    # Normal calendar-window headroom still covers manual extra runs. A configured larger count
+    # floor can additionally protect the current set and success pointer after a clock rollback.
+    if problems or not 1 <= sets <= max(minimum + 2, 2 * PAIRED_RUNS_PER_DAY * days):
         return "PAIRED_RETENTION_NOT_APPLIED"
     return None
 

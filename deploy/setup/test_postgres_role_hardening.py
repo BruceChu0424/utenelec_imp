@@ -89,7 +89,9 @@ class RoleHardeningSourceContractTest(unittest.TestCase):
         self.assertNotIn("for role in admin ", PHASE2)
         self.assertIn("log_parameter_max_length = 0\n", PHASE2)
         self.assertIn("log_parameter_max_length_on_error = 0\n", PHASE2)
-        self.assertIn("repo1-retention-full=3\n", PHASE2)
+        self.assertIn("repo1-retention-full=14\n", PHASE2)
+        self.assertIn("repo1-retention-full-type=time\n", PHASE2)
+        self.assertIn("repo1-retention-history=180\n", PHASE2)
 
     def test_postcondition_is_one_statement_and_proves_both_runtime_memberships_absent(self):
         query = commissioner_query()

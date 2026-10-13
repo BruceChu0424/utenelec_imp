@@ -1,7 +1,7 @@
 # 数据库 + 附件原件配套备份 (deploy/postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)
 # 安装为 /etc/systemd/system/uten-paired-internal-backup.service
 # 2026-10-06 由 deploy/systemd/*.example 迁来, 这里是唯一现役来源 (ADR-157)。
-# 每次成功后程序自己按 retention_days (默认 3 天) 清理旧集合。
+# 每次成功后按 retention_days (默认 14 天) 清理，独立保留至少 min_complete_sets=3 套。
 # 旧 local 原件还没清零时, 另加 drop-in 20-uten.conf: [Service] ReadOnlyPaths=/data/uten-imp/attachments
 [Unit]
 Description=Consistent PostgreSQL and internal attachment backup

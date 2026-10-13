@@ -4,6 +4,9 @@
 `local_backup_health.py`，共用 `pgbackrest_health.py` 的数据库身份、恢复点和 WAL 解析，恢复点下限共用
 `pgbackrest_repo2.py` 的 `MINIMUM_RESTORE_POINTS=3`。不使用旧异地 repo2 的 S3 policy/commissioner 流程。
 
+本地保留默认已按[2026-10-13 本地政策](LOCAL_BACKUP_POLICY.zh-CN.md)延长为 `time=14` 天，
+不把最低健康恢复点改成十四个。延长配置不补出过去的历史；长期失败后不足三个不同日期点时仍报告失败。
+
 每次先只读 PostgreSQL 主库的归档状态，再读两个本地仓的 `pgbackrest info --output=json`，最后读 Flyway 历史。
 两仓各要求至少 3 个不同 UTC 日期的成功全量点，最近全量不早于 30 小时；PostgreSQL 最近归档成功不早于 15 分钟，
 且最近一次归档失败不能晚于成功。各仓必须包含同一数据库 system identifier，并覆盖本次查询前已经成功的 WAL。

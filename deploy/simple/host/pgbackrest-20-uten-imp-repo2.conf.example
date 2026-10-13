@@ -11,9 +11,10 @@
 # 丢了这个口令 repo2 里的备份就再也解不开。
 [global]
 repo2-path=/srv/uten-backup/pgbackrest
-repo2-retention-full-type=count
-# 2026-10-06 口径: 服务器上所有备份只留 3 天 (每天一份全量 = 3 份); repo1 同样改为 3
-repo2-retention-full=3
+repo2-retention-full-type=time
+# 本地 PITR 窗口至少 14 天；每天一份全量，健康门槛仍为 3 个成功恢复点。
+repo2-retention-full=14
+repo2-retention-history=180
 repo2-bundle=y
 repo2-cipher-type=aes-256-cbc
 repo2-cipher-pass=REPLACE_GENERATED_ON_THE_SERVER_NEVER_COMMIT

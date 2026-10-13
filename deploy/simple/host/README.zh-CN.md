@@ -29,11 +29,13 @@
 | `sshd-00-uten-imp.conf.example` | `/etc/ssh/sshd_config.d/00-uten-imp.conf` | root 0600 | 手工维护的主机; 先挂自动回退定时器 |
 | `cloud-init-99-uten-ssh-pwauth.cfg` | `/etc/cloud/cloud.cfg.d/99-uten-ssh-pwauth.cfg` | root 0644 | 与上一行一起 |
 | `nginx-service-20-uten.conf` | `/etc/systemd/system/nginx.service.d/20-uten.conf` | root 0644 | 维护窗口 (nginx 秒级重启) |
+| `core-limits-30-uten.conf` | 指定凭据服务的 `.service.d/30-uten-core-limits.conf` | root 0644 | 安装目标与现网立即生效方式见 2026-10-13 安全验收记录；只关闭 core，不改业务参数 |
 | `postgresql-20-uten-backup-order.conf` | `/etc/systemd/system/postgresql@16-main.service.d/20-uten-backup-order.conf` | root 0644 | 本机备份卷建好后; 只 daemon-reload, 下次开机生效 |
 | `../../systemd/clamav-uten-imp-unix.socket.conf.example` | `/etc/systemd/system/clamav-daemon.socket.d/uten-unix.conf` | root 0644 | 维护窗口；只保留 `/run/clamav/clamd.ctl`，socket为uten-imp组0660，父目录0755可遍历；应用用原主组并配置Unix路径，移除旧TCP监听后以应用身份验真扫描 |
 | `smartd.conf.example` | 替换 `/etc/smartd.conf` 的 DEVICESCAN 行 | root 0644 | 随时; 告警脚本接入前 smartd 只发本机邮件 |
 | `uten-host-alert.py` | `/usr/local/libexec/uten-host-alert.py` | root 0755 | 平台告警候选验收后, 与下行同时安装 |
 | `start-server.py` | `/usr/local/lib/uten-imp/start-server.py` | root 0755 | 先装脚本, 再更新 `../units/uten-imp.service`; 随应用维护窗口重启生效 |
+| `uten-preview-soffice.py` | `/usr/local/libexec/uten-preview-soffice` | root 0755 | 设置 `UTEN_ATTACHMENT_PREVIEW_SOFFICE_PATH` 后重启应用；仅隔离转换环境，cwd 必须仅属主可访问，完整隔离仍需独立 worker |
 | `uten-alert.sh` | `/usr/local/sbin/uten-alert` | root 0755 | 同时装 `../units/uten-alert@.service` |
 | `uten-host-check.sh` | `/usr/local/sbin/uten-host-check` | root 0755 | 同时装 `../units/uten-host-check.{service,timer}` |
 | `uten-alert-smart.sh` | `/usr/local/sbin/uten-alert-smart` | root 0755 | 与主机告警一同安装 |

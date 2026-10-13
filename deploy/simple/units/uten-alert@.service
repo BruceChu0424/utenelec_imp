@@ -6,6 +6,7 @@ Description=ERP server alert %i
 
 [Service]
 Type=oneshot
+Group=uten-imp
 ExecStart=/usr/local/sbin/uten-alert %i
 StateDirectory=uten-alert
 StateDirectoryMode=0750

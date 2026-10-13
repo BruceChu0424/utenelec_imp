@@ -307,7 +307,7 @@ class PairedInternalBackupTest(unittest.TestCase):
         (self.target / stale / "media").mkdir(parents=True, mode=0o700)
         (self.target / "operator-notes").mkdir(mode=0o700)
         # Two days: today's two sets fill the count floor, so only the 2020 copy is beyond both limits.
-        second = paired.backup(dataclasses.replace(self.config, retention_days=2))
+        second = paired.backup(dataclasses.replace(self.config, retention_days=2, min_complete_sets=2))
         self.assertFalse((self.target / old).exists())
         self.assertFalse((self.target / stale).exists())
         self.assertTrue((self.target / "operator-notes").is_dir())
@@ -358,7 +358,8 @@ class PairedInternalBackupTest(unittest.TestCase):
         self.assertEqual(0o600, stat_mode(self.target / "last-attempt.json"))
         self.assertEqual({"format", "status", "startedAt", "completedAt", "lastSuccessAt", "retention"}, set(attempt))
         # Monitoring gets cleanup counts only, never set ids, paths or object keys.
-        self.assertEqual({"status": "APPLIED", "retentionDays": 3, "completeSets": 1, "removedSets": 0,
+        self.assertEqual({"status": "APPLIED", "retentionDays": 14, "minCompleteSets": 3,
+                         "completeSets": 1, "removedSets": 0,
                           "removedUnpublished": 0, "failedDeletes": 0, "unrecognizedEntries": 0, "freedBytes": 0},
                          attempt["retention"])
         self.assertNotIn(published.name, json.dumps(attempt))

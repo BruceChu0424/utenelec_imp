@@ -22,7 +22,7 @@ CONFIG=${UTEN_UPDATER_CONFIG:-/etc/uten-imp-updater.env}
    "${UTEN_SIGNER_ID:=uten-imp-release}" "${UTEN_NAMESPACE:=uten-imp-release}" \
    "${UTEN_HEALTH_URL:=http://127.0.0.1:8080/actuator/health/readiness}" \
    "${UTEN_APP_SERVICE:=uten-imp}" "${UTEN_BACKUP_DIR:=/srv/uten-backup/pre-activation}" \
-   "${UTEN_PG_DATABASE:=uten_imp}" "${UTEN_KEEP_RELEASES:=5}" "${UTEN_BACKUP_KEEP_DAYS:=3}" \
+   "${UTEN_PG_DATABASE:=uten_imp}" "${UTEN_KEEP_RELEASES:=5}" "${UTEN_BACKUP_KEEP_DAYS:=14}" \
    "${UTEN_AUTO_ACTIVATE_CODE_ONLY:=1}" "${UTEN_MIGRATOR_ENV:=/etc/uten-imp/migrator.env}"
 
 # 会被拼进命令/文件名的值一律限定字符白名单（root 配置文件之外无输入面）

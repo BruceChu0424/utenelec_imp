@@ -13,6 +13,17 @@ class AuditEventInterpreterTest {
 
     private final AuditEventInterpreter interpreter = new AuditEventInterpreter();
 
+    @Test void goodsPriceAnalysisReadsHaveSpecificBusinessNames() {
+        for (var action : Map.of("view_goods_price_analysis", "查看货品价格分析",
+                "view_goods_price_analysis_history", "查看货品价格历史",
+                "view_goods_price_detail", "查看货品价格详情",
+                "view_goods_subcontract_supplier_loss", "查看货品委外商损耗").entrySet()) {
+            AuditLog log = new AuditLog(); log.setAction(action.getKey()); log.setTargetType("goods");
+            log.setEventSource("business"); log.setResult("success");
+            assertEquals(action.getValue(), interpretStored(log).actionLabel());
+        }
+    }
+
     @Test
     void dailyReportApprovalReceiptViewHasRegisteredBusinessWording() {
         AuditLog log = new AuditLog();

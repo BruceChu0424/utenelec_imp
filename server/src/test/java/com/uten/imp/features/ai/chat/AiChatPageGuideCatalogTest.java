@@ -59,6 +59,19 @@ class AiChatPageGuideCatalogTest {
         assertTrue(answer.contains("客户对当前版本的同意"));
         assertTrue(answer.contains("重新确认"));
     }
+    @Test void priceAnalysisGuideRequiresItsOwnPermissionAndKeepsMarginFieldsScoped() {
+        String route = "/basicinfo/goods/" + UUID.randomUUID() + "/price-analysis";
+        actor("goods:view");
+        assertThrows(ApiException.class, () -> guides.resolve(route, null));
+        actor("goods:view", "goods:price_analysis:view");
+        var page = guides.resolve(route, null).orElseThrow();
+        assertEquals("goods_price_analysis", page.key());
+        assertTrue(guides.answer(page, "reference").contains("样本不足"));
+        assertThrows(ApiException.class, () -> guides.resolve(route, "margin"));
+        actor("goods:view", "goods:price_analysis:view", "goods:cost:view");
+        when(access.hasDomain("FINANCE")).thenReturn(true);
+        assertTrue(guides.answer(guides.resolve(route, "margin").orElseThrow(), "margin").contains("100元"));
+    }
     @Test void costsRequireFinanceDepartmentAndFieldPermissionEvenWithGoodsView() {
         actor("goods:view", "goods:cost:view");
         assertThrows(ApiException.class, () -> guides.resolve("/basicinfo/goods", "cost"));

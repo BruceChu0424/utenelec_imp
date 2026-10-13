@@ -81,6 +81,8 @@ abstract final class RouteName {
   // 货品新增 / 详情整页（列表「添加货品」/ 双击行进；静态段 new 须在 :id 前注册）。
   static const String basicinfoGoodsNew = '/basicinfo/goods/new';
   static const String basicinfoGoodsDetail = '/basicinfo/goods/:id';
+  static const String basicinfoGoodsPriceAnalysis =
+      '/basicinfo/goods/:id/price-analysis';
   static const String basicinfoMould = '/basicinfo/mould';
   static const String basicinfoClient = '/basicinfo/client';
   static const String basicinfoClientDetail = '/basicinfo/client/:id';

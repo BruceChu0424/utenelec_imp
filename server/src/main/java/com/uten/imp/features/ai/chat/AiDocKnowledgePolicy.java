@@ -130,17 +130,19 @@ final class AiDocKnowledgePolicy {
      *       access: every chat user (that page is about the reader's own access, not about administering it).</li>
      * </ul>
      */
-    static final Map<String, Set<String>> DOMAIN_OVERRIDES = Map.of(
-            "03-页面/服务器状态页.md", Set.of("ADMIN"),
-            "99-决策记录-ADR/ADR-090-*.md", Set.of("WAREHOUSE", "QUALITY", "PURCHASE", "PRODUCTION"),
-            "99-决策记录-ADR/ADR-144-*.md", Set.of("PURCHASE", "WAREHOUSE"),
-            "99-决策记录-ADR/ADR-128-*.md", Set.of("SALES", "FINANCE"),
-            "03-页面/员工详情页.md", Set.of("HR"),
-            "03-页面/员工编辑页.md", Set.of("HR"),
-            "99-决策记录-ADR/ADR-155-*.md", Set.of("ADMIN"),
-            AiDocGlossary.PATH, Set.of(),
-            "03-页面/AI工作助手使用说明.md", Set.of(),
-            "03-页面/我的权限与申请开通.md", Set.of());
+    static final Map<String, Set<String>> DOMAIN_OVERRIDES = Map.ofEntries(
+            Map.entry("03-页面/服务器状态页.md", Set.of("ADMIN")),
+            Map.entry("99-决策记录-ADR/ADR-090-*.md", Set.of("WAREHOUSE", "QUALITY", "PURCHASE", "PRODUCTION")),
+            Map.entry("99-决策记录-ADR/ADR-144-*.md", Set.of("PURCHASE", "WAREHOUSE")),
+            Map.entry("99-决策记录-ADR/ADR-128-*.md", Set.of("SALES", "FINANCE")),
+            Map.entry("03-页面/员工详情页.md", Set.of("HR")),
+            Map.entry("03-页面/员工编辑页.md", Set.of("HR")),
+            Map.entry("99-决策记录-ADR/ADR-155-*.md", Set.of("ADMIN")),
+            Map.entry("99-决策记录-ADR/ADR-179-*.md", Set.of("FINANCE")),
+            Map.entry("03-页面/货品价格分析页.md", Set.of("FINANCE")),
+            Map.entry(AiDocGlossary.PATH, Set.of()),
+            Map.entry("03-页面/AI工作助手使用说明.md", Set.of()),
+            Map.entry("03-页面/我的权限与申请开通.md", Set.of()));
 
     /** A page document of a page that does not exist (its title says 「未实施提案」): never a rule. */
     private static final Pattern UNIMPLEMENTED = Pattern.compile("未实施提案");

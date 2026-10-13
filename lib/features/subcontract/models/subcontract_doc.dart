@@ -422,6 +422,7 @@ class SubcontractDocDetail {
     this.restrictionReason,
     this.shortDeliveryHold,
     this.financeApproval,
+    this.priceAssessment,
     this.sourceApplicationId,
     this.sourceApplicationNo,
     this.sourceOrderId,
@@ -484,6 +485,7 @@ class SubcontractDocDetail {
   /// (分批到货还是接受损耗)，期间这批货先不入库、本单也不改量；判定完成自动解除。
   final SubcontractShortDeliveryHold? shortDeliveryHold;
   final ProcurementFinanceApproval? financeApproval;
+  final Map<String, dynamic>? priceAssessment;
 
   /// 来源委外申请（订货单全部明细同源时给出，供跳转；跨申请为 null）
   final String? sourceApplicationId;
@@ -555,6 +557,9 @@ class SubcontractDocDetail {
         sourceOrderNo: json['sourceOrderNo'] as String?,
         deductAmount: (json['deductAmount'] as num?)?.toDouble(),
         deductPosted: json['deductPosted'] as bool?,
+        priceAssessment: json['priceAssessment'] is Map<String, dynamic>
+            ? json['priceAssessment'] as Map<String, dynamic>
+            : null,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),

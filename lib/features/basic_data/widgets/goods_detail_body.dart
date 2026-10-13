@@ -19,6 +19,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../shared/pricing/price_analysis_l10n.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -962,6 +964,20 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (_goodsId != null &&
+              (ref.watch(isSuperAdminProvider) ||
+                  ref.watch(currentPermissionsProvider).containsAll({
+                    Perm.goodsView,
+                    Perm.goodsPriceAnalysisView,
+                  })))
+            IconButton(
+              key: const Key('goods-price-analysis-entry'),
+              tooltip: priceText(context, 'title'),
+              icon: const Icon(Icons.query_stats),
+              onPressed: () => context.push(
+                '/basicinfo/goods/${Uri.encodeComponent(_goodsId!)}/price-analysis',
+              ),
+            ),
           const PagePermissionAction(),
         ],
       ),

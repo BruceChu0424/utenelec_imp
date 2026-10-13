@@ -33,6 +33,7 @@ final List<RegExp> _automaticWritePaths = [
     r'/production/(execution-batches|workshop-tasks/draw-request|actual-output-supplements)/preview$',
   ),
   RegExp(r'/master/goods/cost-sheets/preview$'),
+  RegExp(r'/master/goods/price-analysis/check$'),
   RegExp(r'/notices/audience/preview$'),
   RegExp(
     r'/procurement/inspection/[^/]+/[^/]+/(decide-batch|pass-batch)/receipt$',

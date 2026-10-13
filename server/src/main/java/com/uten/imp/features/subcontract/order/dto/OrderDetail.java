@@ -12,7 +12,7 @@ import java.util.UUID;
 /** 委外订货单详情（主表全字段 + 明细列表；BOM 成本子表只读走 /cost-items 端点）。 */
 @Getter
 @AllArgsConstructor
-public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class OrderDetail extends com.uten.imp.common.pricing.ProcurementPriceAssessmentMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;

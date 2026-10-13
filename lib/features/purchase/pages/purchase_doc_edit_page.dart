@@ -1,3 +1,4 @@
+import '../../../shared/pricing/procurement_price_check.dart';
 import '../../../shared/models/procurement_quantity.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/models/procurement_source_terms.dart';
@@ -883,6 +884,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         PurchaseDocType.returnDoc => '采购退货单已保存；下一步请在单据详情点击「审核」',
         PurchaseDocType.request => widget.id == null ? '已创建' : '已保存',
       });
+      if (formDraftIdentityIsCurrent) {
+        notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
+      }
       bumpListRefresh(ref, _cfg.refreshKey);
       // 保存/更新成功后，指向本单据的通知对当前用户自动已读。
       unawaited(
@@ -942,7 +946,24 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
 
   @override
   Widget build(BuildContext context) {
-    return withFormDraft(_buildDraftPage(context));
+    return withFormDraft(
+      ProcurementPriceCheckScope<PurchaseGridRow>(
+        grid: _grid,
+        kind: 'PURCHASE',
+        excludeOrderId: widget.docType == PurchaseDocType.order
+            ? widget.id
+            : null,
+        headerChanges: [_taxRate],
+        contextKey: '$_supplierId|$_currencyId',
+        bindingOf: (row) => purchasePriceCheckBinding(
+          row,
+          supplierId: _supplierId,
+          currencyId: _currencyId,
+          taxRate: _taxRate.text,
+        ),
+        child: _buildDraftPage(context),
+      ),
+    );
   }
 
   Widget _buildDraftPage(BuildContext context) {

@@ -245,7 +245,32 @@ class GoodsCostCalculatorTest {
         assertThat(result.lines()).hasSize(1);assertThat(result.lines().getFirst().route()).isEqualTo("MAKE");
         assertThat(result.totals().valueState()).isEqualTo("INCOMPLETE");
         assertThat(result.issues()).anyMatch(issue->issue.code().equals("MISSING_MAKE_BASIS"));
+        assertThat(result.lines().getFirst().valueState()).isEqualTo("INCOMPLETE_ROLLUP");
+        assertThat(result.lines().getFirst().amount()).isNull();
         verify(sources,never()).approved(any(),anyBoolean(),any(),any());verify(sources,never()).inventory(any(),any());
+    }
+    @Test void missingMakeBasisDoesNotBecomeACompleteZeroPercentageFee() {
+        when(sources.edges(rootId)).thenReturn(List.of());
+        Calculation result=calculator.calculate(input("1",List.of(),List.of(fee("manage","PERCENT","10",List.of("MATERIAL")))));
+        assertThat(result.fees().getFirst().amount()).isNull();
+        assertThat(result.fees().getFirst().valueState()).isEqualTo("INCOMPLETE");
+        assertThat(result.lines().getFirst().amount()).isNull();
+    }
+    @Test void everyMakeAncestorRetainsUnconfirmedChildPriceEvenWhenItHasAnAmount() {
+        UUID assemblyId=UUID.randomUUID(),assemblyEdge=UUID.randomUUID();
+        GoodsInfo assembly=new GoodsInfo(assemblyId,"A","组件",unitId,"个",null,null,"自制","1");
+        when(sources.edges(rootId)).thenReturn(List.of(new Edge(assemblyEdge,rootId,assembly,BigDecimal.ONE,null,BigDecimal.ONE,
+                "NO_DATA",0,null,null,"PER_UNIT",BigDecimal.ONE,true,false,"1")));
+        when(sources.edges(assemblyId)).thenReturn(List.of(edge("1",null,"PER_UNIT","1",true)));
+        PriceEvidence p=price("400","25","1");
+        when(sources.approved(eq(material),eq(false),any(),isNull())).thenReturn(new PriceEvidence(p.sourceType(),p.sourceId(),p.sourceItemId(),p.sourceNumber(),p.sourceVersion(),
+                "APPROVED_WITH_COMPONENTS",p.supplierId(),p.currencyId(),p.currencyName(),p.unitId(),p.unitName(),p.unitRate(),p.originalUnitPrice(),p.exchangeRateToLocal(),
+                p.taxRate(),p.taxMode(),p.sourceDate(),"总价或独立费用待核"));
+        Calculation result=calculator.calculate(input("1",List.of(),List.of()));
+        assertThat(result.lines().getFirst().valueState()).isEqualTo("INCOMPLETE_ROLLUP");
+        assertThat(result.lines().getFirst().amount()).isEqualTo("16");
+        assertThat(result.lines().get(1).valueState()).isEqualTo("UNCONFIRMED");
+        assertThat(result.totals().unitCost()).isNull();
     }
     @Test void boundedPriceSearchLeavesTheMaterialTableVisibleWithoutClaimingNoPriceExists() {
         when(sources.edges(rootId)).thenReturn(List.of(edge("1",null,"PER_UNIT","1",true)));

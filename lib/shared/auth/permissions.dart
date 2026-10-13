@@ -130,6 +130,7 @@ abstract final class Perm {
   /// 查看货品售价（V570，默认销售部/轨道事业部/财务部；未授权时列表/详情/组装信息
   /// 单价金额与导出中的价格置空隐藏；持有 goods:price:edit 视为可见）。
   static const goodsPriceView = 'goods:price:view';
+  static const goodsPriceAnalysisView = 'goods:price_analysis:view';
 
   /// 查看货品成本（默认仅财务部，未授权时详情隐藏「成本预算」Tab）。
   static const goodsCostView = 'goods:cost:view';

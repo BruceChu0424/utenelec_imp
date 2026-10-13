@@ -276,6 +276,31 @@ class ProcurementMasterDefaultsSyncPostgresTest {
 
     // ======================= 夹具 =======================
 
+    @Test void learnedPricesPreserveTenDecimalsAndTheFullAllowedIntegerRange() {
+        UUID supplier=supplier("SUP-SYNC-PRECISION"),goods=goods("G-SYNC-PRECISION");
+        UUID purchase=purchaseOrder(supplier,goods,null,null,null),subcontract=subcontractOrder(supplier,goods,null,null,null);
+        for(String price:List.of("0.1234567891","99999999999999.1234567891")) {
+            jdbc.update("UPDATE purchase_order_items SET price=?::numeric WHERE order_id=?",price,purchase);
+            jdbc.update("UPDATE subcontract_order_items SET price=?::numeric WHERE order_id=?",price,subcontract);
+            inTx(()->sync.syncFromPurchaseOrder(purchase));inTx(()->sync.syncFromSubcontractOrder(subcontract));
+            assertThat(goodsPurchasePrice(goods)).isEqualByComparingTo(price);
+            assertThat(goodsSubcontractPrice(goods)).isEqualByComparingTo(price);
+        }
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->jdbc.update("UPDATE goods SET default_purchase_price=0.12345678912 WHERE id=?",goods))
+                .hasMessageContaining("ck_goods_default_purchase_price_precision");
+    }
+
+    @Test void giftOnlyOrderDoesNotReplaceTheRememberedChargedPriceWithZero() {
+        UUID supplier=supplier("SUP-SYNC-GIFT"),goods=goods("G-SYNC-GIFT");
+        UUID paid=purchaseOrder(supplier,goods,null,null,null);
+        inTx(()->sync.syncFromPurchaseOrder(paid));
+        UUID gift=purchaseOrder(supplier,goods,null,null,null);
+        jdbc.update("UPDATE purchase_orders SET quantity_semantics='CHARGED_PLUS_GIFT_V1' WHERE id=?",gift);
+        jdbc.update("UPDATE purchase_order_items SET quantity_semantics='CHARGED_PLUS_GIFT_V1',qty=0,gift_qty=2,price=0,total_amount_input=NULL WHERE order_id=?",gift);
+        inTx(()->sync.syncFromPurchaseOrder(gift));
+        assertThat(goodsPurchasePrice(goods)).isEqualByComparingTo("12.5");
+    }
+
     private void inTx(Runnable body) {
         new TransactionTemplate(txm).executeWithoutResult(tx -> body.run());
     }

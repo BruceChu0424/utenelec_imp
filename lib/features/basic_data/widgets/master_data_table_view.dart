@@ -2419,8 +2419,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 此后每次数据刷新再各取前 N 行里没量过的值补量，列只会加宽)。
   static const int _autoFitSampleSize = 30;
   static const double _cellPadX = UtenSpacing.s12; // 单元格左右内边距（表头/表体一致）
-  static const double _headerIconAllowance = 24; // 表头筛选下拉箭头 + 富余
-  static const double _sortIconAllowance = 20; // 可排序列表头排序图标 + 间距
+  static const double _headerIconAllowance = 24; // 表头统一菜单图标 + 富余
 
   /// 列头 ⓘ 说明图标命中区（UtenColumnHintIcon → UtenFieldHintIcon dense = 28）。
   /// 不计入就会挤掉标签：声明宽偏窄又带说明的列（下达采购的「缺口」）一进页面
@@ -2874,7 +2873,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         (text +
                 padding * 2 +
                 _headerIconAllowance +
-                (def.sortable ? _sortIconAllowance : 0) +
                 (def.info != null ? _headerInfoIconAllowance : 0) +
                 // 固定列标签前的图钉（18 图标 + 4 间距）也占标签行宽度。
                 (_pinnedKeys.contains(def.key) ? _pinIconAllowance : 0) +
@@ -5538,30 +5536,18 @@ class _FilterCellState extends State<_FilterCell> {
                 const SizedBox(width: UtenSpacing.s4),
                 UtenColumnHintIcon(message: widget.info!),
               ],
-              // 排序指示：当前排序列显 ▲/▼（主色）；可排序但非当前显淡 sort 图标提示可点。
-              if (widget.sortable)
-                Icon(
-                  widget.sortActive
-                      ? (widget.sortAscending
-                            ? Icons.arrow_upward_rounded
-                            : Icons.arrow_downward_rounded)
-                      : Icons.sort_rounded,
-                  size: 16,
-                  color: widget.sortActive
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-              if (widget.sortable && hasFacets)
-                const SizedBox(width: UtenSpacing.s4),
-              // 筛选下拉箭头（仅有 facets 的列才显示）。
-              if (hasFacets)
-                Icon(
-                  Icons.arrow_drop_down_rounded,
-                  size: 18,
-                  color: highlighted
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
+              // 排序与筛选共用一个菜单入口；当前排序方向直接替换下拉箭头。
+              Icon(
+                widget.sortActive
+                    ? (widget.sortAscending
+                          ? Icons.arrow_upward_rounded
+                          : Icons.arrow_downward_rounded)
+                    : Icons.arrow_drop_down_rounded,
+                size: 18,
+                color: highlighted
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
             ],
           ),
         ),

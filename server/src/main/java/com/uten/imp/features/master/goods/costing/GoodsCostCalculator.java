@@ -19,7 +19,7 @@ import static com.uten.imp.common.finance.CostCalculationMath.*;
 @Component
 @RequiredArgsConstructor
 public class GoodsCostCalculator {
-    public static final String ALGORITHM="GOODS_COST_V2_AUTO";
+    public static final String ALGORITHM="GOODS_COST_V3_APPROVAL_BASIS";
     private final GoodsCostSourceReader sources;
     private final MasterReferenceValidationPort references;
     private final GoodsCostJson json;
@@ -285,6 +285,9 @@ public class GoodsCostCalculator {
         if("PERCENT".equals(f.type())) {
             for(String dependency:bases) {
                 if(Set.of("MATERIAL","PROCESS","DIRECT_COST").contains(dependency)) {
+                    if(s.issues.stream().anyMatch(issue->issue.blocksConfirmation()
+                            && "MISSING_MAKE_BASIS".equals(issue.code())
+                            && (line==null||within(issue.path(),line.path())))) complete=false;
                     for(CostLine item:s.lines.values())if(item.included() && (line==null||item.path().equals(line.path())||item.path().startsWith(line.path()+"/"))) {
                         boolean process="SUBCONTRACT".equals(item.route());
                         if("MATERIAL".equals(dependency)&&process||"PROCESS".equals(dependency)&&!process)continue;
@@ -343,13 +346,17 @@ public class GoodsCostCalculator {
             }
             if(line.included()&&subtotal!=null)subtotal=subtotal.add(ownFees);
             if(!line.included()) {
-                subtotal=BigDecimal.ZERO;boolean complete=true;
+                subtotal=BigDecimal.ZERO;boolean hasKnown=false;
+                boolean complete=s.issues.stream().noneMatch(issue->issue.blocksConfirmation()&&within(issue.path(),line.path()));
                 for(CostLine child:s.lines.values())if(child.included()&&child.path().startsWith(line.path()+"/")) {
-                    if(child.amount()==null)complete=false;else subtotal=subtotal.add(new BigDecimal(child.amount()));
+                    if(child.amount()==null||!"KNOWN".equals(child.valueState()))complete=false;
+                    if(child.amount()!=null){subtotal=subtotal.add(new BigDecimal(child.amount()));hasKnown=true;}
                 }
                 for(FeeResult fee:fees)if(fee.targetPath()!=null&&(fee.targetPath().equals(line.path())||fee.targetPath().startsWith(line.path()+"/"))) {
-                    if(fee.amount()==null)complete=false;else subtotal=subtotal.add(new BigDecimal(fee.amount()));
+                    if(fee.amount()==null||!"KNOWN".equals(fee.valueState()))complete=false;
+                    if(fee.amount()!=null){subtotal=subtotal.add(new BigDecimal(fee.amount()));hasKnown=true;}
                 }
+                if(!hasKnown&&!complete)subtotal=null;
                 state=complete?"ROLLUP":"INCOMPLETE_ROLLUP";
             }
             output.add(new CostLine(line.id(),line.parentId(),line.path(),line.depth(),line.bomItemId(),line.goodsId(),line.goodsCode(),line.goodsName(),
@@ -360,6 +367,9 @@ public class GoodsCostCalculator {
                     line.included()?line.amount():null,text(ownFees)));
         }
         return List.copyOf(output);
+    }
+    private static boolean within(String candidate,String path) {
+        return candidate!=null&&(candidate.equals(path)||candidate.startsWith(path+"/"));
     }
     private static void key(String value) {if(value==null||value.isBlank()||value.length()>2048||Set.of("MATERIAL","PROCESS","DIRECT_COST").contains(value))throw invalid("费用编码无效或为保留编码");}
     private static void name(String value) {if(value==null||value.isBlank()||value.length()>160)throw invalid("费用名称不能为空或超过160字");}

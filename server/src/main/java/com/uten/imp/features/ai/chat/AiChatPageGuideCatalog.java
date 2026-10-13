@@ -211,6 +211,14 @@ public class AiChatPageGuideCatalog {
                 restricted(f("cost", "成本口径", "分清估算和实际成本；缺少的费用待核，不能当成 0 元。",
                         "材料 2 元、加工 1 元，共 3 元；运费没核齐，成本还不完整。"),
                         "FINANCE", "goods:cost:view")));
+        pages.add(p("goods_price_analysis", "货品价格分析", "FINANCE", "/basicinfo/goods/" + ID + "/price-analysis",
+                "goods:price_analysis:view", "货品价格分析页 / ADR-179",
+                f("comparison", "比较条件", "先核对采购、委外加工或销售类型，供应商、单位、币种、税和批量要能比较。历史均价与今日参考的计算依据分别显示。",
+                        "同一件货品的箱价和件价先核对换算率；委外加工费与含材料整件价分别比较。"),
+                f("reference", "建议依据", "参考来自有效历史单据，查看独立订单数量和最近成交日期。样本不足或过旧时先询价核对，无交易日不代表零价。",
+                        "只有一张半年前的订单，页面会提示参考不足，不能据此断言今天价格正常。"),
+                restricted(f("margin", "报价毛利率", "明确填写销售毛利率，并绑定适用的已确认成本测算；缺失费用需要先复核，建议不会自动修改报价。",
+                        "成本80元、目标毛利率20%，报价参考为100元；成本加成20%则为96元，两者不同。"), "FINANCE", "goods:cost:view")));
         pages.add(p("quote_finance", "报价财务核价", "FINANCE", "/finance/quote-review(?:/" + ID + ")?",
                 "sales_quote_finance:view", "销售报价财务核价页 / ADR-139",
                 f("claim", "认领与版本", "先认领，再核对价格和数量。修改后先保存，再确认。",

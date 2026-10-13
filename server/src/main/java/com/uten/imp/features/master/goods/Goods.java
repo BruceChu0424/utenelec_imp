@@ -143,11 +143,11 @@ public class Goods extends SoftDeletableEntity {
     private boolean recycledMaterial = false;
 
     /** 采购单价（V593 单一事实源）：新建采购订货单行价预填；每次保存采购单写回最新行价。 */
-    @Column(name = "default_purchase_price", precision = 18, scale = 6)
+    @Column(name = "default_purchase_price", precision = 24, scale = 10)
     private java.math.BigDecimal defaultPurchasePrice;
 
     /** 委外加工单价（V593 单一事实源）：新建委外订货单行价预填；每次保存委外单写回最新行价。 */
-    @Column(name = "default_subcontract_price", precision = 18, scale = 6)
+    @Column(name = "default_subcontract_price", precision = 24, scale = 10)
     private java.math.BigDecimal defaultSubcontractPrice;
 
     @Column(name = "unit_legacy_id")

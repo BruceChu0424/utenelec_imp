@@ -75,6 +75,9 @@ bool _isAnalysisSalesOrderPath(String routePath) {
 List<String>? requiredAnyPermFor(String rawLocation) {
   final location = hubCardPath(rawLocation);
   final routePath = location;
+  if (RegExp(r'^/basicinfo/goods/[^/]+/price-analysis$').hasMatch(location)) {
+    return const [Perm.goodsPriceAnalysisView];
+  }
   if (location == '/finance/assets/new') {
     return const [Perm.financeAssetEdit];
   }
@@ -746,6 +749,9 @@ List<String> hubUnionRequiredAny(String hub) {
 /// compound operations where one permission must not imply another.
 List<String> requiredAllPermsFor(String rawLocation) {
   final location = hubCardPath(rawLocation);
+  if (RegExp(r'^/basicinfo/goods/[^/]+/price-analysis$').hasMatch(location)) {
+    return const [Perm.goodsView, Perm.materialCategoryView];
+  }
   if (location == '/finance/assets/new') {
     return const [Perm.financeAssetView, Perm.financeAssetEdit];
   }

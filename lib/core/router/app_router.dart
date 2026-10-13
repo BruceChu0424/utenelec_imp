@@ -32,6 +32,7 @@ import '../../features/basic_data/pages/account_page.dart';
 import '../../features/basic_data/pages/account_detail_page.dart';
 import '../../features/basic_data/pages/currency_page.dart';
 import '../../features/basic_data/pages/goods_detail_page.dart';
+import '../../features/basic_data/pages/goods_price_analysis_page.dart';
 import '../../features/basic_data/pages/mould_category_page.dart';
 import '../../features/basic_data/pages/payment_style_page.dart';
 import '../../features/basic_data/pages/settlement_method_page.dart';
@@ -703,6 +704,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => GoodsDetailPage(
               categoryId: s.uri.queryParameters['categoryId'],
             ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.basicinfoGoodsPriceAnalysis,
+            name: 'basicinfo-goods-price-analysis',
+            builder: (_, s) =>
+                GoodsPriceAnalysisPage(goodsId: s.pathParameters['id']!),
           ),
           // ?tab= 原样交给页面：命名键 basic|bom|cost|files|stock，兼容旧数字 0/1 (ADR-135)。
           DraftAwareGoRoute(

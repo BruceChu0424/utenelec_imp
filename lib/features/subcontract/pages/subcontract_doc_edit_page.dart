@@ -1,3 +1,4 @@
+import '../../../shared/pricing/procurement_price_check.dart';
 import '../../../shared/models/procurement_source_terms.dart';
 // 委外单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
@@ -382,6 +383,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
             ..colorId = it.colorId
             ..unitId = it.unitId
             ..unitRate = it.unitRate
+            ..unitRateText = it.unitRateText
             ..sourceDocNo = it.sourceDocNo;
           row.recordSourceAmount(it.amountOriginalText);
           row.remark.text = it.remark ?? '';
@@ -858,6 +860,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       }
       if (outcome.financeSubmitError case final error?) {
         context.appWarning('单据已保存，但未提交财务：$error。可在详情页重新提交。');
+        if (formDraftIdentityIsCurrent) {
+          notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
+        }
         bumpListRefresh(ref, _cfg.refreshKey);
         // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链直达
         // 才落新详情；replace 会把新详情叠在旧详情上，返回一次看到旧快照。
@@ -873,6 +878,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       }
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
+      if (formDraftIdentityIsCurrent) {
+        notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
+      }
       bumpListRefresh(ref, _cfg.refreshKey);
       if (widget.id != null) {
         popSavedEditOrReplace(
@@ -926,7 +934,24 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
 
   @override
   Widget build(BuildContext context) {
-    return withFormDraft(_buildDraftPage(context));
+    return withFormDraft(
+      ProcurementPriceCheckScope<SubcontractGridRow>(
+        grid: _grid,
+        kind: 'SUBCONTRACT',
+        excludeOrderId: widget.docType == SubcontractDocType.order
+            ? widget.id
+            : null,
+        headerChanges: [_taxRate],
+        contextKey: '$_supplierId|$_currencyId',
+        bindingOf: (row) => subcontractPriceCheckBinding(
+          row,
+          supplierId: _supplierId,
+          currencyId: _currencyId,
+          taxRate: _taxRate.text,
+        ),
+        child: _buildDraftPage(context),
+      ),
+    );
   }
 
   Widget _buildDraftPage(BuildContext context) {

@@ -35,7 +35,14 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             Map.entry("idx_purchase_request_qty_revision_document","CREATE INDEX idx_purchase_request_qty_revision_document ON public.purchase_request_qty_revisions USING btree (request_id, request_item_id, expected_version)"),
             Map.entry("purchase_request_qty_revision_request_item_id_expected_vers_key","CREATE UNIQUE INDEX purchase_request_qty_revision_request_item_id_expected_vers_key ON public.purchase_request_qty_revisions USING btree (request_item_id, expected_version)"),
             Map.entry("purchase_request_qty_revisions_created_txid_request_item_id_key","CREATE UNIQUE INDEX purchase_request_qty_revisions_created_txid_request_item_id_key ON public.purchase_request_qty_revisions USING btree (created_txid, request_item_id)"),
-            Map.entry("purchase_request_qty_revisions_pkey","CREATE UNIQUE INDEX purchase_request_qty_revisions_pkey ON public.purchase_request_qty_revisions USING btree (id)"));
+            Map.entry("purchase_request_qty_revisions_pkey","CREATE UNIQUE INDEX purchase_request_qty_revisions_pkey ON public.purchase_request_qty_revisions USING btree (id)"),
+            Map.entry("idx_poi_price_context","CREATE INDEX idx_poi_price_context ON public.purchase_order_items USING btree (goods_id, color_id, unit_id, unit_rate, order_id) WHERE (NOT is_deleted)"),
+            Map.entry("idx_sori_price_context","CREATE INDEX idx_sori_price_context ON public.subcontract_order_items USING btree (goods_id, color_id, unit_id, unit_rate, order_id) WHERE (NOT is_deleted)"),
+            Map.entry("idx_soi_price_context","CREATE INDEX idx_soi_price_context ON public.sales_order_items USING btree (goods_id, color_id, unit_id, unit_rate, order_id) WHERE (NOT is_deleted)"),
+            Map.entry("idx_po_price_period","CREATE INDEX idx_po_price_period ON public.purchase_orders USING btree (bill_date DESC, id) WHERE ((status = 1) AND (NOT is_deleted))"),
+            Map.entry("idx_sco_price_period","CREATE INDEX idx_sco_price_period ON public.subcontract_orders USING btree (bill_date DESC, id) WHERE ((status = 1) AND (NOT is_deleted))"),
+            Map.entry("idx_so_price_period","CREATE INDEX idx_so_price_period ON public.sales_orders USING btree (bill_date DESC, id) WHERE ((status = 1) AND (NOT is_deleted))"),
+            Map.entry("idx_procurement_price_history_snapshot","CREATE INDEX idx_procurement_price_history_snapshot ON public.procurement_order_approval_cases USING gin (submission_snapshot jsonb_path_ops)"));
     @BeforeAll static void migrate() {
         pg.start();Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target("839").load().migrate();
         db=new JdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));

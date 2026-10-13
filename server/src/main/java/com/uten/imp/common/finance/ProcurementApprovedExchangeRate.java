@@ -44,15 +44,22 @@ public final class ProcurementApprovedExchangeRate {
     }
 
     private static Terms terms(List<Object[]> rows, BigDecimal contractRate) {
-        if (rows.isEmpty() || rows.getFirst()[1] == null) {
-            if (!rows.isEmpty() && rows.getFirst()[2] != null)
-                throw conflict("历史财审汇率和本币金额事实不完整，请先专项核对");
-            return new Terms(rows.isEmpty()?null:(UUID)rows.getFirst()[0],positive(contractRate),false);
-        }
+        if (rows.isEmpty()) return fromApprovedFacts(null, null, null, contractRate);
         Object[] row=rows.getFirst();
-        if (row[2] == null) throw conflict("财审本币金额事实缺失，请先专项核对");
-        FinancialExactAmount.book((BigDecimal)row[2],"财审本币金额");
-        return new Terms((UUID)row[0],positive((BigDecimal)row[1]),true);
+        return fromApprovedFacts((UUID)row[0],(BigDecimal)row[1],(BigDecimal)row[2],contractRate);
+    }
+
+    /** Resolves the same authority from an approval row already read in the caller's snapshot. */
+    public static Terms fromApprovedFacts(UUID caseId, BigDecimal financeRate,
+            BigDecimal financeTotalLocal, BigDecimal contractRate) {
+        if (financeRate == null) {
+            if (financeTotalLocal != null)
+                throw conflict("历史财审汇率和本币金额事实不完整，请先专项核对");
+            return new Terms(caseId,positive(contractRate),false);
+        }
+        if (caseId == null || financeTotalLocal == null) throw conflict("财审本币金额事实缺失，请先专项核对");
+        FinancialExactAmount.book(financeTotalLocal,"财审本币金额");
+        return new Terms(caseId,positive(financeRate),true);
     }
 
     /** A receipt has one currency and rate; every source must agree before saving. */

@@ -3,7 +3,8 @@ package com.uten.imp.features.master.goods.costing;
 import com.uten.imp.application.port.MasterReferenceValidationPort;
 import com.uten.imp.application.port.InventoryValuationPort;
 import com.uten.imp.application.port.InventoryValueAuthorityPort;
-import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
+import com.uten.imp.security.OwnerVisibility;
+import com.uten.imp.common.finance.ProcurementApprovedExchangeRate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -24,7 +25,7 @@ public class GoodsCostSourceReader {
     }
     private final NamedParameterJdbcTemplate db;
     private final MasterReferenceValidationPort references;
-    private final MasterObjectAccess access;
+    private final OwnerVisibility owners;
     private final InventoryValuationPort inventoryValues;
     private final InventoryValueAuthorityPort valueAuthority;
     public record GoodsInfo(UUID id,String code,String name,UUID unitId,String unitName,
@@ -84,35 +85,55 @@ public class GoodsCostSourceReader {
         var parameters=new MapSqlParameterSource().addValue("goods",goods.id()).addValue("color",goods.colorId())
                 .addValue("date",date).addValue("item",explicitItem==null?null:explicitItem.toString())
                 .addValue("lastDate",null).addValue("lastTime",null).addValue("lastItem",null);
-        var visible=access.readableLabelOwner(kind);
+        var scope=owners.evaluate(kind,kind+":view:all");
+        // Match the real document policy: maker owns the order; an unassigned legacy
+        // order is visible only with seeAll. Filter before pagination or candidate limits.
+        String ownerFilter=scope.seeAll()?"":scope.visibleOwners().isEmpty()?" AND 1=0":" AND o.maker_id IN (:owners)";
+        if(!scope.seeAll()&&!scope.visibleOwners().isEmpty())parameters.addValue("owners",scope.visibleOwners());
         for(int page=0;page<100;page++) {
             List<Map<String,Object>> rows=db.queryForList("""
                 SELECT o.id,o.bill_no,o.bill_date,o.updated_at,o.supplier_id,o.currency_id,c.name currency_name,
-                       o.exchange_rate,o.tax_rate,o.purchaser_id,i.id item_id,i.unit_id,u.name unit_name,
-                       i.unit_rate,i.price,i.qty,i.amount_original,i.extra_columns,i.updated_at item_updated_at,
+                       o.exchange_rate,o.tax_rate,o.maker_id,i.id item_id,i.unit_id,u.name unit_name,
+                       i.unit_rate,i.price,i.qty,i.amount_original,i.total_amount_input,i.extra_columns,i.updated_at item_updated_at,
+                       approval.id approval_case_id,approval.version approval_version,approval.snapshot_hash approval_hash,
+                       approval.attempt approval_attempt,approval.decided_at approval_decided_at,
+                       approval.finance_exchange_rate,approval.finance_total_local,
                        EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(i.extra_columns,'[]'::jsonb)) adjustment
                               WHERE COALESCE(adjustment->>'operation','NONE')<>'NONE') adjustment_rules
                 FROM %1$s_orders o JOIN %1$s_order_items i ON i.order_id=o.id
                 LEFT JOIN currencies c ON c.id=o.currency_id LEFT JOIN units u ON u.id=i.unit_id
+                LEFT JOIN LATERAL (
+                    SELECT a.* FROM procurement_order_approval_cases a
+                    WHERE a.order_type=UPPER('%1$s') AND a.order_id=o.id AND a.status='APPROVED'
+                    ORDER BY a.attempt DESC LIMIT 1
+                ) approval ON true
                 WHERE o.status=1 AND NOT o.is_deleted AND NOT i.is_deleted
                   AND i.goods_id=:goods AND i.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
-                  AND o.bill_date<=:date AND i.price IS NOT NULL AND i.price>=0
+                  AND o.bill_date<=:date AND i.price IS NOT NULL AND i.price>=0 AND i.qty>0
                   AND (CAST(:item AS uuid) IS NULL OR i.id=CAST(:item AS uuid))
                   AND (CAST(:lastDate AS date) IS NULL OR (o.bill_date,o.updated_at,i.id)
                        <(CAST(:lastDate AS date),CAST(:lastTime AS timestamptz),CAST(:lastItem AS uuid)))
+                %2$s
                 ORDER BY o.bill_date DESC,o.updated_at DESC,i.id DESC LIMIT 100
-                """.formatted(kind),parameters);
+                """.formatted(kind,ownerFilter),parameters);
         for(var row:rows) {
-            if(!visible.test((UUID)row.get("purchaser_id"))) continue;
             UUID unit=(UUID)row.get("unit_id");
             BigDecimal unitRate=(BigDecimal)row.get("unit_rate");
             if(unitRate==null && Objects.equals(unit,goods.unitId())) unitRate=BigDecimal.ONE;
-            BigDecimal fx=(BigDecimal)row.get("exchange_rate");
+            BigDecimal fx;
+            try {
+                fx=ProcurementApprovedExchangeRate.fromApprovedFacts((UUID)row.get("approval_case_id"),
+                        (BigDecimal)row.get("finance_exchange_rate"),(BigDecimal)row.get("finance_total_local"),
+                        (BigDecimal)row.get("exchange_rate")).rate();
+            } catch (com.uten.imp.common.web.ApiException incomplete) {
+                // An incomplete approval cannot silently fall back to the contractual/default rate.
+                continue;
+            }
             if(unit==null || unitRate==null || unitRate.signum()<=0 || fx==null || fx.signum()<=0
                     || row.get("supplier_id")==null || row.get("currency_id")==null
                     || Objects.equals(unit,goods.unitId())&&unitRate.compareTo(BigDecimal.ONE)!=0) continue;
             BigDecimal sourceQty=(BigDecimal)row.get("qty"),sourceAmount=(BigDecimal)row.get("amount_original"),sourcePrice=(BigDecimal)row.get("price");
-            boolean adjusted=Boolean.TRUE.equals(row.get("adjustment_rules"))||sourceQty==null||sourceQty.signum()<=0
+            boolean adjusted=row.get("total_amount_input")!=null||Boolean.TRUE.equals(row.get("adjustment_rules"))||sourceQty==null||sourceQty.signum()<=0
                     ||sourceAmount==null||sourceAmount.compareTo(sourceQty.multiply(sourcePrice))!=0;
             String explanation=adjusted?"原单含独立计费项或金额依据待核对，不能把整行金额摊到不同批量；原单数量="+text(sourceQty)
                     +"，原单金额="+text(sourceAmount)+"。请拆分费用或人工复核采用成本。":"按已审核单据原记录价计成本；仅作单位和币种换算，不按税率自动扣税";
@@ -131,7 +152,8 @@ public class GoodsCostSourceReader {
     }
     private static String priceRevision(Map<String,Object> row) {
         StringBuilder value=new StringBuilder();
-        for(String key:List.of("id","item_id","updated_at","item_updated_at","supplier_id","currency_id","exchange_rate","tax_rate","unit_id","unit_rate","price","qty","amount_original","extra_columns","bill_date")) {
+        for(String key:List.of("id","item_id","updated_at","item_updated_at","maker_id","supplier_id","currency_id","exchange_rate","tax_rate","unit_id","unit_rate","price","qty","amount_original","total_amount_input","extra_columns","bill_date",
+                "approval_case_id","approval_version","approval_hash","approval_attempt","approval_decided_at","finance_exchange_rate","finance_total_local")) {
             Object part=row.get(key);value.append(key).append('=')
                     .append(part instanceof BigDecimal decimal?text(decimal):Objects.toString(part,"NULL")).append('|');
         }

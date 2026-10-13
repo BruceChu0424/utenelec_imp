@@ -68,6 +68,7 @@ final class AiChatDialogueSupport {
         if (scope.contains("PURCHASE")) examples.add("采购分批到货时，数量应该怎么核对？");
         if (scope.contains("WAREHOUSE")) examples.add("库存盘点有差异时，该怎么记录和处理？");
         if (scope.contains("FINANCE")) {
+            if (tools.contains("query_goods_price_analysis")) examples.add("查询某个货品编码的采购价格走势，说明今日参考价的依据。");
             examples.add(tools.contains("query_goods_cost")
                     ? "帮我查询某个货品编码的成本，并说明成本口径。"
                     : "参考成本和实际成本有什么区别？");

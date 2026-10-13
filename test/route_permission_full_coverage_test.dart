@@ -81,6 +81,8 @@ void _collect(RouteBase base, String parent, List<String> out) {
 }
 
 /// 原守卫基数 205，新增路径另由下方精确登记；当前 236 条守卫 / 17 条豁免。
+/// 两表共 32 项 any/all 登记，/workshop-material/count 同时登记两类守卫，去重为 31 条路径。
+/// 2026-10-13 货品价格分析独立页登记，分析查看码与货品/分类查看码同时要求；
 /// 2026-10-12 仓库三条批量办理地址登记，查看守卫与原任务一致；
 /// 2026-10-06 V816 AI 用量看板：
 /// /admin/ai-usage 与人员详情两路由上线，守卫 203→205；
@@ -100,6 +102,10 @@ const _expectedExemptCount = 17;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
 const _reviewedNewGuardedRoutes = <String, List<String>>{
+  '/basicinfo/goods/:id/price-analysis': [
+    Perm.goodsView,
+    Perm.materialCategoryView,
+  ],
   '/warehouse/material-discovery/:requestId': [
     Perm.stockDocIssue,
     Perm.stockDocApprove,
@@ -238,8 +244,9 @@ void main() {
         );
         expect(guarded, contains(_samplePath(route.key)));
       }
-      // 组合门槛为空的已核对路径, 单独锁住它的「任一」守卫。
+      // 精确锁住这些已核对路径的 any 守卫；价格页的 all 组合门槛也由上表校验。
       for (final entry in const {
+        '/basicinfo/goods/:id/price-analysis': [Perm.goodsPriceAnalysisView],
         '/workshop-material/bin': [
           Perm.workshopMaterialView,
           Perm.workshopMaterialSetup,
@@ -247,7 +254,7 @@ void main() {
         '/reports/workshop-material': [Perm.workshopMaterialView],
       }.entries) {
         expect(
-          requiredAnyPermFor(entry.key),
+          requiredAnyPermFor(_samplePath(entry.key)),
           orderedEquals(entry.value),
           reason: '${entry.key} 不得放松或混用库存查看与设置权限',
         );
@@ -271,6 +278,11 @@ void main() {
         expect(guarded, contains(_samplePath(route.key)));
       }
       // 新路径按精确身份和组合权限比较；原清单仍按原数量锁定，禁止只抬总数。
+      expect(
+        guarded,
+        hasLength(_legacyGuardedCount + reviewedSamples.length),
+        reason: '总数按去重后的注册路径计算，同一条路由的 any/all 登记不能重复累计',
+      );
       expect(
         guarded.where((path) => !reviewedSamples.contains(path)).length,
         _legacyGuardedCount,

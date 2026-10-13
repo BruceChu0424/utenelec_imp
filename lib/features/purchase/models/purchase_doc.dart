@@ -452,6 +452,7 @@ class PurchaseDocDetail {
     this.canReverse = false,
     this.restrictionReason,
     this.financeApproval,
+    this.priceAssessment,
     this.sourceRequestId,
     this.sourceRequestNo,
     this.sourceOrderId,
@@ -507,6 +508,7 @@ class PurchaseDocDetail {
   final bool canReverse;
   final String? restrictionReason;
   final ProcurementFinanceApproval? financeApproval;
+  final Map<String, dynamic>? priceAssessment;
 
   /// 来源采购申请（订货单全部明细同源时给出，供跳转；跨申请分解为 null）
   final String? sourceRequestId;
@@ -566,6 +568,9 @@ class PurchaseDocDetail {
         sourceRequestNo: json['sourceRequestNo'] as String?,
         sourceOrderId: json['sourceOrderId'] as String?,
         sourceOrderNo: json['sourceOrderNo'] as String?,
+        priceAssessment: json['priceAssessment'] is Map<String, dynamic>
+            ? json['priceAssessment'] as Map<String, dynamic>
+            : null,
         financeApproval: json['financeApproval'] is Map
             ? ProcurementFinanceApproval.fromJson(
                 (json['financeApproval'] as Map).cast<String, dynamic>(),

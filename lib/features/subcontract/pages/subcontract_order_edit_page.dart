@@ -1,3 +1,4 @@
+import '../../../shared/pricing/procurement_price_check.dart';
 // 委外订货单专属编辑页（2026-09 行级商业条款改造起从共享单据编辑页拆出）。
 //
 // 与共享页的差异：单头不再录币种/汇率/税率/结算方式（委外商此前已在明细行）——
@@ -557,6 +558,7 @@ class _SubcontractOrderEditPageState
               ..colorId = it.colorId
               ..unitId = it.unitId
               ..unitRate = it.unitRate
+              ..unitRateText = it.unitRateText
               ..sourceDocNo = it.sourceDocNo;
         row.documentItemId = it.id;
         row.restoreExtraColumns(
@@ -1435,6 +1437,7 @@ class _SubcontractOrderEditPageState
       }
       if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess(_canSubmitFinance ? '委外订货单已提交财务审核' : '委外订货单草稿已保存');
+      notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
       bumpListRefresh(ref, _cfg.refreshKey);
       popSavedEditOrReplace(
         context,
@@ -1465,6 +1468,9 @@ class _SubcontractOrderEditPageState
       subcontractRepositoryProvider(SubcontractDocType.order),
     );
     final groups = comboCount ?? created.length;
+    final assessments = {
+      for (final doc in created) doc.id: doc.priceAssessment,
+    };
     try {
       if (_pendingFiles.isNotEmpty) {
         if (_createdOrders == null) setState(() => _createdOrders = created);
@@ -1481,7 +1487,8 @@ class _SubcontractOrderEditPageState
       if (_canSubmitFinance) {
         for (final createdDoc in created) {
           try {
-            await repo.submitFinance(createdDoc.id);
+            final submitted = await repo.submitFinance(createdDoc.id);
+            assessments[submitted.id] = submitted.priceAssessment;
           } on ApiException catch (e) {
             financeError ??= e.message;
           }
@@ -1506,6 +1513,7 @@ class _SubcontractOrderEditPageState
               : '委外订货单草稿已保存',
         );
       }
+      notifySavedPriceAssessment(context, ref, assessments.values);
       await completeFormDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       if (created.length == 1) {
@@ -1547,7 +1555,15 @@ class _SubcontractOrderEditPageState
         onBack: () => popOrBackTo(context, defaultPath: '/subcontract'),
       );
     }
-    return withFormDraft(_buildDraftPage(context));
+    return withFormDraft(
+      ProcurementPriceCheckScope<SubcontractGridRow>(
+        grid: _grid,
+        kind: 'SUBCONTRACT',
+        excludeOrderId: widget.id,
+        bindingOf: subcontractPriceCheckBinding,
+        child: _buildDraftPage(context),
+      ),
+    );
   }
 
   Widget _buildDraftPage(BuildContext context) {

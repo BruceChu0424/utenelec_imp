@@ -40,6 +40,8 @@ public class PurchaseOrderController {
     private final PurchaseOrderService service;
     private final ProcurementFinanceApprovalService financeApproval;
     private final AuditDetailViewRecorder auditViews;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.common.pricing.ProcurementPriceAssessmentSupport priceAssessment;
 
     @GetMapping
     @PreAuthorize("hasAuthority('purchase_order:view')")
@@ -110,14 +112,14 @@ public class PurchaseOrderController {
     @PostMapping
     @PreAuthorize("hasAuthority('purchase_order:create') and hasAuthority('purchase_order:decompose')")
     public OrderDetail create(@Valid @RequestBody OrderSaveRequest req) {
-        return service.create(req);
+        return assessed(service.create(req));
     }
 
     /** 按明细级供应商自动拆单创建（一单一商归集不变），返回生成的多张订货单明细。 */
     @PostMapping("/batch")
     @PreAuthorize("hasAuthority('purchase_order:create') and hasAuthority('purchase_order:decompose')")
     public java.util.Map<String, Object> createBatch(@Valid @RequestBody OrderSaveRequest req) {
-        return java.util.Map.of("items", service.createBatch(req));
+        return java.util.Map.of("items", service.createBatch(req).stream().map(this::assessed).toList());
     }
 
     /**
@@ -141,7 +143,7 @@ public class PurchaseOrderController {
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('purchase_order:edit')")
     public OrderDetail update(@PathVariable UUID id, @Valid @RequestBody OrderSaveRequest req) {
-        return service.update(id, req);
+        return assessed(service.update(id, req));
     }
 
     @DeleteMapping("/{id}")
@@ -161,7 +163,7 @@ public class PurchaseOrderController {
     @PreAuthorize("hasAuthority('purchase_order:submit_finance')")
     public OrderDetail submitFinance(@PathVariable UUID id) {
         financeApproval.submit("PURCHASE", id);
-        return service.detail(id);
+        return assessed(service.detail(id));
     }
 
     /**
@@ -173,7 +175,7 @@ public class PurchaseOrderController {
             @PathVariable UUID id,
             @Valid @RequestBody
             ProcurementApprovalContracts.OrderQtyChangeRequest request) {
-        return service.changeQty(id, request);
+        return assessed(service.changeQty(id, request));
     }
 
     @PostMapping("/{id}/reverse")
@@ -190,5 +192,17 @@ public class PurchaseOrderController {
         var rows = service.historyRows(id,beforeId,size);
         auditViews.recordHistory("view_purchase_order_detail", "purchase_orders", id, null, null, "单据历史明细");
         return rows;
+    }
+    private OrderDetail assessed(OrderDetail detail) {
+        if (detail == null || detail.isPriceMasked() || priceAssessment == null) return detail;
+        var lines = detail.getItems() == null ? java.util.List.<com.uten.imp.application.port.ProcurementPriceAssessmentPort.Line>of()
+                : detail.getItems().stream().map(line -> new com.uten.imp.application.port.ProcurementPriceAssessmentPort.Line(
+                    line.getId().toString(), line.getGoodsId(), detail.getSupplierId(), line.getColorId(), line.getUnitId(),
+                    detail.getCurrencyId(), detail.getTaxRate(), line.getQty(), line.getPrice(), line.getTotalAmountInput(),
+                    line.getExtraColumns() != null && line.getExtraColumns().stream().anyMatch(column ->
+                        !"NONE".equals(column.operation()) && column.value() != null && !column.value().isBlank()), line.getUnitRate(), line.getGiftQty())).toList();
+        detail.setPriceAssessment(priceAssessment.assess(new com.uten.imp.application.port.ProcurementPriceAssessmentPort.Request(
+                "PURCHASE", detail.getId(), lines)));
+        return detail;
     }
 }

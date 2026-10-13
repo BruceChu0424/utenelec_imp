@@ -1,3 +1,4 @@
+import '../../../shared/pricing/procurement_price_check.dart';
 import '../../../shared/models/procurement_quantity.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 // 采购订货单专属编辑页（2026-09 行级商业条款改造起从共享单据编辑页拆出）。
@@ -1543,6 +1544,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
             ? '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核'
             : '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
       );
+      notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
       bumpListRefresh(ref, _cfg.refreshKey);
       unawaited(
         markNoticesReadByRoute(
@@ -1577,6 +1579,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
   }) async {
     final repo = ref.read(purchaseRepositoryProvider(PurchaseDocType.order));
     final groups = comboCount ?? created.length;
+    final assessments = {
+      for (final doc in created) doc.id: doc.priceAssessment,
+    };
     try {
       if (_pendingFiles.isNotEmpty) {
         if (_createdOrders == null) setState(() => _createdOrders = created);
@@ -1593,7 +1598,8 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       if (_canSubmitFinance) {
         for (final createdDoc in created) {
           try {
-            await repo.submitFinance(createdDoc.id);
+            final submitted = await repo.submitFinance(createdDoc.id);
+            assessments[submitted.id] = submitted.priceAssessment;
           } on ApiException catch (e) {
             financeError ??= e.message;
           }
@@ -1636,6 +1642,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
               : '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
         );
       }
+      notifySavedPriceAssessment(context, ref, assessments.values);
       await completeFormDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       if (created.length == 1) {
@@ -1677,7 +1684,15 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         onBack: () => popOrBackTo(context, defaultPath: RouteName.purchase),
       );
     }
-    return withFormDraft(_buildDraftPage(context));
+    return withFormDraft(
+      ProcurementPriceCheckScope<PurchaseGridRow>(
+        grid: _grid,
+        kind: 'PURCHASE',
+        excludeOrderId: widget.id,
+        bindingOf: purchasePriceCheckBinding,
+        child: _buildDraftPage(context),
+      ),
+    );
   }
 
   Widget _buildDraftPage(BuildContext context) {

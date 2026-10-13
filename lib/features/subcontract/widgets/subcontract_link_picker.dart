@@ -38,6 +38,7 @@ class LinkedItem {
     this.colorId,
     this.unitId,
     this.unitRate,
+    this.unitRateText,
   });
   final String goodsId;
   final double qty;
@@ -47,6 +48,7 @@ class LinkedItem {
   final String? colorId;
   final String? unitId;
   final double? unitRate;
+  final String? unitRateText;
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据委外商 id（编辑页表头未选委外商时回填用）
@@ -219,6 +221,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
           price: (it) => it.price,
           upstreamItemId: (it) => it.id,
           unitRate: (it) => it.unitRate,
+          unitRateText: (it) => it.unitRateText,
         ),
         docColumns: (names) => _docColumns(names),
         goodsName: (names, goodsId) => names.goods(goodsId),
@@ -255,6 +258,7 @@ Future<SubcontractLinkPickResult?> showSubcontractLinkPicker(
             colorId: d.colorId,
             unitId: d.unitId,
             unitRate: d.unitRate,
+            unitRateText: d.unitRateText,
           ),
         )
         .toList(),

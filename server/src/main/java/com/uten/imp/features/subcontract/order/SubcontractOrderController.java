@@ -41,6 +41,8 @@ public class SubcontractOrderController {
     private final ProcurementFinanceApprovalService financeApproval;
     private final SubcontractOrderProgressService progressService;
     private final AuditDetailViewRecorder auditViews;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.common.pricing.ProcurementPriceAssessmentSupport priceAssessment;
 
     @GetMapping
     @PreAuthorize("hasAuthority('subcontract_order:view')")
@@ -128,14 +130,14 @@ public class SubcontractOrderController {
     @PostMapping
     @PreAuthorize("hasAuthority('subcontract_order:create')")
     public OrderDetail create(@Valid @RequestBody OrderSaveRequest req) {
-        return service.create(req);
+        return assessed(service.create(req));
     }
 
     /** 按明细级委外商自动拆单创建（一单一商归集不变），返回生成的多张订货单明细。 */
     @PostMapping("/batch")
     @PreAuthorize("hasAuthority('subcontract_order:create')")
     public java.util.Map<String, Object> createBatch(@Valid @RequestBody OrderSaveRequest req) {
-        return java.util.Map.of("items", service.createBatch(req));
+        return java.util.Map.of("items", service.createBatch(req).stream().map(this::assessed).toList());
     }
 
     /**
@@ -158,7 +160,7 @@ public class SubcontractOrderController {
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_order:edit')")
     public OrderDetail update(@PathVariable UUID id, @Valid @RequestBody OrderSaveRequest req) {
-        return service.update(id, req);
+        return assessed(service.update(id, req));
     }
 
     @DeleteMapping("/{id}")
@@ -171,7 +173,7 @@ public class SubcontractOrderController {
     @PreAuthorize("hasAuthority('subcontract_order:submit_finance')")
     public OrderDetail submitFinance(@PathVariable UUID id) {
         financeApproval.submit("SUBCONTRACT", id);
-        return service.detail(id);
+        return assessed(service.detail(id));
     }
 
     /**
@@ -183,7 +185,7 @@ public class SubcontractOrderController {
             @PathVariable UUID id,
             @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody
             com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.OrderQtyChangeRequest request) {
-        return service.changeQty(id, request);
+        return assessed(service.changeQty(id, request));
     }
 
     @PostMapping("/{id}/reverse")
@@ -200,5 +202,17 @@ public class SubcontractOrderController {
         var rows = service.historyRows(id,beforeId,size);
         auditViews.recordHistory("view_subcontract_order_detail", "subcontract_orders", id, null, null, "单据历史明细");
         return rows;
+    }
+    private OrderDetail assessed(OrderDetail detail) {
+        if (detail == null || detail.isPriceMasked() || priceAssessment == null) return detail;
+        var lines = detail.getItems() == null ? java.util.List.<com.uten.imp.application.port.ProcurementPriceAssessmentPort.Line>of()
+                : detail.getItems().stream().map(line -> new com.uten.imp.application.port.ProcurementPriceAssessmentPort.Line(
+                    line.getId().toString(), line.getGoodsId(), detail.getSupplierId(), line.getColorId(), line.getUnitId(),
+                    detail.getCurrencyId(), detail.getTaxRate(), line.getQty(), line.getPrice(), line.getTotalAmountInput(),
+                    line.getExtraColumns() != null && line.getExtraColumns().stream().anyMatch(column ->
+                        !"NONE".equals(column.operation()) && column.value() != null && !column.value().isBlank()), line.getUnitRate(), java.math.BigDecimal.ZERO)).toList();
+        detail.setPriceAssessment(priceAssessment.assess(new com.uten.imp.application.port.ProcurementPriceAssessmentPort.Request(
+                "SUBCONTRACT", detail.getId(), lines)));
+        return detail;
     }
 }

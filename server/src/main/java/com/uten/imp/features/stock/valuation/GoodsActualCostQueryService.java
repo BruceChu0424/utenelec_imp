@@ -89,7 +89,8 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
                    pool.warehouse_id,pool.color_id,(m.transaction_date AT TIME ZONE :zone)::date business_date,
                    m.source_doc_type,m.source_doc_id,m.source_item_id,
                    CASE WHEN CAST(:revision AS uuid) IS NOT NULL THEN (snap.value->>'qty')::numeric ELSE output.qty_base END qty_base,
-                   CASE WHEN r.id IS NULL OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks pending
+                   CASE WHEN r.id IS NULL OR r.target_qty_base<=0 OR r.output_qty_base>r.target_qty_base
+                              OR EXISTS(SELECT 1 FROM stock_value_production_cost_tasks pending
                               WHERE pending.revision_id=r.id AND pending.status='PENDING') THEN NULL
                         ELSE COALESCE((SELECT sum(t.desired_value_local) FROM stock_value_production_cost_tasks t
                              WHERE t.revision_id=r.id AND t.output_source_node_id=output.source_node_id AND t.status='APPLIED'),0) END amount,
@@ -97,6 +98,7 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
                              JOIN stock_value_node_revisions nr ON nr.event_id=t.value_event_id AND nr.node_id=output.source_node_id
                              WHERE t.revision_id=r.id AND t.output_source_node_id=output.source_node_id),1) value_revision,
                    (r.id IS NULL OR snap.value IS NULL OR NOT r.scope_complete OR (snap.value->>'qty') IS NULL
+                    OR r.target_qty_base<=0 OR r.output_qty_base>r.target_qty_base
                     OR (CAST(:revision AS uuid) IS NULL AND output.withdrawn_movement_id IS DISTINCT FROM (snap.value->>'withdrawnMovement')::uuid)
                     OR EXISTS(
                        SELECT 1 FROM stock_value_production_cost_tasks t WHERE t.revision_id=r.id
@@ -161,7 +163,8 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
             if(!bool(row,"historical")&&(bool(row,"business_refresh_pending")||bool(row,"dirty")||bool(row,"value_work_pending")))reasons.add("SOURCE_REFRESH_PENDING");
             if(!bool(row,"historical")&&!"FINAL".equals(text(row,"state")))reasons.add("COST_STATE_"+text(row,"state"));
             if(!bool(row,"scope_complete"))reasons.add("SCOPE_NOT_COMPLETE");
-            if(target==null||target.signum()==0)reasons.add("OUTPUT_BASIS_PENDING");
+            BigDecimal revisionOutput=decimal(row,"output_qty_base");
+            if(target==null||target.signum()<=0||revisionOutput==null||revisionOutput.compareTo(target)>0)reasons.add("OUTPUT_BASIS_PENDING");
             if(own.isEmpty())reasons.add("NO_INPUT_COST_EVIDENCE");
             if(own.stream().anyMatch(InputLine::pending))reasons.add("INPUT_COST_PENDING");
             String status=reasons.contains("ALLOCATION_APPLYING")||reasons.contains("SOURCE_REFRESH_PENDING")?"APPLYING":reasons.contains("OUTPUT_BASIS_PENDING")?"PENDING_BASIS":reasons.contains("COST_STATE_PENDING_CLASSIFICATION")?"PENDING_CLASSIFICATION":reasons.isEmpty()?"FINAL":"PROVISIONAL";

@@ -1,3 +1,4 @@
+import '../../../shared/pricing/procurement_price_check.dart';
 import '../../../shared/models/procurement_quantity.dart';
 // 采购单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
@@ -847,18 +848,21 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
       required: true,
       headerInfo: l10n.workflowPriceHint,
       frozenTextOf: (r) => r.price.text,
-      cellBuilder: (context, row) => RequiredCellFrame(
-        listenable: row.price,
-        isEmpty: () =>
-            row.price.text.trim().isEmpty ||
-            double.tryParse(row.price.text.trim()) == null,
-        child: TextField(
-          controller: row.price,
-          onChanged: (_) => row.clearTermsAutofilled('price'),
-          onSubmitted: (_) => row.clearTermsAutofilled('price'),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, hintText: '0'),
+      cellBuilder: (context, row) => PriceCheckCell(
+        row: row,
+        child: RequiredCellFrame(
+          listenable: row.price,
+          isEmpty: () =>
+              row.price.text.trim().isEmpty ||
+              double.tryParse(row.price.text.trim()) == null,
+          child: TextField(
+            controller: row.price,
+            onChanged: (_) => row.clearTermsAutofilled('price'),
+            onSubmitted: (_) => row.clearTermsAutofilled('price'),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const UtenInputDecoration(
+              InputDecoration(isDense: true, hintText: '0'),
+            ),
           ),
         ),
       ),
@@ -910,3 +914,42 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
   ];
   return canonicalProcurementColumns(columns, keyOf: (column) => column.key);
 }
+
+/// Bounded observation of editor values. It never changes the pricing controller.
+PriceCheckBinding purchasePriceCheckBinding(
+  PurchaseGridRow row, {
+  String? supplierId,
+  String? currencyId,
+  String? taxRate,
+}) => PriceCheckBinding(
+  listenables: [
+    row.goodsNotifier,
+    row.pricing,
+    row.supplierIdNotifier,
+    row.currencyIdNotifier,
+    row.taxRate,
+    row.extraColumnsChanged,
+  ],
+  payload: () =>
+      row.goods == null ||
+          !priceCheckOperandsReady(row.qty.text, row.price.text)
+      ? null
+      : {
+          'goodsId': row.goods!.id,
+          'supplierId': row.supplierId ?? supplierId,
+          'colorId': row.colorId,
+          'unitId': row.unitId,
+          'unitRate': row.recordedUnitRateText,
+          'currencyId': row.currencyId ?? currencyId,
+          'taxRate': row.taxRate.text.trim().isNotEmpty
+              ? row.taxRate.text.trim()
+              : taxRate,
+          'quantity': row.qty.text.trim(),
+          'unitPrice': row.price.text.trim(),
+          'totalAmountInput': row.pricing.totalAmountInput,
+          'giftQuantity': row.giftQty.text.trim().isEmpty
+              ? '0'
+              : row.giftQty.text.trim(),
+          'extraColumns': row.exportExtraColumns(),
+        },
+);

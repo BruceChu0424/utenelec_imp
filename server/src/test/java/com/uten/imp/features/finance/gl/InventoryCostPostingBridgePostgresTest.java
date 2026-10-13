@@ -101,6 +101,21 @@ class InventoryCostPostingBridgePostgresTest {
         assertThat(withdrawal.summary().pending()).isTrue();
         assertThat(withdrawal.summary().actualUnitCostLocal()).isNull();
     }
+
+    @Test void historicalRevisionCannotPublishAUnitCostWhenItsOutputExceedsItsOwnBasis() throws Exception {
+        Case data=production();
+        db.update("UPDATE stock_value_production_cost_revisions SET target_qty_base=5 WHERE id=?",data.revision());
+        // Today's object state may have advanced. The selected immutable revision must defend itself.
+        db.update("UPDATE stock_value_production_cost_objects SET state='FINAL' WHERE execution_segment_id=?",data.scope());
+        var historical=actual.snapshot(new GoodsActualCostQueryPort.Query(data.goods(),null,null,null,data.revision()));
+        assertThat(historical.costObjects().getFirst().state()).isEqualTo("PENDING_BASIS");
+        assertThat(historical.costObjects().getFirst().pendingReasons()).contains("OUTPUT_BASIS_PENDING");
+        assertThat(historical.summary().pending()).isTrue();
+        assertThat(historical.summary().actualUnitCostLocal()).isNull();
+        assertThat(historical.outputs()).allSatisfy(output->{
+            assertThat(output.pending()).isTrue();assertThat(output.knownAmountLocal()).isNull();
+        });
+    }
     @Test void unknownLegacyAndApplyingCostsNeverBecomeConfirmedZero(){
         UUID absent=UUID.randomUUID();var missing=actual.snapshot(new GoodsActualCostQueryPort.Query(absent,null,null,null,null));
         assertThat(missing.summary().knownInputCostLocal()).isNull();assertThat(missing.summary().pending()).isTrue();

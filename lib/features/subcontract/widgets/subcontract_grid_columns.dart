@@ -1,3 +1,4 @@
+import '../../../shared/pricing/procurement_price_check.dart';
 // 委外单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
 // 与采购 purchase_grid_columns 同构（货品 ValueNotifier / 数量 / 单价→金额自动），
@@ -73,7 +74,10 @@ class SubcontractGridRow extends EditableGridRow
     null,
   );
   GoodsOption? get goods => goodsNotifier.value;
-  set goods(GoodsOption? v) => goodsNotifier.value = v;
+  set goods(GoodsOption? v) {
+    if (goods?.id != v?.id) unitRateText = null;
+    goodsNotifier.value = v;
+  }
 
   final TextEditingController qty = TextEditingController();
   final TextEditingController price = TextEditingController();
@@ -132,7 +136,14 @@ class SubcontractGridRow extends EditableGridRow
   double? maxQty;
   String? colorId;
   String? unitId;
-  double? unitRate;
+  double? _unitRate;
+  double? get unitRate => _unitRate;
+  set unitRate(double? value) {
+    _unitRate = value;
+    unitRateText = null;
+  }
+
+  String? unitRateText;
   String? sourceDocNo;
 
   /// 明细级委外商（订货单可逐行选不同委外商，保存时按委外商自动拆单；为空回落表头）。
@@ -159,7 +170,8 @@ class SubcontractGridRow extends EditableGridRow
           ..maxQty = li.maxQty
           ..colorId = li.colorId
           ..unitId = li.unitId
-          ..unitRate = li.unitRate;
+          ..unitRate = li.unitRate
+          ..unitRateText = li.unitRateText;
     r.upstreamItemIds = [
       if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
         li.upstreamItemId!,
@@ -253,6 +265,7 @@ class SubcontractGridRow extends EditableGridRow
     'goods': draftGoods(goods),
     'stockPlace': stockPlaceNotifier.value,
     'unitRate': unitRate,
+    'unitRateText': unitRateText,
     'upstreamItemId': upstreamItemId,
     'planItemId': planItemId,
     'colorId': colorId,
@@ -287,6 +300,7 @@ class SubcontractGridRow extends EditableGridRow
           ..goods = restoreDraftGoods(data['goods'])
           ..stockPlaceNotifier.value = data['stockPlace'] as String?
           ..unitRate = (data['unitRate'] as num?)?.toDouble()
+          ..unitRateText = data['unitRateText'] as String?
           ..upstreamItemId = data['upstreamItemId'] as String?
           ..planItemId = data['planItemId'] as String?
           ..colorId = data['colorId'] as String?
@@ -330,6 +344,7 @@ class SubcontractGridRow extends EditableGridRow
       ..colorId = colorId
       ..unitId = unitId
       ..unitRate = unitRate
+      ..unitRateText = unitRateText
       ..supplierId = supplierId;
     copyExtraColumnsTo(c);
     c.qty.text = qty.text;
@@ -633,18 +648,23 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         required: true,
         headerInfo: l10n.workflowPriceHint,
         frozenTextOf: (r) => r.price.text,
-        cellBuilder: (context, row) => RequiredCellFrame(
-          listenable: row.price,
-          isEmpty: () =>
-              row.price.text.trim().isEmpty ||
-              double.tryParse(row.price.text.trim()) == null,
-          child: TextField(
-            controller: row.price,
-            onChanged: (_) => row.clearTermsAutofilled('price'),
-            onSubmitted: (_) => row.clearTermsAutofilled('price'),
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const UtenInputDecoration(
-              InputDecoration(isDense: true, hintText: '0'),
+        cellBuilder: (context, row) => PriceCheckCell(
+          row: row,
+          child: RequiredCellFrame(
+            listenable: row.price,
+            isEmpty: () =>
+                row.price.text.trim().isEmpty ||
+                double.tryParse(row.price.text.trim()) == null,
+            child: TextField(
+              controller: row.price,
+              onChanged: (_) => row.clearTermsAutofilled('price'),
+              onSubmitted: (_) => row.clearTermsAutofilled('price'),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const UtenInputDecoration(
+                InputDecoration(isDense: true, hintText: '0'),
+              ),
             ),
           ),
         ),
@@ -787,3 +807,39 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
       ? canonicalProcurementColumns(columns, keyOf: (column) => column.key)
       : columns;
 }
+
+PriceCheckBinding subcontractPriceCheckBinding(
+  SubcontractGridRow row, {
+  String? supplierId,
+  String? currencyId,
+  String? taxRate,
+}) => PriceCheckBinding(
+  listenables: [
+    row.goodsNotifier,
+    row.pricing,
+    row.supplierIdNotifier,
+    row.currencyIdNotifier,
+    row.taxRate,
+    row.extraColumnsChanged,
+  ],
+  payload: () =>
+      row.goods == null ||
+          !priceCheckOperandsReady(row.qty.text, row.price.text)
+      ? null
+      : {
+          'goodsId': row.goods!.id,
+          'supplierId': row.supplierId ?? supplierId,
+          'colorId': row.colorId,
+          'unitId': row.unitId,
+          'unitRate': row.unitRateText ?? row.unitRate?.toString(),
+          'currencyId': row.currencyId ?? currencyId,
+          'taxRate': row.taxRate.text.trim().isNotEmpty
+              ? row.taxRate.text.trim()
+              : taxRate,
+          'quantity': row.qty.text.trim(),
+          'unitPrice': row.price.text.trim(),
+          'totalAmountInput': row.pricing.totalAmountInput,
+          'giftQuantity': '0',
+          'extraColumns': row.exportExtraColumns(),
+        },
+);

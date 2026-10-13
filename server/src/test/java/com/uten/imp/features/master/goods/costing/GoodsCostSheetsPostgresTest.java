@@ -8,7 +8,6 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.features.master.goods.GoodsCostMasker;
-import com.uten.imp.features.master.lifecycle.MasterObjectAccess;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
@@ -44,6 +43,7 @@ class GoodsCostSheetsPostgresTest {
     GoodsCostMasker masker;
     InventoryValuationPort inventoryValues;
     InventoryValueAuthorityPort valueAuthority;
+    com.uten.imp.security.OwnerVisibility owners;
     final UUID actor=UUID.randomUUID(),root=UUID.randomUUID(),material=UUID.randomUUID(),unit=UUID.randomUUID(),edge=UUID.randomUUID();
     @BeforeAll static void migrate() throws Exception {
         POSTGRES.start();dataSource=new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword());sql=new JdbcTemplate(dataSource);
@@ -51,7 +51,7 @@ class GoodsCostSheetsPostgresTest {
         // deliberately omits unrelated master-data lifecycle triggers and foreign keys.
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(sql, "units", "colors", "currencies",
                 "goods", "clients", "goods_bom_items", "purchase_orders", "purchase_order_items",
-                "subcontract_orders", "subcontract_order_items", "permissions", "department_permissions",
+                "subcontract_orders", "subcontract_order_items", "procurement_order_approval_cases", "permissions", "department_permissions",
                 "user_permission_overrides", "warehouses", "stock_balances", "stock_value_nodes");
         sql.execute("""
                 CREATE VIEW v_goods_bom_item_usage AS SELECT id bom_item_id,NULL::numeric actual_qty,qty effective_qty,'NO_DATA'::text actual_status,
@@ -70,17 +70,18 @@ class GoodsCostSheetsPostgresTest {
     }
     @AfterAll static void stop(){POSTGRES.stop();}
     @BeforeEach void setup() {
-        sql.execute("TRUNCATE goods_cost_commands,goods_cost_sheets,goods_cost_snapshots,goods_cost_templates,goods,clients,goods_bom_items,units,currencies,purchase_orders,purchase_order_items,subcontract_orders,subcontract_order_items,warehouses,stock_balances,stock_value_nodes CASCADE");
+        sql.execute("TRUNCATE goods_cost_commands,goods_cost_sheets,goods_cost_snapshots,goods_cost_templates,goods,clients,goods_bom_items,units,currencies,purchase_orders,purchase_order_items,subcontract_orders,subcontract_order_items,procurement_order_approval_cases,warehouses,stock_balances,stock_value_nodes CASCADE");
         sql.update("INSERT INTO units(id,name) VALUES(?,?)",unit,"个");
         sql.update("INSERT INTO goods(id,code,name,unit_id,source_type,version) VALUES(?,?,?,?,?,1),(?,?,?,?,?,1)",root,"P1","成品",unit,"自制",material,"M1","材料",unit,"采购");
         sql.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(?,?,?,?)",edge,root,material,new java.math.BigDecimal("2"));
         db=new NamedParameterJdbcTemplate(dataSource);transaction=new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         references=mock(MasterReferenceValidationPort.class);current=mock(SecurityContextCurrentUser.class);masker=mock(GoodsCostMasker.class);
         when(current.requireId()).thenReturn(actor);when(masker.canView()).thenReturn(true);permissions(Set.of("goods:view","goods:cost:view","goods:cost:edit","goods:cost:confirm","goods:cost:export"));
-        var access=mock(MasterObjectAccess.class);when(access.readableLabelOwner(anyString())).thenReturn(owner->true);
+        owners=mock(com.uten.imp.security.OwnerVisibility.class);
+        when(owners.evaluate(anyString(),anyString())).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(true,Set.of()));
         var clients=mock(ClientAccessPolicy.class);when(clients.canRead(any(UUID.class),nullable(UUID.class),any())).thenReturn(true);
         inventoryValues=mock(InventoryValuationPort.class);valueAuthority=mock(InventoryValueAuthorityPort.class);
-        var json=new GoodsCostJson(new ObjectMapper().findAndRegisterModules());sources=new GoodsCostSourceReader(db,references,access,inventoryValues,valueAuthority);
+        var json=new GoodsCostJson(new ObjectMapper().findAndRegisterModules());sources=new GoodsCostSourceReader(db,references,owners,inventoryValues,valueAuthority);
         var imports=mock(CostImportEvidenceGuard.class);when(imports.validate(any(),any())).thenAnswer(call->call.getArgument(1));
         service=new GoodsCostSheetService(db,new GoodsCostCalculator(sources,references,json),json,masker,references,clients,current,mock(TxSessionVars.class),imports);
     }
@@ -129,6 +130,55 @@ class GoodsCostSheetsPostgresTest {
         Sheet first=tx(()->service.create(new SaveRequest(null,"create-stale-source",input("1"))));
         sql.update("UPDATE goods_bom_items SET qty=3,updated_at=now() WHERE id=?",edge);
         assertThatThrownBy(()->tx(()->service.confirm(first.id(),new Command(1,"confirm-stale-source")))).hasMessageContaining("来源或模板已变化");
+    }
+    @Test void approvedCostSourcesUseMakerScopeBeforePaginationAndDoNotTreatUnassignedOrPurchaserAsAuthority() {
+        UUID currency=UUID.randomUUID(),supplier=UUID.randomUUID(),other=UUID.randomUUID();
+        sql.update("INSERT INTO currencies(id,name) VALUES(?,?)",currency,"人民币");
+        when(owners.evaluate(anyString(),anyString())).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(false,Set.of(actor)));
+        for(String kind:List.of("purchase","subcontract")) {
+            UUID order=UUID.randomUUID(),line=UUID.randomUUID();
+            sql.update("INSERT INTO "+kind+"_orders(id,bill_no,bill_date,exchange_rate,tax_rate,status,supplier_id,currency_id,maker_id,purchaser_id) VALUES(?,?,DATE '2026-09-28',1,0,1,?,?,?,?)",
+                    order,"SCOPE-"+kind,supplier,currency,other,actor);
+            sql.update("INSERT INTO "+kind+"_order_items(id,order_id,goods_id,unit_id,unit_rate,price,amount_original,qty) VALUES(?,?,?,?,1,10,100,10)",line,order,material,unit);
+            assertThat(sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line)).isNull();
+            sql.update("UPDATE "+kind+"_orders SET maker_id=NULL WHERE id=?",order);
+            assertThat(sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line)).isNull();
+            sql.update("UPDATE "+kind+"_orders SET maker_id=?,purchaser_id=? WHERE id=?",actor,other,order);
+            assertThat(sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line)).isNotNull();
+            when(owners.evaluate(anyString(),anyString())).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(true,Set.of()));
+            sql.update("UPDATE "+kind+"_orders SET maker_id=NULL WHERE id=?",order);
+            assertThat(sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line)).isNotNull();
+            when(owners.evaluate(anyString(),anyString())).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(false,Set.of(actor)));
+        }
+    }
+    @Test void approvedPriceUsesFinanceCaseAndPinsItsRevisionWhileLegacyFactsRemainUnchanged() {
+        UUID currency=UUID.randomUUID(),supplier=UUID.randomUUID();
+        sql.update("INSERT INTO currencies(id,name) VALUES(?,?)",currency,"美元");
+        for(String kind:List.of("purchase","subcontract")) {
+            UUID order=UUID.randomUUID(),line=UUID.randomUUID(),approval=UUID.randomUUID();
+            sql.update("INSERT INTO "+kind+"_orders(id,bill_no,bill_date,exchange_rate,tax_rate,status,supplier_id,currency_id) VALUES(?,?,DATE '2026-09-28',1,0,1,?,?)",
+                    order,"PRICE-"+kind,supplier,currency);
+            sql.update("INSERT INTO "+kind+"_order_items(id,order_id,goods_id,unit_id,unit_rate,price,amount_original,qty) VALUES(?,?,?,?,1,10,100,10)",line,order,material,unit);
+            var legacy=sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line);
+            assertThat(legacy.exchangeRateToLocal()).isEqualTo("1");
+            sql.update("""
+                    INSERT INTO procurement_order_approval_cases(id,order_type,order_id,attempt,bill_no_snapshot,submission_snapshot,snapshot_hash,
+                    submitted_by_user_id,submitted_by_employee_id,assignee_user_id,assignee_employee_id,assignee_name_snapshot,status,
+                    decided_by_user_id,decided_by_employee_id,decided_at,finance_exchange_rate,finance_total_local)
+                    VALUES(?,?,?,1,'PRICE','{}','hash',?,?,?,?,'reviewer','APPROVED',?,?,now(),7,700)
+                    """,approval,kind.toUpperCase(Locale.ROOT),order,actor,actor,actor,actor,actor,actor);
+            var approved=sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line);
+            assertThat(approved.exchangeRateToLocal()).isEqualTo("7");
+            assertThat(approved.sourceVersion()).isNotEqualTo(legacy.sourceVersion());
+            sql.update("UPDATE procurement_order_approval_cases SET version=version+1 WHERE id=?",approval);
+            assertThat(sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line).sourceVersion()).isNotEqualTo(approved.sourceVersion());
+            sql.update("UPDATE procurement_order_approval_cases SET finance_total_local=NULL WHERE id=?",approval);
+            assertThat(sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line)).isNull();
+            sql.update("UPDATE procurement_order_approval_cases SET finance_exchange_rate=NULL WHERE id=?",approval);
+            assertThat(sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line).exchangeRateToLocal()).isEqualTo("1");
+            sql.update("UPDATE "+kind+"_order_items SET total_amount_input=100 WHERE id=?",line);
+            assertThat(sources.approved(sources.goods(material),kind.equals("subcontract"),LocalDate.of(2026,9,29),line).approvalState()).isEqualTo("APPROVED_WITH_COMPONENTS");
+        }
     }
     @Test void exportRechecksCostAndEverySourceGoodsPermission() {
         Sheet sheet=tx(()->service.create(new SaveRequest(null,"create-access-test",input("1"))));

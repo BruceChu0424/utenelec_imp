@@ -11,7 +11,7 @@ import java.util.UUID;
 
 @Getter
 @AllArgsConstructor
-public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class OrderDetail extends com.uten.imp.common.pricing.ProcurementPriceAssessmentMetadata {
     public String getQuantitySemantics() {
         return items == null || items.isEmpty() ? com.uten.imp.common.finance.ProcurementQuantities.LEGACY
                 : items.getFirst().getQuantitySemantics();

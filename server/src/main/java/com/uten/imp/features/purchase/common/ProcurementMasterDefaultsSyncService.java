@@ -111,7 +111,7 @@ public class ProcurementMasterDefaultsSyncService {
                     updated_by = NULLIF(current_setting('app.actor_id', true), '')::uuid
                 FROM (
                     SELECT DISTINCT ON (i.goods_id) i.order_id, i.goods_id,
-                           CASE WHEN i.total_amount_input IS NULL THEN i.price END AS price,
+                           CASE WHEN i.total_amount_input IS NULL AND i.qty>0 THEN i.price END AS price,
                            i.color_id, i.unit_id
                     FROM %1$s_order_items i
                     WHERE i.order_id = ? AND NOT i.is_deleted AND i.goods_id IS NOT NULL

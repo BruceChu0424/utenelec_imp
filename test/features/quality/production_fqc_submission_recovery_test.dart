@@ -1359,12 +1359,21 @@ Future<void> _revealSheetRegion(
     // Bring that exact element back before checking its visible contents.
     await tester.ensureVisible(target);
   } else {
-    await tester.scrollUntilVisible(
-      target,
-      header ? -240 : 240,
-      scrollable: outer,
-      maxScrolls: 160,
-    );
+    // SDK scrollUntilVisible drags at the stage's center, which can hit the
+    // summary's independently scrolling facts table instead of the page. The
+    // page gutter is part of this outer viewport and has no nested table there.
+    for (var attempt = 0; attempt < 160; attempt++) {
+      if (target.evaluate().isNotEmpty) break;
+      final rect = tester.getRect(outer);
+      final distance = (rect.height * .6).clamp(24.0, 240.0);
+      await tester.dragFrom(
+        Offset(rect.left + 2, rect.center.dy),
+        Offset(0, header ? distance : -distance),
+      );
+      await tester.pumpAndSettle();
+    }
+    expect(target, findsOneWidget, reason: '目标应通过真实外层滚动进入视口');
+    await tester.ensureVisible(target);
   }
   await tester.pumpAndSettle();
   expect(target.hitTestable(), findsOneWidget);

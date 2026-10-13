@@ -8382,6 +8382,17 @@ void main() {
 
       // Both real category groups use the shared outline and desktop36 role.
       // The preserved legacy item keys now identify their complete labels.
+      final setupRequestCount = harness.requests.length;
+      final setupPosts = harness.requests
+          .where((request) => request.method == 'POST')
+          .map(
+            (request) => (
+              request.path,
+              jsonEncode(request.queryParameters),
+              jsonEncode(request.data),
+            ),
+          )
+          .toList();
       await _scrollToMaterialTable(tester);
       final all = find.byKey(const ValueKey('material-bom-view-all'));
       final modes = find.byKey(const Key('material-bom-view-segments'));
@@ -8523,8 +8534,23 @@ void main() {
       expect(tester.widget<UtenSegmentRow<bool>>(layout).selected, {true});
       expect(harness.requests.length, layoutReads);
       expect(
-        harness.requests.where((request) => request.method == 'POST'),
+        harness.requests
+            .skip(setupRequestCount)
+            .where((request) => request.method == 'POST'),
         isEmpty,
+      );
+      expect(
+        harness.requests
+            .where((request) => request.method == 'POST')
+            .map(
+              (request) => (
+                request.path,
+                jsonEncode(request.queryParameters),
+                jsonEncode(request.data),
+              ),
+            )
+            .toList(),
+        setupPosts,
       );
     },
   );

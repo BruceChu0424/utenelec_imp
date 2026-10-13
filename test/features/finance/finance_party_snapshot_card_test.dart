@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/finance/widgets/finance_party_snapshot_card.dart';
 import 'package:uten_imp/shared/models/party_open_balance.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/uten_control_theme.dart';
+import '../../support/audit_screenshot_support.dart';
 
 /// ADR-128：三处审核页共用的往来单位财务快照卡。
 Future<void> _pump(WidgetTester tester, Widget card) async {
@@ -20,6 +24,117 @@ Color? _color(WidgetTester tester, String text) =>
     tester.widget<Text>(find.text(text)).style?.color;
 
 void main() {
+  for (final embedded in [false, true]) {
+    for (final pressure in [
+      (const Size(320, 1100), 2.0, 2.0),
+      (const Size(640, 320), 2.0, 2.0),
+      (const Size(390, 900), 0.85, 1.0),
+    ]) {
+      testWidgets(
+        'party snapshot pressure embedded=$embedded $pressure preserves balances and footer',
+        (tester) async {
+          await loadAuditScreenshotFonts(tester);
+          tester.view.physicalSize = pressure.$1;
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          var calls = 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: auditScreenshotTheme(
+                buildLightTheme(),
+              ).copyWith(platform: TargetPlatform.android),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(pressure.$3)),
+                child: UtenDisplayZoomBox(
+                  fontFactor: pressure.$2,
+                  child: UtenControlTheme(child: child!),
+                ),
+              ),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  child: FinancePartySnapshotCard(
+                    title: '完整长名称供应商与本单原币往来快照',
+                    embedded: embedded,
+                    expanded: false,
+                    side: PartyBalanceSide.supplier,
+                    balance: const PartyOpenBalance(
+                      currencyName: '美金',
+                      openOriginal: '123456789.1234',
+                      creditOriginal: '123456999.1234',
+                      netOriginal: '-210.0000',
+                      baseCurrencyName: '人民币',
+                      openBookLocal: '20000',
+                      creditLimitLocal: '15000',
+                      overLimitLocal: '5000',
+                      overCredit: true,
+                      unverifiedLocal: '2000',
+                      unverifiedCount: 1,
+                      otherCurrencies: [
+                        PartyCurrencyBalance(
+                          currencyName: '欧元',
+                          netOriginal: '999.1234',
+                        ),
+                      ],
+                    ),
+                    leading: const [
+                      FinanceSnapshotMetric(
+                        '精确来源金额及原始币种',
+                        '987654321.123456789 美金',
+                      ),
+                    ],
+                    limitLabel: '铺底额',
+                    overLimitWarning: '已超铺底额，需要重新核实原始来源',
+                    footer: [
+                      TextButton(
+                        key: const Key('party-footer-action'),
+                        onPressed: () => calls++,
+                        child: const Text('查看本单原始来源与审批记录'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('987654321.123456789 美金'), findsOneWidget);
+          expect(find.text('123456789.1234 美金'), findsOneWidget);
+          expect(find.text('123456999.1234 美金'), findsOneWidget);
+          expect(find.textContaining('可抵有余'), findsOneWidget);
+          expect(find.textContaining('210.00'), findsOneWidget);
+          expect(find.textContaining('原币未核实'), findsOneWidget);
+          final footnote = find.byKey(
+            const ValueKey('finance-party-snapshot-footnote'),
+          );
+          expect(footnote, findsOneWidget);
+          expect(
+            tester.widget<Text>(footnote).data,
+            '另有 999.1234 欧元；另有历史应付 2000.00 元 原币未核实',
+          );
+          expect(
+            find.byKey(const ValueKey('finance-party-snapshot-over-limit')),
+            findsOneWidget,
+          );
+          final action = find.byKey(const Key('party-footer-action'));
+          await Scrollable.ensureVisible(
+            tester.element(action),
+            alignment: 0.5,
+          );
+          await tester.pumpAndSettle();
+          expect(action.hitTestable(), findsOneWidget);
+          final actionRect = tester.getRect(action);
+          expect(actionRect.width, greaterThanOrEqualTo(48 - 0.05));
+          expect(actionRect.height, greaterThanOrEqualTo(48 - 0.05));
+          await tester.tap(action);
+          expect(calls, 1);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
   testWidgets(
     'embedded customer balances remain distinct when credit details are folded',
     (tester) async {

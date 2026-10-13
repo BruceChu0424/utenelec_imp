@@ -361,7 +361,6 @@ void main() {
               PointerScrollEvent(
                 position: pointer,
                 scrollDelta: const Offset(0, -240),
-                kind: PointerDeviceKind.mouse,
               ),
             );
           } else {
@@ -523,13 +522,57 @@ void main() {
             ),
           )
           .first;
+      Rect bodyViewport() => tester
+          .getRect(vertical)
+          .intersect(tester.getRect(outerViewport))
+          .intersect(
+            Offset.zero &
+                (tester.view.physicalSize / tester.view.devicePixelRatio),
+          );
+      Future<void> revealBodyTarget(
+        Finder target, {
+        bool towardStart = false,
+        bool mustHit = false,
+      }) async {
+        for (var i = 0; i < 160; i++) {
+          if (tester.any(target) &&
+              (!mustHit || tester.any(target.hitTestable()))) {
+            break;
+          }
+          final viewport = bodyViewport();
+          expect(viewport.isEmpty, isFalse);
+          await tester.sendEventToBinding(
+            PointerScrollEvent(
+              position: viewport.center,
+              scrollDelta: Offset(0, towardStart ? -240 : 240),
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+        expect(
+          target,
+          findsOneWidget,
+          reason: 'real linked scrolling must materialize the requested body',
+        );
+        if (mustHit) {
+          expect(target.hitTestable(), findsOneWidget);
+        } else {
+          await tester.ensureVisible(target);
+          await tester.pumpAndSettle();
+        }
+      }
+
       Future<void> expectWholeReadoutReachable(Finder target) async {
-        await tester.scrollUntilVisible(target, 80, scrollable: vertical);
-        await tester.pumpAndSettle();
+        await revealBodyTarget(target);
         final text = tester.widget<Text>(target);
         expect(text.maxLines, isNull);
         expect(text.overflow, isNull);
-        final paragraph = tester.renderObject<RenderParagraph>(target);
+        final paragraphs = find.descendant(
+          of: target,
+          matching: find.byType(RichText),
+        );
+        expect(paragraphs, findsOneWidget);
+        final paragraph = tester.renderObject<RenderParagraph>(paragraphs);
         final fullText = paragraph.text.toPlainText();
         expect(fullText, text.data);
         final boxes = paragraph.getBoxesForSelection(
@@ -541,13 +584,6 @@ void main() {
             paragraph.localToGlobal(Offset(box.left, box.top)),
             paragraph.localToGlobal(Offset(box.right, box.bottom)),
           );
-          Rect visibleViewport() => tester
-              .getRect(vertical)
-              .intersect(tester.getRect(outerViewport))
-              .intersect(
-                Offset.zero &
-                    (tester.view.physicalSize / tester.view.devicePixelRatio),
-              );
           bool inside(Rect glyph, Rect viewport) =>
               glyph.left >= viewport.left - 0.5 &&
               glyph.right <= viewport.right + 0.5 &&
@@ -555,7 +591,7 @@ void main() {
               glyph.bottom <= viewport.bottom + 0.5;
 
           for (var i = 0; i < 40; i++) {
-            final viewport = visibleViewport();
+            final viewport = bodyViewport();
             final glyph = glyphRect();
             expect(viewport.isEmpty, isFalse);
             expect(glyph.width, lessThanOrEqualTo(viewport.width + 1));
@@ -570,14 +606,13 @@ void main() {
               PointerScrollEvent(
                 position: viewport.center,
                 scrollDelta: Offset(0, delta),
-                kind: PointerDeviceKind.mouse,
               ),
             );
             await tester.pumpAndSettle();
           }
           final glyph = glyphRect();
           expect(
-            inside(glyph, visibleViewport()),
+            inside(glyph, bodyViewport()),
             isTrue,
             reason:
                 'each complete glyph run, including the first and last, '
@@ -594,25 +629,49 @@ void main() {
         }
       }
 
+      final rateLabel = AppLocalizations.of(tester.element(page)).wmWasteRate;
+      final expectedRates = [
+        '$rateLabel ≈ -30.0%',
+        '$rateLabel ',
+        '$rateLabel 50.0%',
+        '$rateLabel 100000000.0%',
+      ];
+      final reviewedRates = <String>[];
       for (final period in [1, 2, 3, 4]) {
         final row = find.textContaining('第 $period 期');
         await expectWholeReadoutReachable(row);
-      }
-      expect(find.textContaining('100000000.0%'), findsOneWidget);
-      for (final reading in ['-30.0%', '50.0%', '100000000.0%']) {
-        final value = find.textContaining(reading);
+        // Review the rate next to its own period before moving onward. The
+        // prior captions legitimately leave the lazy viewport after scrolling.
+        final caption = find
+            .ancestor(of: row, matching: find.byType(Column))
+            .first;
+        final value = find.descendant(
+          of: caption,
+          matching: find.text(expectedRates[period - 1]),
+        );
+        expect(value, findsOneWidget);
+        expect(tester.widget<Text>(value).data, expectedRates[period - 1]);
         await expectWholeReadoutReachable(value);
+        reviewedRates.add(tester.widget<Text>(value).data!);
+      }
+      expect(reviewedRates, expectedRates);
+      for (final reading in ['-30.0%', '50.0%', '100000000.0%']) {
+        expect(
+          reviewedRates.where((caption) => caption.endsWith(reading)),
+          hasLength(1),
+          reason: 'the exact rate must already have passed full glyph review',
+        );
       }
       final selector = find.byKey(const Key('wm-trend-material'));
-      await tester.scrollUntilVisible(selector, -80, scrollable: vertical);
-      await tester.pumpAndSettle();
+      // Returning from all long captions exceeds the stock 50 small drags.
+      // Use real reverse wheel handoff until the original field is clickable.
+      await revealBodyTarget(selector, towardStart: true, mustHit: true);
       await tester.tap(selector);
       await tester.pumpAndSettle();
       await tester.tap(find.text('单点材料 透明').last);
       await tester.pumpAndSettle();
       expect(tester.widget<UtenDropdownField>(selector).value, 'single|clear');
-      await tester.scrollUntilVisible(chart, 80, scrollable: vertical);
-      await tester.pumpAndSettle();
+      await revealBodyTarget(chart);
       final nullPainter =
           tester.widget<CustomPaint>(chart).painter! as WasteTrendPainter;
       expect(nullPainter.range, (-40.0, 60.0));

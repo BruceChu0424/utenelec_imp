@@ -68,7 +68,12 @@ class _UtenDetailSummaryCardState extends State<UtenDetailSummaryCard> {
                             onPressed: _toggle,
                             style: TextButton.styleFrom(
                               textStyle: theme.textTheme.labelLarge,
-                              minimumSize: const Size(0, 44),
+                              minimumSize: Size.square(
+                                UtenControlMetrics.minimumHitExtent(
+                                  context,
+                                  desktop: UtenControlMetrics.compactHeight,
+                                ),
+                              ),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: UtenSpacing.s8,
                               ),
@@ -76,7 +81,12 @@ class _UtenDetailSummaryCardState extends State<UtenDetailSummaryCard> {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Text(_isExpanded ? '收起信息' : '查看更多'),
+                                Flexible(
+                                  child: Text(
+                                    _isExpanded ? '收起信息' : '查看更多',
+                                    softWrap: true,
+                                  ),
+                                ),
                                 const SizedBox(width: UtenSpacing.s4),
                                 AnimatedRotation(
                                   turns: _isExpanded ? .5 : 0,
@@ -174,7 +184,7 @@ class UtenSummaryFacts extends StatelessWidget {
   const UtenSummaryFacts({
     super.key,
     required this.children,
-    this.minFieldWidth = 220,
+    this.minFieldWidth = defaultMinFieldWidth,
     this.maxColumns = 6,
     this.inline,
     this.separated = false,
@@ -186,6 +196,8 @@ class UtenSummaryFacts extends StatelessWidget {
   final int maxColumns;
   final bool? inline;
   final bool separated;
+
+  static const double defaultMinFieldWidth = 220;
 
   @override
   Widget build(BuildContext context) {
@@ -282,31 +294,40 @@ class UtenSummaryField extends StatelessWidget {
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
     );
+    Widget stacked() => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        labelWidget,
+        const SizedBox(height: UtenSpacing.s2),
+        valueWidget,
+      ],
+    );
     final content = inline
         ? LayoutBuilder(
-            builder: (context, constraints) => Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: constraints.maxWidth * .45,
+            builder: (context, constraints) {
+              // Reuse the fact grid's readable-width role. Splitting a tiny
+              // canvas into two columns turns a long exact value vertical.
+              final readableWidth =
+                  UtenSummaryFacts.defaultMinFieldWidth *
+                  (MediaQuery.textScalerOf(context).scale(14) / 14).clamp(1, 3);
+              if (constraints.maxWidth < readableWidth) return stacked();
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: constraints.maxWidth * .45,
+                    ),
+                    child: labelWidget,
                   ),
-                  child: labelWidget,
-                ),
-                const SizedBox(width: UtenSpacing.s8),
-                Expanded(child: valueWidget),
-              ],
-            ),
+                  const SizedBox(width: UtenSpacing.s8),
+                  Expanded(child: valueWidget),
+                ],
+              );
+            },
           )
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              labelWidget,
-              const SizedBox(height: UtenSpacing.s2),
-              valueWidget,
-            ],
-          );
+        : stacked();
     return selectable ? SelectionArea(child: content) : content;
   }
 }

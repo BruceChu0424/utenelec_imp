@@ -253,11 +253,9 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
                         ),
                     ],
                   ),
-            // 统一范式：选中只变背景色，不出现 ✓ 图标。高度不设参数——分类栏与
-            // 搜索框药丸的「严格同高」靠两侧共用同一枚下限令牌（见 UtenFilterRow
-            // 注释）：InputDecorator 描边只按内容高绘制、不吃 minHeight 约束，
-            // 单靠 IntrinsicHeight+stretch 在「搜索内容高 < 分段下限」的密度/字号
-            // 下会出现分类栏厚、搜索药丸矮（2026-10-07 根因）。
+            // 选中只变背景色，不出现勾选图标。两侧共用桌面36/触控48角色；
+            // 搜索内部装饰提供描边下限，并排时 IntrinsicHeight 拉齐内容撑高。
+            // FitOrCompact 保留纵向约束，让真实分类描边接收共同高度。
             showSelectedIcon: false,
             // 进页面不预选（selected 空集）是支持形态，自动选中走
             // _tryAutoSelect 的 post-frame 回调。
@@ -286,9 +284,8 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
           );
     final showSearch =
         widget.searchHint != null || widget.searchController != null;
-    // 搜索框不加高度包装：InputDecorator 的药丸描边只认内容高与 maxHeight，
-    // 外部 minHeight 拉不高描边（拉高的只是盒子）。同高由 UtenSearchBar 的
-    // 图标约束下限与分段 minCellHeight 共用 UtenFilterRow.minHeight 保证。
+    // 搜索内部装饰和分类格共用 UtenFilterRow 高度角色，系统大字可继续撑高。
+    // 不能只增加 TextField 外盒高度来代替真实描边高度。
     final search = showSearch
         ? UtenSearchBar(
             key: widget.searchKey,

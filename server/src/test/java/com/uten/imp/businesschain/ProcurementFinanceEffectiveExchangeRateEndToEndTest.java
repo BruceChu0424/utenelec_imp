@@ -37,10 +37,10 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest(properties={"spring.profiles.active=dev","uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false",
-        "uten.jwt.secret=fx-regression-isolated-jwt-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
-        "uten.crypto.pgp-master-key=fx-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
+        "uten.jwt.secret=fx-regression-isolated-jwt-key-0123456789-abcdef", // gitleaks:allow synthetic test-only cryptographic fixture.
+        "uten.crypto.pgp-master-key=fx-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic test-only cryptographic fixture.
         "uten.crypto.hmac-key=fx-regression-isolated-hmac-key-0123456789-abcdef",
-        "uten.bootstrap.admin-login=fx-regression-bootstrap","uten.bootstrap.admin-password=FxRegressionAdmin-1!"})
+        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){ FullChainEndToEndTest.registerDataSource(registry); }
     @Autowired AutowireCapableBeanFactory beans;

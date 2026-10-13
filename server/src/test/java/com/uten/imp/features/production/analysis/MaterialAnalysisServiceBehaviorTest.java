@@ -2580,10 +2580,13 @@ class MaterialAnalysisServiceBehaviorTest {
         UUID analysisId = UUID.randomUUID();
         UUID analysisItemId = UUID.randomUUID();
         UUID planId = UUID.randomUUID(),workshopId=UUID.randomUUID(),responsibleId=UUID.randomUUID();
+        UUID earlierPlanId = UUID.randomUUID();
+        var planReferences = List.of(new PlanReference(planId, "PP-001"), new PlanReference(earlierPlanId, "PP-000"));
         Query query = query(List.<Object[]>of(new Object[]{
                 analysisItemId, planId, "PP-001", "IN_PROGRESS",
                 bd("10"), bd("4"), bd("6"), Boolean.TRUE,
-                "装配一车间", "张三",workshopId,responsibleId
+                "装配一车间", "张三",workshopId,responsibleId,
+                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(planReferences)
         }));
         List<String> statements = new ArrayList<>();
         EntityManager em = mock(EntityManager.class);
@@ -2607,6 +2610,11 @@ class MaterialAnalysisServiceBehaviorTest {
         assertThat(projection.progressRatio()).isEqualByComparingTo("0.4000");
         assertThat(projection.workshopId()).isEqualTo(workshopId);
         assertThat(projection.responsibleId()).isEqualTo(responsibleId);
+        assertThat(projection.planReferences()).containsExactlyElementsOf(planReferences);
+        var product = MaterialAnalysisService.SourceLine.from(sourceRow(analysisItemId, UUID.randomUUID(), UUID.randomUUID()))
+                .toView(BigDecimal.ZERO, false, projection);
+        assertThat(product.planReferences()).containsExactlyElementsOf(planReferences);
+        assertThat(product.latestPlanId()).isEqualTo(planId);
 
         String sql = statements.getFirst().replaceAll("\\s+", " ");
         assertThat(sql)
@@ -2617,6 +2625,25 @@ class MaterialAnalysisServiceBehaviorTest {
                 .contains("segment_rollup AS")
                 .contains("FILTER (WHERE link.approved AND plan.status = 1)");
         verify(query).setParameter("analysisId", analysisId);
+        verify(em, org.mockito.Mockito.times(1)).createNativeQuery(anyString());
+    }
+
+    @Test
+    void withdrawnArrangementDoesNotCreateASecondSourceDemandOrLoseItsApprovedPlanReference() {
+        UUID productId = UUID.randomUUID(), planId = UUID.randomUUID();
+        Object[] row = sourceRow(productId, UUID.randomUUID(), UUID.randomUUID());
+        row[17] = bd("1000");
+        row[19] = bd("1000");
+        var references = List.of(new PlanReference(planId, "SJ-RETAINED", 1));
+        var state = new MaterialAnalysisService.ProductPlanState("PLANNING_REQUIRED", planId, "SJ-RETAINED",
+                bd("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, false, null, null, null, null, references);
+        var product = MaterialAnalysisService.SourceLine.from(row).toView(BigDecimal.ZERO, true, state);
+        assertThat(product.planExecutionStatus()).isEqualTo("PLANNING_REQUIRED");
+        assertThat(product.approvedQty()).isEqualByComparingTo("1000");
+        assertThat(product.issuedPlanQty()).isEqualByComparingTo("1000");
+        assertThat(product.remainingQty()).isZero();
+        assertThat(product.canSchedule()).isFalse();
+        assertThat(product.planReferences()).containsExactlyElementsOf(references);
     }
 
     @Test

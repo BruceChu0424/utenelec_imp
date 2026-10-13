@@ -33,6 +33,29 @@ class MaterialAnalysisResponseProjectionTest {
     private final UUID warehouse = UUID.randomUUID();
     private final String materialKey = UUID.randomUUID() + "|NONE|" + UUID.randomUUID();
 
+    @Test void everyProductKeepsAllPlanReferencesAcrossLegacyAndCompressedResponses() throws Exception {
+        var references = List.of(new PlanReference(UUID.randomUUID(), "PP-002", 1),
+                new PlanReference(UUID.randomUUID(), "PP-001", 0));
+        ProductView root = json.convertValue(Map.of("analysisLineId", UUID.randomUUID(),
+                "sourceType", "SALES_ORDER_ITEM", "latestPlanId", references.getFirst().planId(),
+                "latestPlanNo", references.getFirst().planNo(), "planReferences", references), ProductView.class);
+        ProductView shared = json.convertValue(Map.of("analysisLineId", UUID.randomUUID(),
+                "sourceType", "AGGREGATE_MAKE", "planReferences", List.of(references.getFirst())), ProductView.class);
+        ProductView unplanned = json.convertValue(Map.of("analysisLineId", UUID.randomUUID(),
+                "sourceType", "MAKE_COMPONENT"), ProductView.class);
+        assertEquals(List.of(), unplanned.planReferences(), "Older snapshots safely default to an empty list");
+        assertNull(new PlanReference(UUID.randomUUID(), "legacy-plan").status(), "Legacy references do not guess a plan's approval state");
+        var view = view(List.of(material("plan-references", stock("0"))), List.of(root, shared, unplanned));
+        for (JsonNode snapshot : List.of(wireTree(view),
+                expand(wireTree(MaterialAnalysisResponseProjection.project(view))),
+                expand(wireTree(MaterialAnalysisSparseProjection.project(view))))) {
+            assertEquals(wireTree(references), snapshot.path("products").get(0).path("planReferences"));
+            assertEquals(references.getFirst().planId().toString(), snapshot.path("products").get(0).path("latestPlanId").asText());
+            assertEquals(wireTree(List.of(references.getFirst())), snapshot.path("products").get(1).path("planReferences"));
+            assertTrue(snapshot.path("products").get(2).path("planReferences").isEmpty());
+        }
+    }
+
     @Test void exactDefaultQuantityFactsSurviveLegacyAndBothCompressedRepresentations() throws Exception {
         ObjectNode raw=(ObjectNode)wireTree(material("decimal",stock("0")));
         raw.remove("nodeRole");
@@ -236,14 +259,18 @@ class MaterialAnalysisResponseProjectionTest {
                         mock(MaterialStockReallocationService.class), mock(ProductionGoodsWorkshopPreferenceService.class),
                         mock(MaterialAnalysisSupplyProgressService.class),
                         mock(AnalysisLinkedSalesOrderService.class),
-                        mock(AuditDetailViewRecorder.class), null))
+                        mock(AuditDetailViewRecorder.class), null, mock(MaterialAnalysisPlanWithdrawalService.class)))
                 .setControllerAdvice(new MaterialAnalysisResponseProjection())
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(json)).build();
     }
 
     private AnalysisView view(List<MaterialView> materials) {
+        return view(materials, List.of());
+    }
+
+    private AnalysisView view(List<MaterialView> materials, List<ProductView> products) {
         return new AnalysisView(analysisId, "ACTIVE", 3, "a".repeat(64), "a".repeat(64), warehouse,
-                List.of(warehouse), OffsetDateTime.parse("2026-09-12T00:00:00Z"), List.of(), materials, List.of(), List.of(),
+                List.of(warehouse), OffsetDateTime.parse("2026-09-12T00:00:00Z"), products, materials, List.of(), List.of(),
                 List.of("VIEW"), false, null, Map.of(), 2);
     }
 

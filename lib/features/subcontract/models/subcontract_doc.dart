@@ -58,6 +58,7 @@ class SubcontractDocListItem {
     this.warehouseId,
     this.settlementMethodId,
     this.totalLocal,
+    this.totalLocalText,
     this.priceMasked = false,
     this.totalWeight,
     this.status,
@@ -78,6 +79,7 @@ class SubcontractDocListItem {
   final String? warehouseId;
   final String? settlementMethodId;
   final double? totalLocal;
+  final String? totalLocalText;
 
   /// 价格已对当前用户脱敏（金额族为 null；渲染 ***，V302 收货单价格脱敏）。
   final bool priceMasked;
@@ -104,6 +106,10 @@ class SubcontractDocListItem {
         warehouseId: json['warehouseId'] as String?,
         settlementMethodId: json['settlementMethodId'] as String?,
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        totalLocalText:
+            json['priceMasked'] == true || json['totalLocal'] == null
+            ? null
+            : receiptRecordedDecimal(json, 'totalLocal'),
         priceMasked: (json['priceMasked'] as bool?) ?? false,
         totalWeight: (json['totalWeight'] as num?)?.toDouble(),
         status: (json['status'] as num?)?.toInt(),

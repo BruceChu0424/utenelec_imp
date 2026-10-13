@@ -30,8 +30,9 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import '../../../shared/badges/badge_registry.dart';
-import '../../../shared/drafts/form_drafts_page.dart';
 
 class QualityTaskCenterPage extends ConsumerWidget {
   const QualityTaskCenterPage({super.key});
@@ -81,6 +82,9 @@ class QualityTaskCenterPage extends ConsumerWidget {
                 : UtenSpacing.s40,
           ),
           children: [
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(module: BadgeModule.quality),
+            ),
             if (taskEntries.isNotEmpty)
               _section(context, theme, '任务中心', taskEntries),
             if (taskEntries.isNotEmpty && recordEntries.isNotEmpty)
@@ -103,12 +107,6 @@ class QualityTaskCenterPage extends ConsumerWidget {
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
-        // 草稿入口走右上角按钮（2026-09-27），不再在左上角占一行分段栏；
-        // 与原分段栏同条件：无任一品质查看权限时不出现。
-        actions: [
-          if (canViewInspection || canViewFqc)
-            const FormDraftsAppBarButton(categoryId: 'quality'),
-        ],
       ),
       body: content,
     );

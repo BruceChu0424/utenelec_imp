@@ -47,6 +47,8 @@ class SuggestionListPage extends ConsumerWidget {
     final scope = ref.watch(suggestionScopeProvider);
     final statusFilter = ref.watch(suggestionStatusFilterProvider);
     final categoryFilter = ref.watch(suggestionCategoryFilterProvider);
+    final hasColumnFilters = statusFilter != null || categoryFilter != null;
+    final currentPage = list.valueOrNull;
     final createAction = UtenListCreateAction(
       emptyIcon: Icons.lightbulb_outline_rounded,
       emptyMessage: scope == SuggestionScope.mine ? '您还没有提交过建议' : '暂无建议',
@@ -69,8 +71,9 @@ class SuggestionListPage extends ConsumerWidget {
         ),
         data: (page) {
           final suggestions = page.items;
-          // 空态保持「唯一提交入口」口径（提交按钮在空态里，不出 FAB）。
-          if (suggestions.isEmpty) {
+          // 无筛选时的空建议箱保持唯一提交空态；筛选后空结果仍留表头，
+          // 用户能清除状态/类别，提交入口仍由原 FAB 承担。
+          if (suggestions.isEmpty && !hasColumnFilters) {
             return createAction.emptyState();
           }
           return MasterDataTableView<Suggestion>(
@@ -103,10 +106,10 @@ class SuggestionListPage extends ConsumerWidget {
                 onTap: () => _toggleLike(context, ref, s.id),
               ),
             ],
-            emptyMessage: '暂无建议',
+            emptyMessage: hasColumnFilters ? '当前筛选下暂无建议，可调整表头筛选' : '暂无建议',
             currentPage: page.page,
             totalPages: page.totalPages,
-            paginationScope: scope,
+            paginationScope: (scope, statusFilter, categoryFilter),
             onPageChange: (p) =>
                 ref.read(suggestionListProvider.notifier).goToPage(p),
           );
@@ -137,7 +140,9 @@ class SuggestionListPage extends ConsumerWidget {
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: createAction.floatingActionButton(
         context,
-        hasItems: list.valueOrNull?.items.isNotEmpty ?? false,
+        hasItems:
+            currentPage != null &&
+            (currentPage.items.isNotEmpty || hasColumnFilters),
       ),
       body: body,
     );

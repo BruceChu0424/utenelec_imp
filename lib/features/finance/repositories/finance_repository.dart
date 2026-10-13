@@ -160,32 +160,6 @@ class FinanceRepository {
     return FinanceDocDetail.fromJson(json);
   }
 
-  Future<({String snapshot, FinanceDocDetail detail})> review(String id) async {
-    final json = await api.get('${FinanceEndpoints.docOne(_seg, id)}/review');
-    return (
-      snapshot: json['snapshot'] as String,
-      detail: FinanceDocDetail.fromJson(
-        Map<String, dynamic>.from(json['detail'] as Map),
-      ),
-    );
-  }
-
-  Future<FinanceDocDetail> saveReviewed(
-    String id,
-    Map<String, dynamic> body,
-    String snapshot,
-  ) async {
-    final json = await api.post(
-      '${FinanceEndpoints.docOne(_seg, id)}/review',
-      body: {
-        'expectedSnapshot': snapshot,
-        'document': body,
-        'approveNow': true,
-      },
-    );
-    return FinanceDocDetail.fromJson(json);
-  }
-
   Future<FinanceDocDetail> create(Map<String, dynamic> body) async {
     final json = await api.post(FinanceEndpoints.docBase(_seg), body: body);
     return FinanceDocDetail.fromJson(json);
@@ -241,6 +215,7 @@ class ArApFilter {
     this.dateFrom,
     this.dateTo,
     this.billNo,
+    this.sourceDocNo,
     this.salesOrderNos,
   });
   final String? keyword;
@@ -254,6 +229,9 @@ class ArApFilter {
 
   /// 台账单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
+
+  /// 来源单号表头值筛选，在服务端分页前精确匹配。
+  final String? sourceDocNo;
 
   /// 关联销售单号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? salesOrderNos;
@@ -284,6 +262,8 @@ class ArApLedgerRepository {
       if (filter.dateTo != null) 'dateTo': filter.dateTo,
       if (filter.billNo != null && filter.billNo!.trim().isNotEmpty)
         'billNo': filter.billNo!.trim(),
+      if (filter.sourceDocNo != null && filter.sourceDocNo!.trim().isNotEmpty)
+        'sourceDocNo': filter.sourceDocNo!.trim(),
       if (filter.salesOrderNos != null &&
           filter.salesOrderNos!.trim().isNotEmpty)
         'salesOrderNos': filter.salesOrderNos!.trim(),

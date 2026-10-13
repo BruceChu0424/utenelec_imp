@@ -76,10 +76,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class SubcontractReturnService {
-    @org.springframework.beans.factory.annotation.Autowired
-    private com.fasterxml.jackson.databind.ObjectMapper reviewJson;
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<SubcontractReturnService> reviewedDraftProxy;
 
 
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
@@ -216,10 +212,8 @@ public class SubcontractReturnService {
 
     /** Preserve the business prefix, header lock and source check before the field snapshot. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    @PreAuthorize("hasAuthority('subcontract_return:edit') or (hasAuthority('subcontract_return:view') and hasAuthority('subcontract_return:approve'))")
+    @PreAuthorize("hasAuthority('subcontract_return:edit')")
     public void lockPlatformColumnSave(UUID id, ReturnSaveRequest request) {
-        if (!access.hasAuthority("subcontract_return:edit") && !com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("subcontract_return_item", id, currentUser.requireId()))
-            throw new ApiException(ErrorCode.FORBIDDEN);
         tx.bind();
         var guard = lockReturnRequest(id, request);
         requireReturnForUpdate(id);
@@ -230,57 +224,10 @@ public class SubcontractReturnService {
     @PreAuthorize("hasAuthority('subcontract_return:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_return_item", requestArgument=1, documentIdArgument=0)
     public ReturnDetail update(UUID id, ReturnSaveRequest req) {
-        return updateDraft(id, req, false, null);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('subcontract_return:view') and hasAuthority('subcontract_return:approve')")
-    public com.uten.imp.common.review.DocumentDraftReview.View<ReturnDetail> review(UUID id) {
-        tx.bind();
-        var guard = mutationLocks.productReturn("SUBCONTRACT", id);
-        SubcontractReturn r = requireReturnForUpdate(id);
-        guard.verifyUnchanged();
-        com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_return");
-        com.uten.imp.common.web.ImportedDocumentLifecycleCapabilities.requireMutable(r.getLegacyId());
-        if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT)
-            throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
-        return new com.uten.imp.common.review.DocumentDraftReview.View<>(com.uten.imp.common.review.DocumentDraftReview.snapshot(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id), detail(id));
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('subcontract_return:view') and hasAuthority('subcontract_return:approve')")
-    public ReturnDetail updateReviewed(UUID id, ReturnSaveRequest req, String expectedSnapshot, boolean approveNow) {
-        review(id);
-        com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id, expectedSnapshot);
-        com.uten.imp.common.review.ProcurementPhysicalReview.constrain(em, reviewJson, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id, req);
-        ReturnDetail saved;
-        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("subcontract_return_item", id, currentUser.requireId())) {
-            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
-        }
-        if (!approveNow) return saved;
-        return approveReturn(id, true);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('subcontract_return:view') and hasAuthority('subcontract_return:approve')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="subcontract_return_item", requestArgument=1, documentIdArgument=0)
-    public ReturnDetail saveReviewedDraft(UUID id, ReturnSaveRequest req, String expectedSnapshot) {
-        if (!com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.isActiveFor("subcontract_return_item", id, currentUser.requireId()))
-            throw new ApiException(ErrorCode.FORBIDDEN);
-        ReturnDetail result = updateDraft(id, req, true, expectedSnapshot);
-        em.flush();
-        return result;
-    }
-
-    private ReturnDetail updateDraft(UUID id, ReturnSaveRequest req, boolean reviewed, String expectedSnapshot) {
         tx.bind();
         var mutationGuard=lockReturnRequest(id,req);
         SubcontractReturn r = requireReturnForUpdate(id);
-        if (reviewed) {
-            com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_return");
-            com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id, expectedSnapshot);
-            com.uten.imp.common.review.ProcurementPhysicalReview.constrain(em, reviewJson, com.uten.imp.common.review.DocumentDraftReview.Kind.SUBCONTRACT_RETURN, id, req);
-        } else access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
         }
@@ -321,9 +268,7 @@ public class SubcontractReturnService {
      */
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_return:approve')")
-    public ReturnDetail approve(UUID id) { return approveReturn(id, false); }
-
-    private ReturnDetail approveReturn(UUID id, boolean reviewed) {
+    public ReturnDetail approve(UUID id) {
         tx.bind();
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
@@ -334,8 +279,7 @@ public class SubcontractReturnService {
         periodIdentityGuard.requireUnchanged(
                 r.getSupplierId(), r.getCurrencyId(), r.getBillDate(),
                 periodIdentity);
-        if (reviewed) com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "subcontract_return");
-        else access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的委外退货单");
         if (r.getStatus() == null || r.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }

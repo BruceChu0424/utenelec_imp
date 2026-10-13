@@ -107,8 +107,8 @@ public class ProcurementOrderSourceRevisionService implements ProcurementOrderSo
                         JOIN %1$s_order_items oi ON oi.id=p.order_item_id
                         JOIN %1$s_orders oh ON oh.id=oi.order_id
                         WHERE p.%2$s=r.id AND oh.status=0 AND oh.is_deleted=FALSE AND oi.is_deleted=FALSE
-                          AND EXISTS(SELECT 1 FROM procurement_order_approval_cases c WHERE c.order_type=:type
-                            AND c.order_id=oh.id AND c.status='PENDING')),0) AS pending_qty,
+                          AND fn_procurement_order_latest_approval_status(:type,oh.id)
+                                IN ('PENDING','REJECTED')),0) AS pending_qty,
                     COALESCE((SELECT SUM(target.consumed_qty) FROM %5$s t
                         JOIN production_material_supply_pegs target ON target.id=t.to_peg_id
                         WHERE t.order_item_id=s.order_item_id AND t.%2$s=r.id AND t.status='EFFECTIVE'),0) AS consumed_base,

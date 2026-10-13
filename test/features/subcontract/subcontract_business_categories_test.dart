@@ -21,6 +21,49 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  testWidgets(
+    'ordinary subcontract list keeps exact money with local unit and masks stale Exact',
+    (tester) async {
+      await _mount(
+        tester,
+        permissions: const {
+          Perm.subcontractOrderView,
+          Perm.subcontractOrderPriceView,
+        },
+      );
+      await _tap(tester, '进行中');
+      final amount = _table(
+        tester,
+      ).columns.singleWhere((c) => c.key == 'amount');
+      for (final raw in ['0.0001', '99999999999999.9999']) {
+        final row = SubcontractDocListItem.fromJson({
+          'id': 'exact',
+          'totalLocal': double.parse(raw),
+          'totalLocalExact': raw,
+        });
+        expect(amount.value(row), '$raw 元');
+      }
+      expect(
+        amount.value(
+          SubcontractDocListItem.fromJson({
+            'id': 'masked',
+            'priceMasked': true,
+            'totalLocal': 1,
+            'totalLocalExact': '99999999999999.9999',
+          }),
+        ),
+        '***',
+      );
+      expect(
+        SubcontractDocListItem.fromJson({
+          'id': 'unknown',
+          'totalLocal': null,
+          'totalLocalExact': '99999999999999.9999',
+        }).totalLocalText,
+        isNull,
+      );
+    },
+  );
   testWidgets('order stages filter the server aggregate and reset pagination', (
     tester,
   ) async {
@@ -40,33 +83,59 @@ void main() {
       'financeApproval': 'IN_PROGRESS',
     });
 
-    await _tap(tester, '等待财务审核');
+    expect(
+      find.byKey(const Key('subcontract-biz-substages-order')),
+      findsNothing,
+    );
+    _table(tester).onFilterChanged('status', 'PENDING');
+    await tester.pumpAndSettle();
     expect(api.lastQuery, {
       'page': 1,
       'size': 20,
       'status': 0,
       'financeApproval': 'PENDING',
     });
-    await _tap(tester, '财务已退回');
+    _table(tester).onFilterChanged('status', 'REJECTED');
+    await tester.pumpAndSettle();
     expect(api.lastQuery, {
       'page': 1,
       'size': 20,
       'status': 0,
       'financeApproval': 'REJECTED',
     });
-    await _tap(tester, '执行中');
+    _table(tester).onFilterChanged('status', 'EXECUTING');
+    await tester.pumpAndSettle();
     expect(api.lastQuery, {
       'page': 1,
       'size': 20,
       'status': 1,
+      'financeApproval': 'NONE',
       'closed': false,
+    });
+
+    _table(tester).onFilterChanged('status', 'REVIEW_REJECTED');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery, {
+      'page': 1,
+      'size': 20,
+      'status': 1,
+      'financeApproval': 'REJECTED',
+    });
+    _table(tester).onFilterChanged('status', 'REVIEW_PENDING');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery, {
+      'page': 1,
+      'size': 20,
+      'status': 1,
+      'financeApproval': 'PENDING',
     });
 
     _table(tester).onPageChange!(2);
     await tester.pumpAndSettle();
     expect(api.lastQuery['page'], 2);
     await _showHeader(tester);
-    await _tap(tester, '清除状态筛选');
+    _table(tester).onFilterChanged('status', null);
+    await tester.pumpAndSettle();
     expect(api.lastQuery, {
       'page': 1,
       'size': 20,
@@ -82,6 +151,10 @@ void main() {
     (tester) async {
       final api = await _mount(tester);
       await _tap(tester, '历史记录');
+      expect(_table(tester).facets['status']!.map((bucket) => bucket.label), [
+        '已结案',
+        '已反审',
+      ]);
       expect(find.text('已结案'), findsOneWidget);
       expect(find.text('已反审'), findsOneWidget);
       expect(find.text('执行中'), findsNothing);
@@ -90,7 +163,8 @@ void main() {
         {'page': 1, 'size': 20},
       ]);
 
-      await _tap(tester, '已结案');
+      _table(tester).onFilterChanged('status', 'CLOSED');
+      await tester.pumpAndSettle();
       // 2026-10-04 起历史段默认「全部时间段」：进入即全量加载（不带日期）。
       expect(api.lastQuery, {
         'page': 1,
@@ -126,7 +200,8 @@ void main() {
       _table(tester).onPageChange!(2);
       await tester.pumpAndSettle();
       await _showHeader(tester);
-      await _tap(tester, '清除状态筛选');
+      _table(tester).onFilterChanged('status', null);
+      await tester.pumpAndSettle();
       expect(api.lastQuery, {
         'page': 1,
         'size': 20,
@@ -166,18 +241,24 @@ void main() {
         await _tap(tester, '草稿');
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 0});
         await _tap(tester, '历史记录');
+        expect(_table(tester).facets['status']!.map((bucket) => bucket.label), [
+          '已审',
+          '已反审',
+        ]);
         expect(find.text('已审'), findsOneWidget);
         expect(find.text('已反审'), findsOneWidget);
         // 2026-10-04 起历史门默认「全部」：选中历史记录即全量加载（不带状态）。
         expect(api.lastQuery, {'page': 1, 'size': 20});
-        await _tap(tester, '已审');
+        _table(tester).onFilterChanged('status', 'APPROVED');
+        await tester.pumpAndSettle();
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 1});
         // 时间胶囊「全部」默认已选中：再点不重复发请求。
         await _tap(tester, '全部');
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': 1});
         await _tap(tester, '已反审');
         expect(api.lastQuery, {'page': 1, 'size': 20, 'status': -1});
-        await _tap(tester, '清除状态筛选');
+        _table(tester).onFilterChanged('status', null);
+        await tester.pumpAndSettle();
         expect(api.lastQuery, {'page': 1, 'size': 20});
         await _showHeader(tester);
         expect(

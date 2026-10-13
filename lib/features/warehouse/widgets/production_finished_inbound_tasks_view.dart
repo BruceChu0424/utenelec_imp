@@ -17,12 +17,19 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
+import '../models/warehouse_task_form_drafts.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -237,6 +244,16 @@ class _ProductionFinishedInboundTasksViewState
   );
 
   Future<void> _openTask(ProductionFinishedInboundTask task) async {
+    final drafts = finishedInboundTaskDrafts(
+      ref.read(formDraftsProvider),
+      reportId: task.reportId,
+      documentId: task.documentId,
+    );
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load(_result?.page ?? 1);
+      return;
+    }
     if (task.isArrivalRegistration) {
       final reportId = task.reportId;
       if (reportId == null || reportId.isEmpty) {
@@ -313,10 +330,19 @@ class _ProductionFinishedInboundTasksViewState
 
   /// 「先入库后质检」批量入口(与登记页同款独立权限点，服务端兜底)。
   bool get _canStockInFirst =>
-      ref.read(isSuperAdminProvider) ||
+      ref.read(authenticatedScopeProvider)?.readOnly != true &&
+      _hasCountAuthority &&
+      locationAllowedFor(
+        ref.read(currentPermissionsProvider),
+        false,
+        RouteName.warehouseProductionFinishedArrivalRegistration,
+      ) &&
       ref
           .read(currentPermissionsProvider)
           .contains(Perm.productionFinishedInBeforeInspection);
+
+  bool get _hasCountAuthority =>
+      ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove);
 
   /// 多选「先入库后质检(N)」/「先质检后入库(N)」：带着所选路线进多报工单汇总登记页，
   /// 页面只显示这一条路线的提交按钮(与预计到货批量登记同款)。
@@ -324,6 +350,7 @@ class _ProductionFinishedInboundTasksViewState
     Set<String> selectedIds,
     InboundRoute route,
   ) async {
+    if (route.isStockInFirst && !_canStockInFirst) return;
     final currentItems = _tableRows.items;
     final reportIds = <String>{
       for (final id in selectedIds)
@@ -405,11 +432,11 @@ class _ProductionFinishedInboundTasksViewState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     final result = _result;
-    final permissions = ref.watch(currentPermissionsProvider);
-    final canCount =
-        ref.watch(isSuperAdminProvider) ||
-        permissions.contains(Perm.stockDocApprove);
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
+    final canCount = ref.watch(isSuperAdminProvider) || _hasCountAuthority;
     return _buildTable(result, canCount: canCount);
   }
 
@@ -432,6 +459,13 @@ class _ProductionFinishedInboundTasksViewState
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!widget.embedded)
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(
+                module: BadgeModule.warehouse,
+                routePrefix: '/warehouse/production-finished-in/',
+              ),
+            ),
           if (widget.externalHeader != null) ...[
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
@@ -619,11 +653,25 @@ class _ProductionFinishedInboundTasksViewState
       key: 'taskStage',
       label: '任务步骤',
       width: 190,
-      value: _taskStageLabel,
+      value: (task) {
+        final drafts = finishedInboundTaskDrafts(
+          ref.read(formDraftsProvider),
+          reportId: task.reportId,
+          documentId: task.documentId,
+        );
+        return drafts.isEmpty ? _taskStageLabel(task) : taskDraftStatus(drafts);
+      },
       // ADR-169 逐页显式映射（两个分段各自独立）：待登记入库 / 品质通过·待最终
       // 点收=绿（轮到仓库动手的绿灯）；短收余量待点收=紫（部分点收后剩余——
       // 部分就绪档，与本分段内「品质通过待点收」的绿拉开）。
-      cellColor: (context, task) => task.isArrivalRegistration
+      cellColor: (context, task) =>
+          finishedInboundTaskDrafts(
+            ref.read(formDraftsProvider),
+            reportId: task.reportId,
+            documentId: task.documentId,
+          ).isNotEmpty
+          ? utenStatusBadgeCellColor(UtenStatusBadgeType.neutral)
+          : task.isArrivalRegistration
           ? utenStatusBadgeCellColor(UtenStatusBadgeType.success)
           : task.residualTask
           ? utenStatusBadgeCellColor(UtenStatusBadgeType.violet)

@@ -97,8 +97,6 @@ public class FinancePaymentService {
     private final EntityManager em;
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<FinancePaymentService> reviewedDraftProxy;
     private final GlPostingService glPostingService;
     private final AccountFlowLedgerService accountFlowLedger;
     private final SupplierPayableHoldGuard payableHoldGuard;
@@ -216,56 +214,12 @@ public class FinancePaymentService {
     @PreAuthorize("hasAuthority('finance_payment:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_payment_item", requestArgument=1, documentIdArgument=0)
     public FinancePaymentDetail update(UUID id, FinancePaymentSaveRequest req) {
-        return updateDraft(id, req, false, null);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_payment:view') and hasAuthority('finance_payment:approve')")
-    public com.uten.imp.features.finance.FinanceDraftReview.View<FinancePaymentDetail> review(UUID id) {
-        tx.bind(); PaymentStyleHierarchyLock.lock(em);
-        FinancePayment p = require(id);
-        em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        requireActiveAfterLock(p);
-        com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, p.getMakerId(), "finance_payment");
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
-        if (p.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
-        return new com.uten.imp.features.finance.FinanceDraftReview.View<>(
-                com.uten.imp.features.finance.FinanceDraftReview.snapshot(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.PAYMENT, id), detail(id));
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_payment:view') and hasAuthority('finance_payment:approve')")
-    public FinancePaymentDetail updateReviewed(UUID id, FinancePaymentSaveRequest req, String expectedSnapshot, boolean approveNow) {
-        var review = review(id);
-        com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.PAYMENT, id, expectedSnapshot);
-        if (req.getExpectedVersion() == null || !req.getExpectedVersion().equals(review.detail().getVersion()))
-            throw new ApiException(ErrorCode.CONFLICT, "财务草稿版本已变化，请刷新后重试");
-        FinancePaymentDetail saved;
-        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("finance_payment_item", id, currentUser.requireId())) {
-            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
-        }
-        return approveNow ? approve(id) : saved;
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_payment:view') and hasAuthority('finance_payment:approve')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_payment_item", requestArgument=1, documentIdArgument=0)
-    public FinancePaymentDetail saveReviewedDraft(UUID id, FinancePaymentSaveRequest req, String expectedSnapshot) {
-        FinancePaymentDetail saved = updateDraft(id, req, true, expectedSnapshot);
-        em.flush();
-        return saved;
-    }
-
-    private FinancePaymentDetail updateDraft(UUID id, FinancePaymentSaveRequest req, boolean review, String expectedSnapshot) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
         FinancePayment p = require(id);
         em.refresh(p, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         requireActiveAfterLock(p);
-        if (review) {
-            com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, p.getMakerId(), "finance_payment");
-            com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.PAYMENT, id, expectedSnapshot);
-        } else access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
+        access.requireWritable(p.getMakerId(), "只能操作本人负责或已授权的采购付款单");
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(p.getLegacyId());
         if (p.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");

@@ -77,6 +77,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
   PagedResult<CountStockRow>? _page;
   int _pageNum = 1;
   bool _loading = false;
+  int _loadGeneration = 0;
   String? _error;
   bool _submitting = false;
   bool _starting = false;
@@ -291,8 +292,13 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
   }
 
   Future<void> _load(int page) async {
+    final generation = ++_loadGeneration;
     final warehouse = _warehouse;
     if (warehouse == null) return;
+    bool isCurrent() =>
+        mounted &&
+        generation == _loadGeneration &&
+        _warehouse?.id == warehouse.id;
     setState(() {
       _loading = true;
       _error = null;
@@ -307,7 +313,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
         sheet: true,
         page: page,
       );
-      if (!mounted || _warehouse?.id != warehouse.id) return;
+      if (!isCurrent()) return;
       // 行集与页集同键；编辑缓冲 putIfAbsent 保留已填值。
       _count.addAll(result.items);
       for (final row in result.items) {
@@ -315,14 +321,14 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       }
       setState(() => _page = result);
     } catch (error) {
-      if (mounted && _warehouse?.id == warehouse.id) {
+      if (isCurrent()) {
         setState(
           () => _error = error is ApiException ? error.message : '盘点数据没有读到，请重试',
         );
       }
     } finally {
-      // 快速切仓时旧仓的收尾不能熄掉新仓的加载指示。
-      if (mounted && _warehouse?.id == warehouse.id) {
+      // 旧仓或同仓旧筛选的收尾均不能熄掉新请求的加载指示。
+      if (isCurrent()) {
         setState(() => _loading = false);
       }
     }

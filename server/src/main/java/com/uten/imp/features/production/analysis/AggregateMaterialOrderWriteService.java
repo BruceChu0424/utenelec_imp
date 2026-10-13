@@ -531,6 +531,7 @@ public class AggregateMaterialOrderWriteService implements AggregateMaterialOrde
         if(privateProof!=null){config.set("sourcePrivateQtyByMaterialLineId",mapper.valueToTree(privateProof));
             config.set("sourcePrivateQtyByTargetMaterialLineId",mapper.valueToTree(privateFlow));}
         config.set("materialLineIds",mapper.valueToTree(group.sources().stream().map(SourcePreview::materialLineId).toList()));config.put("manufacturing",manufacturing);
+        if(manufacturing){config.put("departmentId",group.departmentId().toString());config.put("workerId",group.workerId().toString());}
         em.createNativeQuery("""
                 INSERT INTO preplan_aggregate_batches(id,analysis_id,action_id,anchor_analysis_item_id,route,compatibility_key,configuration_snapshot,created_by)
                 VALUES(:id,:analysis,:action,:anchor,:route,:compatibility,CAST(:configuration AS jsonb),:actor)

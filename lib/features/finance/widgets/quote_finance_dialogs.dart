@@ -20,21 +20,31 @@ Future<String?> showQuoteFinanceReturnDialog(
   required String billNo,
   required TaskClaimSession claim,
   Widget Function(BuildContext, Widget)? decorate,
+  TextEditingController? reasonController,
 }) {
   return showDialog<String>(
     context: context,
     builder: (context) {
-      final dialog = _QuoteFinanceReturnDialog(billNo: billNo, claim: claim);
+      final dialog = _QuoteFinanceReturnDialog(
+        billNo: billNo,
+        claim: claim,
+        reasonController: reasonController,
+      );
       return decorate?.call(context, dialog) ?? dialog;
     },
   );
 }
 
 class _QuoteFinanceReturnDialog extends StatefulWidget {
-  const _QuoteFinanceReturnDialog({required this.billNo, required this.claim});
+  const _QuoteFinanceReturnDialog({
+    required this.billNo,
+    required this.claim,
+    this.reasonController,
+  });
 
   final String billNo;
   final TaskClaimSession claim;
+  final TextEditingController? reasonController;
 
   @override
   State<_QuoteFinanceReturnDialog> createState() =>
@@ -42,12 +52,12 @@ class _QuoteFinanceReturnDialog extends StatefulWidget {
 }
 
 class _QuoteFinanceReturnDialogState extends State<_QuoteFinanceReturnDialog> {
-  final _reason = TextEditingController();
+  late final _reason = widget.reasonController ?? TextEditingController();
   String? _error;
 
   @override
   void dispose() {
-    _reason.dispose();
+    if (widget.reasonController == null) _reason.dispose();
     super.dispose();
   }
 

@@ -6,8 +6,6 @@
 // 领料单 / 生产退料只有草稿与历史（草稿不计入待办数）不挂。进页面不预选大类
 //（未选时显示引导空态）。角标与 hub「生产领料任务中心」卡/工作台仓库卡同口径。
 import 'package:flutter/material.dart';
-import '../../../shared/drafts/form_draft_category.dart';
-import '../widgets/warehouse_form_draft_categories.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/router/route_names.dart';
@@ -59,13 +57,6 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
       searchHint: '搜索单号 / 生产计划 / 货品 / 车间',
       segments: [
         WarehouseTaskSegmentSpec(
-          value: 'drafts',
-          label: '草稿',
-          count: ref.watch(
-            formDraftCategoryVisibleCountProvider(warehouseDrawFormDraftScope),
-          ),
-        ),
-        WarehouseTaskSegmentSpec(
           value: 'pending',
           label: '待领任务',
           count: drawCount,
@@ -84,11 +75,6 @@ class WarehouseDrawTaskCenterPage extends ConsumerWidget {
       onResume: () => invalidateWarehouseTaskCounts(ref),
       bodyBuilder: (segment, keyword, refreshTick, headerPrefix) =>
           switch (segment) {
-            'drafts' => WarehouseFormDraftCategory(
-              scope: warehouseDrawFormDraftScope,
-              header: headerPrefix,
-              search: keyword,
-            ),
             'pending' => WarehouseDrawTaskSegment(
               keyword: keyword,
               refreshTick: refreshTick,

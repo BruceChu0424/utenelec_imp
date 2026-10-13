@@ -158,6 +158,7 @@ class _SubcontractDecompositionPageState
 
   /// 异常小类；null = 未选择（不附加过滤）。
   String? _exception;
+  static const _allExceptions = '__ALL_EXCEPTIONS__';
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
@@ -210,9 +211,11 @@ class _SubcontractDecompositionPageState
     'WAITING_KIT' ||
     'BOM_MISSING' ||
     'FINANCE_REJECTED' ||
+    'FINANCE_REVIEW_REJECTED' ||
     'SHORT_DELIVERY' ||
     'WAITING_MATERIAL' => UtenStatusBadgeType.danger,
     'ORDER_PENDING_APPROVAL' ||
+    'FINANCE_REVIEW_PENDING' ||
     'RECEIVED_PENDING_STOCK' => UtenStatusBadgeType.warning,
     'DRAW_SUBMITTED' => UtenStatusBadgeType.sky,
     'FINANCE_APPROVED' => UtenStatusBadgeType.info,
@@ -592,9 +595,10 @@ class _SubcontractDecompositionPageState
   }
 
   void _selectException(String code) {
-    if (_exception == code) return;
+    final exception = code == _allExceptions ? null : code;
+    if (_exception == exception) return;
     setState(() {
-      _exception = code;
+      _exception = exception;
       _page = 1;
       _selectedIds.clear();
     });
@@ -1020,7 +1024,15 @@ class _SubcontractDecompositionPageState
     final seg = _seg;
     final statusCounts = data.summary.statusCounts;
     final exceptionCounts = data.summary.exceptionCounts;
-    final exceptionOptions = data.exceptionOptions;
+    final exceptionOptions = [
+      ...data.exceptionOptions,
+      if (_exception != null &&
+          !data.exceptionOptions.any((option) => option.value == _exception))
+        OperationsWorkbenchFilterOption(
+          value: _exception!,
+          label: operationsWorkbenchExceptionLabel(_exception!),
+        ),
+    ];
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1047,13 +1059,14 @@ class _SubcontractDecompositionPageState
             ),
           ),
         ],
-        // 异常小类行：选中阶段后出现；无「全部异常」，默认不选=不附加过滤。
+        // 独立异常手动筛选：默认「全部」，财务退回只在状态列筛选。
         // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
         if (seg != null && !seg.history && exceptionOptions.isNotEmpty) ...[
           const SizedBox(height: UtenSpacing.s8),
           UtenFilterToolbar<String>(
             segmentsKey: const Key('subcontract-decomposition-exceptions'),
             segments: [
+              const UtenFilterSegment(value: _allExceptions, label: '全部'),
               for (final option in exceptionOptions)
                 UtenFilterSegment(
                   value: option.value,
@@ -1062,7 +1075,8 @@ class _SubcontractDecompositionPageState
                   countForm: UtenSegmentCountForm.actionable,
                 ),
             ],
-            selected: _exception == null ? const {} : {_exception!},
+            autoSelectBadge: false,
+            selected: {_exception ?? _allExceptions},
             onSelectionChanged: _selectException,
           ),
         ],

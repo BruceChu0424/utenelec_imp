@@ -1,11 +1,9 @@
 // 销售单据列表页（按 docType 参数化）。
 //
 // 2026-09-03 起统一「分类分段」范式（ADR-066）：
-// - 订货单：大类行 = 待生产/生产中/待发货/本月完成（原 4 张统计卡转分段卡，
-//   计数转徽章，来自后端 stats 全量口径）+ 搜索；小类行 = 草稿/已审/红冲
-//   （无「全部」段，默认不选=全部效果）+ 末尾「历史记录」（时间门控：时间段/
-//   全部，未选时间不发请求；选定后按 dateFrom/dateTo 不限阶段状态加载）。
-//   可发货置顶小开关保留。
+// - 订货单：主阶段 = 待生产/生产中/待发货/本月完成/草稿/历史记录 + 搜索。
+//   单据状态由表头筛选下推服务端，清除后仍在当前主阶段；历史按所选日期范围
+//   查询，状态筛选与日期正交。主阶段徽章来自后端 stats；可发货置顶开关保留。
 // - 出货/客户零星发货：单行范式，但按真实阶段分段（草稿/等待财务审核/财务已退回/
 //   已审/已出库/红冲，服务端 stage 参数；2026-09-20）+ 末尾历史记录 + 搜索——出货单的
 //   status 只在仓库确认出库时才变 1，按 status 分段会把等待财审的单全归到草稿。
@@ -65,10 +63,15 @@ import '../widgets/sales_quote_status_chip.dart';
 
 /// 订货单大类的「草稿」段值（链路阶段之外的第 5 段）。
 const String _kDraftStage = 'draft';
+const String _kHistoryStage = 'history';
 
 /// 小类分段值：真实单据状态（status 非空）、出货真实阶段（shipmentStage 非空）
-/// 或历史记录哨兵。
+/// 或全部/历史记录哨兵。
 class _SalesDocSeg {
+  const _SalesDocSeg.all()
+    : status = null,
+      shipmentStage = null,
+      history = false;
   const _SalesDocSeg.stage(int this.status)
     : shipmentStage = null,
       history = false;
@@ -136,12 +139,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   final _tableRows = MasterDataTableRowsController<SalesDocListItem>();
   int _reloadGeneration = 0;
 
-  /// 大类分段（仅订货单）：pending/production/shippable/monthDone；
+  /// 大类分段（仅订货单）：pending/production/shippable/monthDone/draft/history；
   /// null = 未选择引导态（不发请求）。
   String? _stage;
 
-  /// 小类分段：草稿/已审/红冲或历史记录；null = 未选择。
-  /// 订货单未选=全部效果（可与大类组合）；其他单据未选=引导占位。
+  /// 订货单的表头状态筛选；其他单据的主工作分段。
+  /// 订货单 null = 当前大类内全部状态；其他单据 null = 引导占位。
   _SalesDocSeg? _statusSeg;
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
@@ -195,7 +198,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       widget.docType == SalesDocType.shipment ||
       widget.docType == SalesDocType.customerShipment;
 
-  bool get _isHistory => _statusSeg?.history == true;
+  bool get _isHistory =>
+      _isOrder ? _stage == _kHistoryStage : _statusSeg?.history == true;
 
   /// 草稿段（仅订货单第 5 段）：不是链路阶段，按 status=0 直查。
   bool get _isDraftStage => _isOrder && _stage == _kDraftStage;
@@ -257,7 +261,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(salesMasterNameServiceProvider).ensureLoaded();
       if (_isOrder) _loadStats();
-      if (isDraftStatusQuery(widget.initialStatus)) _reload(1);
+      if (_shouldLoad) _reload(1);
     });
   }
 
@@ -273,9 +277,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       } else {
         _statusSeg = const _SalesDocSeg.stage(kSalesStatusDraft);
       }
-    } else if (widget.initialHistory && !_isOrder) {
-      // 预选历史记录段：时间仍未选（none），引导占位不发请求。
-      _statusSeg = const _SalesDocSeg.history();
+    } else if (widget.initialHistory) {
+      if (_isOrder) {
+        _stage = _kHistoryStage;
+      } else {
+        _statusSeg = const _SalesDocSeg.history();
+      }
     }
   }
 
@@ -457,7 +464,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     subtitle: Text(
-                      '${names.client(q.clientId)} · ${q.billDate ?? ''} · ¥${q.totalLocal?.toStringAsFixed(2) ?? '—'}',
+                      '${names.client(q.clientId)} · ${q.billDate ?? ''} · ${financeLocalMoneyWithUnitSuffix(q.totalLocalText ?? q.totalLocal?.toString())}',
                     ),
                     onTap: () => Navigator.pop(ctx, q),
                   );
@@ -510,7 +517,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       // 只能按单据状态直查（closed 也一并不带，草稿不可能结案）。
       status: _isDraftStage
           ? kSalesStatusDraft
-          : (_isHistory ? null : _statusSeg?.status),
+          : (_isHistory && !_isOrder ? null : _statusSeg?.status),
       // 出货真实阶段(草稿/等待财务审核/…)走 stage，报价分桶走 bucket，历史记录不限。
       stage: _isHistory || _quoteStaged ? null : _statusSeg?.shipmentStage,
       bucket: _isHistory || !_quoteStaged ? null : _statusSeg?.shipmentStage,
@@ -804,14 +811,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
             ? '***'
             : _isOrder
             ? financeMoneyWithUnitSuffix(
-                it.totalOriginal?.toStringAsFixed(2),
+                it.totalOriginalText,
                 currencyName: names.currency(it.currencyId),
               )
             : it.totalLocal == null
             ? null
-            : financeLocalMoneyWithUnitSuffix(
-                it.totalLocal!.toStringAsFixed(2),
-              ),
+            : financeLocalMoneyWithUnitSuffix(it.totalLocalText),
       ),
       // 报价也有交货日期(ADR-134, 服务端 QuoteListItem.deliverDate)。
       if (_cfg.hasDeliverDate)
@@ -864,24 +869,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         : ref
               .watch(effectiveDocumentStatusCountsProvider(statusScope))
               .valueOrNull;
-    // 小类行（仅订货单渲染；搜索在大类行）。其他单据在下方自建带搜索的同行。
-    final statusRow = UtenFilterToolbar<_SalesDocSeg>(
-      segmentsKey: Key('sales-doc-status-${_cfg.type.pathSegment}'),
-      segments: [
-        for (final status in [
-          kSalesStatusDraft,
-          kSalesStatusApproved,
-          kSalesStatusReversed,
-        ])
-          UtenFilterSegment(
-            value: _SalesDocSeg.stage(status),
-            label: salesStatusLabel(status),
-          ),
-        const UtenFilterSegment(value: _SalesDocSeg.history(), label: '历史记录'),
-      ],
-      selected: seg == null ? const {} : {seg},
-      onSelectionChanged: _selectStatusSeg,
-    );
     // 正文（分段工具条 + 表格）：独立列表页与任务中心嵌入态共用一份。
     // 嵌入态不再自套 SafeArea/容器：宿主页已有容器，再套一层会把小类行
     // 推离父分类行与左缘（2026-09-24 用户走查修正，对齐仓库任务中心口径）。
@@ -970,6 +957,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               count: _draftCount,
                               countForm: UtenSegmentCountForm.actionable,
                             ),
+                            const UtenFilterSegment(
+                              value: _kHistoryStage,
+                              label: '历史记录',
+                            ),
                           ],
                           selected: _stage == null ? const {} : {_stage!},
                           onSelectionChanged: _selectStage,
@@ -980,12 +971,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                             _reload(1);
                           },
                         ),
-                        // 小类行：选中大类后出现（无「全部」段）。
-                        // 草稿段本身就是状态口径，再叠状态小类没有意义，隐藏。
-                        if (_stage != null && !_isDraftStage) ...[
-                          const SizedBox(height: UtenSpacing.s12),
-                          statusRow,
-                        ],
                       ] else
                         // 其他单据：单行范式（状态 + 末尾历史记录 + 搜索）。
                         UtenFilterToolbar<_SalesDocSeg>(
@@ -993,6 +978,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                             'sales-doc-status-${_cfg.type.pathSegment}',
                           ),
                           segments: [
+                            const UtenFilterSegment(
+                              value: _SalesDocSeg.all(),
+                              label: '全部',
+                            ),
                             // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要
                             // 有数——出货六阶段全部带数, 草稿 / 财务已退回红徽章
                             // (财务退回件不再混在草稿里), 等待财务审核 / 已审待出库
@@ -1278,7 +1267,21 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   void _onColumnFilterChanged(String key, String? value) {
     if (key == 'status') {
       if (_isDraftStage) return;
-      if (value == null) return;
+      if (_isOrder) {
+        final status = value == null ? null : int.tryParse(value);
+        if (value != null && status == null) return;
+        clearDraftSelection();
+        setState(() {
+          _statusSeg = status == null ? null : _SalesDocSeg.stage(status);
+        });
+        // 清除状态筛选只恢复当前工作阶段；历史时间范围也继续保留。
+        _reload(1);
+        return;
+      }
+      if (value == null) {
+        _selectStatusSeg(const _SalesDocSeg.all());
+        return;
+      }
       if (_quoteStaged) {
         _selectStatusSeg(_SalesDocSeg.shipment(value));
         return;
@@ -1335,9 +1338,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         'currency': _currencyIdFilter,
       if (_cfg.hasWarehouse) 'warehouse': _warehouseIdFilter,
     };
-    if (_isDraftStage) {
-      return <String, String?>{'status': '$kSalesStatusDraft', ...extra};
-    }
+    if (_isDraftStage) return extra;
     final seg = _statusSeg;
     if (_quoteStaged && seg?.shipmentStage != null && !seg!.history) {
       return <String, String?>{'status': seg.shipmentStage, ...extra};
@@ -1367,7 +1368,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
           ),
       ]
     // 出货类状态列显示真实阶段，0/1/-1 桶对它没有意义（阶段在分段行）。
-    else if (!_shipmentStaged)
+    else if (!_shipmentStaged && !_isDraftStage)
       'status': const [
         MasterFacetBucket(value: '0', count: 0, label: '草稿'),
         MasterFacetBucket(value: '1', count: 0, label: '已审'),

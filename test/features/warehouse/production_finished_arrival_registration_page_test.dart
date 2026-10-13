@@ -39,7 +39,102 @@ const _registrationPath =
     '/warehouse/production-finished-in/arrival-registrations/batch';
 const _placeSuggestionPath = '/warehouse/place-suggestions';
 
+final _liveFinishedPermissions = StateProvider<Set<String>>(
+  (ref) => const {
+    Perm.stockDocView,
+    Perm.stockDocApprove,
+    Perm.productionFinishedInBeforeInspection,
+  },
+);
+final _liveFinishedScope = StateProvider<AuthenticatedScope?>((ref) => null);
+
 void main() {
+  for (final withExtra in [false, true]) {
+    testWidgets(
+      'sparse superadmin finished arrival form requires explicit extra ($withExtra)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1800, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final api = _ArrivalRegistrationApi(
+          warehouseId: 'warehouse-1',
+          placeHint: 'CP-SA-01',
+        );
+        await _openPage(
+          tester,
+          api: api,
+          clearSelection: false,
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(true),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.stockDocView,
+              Perm.stockDocApprove,
+              if (withExtra) Perm.productionFinishedInBeforeInspection,
+            }),
+          ],
+        );
+        final button = find.byKey(InboundRoute.stockInFirst.submitKey);
+        if (button.evaluate().isNotEmpty) {
+          await _submit(tester, route: InboundRoute.stockInFirst);
+        }
+        expect(api.postBodies, hasLength(withExtra ? 1 : 0));
+        if (withExtra) {
+          expect(api.postBodies.single['stockInBeforeInspection'], isTrue);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final readOnly in [false, true]) {
+    testWidgets(
+      'finished arrival confirmation observes current authority or readonly ($readOnly)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1800, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        final api = _ArrivalRegistrationApi(
+          warehouseId: 'warehouse-1',
+          placeHint: 'CP-SA-01',
+        );
+        await _openPage(
+          tester,
+          api: api,
+          clearSelection: false,
+          overrides: [
+            isSuperAdminProvider.overrideWithValue(true),
+            currentPermissionsProvider.overrideWith(
+              (ref) => ref.watch(_liveFinishedPermissions),
+            ),
+            authenticatedScopeProvider.overrideWith(
+              (ref) => ref.watch(_liveFinishedScope),
+            ),
+          ],
+        );
+        await _pressRoute(tester, InboundRoute.stockInFirst);
+        final container = ProviderScope.containerOf(
+          tester.element(
+            find.byType(ProductionFinishedArrivalRegistrationPage),
+          ),
+        );
+        if (readOnly) {
+          container
+              .read(_liveFinishedScope.notifier)
+              .state = const AuthenticatedScope(
+            userId: 'finished-reader',
+            actorId: 'actor',
+            readOnly: true,
+          );
+        } else {
+          container.read(_liveFinishedPermissions.notifier).state = const {
+            Perm.stockDocView,
+            Perm.stockDocApprove,
+          };
+        }
+        await tester.pump();
+        await _confirm(tester, InboundRoute.stockInFirst);
+        expect(api.postBodies, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets('实称重量: 随登记行提交千克并进幂等键，按报工数量核对 (ADR-135)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1800, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

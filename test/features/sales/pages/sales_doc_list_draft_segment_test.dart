@@ -15,6 +15,8 @@ import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
@@ -24,6 +26,8 @@ import 'package:uten_imp/shared/providers/draft_counts_provider.dart';
 Future<_RecordingApi> _pumpOrderList(
   WidgetTester tester, {
   String? initialStatus,
+  bool initialHistory = false,
+  SalesDocType docType = SalesDocType.order,
   DraftCounts counts = const DraftCounts(salesOrder: 2),
   Set<String> permissions = const {},
 }) async {
@@ -31,17 +35,17 @@ Future<_RecordingApi> _pumpOrderList(
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
   final api = _RecordingApi();
-  final location = initialStatus == null
-      ? '/sales/orders'
-      : '/sales/orders?status=$initialStatus';
+  final path = '/sales/${docType.pathSegment}';
+  final location = initialStatus == null ? path : '$path?status=$initialStatus';
   final router = GoRouter(
     initialLocation: location,
     routes: [
       GoRoute(
-        path: '/sales/orders',
+        path: path,
         builder: (_, state) => SalesDocListPage(
-          docType: SalesDocType.order,
+          docType: docType,
           initialStatus: state.uri.queryParameters['status'],
+          initialHistory: initialHistory,
         ),
       ),
     ],
@@ -66,6 +70,46 @@ Future<_RecordingApi> _pumpOrderList(
 }
 
 void main() {
+  testWidgets(
+    'ordinary order list preserves exact amount digits and masks stale Exact',
+    (tester) async {
+      await _pumpOrderList(tester, initialHistory: true);
+      final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
+        find.byType(MasterDataTableView<SalesDocListItem>),
+      );
+      final amount = table.columns.singleWhere((c) => c.key == 'total');
+      for (final raw in ['0.0001', '99999999999999.9999']) {
+        final row = SalesDocListItem.fromJson({
+          'id': 'exact',
+          'currencyId': 'usd',
+          'totalOriginal': double.parse(raw),
+          'totalOriginalExact': raw,
+        });
+        expect(amount.value(row), '$raw 美金');
+      }
+      expect(
+        amount.value(
+          SalesDocListItem.fromJson({
+            'id': 'masked',
+            'priceMasked': true,
+            'totalOriginal': 0,
+            'totalOriginalExact': '99999999999999.9999',
+          }),
+        ),
+        '***',
+      );
+      expect(
+        amount.value(
+          SalesDocListItem.fromJson({
+            'id': 'unknown',
+            'totalOriginal': null,
+            'totalOriginalExact': '99999999999999.9999',
+          }),
+        ),
+        '—',
+      );
+    },
+  );
   testWidgets('草稿段只按 status=0 查，不叠加任何链路过滤', (tester) async {
     final api = await _pumpOrderList(tester);
 
@@ -101,7 +145,7 @@ void main() {
     expect(find.byType(UtenNotificationBadge), findsOneWidget);
   });
 
-  testWidgets('草稿段下隐藏状态小类行（草稿本身就是状态）', (tester) async {
+  testWidgets('订货阶段共用状态表头，草稿与历史保留主入口', (tester) async {
     await _pumpOrderList(
       tester,
       permissions: const {
@@ -111,24 +155,69 @@ void main() {
       },
     );
 
-    // 先点链路大类：小类行出现（草稿/已审/红冲/历史记录）。
+    // 链路大类不再另起状态子分类；筛选由状态表头承担。
     await tester.tap(find.text('待生产'));
     await tester.pumpAndSettle();
-    expect(find.text('已审'), findsOneWidget);
+    expect(find.text('已审'), findsNothing);
     expect(find.text('历史记录'), findsOneWidget);
     expect(find.text('新建'), findsOneWidget);
     expect(find.text('从报价引入'), findsOneWidget);
     expect(find.text('批量发货'), findsOneWidget);
 
-    // 切到大类「草稿」段（.first = 大类行；.last 会命中小类行里的同名段）。
+    // 草稿仍是独立主阶段；历史入口始终可达。
     await tester.tap(find.text('草稿').first);
     await tester.pumpAndSettle();
     expect(find.text('已审'), findsNothing);
-    expect(find.text('历史记录'), findsNothing);
+    expect(find.text('历史记录'), findsOneWidget);
     expect(find.text('可发货置顶'), findsNothing);
     expect(find.text('新建'), findsNothing);
     expect(find.text('从报价引入'), findsNothing);
     expect(find.text('批量发货'), findsNothing);
+  });
+
+  testWidgets('状态表头筛选及清除保持当前生产阶段并下推服务端', (tester) async {
+    final api = await _pumpOrderList(tester);
+    await tester.tap(find.text('待生产'));
+    await tester.pumpAndSettle();
+
+    MasterDataTableView<SalesDocListItem> table() =>
+        tester.widget(find.byType(MasterDataTableView<SalesDocListItem>));
+    table().onFilterChanged('status', '1');
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['status'], 1);
+    expect(api.listQueries.last['chainGroup'], 'pending');
+    expect(api.listQueries.last['page'], 1);
+
+    table().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last.containsKey('status'), isFalse);
+    expect(api.listQueries.last['chainGroup'], 'pending');
+    expect(table().filters['status'], isNull);
+  });
+
+  testWidgets('历史状态筛选清除后继续历史范围，切阶段清除旧状态', (tester) async {
+    final api = await _pumpOrderList(tester);
+    await tester.tap(find.text('历史记录'));
+    await tester.pumpAndSettle();
+
+    MasterDataTableView<SalesDocListItem> table() =>
+        tester.widget(find.byType(MasterDataTableView<SalesDocListItem>));
+    table().onFilterChanged('status', '-1');
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last['status'], -1);
+    expect(api.listQueries.last.containsKey('chainGroup'), isFalse);
+
+    table().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last.containsKey('status'), isFalse);
+    expect(api.listQueries.last.containsKey('chainGroup'), isFalse);
+
+    table().onFilterChanged('status', '-1');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('生产中'));
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last.containsKey('status'), isFalse);
+    expect(api.listQueries.last['chainGroup'], 'production');
   });
 
   testWidgets('?status=draft 深链直接落在草稿段并加载', (tester) async {
@@ -141,6 +230,30 @@ void main() {
     // 列表已渲染（不是「选择分类」引导占位）。
     expect(find.text('XD202609110001'), findsOneWidget);
     expect(find.textContaining('选择分类'), findsNothing);
+  });
+
+  testWidgets('预选历史记录直接请求全部订单，不叠加草稿或链路过滤', (tester) async {
+    final api = await _pumpOrderList(tester, initialHistory: true);
+    expect(api.listQueries, hasLength(1));
+    final query = api.listQueries.single;
+    expect(query['page'], 1);
+    expect(query.containsKey('status'), isFalse);
+    expect(query.containsKey('chain'), isFalse);
+    expect(query.containsKey('chainGroup'), isFalse);
+    expect(find.text('XD202609110001'), findsOneWidget);
+  });
+
+  testWidgets('历史其它出货预选入口免点击加载', (tester) async {
+    final api = await _pumpOrderList(
+      tester,
+      initialHistory: true,
+      docType: SalesDocType.otherShipment,
+    );
+    expect(api.listQueries, hasLength(1));
+    expect(api.listQueries.single['page'], 1);
+    expect(api.listQueries.single.containsKey('status'), isFalse);
+    expect(find.text('XD202609110001'), findsOneWidget);
+    expect(find.textContaining('选择状态'), findsNothing);
   });
 
   testWidgets('无 ?status 时红数「草稿」段自动选中并直接加载', (tester) async {
@@ -164,7 +277,7 @@ class _RecordingApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/sales/orders') {
+    if (path == '/sales/orders' || path == '/sales/other-shipments') {
       listQueries.add(Map<String, dynamic>.from(query ?? const {}));
       return const <String, dynamic>{
         'items': <Map<String, dynamic>>[
@@ -191,5 +304,9 @@ class _RecordingApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const <Map<String, dynamic>>[];
+  }) async => path == ApiEndpoints.currenciesDict
+      ? const [
+          {'id': 'usd', 'name': 'US Dollar', 'code': 'USD'},
+        ]
+      : const <Map<String, dynamic>>[];
 }

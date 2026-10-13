@@ -129,7 +129,7 @@ class _HrProfileChangesListPageState
     });
   }
 
-  /// 「状态」列筛选桶：三个队列状态（value = 后端状态码）。
+  /// 「状态」列筛选桶：待审和全部办理终态（value = 后端状态码）。
   /// 桶不带计数（列表按页拉取，计数口径在部门桶）。
   List<MasterFacetBucket> _statusFacets(AppLocalizations l10n) => [
     MasterFacetBucket(
@@ -146,6 +146,11 @@ class _HrProfileChangesListPageState
       value: 'rejected',
       count: 0,
       label: l10n.profileChangeFilterRejected,
+    ),
+    MasterFacetBucket(
+      value: 'cancelled',
+      count: 0,
+      label: l10n.profileChangeStatusCancelled,
     ),
   ];
 
@@ -310,6 +315,13 @@ class _HrProfileChangesListPageState
                   value: 'rejected',
                   label: l10n.profileChangeFilterRejected,
                   count: _status == 'rejected'
+                      ? async.valueOrNull?.total
+                      : null,
+                ),
+                UtenFilterSegment<String?>(
+                  value: 'cancelled',
+                  label: l10n.profileChangeStatusCancelled,
+                  count: _status == 'cancelled'
                       ? async.valueOrNull?.total
                       : null,
                 ),

@@ -1,28 +1,7 @@
-// 仓库任务中心（/warehouse/tasks）—— 2026-09-24 四卡合并的一站式入口。
-//
-// 背景（2026-09-24 模块三段式统一，docs/01-规划/2026-09-24-模块三段式统一*.md）：
-// 仓库 hub 原本并排四张任务中心卡（出库/入库/生产领料/品质部检查结果）+ 两张
-// 历史只读卡，用户口径「任务中心一堆 要不要汇总」。本页把六类收拢为一个页面：
-//
-//   大类（第一行）= 出库 / 入库 / 生产领料 / 品质检查结果 / 委外成品退货 / 委外损耗
-//   (2026-09-28 ADR-131 加大类「车间内料仓」: 待发料 / 待收退回 / 盘点 / 记录 + 直接发料)
-//   小类（第二行起）= 原三张任务中心页各自的分段（嵌入态复用整页能力）；
-//   品质检查结果大类内保留其来源行 + 状态行；委外两类为时间门控的历史视图。
-//
-// 仓库数据范围(ADR-149)：大类与分段计数都取同一份汇总(没选仓 = 全站徽章汇总，服务端已按本人范围；
-// 选了仓 = /workbench/badges?scopeWarehouseId=)，与各分段列表同一服务端谓词。
-//
-// 徽章口径（准则 14 不变）：
-//   · 出库/入库/领料/品质四个大类的红数 = 原 hub 四张卡同源入口
-//    （BadgeEntry.warehouseOutboundCenter / warehouseInboundCenter /
-//     warehouseDrawCenter / warehouseQualityResult）；品质大类另挂黄数
-//    （等待检查结果，badgeEntryInProgressProvider 同源）。
-//   · 委外成品退货 / 委外损耗是历史只读大类，不挂数（准则 14 §二）。
-//   · hub「仓库任务中心」卡角标 = 模块两枚药丸同源（BadgeModule.warehouse）。
-//
-// 旧三路由 /warehouse/tasks/{outbound|inbound|draw} 与 /warehouse/quality-results
-// 路由保留（通知深链/收藏直达），构建本页并预设对应大类；?section=/?view=
-// 参数原样透传给出库小类。进页面不预选大类（未选显示引导空态，不发请求）。
+// 仓库任务中心仅保留大类、单据来源两行导航；作业阶段由状态表头查询。
+// 生产领料归出库，生产退料归入库；旧 draw 深链按来源映射到对应方向。
+// 大类与来源徽章沿用服务端本人/所选仓范围；旧领料徽章仅作兼容别名，
+// 不重复进入模块合计。没有预选大类时显示引导，不请求列表。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -41,13 +20,13 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import '../widgets/warehouse_form_draft_categories.dart';
 import '../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../materialbin/widgets/workshop_material_task_center.dart';
-import '../pages/warehouse_draw_task_center_page.dart';
 import '../pages/warehouse_inbound_task_center_page.dart';
 import '../pages/warehouse_outbound_task_center_page.dart';
 import '../pages/warehouse_quality_results_page.dart';
@@ -106,18 +85,31 @@ class _WarehouseTaskCenterPageState
   @override
   void initState() {
     super.initState();
-    _group = widget.initialGroup;
+    _group = _initialGroup;
     if (_group == 'workshopMaterial') {
       _workshopMaterialSection = widget.initialSection;
     }
   }
 
+  bool get _legacyReturn =>
+      {'wdraw', 'productionReturn', 'RETURN'}.contains(widget.initialSection);
+
+  String? get _initialGroup => widget.initialGroup == 'draw'
+      ? (_legacyReturn ? 'inbound' : 'outbound')
+      : widget.initialGroup;
+
+  String? get _initialSection => widget.initialGroup == 'draw'
+      ? (_legacyReturn ? 'RETURN' : 'DRAW')
+      : widget.initialSection;
+
   @override
   void didUpdateWidget(covariant WarehouseTaskCenterPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialGroup != oldWidget.initialGroup &&
+    if ((widget.initialGroup != oldWidget.initialGroup ||
+            widget.initialSection != oldWidget.initialSection ||
+            widget.initialView != oldWidget.initialView) &&
         widget.initialGroup != null) {
-      _group = widget.initialGroup;
+      _group = _initialGroup;
       if (_group == 'workshopMaterial') {
         _workshopMaterialSection = widget.initialSection;
         _workshopMaterialSelection++;
@@ -153,12 +145,10 @@ class _WarehouseTaskCenterPageState
 
     final canOutbound = canOpen(RouteName.warehouseOutboundTasks);
     final canInbound = canOpen(RouteName.warehouseInboundTasks);
-    final canDraw = canOpen(RouteName.warehouseDrawTasks);
     final canQuality = canOpen(RouteName.warehouseQualityResults);
     final canScReturn = canOpen(
       RouteName.warehouseSubcontractFinishedReturnHistory,
     );
-    final canScWaste = canOpen(RouteName.warehouseSubcontractWasteHistory);
     final canMasterDrafts = canOpen(RouteName.basicinfoWarehouse);
     final canReviewCounts = canOpen(RouteName.warehouseStockCountReview);
     // 独立授权的盘点审核人也从同一分类办理，不要求仓库发料权限。
@@ -195,7 +185,10 @@ class _WarehouseTaskCenterPageState
           label: '出库',
           count:
               todo(BadgeEntry.warehouseOutboundCenter) +
-              ref.watch(
+              ref.watch<int>(
+                formDraftCategoryCountProvider(warehouseDrawAllDraftScope),
+              ) +
+              ref.watch<int>(
                 formDraftCategoryCountProvider(warehouseOutboundAllDraftScope),
               ),
         ),
@@ -205,18 +198,8 @@ class _WarehouseTaskCenterPageState
           label: '入库',
           count:
               todo(BadgeEntry.warehouseInboundCenter) +
-              ref.watch(
+              ref.watch<int>(
                 formDraftCategoryCountProvider(warehouseInboundAllDraftScope),
-              ),
-        ),
-      if (canDraw)
-        _GroupSpec(
-          value: 'draw',
-          label: '生产领料',
-          count:
-              todo(BadgeEntry.warehouseDrawCenter) +
-              ref.watch(
-                formDraftCategoryCountProvider(warehouseDrawAllDraftScope),
               ),
         ),
       if (canQuality)
@@ -235,14 +218,19 @@ class _WarehouseTaskCenterPageState
           inProgressCount: workshopInProgress,
         ),
       if (canScReturn) const _GroupSpec(value: 'scReturn', label: '委外成品退货'),
-      if (canScWaste) const _GroupSpec(value: 'scWaste', label: '委外损耗'),
     ];
+    final activeGroup = groups.any((group) => group.value == _group)
+        ? _group
+        : null;
 
     // 大类行组件：选中大类后作为 externalHeader 传入正文，由分段视图挂进
     // 自己的折叠头一起随页滚走（2026-09-24「表格完全置顶」）。
     final categoryBar = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const TaskDraftRecoveryNotice(
+          scope: FormDraftCategoryScope(module: BadgeModule.warehouse),
+        ),
         UtenFilterToolbar<String>(
           segmentsKey: const Key('warehouse-task-center-groups'),
           searchKey: const Key('warehouse-task-center-search'),
@@ -258,7 +246,7 @@ class _WarehouseTaskCenterPageState
                 inProgressCount: g.inProgressCount,
               ),
           ],
-          selected: _group == null ? const <String>{} : {_group!},
+          selected: activeGroup == null ? const <String>{} : {activeGroup},
           onSelectionChanged: (value) => setState(() => _group = value),
           searchHint: '搜索单号 / 客户 / 供应商 / 委外商 / 货品',
           onSearchChanged: (value) => setState(() => _keyword = value.trim()),
@@ -304,7 +292,7 @@ class _WarehouseTaskCenterPageState
             padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
             // 选中大类：大类行随正文进分段视图折叠头（滑到头只剩表格工具条）；
             // 未选大类：大类行钉在占位区上方。
-            child: _group == null
+            child: activeGroup == null
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -313,7 +301,7 @@ class _WarehouseTaskCenterPageState
                       const Expanded(child: _GroupPlaceholder()),
                     ],
                   )
-                : _buildGroupBody(_group!, categoryBar),
+                : _buildGroupBody(activeGroup, categoryBar),
           ),
         ),
       ),
@@ -329,24 +317,21 @@ class _WarehouseTaskCenterPageState
       search: _keyword,
     ),
     'outbound' => WarehouseOutboundTaskCenterPage(
+      key: const ValueKey('warehouse-outbound-direction'),
       embedded: true,
       externalKeyword: _keyword,
       externalRefreshTick: _refreshTick,
-      initialSection: widget.initialSection,
+      initialSection: _initialSection,
       initialView: widget.initialView,
       externalHeader: categoryBar,
     ),
     'inbound' => WarehouseInboundTaskCenterPage(
+      key: const ValueKey('warehouse-inbound-direction'),
       embedded: true,
       externalKeyword: _keyword,
       externalRefreshTick: _refreshTick,
       externalHeader: categoryBar,
-    ),
-    'draw' => WarehouseDrawTaskCenterPage(
-      embedded: true,
-      externalKeyword: _keyword,
-      externalRefreshTick: _refreshTick,
-      externalHeader: categoryBar,
+      initialSection: _initialSection,
     ),
     'quality' => WarehouseQualityResultsPage(
       embedded: true,
@@ -362,6 +347,7 @@ class _WarehouseTaskCenterPageState
       externalHeader: categoryBar,
     ),
     'scReturn' => WarehouseHistoryGate(
+      key: const ValueKey('warehouse-subcontract-return-history'),
       timeKey: const Key('warehouse-task-center-sc-return-time'),
       externalHeader: categoryBar,
       builder: (time) => WarehouseDocumentHistoryView(
@@ -377,22 +363,7 @@ class _WarehouseTaskCenterPageState
             : ChinaDateTime.formatDate(time.range!.end),
       ),
     ),
-    _ => WarehouseHistoryGate(
-      timeKey: const Key('warehouse-task-center-sc-waste-time'),
-      externalHeader: categoryBar,
-      builder: (time) => WarehouseDocumentHistoryView(
-        type: WarehouseDocumentHistoryType.subcontractWaste,
-        keyword: _keyword,
-        refreshTick: _refreshTick,
-        embedded: true,
-        dateFrom: time.range == null
-            ? null
-            : ChinaDateTime.formatDate(time.range!.start),
-        dateTo: time.range == null
-            ? null
-            : ChinaDateTime.formatDate(time.range!.end),
-      ),
-    ),
+    _ => const _GroupPlaceholder(),
   };
 }
 

@@ -45,6 +45,10 @@ void main() {
     // 报工入口与「只看我的车间」筛选均已下线。
     expect(find.textContaining('报工'), findsNothing);
     expect(find.text('只看我的车间/负责工单'), findsNothing);
+    expect(find.text('已完成 5 个 · 未完成 3 个'), findsOneWidget);
+    // 9/12 are completed/total segments; 23% is the old quantity ratio. Neither is a product state.
+    expect(find.textContaining('23%'), findsNothing);
+    expect(find.text('产品状态待核对'), findsOneWidget);
 
     // 双击 ANALYSIS 批次行 → 直达物料分析页（带 analysisId seed，不弹滑窗）。
     final cell = find.text('联合分析 SO-1 / SO-2');
@@ -166,4 +170,12 @@ Map<String, dynamic> _group(
   'status': status,
   'planCount': 1,
   'segmentCount': 1,
+  if (rootType == 'ANALYSIS') ...{
+    'productCount': 8,
+    'segmentCount': 12,
+    'completedCount': 9,
+    'rootProgressRatio': 0.2268041237113402,
+    'completedProductCount': 5,
+    'unfinishedProductCount': 3,
+  },
 };

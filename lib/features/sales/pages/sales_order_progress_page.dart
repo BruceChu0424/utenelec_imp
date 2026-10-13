@@ -12,9 +12,9 @@
 //    订货单中途退出后，单据只存在于草稿态（chain_status 恒为 0，落不进任何链路大类），
 //    此前在本页与任务中心都找不到。草稿走红徽章（待自审口径与 drafts.salesOrder
 //    一致），行点击/「打开编辑」直达编辑页继续办单；
-//  · 小类行（选中大类后出现）：进行中 = 财务驳回 / 待排产 / 生产中，
-//    可发货 = 可分批发货 / 出货待财审 / 等仓库出货（用户原话「可发货里面就包含
-//    财务啥的」）。没有「全部」段——大类本身就是全部;
+//  · 主阶段内的细分由状态表头筛选：进行中 = 财务驳回 / 待排产 / 生产中，
+//    可发货 = 可分批发货 / 出货待财审 / 等仓库出货。固定 code 桶下推服务端，
+//    清除状态只恢复当前主阶段，切换主阶段清除旧状态，不另起子分类行。
 //  · 大类同时挂两枚徽章：黄 = 本类里还在别人手上跑的单，红 = 本类里等销售动手的单
 //    （财务驳回要改单重报、可分批发货要去开出货单），两枚都是各小类之和;
 //  · 状态列每档一个色相、刻意拉开（salesProgressStageBadgeType），表头可排序。
@@ -64,6 +64,7 @@ import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_order_progress.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../providers/sales_completion_count_provider.dart';
 import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
@@ -71,8 +72,8 @@ import '../services/sales_draft_delete.dart';
 
 /// 阶段分段值：真实阶段/大类（stage 非空）或历史记录哨兵（全部订单入历史）。
 ///
-/// stage 可以是后端认识的**大类码**（IN_PROGRESS / READY_TO_SHIP，各自展开成一组
-/// 阶段）或**单个阶段码**（小类行选中时）。
+/// stage 是后端主阶段码（IN_PROGRESS / READY_TO_SHIP）或独立草稿码。
+/// 主阶段内的具体状态另由 `_stageFilter` 保存。
 class _ProgressSeg {
   const _ProgressSeg.stage(String this.stage) : history = false;
   const _ProgressSeg.history() : stage = null, history = true;
@@ -88,11 +89,11 @@ class _ProgressSeg {
   int get hashCode => Object.hash(stage, history);
 }
 
-/// 大类 -> 它包含的阶段（顺序即小类行的展示顺序）。
+/// 大类 -> 它包含的阶段（顺序即状态表头的筛选顺序）。
 ///
 /// 2026-09-21 用户口径：「订单进度查询的分类就分三种，也可以有子分类」。
 /// 原本六个阶段并排一行，用户看到的是六个差不多长的按钮，分不出主次；
-/// 现在按「单子走到哪一步」收成两个大类 + 历史记录，细分降级为小类行。
+/// 现在按「单子走到哪一步」收成两个大类 + 历史记录，细分放在状态表头。
 const _stageGroups = <String, List<String>>{
   // 还没走到能发货那一步。财务驳回也在这里：它是销售要改单重报的活，
   // 但订单本身仍是一张没走完的在途单，不值得单开一个顶层大类。
@@ -114,7 +115,7 @@ const _groupLabels = <String, String>{
 /// 在任务中心订货进度里根本找不到这张单。后端 stage='DRAFT' 专查这批单。
 const String _kDraftStage = 'DRAFT';
 
-/// 该阶段是不是「轮到销售动手」——决定小类行挂红徽章还是黄徽章。
+/// 该阶段是不是「轮到销售动手」——决定主阶段统计中的红数或黄数。
 ///
 /// 财务驳回要销售改单重报、可分批发货要销售去开出货单，这两档不动会卡住整条链；
 /// 其余四档的球分别在生产、财务、仓库手上，销售只是看着。
@@ -129,7 +130,7 @@ class SalesOrderProgressPage extends ConsumerStatefulWidget {
   });
 
   /// 嵌入态（2026-09-24 销售任务中心）：作为 /sales/tasks「订货进度」大类的正文，
-  /// 不渲染 Scaffold/AppBar；大类/小类分段、搜索、表格与独立页完全一致。
+  /// 不渲染 Scaffold/AppBar；主阶段、表头筛选、搜索、表格与独立页完全一致。
   final bool embedded;
 
   /// 宿主（销售任务中心）的大类行：挂进本页折叠头，随页一起滚走
@@ -147,6 +148,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
 
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _ProgressSeg? _seg;
+
+  /// 当前主工作阶段内的状态表头筛选；清除时回到主阶段全部记录。
+  String? _stageFilter;
 
   /// 历史记录段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
   UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
@@ -241,7 +245,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
             size: _size,
             // 历史记录 = 全部订单（含被驳回/进行中/已发货/已中止/已结案），
             // 阶段不限（stage=''），只按日期/关键字过滤。
-            stage: seg.history ? '' : seg.stage!,
+            stage: _stageFilter ?? (seg.history ? '' : seg.stage!),
             keyword: _keyword,
             dateFrom: range == null
                 ? null
@@ -287,7 +291,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         'billNo': await ref
             .read(salesRepositoryProvider(SalesDocType.order))
             .progressFacets(
-              stage: seg.history ? '' : seg.stage!,
+              stage: _stageFilter ?? (seg.history ? '' : seg.stage!),
               keyword: _keyword,
               dateFrom: range == null
                   ? null
@@ -315,6 +319,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     clearDraftSelection();
     setState(() {
       _seg = seg;
+      _stageFilter = null;
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) _load(1);
@@ -465,12 +470,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 其余四段(待排产 / 生产中 / 出货待财审 / 等仓库出货)的球分别在生产、财务、
   /// 仓库手上: 单子还在流程里跑着、没结束, 销售现在不用动手 —— 黄色进行中徽章,
   /// 2026-09-21 之前它们是中性括号, 与「已结束」的历史记录混成一种形态。
-  /// 小类行某一档的计数形态：等销售动手的红、还在别人手上跑的黄。
-  static UtenSegmentCountForm _stageCountForm(String stage) =>
-      _stageNeedsSales(stage)
-      ? UtenSegmentCountForm.actionable
-      : UtenSegmentCountForm.inProgress;
-
   /// 某个大类下、满足 [where] 的那些阶段的计数之和；计数还没回来时返回 null
   /// （不把「未知」伪装成 0，与全站徽章口径一致）。
   int? _groupCount(String group, bool Function(String stage) where) {
@@ -483,7 +482,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     return total;
   }
 
-  /// 当前选中的大类（选中小类时返回它所属的大类）；历史记录/未选返回 null。
+  /// 当前主阶段；兼容旧单阶段值，历史记录/未选返回 null。
   String? get _selectedGroup {
     final stage = _seg?.stage;
     if (stage == null) return null;
@@ -492,6 +491,46 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       if (entry.value.contains(stage)) return entry.key;
     }
     return null;
+  }
+
+  /// 固定业务阶段 code；不用当前页猜测，另一页的阶段也可以直接查询。
+  List<MasterFacetBucket> get _stageFacets {
+    final stages = _seg?.history == true
+        ? const [
+            'REJECTED',
+            'PENDING',
+            'PRODUCING',
+            'SHIPPABLE',
+            'SHIPMENT_PENDING',
+            'WAREHOUSE_PENDING',
+            'SHIPPED',
+            'CANCELED',
+            'CLOSED',
+          ]
+        : (_stageGroups[_selectedGroup] ?? const <String>[]);
+    return [
+      for (final stage in stages)
+        MasterFacetBucket(
+          value: stage,
+          count: 0,
+          label: switch (stage) {
+            'PENDING' => '待排产 / 待财务审核',
+            'SHIPMENT_PENDING' => '出货草稿 / 待财审 / 财务退回',
+            _ => salesProgressStageLabel(stage),
+          },
+        ),
+    ];
+  }
+
+  void _filterStage(String? value) {
+    if (_seg == null || _seg?.stage == _kDraftStage) return;
+    if (value != null && !_stageFacets.any((bucket) => bucket.value == value)) {
+      return;
+    }
+    if (value == _stageFilter) return;
+    clearDraftSelection();
+    setState(() => _stageFilter = value);
+    _load(1);
   }
 
   @override
@@ -510,9 +549,8 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       _load(_page);
       _loadStageCounts();
     });
-    // 正文（大类/小类分段 + 表格）：独立页与任务中心嵌入态共用一份。
-    // 嵌入态不再自套 SafeArea/容器（宿主页已有容器，双重边距会把小类行
-    // 推离父分类行与左缘，2026-09-24 用户走查修正），头部空行程也只在独立页留。
+    // 主阶段 + 表格：独立页与任务中心嵌入态共用一份。
+    // 嵌入态由宿主页提供容器，避免双重边距；头部空行程只在独立页留。
     final bodyContent = UtenCollapsingHeaderScrollView(
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -544,7 +582,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
                 // 徽章、新建页「草稿(N)」按钮同口径），选中后行点击直达编辑页
                 // 继续把单办完。每个大类同时挂两枚徽章——黄色 = 这一类里还在别人
                 // 手上跑的单，红色 = 这一类里等销售动手的单；两枚都是「本大类各小类
-                // 之和」，所以大类数与小类行对得上。
+                // 之和」，状态表头筛选后主阶段徽章仍保持整组口径。
                 UtenFilterToolbar<_ProgressSeg>(
                   segmentsKey: const Key('sales-order-progress-stages'),
                   segments: [
@@ -587,28 +625,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
                   searchHint: '搜索订单号 / 客户',
                   onSearchChanged: _applyKeyword,
                 ),
-                // 小类行：选中大类后才解锁（与采购/委外任务中心的异常小类行同构）。
-                // 没有「全部」段——大类本身就是全部；要看全量就点回大类。
-                if (_selectedGroup != null) ...[
-                  const SizedBox(height: UtenSpacing.s12),
-                  UtenFilterToolbar<_ProgressSeg>(
-                    segmentsKey: const Key('sales-order-progress-substages'),
-                    segments: [
-                      for (final stage in _stageGroups[_selectedGroup]!)
-                        UtenFilterSegment(
-                          value: _ProgressSeg.stage(stage),
-                          label: salesProgressStageLabel(stage),
-                          count: _stageCounts?[stage],
-                          countForm: _stageCountForm(stage),
-                        ),
-                    ],
-                    // 停在大类上时小类一个都不选（看的是整个大类）。
-                    selected: _stageGroups.containsKey(seg?.stage)
-                        ? const {}
-                        : {seg!},
-                    onSelectionChanged: _selectSeg,
-                  ),
-                ],
                 if (seg?.history == true) ...[
                   const SizedBox(height: UtenSpacing.s8),
                   UtenHistoryTimeFilter(
@@ -688,12 +704,17 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         primary: true,
         columns: _columns,
         items: _result?.items ?? const <SalesOrderProgressRow>[],
-        // 阶段筛选由顶部分段卡承担；订单号列值筛选（2026-09-25 单号列统一）
-        // 走服务端精确匹配 + 同口径分组桶。
-        facets: {'billNo': _columnFilters.bucketOf('billNo')},
+        facets: {
+          'stage': _stageFacets,
+          'billNo': _columnFilters.bucketOf('billNo'),
+        },
         nullCounts: const {},
-        filters: {'billNo': _columnFilters['billNo']},
+        filters: {'stage': _stageFilter, 'billNo': _columnFilters['billNo']},
         onFilterChanged: (key, value) {
+          if (key == 'stage') {
+            _filterStage(value);
+            return;
+          }
           if (key != 'billNo') return;
           _columnFilters.handleFilterChanged(key, value, onChanged: _refilter);
         },
@@ -720,7 +741,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         emptyMessage: _seg!.history ? '该时间段内暂无订单' : '该阶段暂无订单',
         currentPage: _result?.page ?? 1,
         totalPages: _result?.totalPages ?? 1,
-        paginationScope: (_keyword, _seg, _historyTime),
+        paginationScope: (_keyword, _seg, _stageFilter, _historyTime),
         onPageChange: _load,
       ),
     );
@@ -762,7 +783,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       MasterColumnDef(
         key: 'stage',
         label: '状态',
-        width: 72,
+        width: 168,
         sortable: true,
         value: (r) => _stageText(r),
         // 2026-09-27 用户口径「表格格内胶囊改单元格背景色」：每档独立色相的
@@ -770,16 +791,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         // 从格内 UtenStatusBadge 胶囊换成整格铺底色；边框由 MasterDataTableView
         // 的 cellColor 通道自动保留（用户口径「背景变色但边框要还在」）。
         cellColor: (context, r) => utenStatusBadgeCellColor(_stageBadgeType(r)),
-      ),
-      MasterColumnDef(
-        // 2026-10-08 用户口径「状态或进度列默认放最前」：生产进度是本表的
-        // 纯数值进度列（推翻 2026-10-06 批次「纯数值进度列不动」的判定），
-        // 紧跟状态列前置。
-        key: 'productionPct',
-        label: '生产进度',
-        width: 90,
-        // 财务确认前不展示排产进度（V300 口径），数量区同卡版本保持 0。
-        value: (r) => '${(r.productionPct * 100).round()}%',
       ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。

@@ -67,9 +67,10 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                     order_item_id uuid, application_item_id uuid, alloc_qty numeric, line_no int);
                 CREATE TABLE subcontract_receipts(id uuid PRIMARY KEY, status int, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_receipt_items(id uuid PRIMARY KEY, receipt_id uuid, order_item_id uuid,
-                    qty numeric, unit_rate numeric, is_deleted boolean DEFAULT false);
+                    qty numeric, unit_rate numeric, is_deleted boolean DEFAULT false, finance_approval_case_id uuid);
                 CREATE TABLE procurement_inspection_items(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    receipt_type text, receipt_item_id uuid, status text, warehouse_stocked_base_qty numeric);
+                    receipt_type text, receipt_item_id uuid, status text, warehouse_stocked_base_qty numeric,
+                    quantity_tranche text NOT NULL DEFAULT 'LEGACY' CHECK(quantity_tranche IN('LEGACY','CHARGED','GIFT')));
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
                     goods_id uuid, color_id uuid, bom_unit_qty numeric, issued_qty numeric,
@@ -270,6 +271,34 @@ class SubcontractComponentCustodyProjectionPostgresTest {
         w.planLine(orderItem, w.goodsA, "1", "150");
 
         assertThat(coverage(w.analysis).get(childA)[0]).isCloseTo(new BigDecimal("100"), within(EPSILON));
+    }
+
+    @Test
+    void partiallyOrderedSourceCapsOverageCustodyAtItsExactOutputBudget() throws Exception {
+        World w = new World(UUID.randomUUID());
+        Parent large = w.parent("large", false), small = w.parent("small", false);
+        update("UPDATE production_material_analysis_materials SET goods_id=(SELECT goods_id FROM production_material_analysis_materials WHERE id=?) WHERE id=?",large.id(),small.id());
+        UUID child = w.child(large,"A",w.goodsA);
+        UUID action = w.action(large,"110","0");
+        UUID first = w.allocation(action,small,"10"), last = w.allocation(action,large,"100");
+        // Subcontract ordering admits overage on the last source. The material
+        // has an original requirement of 200, but this action only commits 100.
+        UUID item = w.orderItem("1",first,"10"); w.source(item,last,"150",2);
+        w.planLine(item,w.goodsA,"1","160");
+        BigDecimal[] actual = coverage(w.analysis).get(child);
+        assertThat(actual[0]).isEqualByComparingTo("150");
+        var node = new MaterialAnalysisService.BomNode(large.analysisItemId(),child,UUID.randomUUID(),
+                w.goodsA,null,UUID.randomUUID(),2,"large/A","large",BigDecimal.ONE,BigDecimal.ONE,BigDecimal.ONE,
+                new BigDecimal("200"),"A","A",null,null,"piece",BigDecimal.ZERO,"BUY",false,
+                "START","PER_UNIT",BigDecimal.ONE,true,true);
+        var formal = new MaterialAnalysisService.FormalMaterialCoverage(child,large.analysisItemId(),"large/A",actual[0],actual[1]);
+        var loose = MaterialAnalysisService.planFormalCoverage(java.util.List.of(formal),java.util.List.of(node));
+        var tight = MaterialAnalysisService.planFormalCoverage(java.util.List.of(formal),
+                java.util.List.of(node.withSnapshotRequiredQty(new BigDecimal("100"))));
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertThat(actual[1]).isEqualByComparingTo("100"),
+                () -> assertThat(loose.securedTotal(large.analysisItemId()+"|large/A")).isEqualByComparingTo("100"),
+                () -> assertThat(tight.securedTotal(large.analysisItemId()+"|large/A")).isEqualByComparingTo("100"));
     }
 
     private Map<UUID, BigDecimal[]> coverage(UUID analysisId) throws SQLException {

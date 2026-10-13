@@ -18,9 +18,6 @@
 //   - 明细行：productNo 可显式填写，留空由后端按计划号分配；goodsId/qty 必填。
 //
 // 仅草稿可编辑（后端校验，前端不再重复判断；已审单据走详情页反审）。
-import '../../../shared/auth/native_read_view_scope_mixin.dart';
-import '../../../shared/widgets/reviewed_grid_columns.dart';
-import '../../../components/data_display/uten_review_input_cell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -74,8 +71,7 @@ import '../../../shared/badges/badge_registry.dart';
 import '../../employee/repositories/employee_picker_candidates.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
-  const ProductionPlanEditPage({super.key, this.id, this.reviewMode = false});
-  final bool reviewMode;
+  const ProductionPlanEditPage({super.key, this.id});
   final String? id; // null=新建
 
   @override
@@ -83,53 +79,8 @@ class ProductionPlanEditPage extends ConsumerStatefulWidget {
       _ProductionPlanEditPageState();
 }
 
-class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
-    with NativeReadViewScopeMixin<ProductionPlanEditPage> {
-  String? _reviewSnapshot;
-  bool _reviewQuantityEditable = false;
-  String? _originalRemark;
-  final Map<ProductionGridRow, Map<String, String?>> _reviewBaseline = {};
-  bool get _hasReviewPermissions =>
-      _reviewSnapshot != null && nativeReadCanWrite;
-  @override
-  void nativeReadOwnerChanged() {
-    if (mounted) {
-      setState(() {
-        _reviewSnapshot = null;
-        _reviewBaseline.clear();
-        _grid.replaceAll([]);
-      });
-    }
-  }
-
-  @override
-  void nativeReadPermissionChanged() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Future<void> nativeReadReload() => _init();
-  Map<String, String?> _reviewValues(ProductionGridRow row) => {
-    'qty': row.qty.text,
-    'remark': row.remark.text,
-  };
-  Widget _reviewHeader(Widget child) => widget.reviewMode
-      ? Focus(
-          canRequestFocus: false,
-          descendantsAreFocusable: false,
-          child: AbsorbPointer(child: child),
-        )
-      : child;
-  Widget _reviewRemark(Widget child) => !widget.reviewMode
-      ? child
-      : ListenableBuilder(
-          listenable: _remark,
-          builder: (context, _) => UtenReviewInputCell(
-            before: _originalRemark,
-            after: _remark.text,
-            child: child,
-          ),
-        );
+class _ProductionPlanEditPageState
+    extends ConsumerState<ProductionPlanEditPage> {
   static const _manualSourceOptions = <String, String>{
     'REWORK': '返工',
     'TRIAL': '试制',
@@ -188,17 +139,6 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
   @override
   void initState() {
     super.initState();
-    if (widget.reviewMode) {
-      initializeNativeReadScope();
-      ref.listenManual(currentPermissionsProvider, (previous, next) {
-        if (previous == next) return;
-        invalidateNativeReadAccess();
-        nativeReadOwnerChanged();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _init();
-        });
-      });
-    }
     // 行增删（addRow/removeAt/replaceAll）时刷新来源单号派生显示。
     _grid.addListener(_refreshSourceDoc);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
@@ -219,9 +159,7 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
 
   Future<void> _init() async {
     if (!mounted) return;
-    final isCurrent = widget.reviewMode
-        ? captureNativeRead(widget.id ?? '', () => widget.id ?? '')
-        : () => mounted;
+    bool isCurrent() => mounted;
     if (!isCurrent()) return;
     setState(() {
       _loading = true;
@@ -242,19 +180,15 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
       }
       if (widget.id != null) {
         final repo = ref.read(productionPlanRepositoryProvider);
-        final review = widget.reviewMode ? await repo.review(widget.id!) : null;
-        final d = review?.detail ?? await repo.detail(widget.id!);
+        final d = await repo.detail(widget.id!);
         if (!isCurrent()) return;
-        _reviewSnapshot = review?.snapshot;
-        _reviewQuantityEditable = review?.quantityEditable ?? false;
-        final writable = widget.reviewMode
-            ? review != null && d.status == 0
-            : d.allowedActions.contains('EDIT') &&
-                  await loadDocumentOwnerCanWrite(
-                    ref,
-                    DocumentDataScope.productionPlan,
-                    d.makerId,
-                  );
+        final writable =
+            d.allowedActions.contains('EDIT') &&
+            await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.productionPlan,
+              d.makerId,
+            );
         if (!mounted || !isCurrent()) return;
         if (!writable) {
           context.appWarning(documentScopeReadOnlyMessage, force: true);
@@ -318,14 +252,6 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
           _wireRow(r);
         }
         _grid.replaceAll(rows);
-        if (widget.reviewMode) {
-          _originalRemark = _remark.text;
-          _reviewBaseline.clear();
-          for (final row in rows) {
-            _reviewBaseline[row] = _reviewValues(row);
-          }
-          acceptNativeRead();
-        }
       }
       if (_grid.isEmpty) {
         final blank = ProductionGridRow();
@@ -588,21 +514,6 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
   }
 
   Future<void> _save() async {
-    final identityCurrent = widget.reviewMode
-        ? captureNativeOwnership()
-        : () => mounted;
-    final reviewRoute = widget.reviewMode ? ModalRoute.of(context) : null;
-    bool ownsReview() =>
-        identityCurrent() &&
-        (!widget.reviewMode ||
-            (reviewRoute?.isCurrent == true &&
-                identical(ModalRoute.of(context), reviewRoute)));
-    if (widget.reviewMode &&
-        (!nativeReadCanWrite ||
-            !_hasReviewPermissions ||
-            _reviewSnapshot == null)) {
-      return;
-    }
     final rows = _grid.rows;
     if (rows.isEmpty || rows.every((r) => r.goods == null)) {
       context.appError('请至少添加一条明细');
@@ -705,44 +616,23 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
       // 可达（服务端能力与既有草稿编辑不受影响）。
       final d = widget.id == null
           ? await repo.create(body)
-          : widget.reviewMode
-          ? await repo.saveReviewed(widget.id!, body, _reviewSnapshot!)
           : await repo.update(widget.id!, body);
-      if (!mounted || !ownsReview()) return;
-      context.appSuccess(
-        widget.reviewMode
-            ? '审核修改已保存并审核'
-            : widget.id == null
-            ? '已创建生产计划草稿'
-            : '已保存',
-      );
+      if (!mounted) return;
+      context.appSuccess(widget.id == null ? '已创建生产计划草稿' : '已保存');
       // 草稿计数即时刷新：生产两页不走 bumpListRefresh（它们用 context.replace
       // 直达详情，没有 B 类列表要 bump），所以在这里单独失效一次。
       refreshBadges(ref);
       context.replace('/production/plans/${d.id}');
     } on ApiException catch (e) {
-      if (mounted && ownsReview()) context.appError(e.message);
+      if (mounted) context.appError(e.message);
     } catch (_) {
-      if (mounted && ownsReview()) {
+      if (mounted) {
         context.appError(widget.id == null ? '创建失败，请稍后重试' : '保存失败，请稍后重试');
       }
     } finally {
-      if (mounted && identityCurrent()) setState(() => _saving = false);
+      if (mounted) setState(() => _saving = false);
     }
   }
-
-  List<EditableGridColumn<ProductionGridRow>> _reviewColumns(
-    List<EditableGridColumn<ProductionGridRow>> columns,
-  ) => !widget.reviewMode
-      ? columns
-      : reviewedGridColumns(
-          columns: columns,
-          baseline: _reviewBaseline,
-          valuesOf: _reviewValues,
-          listenableOf: (row) => Listenable.merge([row.qty, row.remark]),
-          editableKeys: {if (_reviewQuantityEditable) 'qty', 'remark'},
-          keyPrefix: 'plan-review-before',
-        );
 
   /// 人员选择器：关键字为空时默认收敛到职能部门子树、有关键字时全公司搜（兼顾别部门下单人）。
   Widget _employeePicker({
@@ -827,29 +717,12 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.reviewMode &&
-        (!nativeReadAccessConfirmed || !_hasReviewPermissions)) {
-      return Scaffold(
-        appBar: const UtenAppBar(title: '修改后审核生产计划', showBackButton: true),
-        body: _initializationError == null
-            ? nativeReadAccessNotice()
-            : UtenEmpty.error(
-                message: _initializationError!,
-                actionLabel: '重试',
-                onAction: _init,
-              ),
-      );
-    }
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     final workshopTree = ref.watch(productionWorkshopTreeProvider).valueOrNull;
     return Scaffold(
       appBar: UtenAppBar(
-        title: widget.reviewMode
-            ? '修改后审核生产计划'
-            : widget.id == null
-            ? '新建生产计划单'
-            : '编辑生产计划单',
+        title: widget.id == null ? '新建生产计划单' : '编辑生产计划单',
         leading: UtenBackButton(
           onPressed: () => popOrBackTo(context, defaultPath: '/production'),
         ),
@@ -893,175 +766,167 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _reviewHeader(
-                                    UtenFormGrid(
-                                      children: [
-                                        // 单据号：系统自动生成，只读显示。
+                                  UtenFormGrid(
+                                    children: [
+                                      // 单据号：系统自动生成，只读显示。
+                                      TextFormField(
+                                        errorBuilder: utenTextFieldErrorBuilder,
+                                        readOnly: true,
+                                        controller: _billNo,
+                                        decoration: UtenInputDecoration(
+                                          InputDecoration(
+                                            labelText: '单据号',
+                                            hintText: _billNo.text.isEmpty
+                                                ? '保存后自动生成'
+                                                : null,
+                                            filled: _billNo.text.isEmpty,
+                                            suffixIcon: _billNo.text.isEmpty
+                                                ? const Icon(
+                                                    Icons.autorenew_outlined,
+                                                    size: 18,
+                                                  )
+                                                : const Icon(
+                                                    Icons.lock_outline,
+                                                    size: 16,
+                                                  ),
+                                          ),
+                                        ),
+                                      ),
+                                      // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                      ...utenMakerAuditCells(
+                                        ref,
+                                        makerName: _makerName,
+                                        createdAt: _createdAt,
+                                      ),
+                                      UtenDateField(
+                                        label: '单据日期',
+                                        required: true,
+                                        value: _billDate,
+                                        onChanged: (d) =>
+                                            setState(() => _billDate = d),
+                                      ),
+                                      UtenDateField(
+                                        label: '交货日',
+                                        value: _deliveryDate,
+                                        onChanged: (d) =>
+                                            setState(() => _deliveryDate = d),
+                                      ),
+                                      // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                      UtenDepartmentPicker(
+                                        mode: UtenDepartmentPickerMode.single,
+                                        label: '车间',
+                                        hint: '选择生产车间(部门)',
+                                        selectablePredicate:
+                                            isBusinessDepartmentNode,
+                                        treeOverride: workshopTree,
+                                        initialSelection: _departmentId == null
+                                            ? const []
+                                            : [
+                                                DeptSelection(
+                                                  id: _departmentId!,
+                                                  name: _workshopName ?? '',
+                                                  fullPath: '',
+                                                  level: '',
+                                                ),
+                                              ],
+                                        onChanged: (sel) {
+                                          final s = sel.isEmpty
+                                              ? null
+                                              : sel.first;
+                                          setState(() {
+                                            _departmentId = s?.id;
+                                            _workshopName = s?.name; // 部门名冗余
+                                          });
+                                        },
+                                      ),
+                                      _employeePicker(
+                                        label: '跟单员',
+                                        currentId: _sellerId,
+                                        defaultDeptCode: kDeptCodeMarketing,
+                                        onChanged: (id) => setState(() {
+                                          _sellerId = id;
+                                          _sellerAutoFilled = false; // 手选：不自动清除
+                                        }),
+                                      ),
+                                      _employeePicker(
+                                        label: '生产工',
+                                        currentId: _workerId,
+                                        defaultDeptCode: kDeptCodeProduction,
+                                        onChanged: (id) =>
+                                            setState(() => _workerId = id),
+                                      ),
+                                      _sourceDocField(theme),
+                                      if (widget.id == null)
+                                        UtenDropdownField(
+                                          key: const Key(
+                                            'production-manual-source-type',
+                                          ),
+                                          label: '手工计划来源',
+                                          info: '仅手工添加的货品行必填',
+                                          value: _manualSourceType,
+                                          enabled: !_saving,
+                                          items: [
+                                            for (final entry
+                                                in _manualSourceOptions.entries)
+                                              UtenDropdownItem(
+                                                value: entry.key,
+                                                label: entry.value,
+                                              ),
+                                          ],
+                                          onChanged: (value) => setState(
+                                            () => _manualSourceType = value,
+                                          ),
+                                        ),
+                                      if (widget.id == null)
                                         TextFormField(
                                           errorBuilder:
                                               utenTextFieldErrorBuilder,
-                                          readOnly: true,
-                                          controller: _billNo,
+                                          key: const Key(
+                                            'production-manual-source-ref',
+                                          ),
+                                          controller: _manualSourceRef,
+                                          maxLength: 200,
                                           decoration: UtenInputDecoration(
                                             InputDecoration(
-                                              labelText: '单据号',
-                                              hintText: _billNo.text.isEmpty
-                                                  ? '保存后自动生成'
-                                                  : null,
-                                              filled: _billNo.text.isEmpty,
-                                              suffixIcon: _billNo.text.isEmpty
-                                                  ? const Icon(
-                                                      Icons.autorenew_outlined,
-                                                      size: 18,
-                                                    )
-                                                  : const Icon(
-                                                      Icons.lock_outline,
-                                                      size: 16,
-                                                    ),
+                                              label: fieldLabel(
+                                                '手工计划需求编号',
+                                                theme,
+                                                info: '同一需求后续处理必须沿用同一个编号',
+                                              ),
+                                              counterText: '',
                                             ),
                                           ),
                                         ),
-                                        // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                        ...utenMakerAuditCells(
-                                          ref,
-                                          makerName: _makerName,
-                                          createdAt: _createdAt,
-                                        ),
-                                        UtenDateField(
-                                          label: '单据日期',
-                                          required: true,
-                                          value: _billDate,
-                                          onChanged: (d) =>
-                                              setState(() => _billDate = d),
-                                        ),
-                                        UtenDateField(
-                                          label: '交货日',
-                                          value: _deliveryDate,
-                                          onChanged: (d) =>
-                                              setState(() => _deliveryDate = d),
-                                        ),
-                                        // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
-                                        UtenDepartmentPicker(
-                                          mode: UtenDepartmentPickerMode.single,
-                                          label: '车间',
-                                          hint: '选择生产车间(部门)',
-                                          selectablePredicate:
-                                              isBusinessDepartmentNode,
-                                          treeOverride: workshopTree,
-                                          initialSelection:
-                                              _departmentId == null
-                                              ? const []
-                                              : [
-                                                  DeptSelection(
-                                                    id: _departmentId!,
-                                                    name: _workshopName ?? '',
-                                                    fullPath: '',
-                                                    level: '',
-                                                  ),
-                                                ],
-                                          onChanged: (sel) {
-                                            final s = sel.isEmpty
-                                                ? null
-                                                : sel.first;
-                                            setState(() {
-                                              _departmentId = s?.id;
-                                              _workshopName = s?.name; // 部门名冗余
-                                            });
-                                          },
-                                        ),
-                                        _employeePicker(
-                                          label: '跟单员',
-                                          currentId: _sellerId,
-                                          defaultDeptCode: kDeptCodeMarketing,
-                                          onChanged: (id) => setState(() {
-                                            _sellerId = id;
-                                            _sellerAutoFilled =
-                                                false; // 手选：不自动清除
-                                          }),
-                                        ),
-                                        _employeePicker(
-                                          label: '生产工',
-                                          currentId: _workerId,
-                                          defaultDeptCode: kDeptCodeProduction,
-                                          onChanged: (id) =>
-                                              setState(() => _workerId = id),
-                                        ),
-                                        _sourceDocField(theme),
-                                        if (widget.id == null)
-                                          UtenDropdownField(
-                                            key: const Key(
-                                              'production-manual-source-type',
-                                            ),
-                                            label: '手工计划来源',
-                                            info: '仅手工添加的货品行必填',
-                                            value: _manualSourceType,
-                                            enabled: !_saving,
-                                            items: [
-                                              for (final entry
-                                                  in _manualSourceOptions
-                                                      .entries)
-                                                UtenDropdownItem(
-                                                  value: entry.key,
-                                                  label: entry.value,
-                                                ),
-                                            ],
-                                            onChanged: (value) => setState(
-                                              () => _manualSourceType = value,
-                                            ),
+                                      if (widget.id == null)
+                                        TextFormField(
+                                          errorBuilder:
+                                              utenTextFieldErrorBuilder,
+                                          key: const Key(
+                                            'production-manual-source-reason',
                                           ),
-                                        if (widget.id == null)
-                                          TextFormField(
-                                            errorBuilder:
-                                                utenTextFieldErrorBuilder,
-                                            key: const Key(
-                                              'production-manual-source-ref',
-                                            ),
-                                            controller: _manualSourceRef,
-                                            maxLength: 200,
-                                            decoration: UtenInputDecoration(
-                                              InputDecoration(
-                                                label: fieldLabel(
-                                                  '手工计划需求编号',
-                                                  theme,
-                                                  info: '同一需求后续处理必须沿用同一个编号',
-                                                ),
-                                                counterText: '',
+                                          controller: _manualSourceReason,
+                                          decoration: UtenInputDecoration(
+                                            InputDecoration(
+                                              label: fieldLabel(
+                                                '手工计划原因',
+                                                theme,
+                                                info:
+                                                    '返工、试制、样品、备库或其他计划不得绕过物料分析',
                                               ),
                                             ),
                                           ),
-                                        if (widget.id == null)
-                                          TextFormField(
-                                            errorBuilder:
-                                                utenTextFieldErrorBuilder,
-                                            key: const Key(
-                                              'production-manual-source-reason',
-                                            ),
-                                            controller: _manualSourceReason,
-                                            decoration: UtenInputDecoration(
-                                              InputDecoration(
-                                                label: fieldLabel(
-                                                  '手工计划原因',
-                                                  theme,
-                                                  info:
-                                                      '返工、试制、样品、备库或其他计划不得绕过物料分析',
-                                                ),
-                                              ),
-                                            ),
-                                            minLines: 1,
-                                            maxLines: 2,
-                                          ),
-                                      ],
-                                    ),
+                                          minLines: 1,
+                                          maxLines: 2,
+                                        ),
+                                    ],
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),
-                                  _reviewRemark(
-                                    TextField(
-                                      controller: _remark,
-                                      decoration: const InputDecoration(
-                                        labelText: '备注',
-                                      ),
-                                      maxLines: 2,
+                                  TextField(
+                                    controller: _remark,
+                                    decoration: const InputDecoration(
+                                      labelText: '备注',
                                     ),
+                                    maxLines: 2,
                                   ),
                                 ],
                               ),
@@ -1079,7 +944,7 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
                                   .watch(currentPermissionsProvider)
                                   .contains(Perm.attachmentView),
                               // 进入编辑页即已确认可写；草稿状态与归属由服务端附件策略再校验。
-                              canManage: !widget.reviewMode && !_saving,
+                              canManage: !_saving,
                               title: '附件（图纸/样品图/排产确认）',
                               categories: const ['图纸', '样品图', '确认件', '其他'],
                             ),
@@ -1094,16 +959,12 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
                             tableKey: 'production.plan.items',
                             controller: _grid,
                             stickyHeaderPinned: _gridPinned,
-                            columns: _reviewColumns(
-                              productionGridColumns(
-                                onPickGoods: _pickGoods,
-                                onPickSalesOrder: _pickRowSalesOrder,
-                                colorEntries: names.colorEntries,
-                                unitEntries: names.unitEntries,
-                              ),
+                            columns: productionGridColumns(
+                              onPickGoods: _pickGoods,
+                              onPickSalesOrder: _pickRowSalesOrder,
+                              colorEntries: names.colorEntries,
+                              unitEntries: names.unitEntries,
                             ),
-                            showAddRow: !widget.reviewMode,
-                            showRowDelete: !widget.reviewMode,
                             createBlankRow: () {
                               final r = ProductionGridRow();
                               _wireRow(r);
@@ -1168,11 +1029,7 @@ class _ProductionPlanEditPageState extends ConsumerState<ProductionPlanEditPage>
               saving: _saving,
               // 2026-10-01 新建态同样直接落库（服务端 status=0 草稿），
               // 保存后进详情可继续编辑、审核或补附件。
-              saveLabel: widget.reviewMode
-                  ? '保存并审核'
-                  : widget.id == null
-                  ? '创建'
-                  : '保存',
+              saveLabel: widget.id == null ? '创建' : '保存',
             ),
     );
   }

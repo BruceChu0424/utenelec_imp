@@ -36,6 +36,8 @@ void main() {
     expect(columns['settlementStyleLegacy']?.value(item), '月结');
     expect(columns['remark']?.label, '备注');
     expect(columns['remark']?.value(item), '分批收款客户');
+    expect(columns['settled']?.label, '状态');
+    expect(columns['settled']?.value(item), '应收未清');
 
     final keys = table.columns.map((column) => column.key).toList();
     expect(keys.indexOf('currency'), lessThan(keys.indexOf('exchangeRate')));
@@ -79,6 +81,44 @@ void main() {
     expect(financeArApSettlementStyleLabel(null), '未设置');
     expect(financeArApSettlementStyleLabel(99), '未设置');
   });
+
+  testWidgets(
+    'settlement header filters the server and clears in the same direction',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final api = _ArApApi();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: const MaterialApp(home: FinanceArApPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<ArApLedgerItem> table() =>
+          tester.widget(find.byType(MasterDataTableView<ArApLedgerItem>));
+      table().onFilterChanged('direction', 'AP');
+      await tester.pumpAndSettle();
+      table().onFilterChanged('settled', 'false');
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['direction'], 'AP');
+      expect(api.lastQuery?['settled'], false);
+      expect(api.lastQuery?['page'], 1);
+      table().onFilterChanged('settled', null);
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['direction'], 'AP');
+      expect(api.lastQuery?['settled'], isNull);
+      table().onFilterChanged('sourceDocNo', ' PO-OTHER-PAGE ');
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['sourceDocNo'], 'PO-OTHER-PAGE');
+      expect(api.lastQuery?['direction'], 'AP');
+      expect(api.lastQuery?['page'], 1);
+      table().onFilterChanged('sourceDocNo', null);
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['sourceDocNo'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('currency header filter sends currencyId to API', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1800, 1000));

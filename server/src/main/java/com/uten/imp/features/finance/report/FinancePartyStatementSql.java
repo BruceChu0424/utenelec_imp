@@ -82,7 +82,8 @@ final class FinancePartyStatementSql {
                 .replace("@proofJoin@",LegacyOpeningBalanceSql.PROOF_JOIN).replace("@sourceExclusion@",sourceExclusion)
                 .replace("@direction@",receivable ? "AR" : "AP").replace("@cashLabel@",receivable ? "冲减应收" : "付款")
                 .replace("@offsetLabel@",receivable ? "预收转销" : "应付抵销").replace("@sourceLabel@",receivable ? "预收" : "贷项")
-                .replace("@scope@",documentScope);
+                .replace("@scope@",documentScope)
+                .replace("currency.code", com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency"));
     }
 
     static String running(String events) {
@@ -103,7 +104,8 @@ final class FinancePartyStatementSql {
                        settled_original AS "receiptOriginal",settled_rate AS "receiptRate",settled_local AS "receiptLocal",
                        running_original AS "balanceOriginal",posted_rate AS "balanceRate",running_local AS "balanceLocal",
                        event_type AS "type",remark AS "remark",event_order AS "eventOrder",event_id AS "eventId",
-                       CASE WHEN running_original IS NULL THEN '待核验' ELSE '已核验' END AS "originalStatus"
+                       CASE WHEN running_original IS NULL THEN '待核验' ELSE '已核验' END AS "originalStatus",
+                       currency_id AS "__currencyId"
                 FROM windowed WHERE CAST(:from AS date) IS NULL OR event_date>=:from
                 """;
     }

@@ -21,10 +21,12 @@ class LinePricingController extends ChangeNotifier {
     this.supportsTotalInput = false,
     bool Function()? canCalculateQuantity,
     bool Function()? canCalculatePrice,
+    bool Function()? allowZeroQuantity,
     this.priceScale = 10,
   }) : _extraColumnsChanged = extraColumnsChanged,
        _quantityAllowed = canCalculateQuantity,
-       _priceAllowed = canCalculatePrice {
+       _priceAllowed = canCalculatePrice,
+       _zeroQuantityAllowed = allowZeroQuantity {
     _qtyText = qty.text;
     _priceText = price.text;
     _discountText = discount?.text;
@@ -45,6 +47,9 @@ class LinePricingController extends ChangeNotifier {
   final Listenable? _extraColumnsChanged;
   final bool Function()? _quantityAllowed;
   final bool Function()? _priceAllowed;
+  // Only a caller with a separate positive physical quantity may opt in.
+  // Inverse calculations still require a strictly positive denominator.
+  final bool Function()? _zeroQuantityAllowed;
   final totalAmount = TextEditingController();
   final error = ValueNotifier<String?>(null);
 
@@ -155,7 +160,12 @@ class LinePricingController extends ChangeNotifier {
     final columns = extraColumns?.call().toList() ?? const <BusinessColumn>[];
     final factor = _discountFactor();
     if (_mode == LinePricingMode.calculateAmount) {
-      final quantity = _read(qty.text, '数量', scale: 4, positive: true);
+      final quantity = _read(
+        qty.text,
+        '数量',
+        scale: 4,
+        positive: !(_zeroQuantityAllowed?.call() ?? false),
+      );
       final unitPrice = _read(price.text, '单价', scale: priceScale);
       if (quantity == null || unitPrice == null) {
         _write(totalAmount, '');

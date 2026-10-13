@@ -221,6 +221,13 @@ final badgeSummaryProvider =
       BadgeSummaryNotifier.new,
     );
 
+/// A successful read can leave global totals unchanged while work moves between
+/// warehouses. Scoped queues must still refresh from that new server snapshot.
+final badgeSummaryFetchRevisionProvider = StateProvider<int>((ref) {
+  ref.watch(authenticatedScopeProvider);
+  return 0;
+});
+
 class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   /// 公共设置尚未成功读取时的默认周期(可见时)。
   static const pollInterval = Duration(seconds: 60);
@@ -382,6 +389,7 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
       if (generation != _generation) return;
       final next = BadgeSummary.fromJson(json).keepStaleFrom(state);
       if (next != state) state = next;
+      ref.read(badgeSummaryFetchRevisionProvider.notifier).state++;
     } catch (_) {
       // 网络/服务异常保留上一次的数, 下一轮再试。
     }

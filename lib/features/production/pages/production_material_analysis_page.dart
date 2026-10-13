@@ -2005,6 +2005,9 @@ abstract class _MaterialAnalysisPageBase
     // 批次的行也解析得到「已建任务」的子产品，进度/计划入口内联展示，不再误报
     // 「计划同步中」(2026-09-26 用户实机)。
     return product != null &&
+            product.goodsId == material.goodsId &&
+            product.colorId == material.colorId &&
+            product.unitId == material.unitId &&
             (product.sourceType == 'MAKE_COMPONENT' ||
                 product.sourceType == 'AGGREGATE_MAKE')
         ? product
@@ -2800,6 +2803,9 @@ class _ProductionMaterialAnalysisPageState
           product.planExecutionStatus,
           product.latestPlanId,
           product.latestPlanNo,
+          product.planReferences
+              .map((plan) => '${plan.planId}:${plan.planNo}:${plan.status}')
+              .join(','),
           product.planExecutionPlannedQty,
           product.planExecutionInboundQty,
           product.planExecutionProgressRatio,

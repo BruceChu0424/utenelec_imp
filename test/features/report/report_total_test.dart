@@ -79,7 +79,7 @@ void main() {
         ),
       );
 
-      expect(entry.value, '1,234.50 CNY · 200.00 USD');
+      expect(entry.value, '1234.50 元 · 200.00 美金');
       expect(entry.value, isNot(contains('1434')));
     });
 
@@ -98,7 +98,7 @@ void main() {
       expect(entry.value, isNot(contains('单位未维护')));
     });
 
-    test('有分组维度但某组分组值为空 → 该组标「单位未维护」', () {
+    test('有分组维度但某组单位未知 → 不显示未经核验的合计', () {
       final entry = reportTotalEntry(
         const ReportTotal(
           key: 'qty',
@@ -112,7 +112,7 @@ void main() {
         ),
       );
 
-      expect(entry.value, '5 个 · 3 单位未维护');
+      expect(entry.value, '5 个 · 单位未维护，合计待核验');
     });
 
     test('无分组（服务端聚合无数据）→ 值为空，由合计条整体隐藏而不是显示 0', () {

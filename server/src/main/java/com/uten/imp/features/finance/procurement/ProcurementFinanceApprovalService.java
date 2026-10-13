@@ -155,68 +155,6 @@ public class ProcurementFinanceApprovalService {
         return projection.latestForOrder(orderType, orderId, (short) 0);
     }
 
-    /** Preserve the submitted case and start a new review attempt with recalculated money. */
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_order_approval:view') and hasAuthority('finance_order_approval:approve')")
-    public ProcurementApprovalContracts.ApprovalReview amend(
-            UUID caseId, ProcurementApprovalContracts.ReviewAmendmentRequest request) {
-        tx.bind();
-        requireEligibleReviewer();
-        if (request == null || request.expectedVersion() == null || request.expectedClaimId() == null
-                || request.lines() == null || request.lines().stream().anyMatch(java.util.Objects::isNull)) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "审核修改必须绑定当前版本和认领");
-        }
-        var edits = request.lines() == null ? List.<ProcurementOrderApprovalPort.ReviewAmountEdit>of()
-                : request.lines().stream().map(line -> new ProcurementOrderApprovalPort.ReviewAmountEdit(
-                        line.itemId(), line.price(), line.totalAmountInput())).toList();
-        com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireEdits(edits);
-        var decisions = List.of(new BatchDecisionItem(caseId, request.expectedVersion(), request.expectedClaimId()));
-        ResolvedBatchItem target = resolveBatchItems(decisions).getFirst();
-        var mutationGuard = mutationLocks.order(target.orderType(), target.orderId());
-        requireBatchReviewClaims(decisions);
-        mutationGuard.verifyUnchanged();
-        ProcurementOrderApprovalPort port = requirePort(target.orderType());
-        if (port.isFinanceApproved(target.orderId())) {
-            throw new ApiException(ErrorCode.CONFLICT, "已生效订货的复核不能改金额；请先处理下游并反审");
-        }
-        OrderSnapshot before = port.lockAndValidateFinanceSubmission(target.orderId());
-        ApprovalCase oldCase = lockPendingCase(target.orderType(), target.orderId());
-        requireCaseIdentity(oldCase, caseId);
-        requireVersion(oldCase, request.expectedVersion());
-        requireUnchangedSnapshot(oldCase, before);
-        // The original immutable snapshots remain in the canceled attempt. The
-        // existing database freeze permits only the now-unreviewed draft to change.
-        int canceled = jdbc.update("""
-                UPDATE procurement_order_approval_cases
-                SET status='CANCELED', version=version+1, updated_at=now()
-                WHERE id=? AND status='PENDING' AND version=?
-                """, caseId, request.expectedVersion());
-        if (canceled != 1) throw concurrentChange();
-        OrderSnapshot after = port.amendFinanceReview(target.orderId(), edits);
-        UUID amendedCaseId = UUID.randomUUID();
-        int attempt = nextAttempt(target.orderType(), target.orderId());
-        String snapshotJson = canonicalSnapshotJson(after);
-        String snapshotHash = HashUtil.sha256(snapshotJson);
-        jdbc.update("""
-                INSERT INTO procurement_order_approval_cases(
-                    id,order_type,order_id,attempt,bill_no_snapshot,amount_snapshot,
-                    submission_snapshot,snapshot_hash,submitted_by_user_id,submitted_by_employee_id,
-                    assignee_user_id,assignee_employee_id,assignee_name_snapshot,status,version)
-                SELECT ?,order_type,order_id,?,?,?,CAST(? AS jsonb),?,
-                       submitted_by_user_id,submitted_by_employee_id,NULL,NULL,NULL,'PENDING',1
-                FROM procurement_order_approval_cases WHERE id=?
-                """, amendedCaseId, attempt, after.billNo(), after.totalLocal(), snapshotJson, snapshotHash, caseId);
-        appendEvent(caseId, "FINANCE_EDIT", currentUser.requireId(), currentUser.requireEmployeeId(),
-                null, null, null, Map.of("nextCaseId", amendedCaseId, "previousSnapshotHash", oldCase.snapshotHash(),
-                        "snapshotHash", snapshotHash, "lines", request.lines()));
-        appendEvent(amendedCaseId, "SUBMITTED", currentUser.requireId(), currentUser.requireEmployeeId(),
-                null, null, null, Map.of("attempt", attempt, "snapshotHash", snapshotHash, "previousCaseId", caseId));
-        taskClaims.release("PROCUREMENT_FINANCE_APPROVE", caseId.toString());
-        chainNotice.resolveReviewNotices("PROCUREMENT_APPROVAL_CASE", caseId, "FINANCE_EDIT");
-        publish(EVENT_SUBMITTED, amendedCaseId, target.orderType(), "PENDING", 1);
-        return review(amendedCaseId);
-    }
-
     /**
      * 批量通过使用一个事务和稳定的订货类型/UUID 顺序。任一项的 case、版本、
      * 快照或副作用失败都会回滚整批，禁止客户端循环单笔接口形成半批事实。
@@ -465,12 +403,21 @@ public class ProcurementFinanceApprovalService {
             String sort,
             String order,
             String billNo) {
+        return tasks(page, size, orderType, keyword, sort, order, billNo, "PENDING");
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    public PageResponse<ApprovalTask> tasks(
+            int page, int size, String orderType, String keyword,
+            String sort, String order, String billNo, String status) {
         int safePage = Math.max(1, page);
         int safeSize = Math.max(1, Math.min(size, 200));
         // 类型分段（全部/采购/委外）：空 = 全部；非法值 fail-closed。
         String normalizedType = normalizeOrderType(orderType);
         String normalizedKeyword = normalizeKeyword(keyword);
-        long total = countTasks(normalizedType, normalizedKeyword, billNo);
+        String normalizedStatus = normalizeQueueStatus(status);
+        long total = countTasks(normalizedType, normalizedKeyword, billNo, normalizedStatus);
         // 列表 / 计数 / facets 共用同一过滤基座（2026-09-25 单号列统一）。
         TaskFilters filters = taskFilters(normalizedType, normalizedKeyword, billNo);
         List<Object> params = new ArrayList<>(filters.args());
@@ -481,15 +428,15 @@ public class ProcurementFinanceApprovalService {
         // (amount_snapshot)——待审 case 的 finance_total_local 恒为空，口径向前兼容。
         List<ApprovalTask> items = jdbc.query("""
                 SELECT c.id AS case_id,
-                       c.order_type,
+                       c.order_type, c.status,
                        c.order_id,
                        c.bill_no_snapshot,
                        COALESCE(c.finance_total_local, c.amount_snapshot) AS amount_snapshot,
                        CAST(c.submission_snapshot ->> 'totalOriginal' AS numeric) AS total_original,
                        """ + SNAPSHOT_CURRENCY_NAME_SQL + """
-                       , supplier.name AS supplier_name,
-                       warehouse.name AS warehouse_name,
-                       COALESCE(po.deliver_date, so.deliver_date) AS expected_date,
+                       , CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'supplierName' ELSE supplier.name END AS supplier_name,
+                       CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'warehouseName' ELSE warehouse.name END AS warehouse_name,
+                       CAST(c.submission_snapshot ->> 'deliverDate' AS date) AS expected_date,
                        c.attempt,
                        c.version,
                        c.submitted_by_employee_id,
@@ -498,7 +445,8 @@ public class ProcurementFinanceApprovalService {
                        (SELECT count(*)
                         FROM procurement_order_qty_change_logs change_log
                         WHERE change_log.case_id = c.id) AS change_count,
-                       CAST(c.submission_snapshot ->> 'exchangeRate' AS numeric) AS exchange_rate,
+                       COALESCE(c.finance_exchange_rate,
+                           CAST(c.submission_snapshot ->> 'exchangeRate' AS numeric)) AS exchange_rate,
                        jsonb_array_length(c.submission_snapshot -> 'items') AS line_count,
                        -- 2026-10-10 口径修复：货品摘要与超收/损耗% 必须与审核详情同源
                        -- (loadReviewLines 读 COALESCE(display_snapshot, submission_snapshot))。
@@ -526,15 +474,14 @@ public class ProcurementFinanceApprovalService {
                 LEFT JOIN subcontract_orders so
                   ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
                 LEFT JOIN suppliers supplier
-                  ON supplier.id = COALESCE(po.supplier_id, so.supplier_id)
+                  ON supplier.id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
                 LEFT JOIN warehouses warehouse
-                  ON warehouse.id = COALESCE(po.warehouse_id, so.warehouse_id)
+                  ON warehouse.id = CAST(c.submission_snapshot ->> 'warehouseId' AS uuid)
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
                 LEFT JOIN currencies currency
                   ON currency.id = CAST(c.submission_snapshot ->> 'currencyId' AS uuid)
-                WHERE c.status = 'PENDING'
-                """ + filters.sql() + taskOrderBy(sort, order) + """
+                WHERE """ + queueStatusFilter(normalizedStatus) + filters.sql() + taskOrderBy(sort, order) + """
                 LIMIT ? OFFSET ?
                 """,
                 (rs, rowNum) -> {
@@ -571,7 +518,8 @@ public class ProcurementFinanceApprovalService {
                         purchase
                             ? rs.getBigDecimal("tolerance_max_purchase")
                             : rs.getBigDecimal("tolerance_max_subcontract"),
-                        allowedActions);
+                        "PENDING".equals(normalizedStatus) ? allowedActions : List.of(),
+                        rs.getString("status"));
                 },
                 params.toArray());
         int totalPages = total == 0
@@ -596,7 +544,7 @@ public class ProcurementFinanceApprovalService {
             if (normalizedKeyword != null) {
                 sql.append("""
                            AND (LOWER(COALESCE(c.bill_no_snapshot, '')) LIKE ?
-                             OR LOWER(COALESCE(supplier.name, '')) LIKE ?
+                             OR LOWER(COALESCE(c.display_snapshot ->> 'supplierName', supplier.name, '')) LIKE ?
                              OR LOWER(COALESCE(submitter.full_name, '')) LIKE ?)
                           """);
                 args.add(normalizedKeyword);
@@ -615,6 +563,19 @@ public class ProcurementFinanceApprovalService {
     private static TaskFilters taskFilters(String normalizedType,
             String normalizedKeyword, String billNo) {
         return TaskFilters.of(normalizedType, normalizedKeyword, billNo);
+    }
+
+    static String normalizeQueueStatus(String status) {
+        String normalized = status == null || status.isBlank() ? "PENDING" : status.strip().toUpperCase(Locale.ROOT);
+        if (!java.util.Set.of("PENDING", "APPROVED", "REJECTED", "ALL").contains(normalized)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "审批状态无效");
+        }
+        return normalized;
+    }
+
+    private static String queueStatusFilter(String status) {
+        String normalized = normalizeQueueStatus(status);
+        return "ALL".equals(normalized) ? " TRUE\n" : " c.status = '" + normalized + "'\n";
     }
 
     /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
@@ -645,6 +606,13 @@ public class ProcurementFinanceApprovalService {
     @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public Map<String, List<Map<String, Object>>> taskFacets(
             String orderType, String keyword) {
+        return taskFacets(orderType, keyword, "PENDING");
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    public Map<String, List<Map<String, Object>>> taskFacets(
+            String orderType, String keyword, String status) {
         TaskFilters filters = taskFilters(
                 normalizeOrderType(orderType), normalizeKeyword(keyword), null);
         List<Map<String, Object>> buckets = jdbc.query("""
@@ -655,11 +623,10 @@ public class ProcurementFinanceApprovalService {
                         LEFT JOIN subcontract_orders so
                           ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
                         LEFT JOIN suppliers supplier
-                          ON supplier.id = COALESCE(po.supplier_id, so.supplier_id)
+                          ON supplier.id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
                         LEFT JOIN employees submitter
                           ON submitter.id = c.submitted_by_employee_id
-                        WHERE c.status = 'PENDING'
-                        """ + filters.sql() + """
+                        WHERE """ + queueStatusFilter(status) + filters.sql() + """
                         GROUP BY c.bill_no_snapshot
                         ORDER BY 1
                         LIMIT 500
@@ -688,6 +655,10 @@ public class ProcurementFinanceApprovalService {
 
     /** 同上，另带 billNo 单号等值筛选（2026-09-25 单号列统一；列表/计数同口径）。 */
     private long countTasks(String normalizedType, String normalizedKeyword, String billNo) {
+        return countTasks(normalizedType, normalizedKeyword, billNo, "PENDING");
+    }
+
+    private long countTasks(String normalizedType, String normalizedKeyword, String billNo, String status) {
         TaskFilters filters = taskFilters(normalizedType, normalizedKeyword, billNo);
         Long count = jdbc.queryForObject("""
                 SELECT COUNT(*)
@@ -697,11 +668,10 @@ public class ProcurementFinanceApprovalService {
                 LEFT JOIN subcontract_orders so
                   ON c.order_type = 'SUBCONTRACT' AND so.id = c.order_id
                 LEFT JOIN suppliers supplier
-                  ON supplier.id = COALESCE(po.supplier_id, so.supplier_id)
+                  ON supplier.id = CAST(c.submission_snapshot ->> 'supplierId' AS uuid)
                 LEFT JOIN employees submitter
                   ON submitter.id = c.submitted_by_employee_id
-                WHERE c.status = 'PENDING'
-                """ + filters.sql(),
+                WHERE """ + queueStatusFilter(status) + filters.sql(),
                 Long.class,
                 filters.args().toArray());
         return count == null ? 0 : count;
@@ -711,13 +681,17 @@ public class ProcurementFinanceApprovalService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public Map<String, Long> countTasksByType() {
+        return countTasksByType("PENDING");
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    public Map<String, Long> countTasksByType(String status) {
         Map<String, Long> counts = new LinkedHashMap<>();
         jdbc.query("""
                 SELECT order_type, COUNT(*)
                 FROM procurement_order_approval_cases
-                WHERE status = 'PENDING'
-                GROUP BY order_type
-                """, rs -> {
+                WHERE """ + queueStatusFilter(status).replace("c.status", "status") + " GROUP BY order_type", rs -> {
             counts.put(rs.getString(1), rs.getLong(2));
         });
         return counts;
@@ -835,17 +809,24 @@ public class ProcurementFinanceApprovalService {
         List<String> allowedActions = "PENDING".equals(status)
                 ? currentReviewerActions()
                 : List.of();
-        if (allowedActions.contains("APPROVE")) {
-            Integer draftCount = jdbc.queryForObject("SELECT COUNT(*) FROM "
-                    + ("PURCHASE".equals(orderType) ? "purchase_orders" : "subcontract_orders")
-                    + " WHERE id=? AND status=0 AND NOT is_deleted", Integer.class, orderId);
-            if (draftCount != null && draftCount == 1) {
-                allowedActions = new ArrayList<>(allowedActions);
-                allowedActions.add("EDIT");
-            }
-        }
         List<ProcurementApprovalContracts.QtyChange> qtyChanges =
                 loadQtyChanges(caseId);
+        // A historical round must never be used to reverse a newer approval generation.
+        String familyPermission = "PURCHASE".equals(orderType) ? "purchase_order" : "subcontract_order";
+        boolean canReviewUnapproval = currentUser.get().map(user -> user.isSuperAdmin()
+                || user.getPermissions().containsAll(Set.of(familyPermission + ":view", familyPermission + ":reverse")))
+                .orElse(false);
+        if ("APPROVED".equals(status) && canReviewUnapproval) {
+            Integer currentApproval = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM procurement_order_approval_cases c
+                    JOIN %s orders ON orders.id=c.order_id AND orders.status=1 AND NOT orders.is_deleted
+                    WHERE c.id=? AND c.status='APPROVED'
+                      AND NOT EXISTS(SELECT 1 FROM procurement_order_approval_cases newer
+                          WHERE newer.order_type=c.order_type AND newer.order_id=c.order_id
+                            AND newer.attempt>c.attempt)
+                    """.formatted("PURCHASE".equals(orderType) ? "purchase_orders" : "subcontract_orders"), Integer.class, caseId);
+            if (Integer.valueOf(1).equals(currentApproval)) allowedActions = List.of("UNAPPROVE");
+        }
         // ADR-128: 供应商应付按本单币种显示(其它币种另列), 与客户侧同一份共用余额查询。
         UUID supplierId = (UUID) h[23];
         var supplierBalance = partyBalances.suppliers(Collections.singletonList(supplierId))

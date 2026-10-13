@@ -118,6 +118,12 @@ void main() {
       expect(find.text('出库任务中心'), findsOneWidget);
       expect(find.byType(SubcontractOutboundDetailTable), findsNothing);
       expect(api.listRequests, 1);
+      expect(api.taskQueries.single['source'], 'SUBCONTRACT');
+      expect(api.taskQueries.single['status'], 'SUBCONTRACT_PENDING');
+      expect(router.routeInformationProvider.value.uri.queryParameters, {
+        'section': 'subcontract',
+        'view': 'tasks',
+      });
       expect(api.approvals, _issueIds);
       expect(tester.takeException(), isNull);
     });

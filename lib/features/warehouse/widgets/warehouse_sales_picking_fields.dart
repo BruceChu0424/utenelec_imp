@@ -29,7 +29,8 @@ class WarehouseSalesPickingDraft {
       places[line.id] = TextEditingController(
         text: line.actualStockPlace ?? line.currentStockPlaceHint ?? '',
       );
-      if (selectable) {
+      if (detail.header.warehouseWorkStatus ==
+          WarehouseSalesOutboundStatus.pendingPick) {
         weights[line.id] = OutboundWeightEntry(
           goodsId: line.goodsId,
           colorId: line.colorId,
@@ -75,6 +76,72 @@ class WarehouseSalesPickingDraft {
   };
 
   Map<String, String?> get lineWarehouses => Map.unmodifiable(warehouses);
+
+  /// Input only. Current quantities, inventory and allowed actions are always
+  /// loaded again from the task; suggested weights are not manual input.
+  Map<String, dynamic> captureInput() => {
+    'shipmentId': detail.header.id,
+    'rows': [
+      for (final line in detail.lines)
+        {
+          'id': line.id,
+          'goodsId': line.goodsId,
+          'quantity': line.quantity,
+          'warehouseId': warehouses[line.id],
+          'place': places[line.id]?.text ?? '',
+          if (weights[line.id] case final entry?) ...{
+            'weightKg': entry.kg,
+            'weightText': entry.weight.userEdited ? entry.weight.text.text : '',
+            'weightUnit': entry.weight.unit.name,
+            'weightUserEdited': entry.weight.userEdited,
+          },
+        },
+    ],
+  };
+
+  void restoreInput(Map<String, dynamic> data) {
+    final rows = data['rows'];
+    if (data['shipmentId'] != detail.header.id ||
+        rows is! List ||
+        rows.length != detail.lines.length) {
+      throw const FormatException('出库草稿与当前任务明细不一致，请保留草稿并核对');
+    }
+    final byId = {
+      for (final row in rows.whereType<Map<Object?, Object?>>()) row['id']: row,
+    };
+    for (final line in detail.lines) {
+      final row = byId[line.id];
+      if (row == null ||
+          row['goodsId'] != line.goodsId ||
+          row['quantity'] != line.quantity) {
+        throw const FormatException('出库任务的货品或数量已变化，请保留草稿并重新核对');
+      }
+    }
+    for (final line in detail.lines) {
+      final row = byId[line.id]!;
+      warehouses[line.id] = row['warehouseId'] as String?;
+      places[line.id]?.text = row['place'] as String? ?? '';
+      final weight = weights[line.id]?.weight;
+      if (weight != null) {
+        final unit = WeightUnit.values
+            .where((item) => item.name == row['weightUnit'])
+            .firstOrNull;
+        if (unit != null) weight.switchUnit(unit);
+        weight.setKg(
+          (row['weightKg'] as num?)?.toDouble(),
+          userEdited: row['weightUserEdited'] == true,
+        );
+        if (row['weightUserEdited'] == true && row['weightKg'] == null) {
+          weight.text.text = row['weightText'] as String? ?? '';
+        }
+      }
+    }
+  }
+
+  Iterable<Listenable> get inputListenables => [
+    ...places.values,
+    for (final entry in weights.values) entry.weight,
+  ];
 
   /// 本单是否处于「待确认出库」——只有这时发出仓才可选。
   bool get selectable =>

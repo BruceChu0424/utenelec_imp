@@ -622,7 +622,7 @@ public class FulfillmentWorkbenchQueryService {
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT counted.action_doc_id
                         FROM (
-                            SELECT decomposition.action_doc_id, decomposition.open_qty,
+                            SELECT decomposition.action_doc_id, decomposition.open_qty, decomposition.task_status,
                                    bool_or(decomposition.action_doc_type = 'SUBCONTRACT_APPLICATION'
                                            AND decomposition.task_status = 'WAITING_ORDER'
                                            AND EXISTS (
@@ -636,7 +636,8 @@ public class FulfillmentWorkbenchQueryService {
                             WHERE decomposition.department = :department
                               AND (decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')%s)
                         ) counted
-                        WHERE counted.open_qty > 0 AND NOT counted.bom_missing
+                        WHERE (counted.open_qty > 0 OR counted.task_status = 'FINANCE_REJECTED')
+                          AND NOT counted.bom_missing
                     ) documents
                     """.formatted(shortDelivery)
                 : decomposition
@@ -644,8 +645,9 @@ public class FulfillmentWorkbenchQueryService {
                     SELECT COUNT(*) FROM (
                         SELECT DISTINCT decomposition.action_doc_id
                         FROM v_procurement_decomposition_tasks decomposition
-                        WHERE decomposition.department = :department AND decomposition.open_qty > 0
-                          AND decomposition.task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')
+                        WHERE decomposition.department = :department
+                          AND (decomposition.task_status = 'FINANCE_REJECTED'
+                               OR (decomposition.task_status = 'WAITING_ORDER' AND decomposition.open_qty > 0))
                     ) documents
                     """
                 : """
@@ -796,7 +798,7 @@ public class FulfillmentWorkbenchQueryService {
         // 已批准的订货单一定有冻结领料计划行(缺 BOM 的委外件不能下单, ADR-143 §二.3)。
         // 可领料逐明细按 fn_subcontract_draw_summary 判(领料计划开着、明细还有开着的领料行、可领 > 0),
         // 从不把不同物料的数量相加; 只对财务已通过的订货单才去算。
-        // 财务已退回与短交待判定同时写进 exception_code, 让异常小类行挂红徽章。
+        // 财务已退回与短交事实保留在 exception_code，供原始异常兼容查询使用。
         String progressJoin = subcontract ? """
                 LEFT JOIN LATERAL (
                     SELECT %s AS short_pending,
@@ -879,9 +881,19 @@ public class FulfillmentWorkbenchQueryService {
                      WHEN kit.open_qty > 0 AND kit.orderable_lines = 0 THEN 'WAITING_KIT'
                      WHEN kit.open_qty > 0 AND kit.orderable_qty < kit.open_qty THEN 'KIT_PARTIAL'
                      ELSE base.task_status END""" : "base.task_status";
-        // 采购的财务已退回也写进 exception_code(与委外同构)：分段栏虽把它并进了「进行中」,
-        // 但改单重报是本部门要动手的活, 必须继续以异常小类行挂红徽章;
-        // countPending 走的是 task_status, 不受这里改写影响, 红数一个不少。
+        if (purchase || subcontract) {
+            // A quantity amendment keeps the approved document and physical execution facts.
+            // Its latest review still determines the actionable workbench state and its label.
+            stageExpression = """
+                    CASE WHEN base.action_doc_status='1' AND base.task_status='ORDER_PENDING_APPROVAL'
+                              THEN 'FINANCE_REVIEW_PENDING'
+                         WHEN base.action_doc_status='1' AND base.task_status='FINANCE_REJECTED'
+                              THEN 'FINANCE_REVIEW_REJECTED'
+                         ELSE %s END
+                    """.formatted(stageExpression);
+        }
+        // 财务退回保留 exception_code 的兼容与原始异常事实；页面由状态列与「进行中」
+        // 红数提示处理责任，不再重复生成财务退回子分类。countPending 仍按权威 task_status 计数。
         String exceptionExpression = subcontract ? """
                 CASE WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND progress.short_pending THEN 'SHORT_DELIVERY'
                      WHEN base.action_doc_type='SUBCONTRACT_ORDER' AND base.task_status='FINANCE_REJECTED'

@@ -113,36 +113,6 @@ class ProductionPlanRepository {
     return PagedResult.fromJson(json, ProductionPlanListItem.fromJson);
   }
 
-  Future<
-    ({String snapshot, ProductionPlanDetail detail, bool quantityEditable})
-  >
-  review(String id) async {
-    final json = await api.get('/production/plans/$id/draft-review');
-    return (
-      snapshot: json['snapshot'] as String,
-      detail: ProductionPlanDetail.fromJson(
-        Map<String, dynamic>.from(json['detail'] as Map),
-      ),
-      quantityEditable: json['quantityEditable'] == true,
-    );
-  }
-
-  Future<ProductionPlanDetail> saveReviewed(
-    String id,
-    Map<String, dynamic> body,
-    String expectedSnapshot,
-  ) async {
-    final json = await api.put(
-      '/production/plans/$id/draft-review',
-      body: {
-        'expectedSnapshot': expectedSnapshot,
-        'document': body,
-        'approveNow': true,
-      },
-    );
-    return ProductionPlanDetail.fromJson(json);
-  }
-
   Future<ProductionPlanDetail> detail(String id) async {
     final json = await api.get('/production/plans/$id'); // ENDPOINT
     return ProductionPlanDetail.fromJson(json);
@@ -898,6 +868,26 @@ class ProductionPlanRepository {
   }) async {
     final json = await api.post(
       '$_materialAnalysesBase/${analysis.analysisId}/aggregate-orders/actions/$actionId/cancel',
+      body: {
+        'version': analysis.version,
+        'fingerprint': analysis.fingerprint,
+        'idempotencyKey': idempotencyKey,
+        'reason': reason,
+      },
+    ); // ENDPOINT
+    return ProductionMaterialAnalysisView.fromJson(json);
+  }
+
+  /// 撤回准确来源计划及其执行安排；服务端同事务恢复分析责任，保留业务历史。
+  Future<ProductionMaterialAnalysisView> withdrawMaterialAnalysisPlan({
+    required ProductionMaterialAnalysisView analysis,
+    required String planId,
+    required String idempotencyKey,
+    required String reason,
+  }) async {
+    final json = await api.post(
+      '$_materialAnalysesBase/${analysis.analysisId}/plans/$planId/withdraw',
+      query: _materialAnalysisProjection,
       body: {
         'version': analysis.version,
         'fingerprint': analysis.fingerprint,
@@ -2147,35 +2137,6 @@ class ProductionDailyReportRepository {
       query: query,
     ); // ENDPOINT
     return PagedResult.fromJson(json, ProductionDailyReportListItem.fromJson);
-  }
-
-  Future<({String snapshot, ProductionDailyReportDetail detail})> review(
-    String id,
-  ) async {
-    final json = await api.get('/production/daily-reports/$id/draft-review');
-    return (
-      snapshot: json['snapshot'] as String,
-      detail: ProductionDailyReportDetail.fromJson(
-        Map<String, dynamic>.from(json['detail'] as Map),
-      ),
-    );
-  }
-
-  Future<ProductionDailyReportDetail> saveReviewed(
-    String id,
-    Map<String, dynamic> body,
-    String expectedSnapshot, {
-    bool approveNow = true,
-  }) async {
-    final json = await api.put(
-      '/production/daily-reports/$id/draft-review',
-      body: {
-        'expectedSnapshot': expectedSnapshot,
-        'document': body,
-        'approveNow': approveNow,
-      },
-    );
-    return ProductionDailyReportDetail.fromJson(json);
   }
 
   Future<ProductionDailyReportDetail> detail(String id) async {

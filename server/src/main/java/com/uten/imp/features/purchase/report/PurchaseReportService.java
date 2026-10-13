@@ -85,6 +85,8 @@ public class PurchaseReportService {
                                        WhereBuilder mainWhere, String orderBy, List<FacetSpec> specs,
                                        Map<String, String> activeFacets, int page, int size,
                                        String sort, String order) {
+        UnitProjection unitProjection=unitProjection(columns,dataSelect,fromJoin);
+        columns=unitProjection.columns();dataSelect=unitProjection.select();fromJoin=unitProjection.from();
         boolean priceMasked = purchasePriceMasked();
         List<ReportColumn> safeColumns = priceMasked
                 ? columns.stream().filter(c -> !isCommercialColumn(c)).toList()
@@ -128,6 +130,7 @@ public class PurchaseReportService {
                     m.put(column.key(), norm(r[i], column));
                 }
             }
+            ReportQueryKit.includeDecimalTexts(m);
             items.add(m);
         }
 
@@ -168,9 +171,39 @@ public class PurchaseReportService {
                 com.uten.imp.common.report.ReportTotalsCalculator.compute(
                         em, dataSelect, fromJoin, full.sql(), full.params(),
                         reportTotalSpecs(safeColumns, columns));
+        totals=com.uten.imp.common.report.ReportTotal.withColumnUnits(totals,columns);
 
         List<ReportColumn> visible = safeColumns.stream().filter(c -> !c.key().startsWith("__")).toList();
         return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
+    }
+
+    private record UnitProjection(List<ReportColumn> columns,String select,String from) { }
+    private static UnitProjection unitProjection(List<ReportColumn> columns,String select,String from) {
+        var projected=new ArrayList<>(columns);
+        java.util.Set<String> needed=columns.stream().map(ReportColumn::unitKey).filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<String> identities=columns.stream().map(ReportColumn::totalGroupIdentityKey).filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if(identities.contains("__unitId")) {
+            projected.add(ReportColumn.text("__unitId",""));select+=", i.unit_id AS \"__unitId\"";
+        }
+        if(identities.contains("__currencyId")) {
+            projected.add(ReportColumn.text("__currencyId",""));select+=", o.currency_id AS \"__currencyId\"";
+        }
+        if(needed.contains("__currencyName")) {
+            projected.add(ReportColumn.text("__currencyName",""));
+            select+=", "+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("report_currency")+" AS \"__currencyName\"";
+            from+=" LEFT JOIN currencies report_currency ON report_currency.id=o.currency_id";
+        }
+        if(needed.contains("__unitName")) {
+            projected.add(ReportColumn.text("__unitName",""));select+=", report_unit.name AS \"__unitName\"";
+            from+=" LEFT JOIN units report_unit ON report_unit.id=i.unit_id";
+        }
+        if(needed.contains("__baseUnitName")) {
+            projected.add(ReportColumn.text("__baseUnitName",""));select+=", report_base_unit.name AS \"__baseUnitName\"";
+            from+=" LEFT JOIN units report_base_unit ON report_base_unit.id=g.unit_id";
+        }
+        return new UnitProjection(List.copyOf(projected),select,from);
     }
 
     /**
@@ -192,8 +225,10 @@ public class PurchaseReportService {
             if (label == null || label.isBlank()) continue;
             String g = c.totalGroupKey();
             if (g != null && !present.contains(g)) continue;
+            String identity=c.totalGroupIdentityKey();
+            if(identity!=null&&!present.contains(identity))identity=null;
             specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                    c.key(), label, c.type(), g));
+                    c.key(), label, c.type(), g,identity));
         }
         return specs;
     }
@@ -208,7 +243,7 @@ public class PurchaseReportService {
     }
 
     private static boolean isCommercialKey(String key) {
-        return "settlementStyle".equals(key);
+        return "settlementStyle".equals(key)||"__currencyName".equals(key);
     }
 
     private static int toInt(Object v) {
@@ -260,11 +295,11 @@ public class PurchaseReportService {
                 ReportColumn.text("goodsCode", "编号", 110),
                 ReportColumn.text("colorName", "颜色", 90),
                 ReportColumn.text("spec", "规格", 150),
-                ReportColumn.number("qty", "数量"),
-                ReportColumn.number("receivedQty", "收货数量"),
-                ReportColumn.number("unreceivedQty", "未收数量"),
-                ReportColumn.number("stockQty", "库存数量"),
-                ReportColumn.number("safeStock", "安全库存"),
+                ReportColumn.number("qty", "数量").withUnitKey("__unitName"),
+                ReportColumn.number("receivedQty", "收货数量").withUnitKey("__unitName"),
+                ReportColumn.number("unreceivedQty", "未收数量").withUnitKey("__unitName"),
+                ReportColumn.number("stockQty", "库存数量").withUnitKey("__baseUnitName"),
+                ReportColumn.number("safeStock", "安全库存").withUnitKey("__baseUnitName"),
                 ReportColumn.text("__srcId", ""));  // 隐藏：行点击跳采购订货单编辑页
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
@@ -306,7 +341,7 @@ public class PurchaseReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.date("deliverDate", "交货日期"), ReportColumn.text("applicantName", "申购人", 100),
-                ReportColumn.money("totalAmount", "总额"), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.money("totalAmount", "总额").withUnitLabel("元"), ReportColumn.bool("approved", "是否审核"),
                 ReportColumn.bool("closed", "是否完成"), ReportColumn.bool("stopped", "是否中止"),
                 ReportColumn.text("productionNo", "生产单号", 120), ReportColumn.text("departmentName", "部门", 100),
                 // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
@@ -315,21 +350,22 @@ public class PurchaseReportService {
                 ReportColumn.text("model", "型号", 100), ReportColumn.text("supplierName", "供应商", 140),
                 ReportColumn.text("customerModel", "客户型号", 100), ReportColumn.text("categoryName", "类别", 100),
                 ReportColumn.text("material", "材质", 90), ReportColumn.text("spec", "规格", 140),
-                ReportColumn.number("qty", "数量").totaled("合计数量", "unitName"),
+                ReportColumn.number("qty", "数量").withUnitKey("__unitName").totaled("合计数量", "unitName","__unitId"),
                 ReportColumn.text("unitName", "单位", 70),
-                ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
-                ReportColumn.number("orderedQty", "采订数量"), ReportColumn.text("purchaseOrderNo", "采购订货单号", 130),
+                // 申请没有币种字段；价格和金额由申请服务按本币、汇率1保存。
+                ReportColumn.money("price", "单价").withUnitLabel("元"), ReportColumn.money("amount", "金额").withUnitLabel("元"),
+                ReportColumn.number("orderedQty", "采订数量").withUnitKey("__unitName"), ReportColumn.text("purchaseOrderNo", "采购订货单号", 130),
                 ReportColumn.text("salesOrderNo", "销售订货单号", 130), ReportColumn.text("productionPlanNo", "生产计划单号", 130),
-                ReportColumn.money("laborCost", "人工费"), ReportColumn.text("purchaseReply", "采购回复", 140),
+                ReportColumn.money("laborCost", "人工费").withUnitLabel("元"), ReportColumn.text("purchaseReply", "采购回复", 140),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", i.deliver_date AS "deliverDate",
                        em_app.full_name AS "applicantName", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved", o.is_closed AS "closed", o.is_stopped AS "stopped",
                        i.production_no AS "productionNo", COALESCE(dept.name, legacy_dept.name) AS "departmentName",
-                       g.series AS "series", i.goods_code_snapshot AS "goodsCode", g.model AS "model",
-                       gsup.name AS "supplierName", g.c_number AS "customerModel", mc.name AS "categoryName",
-                       i.goods_name_snapshot AS "goodsName", g.material AS "material", g.spec AS "spec", col.name AS "colorName",
+                       g.series AS "series", i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode",
+                       col.name AS "colorName", g.model AS "model", gsup.name AS "supplierName",
+                       g.c_number AS "customerModel", mc.name AS "categoryName", g.material AS "material", g.spec AS "spec",
                        i.qty AS "qty", un.name AS "unitName", i.price AS "price", i.amount_original AS "amount",
                        i.ordered_qty AS "orderedQty", i.purchase_order_no AS "purchaseOrderNo",
                        i.sales_order_no AS "salesOrderNo", i.production_plan_no AS "productionPlanNo",
@@ -374,7 +410,7 @@ public class PurchaseReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 150), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("applicantName", "申购人", 100), ReportColumn.text("makerName", "制单员", 100),
-                ReportColumn.text("approverName", "审核员", 100), ReportColumn.money("totalAmount", "总额"),
+                ReportColumn.text("approverName", "审核员", 100), ReportColumn.money("totalAmount", "总额").withUnitLabel("元"),
                 ReportColumn.text("remark", "备注", 180),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
@@ -413,7 +449,7 @@ public class PurchaseReportService {
                 ReportColumn.text("supplierName", "供应商", 160), ReportColumn.date("deliverDate", "交货日期"),
                 ReportColumn.text("purchaserName", "采购员", 100),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
-                ReportColumn.money("totalAmount", "总额"), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.money("totalAmount", "总额").withUnitLabel("元"), ReportColumn.bool("approved", "是否审核"),
                 ReportColumn.bool("closed", "是否完成"), ReportColumn.bool("stopped", "是否中止"),
                 // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
                 ReportColumn.text("goodsName", "货品名称", 180), ReportColumn.text("goodsCode", "编号", 110),
@@ -421,19 +457,18 @@ public class PurchaseReportService {
                 ReportColumn.text("model", "型号", 100),
                 ReportColumn.text("customerModel", "客户型号", 100),
                 ReportColumn.text("spec", "规格", 140),
-                ReportColumn.text("material", "材质", 90), ReportColumn.number("weight", "重量"),
-                ReportColumn.number("qty", "订货数量"), ReportColumn.money("price", "单价"),
-                ReportColumn.money("amount", "金额"), ReportColumn.number("receivedQty", "收货数量"),
-                ReportColumn.number("returnedQty", "退货数量"),
+                ReportColumn.text("material", "材质", 90), ReportColumn.number("weight", "重量").withUnitLabel("千克"),
+                ReportColumn.number("qty", "订货数量").withUnitKey("__unitName"), ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
+                ReportColumn.money("amount", "金额").withUnitKey("__currencyName"), ReportColumn.number("receivedQty", "收货数量").withUnitKey("__unitName"),
+                ReportColumn.number("returnedQty", "退货数量").withUnitKey("__unitName"),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName",
                        o.deliver_date AS "deliverDate", em_pur.full_name AS "purchaserName",
                        o.settlement_style_legacy AS "settlementStyle", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved", o.is_closed AS "closed", o.is_stopped AS "stopped",
-                       i.goods_code_snapshot AS "goodsCode", g.model AS "model", g.c_number AS "customerModel",
-                       i.goods_name_snapshot AS "goodsName",
-                       g.spec AS "spec", col.name AS "colorName", g.material AS "material", i.weight AS "weight",
+                       i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
+                       g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", g.material AS "material", i.weight AS "weight",
                        i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
                        i.received_qty AS "receivedQty", i.returned_qty AS "returnedQty",
                        o.id AS "__srcId"
@@ -512,7 +547,7 @@ public class PurchaseReportService {
                 ReportColumn.text("supplierName", "供应商", 160), ReportColumn.text("warehouseName", "仓库", 120),
                 ReportColumn.text("receiverName", "收货人", 100), ReportColumn.text("purchaserName", "采购员", 100),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
-                ReportColumn.money("totalAmount", "总额"), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.money("totalAmount", "总额").withUnitLabel("元"), ReportColumn.bool("approved", "是否审核"),
                 // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布；
                 // 编号不再拼色码（颜色已有独立列）。
                 ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsName", "货品名称", 180),
@@ -520,9 +555,9 @@ public class PurchaseReportService {
                 ReportColumn.text("model", "型号", 100), ReportColumn.text("customerModel", "客户型号", 100),
                 ReportColumn.text("spec", "规格", 140),
                 ReportColumn.text("material", "材质", 90),
-                ReportColumn.number("weight", "重量"), ReportColumn.number("orderQty", "订货数量"),
-                ReportColumn.number("qty", "数量"), ReportColumn.number("giftQty", "备品数"),
-                ReportColumn.money("price", "单价"),
+                ReportColumn.number("weight", "重量").withUnitLabel("千克"), ReportColumn.number("orderQty", "订货数量").withUnitKey("__unitName"),
+                ReportColumn.number("qty", "数量").withUnitKey("__unitName"), ReportColumn.number("giftQty", "备品数").withUnitKey("__unitName"),
+                ReportColumn.money("price", "单价").withUnitKey("__currencyName"),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT o.bill_no AS "billNo", o.bill_date AS "billDate", sup.name AS "supplierName", wh.name AS "warehouseName",
@@ -531,9 +566,8 @@ public class PurchaseReportService {
                        o.settlement_style_legacy AS "settlementStyle", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved",
                        g.series AS "series",
-                       i.goods_code_snapshot AS "goodsCode",
-                       g.model AS "model", g.c_number AS "customerModel",
-                       i.goods_name_snapshot AS "goodsName", g.spec AS "spec", g.material AS "material", col.name AS "colorName",
+                       i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
+                       g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", g.material AS "material",
                        i.weight AS "weight", oi.qty AS "orderQty", i.qty AS "qty", i.gift_qty AS "giftQty", i.price AS "price",
                        o.id AS "__srcId"
                 """;
@@ -618,15 +652,15 @@ public class PurchaseReportService {
                 ReportColumn.text("billNo", "单号", 200), ReportColumn.text("supplierName", "供应商", 160),
                 ReportColumn.text("warehouseName", "仓库", 120),
                 new ReportColumn("settlementStyle", "结帐方式", "style", 100),
-                ReportColumn.money("totalAmount", "总额"), ReportColumn.bool("approved", "是否审核"),
+                ReportColumn.money("totalAmount", "总额").withUnitLabel("元"), ReportColumn.bool("approved", "是否审核"),
                 // 2026-09-14 用户口径（全站表格统一）：名称 → 编号 → 颜色 紧邻排布。
                 ReportColumn.text("series", "系列", 90), ReportColumn.text("goodsName", "货品名称", 180),
                 ReportColumn.text("goodsCode", "编号", 120), ReportColumn.text("colorName", "颜色", 80),
                 ReportColumn.text("model", "型号", 100), ReportColumn.text("customerModel", "客户型号", 100),
                 ReportColumn.text("spec", "规格", 140),
                 ReportColumn.text("material", "材质", 90),
-                ReportColumn.number("weight", "重量"), ReportColumn.number("qty", "数量"),
-                ReportColumn.money("price", "单价"), ReportColumn.money("amount", "金额"),
+                ReportColumn.number("weight", "重量").withUnitLabel("千克"), ReportColumn.number("qty", "数量").withUnitKey("__unitName"),
+                ReportColumn.money("price", "单价").withUnitKey("__currencyName"), ReportColumn.money("amount", "金额").withUnitKey("__currencyName"),
                 ReportColumn.text("__srcId", ""));
         String dataSelect = """
                 SELECT (o.bill_no || ' ' || TO_CHAR(o.bill_date, 'YYYY-MM-DD')) AS "billNo",
@@ -634,9 +668,8 @@ public class PurchaseReportService {
                        o.settlement_style_legacy AS "settlementStyle", o.total_local AS "totalAmount",
                        (o.status = 1) AS "approved",
                        g.series AS "series",
-                       i.goods_code_snapshot AS "goodsCode",
-                       g.model AS "model", g.c_number AS "customerModel",
-                       i.goods_name_snapshot AS "goodsName", g.spec AS "spec", g.material AS "material", col.name AS "colorName",
+                       i.goods_name_snapshot AS "goodsName", i.goods_code_snapshot AS "goodsCode", col.name AS "colorName",
+                       g.model AS "model", g.c_number AS "customerModel", g.spec AS "spec", g.material AS "material",
                        i.weight AS "weight", i.qty AS "qty", i.price AS "price", i.amount_original AS "amount",
                        o.id AS "__srcId"
                 """;
@@ -748,7 +781,7 @@ public class PurchaseReportService {
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
-                        .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
+                        .map(c -> new ExportColumn(c.key(),c.label(),c.type(),null,c.unitLabel(),c.unitKey())).toList(),
                 ReportTableResponse::rows);
     }
 

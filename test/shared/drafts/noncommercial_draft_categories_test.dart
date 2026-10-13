@@ -15,6 +15,7 @@ import 'package:uten_imp/features/expense/providers/expense_providers.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_list_page.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/pages/stock_doc_list_page.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_inbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_form_draft_categories.dart';
@@ -256,7 +257,7 @@ void main() {
   );
 
   testWidgets(
-    'inbound task input appears in directional draft category and never mixes outbound or manual docs',
+    'inbound task input stays in business queues and manual document drafts retain their category',
     (tester) async {
       await _pump(
         tester,
@@ -282,24 +283,34 @@ void main() {
           ),
         ],
       );
-      // 2026-10-04 起红数「草稿」段进页面自动选中：方向性草稿分类随挂载即渲染
-      // （选中后内容区还有第二条工具条，取顶部分类栏）。
-      expect(find.byType(FormDraftCategoryList), findsOneWidget);
+      expect(find.byType(FormDraftCategoryList), findsNothing);
       final toolbar = tester.widget<UtenFilterToolbar<String>>(
         find.byType(UtenFilterToolbar<String>).first,
       );
       expect(
-        toolbar.segments
-            .singleWhere((segment) => segment.value == 'drafts')
-            .count,
-        1,
+        toolbar.segments.any((segment) => segment.value == 'drafts'),
+        isFalse,
       );
-      toolbar.onSelectionChanged!('drafts');
+      // The source navigation uses canonical values; status is a table filter.
+      await tester.tap(find.text('其它入库'));
       await tester.pumpAndSettle();
-      expect(find.byType(WarehouseFormDraftCategory), findsOneWidget);
-      expect(find.textContaining('arrival-local'), findsWidgets);
+      var table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+        find.byType(MasterDataTableView<WarehouseTaskCenterRecord>),
+      );
+      table.onFilterChanged('status', 'OTHER_DRAFT');
+      await tester.pumpAndSettle();
+      expect(find.byType(WarehouseFormDraftCategory), findsNothing);
+      expect(find.textContaining('arrival-local'), findsNothing);
       expect(find.textContaining('outbound-local'), findsNothing);
-      expect(find.textContaining('stock-local'), findsNothing);
+      table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+        find.byType(MasterDataTableView<WarehouseTaskCenterRecord>),
+      );
+      final row = [...table.unpagedItems, ...table.items].single;
+      expect(row.id, 'stock-local');
+      expect(row.sourceType, 'OTHER');
+      expect(row.status, 'LOCAL_DRAFT');
+      expect(row.action, 'FORM_DRAFT');
+      expect(row.targetId, 'stock-local');
       expect(tester.takeException(), isNull);
     },
   );

@@ -9,10 +9,8 @@
 // 也分不清「没人接」和「有人在做」。分段拆开后两个数字各自可点开核对。
 // 行可「标记完成」——需 rd_task:resolve 权限且 allowedActions 含 RESOLVE。
 //
-// 2026-09-09 表格化收尾：宽屏 MasterDataTableView 的「状态」「类别」两列接入
-// 真实 autofilter——bucket 从当前页行前端聚合（参照 material_analysis_material_table），
-// 行集在前端裁剪（服务端仍按 keyword/category/页码分页）；关键词/类别下拉等
-// 服务端口径变化时列筛选随之清空。
+// 类别通过表头固定 code 桶下推服务端，全结果分页查询；页面不另起类别下拉。
+// 状态列同时显示任务类别与办理状态，沿用状态语义色；主工作阶段与草稿入口保留。
 //
 // 结构克隆：
 //  - operations_workbench_page.dart —— race-guard _load / connectionRecovery 重载 /
@@ -34,7 +32,6 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -200,11 +197,6 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   bool _hasLoaded = false;
   bool _resolving = false;
 
-  /// 宽屏表格「状态/类别」列的表头筛选状态（key=列 key，value=选中值；
-  /// null/移除=清除）。bucket 从当前页行前端聚合、行集前端裁剪；服务端
-  /// 关键词/类别口径变化时随之清空（同批次一分段切换清列筛选的口径）。
-  final Map<String, String?> _tableFilters = {};
-
   /// 桌面表格当前选中任务 id（点行触发：既打开 BOM 维护，也据此显示「标记完成」上下文条）。
   String? _selectedTaskId;
 
@@ -258,11 +250,10 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   @override
   void didUpdateWidget(covariant _RdTaskListPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 换分段 = 换服务端口径: 回到第一页, 并清掉按旧行集聚合的表头筛选。
+    // 换分段 = 换服务端口径: 回到第一页并清掉旧选中任务。
     // 关键词与类别刻意保留 —— 用户常常拿同一个条件在三段之间来回看。
     if (widget.seg != oldWidget.seg) {
       _page = 1;
-      _tableFilters.clear();
       _selectedTaskId = null;
       _load();
     }
@@ -323,8 +314,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       if (category != null) _category = category;
       if (needsReload) {
         _page = 1;
-        // 服务端筛选口径变了，表头列筛选（针对旧行集聚合）随之失效。
-        _tableFilters.clear();
+        _selectedTaskId = null;
       }
     });
     if (needsReload) _load();
@@ -427,9 +417,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
       children: [
         _Filters(
           keyword: _keyword,
-          category: _category,
           onKeywordChanged: (value) => _applyFilter(keyword: value),
-          onCategoryChanged: (value) => _applyFilter(category: value),
           onRefresh: _loading
               ? null
               : () {
@@ -452,14 +440,11 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
             items: data.items,
             paginationScope: (widget.seg, _keyword, _category),
             loading: _loading,
-            filters: _tableFilters,
-            onFilterChanged: (key, value) => setState(() {
-              if (value == null) {
-                _tableFilters.remove(key); // 选「所有」= 不筛
-              } else {
-                _tableFilters[key] = value;
-              }
-            }),
+            filters: {'category': _category.isEmpty ? null : _category},
+            onFilterChanged: (key, value) {
+              if (key != 'category') return;
+              _applyFilter(category: value ?? '');
+            },
             onOpenGoods: _openGoodsBom,
             onSelectionChanged: (row) =>
                 setState(() => _selectedTaskId = row.id),
@@ -476,21 +461,17 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   }
 }
 
-// ═══════════════════════ 筛选行（关键词 + 类别 + 刷新） ═══════════════════════
+// ═══════════════════════ 筛选行（关键词 + 刷新） ═══════════════════════
 
 class _Filters extends StatelessWidget {
   const _Filters({
     required this.keyword,
-    required this.category,
     required this.onKeywordChanged,
-    required this.onCategoryChanged,
     required this.onRefresh,
   });
 
   final String keyword;
-  final String category;
   final ValueChanged<String> onKeywordChanged;
-  final ValueChanged<String> onCategoryChanged;
   final VoidCallback? onRefresh;
 
   @override
@@ -511,25 +492,6 @@ class _Filters extends StatelessWidget {
                 initialValue: keyword,
                 hint: '搜索任务号、标题、来源单号或货品',
                 onChanged: onKeywordChanged,
-              ),
-            ),
-            SizedBox(
-              width: compact ? constraints.maxWidth : 200,
-              child: UtenDropdownField(
-                key: const Key('rd-task-category-filter'),
-                label: '类别',
-                value: category,
-                allowClear: false,
-                items: const [
-                  UtenDropdownItem(value: '', label: '全部类别'),
-                  UtenDropdownItem(value: 'BOM', label: 'BOM维护'),
-                  UtenDropdownItem(value: 'DESIGN', label: '设计'),
-                  UtenDropdownItem(value: 'SAMPLE', label: '打样'),
-                  UtenDropdownItem(value: 'TRIAL', label: '试产'),
-                  UtenDropdownItem(value: 'ECN', label: 'ECN'),
-                  UtenDropdownItem(value: 'OTHER', label: '其他'),
-                ],
-                onChanged: (v) => onCategoryChanged(v ?? ''),
               ),
             ),
             if (onRefresh != null)
@@ -567,7 +529,7 @@ class _DesktopTaskTable extends StatelessWidget {
   final List<RdTaskRow> items;
   final bool loading;
 
-  /// 「状态/类别」列的表头筛选状态（页面持有；null/移除=清除）。
+  /// 类别的服务端表头筛选状态（页面持有；null=清除）。
   final Map<String, String?> filters;
   final void Function(String key, String? value) onFilterChanged;
 
@@ -583,47 +545,24 @@ class _DesktopTaskTable extends StatelessWidget {
   final bool Function(RdTaskRow)? canResolve;
   final ValueChanged<RdTaskRow>? onResolve;
 
-  /// 按表头筛选裁剪当前页行集（空值行在选了任何值时被滤掉，与物料分析表一致）。
-  List<RdTaskRow> _applyFilters(List<RdTaskRow> rows) {
-    if (filters.values.every((v) => v == null || v.isEmpty)) return rows;
-    final status = filters['status'];
-    final category = filters['category'];
-    return rows.where((row) {
-      final statusOk =
-          status == null ||
-          status.isEmpty ||
-          rdTaskStatusLabel(row.status) == status;
-      final categoryOk =
-          category == null ||
-          category.isEmpty ||
-          rdTaskCategoryLabel(row.category) == category;
-      return statusOk && categoryOk;
-    }).toList();
-  }
-
-  /// 状态/类别两列的筛选桶：当前页全量行聚合（筛选前），空值行不进桶。
-  Map<String, List<MasterFacetBucket>> _facetsOf(List<RdTaskRow> rows) {
-    List<MasterFacetBucket> bucketsOf(Iterable<String> texts) {
-      final counts = <String, int>{};
-      for (final text in texts) {
-        if (text.isEmpty) continue;
-        counts[text] = (counts[text] ?? 0) + 1;
-      }
-      final entries = counts.entries.toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
-      return [
-        for (final entry in entries)
-          MasterFacetBucket(value: entry.key, count: entry.value),
-      ];
-    }
-
-    return {
-      'status': bucketsOf(rows.map((row) => rdTaskStatusLabel(row.status))),
-      'category': bucketsOf(
-        rows.map((row) => rdTaskCategoryLabel(row.category)),
-      ),
-    };
-  }
+  /// 类别固定枚举使用服务端 code，当前页没有该类别也能完整查询。
+  Map<String, List<MasterFacetBucket>> get _facets => {
+    'category': [
+      for (final code in const [
+        'BOM',
+        'DESIGN',
+        'SAMPLE',
+        'TRIAL',
+        'ECN',
+        'OTHER',
+      ])
+        MasterFacetBucket(
+          value: code,
+          count: 0,
+          label: rdTaskCategoryLabel(code),
+        ),
+    ],
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -636,8 +575,9 @@ class _DesktopTaskTable extends StatelessWidget {
         MasterColumnDef(
           key: 'status',
           label: '状态',
-          width: 72,
-          value: (item) => rdTaskStatusLabel(item.status),
+          width: 168,
+          value: (item) =>
+              '${rdTaskCategoryLabel(item.category)} · ${rdTaskStatusLabel(item.status)}',
           // 状态列整格底色（2026-09-27「整格底色」口径；档位按 ADR-169 锚定重定）：
           // 待处理=绿（就绪可动手——轮到研发动手；旧「品牌青沿用指标卡主色」的
           // 理由已随指标卡删除失效，accent 档也让给「他方执行中」）/ 进行中=蓝
@@ -723,10 +663,9 @@ class _DesktopTaskTable extends StatelessWidget {
           value: (item) => item.createdAt ?? '—',
         ),
       ],
-      items: _applyFilters(items),
-      // 表头筛选（2026-09-09）：bucket 从当前页全量行聚合，行集在前端裁剪，
-      // 与服务端 keyword/类别下拉分页叠加。
-      facets: _facetsOf(items),
+      items: items,
+      // 状态仅由主阶段作全结果查询；类别表头下推服务端，不裁剪当前页。
+      facets: _facets,
       nullCounts: const {},
       filters: filters,
       onFilterChanged: onFilterChanged,

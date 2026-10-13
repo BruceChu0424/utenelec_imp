@@ -1138,7 +1138,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     }
 
     @Test
-    void financeQuantityPriceDiscountAndDeletionPreserveInspectableSnapshots() {
+    void financePricingPreservesQuantityRowIdentityAndBasePrice() {
         Fixture f = fixture("cell-diff");
         UUID first = goods("保留货品", BigDecimal.TEN);
         UUID second = goods("删除货品", BigDecimal.TEN);
@@ -1150,23 +1150,17 @@ class SalesQuoteFinanceFlowPostgresTest {
         var claim = claims.claim(CLAIM, draft.getId().toString());
         var firstId = draft.getItems().getFirst().getId();
         var secondId = draft.getItems().getLast().getId();
-        assertCode(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
-                new QuoteFinanceEditRequest.Line(firstId, null, null, null, null, BigDecimal.ZERO, null, null)))),
-                ErrorCode.VALIDATION_FAILED);
-        assertCode(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
-                new QuoteFinanceEditRequest.Line(firstId, null, null, null, null, null, null, true),
-                new QuoteFinanceEditRequest.Line(secondId, null, null, null, null, null, null, true)))),
-                ErrorCode.VALIDATION_FAILED);
         var edited = finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
-                new QuoteFinanceEditRequest.Line(firstId, new BigDecimal("0.9"), null, null, null,
-                        new BigDecimal("5"), new BigDecimal("11"), null),
-                new QuoteFinanceEditRequest.Line(secondId, null, null, null, null, null, null, true))));
-        assertThat(edited.lines()).hasSize(1);
-        assertThat(edited.lines().getFirst().amount()).isEqualByComparingTo("49.5");
+                new QuoteFinanceEditRequest.Line(firstId, new BigDecimal("0.9"), null, null, null))));
+        assertThat(edited.lines()).hasSize(2);
+        assertThat(edited.lines().getFirst().amount()).isEqualByComparingTo("21.6");
+        assertThat(edited.lines().getFirst().qty()).isEqualByComparingTo("2");
+        assertThat(edited.lines().getLast().itemId()).isEqualTo(secondId);
+        assertThat(edited.lines().getLast().qty()).isEqualByComparingTo("3");
         assertThat(edited.revisions().getFirst().snapshot().path("lines")).hasSize(2);
-        assertThat(edited.revisions().getLast().snapshot().path("lines")).hasSize(1);
+        assertThat(edited.revisions().getLast().snapshot().path("lines")).hasSize(2);
         assertThat(edited.revisions().getFirst().snapshot().path("lines").get(0).path("price").asText()).isEqualTo("12");
-        assertThat(edited.revisions().getLast().snapshot().path("lines").get(0).path("price").asText()).isEqualTo("11");
+        assertThat(edited.revisions().getLast().snapshot().path("lines").get(0).path("price").asText()).isEqualTo("12");
         assertThat(edited.revisions().getLast().snapshot().path("lines").get(0).path("unitName").asText()).isEqualTo("个");
         assertThat(jdbc.queryForObject("SELECT price FROM goods WHERE id=?", BigDecimal.class, first)).isEqualByComparingTo("10");
         assertConflict(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of())));

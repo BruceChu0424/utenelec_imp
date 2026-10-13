@@ -106,72 +106,7 @@ public class ProductionPlanService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<ProductionPlanService> reviewedDraftProxy;
 
-    public record DraftReview(String snapshot, PlanDetail detail, boolean quantityEditable) { }
-
-    @Transactional
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:view') and hasAuthority('production_plan:approve')")
-    public DraftReview review(UUID id) {
-        tx.bind();
-        ProductionPlan plan = requirePlanForUpdate(id);
-        com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, plan.getMakerId(), "production_plan");
-        if (plan.getStatus() == null || plan.getStatus() != STATUS_DRAFT)
-            throw new ApiException(ErrorCode.CONFLICT, "仅草稿计划可修改后审核");
-        return new DraftReview(com.uten.imp.common.review.DocumentDraftReview.snapshot(em,
-                com.uten.imp.common.review.DocumentDraftReview.Kind.PLAN, id), detail(id),
-                com.uten.imp.features.production.ProductionReviewedInputGuard.planQuantityEditable(plan));
-    }
-
-    @Transactional
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:view') and hasAuthority('production_plan:approve')")
-    public PlanDetail updateReviewed(UUID id, PlanSaveRequest request, String expectedSnapshot, boolean approveNow) {
-        review(id);
-        com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em,
-                com.uten.imp.common.review.DocumentDraftReview.Kind.PLAN, id, expectedSnapshot);
-        com.uten.imp.features.production.ProductionReviewedInputGuard.plan(requirePlan(id), itemRepo.findByPlanIdOrderByLineNoAsc(id), request);
-        PlanDetail saved;
-        try (var reviewScope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("production_plan_item", id, currentUser.requireId())) {
-            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, request, expectedSnapshot);
-        }
-        return approveNow ? approve(id) : saved;
-    }
-
-    @Transactional
-    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:view') and hasAuthority('production_plan:approve')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_plan_item", requestArgument=1, documentIdArgument=0, mapping=com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave.Mapping.DOMAIN_LINEAGE)
-    public PlanDetail saveReviewedDraft(UUID id, PlanSaveRequest request, String expectedSnapshot) {
-        tx.bind();
-        ProductionPlan plan = requirePlanForUpdate(id);
-        com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, plan.getMakerId(), "production_plan");
-        if (plan.getStatus() == null || plan.getStatus() != STATUS_DRAFT)
-            throw new ApiException(ErrorCode.CONFLICT, "仅草稿计划可修改后审核");
-        com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em,
-                com.uten.imp.common.review.DocumentDraftReview.Kind.PLAN, id, expectedSnapshot);
-        List<ProductionPlanItem> stored = itemRepo.findByPlanIdOrderByLineNoAsc(id);
-        com.uten.imp.features.production.ProductionReviewedInputGuard.plan(plan, stored, request);
-        Map<UUID, ProductionPlanItem> byId = new HashMap<>();
-        stored.forEach(item -> byId.put(item.getId(), item));
-        boolean quantityChanged = false;
-        for (PlanItemLine line : request.getItems()) {
-            ProductionPlanItem item = byId.get(line.getSourceItemId());
-            quantityChanged |= item.getQty() == null || item.getQty().compareTo(line.getQty()) != 0;
-            item.setQty(line.getQty());
-            item.setRemark(line.getRemark());
-            itemRepo.save(item);
-            com.uten.imp.common.platformcolumns.PlatformColumnSaveLineage.registerSaved(line,item.getId());
-        }
-        if (quantityChanged) planningDraftService.supersedeActive(id, "审核更正计划数量，原预排草案失效");
-        if (com.uten.imp.features.production.ProductionReviewedInputGuard.planQuantityEditable(plan))
-            plan.setDeliveryDate(request.getDeliveryDate());
-        plan.setRemark(request.getRemark());
-        plan.setUpdatedAt(java.time.Instant.now());
-        planRepo.saveAndFlush(plan);
-        itemRepo.flush();
-        recomputeClosed(id);
-        return detail(id);
-    }
 
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order) {
@@ -285,12 +220,14 @@ public class ProductionPlanService {
 
     /** Keep source/inventory locks ahead of the platform field snapshot's plan header lock. */
     @Transactional(propagation = Propagation.MANDATORY)
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:edit')")
     public void lockPlatformColumnSave(UUID id, PlanSaveRequest request) {
         tx.bind();
         requirePlanForUpdate(id, requestedFootprint(request));
     }
 
     @Transactional
+    @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('production_plan:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_plan_item", requestArgument=1, documentIdArgument=0)
     public PlanDetail update(UUID id, PlanSaveRequest req) {
         tx.bind();

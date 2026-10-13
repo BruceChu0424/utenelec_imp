@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -34,6 +35,50 @@ const _server = 'https://draft-restore.example/api';
 const _scope = AuthenticatedScope(userId: 'warehouse-user');
 
 void main() {
+  testWidgets('单张审核丢回执后重开只GET原单核对，不依赖已离队任务或重复出仓', (tester) async {
+    final api = _DraftApi()..lostApprovalReceipt = true;
+    final harness = await _pumpDraft(tester, api, _draftData());
+    await _submit(tester, approve: true);
+    final unknown = harness.container.read(formDraftsProvider).single;
+    expect(unknown.hasUnknownSubmission, isTrue);
+    expect(api.approvals, ['issue-1']);
+    harness.router.go('/home');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存原提交后离开'));
+    await tester.pumpAndSettle();
+    unawaited(harness.router.push(unknown.resumeLocation));
+    await tester.pumpAndSettle();
+    expect(api.approvals, ['issue-1']);
+    expect(api.savedBodies, hasLength(1));
+    expect(harness.container.read(formDraftsProvider), isEmpty);
+    expect(find.text('出库任务中心'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('单张保存回执不明时恢复原填写但禁止再发送，原请求记录继续保留', (tester) async {
+    final api = _DraftApi()..lostSaveReceipt = true;
+    final harness = await _pumpDraft(tester, api, _draftData());
+    await _submit(tester, approve: false);
+    final unknown = harness.container.read(formDraftsProvider).single;
+    expect(unknown.hasUnknownSubmission, isTrue);
+    harness.router.go('/home');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存原提交后离开'));
+    await tester.pumpAndSettle();
+    unawaited(harness.router.push(unknown.resumeLocation));
+    await tester.pumpAndSettle();
+    expect(_table(tester).rows.single.draft.qty.text, '500');
+    expect(find.text('核对出仓结果'), findsOneWidget);
+    await tester.tap(find.text('核对出仓结果'));
+    await tester.pumpAndSettle();
+    expect(api.savedBodies, hasLength(1));
+    expect(api.approvals, isEmpty);
+    expect(
+      harness.container.read(formDraftsProvider).single.hasUnknownSubmission,
+      isTrue,
+    );
+    expect(tester.takeException(), isNull);
+  });
   for (final approve in [false, true]) {
     testWidgets('旧本机明细 UUID 恢复后使用最新服务器明细保存，审核=$approve', (tester) async {
       final api = _DraftApi();
@@ -408,6 +453,8 @@ class _DraftApi extends ApiClient {
   final approvals = <String>[];
   int taskReads = 0;
   int status = 0;
+  bool lostApprovalReceipt = false;
+  bool lostSaveReceipt = false;
   Map<String, dynamic> savedHeader = {};
 
   void addSecondLine() {
@@ -501,6 +548,10 @@ class _DraftApi extends ApiClient {
       existing.addAll(Map<String, dynamic>.from(row));
     }
     savedHeader = {...payload}..remove('items');
+    if (lostSaveReceipt) {
+      lostSaveReceipt = false;
+      throw NetworkTimeoutException();
+    }
     return document;
   }
 
@@ -516,6 +567,10 @@ class _DraftApi extends ApiClient {
     }
     approvals.add('issue-1');
     status = 1;
+    if (lostApprovalReceipt) {
+      lostApprovalReceipt = false;
+      throw NetworkTimeoutException();
+    }
     return document;
   }
 }

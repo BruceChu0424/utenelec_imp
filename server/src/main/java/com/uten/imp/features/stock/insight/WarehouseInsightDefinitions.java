@@ -260,14 +260,14 @@ final class WarehouseInsightDefinitions {
      */
     static List<ReportTotalsCalculator.Spec> healthTotalSpecs(boolean canViewCost) {
         List<ReportTotalsCalculator.Spec> specs = new ArrayList<>(List.of(
-                new ReportTotalsCalculator.Spec("qty", "合计库存数量", ReportTotalsCalculator.TYPE_NUMBER, "unitName"),
+                new ReportTotalsCalculator.Spec("qty", "合计库存数量", ReportTotalsCalculator.TYPE_NUMBER, "unitName","__unitId"),
                 new ReportTotalsCalculator.Spec("weightKg", "合计库存重量", ReportTotalsCalculator.TYPE_WEIGHT, null),
                 new ReportTotalsCalculator.Spec("weightKg_unknown_rows", "重量未知",
                         ReportTotalsCalculator.TYPE_COUNT, null),
                 new ReportTotalsCalculator.Spec("weightKg_estimated_rows", "重量含估算",
                         ReportTotalsCalculator.TYPE_COUNT, null),
                 new ReportTotalsCalculator.Spec("out90", "合计近90天消耗", ReportTotalsCalculator.TYPE_NUMBER,
-                        "unitName")));
+                        "unitName","__unitId")));
         if (canViewCost) {
             specs.add(new ReportTotalsCalculator.Spec("amountLocal", "合计库存金额",
                     ReportTotalsCalculator.TYPE_MONEY, null));
@@ -277,7 +277,12 @@ final class WarehouseInsightDefinitions {
 
     /** 合计用的行 Map (key 与 {@link #healthTotalSpecs} 一致)。 */
     static Map<String, Object> totalsRow(HealthRow row) {
+        return totalsRow(row,null);
+    }
+
+    static Map<String,Object> totalsRow(HealthRow row,UUID unitId) {
         Map<String, Object> values = new HashMap<>();
+        values.put("__unitId",unitId);
         values.put("qty", row.qty());
         values.put("unitName", row.unitName());
         values.put("weightKg", row.weightKg());

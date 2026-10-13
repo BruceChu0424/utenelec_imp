@@ -1920,17 +1920,16 @@ void main() {
       );
 
       // 2026-09-04 改版口径：执行状态面板/进度条随产品卡片下线——执行阶段
-      // 在「已转生产」桶详情行断言；50% 进度体现在行文本上（未回传时为
-      // 「执行进度待回传」，绝不发明 0%）。
+      // 在「已转生产」桶详情行显示真实阶段，数量比例不再拼进阶段文字。
 
       await _openBucketDetail(tester, 'workshop', stateFilter: '已下达');
-      expect(find.text('生产中 · 可报工 50%'), findsOneWidget);
+      expect(find.text('生产中 · 可报工'), findsOneWidget);
       // 已转生产行双击进入生产计划跟踪（旧卡片的整高计划入口动作迁移；
       // MasterDataTableView 列表页交互 = 单击选中、双击打开）。
       // 2026-10-08 状态列前置后窄屏(375)行内首列是「进度 / 待办」，名称列在
       // 首列右侧被横向滚出屏外——双击锚点改用首列状态文字（同一行，行级
       // 双击同样触发打开）。
-      final transferredRow = find.text('生产中 · 可报工 50%');
+      final transferredRow = find.text('生产中 · 可报工');
       expect(transferredRow, findsOneWidget);
       await tester.tap(transferredRow);
       await tester.tap(transferredRow);
@@ -2003,7 +2002,11 @@ void main() {
             ..['canSchedule'] = false
             ..['maxSchedulableQty'] = 0
             ..['readinessRatio'] = 1
-            ..['planExecutionStatus'] = 'IN_PROGRESS'
+            ..['planExecutionStatus'] = switch (detailReads) {
+              1 => 'IN_PROGRESS',
+              2 => 'READY',
+              _ => 'COMPLETED',
+            }
             ..['latestPlanId'] = 'plan-running-1'
             ..['latestPlanNo'] = 'PP-20260828-001'
             ..['planExecutionPlannedQty'] = 10
@@ -2028,13 +2031,17 @@ void main() {
       // 版本与指纹不变（CAS 头不变），仅动态执行投影变化也必须重建页面。
       Future<String> readTransferredStage() async {
         await _openBucketDetail(tester, 'workshop', stateFilter: '已下达');
-        final stageCell = find.textContaining('生产中 · 可报工 ');
+        final stageCell = find.byWidgetPredicate(
+          (widget) =>
+              widget is Text &&
+              const {'生产中 · 可报工', '物料齐套 · 可开工', '已完工'}.contains(widget.data),
+        );
         final text = tester.widget<Text>(stageCell).data!;
         await _closeBucketDetail(tester);
         return text;
       }
 
-      expect(await readTransferredStage(), '生产中 · 可报工 10%');
+      expect(await readTransferredStage(), '生产中 · 可报工');
 
       final container = ProviderScope.containerOf(
         tester.element(find.byType(ProductionMaterialAnalysisPage)),
@@ -2054,7 +2061,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(detailReads, 2);
-      expect(await readTransferredStage(), '生产中 · 可报工 30%');
+      expect(await readTransferredStage(), '物料齐套 · 可开工');
 
       container.read(pageResumeProvider.notifier).state = (
         location: '/warehouse/DRAW/draw-1',
@@ -2069,7 +2076,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(detailReads, 3);
-      expect(await readTransferredStage(), '生产中 · 可报工 100%');
+      await _openBucketDetail(tester, 'workshop', stateFilter: '已下达');
+      expect(find.text('测试产品'), findsNothing, reason: '已完工产品退出进行中清单');
+      await _closeBucketDetail(tester);
+      expect(find.text('已完工'), findsWidgets);
     },
   );
 
@@ -5189,6 +5199,43 @@ void main() {
     );
   });
 
+  for (final identityField in ['goodsId', 'colorId', 'unitId']) {
+    testWidgets(
+      'MAKE material does not borrow a child plan with a different $identityField',
+      (tester) async {
+        final analysis = _makeStatusAnalysisJson(
+          childSubmitted: 5,
+          planExecutionStatus: 'IN_PROGRESS',
+          latestPlanId: 'foreign-plan',
+          latestPlanNo: 'SJ-FOREIGN-IDENTITY',
+        );
+        final material = (analysis['flatMaterials'] as List).single as Map;
+        material['planAnchorAnalysisLineId'] = 'child-line-1';
+        final child = (analysis['products'] as List).last as Map;
+        child[identityField] = 'different-$identityField';
+        await _pumpPage(
+          tester,
+          size: const Size(1400, 1000),
+          permissions: const {
+            Perm.productionMaterialAnalysisCreate,
+            Perm.productionMaterialAnalysisRefresh,
+            Perm.productionMaterialAnalysisNotify,
+            Perm.productionPlanView,
+          },
+          analysisJson: analysis,
+        );
+        await _materialTableRowVisible(tester, 'make-short-1');
+        await _openMaterialTableDetails(tester, 'make-short-1');
+        expect(
+          find.byKey(const ValueKey('material-view-plan-make-short-1')),
+          findsNothing,
+        );
+        expect(find.textContaining('SJ-FOREIGN-IDENTITY'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'completed MAKE keeps quantities workflow and plan deep link in details',
     (tester) async {
@@ -7444,11 +7491,11 @@ void main() {
         '已下达自制 10',
         '计划量 10',
         '已完工入库 0',
-        '生产中 · 可报工 0%',
+        '生产中 · 可报工',
       ]) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
-      expect(find.bySemanticsLabel('生产中 · 可报工 0%'), findsWidgets);
+      expect(find.bySemanticsLabel('生产中 · 可报工'), findsWidgets);
       expect(
         find.descendant(of: row, matching: find.textContaining('本批已保障')),
         findsNothing,
@@ -7457,7 +7504,7 @@ void main() {
       // 子件产品的执行阶段在「已转生产」桶详情行断言；0% 明确写为
       // 「尚未完工入库」，绝不把库存覆盖伪装成完工进度。
       expect(
-        find.descendant(of: row, matching: find.text('生产中 · 可报工 0%')),
+        find.descendant(of: row, matching: find.text('生产中 · 可报工')),
         findsOneWidget,
       );
       semantics.dispose();
@@ -7483,7 +7530,7 @@ void main() {
       await _openMaterialTableDetails(tester, 'make-short-1');
       expect(find.text('合格库存保障 10/10(100%)'), findsOneWidget);
       expect(
-        find.descendant(of: row, matching: find.text('本批库存已覆盖 · 生产中 · 可报工 0%')),
+        find.descendant(of: row, matching: find.text('本批库存已覆盖 · 生产中 · 可报工')),
         findsOneWidget,
       );
       expect(
@@ -7517,7 +7564,7 @@ void main() {
         '本节点不再重复备料',
         '关联自制子任务',
         '需求状态 delegated(自制备料)(REQ-delegated)',
-        '状态 · 生产中 · 可报工 0%',
+        '状态 · 生产中 · 可报工',
         '已下达自制 12',
         '计划量 12',
         '已完工入库 0',
@@ -7785,7 +7832,7 @@ void main() {
 
       final exactRow = await _materialTableRowVisible(tester, 'make-exact');
       expect(
-        find.descendant(of: exactRow, matching: find.text('生产中 · 可报工 20%')),
+        find.descendant(of: exactRow, matching: find.text('生产中 · 可报工')),
         findsOneWidget,
       );
 

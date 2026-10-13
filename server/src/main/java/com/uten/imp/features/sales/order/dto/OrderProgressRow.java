@@ -4,7 +4,7 @@ import java.time.OffsetDateTime;
 
 /**
  * 销售订单进度看板行（订单进度查询卡用）。每张已审订单聚合其明细的
- * 订货/已排/已产/已发/可发数量，并派生生产进度百分比与链路阶段。
+ * 订货/已排/已产/已发/可发数量，并派生链路阶段。
  *
  * <p>stage 取值（前端按此分 Tab）：
  * <ul>
@@ -19,7 +19,7 @@ import java.time.OffsetDateTime;
  *       这两段只在剩余预留已被在途出货占满时出现，仍有可发余量时优先 SHIPPABLE</li>
  *   <li>SHIPPED 已发货：已发数量已达订货量</li>
  * </ul>
- * productionPct = 已产/订货（clamp ≤1），即「外层总进度环」口径（用户决策：生产进度为主）。
+ * productionPct 保留兼容字段，恒为空；跨产品/单位数量不能相加后制造生产完成比例。
  *
  * <p>financeConfirmed（V300）：false 时前端不展示排产进度，卡片显示「等待财务审核」；
  * 财务确认通过后进度才可见（与 V294 计划可见性闸门同口径的销售端呈现）。
@@ -36,7 +36,7 @@ public record OrderProgressRow(
         double reservedQty,
         double plannedQty,
         double unplannedQty,
-        double productionPct,
+        Double productionPct,
         String stage,
         boolean financeConfirmed,
         boolean financeRejected,

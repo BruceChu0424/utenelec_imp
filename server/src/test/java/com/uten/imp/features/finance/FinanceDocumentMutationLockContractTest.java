@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance;
 
 import org.junit.jupiter.api.Test;
+import com.uten.imp.support.DraftMutationSourceContract;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -35,7 +36,10 @@ class FinanceDocumentMutationLockContractTest {
                     .contains("em.refresh(", "PESSIMISTIC_WRITE", ".isDeleted()", "ErrorCode.NOT_FOUND");
 
             for (String signature : contract.mutations()) {
-                String command = method(source, signature);
+                String command = " update(".equals(signature)
+                        ? DraftMutationSourceContract.ordinaryUpdateBody(source)
+                        : method(source, signature);
+                command = DraftMutationSourceContract.expandUnapprovalAuthorization(source, command);
                 String expectedLock = contract.projectionMutations().contains(signature)
                         ? "= lockActiveForProjection(id);"
                         : "= lockActive(id);";
@@ -92,15 +96,11 @@ class FinanceDocumentMutationLockContractTest {
     }
 
     private static String method(String source, String signature) {
-        int start = source.indexOf(signature);
-        assertThat(start).as("method %s", signature.trim()).isGreaterThanOrEqualTo(0);
-        return methodAt(source, signature, start);
+        return DraftMutationSourceContract.method(source, signature.strip().split("\\(", 2)[0]);
     }
 
     private static String lastMethod(String source, String signature) {
-        int start = source.lastIndexOf(signature);
-        assertThat(start).as("method %s", signature.trim()).isGreaterThanOrEqualTo(0);
-        return methodAt(source, signature, start);
+        return DraftMutationSourceContract.method(source, signature.strip().split("\\(", 2)[0]);
     }
 
     private static String methodAt(String source, String signature, int start) {

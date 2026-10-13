@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_client.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/models/procurement_iqc_rejection.dart';
 import 'package:uten_imp/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart';
@@ -84,7 +83,7 @@ void main() {
     // 未掩码行 25.00——服务端金额掩码在卡片形态同样生效（ADR-128 本币口径）。
     expect(find.textContaining('***', findRichText: true), findsOneWidget);
     expect(find.textContaining('25.00', findRichText: true), findsOneWidget);
-    expect(find.text('财务投影异常'), findsWidgets);
+    expect(find.textContaining('财务投影异常'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
@@ -130,53 +129,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('iqc-rejection-task-table')), findsOneWidget);
-      await tester.tap(find.byKey(const Key('iqc-rejection-type-filter')));
-      await tester.pumpAndSettle();
-      final typeOption = find.byKey(
-        const ValueKey<(String, Key?, String?)>((
-          'uten-dropdown-option',
-          Key('iqc-rejection-type-filter'),
-          'subcontract',
-        )),
-      );
+      MasterDataTableView<ProcurementIqcRejectionCase> table() =>
+          tester.widget(find.byKey(const Key('iqc-rejection-task-table')));
+      expect(find.byKey(const Key('iqc-rejection-type-filter')), findsNothing);
       expect(
-        find.descendant(of: typeOption, matching: find.text('委外')),
-        findsOneWidget,
+        find.byKey(const Key('iqc-rejection-status-filter')),
+        findsNothing,
       );
-      await tester.tap(typeOption);
+      table().onFilterChanged('receiptType', 'SUBCONTRACT');
       await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<UtenDropdownField>(
-              find.byKey(const Key('iqc-rejection-type-filter')),
-            )
-            .value,
-        'subcontract',
-      );
-
-      await tester.tap(find.byKey(const Key('iqc-rejection-status-filter')));
+      table().onFilterChanged('status', 'FINANCE_EXCEPTION');
       await tester.pumpAndSettle();
-      final statusOption = find.byKey(
-        const ValueKey<(String, Key?, String?)>((
-          'uten-dropdown-option',
-          Key('iqc-rejection-status-filter'),
-          'FINANCE_EXCEPTION',
-        )),
-      );
-      expect(
-        find.descendant(of: statusOption, matching: find.text('财务投影异常')),
-        findsOneWidget,
-      );
-      await tester.tap(statusOption);
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<UtenDropdownField>(
-              find.byKey(const Key('iqc-rejection-status-filter')),
-            )
-            .value,
-        'FINANCE_EXCEPTION',
-      );
       final lists = requests
           .where((request) => request.path == '/procurement/iqc-rejections')
           .toList();
@@ -189,6 +152,17 @@ void main() {
         'size': '50',
       });
       expect(find.textContaining('G-001'), findsWidgets);
+      table().onFilterChanged('receiptType', null);
+      await tester.pumpAndSettle();
+      expect(
+        requests
+            .lastWhere(
+              (request) => request.path == '/procurement/iqc-rejections',
+            )
+            .uri
+            .queryParameters['receiptType'],
+        isNull,
+      );
       expect(tester.takeException(), isNull);
     },
   );

@@ -1,5 +1,4 @@
 import '../../../shared/documents/document_unapproval_action.dart';
-import 'subcontract_doc_edit_page.dart';
 import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
@@ -144,30 +143,6 @@ class _SubcontractDocDetailPageState
   bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
-  bool get _canReviewPhysical =>
-      nativeReadCanWrite &&
-      !(_detail?.legacyImported ?? false) &&
-      const {
-        SubcontractDocType.receipt,
-        SubcontractDocType.returnDoc,
-      }.contains(widget.docType) &&
-      _detail?.status == 0 &&
-      _hasPermission(_cfg.approvePerm);
-  Future<void> _openPhysicalReview() async {
-    if (!_canReviewPhysical) return;
-    final owns = captureNativeOwnership();
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => SubcontractDocEditPage(
-          docType: widget.docType,
-          id: widget.id,
-          reviewMode: true,
-        ),
-      ),
-    );
-    if (mounted && owns()) await _load();
-  }
-
   bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
 
   bool get _financeReviewOnly =>
@@ -814,16 +789,21 @@ class _SubcontractDocDetailPageState
   );
 
   String _orderStatusText(SubcontractDocDetail detail) {
+    if (detail.status == kSubcontractStatusReversed) return '已反审';
     final approval = detail.financeApproval;
     if (approval?.isPending == true) {
+      if (detail.status == kSubcontractStatusApproved) return '改量待财务复核';
       return '等待财务审核组审核';
     }
-    if (approval?.isRejected == true) return '财务已退回，等待修改后重提';
+    if (approval?.isRejected == true) {
+      return detail.status == kSubcontractStatusApproved
+          ? '改量财务退回，等待修订后重提'
+          : '财务已退回，等待修改后重提';
+    }
     if (detail.status == kSubcontractStatusApproved ||
         approval?.isApproved == true) {
       return detail.closed ? '已结清' : '财务已审核，委外订货单已生效';
     }
-    if (detail.status == kSubcontractStatusReversed) return '已反审';
     return '订货草稿，待提交财务';
   }
 
@@ -1492,16 +1472,20 @@ class _SubcontractDocDetailPageState
   }
 
   Widget _financeApprovalBanner(ThemeData theme) {
+    if (_detail!.status == kSubcontractStatusReversed) {
+      return const SizedBox.shrink();
+    }
     final approval = _detail!.financeApproval;
     final pending = approval?.isPending == true;
     final rejected = approval?.isRejected == true;
     final approved =
         _detail!.status == kSubcontractStatusApproved ||
         approval?.isApproved == true;
+    final reviewing = _detail!.status == kSubcontractStatusApproved;
     final title = pending
-        ? '等待财务审核组处理'
+        ? (reviewing ? '改量等待财务复核' : '等待财务审核组处理')
         : rejected
-        ? '财务已退回，请修改后重新提交'
+        ? (reviewing ? '改量财务已退回，请修订后重新提交' : '财务已退回，请修改后重新提交')
         : approved
         ? '财务审核已通过'
         : '订货单尚未生效';
@@ -1754,20 +1738,6 @@ class _SubcontractDocDetailPageState
               SubcontractRoute.edit(_cfg.pathSegment, widget.id),
             ),
             child: const Text('编辑'),
-          ),
-        );
-      }
-      if (_canReviewPhysical) {
-        if (children.isNotEmpty) {
-          children.add(const SizedBox(width: UtenSpacing.s8));
-        }
-        children.add(
-          UtenButton(
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.large,
-            icon: Icons.edit_note_outlined,
-            onPressed: _openPhysicalReview,
-            child: const Text('修改后审核'),
           ),
         );
       }

@@ -46,6 +46,7 @@ public class OrderItemDto extends com.uten.imp.common.finance.OrderAmountInputRe
         this.sourceRequests = sourceRequests;
     }
     public String getGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftQty);}
+    public String getUnitRateExact(){return com.uten.imp.common.util.DecimalText.of(unitRate);}
     public String getReceivedQtyExact(){return com.uten.imp.common.util.DecimalText.of(receivedQty);}
     public String getReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnedQty);}
     public String getPhysicalQtyExact(){return com.uten.imp.common.finance.ProcurementQuantities.physicalText(quantitySemantics,qty,giftQty);}

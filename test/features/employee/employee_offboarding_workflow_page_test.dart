@@ -1,18 +1,76 @@
 import 'package:dio/dio.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/pages/employee_offboarding_workflow_page.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/shared/handover/data_handover_models.dart';
 import 'package:uten_imp/shared/handover/data_handover_repository.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+
+final _scopeForTest = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'old-user'),
+);
 
 void main() {
+  testWidgets('首次离职资料GET跨身份回执不能绑定到新账号草稿', (tester) async {
+    final pending = Completer<EmployeeProfile>();
+    final employees = _DelayedEmployeeRepository(pending.future);
+    final router = _router();
+    addTearDown(router.dispose);
+    final container = ProviderContainer(
+      overrides: [
+        employeeRepositoryProvider.overrideWithValue(employees),
+        dataHandoverRepositoryProvider.overrideWithValue(
+          _HandoverRepositoryFake(_noDataPreview),
+        ),
+        apiBaseUrlProvider.overrideWithValue(
+          'https://offboarding-test.example/api',
+        ),
+        authenticatedScopeProvider.overrideWith(
+          (ref) => ref.watch(_scopeForTest),
+        ),
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.employeeOffboard,
+        }),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    container.read(_scopeForTest.notifier).state = const AuthenticatedScope(
+      userId: 'new-user',
+    );
+    pending.complete(
+      const EmployeeProfile(
+        id: 'source-1',
+        code: 'OLD',
+        fullName: '原账号员工资料',
+        status: 'active',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('登录身份或服务器已变化'), findsOneWidget);
+    expect(find.text('原账号员工资料'), findsNothing);
+    expect(container.read(formDraftsProvider), isEmpty);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('no-data offboarding needs no successor and sends stable code', (
     tester,
   ) async {
@@ -22,6 +80,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiBaseUrlProvider.overrideWithValue(
+            'https://offboarding-test.example/api',
+          ),
           employeeRepositoryProvider.overrideWithValue(employees),
           dataHandoverRepositoryProvider.overrideWithValue(handover),
         ],
@@ -81,6 +142,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiBaseUrlProvider.overrideWithValue(
+            'https://offboarding-test.example/api',
+          ),
           employeeRepositoryProvider.overrideWithValue(
             _EmployeeRepositoryFake(),
           ),
@@ -110,6 +174,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiBaseUrlProvider.overrideWithValue(
+            'https://offboarding-test.example/api',
+          ),
           employeeRepositoryProvider.overrideWithValue(
             _EmployeeRepositoryFake(),
           ),
@@ -211,6 +278,13 @@ const _requiresTargetPreview = DataHandoverPreview(
   requiresTarget: true,
   total: 1,
 );
+
+class _DelayedEmployeeRepository extends _EmployeeRepositoryFake {
+  _DelayedEmployeeRepository(this.response);
+  final Future<EmployeeProfile> response;
+  @override
+  Future<EmployeeProfile> getById(String id) => response;
+}
 
 class _EmployeeRepositoryFake implements EmployeeRepository {
   Map<String, dynamic>? offboardBody;

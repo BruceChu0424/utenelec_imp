@@ -40,6 +40,7 @@ public class MaterialAnalysisController {
     private final AnalysisLinkedSalesOrderService linkedSalesOrders;
     private final AuditDetailViewRecorder detailViewAudit;
     private final GoodsOwningWarehouseWriteService goodsOwningWarehouses;
+    private final MaterialAnalysisPlanWithdrawalService planWithdrawals;
 
     @PostMapping("/{id}/make-public-claims")
     @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:claim_shared_future')")
@@ -309,6 +310,16 @@ public class MaterialAnalysisController {
             @PathVariable UUID id,
             @Valid @RequestBody IssueWorkshopPlansRequest request) {
         return commandService.issueWorkshopPlans(id, request);
+    }
+
+    /** Withdraw the plan responsibility, rather than only its execution arrangement. */
+    @PostMapping("/{id}/plans/{planId}/withdraw")
+    @PreAuthorize("hasAuthority('production_material_analysis:view') and hasAuthority('production_material_analysis:generate')")
+    public AnalysisView withdrawPlan(
+            @PathVariable UUID id,
+            @PathVariable UUID planId,
+            @Valid @RequestBody PlanWithdrawalRequest request) {
+        return planWithdrawals.withdraw(id, planId, request);
     }
 
     /**

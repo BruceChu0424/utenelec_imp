@@ -233,14 +233,17 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
             if (financeApproval != null) {
+                if (java.util.Set.of("PENDING", "REJECTED").contains(financeApproval)) {
+                    ps.add(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED));
+                }
                 if ("IN_PROGRESS".equals(financeApproval)) {
-                    // 进行中包含财务在审/退回待修改，以及批准后尚未结案的执行单。
+                    // 实物结案不结束财务复核；在审/退回仍须显示原单，再加尚未结案的执行单。
                     // 聚合在数据库分页前完成，不能在前端拼接多份分页结果。
                     java.util.Set<UUID> financeIds = new java.util.HashSet<>(pendingFinanceIds);
                     financeIds.addAll(rejectedFinanceIds);
                     Predicate financePending = financeIds.isEmpty()
                             ? cb.disjunction()
-                            : cb.and(cb.equal(root.get("status"), STATUS_DRAFT),
+                            : cb.and(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED),
                                     root.get("id").in(financeIds));
                     Predicate executing = cb.and(
                             cb.equal(root.get("status"), STATUS_APPROVED),
@@ -714,43 +717,6 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
     public boolean isFinanceApproved(UUID id) {
         SubcontractOrder order = requireOrderForUpdate(id);
         return order.getStatus() != null && order.getStatus() == STATUS_APPROVED;
-    }
-
-    @Override
-    @Transactional(propagation = Propagation.MANDATORY)
-    public OrderSnapshot amendFinanceReview(UUID id, List<ProcurementOrderApprovalPort.ReviewAmountEdit> edits) {
-        com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireEdits(edits);
-        SubcontractOrder order = requireOrderForUpdate(id);
-        if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
-            throw new ApiException(ErrorCode.CONFLICT, "仅待生效草稿可在审核中修改金额；已有下游事实请先反审");
-        }
-        List<SubcontractOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
-        Map<UUID, SubcontractOrderItem> byId = items.stream().collect(java.util.stream.Collectors.toMap(SubcontractOrderItem::getId, java.util.function.Function.identity()));
-        BigDecimal originalTotal = BigDecimal.ZERO;
-        BigDecimal localTotal = BigDecimal.ZERO;
-        for (var edit : edits) {
-            SubcontractOrderItem item = byId.get(edit.itemId());
-            if (item == null) throw new ApiException(ErrorCode.CONFLICT, "审核修改明细不属于当前订货单");
-            com.uten.imp.common.finance.FinanceReviewAmountPolicy.requireSamePricingMode(edit, item.getTotalAmountInput());
-            BigDecimal price = com.uten.imp.common.finance.FinanceReviewAmountPolicy.price(edit, item.getQty());
-            item.setPrice(price);
-            item.setTotalAmountInput(edit.totalAmountInput());
-            BigDecimal original = com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    MoneyPolicy.orderBaseAmount(item.getQty(), price, edit.totalAmountInput()), item.getExtraColumns());
-            item.setAmountOriginal(original);
-            item.setAmountLocal(MoneyPolicy.local(original, order.getExchangeRate()));
-            itemRepo.save(item);
-        }
-        for (var item : items) {
-            originalTotal = originalTotal.add(item.getAmountOriginal());
-            localTotal = localTotal.add(item.getAmountLocal());
-        }
-        order.setTotalOriginal(originalTotal);
-        order.setTotalLocal(localTotal);
-        orderRepo.save(order);
-        itemRepo.flush();
-        orderRepo.flush();
-        return lockAndValidateFinanceSubmission(id);
     }
 
     @Override
@@ -1784,7 +1750,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
 
     /**
      * 同货品合并行的来源 FIFO 拆分（采购侧对称）：按各申请行当前剩余量
-     *（qty - ordered_qty - 待财务审核订货占用）在「需求日期升序、id 升序」
+     *（qty - ordered_qty - 在审或退回待修订订货占用）在「需求日期升序、id 升序」
      * 稳定顺序上先到先得，末位来源吸收超额；份额为 0 的来源丢弃。
      * 手工行（无来源）与单来源行退化为 alloc = 行数量（与历史单锚一致）。
      */
@@ -1807,17 +1773,15 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         LEFT JOIN (
                             SELECT src.application_item_id,
                                    SUM(COALESCE(src.alloc_qty, 0)) AS pending_qty
-                            FROM procurement_order_approval_cases approval
-                            JOIN subcontract_orders so
-                              ON approval.order_type = 'SUBCONTRACT'
-                             AND approval.order_id = so.id
-                             AND approval.status = 'PENDING'
+                            FROM subcontract_orders so
                             JOIN subcontract_order_items oi ON oi.order_id = so.id
                             JOIN subcontract_order_item_sources src
                               ON src.order_item_id = oi.id
                             WHERE so.status = 0
                               AND so.is_deleted = FALSE
                               AND oi.is_deleted = FALSE
+                              AND fn_procurement_order_latest_approval_status('SUBCONTRACT', so.id)
+                                    IN ('PENDING', 'REJECTED')
                               AND src.application_item_id IN (:ids)
                             GROUP BY src.application_item_id
                         ) pending ON pending.application_item_id = item.id
@@ -1866,6 +1830,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 }
                 splits.add(new SourceSplit(sourceId, take));
                 budget = budget.subtract(take);
+                remaining.put(sourceId, remaining.getOrDefault(sourceId, BigDecimal.ZERO)
+                        .subtract(take).max(BigDecimal.ZERO));
                 if (budget.signum() <= 0 && !last) {
                     break;
                 }

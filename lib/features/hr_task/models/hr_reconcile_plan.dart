@@ -424,6 +424,7 @@ class HrReconcileRow {
     required this.rowNo,
     required this.kind,
     required this.employee,
+    this.employeeVersion,
     this.reason,
     this.claim,
     this.notices = const [],
@@ -434,6 +435,9 @@ class HrReconcileRow {
   final int rowNo;
   final HrReconcileRowKind kind;
   final HrReconcileEmployee employee;
+
+  /// Original employee snapshot version stored by this plan, never a name or row index.
+  final int? employeeVersion;
 
   /// 当前证件号的问题原文（服务端按存量号现算，与证件核对列表同口径）。
   final String? reason;
@@ -452,6 +456,9 @@ class HrReconcileRow {
     employee: HrReconcileEmployee.fromJson(
       _objectOrNull(json, 'employee') ?? const {},
     ),
+    employeeVersion: json['employeeVersion'] == null
+        ? null
+        : _int(json, 'employeeVersion'),
     claim: _objectOrNull(json, 'claim') == null
         ? null
         : HrReconcileRowClaim.fromJson(json['claim'] as Map<String, dynamic>),
@@ -825,4 +832,23 @@ class HrReconcilePlanSummaryPage {
         total: _int(json, 'total'),
         totalPages: _int(json, 'totalPages'),
       );
+}
+
+/// Pure-read receipt for one frozen apply request; it never authorizes a new apply.
+class HrReconcileApplyReceipt {
+  const HrReconcileApplyReceipt({required this.status, this.result});
+  final String status;
+  final HrReconcileApplyResult? result;
+
+  factory HrReconcileApplyReceipt.fromJson(Map<String, dynamic> json) {
+    final status = _string(json, 'status');
+    final result = _objectOrNull(json, 'result');
+    if (status == 'FINISHED' && result == null) {
+      throw const FormatException('原更正回执缺少完成结果');
+    }
+    return HrReconcileApplyReceipt(
+      status: status,
+      result: result == null ? null : HrReconcileApplyResult.fromJson(result),
+    );
+  }
 }

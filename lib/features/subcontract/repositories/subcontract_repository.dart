@@ -73,35 +73,6 @@ class SubcontractRepository {
   String get _base => '/subcontract/$pathSegment';
   String _doc(String id) => '/subcontract/$pathSegment/$id';
 
-  Future<({String snapshot, SubcontractDocDetail detail})> review(
-    String id,
-  ) async {
-    final json = await api.get('${_doc(id)}/review');
-    return (
-      snapshot: json['snapshot'] as String,
-      detail: SubcontractDocDetail.fromJson(
-        json['detail'] as Map<String, dynamic>,
-      ),
-    );
-  }
-
-  Future<SubcontractDocDetail> saveReviewed(
-    String id,
-    Map<String, dynamic> document,
-    String expectedSnapshot, {
-    bool approveNow = true,
-  }) async {
-    final json = await api.post(
-      '${_doc(id)}/review',
-      body: {
-        'expectedSnapshot': expectedSnapshot,
-        'document': document,
-        'approveNow': approveNow,
-      },
-    );
-    return SubcontractDocDetail.fromJson(json);
-  }
-
   Future<PagedResult<SubcontractDocListItem>> list({
     int page = 1,
     int size = 20,

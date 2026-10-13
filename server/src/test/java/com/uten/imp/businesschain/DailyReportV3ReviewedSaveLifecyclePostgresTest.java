@@ -63,20 +63,21 @@ class DailyReportV3ReviewedSaveLifecyclePostgresTest {
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
     @Test @Order(1)
-    void reviewerOnlySaveThenExplicitV3KeepUnapprovalAndNewGenerationConserveExactUseAndCost(){
+    void makerSaveThenReadonlyV3KeepUnapprovalAndNewGenerationConserveExactUseAndCost(){
         Task task=task("v3-reviewed-keep");
         DailyReportDetail original=create(task,"4.1256","4.0001",false);
         Map<String,Object> authors=authors(original.getId());
         UUID originalLine=original.getItems().getFirst().getId();
         UUID reviewer=reviewer(task);harness.loginAs(reviewer);
-        var seen=reports.review(original.getId());
         var previousMaterial=reports.materialReview(original.getId());
         var amendment=input(task,"6.1256","5.2504",false);
-        amendment.setExpectedVersion(seen.detail().getRowVersion());
-        amendment.getItems().getFirst().setReviewSourceItemId(originalLine);
+        amendment.setExpectedVersion(original.getRowVersion());
         amendment.getItems().getFirst().setDefectQty(new BigDecimal("1.1256"));
-        assertThatThrownBy(()->reports.update(original.getId(),amendment)).isInstanceOf(ApiException.class);
-        var saved=reports.updateReviewed(original.getId(),amendment,seen.snapshot(),false);
+        assertThatThrownBy(()->reports.update(original.getId(),amendment))
+                .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
+        harness.loginAs(task.world().superAdminUserId());
+        var saved=reports.update(original.getId(),amendment);
+        harness.loginAs(reviewer);
         assertThat(saved.getStatus()).isZero();
         assertThat(saved.getRowVersion()).isGreaterThan(original.getRowVersion());
         // Main reconstructs draft output slices; the original reviewed business source cannot change.
@@ -198,7 +199,7 @@ class DailyReportV3ReviewedSaveLifecyclePostgresTest {
         var fresh=reports.materialReview(draft.getId());assertThat(fresh.fingerprint()).isNotEqualTo(old.fingerprint());
         qty("9.1256",fresh.rows().getFirst().availableQty());
         var before=ledgerFacts();
-        ApiException blocked=catchThrowableOfType(()->reports.approve(draft.getId(),request(old,"KEEP","v3-stale-material-"+UUID.randomUUID())),ApiException.class);
+        ApiException blocked=catchThrowableOfType(ApiException.class,()->reports.approve(draft.getId(),request(old,"KEEP","v3-stale-material-"+UUID.randomUUID())));
         assertThat(blocked).isNotNull();assertThat(blocked.getCode()).isEqualTo(ErrorCode.DAILY_REPORT_MATERIAL_REVIEW_CONFLICT);
         assertThat(ledgerFacts()).isEqualTo(before);assertThat(reports.detail(draft.getId()).getStatus()).isZero();
         qty("1",finished(task));qty("1",consumed(task));

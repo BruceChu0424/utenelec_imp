@@ -48,6 +48,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/route_access_policy.dart';
@@ -56,12 +57,16 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/form_draft.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../employee/repositories/employee_repository.dart';
 import '../../notice/models/notice.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../models/hr_task_summary.dart';
+import '../models/hr_reconcile_form_draft.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../repositories/hr_task_repository.dart';
 import '../widgets/hr_task_widgets.dart';
@@ -153,6 +158,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     final async = ref.watch(hrTaskSummaryProvider);
     final perms = ref.watch(currentPermissionsProvider);
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
+    if (_type == HrTaskType.identity) ref.watch(formDraftsProvider);
     final canPublish = isSuperAdmin || perms.contains(Perm.noticePublish);
     // 批量登记转正只走 confirm（后端覆盖试用期转正与在职未登记补登，无 PUT 回退）。
     final canBatchConfirm = perms.contains(Perm.employeeConfirm);
@@ -163,6 +169,10 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       isSuperAdmin,
       RouteName.hrReconcile,
     );
+    final canReadRecords =
+        isSuperAdmin ||
+        (perms.contains(Perm.employeeView) &&
+            perms.contains(Perm.employeeEdit));
 
     Widget body = async.when(
       loading: () => const UtenSkeletonList(itemCount: 6),
@@ -231,6 +241,17 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         title: _type.title,
         showBackButton: true,
         actions: [
+          if (_type == HrTaskType.identity && canReadRecords)
+            IconButton(
+              key: const Key('hr-task-reconcile-records'),
+              tooltip: AppLocalizations.of(context).hrReconcileRecords,
+              icon: const Icon(Icons.history_rounded),
+              onPressed: () => context.push(
+                RoutePath.hrReconcile(
+                  returnTo: RouteName.hrTaskList(HrTaskType.identity.taskType),
+                ),
+              ),
+            ),
           IconButton(
             tooltip: '刷新',
             onPressed: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),
@@ -310,6 +331,18 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   }
 
   List<MasterColumnDef<HrTaskItem>> _columns(HrTaskSummary s) => [
+    if (_type == HrTaskType.identity)
+      MasterColumnDef(
+        key: 'status',
+        label: '状态',
+        width: 130,
+        value: _identityStatus,
+        cellColor: (context, item) => utenStatusBadgeCellColor(
+          _draftsFor(item).isEmpty
+              ? UtenStatusBadgeType.info
+              : UtenStatusBadgeType.neutral,
+        ),
+      ),
     MasterColumnDef(
       key: 'code',
       label: '工号',
@@ -430,6 +463,16 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
         value: (item) => item.blessed ? '已祝福' : null,
       ),
   ];
+
+  List<FormDraft> _draftsFor(HrTaskItem item) => taskDraftsFor(
+    ref.read(formDraftsProvider),
+    matches: (draft) => hrReconcileDraftMatchesEmployee(draft, item.employeeId),
+  );
+
+  String _identityStatus(HrTaskItem item) {
+    final drafts = _draftsFor(item);
+    return drafts.isEmpty ? '待核对' : taskDraftStatus(drafts);
+  }
 
   String get _dateColumnLabel => switch (_type) {
     HrTaskType.confirm => '转正预计日',
@@ -571,7 +614,16 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     final canConfirm = perms.contains(Perm.employeeConfirm);
     final canTakeover = perms.contains(Perm.employeeTaskTakeover);
     final blocked = item.claimedByOther;
+    final drafts = _type == HrTaskType.identity
+        ? _draftsFor(item)
+        : const <FormDraft>[];
     return [
+      if (drafts.isNotEmpty)
+        UtenMenuItem(
+          label: '恢复核对草稿',
+          icon: Icons.edit_note_rounded,
+          onTap: () => resumeTaskFormDraft(context, ref, drafts),
+        ),
       UtenMenuItem(
         label: '查看档案',
         icon: Icons.badge_outlined,
@@ -711,6 +763,18 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
   /// 批量处理：带着勾选的员工进核对更正页(ADR-160)。页内保存成功后 pop(true)，
   /// 返回本页清空勾选并静默重取(已核对的条目随之消失，徽标同步)。
   Future<void> _openIdentityReconcile(Set<String> ids) async {
+    final existing = taskDraftsFor(
+      ref.read(formDraftsProvider),
+      matches: (draft) =>
+          ids.any((id) => hrReconcileDraftMatchesEmployee(draft, id)),
+    );
+    if (existing.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, existing);
+      if (mounted) {
+        await ref.read(hrTaskSummaryProvider.notifier).reloadSilently();
+      }
+      return;
+    }
     final changed = await context.push<bool>(
       RoutePath.hrReconcile(
         employeeIds: ids.toList()..sort(),

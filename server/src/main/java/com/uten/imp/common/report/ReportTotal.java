@@ -22,8 +22,23 @@ import java.util.List;
  *                 两个 count 伴随项并进重量项显示 (另有 N 项未称 / 「≈」); count 为整数行数, 0 时隐藏
  * @param groupKey 分组列 key；null = 本报表没有分组维度，{@link #groups} 只有一组
  * @param groups   分组合计。<b>groupKey 非 null 时</b> {@code unit} 为 null 的那组是
- *                 「该行单位/币种没维护」，前端渲染成「单位未维护」而不是无后缀数字；
+ *                 「该行单位/币种没维护」，其 value 为 null，前端表示「合计待核验」，不得显示混合数值；
  *                 <b>groupKey 为 null 时</b>只有一组且 {@code unit} 恒为 null，渲染成纯数值。
  */
 public record ReportTotal(String key, String label, String type, String groupKey,
-                          List<ReportTotalGroup> groups) {}
+                          List<ReportTotalGroup> groups, String unitLabel) {
+    public ReportTotal(String key, String label, String type, String groupKey,
+                       List<ReportTotalGroup> groups) {
+        this(key, label, type, groupKey, groups, null);
+    }
+
+    public static List<ReportTotal> withColumnUnits(List<ReportTotal> totals,
+                                                   List<? extends ReportValueUnit> columns) {
+        java.util.Map<String, String> units = new java.util.HashMap<>();
+        for (ReportValueUnit column : columns) {
+            if (column.unitLabel() != null) units.put(column.key(), column.unitLabel());
+        }
+        return totals.stream().map(total -> new ReportTotal(total.key(), total.label(), total.type(),
+                total.groupKey(), total.groups(), units.getOrDefault(total.key(), total.unitLabel()))).toList();
+    }
+}

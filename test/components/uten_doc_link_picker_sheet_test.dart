@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_doc_link_picker_sheet.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -36,12 +37,17 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
   Map<String, List<_Item>> details = const {},
   Map<String, ProcurementSourceTerms> sourceTerms = const {},
   Map<String, String>? gifts,
+  Map<String, String>? exacts,
+  bool allowOverRemaining = false,
+  bool allowGiftOverRemaining = false,
 }) {
   return UtenDocLinkPickerConfig<_Doc, _Item, Null>(
     step1Title: '从测试单引入',
     step1EmptyMessage: '暂无已审测试单',
     partyNoun: '供应商',
     allPartiesLabel: '全部供应商',
+    allowOverRemaining: allowOverRemaining,
+    allowGiftOverRemaining: allowGiftOverRemaining,
     docIdOf: (d) => d.id,
     partyIdOf: (d) => d.partyId,
     watchNames: (_) => null,
@@ -80,9 +86,22 @@ UtenDocLinkPickerConfig<_Doc, _Item, Null> _config({
     goodsName: (_, goodsId) => '货品-$goodsId',
     colorName: (_, _) => '—',
     unitName: (_, _) => '—',
-    middleItemColumns: (_) => [],
+    middleItemColumns: (_) => [
+      if (gifts != null)
+        EditableGridColumn<UtenDocLinkItemRow<_Item>>(
+          key: 'gift',
+          label: '本次赠品',
+          width: 100,
+          cellBuilder: (_, row) => TextField(
+            key: ValueKey('test-link-gift-${row.item.id}'),
+            controller: row.giftQty,
+          ),
+        ),
+    ],
     remainQty: (it) => it.remain,
-    remainQtyText: gifts == null ? null : (item) => item.remain.toString(),
+    remainQtyText: gifts == null && exacts == null
+        ? null
+        : (item) => exacts?[item.id] ?? item.remain.toString(),
     remainGiftQtyText: gifts == null ? null : (item) => gifts[item.id],
     createBlankRow: () => UtenDocLinkItemRow<_Item>(const _Item('', '', 0, 0)),
   );
@@ -139,6 +158,122 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets(
+    'exact positive remainder remains visible when binary subtraction reached zero',
+    (tester) async {
+      final holder = <String, Object?>{};
+      await _openPanel(
+        tester,
+        _config(
+          docs: const [_Doc('exact-doc', 'EXACT-001', 's1')],
+          details: const {
+            'exact-doc': [_Item('exact-source', 'goods', 10, 0)],
+          },
+          exacts: const {'exact-source': '0.0001'},
+          gifts: const {'exact-source': '0'},
+        ),
+        resultHolder: holder,
+      );
+      await _doubleTapRow(tester, find.text('EXACT-001'));
+      await tester.pump();
+      expect(find.text('货品-goods'), findsOneWidget);
+      expect(find.text('0.0001 —'), findsOneWidget);
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+      await tester.tap(find.text('引入'));
+      await tester.pumpAndSettle();
+      final result =
+          await (holder['result']! as Future<UtenDocLinkPickResult<_Item>?>);
+      expect(result!.items.single.qtyText, '0.0001');
+      expect(result.items.single.upstreamItemId, 'exact-source');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'new-order source can replace one charged item by an extra gift despite declared gift zero',
+    (tester) async {
+      final holder = <String, Object?>{};
+      await _openPanel(
+        tester,
+        _config(
+          docs: const [_Doc('request-doc', 'REQUEST-001', 's1')],
+          details: const {
+            'request-doc': [_Item('request-source', 'goods', 10, 10)],
+          },
+          gifts: const {'request-source': '0'},
+          exacts: const {'request-source': '10'},
+          allowOverRemaining: true,
+          allowGiftOverRemaining: true,
+        ),
+        resultHolder: holder,
+      );
+      await _doubleTapRow(tester, find.text('REQUEST-001'));
+      await tester.pump();
+      final grid = tester.widget<UtenEditableGrid<UtenDocLinkItemRow<_Item>>>(
+        find.byType(UtenEditableGrid<UtenDocLinkItemRow<_Item>>),
+      );
+      final row = grid.controller.rows.single;
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (w) => w is TextField && identical(w.controller, row.qty),
+        ),
+        '9',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('test-link-gift-request-source')),
+        '1',
+      );
+      await tester.tap(find.byType(Checkbox).first);
+      await tester.pump();
+      await tester.tap(find.text('引入'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(UtenEditableGrid<UtenDocLinkItemRow<_Item>>),
+        findsNothing,
+        reason:
+            'The real user click should complete this valid order-source selection',
+      );
+      final result =
+          await (holder['result']! as Future<UtenDocLinkPickResult<_Item>?>);
+      expect(result!.items.single.qtyText, '9');
+      expect(result.items.single.giftQtyText, '1');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  for (final giftQuota in ['1', null]) {
+    testWidgets(
+      'default approved-source gift limit stays strict quota=$giftQuota',
+      (tester) async {
+        await _openPanel(
+          tester,
+          _config(
+            docs: const [_Doc('strict-doc', 'STRICT-001', 's1')],
+            details: const {
+              'strict-doc': [_Item('strict-source', 'goods', 10, 10)],
+            },
+            gifts: giftQuota == null ? const {} : {'strict-source': giftQuota},
+            allowOverRemaining: true,
+          ),
+        );
+        await _doubleTapRow(tester, find.text('STRICT-001'));
+        await tester.pump();
+        await tester.enterText(
+          find.byKey(const ValueKey('test-link-gift-strict-source')),
+          '2',
+        );
+        await tester.tap(find.byType(Checkbox).first);
+        await tester.pump();
+        await tester.tap(find.text('引入'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byType(UtenEditableGrid<UtenDocLinkItemRow<_Item>>),
+          findsOneWidget,
+        );
+        expect(find.textContaining('请修正标红'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   for (final terms in [
     const ProcurementSourceTerms(
       currencyId: 'usd',

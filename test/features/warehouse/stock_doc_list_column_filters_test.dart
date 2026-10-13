@@ -76,6 +76,29 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['departmentId'], 'dept-1');
     expect(api.lastQuery?['warehouseId'], 'warehouse-1');
+
+    await tester.tap(find.text('已审'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('stock-doc-issue-DRAW')), findsNothing);
+    expect(tableWidget().facets['issueStatus']?.map((bucket) => bucket.value), [
+      '0',
+      '1',
+      '2',
+    ]);
+    tableWidget().onFilterChanged('issueStatus', '1');
+    await tester.pumpAndSettle();
+    expect(api.lastListQuery?['status'], 1);
+    expect(api.lastListQuery?['issueStatus'], 1);
+    expect(api.lastListQuery?['page'], 1);
+    expect(api.lastListQuery?['warehouseId'], 'warehouse-1');
+    expect(tableWidget().filters['issueStatus'], '1');
+    tableWidget().onFilterChanged('issueStatus', null);
+    await tester.pumpAndSettle();
+    expect(api.lastListQuery?.containsKey('issueStatus'), isFalse);
+
+    await tester.tap(find.text('草稿').first);
+    await tester.pumpAndSettle();
+    expect(tableWidget().facets.containsKey('issueStatus'), isFalse);
     expect(tester.takeException(), isNull);
   });
 
@@ -140,6 +163,7 @@ class _StockFilterApi extends ApiClient {
   _StockFilterApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  Map<String, dynamic>? lastListQuery;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -147,6 +171,7 @@ class _StockFilterApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     lastQuery = query == null ? null : Map<String, dynamic>.from(query);
+    if (path == '/stock/docs') lastListQuery = lastQuery;
     return {
       'items': [
         {

@@ -13,6 +13,9 @@ import com.uten.imp.features.production.fulfillment.PlanningPackageFingerprint;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.io.IOException;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -55,6 +59,9 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
 @Service
 @RequiredArgsConstructor
 public class MaterialAnalysisService {
+
+    private static final ObjectReader PLAN_REFERENCES_READER = new ObjectMapper()
+            .readerFor(new TypeReference<List<PlanReference>>() { });
 
     static final String STATUS_ACTIVE = "ACTIVE";
     static final String STATUS_PARTIAL = "PARTIALLY_PLANNED";
@@ -631,7 +638,8 @@ public class MaterialAnalysisService {
     private Map<UUID, UUID> planAnchorByMaterial(UUID analysisId, List<AggregateMember> aggregateMembers) {
         Map<UUID, UUID> anchors = new LinkedHashMap<>(anchorChildByParentLine(analysisId));
         for (AggregateMember member : aggregateMembers) anchors.putIfAbsent(member.materialId(), member.anchorId());
-        return anchors;
+        return aggregateMembers.isEmpty()?anchors:
+                AggregateDelegationProjection.planAnchors(anchors,aggregateDelegationProjection(analysisId));
     }
 
     /**
@@ -4912,7 +4920,7 @@ public class MaterialAnalysisService {
                     && "COMPLETED".equals(planState.status())) {
                 planState=new ProductPlanState("NOT_STARTED",planState.planId(),planState.planNo(),
                         planState.plannedQty(),planState.inboundQty(),planExecutionProgressRatio(source.requestedQty(),planState.inboundQty()),
-                        planState.reportedQty(),planState.zeroMaterial(),planState.workshopName(),planState.responsibleName(),planState.workshopId(),planState.responsibleId());
+                        planState.reportedQty(),planState.zeroMaterial(),planState.workshopName(),planState.responsibleName(),planState.workshopId(),planState.responsibleId(),planState.planReferences());
             }
             return source.toView(ratio,productIdsWithMaterialChildren.contains(source.analysisItemId()),
                     planState,planningBlocks.get(source.analysisItemId()));
@@ -6060,7 +6068,9 @@ public class MaterialAnalysisService {
                   WHERE parent.analysis_id=:id
                 )
                 """;
-        Query sourceQuery=em.createNativeQuery(selected+"""
+        String sourceCtes=(selected.isEmpty()?"WITH ":selected+", ")
+                +"subcontract_budget_allocations AS MATERIALIZED ("+allocationBudgetRowsSql("source.analysis_id=:id")+")\n";
+        Query sourceQuery=em.createNativeQuery(sourceCtes+"""
                 SELECT ai.id, ai.source_type, ai.sales_order_item_id,
                        so.id, so.bill_no, so.bill_date,
                        ai.delivery_date, c.name,
@@ -6100,7 +6110,7 @@ public class MaterialAnalysisService {
                 """ + SUBCONTRACT_PLANNED_OUTPUT_SQL + """
                            ) AS qty
                     FROM production_material_analysis_materials root
-                    JOIN preplan_supply_action_allocations allocation
+                    JOIN subcontract_budget_allocations allocation
                       ON allocation.analysis_material_id = root.id
                     JOIN preplan_supply_actions action
                       ON action.id = allocation.action_id
@@ -6986,7 +6996,8 @@ public class MaterialAnalysisService {
     }
 
     /** Real plan/execution projection shown beside MAKE node tasks. */
-    private Map<UUID, ProductPlanState> productPlanStates(UUID analysisId) {        Map<UUID, ProductPlanState> result = new LinkedHashMap<>();
+    private Map<UUID, ProductPlanState> productPlanStates(UUID analysisId) {
+        Map<UUID, ProductPlanState> result = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 WITH active_links AS (
                     SELECT link.analysis_item_id, link.plan_id,
@@ -7005,6 +7016,15 @@ public class MaterialAnalysisService {
                 plan_ids AS (
                     SELECT DISTINCT plan_id
                     FROM active_links
+                ),
+                effective_segments AS MATERIALIZED (
+                    SELECT segment.*
+                    FROM plan_ids ids
+                    JOIN production_execution_segments segment ON segment.plan_id = ids.plan_id
+                    JOIN production_planning_packages package
+                      ON package.id = segment.package_id AND package.plan_id = segment.plan_id
+                     AND package.status = 'CONFIRMED' AND NOT package.is_deleted
+                    WHERE NOT segment.is_deleted AND segment.status NOT IN ('CANCELLED','REVERSED')
                 ),
                 item_rollup AS (
                     SELECT ids.plan_id,
@@ -7048,10 +7068,9 @@ public class MaterialAnalysisService {
                     LEFT JOIN production_plan_items plan_item
                       ON plan_item.plan_id = ids.plan_id
                      AND plan_item.is_deleted = FALSE
-                    LEFT JOIN production_execution_segments segment
+                    LEFT JOIN effective_segments segment
                       ON segment.source_plan_item_id = plan_item.id
-                     AND segment.is_deleted = FALSE
-                     AND segment.status NOT IN ('CANCELLED','REVERSED')
+                     AND segment.plan_id = plan_item.plan_id
                     LEFT JOIN departments workshop
                       ON workshop.id = segment.workshop_department_id
                     LEFT JOIN employees responsible
@@ -7065,10 +7084,9 @@ public class MaterialAnalysisService {
                     LEFT JOIN production_plan_items plan_item
                       ON plan_item.plan_id = ids.plan_id
                      AND plan_item.is_deleted = FALSE
-                    LEFT JOIN production_execution_segments segment
+                    LEFT JOIN effective_segments segment
                       ON segment.source_plan_item_id = plan_item.id
-                     AND segment.is_deleted = FALSE
-                     AND segment.status NOT IN ('CANCELLED','REVERSED')
+                     AND segment.plan_id = plan_item.plan_id
                     LEFT JOIN production_daily_report_items report_item
                       ON report_item.execution_segment_id = segment.id
                      AND report_item.is_deleted = FALSE
@@ -7081,22 +7099,15 @@ public class MaterialAnalysisService {
                 SELECT link.analysis_item_id,
                        (array_agg(plan.id ORDER BY link.created_at DESC, plan.id DESC))[1],
                        (array_agg(plan.bill_no ORDER BY link.created_at DESC, plan.id DESC))[1],
-                       CASE
-                         WHEN COALESCE(SUM(item_rollup.item_count),0) > 0
-                              AND BOOL_AND(item_rollup.all_complete)
-                            THEN 'COMPLETED'
-                         WHEN COALESCE(BOOL_OR(segment_rollup.has_in_progress), FALSE)
-                            THEN 'IN_PROGRESS'
-                         WHEN COALESCE(BOOL_OR(segment_rollup.has_dispatched), FALSE)
-                            THEN 'DISPATCHED'
-                         WHEN COALESCE(BOOL_OR(segment_rollup.has_ready), FALSE)
-                            THEN 'READY'
-                         WHEN COALESCE(BOOL_OR(segment_rollup.has_waiting), FALSE)
-                            THEN 'WAITING'
-                         WHEN COALESCE(BOOL_OR(link.approved), FALSE)
-                            THEN 'APPROVED'
-                         ELSE 'SUBMITTED'
-                       END AS execution_status,
+                """ + MaterialAnalysisFlowStageService.executionStatusSql(
+                        "COALESCE(SUM(item_rollup.item_count),0) > 0 AND BOOL_AND(item_rollup.all_complete)",
+                        "BOOL_OR(link.approved AND plan.status = 1 AND NOT item_rollup.all_complete AND segment_rollup.segment_count = 0)",
+                        "COALESCE(BOOL_OR(segment_rollup.has_in_progress), FALSE)",
+                        "COALESCE(BOOL_OR(segment_rollup.has_dispatched), FALSE)",
+                        "COALESCE(BOOL_OR(segment_rollup.has_ready), FALSE)",
+                        "COALESCE(BOOL_OR(segment_rollup.has_waiting), FALSE)",
+                        "COALESCE(BOOL_OR(link.approved), FALSE)") + """
+                        AS execution_status,
                        COALESCE(SUM(item_rollup.planned_qty)
                            FILTER (WHERE link.approved AND plan.status = 1),0)
                          AS execution_planned_qty,
@@ -7115,7 +7126,9 @@ public class MaterialAnalysisService {
                        (array_agg(CASE WHEN segment_rollup.segment_count>0 THEN segment_rollup.workshop_id
                            ELSE plan.department_id END ORDER BY link.created_at DESC,plan.id DESC))[1] AS execution_workshop_id,
                        (array_agg(CASE WHEN segment_rollup.segment_count>0 THEN segment_rollup.responsible_id
-                           ELSE plan.worker_id END ORDER BY link.created_at DESC,plan.id DESC))[1] AS execution_responsible_id
+                            ELSE plan.worker_id END ORDER BY link.created_at DESC,plan.id DESC))[1] AS execution_responsible_id,
+                        CAST(jsonb_agg(jsonb_build_object('planId',plan.id,'planNo',plan.bill_no,'status',plan.status)
+                            ORDER BY link.created_at DESC,plan.id DESC) AS text) AS plan_references
                 FROM active_links link
                 JOIN production_plans plan
                   ON plan.id = link.plan_id
@@ -7137,9 +7150,19 @@ public class MaterialAnalysisService {
                     plannedQty, inboundQty,
                     planExecutionProgressRatio(plannedQty, inboundQty),
                     decimal(row[6]), Boolean.TRUE.equals(row[7]),
-                    string(row[8]), string(row[9]),uuid(row[10]),uuid(row[11])));
+                    string(row[8]), string(row[9]),uuid(row[10]),uuid(row[11]),
+                    planReferences(string(row[12]))));
         }
         return Map.copyOf(result);
+    }
+
+    private static List<PlanReference> planReferences(String json) {
+        if (json == null) return List.of();
+        try {
+            return List.copyOf(PLAN_REFERENCES_READER.readValue(json));
+        } catch (IOException error) {
+            throw new IllegalStateException("Production plan references could not be read", error);
+        }
     }
 
     static BigDecimal planExecutionProgressRatio(
@@ -7307,19 +7330,20 @@ public class MaterialAnalysisService {
     }
 
     /**
-     * 一笔委外申请分摊(别名 allocation，所属行动 action)里「要我方领直属物料发外」的份额，0..1
+     * 一笔委外申请分摊(别名 allocation，所属行动 action)里「要我方领直属物料发外」的基本量。
      * (ADR-143 §4.5)。已批准的委外订货一定有冻结领料计划行(缺 BOM 的委外件不能下单，§二.3)，
      * 订货余量全部计入；尚未批准订货的部分按货品现时是否有可发外直属边(fn_subcontract_draw_edges，
      * 与计划冻结同一判定)。还没挂上申请明细的行动只看现时直属边。
      */
-    static final String SUBCONTRACT_DRAW_SHARE_SQL = """
-                COALESCE((
+    static String subcontractDrawQuantitySql(String quantitySql) {
+        return """
+                (SELECT ROUND(COALESCE((
                     SELECT CASE
                         WHEN split.ordered_open_qty + split.unordered_qty > 0
-                        THEN (split.ordered_open_qty + CASE WHEN split.drawable_now
+                        THEN quantity.qty * (split.ordered_open_qty + CASE WHEN split.drawable_now
                                  THEN split.unordered_qty ELSE 0 END)
                              / (split.ordered_open_qty + split.unordered_qty)
-                        WHEN split.drawable_now THEN 1 ELSE 0 END
+                        WHEN split.drawable_now THEN quantity.qty ELSE 0 END
                     FROM (
                         SELECT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(application_item.goods_id))
                                    AS drawable_now,
@@ -7346,22 +7370,41 @@ public class MaterialAnalysisService {
                                  application_item.qty, application_item.unit_rate
                     ) split),
                     CASE WHEN EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(action.goods_id))
-                         THEN 1 ELSE 0 END)::numeric
-                """;
+                         THEN quantity.qty ELSE 0 END),4)
+                 FROM (SELECT (%s)::numeric AS qty) quantity)
+                """.formatted(quantitySql);
+    }
+
+    /** Compute source prefixes once for the admitted analysis, not once per allocation. */
+    static String allocationBudgetRowsSql(String scopeSql) {
+        return """
+                SELECT source.*,
+                    SUM(source.allocated_qty) OVER(PARTITION BY source.action_id ORDER BY source.id
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS planned_through_qty,
+                    COALESCE(SUM(source.allocated_qty) OVER(PARTITION BY source.action_id ORDER BY source.id
+                        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS planned_before_qty
+                FROM preplan_supply_action_allocations source WHERE %s
+                """.formatted(scopeSql);
+    }
+
+    /** One four-place action budget, apportioned by cumulative exact source weights. */
+    static String allocationBudgetShareSql(String budgetSql) {
+        return """
+                (SELECT COALESCE(
+                    ROUND(budget.qty*allocation.planned_through_qty/NULLIF(action.requested_qty,0),4)
+                    - ROUND(budget.qty*allocation.planned_before_qty/NULLIF(action.requested_qty,0),4),0)
+                 FROM (SELECT ROUND(GREATEST((%s),0),4) AS qty) budget)
+                """.formatted(budgetSql);
+    }
 
     /**
      * 一笔未结委外申请分摊(别名 allocation/action)给 P 节点的计划产出(ADR-143 §4.5)：
      * 分摊比例 × (申请量 + 公共超量 − 合格入库回厂量)，只算要我方领料发外的份额。
      * 合格入库回厂量按回厂单与质检入库实收(与申请 DONE 判定同一口径)，领料、发货不动它。
      */
-    static final String SUBCONTRACT_PLANNED_OUTPUT_SQL = """
-                (GREATEST(allocation.allocated_qty / NULLIF(action.requested_qty, 0)
-                    * (action.requested_qty + action.public_surplus_qty - (
-                """ + SubcontractComponentCustodyProjection.ACTION_STOCKED_BASE_SQL + """
-                    )), 0) * (
-                """ + SUBCONTRACT_DRAW_SHARE_SQL + """
-                    ))
-                """;
+    static final String SUBCONTRACT_PLANNED_OUTPUT_SQL = subcontractDrawQuantitySql(allocationBudgetShareSql(
+            "action.requested_qty + action.public_surplus_qty - ("
+                    + SubcontractComponentCustodyProjection.ACTION_STOCKED_BASE_SQL + ")"));
 
     /**
      * 有效在途覆盖的公共取数。coverage 的每一行都带 supply_kind：
@@ -7381,7 +7424,9 @@ public class MaterialAnalysisService {
      * 展开基准需要区分二者（见 allocateNestedDiagnostics）。
      */
     private static final String ACTIVE_FUTURE_COVERAGE_SQL = """
-                WITH action_future AS (
+                WITH subcontract_budget_allocations AS MATERIALIZED (
+                """+allocationBudgetRowsSql("source.analysis_id=:analysisId")+"""
+                ), action_future AS (
                     SELECT action.id AS action_id,
                            progress.demand_future_qty AS future_qty
                     FROM preplan_supply_actions action
@@ -7396,15 +7441,19 @@ public class MaterialAnalysisService {
                       AND progress.demand_future_qty > 0
                 ), allocation_pending AS (
                     SELECT allocation.analysis_material_id,
+                           pending_qty.qty,
                            CASE WHEN action.external_document_type = 'PREPLAN_MAKE_TASK'
-                                THEN 1::numeric
+                                THEN pending_qty.qty
                                 WHEN action.external_document_type = 'SUBCONTRACT_APPLICATION'
                                  AND action.operation_type = 'SUPPLY'
                                 THEN (
-                """ + SUBCONTRACT_DRAW_SHARE_SQL + """
+                """ + subcontractDrawQuantitySql("pending_qty.qty") + """
                                 )
-                                ELSE 0::numeric END AS internal_ratio,
-                           CASE WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id) THEN fn_preplan_future_allocation_pending_qty(allocation.id)
+                                ELSE 0::numeric END AS internal_qty
+                    FROM subcontract_budget_allocations allocation
+                    JOIN preplan_supply_actions action ON action.id = allocation.action_id
+                    CROSS JOIN LATERAL (
+                       SELECT CASE WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id) THEN fn_preplan_future_allocation_pending_qty(allocation.id)
                            WHEN action.operation_type='SHARED_FUTURE_CLAIM' THEN fn_preplan_shared_allocation_pending_qty(allocation.id)
                            ELSE GREATEST(fn_preplan_allocation_admitted_qty(allocation.id)
                              - fn_preplan_allocation_effective_exact_qty(allocation.id)
@@ -7414,29 +7463,26 @@ public class MaterialAnalysisService {
                                  JOIN preplan_analysis_stock_exact_pegs exact
                                    ON exact.stock_reservation_id=output.source_reservation_id
                                  WHERE exact.supply_action_allocation_id=allocation.id),0),0) END::numeric AS qty
-                    FROM preplan_supply_action_allocations allocation
-                    JOIN preplan_supply_actions action
-                      ON action.id = allocation.action_id
+                    ) pending_qty
                     WHERE action.analysis_id = :analysisId
                       AND action.status IN ('OPEN','CREATED','IN_PROGRESS')
                 ), coverage AS (
                     SELECT pending.analysis_material_id, split.supply_kind, split.qty
                     FROM allocation_pending pending
                     CROSS JOIN LATERAL (VALUES
-                        ('INTERNAL', ROUND(pending.qty * pending.internal_ratio, 4)),
-                        ('EXTERNAL', pending.qty - ROUND(pending.qty * pending.internal_ratio, 4))
+                        ('INTERNAL', pending.internal_qty),
+                        ('EXTERNAL', pending.qty - pending.internal_qty)
                     ) split(supply_kind, qty)
                     UNION ALL
                     SELECT claim.target_material_id,'EXTERNAL',fn_preplan_make_public_claim_pending_qty(claim.id)::numeric
                     FROM preplan_make_public_claims claim WHERE claim.target_analysis_id=:analysisId
                     UNION ALL
                     SELECT allocation.analysis_material_id, 'EXTERNAL',
-                           LEAST(allocation.allocated_qty,
-                               future.future_qty * allocation.allocated_qty
-                                   / NULLIF(action.requested_qty,0))::numeric
+                """ + allocationBudgetShareSql("LEAST(future.future_qty,action.requested_qty)") + """
+                           ::numeric
                     FROM action_future future
                     JOIN preplan_supply_actions action ON action.id = future.action_id
-                    JOIN preplan_supply_action_allocations allocation
+                    JOIN subcontract_budget_allocations allocation
                       ON allocation.action_id = action.id
                 )
                 """;
@@ -7671,7 +7717,7 @@ public class MaterialAnalysisService {
 
     static int preparationStageRank(String stage) {
         if(stage.endsWith("PENDING_ISSUE"))return 0;
-        if(stage.endsWith("REQUESTED")||stage.endsWith("PLAN_SUBMITTED"))return 1;
+        if(stage.endsWith("REQUESTED")||stage.endsWith("PLAN_SUBMITTED")||stage.endsWith("PLANNING_REQUIRED"))return 1;
         if(stage.endsWith("PENDING_FINANCE"))return 2;
         if(stage.endsWith("WAITING_MATERIAL")||stage.endsWith("WAIT_RECEIPT"))return 3;
         if(stage.endsWith("WAITING_DRAW")||stage.endsWith("ZERO_READY")||stage.endsWith("WAIT_OUTBOUND"))return 4;
@@ -7780,12 +7826,15 @@ public class MaterialAnalysisService {
         // 只算要我方领料发外的份额。没有这一项, 真实下达 1500 之后直属物料需求会退回按
         // 物理缺口算的 1000, 多出来的 500 份物料就成了无人负责的需求。
         for (Object[] row : NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH subcontract_budget_allocations AS MATERIALIZED (
+                """+allocationBudgetRowsSql("source.analysis_id=:analysisId")+"""
+                )
                 SELECT material.analysis_item_id || '|' || material.node_key,
                        SUM(
                 """ + SUBCONTRACT_PLANNED_OUTPUT_SQL + """
                        )::numeric
                 FROM preplan_supply_actions action
-                JOIN preplan_supply_action_allocations allocation
+                JOIN subcontract_budget_allocations allocation
                   ON allocation.action_id = action.id
                 JOIN production_material_analysis_materials material
                   ON material.id = allocation.analysis_material_id
@@ -9549,7 +9598,7 @@ public class MaterialAnalysisService {
                     planState.responsibleName(), rootMaterialLineId,
                     owningWarehouseId, owningWarehouseName,
                     owningWorkshopId, owningWorkshopName,
-                    issuedPlanQty(), canIssueSurplus,planState.workshopId(),planState.responsibleId());
+                    issuedPlanQty(), canIssueSurplus,planState.workshopId(),planState.responsibleId(),planState.planReferences());
         }
     }
 
@@ -9565,7 +9614,15 @@ public class MaterialAnalysisService {
             String workshopName,
             String responsibleName,
             UUID workshopId,
-            UUID responsibleId) {
+            UUID responsibleId,
+            List<PlanReference> planReferences) {
+        ProductPlanState {
+            planReferences = planReferences == null ? List.of() : List.copyOf(planReferences);
+        }
+        ProductPlanState(String status,UUID planId,String planNo,BigDecimal plannedQty,BigDecimal inboundQty,BigDecimal progressRatio,
+                BigDecimal reportedQty,boolean zeroMaterial,String workshopName,String responsibleName,UUID workshopId,UUID responsibleId) {
+            this(status,planId,planNo,plannedQty,inboundQty,progressRatio,reportedQty,zeroMaterial,workshopName,responsibleName,workshopId,responsibleId,List.of());
+        }
         ProductPlanState(String status,UUID planId,String planNo,BigDecimal plannedQty,BigDecimal inboundQty,BigDecimal progressRatio,
                 BigDecimal reportedQty,boolean zeroMaterial,String workshopName,String responsibleName) {
             this(status,planId,planNo,plannedQty,inboundQty,progressRatio,reportedQty,zeroMaterial,workshopName,responsibleName,null,null);

@@ -25,4 +25,6 @@ public class MaterialIssueListItem extends com.uten.imp.common.history.DocumentH
 
     @Override public void disableHistoryActions() {
     }
+
+    public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

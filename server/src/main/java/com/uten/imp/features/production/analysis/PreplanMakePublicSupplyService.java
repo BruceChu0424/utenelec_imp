@@ -60,20 +60,48 @@ public class PreplanMakePublicSupplyService {
     static Map<UUID,String> claimedStages(EntityManager em,UUID analysisId) {
         Map<UUID,String> result=new HashMap<>();
         for(Object[] row:NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH claim_sources AS MATERIALIZED (
+                    SELECT claim.target_material_id,claim.source_plan_item_id,item.plan_id,plan.status AS plan_status,
+                           fn_preplan_make_public_claim_pending_qty(claim.id) AS pending_qty
+                    FROM preplan_make_public_claims claim
+                    JOIN production_plan_items item ON item.id=claim.source_plan_item_id AND NOT item.is_deleted
+                    JOIN production_plans plan ON plan.id=item.plan_id AND plan.status IN(0,1)
+                      AND NOT plan.is_deleted AND NOT plan.is_canceled
+                    WHERE claim.target_analysis_id=:analysis AND claim.qty>fn_preplan_make_public_claim_cancelled_qty(claim.id)
+                ), source_items AS MATERIALIZED (
+                    SELECT DISTINCT source_plan_item_id,plan_id FROM claim_sources
+                ), segment_states AS (
+                    SELECT source.source_plan_item_id,COUNT(segment.id) AS segment_count,
+                           BOOL_AND(segment.status='COMPLETED') AS all_complete,
+                           BOOL_OR(segment.status='IN_PROGRESS') AS has_in_progress,
+                           BOOL_OR(segment.status='DISPATCHED') AS has_dispatched,
+                           BOOL_OR(segment.status='READY') AS has_ready,
+                           BOOL_OR(segment.status='WAITING') AS has_waiting
+                    FROM source_items source
+                    LEFT JOIN production_execution_segments segment
+                      ON segment.source_plan_item_id=source.source_plan_item_id AND segment.plan_id=source.plan_id
+                     AND NOT segment.is_deleted AND segment.status NOT IN('CANCELLED','REVERSED')
+                     AND EXISTS(SELECT 1 FROM production_planning_packages package
+                                WHERE package.id=segment.package_id AND package.plan_id=segment.plan_id
+                                  AND package.status='CONFIRMED' AND NOT package.is_deleted)
+                    GROUP BY source.source_plan_item_id
+                )
                 SELECT claim.target_material_id,
-                    CASE WHEN SUM(fn_preplan_make_public_claim_pending_qty(claim.id))=0 THEN 'MAKE_COMPLETED'
-                         WHEN BOOL_AND(segment.status='COMPLETED') THEN 'MAKE_WAIT_STOCK_IN'
-                         WHEN BOOL_OR(segment.status='IN_PROGRESS') THEN 'MAKE_IN_PROGRESS'
-                         WHEN BOOL_OR(segment.status IN('READY','DISPATCHED')) THEN 'MAKE_WAITING_DRAW'
-                         WHEN BOOL_OR(plan.status=1) THEN 'MAKE_WAITING_MATERIAL'
-                         ELSE 'MAKE_PLAN_SUBMITTED' END
-                FROM preplan_make_public_claims claim
-                JOIN production_plan_items item ON item.id=claim.source_plan_item_id
-                JOIN production_plans plan ON plan.id=item.plan_id
-                LEFT JOIN production_execution_segments segment ON segment.source_plan_item_id=item.id AND NOT segment.is_deleted
-                WHERE claim.target_analysis_id=:analysis AND claim.qty>fn_preplan_make_public_claim_cancelled_qty(claim.id)
+                """+MaterialAnalysisFlowStageService.executionStatusSql(
+                        "SUM(claim.pending_qty)=0 OR BOOL_AND(COALESCE(segment.all_complete,FALSE))",
+                        "BOOL_OR(claim.pending_qty>0 AND claim.plan_status=1 AND segment.segment_count=0)",
+                        "BOOL_OR(segment.has_in_progress)","BOOL_OR(segment.has_dispatched)",
+                        "BOOL_OR(segment.has_ready)","BOOL_OR(segment.has_waiting)","BOOL_OR(claim.plan_status=1)")+"""
+                    AS execution_status,SUM(claim.pending_qty) AS pending_qty
+                FROM claim_sources claim
+                JOIN segment_states segment ON segment.source_plan_item_id=claim.source_plan_item_id
                 GROUP BY claim.target_material_id
-                """).setParameter("analysis",analysisId)))result.put((UUID)row[0],(String)row[1]);
+                """).setParameter("analysis",analysisId))) {
+            String status=(String)row[1];
+            String stage="COMPLETED".equals(status)&&decimal(row[2]).signum()>0?"MAKE_WAIT_STOCK_IN":
+                    MaterialAnalysisFlowStageService.makeStage(status,false);
+            result.put((UUID)row[0],stage);
+        }
         return result;
     }
 

@@ -113,7 +113,11 @@ class FinanceLegacyOpeningStatementPostgresTest {
         Map<String,Object> row=flow(side,null,true,1,50).rows().getFirst();
         assertThat(row.get("salesOriginal")).isNull(); assertThat(row.get("balanceOriginal")).isNull();
         assertThat(row.get("originalStatus")).isEqualTo("待核验"); assertMoney(row,"balanceLocal","-7");
-        assertThat(flow(side,null,false,1,50).totals()).noneSatisfy(total->assertThat(total.key()).isEqualTo("salesOriginal"));
+        var pending=flow(side,null,false,1,50).totals().stream()
+                .filter(total->total.key().equals("salesOriginal")).findFirst().orElseThrow();
+        assertThat(pending.groups()).singleElement().satisfies(group->{
+            assertThat(group.unit()).isNull();assertThat(group.value()).isNull();assertThat(group.identity()).isNull();
+        });
         assertMoney(annual(side,2026).rows().getFirst(),"balance","-7");
     }
 

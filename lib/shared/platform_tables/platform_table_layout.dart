@@ -3,6 +3,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/uten_page_prefs_notifier.dart';
 import '../providers/authenticated_scope_provider.dart';
+import '../widgets/procurement_document_layout.dart';
 import 'platform_table_models.dart';
 
 String platformTableFingerprint(String value) =>
@@ -20,6 +21,7 @@ class PlatformTableLayout {
     this.sortColumn,
     this.sortAscending = true,
     this.hasQueryPreferences = false,
+    this.layoutVersion = 0,
   });
   final List<String> order;
   final Set<String> hidden;
@@ -31,8 +33,12 @@ class PlatformTableLayout {
   final String? sortColumn;
   final bool sortAscending;
   final bool hasQueryPreferences;
+  final int layoutVersion;
   factory PlatformTableLayout.fromJson(Map<String, dynamic> json) =>
       PlatformTableLayout(
+        layoutVersion: json['layoutVersion'] is int
+            ? json['layoutVersion'] as int
+            : 0,
         order: (json['order'] as List? ?? []).whereType<String>().toList(),
         filters: {
           for (final entry
@@ -85,6 +91,7 @@ class PlatformTableLayout {
     'sortColumn': sortColumn,
     'sortAscending': sortAscending,
     'hasQueryPreferences': hasQueryPreferences,
+    if (layoutVersion > 0) 'layoutVersion': layoutVersion,
   };
   PlatformTableLayout copyWith({
     List<String>? order,
@@ -98,6 +105,7 @@ class PlatformTableLayout {
     bool clearSort = false,
     bool? sortAscending,
     bool? hasQueryPreferences,
+    int? layoutVersion,
   }) => PlatformTableLayout(
     order: order ?? this.order,
     hidden: hidden ?? this.hidden,
@@ -109,6 +117,7 @@ class PlatformTableLayout {
     sortColumn: clearSort ? null : sortColumn ?? this.sortColumn,
     sortAscending: sortAscending ?? this.sortAscending,
     hasQueryPreferences: hasQueryPreferences ?? this.hasQueryPreferences,
+    layoutVersion: layoutVersion ?? this.layoutVersion,
   );
 }
 
@@ -133,11 +142,32 @@ class PlatformTableLayoutNotifier
   @override
   String get prefKey => 'platform.table.${platformTableFingerprint(tableKey)}';
   @override
-  PlatformTableLayout get defaultValue => const PlatformTableLayout();
+  PlatformTableLayout get defaultValue => PlatformTableLayout(
+    layoutVersion: tableKey == purchaseOrderItemsTableKey
+        ? purchaseOrderColumnLayoutVersion
+        : 0,
+  );
   @override
-  PlatformTableLayout? decode(Object? raw) => raw is Map
-      ? PlatformTableLayout.fromJson(Map<String, dynamic>.from(raw))
-      : null;
+  PlatformTableLayout? decode(Object? raw) {
+    if (raw is! Map) return null;
+    final decoded = PlatformTableLayout.fromJson(
+      Map<String, dynamic>.from(raw),
+    );
+    if (tableKey != purchaseOrderItemsTableKey ||
+        decoded.layoutVersion >= purchaseOrderColumnLayoutVersion) {
+      return decoded;
+    }
+    final migrated = migratePurchaseOrderColumnLayout(
+      order: decoded.order,
+      pinned: decoded.pinned,
+    );
+    return decoded.copyWith(
+      order: migrated.order,
+      pinned: migrated.pinned,
+      layoutVersion: purchaseOrderColumnLayoutVersion,
+    );
+  }
+
   @override
   Object? encode(PlatformTableLayout value) => value.toJson();
 }

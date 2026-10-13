@@ -97,35 +97,6 @@ class PurchaseRepository {
     return PurchaseDocDetail.fromJson(json);
   }
 
-  Future<({String snapshot, PurchaseDocDetail detail})> review(
-    String id,
-  ) async {
-    final json = await api.get('$_base/$id/review');
-    return (
-      snapshot: json['snapshot'] as String,
-      detail: PurchaseDocDetail.fromJson(
-        json['detail'] as Map<String, dynamic>,
-      ),
-    );
-  }
-
-  Future<PurchaseDocDetail> saveReviewed(
-    String id,
-    Map<String, dynamic> document,
-    String expectedSnapshot, {
-    bool approveNow = true,
-  }) async {
-    final json = await api.post(
-      '$_base/$id/review',
-      body: {
-        'expectedSnapshot': expectedSnapshot,
-        'document': document,
-        'approveNow': approveNow,
-      },
-    );
-    return PurchaseDocDetail.fromJson(json);
-  }
-
   Future<List<ProcurementDecompositionLine>> decompositionPreview(
     Iterable<String> itemIds,
   ) async {

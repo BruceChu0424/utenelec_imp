@@ -87,11 +87,12 @@ public class ProductionExecutionWorkbenchService {
         int totalPages = pages(total, size);
         if (totalPages > 0 && page > totalPages) page = totalPages;
 
-        Query data = em.createNativeQuery(rootSelect() + from
-                + " ORDER BY " + rootOrderBy(sort, order) + """
-                         , root.root_id ASC
+        String rootOrder = " ORDER BY " + rootOrderBy(sort, order)
+                + ", root.root_id ASC";
+        Query data = em.createNativeQuery(rootProductCompletionSelect(
+                "SELECT root.*" + from + rootOrder + "\n" + """
                 LIMIT :limit OFFSET :offset
-                """);
+                """) + rootOrder);
         scope.bind(data);
         bindRootFilters(data, keyword, workshopDepartmentId, mine, employeeId,
                 salesOrder);
@@ -156,12 +157,12 @@ public class ProductionExecutionWorkbenchService {
         String rootType = rootType(rawRootType);
         NativeReadScope scope = productionAccess.nativeReadScope(
                 "root.owner_employee_id", "rootOwners");
-        Query query = em.createNativeQuery(rootSelect() + """
+        Query query = em.createNativeQuery(rootProductCompletionSelect("SELECT root.* " + """
                 FROM v_production_execution_workbench_roots root
                 WHERE root.root_type = :rootType
                   AND root.root_id = :rootId
                   AND (%s)
-                """.formatted(scope.predicate()));
+                """.formatted(scope.predicate())));
         query.setParameter("rootType", rootType);
         query.setParameter("rootId", rootId);
         scope.bind(query);
@@ -1045,7 +1046,40 @@ public class ProductionExecutionWorkbenchService {
                        root.owner_employee_name,
                        to_char(root.analyzed_at, 'YYYY-MM-DD HH24:MI'),
                        root.root_planned_qty, root.root_inbound_qty,
-                       root.root_progress_ratio
+                       root.root_progress_ratio,
+                       COALESCE(product_completion.completed_product_count, 0),
+                       COALESCE(product_completion.unfinished_product_count, 0)
+                """;
+    }
+
+    /** Product identity is goods/color/unit, independent of planned quantities or segment count. */
+    private static String rootProductCompletionSelect(String selectedRoots) {
+        return """
+                WITH selected_roots AS MATERIALIZED (
+                %s
+                ), product_completion_states AS (
+                    SELECT task.root_type, task.root_id,
+                           segment.product_goods_id, segment.product_color_id, segment.product_unit_id,
+                           bool_and(task.segment_status = 'COMPLETED') AS completed
+                    FROM selected_roots root
+                    JOIN v_production_execution_workbench_segments task
+                      ON task.root_type = root.root_type AND task.root_id = root.root_id
+                    JOIN production_execution_segments segment ON segment.id = task.segment_id
+                    WHERE task.segment_status NOT IN ('CANCELLED', 'REVERSED')
+                      AND segment.product_goods_id IS NOT NULL
+                    GROUP BY task.root_type, task.root_id,
+                             segment.product_goods_id, segment.product_color_id, segment.product_unit_id
+                ), product_completion_counts AS (
+                    SELECT root_type, root_id,
+                           COUNT(*) FILTER (WHERE completed)::integer AS completed_product_count,
+                           COUNT(*) FILTER (WHERE NOT completed)::integer AS unfinished_product_count
+                    FROM product_completion_states
+                    GROUP BY root_type, root_id
+                )
+                """.formatted(selectedRoots) + rootSelect() + """
+                FROM selected_roots root
+                LEFT JOIN product_completion_counts product_completion
+                  ON product_completion.root_type = root.root_type AND product_completion.root_id = root.root_id
                 """;
     }
 
@@ -1415,7 +1449,8 @@ public class ProductionExecutionWorkbenchService {
                 integer(row[33]), integer(row[34]), integer(row[35]),
                 false, date(row[36]), date(row[37]),
                 text(row[38]), text(row[39]),
-                decimal(row[40]), decimal(row[41]), progressRatio);
+                decimal(row[40]), decimal(row[41]), progressRatio,
+                integer(row[43]), integer(row[44]));
     }
 
     private static ProductionExecutionWorkbenchSegment segmentRow(Object[] row, ProductionMaterialUsageReadPort.UsageFlags usage,

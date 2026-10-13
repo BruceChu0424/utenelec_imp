@@ -1,9 +1,8 @@
 // 待检处置（品质任务中心唯一待办入口）——IQC 与 FQC 统一队列。
 //
 // 2026-09-01 合并：原「待检处置」只收采购/委外收货 IQC，「生产成品质检」FQC 单列
-// 一张卡；现按业务要求把 FQC 并入本页——分段导航 = 全部待检单 / 采购收货 /
-// 委外回厂 / 自制产成品，分段数字用红色圆徽章（UtenNotificationBadge，工作台同款），
-// 搜索框为胶囊圆角（stadium，与 SegmentedButton 分段导航条同形）。
+// 一张卡；现按业务要求把 FQC 并入本页。采购/委外/成品来源显示在状态和单据
+// 类型列，统一用表头筛选，不在表格上方再放一排重复的来源子分类。
 // 页面源码随之从 warehouse feature 移入 quality（2026-08-19 起本页业务归属品质部，
 // 路由 /warehouse/inspections 不变，避免外部深链失效）。
 //
@@ -13,6 +12,7 @@
 // 权限分别门控：IQC 读 procurement_inspection:view、写 :handle；
 // FQC 读 production_quality_inspection:view、决定 :approve + 服务端品质组织校验。
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import '../../../core/network/authenticated_request_scope.dart';
 import '../presentation/procurement_inspection_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,7 +33,6 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
-import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -42,6 +41,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -51,11 +51,18 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../warehouse/repositories/procurement_inspection_repository.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../models/production_fqc_inspection.dart';
+import '../models/quality_task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/inspection_report_confirm_dialog.dart';
 import '../widgets/production_fqc_dialogs.dart';
@@ -74,7 +81,7 @@ class _QualityPendingDisposalPageState
     extends ConsumerState<QualityPendingDisposalPage> {
   static const int _pageSize = 10;
 
-  /// FQC 待检队列一次拉取上限；超出时计数仍用服务端 total，行内提示截断事实。
+  /// FQC 检查单与无检查单任务各最多读取 500 条；按服务端实际页容量逐页读取。
   static const int _fqcFetchSize = 500;
 
   /// IQC 待检收货单（无 IQC 查看权限时恒为 null 且不请求）。
@@ -93,13 +100,10 @@ class _QualityPendingDisposalPageState
   /// 搜索关键字（IQC：收货单号/供应商；FQC：报工单/生产计划/货品），300ms 防抖。
   String _keyword = '';
 
-  /// 类型筛选（分段按钮与表头筛选共用）：null = 全部；PURCHASE / SUBCONTRACT / FQC。
-  /// 进页面不预选（不选=不过滤），点分段后才算选中。
+  /// 表头来源筛选：null = 全部；PURCHASE / SUBCONTRACT / FQC。
   String? _typeFilter;
-  bool _typeFilterSelected = false;
 
-  /// 表头「状态」快速筛选（2026-09-11 全站补齐）：null = 所有。本页把三个域
-  /// 的待检任务**全量**装在 _rows 里、由前端切页，故筛选作用于全集而非当页。
+  /// 表头「状态」筛选覆盖已加载队列后再切页；FQC 超过各域上限时显示截断提示。
   String? _statusFilter;
   int _page = 1;
   int _requestVersion = 0;
@@ -129,11 +133,86 @@ class _QualityPendingDisposalPageState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) _invalidateLoadScope();
+    });
+    ref.listenManual(apiBaseUrlProvider, (previous, next) {
+      if (previous != next) _invalidateLoadScope();
+    });
+    ref.listenManual(currentPermissionsProvider, (previous, next) {
+      if (!setEquals(previous, next)) _invalidateLoadScope();
+    });
+    ref.listenManual(isSuperAdminProvider, (previous, next) {
+      if (previous != next) _invalidateLoadScope();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  void _invalidateLoadScope() {
+    ++_requestVersion;
+    if (!mounted) return;
+    setState(() {
+      _receipts = null;
+      _fqcSheets = null;
+      _fqcInspections = null;
+      _fqcTotal = 0;
+      _fqcTruncated = false;
+      _canDecideFqc = false;
+      _selectedIds.clear();
+      _typeFilter = null;
+      _statusFilter = null;
+      _page = 1;
+      _error = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
+  }
+
+  Future<({List<T> items, int total, bool truncated})> _readFqcPages<T>(
+    Future<PagedResult<T>> Function(int page, int size) fetch,
+    bool Function() isCurrent,
+  ) async {
+    final items = <T>[];
+    var page = 1;
+    var size = _fqcFetchSize;
+    var total = 0;
+    while (items.length < _fqcFetchSize) {
+      if (!isCurrent()) throw AuthenticatedRequestScope.changed();
+      final result = await fetch(page, size);
+      if (!isCurrent()) throw AuthenticatedRequestScope.changed();
+      total = result.total;
+      items.addAll(result.items.take(_fqcFetchSize - items.length));
+      if (result.items.isEmpty ||
+          result.page >= result.totalPages ||
+          result.page * result.size >= result.total ||
+          items.length >= _fqcFetchSize) {
+        break;
+      }
+      if (result.page != page || result.size <= 0) {
+        throw ApiException('INVALID_PAGE', '待检队列分页信息不一致，请刷新重试');
+      }
+      // 后端可把请求的 500 归一为 100；后续页保持它实际使用的容量，避免漏页。
+      page = result.page + 1;
+      size = result.size;
+    }
+    return (items: items, total: total, truncated: total > items.length);
+  }
+
   Future<void> _load() async {
+    if (!mounted) return;
     final request = ++_requestVersion;
+    final scope = ref.read(authenticatedScopeProvider);
+    final server = ref.read(apiBaseUrlProvider);
+    final permissions = Set<String>.of(ref.read(currentPermissionsProvider));
+    final superAdmin = ref.read(isSuperAdminProvider);
+    bool isCurrent() =>
+        mounted &&
+        request == _requestVersion &&
+        ref.read(authenticatedScopeProvider) == scope &&
+        ref.read(apiBaseUrlProvider) == server &&
+        setEquals(ref.read(currentPermissionsProvider), permissions) &&
+        ref.read(isSuperAdminProvider) == superAdmin;
     setState(() {
       _loading = true;
       _error = null;
@@ -182,15 +261,25 @@ class _QualityPendingDisposalPageState
         final canDecide = capability();
         // status 默认 'ACTIVE'（仍有待检行），与待检口径一致：
         // 一行一张检查单 + 无检查单的历史任务逐条（与 /count 角标同口径）。
-        final sheetResult = await repo.listSheets(size: _fqcFetchSize);
-        final looseResult = await repo.list(size: _fqcFetchSize, sheet: 'NONE');
+        final requestScope = await repo.api.captureRequestScope(
+          isCurrent: isCurrent,
+        );
+        final queues = await requestScope.run(() async {
+          final sheetResult = await _readFqcPages<ProductionFqcInspectionSheet>(
+            (page, size) => repo.listSheets(page: page, size: size),
+            isCurrent,
+          );
+          final looseResult = await _readFqcPages<ProductionFqcInspection>(
+            (page, size) => repo.list(page: page, size: size, sheet: 'NONE'),
+            isCurrent,
+          );
+          return (sheets: sheetResult, loose: looseResult);
+        });
         canDecideFqc = await canDecide;
-        sheets = sheetResult.items;
-        inspections = looseResult.items;
-        fqcTotal = sheetResult.total + looseResult.total;
-        fqcTruncated =
-            sheetResult.total > sheetResult.items.length ||
-            looseResult.total > looseResult.items.length;
+        sheets = queues.sheets.items;
+        inspections = queues.loose.items;
+        fqcTotal = queues.sheets.total + queues.loose.total;
+        fqcTruncated = queues.sheets.truncated || queues.loose.truncated;
       } on ApiException catch (error) {
         errors.add('自制产成品待检：${error.message}');
       } catch (_) {
@@ -200,7 +289,7 @@ class _QualityPendingDisposalPageState
 
     final receiptsFuture = loadReceipts();
     await Future.wait([receiptsFuture, loadFqc()]);
-    if (!mounted || request != _requestVersion) return;
+    if (!isCurrent()) return;
     setState(() {
       // 成功才覆盖；失败保留旧数据并叠加行内错误（不把失败伪装成空队列）。
       // 无对应权限的域恒为空列表——骨架屏/整页错误判定只看「有权域从未成功」。
@@ -220,6 +309,7 @@ class _QualityPendingDisposalPageState
         _fqcSheets = const [];
         _fqcInspections = const [];
         _fqcTotal = 0;
+        _fqcTruncated = false;
       }
       _canDecideFqc = canDecideFqc;
       _loading = false;
@@ -230,7 +320,8 @@ class _QualityPendingDisposalPageState
       if (_page > _totalPages) _page = _totalPages;
       // 选择清理口径与 idOf 同源：检查单复合 id + 无检查单任务 id + IQC 收货单复合 id。
       final currentIds = <String>{
-        if (_canDecideFqc) ...?(_fqcInspections?.map((item) => item.id)),
+        if (_canDecideFqc)
+          ...?(_fqcInspections?.map((item) => 'fqc:${item.id}')),
         if (_canDecideFqc)
           ...?(_fqcSheets?.map((sheet) => 'sheet:${sheet.id}')),
         if (_canHandleIqc)
@@ -250,12 +341,11 @@ class _QualityPendingDisposalPageState
     });
   }
 
-  /// 类型筛选（分段按钮与表头筛选共用这一个口径）：null = 全部待检。
+  /// 表头来源筛选作用于完整混合队列，切换后回到第一页。
   void _selectType(String? type) {
-    if (_typeFilter == type && _typeFilterSelected) return;
+    if (_typeFilter == type) return;
     setState(() {
       _typeFilter = type;
-      _typeFilterSelected = true;
       _pruneStatusFilter();
       _page = 1;
     });
@@ -301,23 +391,43 @@ class _QualityPendingDisposalPageState
   ];
 
   /// 行的状态文案（状态列单元与表头筛选共用同一口径）。
-  String _statusLabel(_DisposalRow row) => row.isSheet
-      ? (row.sheet!.activeCount < row.sheet!.itemCount ? '部分已决定' : '待检')
-      : row.isFqc
-      ? fqcStatusLabel(row.inspection!)
-      : '待检';
+  List<FormDraft> _taskDrafts(_DisposalRow row) => qualityTaskDrafts(
+    ref.read(formDraftsProvider),
+    receiptType: row.receipt?.receiptType,
+    receiptId: row.receipt?.receiptId,
+    sheetId: row.sheet?.id ?? row.inspection?.sheetId,
+    inspectionId: row.inspection?.id,
+  );
+
+  String _statusLabel(_DisposalRow row) {
+    final source = switch (row.kind) {
+      'SUBCONTRACT' => '委外',
+      'FQC' => '成品',
+      _ => '采购',
+    };
+    final drafts = _taskDrafts(row);
+    final status = drafts.isNotEmpty
+        ? taskDraftStatus(drafts)
+        : row.isSheet
+        ? (row.sheet!.activeCount < row.sheet!.itemCount ? '部分已决定' : '待检')
+        : row.isFqc
+        ? fqcStatusLabel(row.inspection!)
+        : '待检';
+    return '$source$status';
+  }
 
   /// 状态列整格底色的分类色源（2026-09-27 口径），分支与 [_statusLabel] 对齐。
   UtenStatusBadgeType _statusBadgeType(_DisposalRow row) {
+    if (_taskDrafts(row).isNotEmpty) return UtenStatusBadgeType.neutral;
     if (row.isSheet) {
       return row.sheet!.activeCount < row.sheet!.itemCount
-          ? UtenStatusBadgeType.info
+          ? UtenStatusBadgeType.orange
           : UtenStatusBadgeType.warning;
     }
     if (row.isFqc) {
       return switch (row.inspection!.status) {
         'PENDING' => UtenStatusBadgeType.warning,
-        'PARTIAL' => UtenStatusBadgeType.info,
+        'PARTIAL' => UtenStatusBadgeType.orange,
         'RESOLVED' => UtenStatusBadgeType.success,
         _ => UtenStatusBadgeType.neutral,
       };
@@ -325,7 +435,7 @@ class _QualityPendingDisposalPageState
     return UtenStatusBadgeType.warning;
   }
 
-  /// 「状态」表头筛选的桶（按类型/关键字收敛后的行集计数，与眼前所见一致）。
+  /// 状态表头桶统计完整已加载队列，再按来源/关键词收敛，不取当前显示页。
   List<MasterFacetBucket> get _statusFacets {
     final counts = <String, int>{};
     for (final row in _rows) {
@@ -376,6 +486,16 @@ class _QualityPendingDisposalPageState
 
   /// 双击 IQC 行：进入本单处置页（明细多选表格在处置页里）。
   Future<void> _openIqcDetail(PendingInspectionReceipt receipt) async {
+    final drafts = qualityTaskDrafts(
+      ref.read(formDraftsProvider),
+      receiptType: receipt.receiptType,
+      receiptId: receipt.receiptId,
+    );
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load();
+      return;
+    }
     await context.push(
       RouteName.warehouseInspectionDetail(
         receipt.receiptType,
@@ -391,6 +511,15 @@ class _QualityPendingDisposalPageState
   /// 双击检查单行：进入 FQC 检查单办理页（2026-09-12 弹窗改页，对齐采购 IQC
   /// 处置页范式——摘要卡 + 行级合格/不合格数量 + 提交报告）；返回后重拉队列。
   Future<void> _openSheet(ProductionFqcInspectionSheet sheet) async {
+    final drafts = qualityTaskDrafts(
+      ref.read(formDraftsProvider),
+      sheetId: sheet.id,
+    );
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load();
+      return;
+    }
     await context.push(
       RouteName.productionFqcSheetHandling(sheet.id),
       extra: sheet,
@@ -402,6 +531,12 @@ class _QualityPendingDisposalPageState
 
   /// 双击 FQC 行 / 右键「办理质检」：进入单任务办理页（详情 + 决定 + 检验证据）。
   Future<void> _openFqcDetail(_DisposalRow row) async {
+    final drafts = _taskDrafts(row);
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load();
+      return;
+    }
     final inspection = row.inspection!;
     await context.push(
       RouteName.productionFqcInspectionHandling(inspection.id),
@@ -429,7 +564,7 @@ class _QualityPendingDisposalPageState
     final inspections = [
       for (final inspection
           in _fqcInspections ?? const <ProductionFqcInspection>[])
-        if (selectedIds.contains(inspection.id)) inspection,
+        if (selectedIds.contains('fqc:${inspection.id}')) inspection,
     ];
     final sheets = [
       for (final sheet in _fqcSheets ?? const <ProductionFqcInspectionSheet>[])
@@ -476,6 +611,7 @@ class _QualityPendingDisposalPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     // 返回本页（从处置页/其他页回退）时重拉两域队列，角标同源刷新。
     ref.onPageResume(RouteName.warehouseInspections, _load);
     return Scaffold(
@@ -511,7 +647,7 @@ class _QualityPendingDisposalPageState
   Widget _buildList() {
     final pageItems = _pageItems;
     // 计数直接取全量口径（不是当前页推算），与后端 pendingCount 同源；
-    // 表头筛选与分段按钮共用 _typeFilter。
+    // 来源与状态均由表头筛选；计数不取当前页的行数。
     final purchaseCount = _receipts
         ?.where((receipt) => !receipt.isSubcontract)
         .length;
@@ -523,12 +659,15 @@ class _QualityPendingDisposalPageState
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
         // 2026-09-15 用户口径：对齐其他列表页的「整页先滚 → 工具条与表头顶到
-        // 页面顶 → 表体内滚」联动。错误横幅/提示行随页滚走；分段+搜索工具条
+        // 页面顶 → 表体内滚」联动。错误横幅/提示行随页滚走；搜索工具条
         // 钉在表头上方一起到顶，之后表格（primary:true）接手内滚。
         child: UtenCollapsingHeaderScrollView(
           collapsingHeader: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const TaskDraftRecoveryNotice(
+                scope: FormDraftCategoryScope(module: BadgeModule.quality),
+              ),
               // 2026-10-01 用户口径：删除分类栏上方常驻的操作说明提示行。折叠头
               // 只在出错或 FQC 截断告警时有内容，平时零高度、工具条直接顶到页首。
               if (_error != null || _fqcTruncated) ...[
@@ -542,7 +681,7 @@ class _QualityPendingDisposalPageState
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _buildFilterToolbar(purchaseCount, subcontractCount, fqcCount),
+              _buildFilterToolbar(),
               const SizedBox(height: UtenSpacing.s12),
               Expanded(
                 child: MasterDataTableView<_DisposalRow>(
@@ -573,14 +712,12 @@ class _QualityPendingDisposalPageState
                           label: '自制产成品',
                         ),
                     ],
-                    // 状态桶按当前类型/关键字口径实时统计（客户端全集，非当页）。
+                    // 状态桶统计已加载队列，非当页；超过 FQC 上限时上方明确提示。
                     'status': _statusFacets,
                   },
                   nullCounts: const {},
                   filters: {'docType': _typeFilter, 'status': _statusFilter},
-                  // 类型分段条在表外、空态也一直看得见，用户随时能切回「全部」；
-                  // 表里再给一个「清除筛选」是重复入口（状态筛选只有表头有，保留）。
-                  externalFilterKeys: const {'docType'},
+                  // 来源筛选只有表头一个入口，空表时仍可从表头回到全部。
                   onFilterChanged: (key, value) {
                     if (key == 'status') {
                       setState(() {
@@ -597,21 +734,15 @@ class _QualityPendingDisposalPageState
                   selectable: _canDecideFqc || _canHandleIqc,
                   idOf: (row) => row.isSheet
                       ? (_canDecideFqc && row.sheet!.active
-                            ? 'sheet:${row.sheet!.id}'
+                            ? row.identity
                             : null)
                       : row.isFqc
                       ? (_canDecideFqc && row.inspection!.active
-                            ? row.inspection!.id
+                            ? row.identity
                             : null)
-                      : (_canHandleIqc
-                            ? 'iqc:${row.receipt!.receiptType}:${row.receipt!.receiptId}'
-                            : null),
-                  // 行稳定键单独给：IQC 用收货单 id，检查单用单 id，无检查单任务用任务 id。
-                  rowKeyOf: (row) => row.isSheet
-                      ? row.sheet!.id
-                      : row.isFqc
-                      ? row.inspection!.id
-                      : row.receipt!.receiptId,
+                      : (_canHandleIqc ? row.identity : null),
+                  // 不同来源表的 UUID 可以相同；缓存和 Widget 键都保留来源身份。
+                  rowKeyOf: (row) => row.identity,
                   selectedIds: _selectedIds,
                   onSelectedIdsChanged: (next) => setState(
                     () => _selectedIds
@@ -672,57 +803,12 @@ class _QualityPendingDisposalPageState
     );
   }
 
-  Widget _buildFilterToolbar(
-    int? purchaseCount,
-    int? subcontractCount,
-    int? fqcCount,
-  ) {
-    final selected = switch (_typeFilter) {
-      'PURCHASE' => 'purchase',
-      'SUBCONTRACT' => 'subcontract',
-      'FQC' => 'fqc',
-      _ => 'all',
-    };
-    // 全平台统一筛选工具条：分段 + 胶囊搜索框。计数形态：三个来源段都是
-    // 「等我验货」的待检队列 → 红徽章；「全部待检单」不传 count（没有总量段
-    // 与之重复红一次）。
+  Widget _buildFilterToolbar() {
     return Semantics(
       header: true,
       label: '共有 ${_rows.length} 条待检任务',
       child: UtenFilterToolbar<String>(
-        segmentsKey: const Key('iqc-type-segments'),
         searchKey: const Key('iqc-search'),
-        segments: [
-          const UtenFilterSegment(value: 'all', label: '全部待检单'),
-          if (_canViewIqc) ...[
-            UtenFilterSegment(
-              value: 'purchase',
-              label: '采购收货',
-              count: purchaseCount,
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-            UtenFilterSegment(
-              value: 'subcontract',
-              label: '委外回厂',
-              count: subcontractCount,
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-          ],
-          if (_canViewFqc)
-            UtenFilterSegment(
-              value: 'fqc',
-              label: '自制产成品',
-              count: fqcCount,
-              countForm: UtenSegmentCountForm.actionable,
-            ),
-        ],
-        selected: _typeFilterSelected ? {selected} : const {},
-        onSelectionChanged: (value) => _selectType(switch (value) {
-          'purchase' => 'PURCHASE',
-          'subcontract' => 'SUBCONTRACT',
-          'fqc' => 'FQC',
-          _ => null,
-        }),
         searchHint: '搜索单号 / 供应商 / 货品',
         initialSearchValue: _keyword,
         onSearchChanged: _applySearch,
@@ -753,8 +839,10 @@ class _QualityPendingDisposalPageState
           child: Semantics(
             liveRegion: true,
             child: Text(
-              '自制产成品待检任务共 $_fqcTotal 条，超过单次拉取上限，'
-              '仅显示前 $_fqcFetchSize 条；请先处理当前任务后刷新。',
+              '自制产成品待检任务共 $_fqcTotal 条，当前已加载 '
+              '${(_fqcSheets?.length ?? 0) + (_fqcInspections?.length ?? 0)} 条；'
+              '检查单和无检查单任务各最多加载 $_fqcFetchSize 条。'
+              '表头筛选仅覆盖已加载任务，请先处理当前任务后刷新。',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.error,
               ),
@@ -798,9 +886,9 @@ class _QualityPendingDisposalPageState
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 72,
+      width: 126,
       value: _statusLabel,
-      // 2026-09-27 用户口径「表格状态列整格底色」：待检=琥珀 / 部分已决定=蓝 /
+      // 状态整格底色沿品质业务语义：待检=琥珀 / 部分已决定=橙 /
       // 已全部决定=绿 / 已取消=中性灰。
       cellColor: (context, row) =>
           utenStatusBadgeCellColor(_statusBadgeType(row)),
@@ -987,6 +1075,12 @@ class _DisposalRow {
 
   bool get isSheet => sheet != null;
   bool get isFqc => inspection != null;
+
+  String get identity => isSheet
+      ? 'sheet:${sheet!.id}'
+      : isFqc
+      ? 'fqc:${inspection!.id}'
+      : 'iqc:${receipt!.receiptType}:${receipt!.receiptId}';
 
   /// 与分段/表头筛选同一取值域：PURCHASE / SUBCONTRACT / FQC。
   String get kind => isSheet || isFqc

@@ -32,6 +32,9 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
 import '../repositories/warehouse_iqc_stock_in_repository.dart';
@@ -57,7 +60,85 @@ class WarehouseQualityPreStockInPage extends ConsumerStatefulWidget {
 }
 
 class _WarehouseQualityPreStockInPageState
-    extends ConsumerState<WarehouseQualityPreStockInPage> {
+    extends ConsumerState<WarehouseQualityPreStockInPage>
+    with FormDraftMixin<WarehouseQualityPreStockInPage> {
+  WarehouseIqcPreStockInCommand? _pendingCommand;
+  @override
+  bool get formDraftBusy => _saving || _loading;
+  @override
+  Future<void> Function()? get formDraftReloadSource => () async {
+    await _load(preserveInputs: false);
+    if (_error != null) throw StateError(_error!);
+  };
+  @override
+  bool get formDraftCanReplaySubmission => _pendingCommand != null;
+  @override
+  bool get formDraftHasUnknownSubmission => _pendingCommand != null;
+  @override
+  FormDraftSpec get formDraftSpec =>
+      FormDraftCatalog.warehouseQualityPreStockIn.spec(
+        route: RouteName.warehouseQualityPreStockIn(
+          widget.receiptType,
+          widget.receiptId,
+        ),
+      );
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _grid,
+    for (final row in _grid.rows) row.place,
+  ];
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'receipts': [
+      {'receiptType': widget.receiptType, 'receiptId': widget.receiptId},
+    ],
+    'rows': [
+      for (final row in _grid.rows)
+        {
+          'inspectionItemId': row.line.inspectionItemId,
+          'selected': row.selected,
+          'warehouseId': row.warehouseId,
+          'warehouseName': row.warehouseName,
+          'place': row.place.text,
+        },
+    ],
+    'pendingCommand': _pendingCommand?.toJson(),
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final pending = data['pendingCommand'];
+    _pendingCommand = pending is Map
+        ? WarehouseIqcPreStockInCommand.fromDraft(
+            Map<String, dynamic>.from(pending),
+          )
+        : null;
+    final rows = data['rows'];
+    if (rows is! List) throw const FormatException('上架草稿缺少来源明细');
+    final current = {
+      for (final row in _grid.rows) row.line.inspectionItemId: row,
+    };
+    for (final input in rows.cast<Map<Object?, Object?>>()) {
+      final row = current[input['inspectionItemId']];
+      if (row == null) {
+        if (_pendingCommand == null) {
+          throw const FormatException('原待检明细已变化，请保留草稿并核对');
+        }
+        continue;
+      }
+      row.restoreInput(input);
+    }
+  }
+
+  @override
+  Widget? get formDraftSubmissionRecoveryAction => _pendingCommand == null
+      ? null
+      : UtenButton(
+          onPressed: _saving || _loading || !_canPreStockIn
+              ? null
+              : _verifyPreStockIn,
+          icon: Icons.refresh_rounded,
+          child: const Text('核对原上架提交'),
+        );
   WarehouseQualityResultDetail? _detail;
   final _grid = UtenEditableGridController<WarehousePreStockRow>();
   int _requestVersion = 0;
@@ -68,6 +149,7 @@ class _WarehouseQualityPreStockInPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     _load();
   }
 
@@ -85,7 +167,7 @@ class _WarehouseQualityPreStockInPageState
   }
 
   bool get _canPreStockIn {
-    if (ref.read(isSuperAdminProvider)) return true;
+    if (ref.read(authenticatedScopeProvider)?.readOnly == true) return false;
     final permissions = ref.read(currentPermissionsProvider);
     return permissions.contains(Perm.warehouseIqcStockInView) &&
         permissions.contains(Perm.warehouseIqcStockInBeforeInspection);
@@ -94,8 +176,18 @@ class _WarehouseQualityPreStockInPageState
   List<WarehousePreStockRow> get _selected =>
       _grid.rows.where((row) => row.selected).toList(growable: false);
 
-  Future<void> _load() async {
+  Future<void> _load({bool preserveInputs = true}) async {
     final version = ++_requestVersion;
+    final previous = {
+      for (final row in _grid.rows)
+        if (preserveInputs)
+          row.line.inspectionItemId: {
+            'selected': row.selected,
+            'warehouseId': row.warehouseId,
+            'warehouseName': row.warehouseName,
+            'place': row.place.text,
+          },
+    };
     setState(() {
       _loading = true;
       _error = null;
@@ -104,32 +196,56 @@ class _WarehouseQualityPreStockInPageState
       final detail = await ref
           .read(warehouseQualityResultRepositoryProvider)
           .detail(widget.receiptType, widget.receiptId);
-      if (!mounted || version != _requestVersion) return;
+      if (!mounted ||
+          !formDraftIdentityIsCurrent ||
+          version != _requestVersion) {
+        return;
+      }
       final rows = [
         for (final line in detail.preStockableLines) WarehousePreStockRow(line),
       ];
+      try {
+        final identities = rows.map((row) => row.line.inspectionItemId).toSet();
+        if (_pendingCommand == null &&
+            previous.keys.any((id) => !identities.contains(id))) {
+          throw const FormatException('待检明细已变化，原仓库和库位输入已保留，请重新核对来源');
+        }
+        for (final row in rows) {
+          final input = previous[row.line.inspectionItemId];
+          if (input != null) row.restoreInput(input);
+        }
+      } catch (_) {
+        for (final row in rows) {
+          row.dispose();
+        }
+        rethrow;
+      }
       setState(() {
         _detail = detail;
         _grid.replaceAll(rows);
         _loading = false;
       });
+      await initializeFormDraft();
     } on ApiException catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
-        _error = '待检明细加载失败，请稍后重试';
+        _error = error is FormatException ? error.message : '待检明细加载失败，请稍后重试';
         _loading = false;
       });
+      if (error is FormatException) holdFormDraftForSourceReload(error);
     }
   }
 
   Future<void> _pickWarehouse(WarehousePreStockRow row) async {
-    if (_saving || _loading || !_canPreStockIn) return;
+    if (_saving || _loading || _pendingCommand != null || !_canPreStockIn) {
+      return;
+    }
     try {
       final picked = await pickWarehouseLeafForStockIn(
         context,
@@ -145,7 +261,9 @@ class _WarehouseQualityPreStockInPageState
   }
 
   Future<void> _submit() async {
-    if (_saving || _loading || !_canPreStockIn) return;
+    if (_saving || _loading || _pendingCommand != null || !_canPreStockIn) {
+      return;
+    }
     final selected = _selected;
     if (selected.isEmpty) {
       setState(() => _error = '请至少勾选一行要上架的待检明细');
@@ -158,23 +276,46 @@ class _WarehouseQualityPreStockInPageState
         return;
       }
     }
+    await _executePreStockIn(
+      WarehouseIqcPreStockInCommand(
+        items: [for (final row in selected) row.toItem()],
+      ),
+    );
+  }
+
+  Future<void> _executePreStockIn(WarehouseIqcPreStockInCommand command) async {
+    if (_saving || !_canPreStockIn) return;
+    _pendingCommand = command;
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
-      final result = await ref
-          .read(warehouseIqcStockInRepositoryProvider)
-          .preStockIn(
-            widget.receiptType,
-            widget.receiptId,
-            WarehouseIqcPreStockInCommand(
-              items: [for (final row in selected) row.toItem()],
-            ),
-          );
-      if (!mounted) return;
+      final result = await runFormDraftSubmission(
+        () {
+          if (!_canPreStockIn) {
+            throw ApiException(
+              'FORBIDDEN',
+              '当前账号不能先入库上架，请重新核对权限',
+              httpStatus: 403,
+            );
+          }
+          return ref
+              .read(warehouseIqcStockInRepositoryProvider)
+              .preStockIn(widget.receiptType, widget.receiptId, command);
+        },
+        isDefiniteRejection: (error) =>
+            error.code == 'FORBIDDEN' ||
+            error.httpStatus == 400 ||
+            error.httpStatus == 422 ||
+            (error.httpStatus == 409 && error.code == 'CONFLICT'),
+      );
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       // 打源头 type-counts: 红黄两支都是它的派生, 失效派生不会重新发请求。
       refreshBadges(ref);
+      _pendingCommand = null;
+      await completeFormDraft();
+      if (!mounted) return;
       final replayed = result.replayedLineCount;
       context.appSuccess(
         '已先入库上架 ${result.stockedLineCount} 行'
@@ -184,86 +325,152 @@ class _WarehouseQualityPreStockInPageState
       if (context.canPop()) {
         context.pop(true);
       } else {
-        await _load();
+        await resetFormDraftAfterSubmission(prepare: () => _load());
       }
     } on ApiException catch (error) {
       if (!mounted) return;
+      if (error.httpStatus == 400 ||
+          error.httpStatus == 403 ||
+          error.httpStatus == 422 ||
+          error.code == 'CONFLICT') {
+        _pendingCommand = null;
+      }
       setState(() => _error = error.message);
-      if (error.code == 'CONFLICT') await _load();
-    } catch (_) {
-      if (mounted) setState(() => _error = '先入库上架失败，请稍后重试');
+      await checkpointFormDraftAfterCreation();
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = describeSubmitError(error, fallback: '上架提交待核对，请核对原提交'),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
+  Future<void> _verifyPreStockIn() async {
+    final command = _pendingCommand;
+    if (command == null || _saving || _loading || !_canPreStockIn) return;
+    setState(() => _loading = true);
+    try {
+      final latest = await ref
+          .read(warehouseQualityResultRepositoryProvider)
+          .detail(widget.receiptType, widget.receiptId);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      final lines = {
+        for (final line in latest.lines) line.inspectionItemId: line,
+      };
+      final confirmed = command.items.every((item) {
+        final location = lines[item.inspectionItemId]?.preStocked;
+        return location?.warehouseId == item.warehouseId &&
+            location?.place?.trim() == item.place.trim();
+      });
+      if (confirmed) {
+        _pendingCommand = null;
+        await resetFormDraftAfterSubmission(
+          prepare: () => _load(preserveInputs: false),
+        );
+        if (mounted && formDraftIdentityIsCurrent) {
+          context.appSuccess('已核对：原上架仓库和库位已记录');
+        }
+        refreshBadges(ref);
+        return;
+      }
+      final stillPending = command.items.every((item) {
+        final line = lines[item.inspectionItemId];
+        return line != null &&
+            line.lineStatus.toUpperCase() == 'PENDING' &&
+            line.passedBaseQty == 0 &&
+            line.failedBaseQty == 0;
+      });
+      if (!stillPending) {
+        context.appWarning('原待检明细已变化，原提交继续保留，请核对上架记录后处理');
+        return;
+      }
+      await _executePreStockIn(command);
+    } catch (error) {
+      if (mounted && formDraftIdentityIsCurrent) {
+        context.appError(describeSubmitError(error, fallback: '核对原上架记录失败'));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
     final theme = Theme.of(context);
     final detail = _detail;
-    return PopScope(
-      canPop: !_saving,
-      child: Scaffold(
-        appBar: UtenAppBar(
-          title: '先入库上架 · ${detail?.billNo ?? widget.receiptId}',
-          leading: UtenBackButton(
-            color: _saving ? theme.disabledColor : null,
-            onPressed: _saving
-                ? null
-                : () => popOrBackTo(
-                    context,
-                    defaultPath: RouteName.warehouseQualityResults,
+    return withFormDraft(
+      PopScope(
+        canPop: !_saving,
+        child: Scaffold(
+          appBar: UtenAppBar(
+            title: '先入库上架 · ${detail?.billNo ?? widget.receiptId}',
+            leading: UtenBackButton(
+              color: _saving ? theme.disabledColor : null,
+              onPressed: _saving
+                  ? null
+                  : () => popOrBackTo(
+                      context,
+                      defaultPath: RouteName.warehouseQualityResults,
+                    ),
+            ),
+            actions: [
+              UtenAppBarActionButton(
+                key: const Key('warehouse-quality-pre-stock-refresh'),
+                label: '刷新',
+                icon: Icons.refresh_rounded,
+                isLoading: _loading,
+                onPressed: _loading || _saving ? null : _load,
+              ),
+            ],
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonAnimator:
+              FloatingActionButtonAnimator.noAnimation,
+          floatingActionButton:
+              _canPreStockIn &&
+                  !_loading &&
+                  (_grid.rows.isNotEmpty || _pendingCommand != null)
+              ? _buildBottomBar()
+              : null,
+          body: SafeArea(
+            child: _loading
+                ? const UtenSkeletonList()
+                : Stack(
+                    children: [
+                      AbsorbPointer(
+                        absorbing: _saving,
+                        child: UtenGridPageScrollbar(
+                          pinned: _gridPinned,
+                          controller: _pageScroll,
+                          child: UtenContentContainer.wide(
+                            child: detail == null || _grid.rows.isEmpty
+                                ? UtenEmpty.error(
+                                    message: _error ?? '本单没有可先入库上架的待检明细',
+                                    description:
+                                        '只有仍在等待检查结果、尚未上架的明细行才能先入库；'
+                                        '已出结论的行请按原流程办理。',
+                                    actionLabel: '重新加载',
+                                    onAction: _load,
+                                  )
+                                : _buildBody(theme, detail),
+                          ),
+                        ),
+                      ),
+                      if (_saving)
+                        const Positioned.fill(
+                          child: UtenBusyOverlay(
+                            title: '正在先入库上架',
+                            description: '只记录上架仓与库位，不改变库存数量。',
+                          ),
+                        ),
+                    ],
                   ),
           ),
-          actions: [
-            UtenAppBarActionButton(
-              key: const Key('warehouse-quality-pre-stock-refresh'),
-              label: '刷新',
-              icon: Icons.refresh_rounded,
-              isLoading: _loading,
-              onPressed: _loading || _saving ? null : _load,
-            ),
-          ],
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton:
-            _canPreStockIn && !_loading && _grid.rows.isNotEmpty
-            ? _buildBottomBar()
-            : null,
-        body: SafeArea(
-          child: _loading
-              ? const UtenSkeletonList()
-              : Stack(
-                  children: [
-                    AbsorbPointer(
-                      absorbing: _saving,
-                      child: UtenGridPageScrollbar(
-                        pinned: _gridPinned,
-                        controller: _pageScroll,
-                        child: UtenContentContainer.wide(
-                          child: detail == null || _grid.rows.isEmpty
-                              ? UtenEmpty.error(
-                                  message: _error ?? '本单没有可先入库上架的待检明细',
-                                  description:
-                                      '只有仍在等待检查结果、尚未上架的明细行才能先入库；'
-                                      '已出结论的行请按原流程办理。',
-                                  actionLabel: '重新加载',
-                                  onAction: _load,
-                                )
-                              : _buildBody(theme, detail),
-                        ),
-                      ),
-                    ),
-                    if (_saving)
-                      const Positioned.fill(
-                        child: UtenBusyOverlay(
-                          title: '正在先入库上架',
-                          description: '只记录上架仓与库位，不改变库存数量。',
-                        ),
-                      ),
-                  ],
-                ),
         ),
       ),
     );
@@ -309,7 +516,8 @@ class _WarehouseQualityPreStockInPageState
           showSelectAllToggle: false,
           showRemoveRowsAction: false,
           selectable: true,
-          selectionEnabled: _canPreStockIn && !_saving,
+          selectionEnabled:
+              _canPreStockIn && !_saving && _pendingCommand == null,
           selectedOf: (row) => row.selected,
           onRowSelect: (row, selected) =>
               setState(() => row.selected = selected),
@@ -330,7 +538,7 @@ class _WarehouseQualityPreStockInPageState
   List<EditableGridColumn<WarehousePreStockRow>> _columns(
     BuildContext context,
   ) {
-    final editable = _canPreStockIn;
+    final editable = _canPreStockIn && _pendingCommand == null;
     return [
       EditableGridColumn(
         key: 'goods',
@@ -448,7 +656,7 @@ class _WarehouseQualityPreStockInPageState
       child: TextFormField(
         key: ValueKey('pre-stock-place-${row.line.inspectionItemId}'),
         controller: row.place,
-        enabled: row.selected && !_saving,
+        enabled: row.selected && !_saving && _pendingCommand == null,
         maxLength: 100,
         inputFormatters: [LengthLimitingTextInputFormatter(100)],
         errorBuilder: utenTextFieldErrorBuilder,
@@ -485,11 +693,20 @@ class _WarehouseQualityPreStockInPageState
           size: UtenButtonSize.large,
           icon: Icons.shelves,
           isLoading: _saving,
-          onPressed: _saving || _loading || selectedCount == 0 ? null : _submit,
+          onPressed:
+              _saving ||
+                  _loading ||
+                  (_pendingCommand == null && selectedCount == 0)
+              ? null
+              : _pendingCommand != null
+              ? _verifyPreStockIn
+              : _submit,
           onDisabledTap: selectedCount == 0
               ? () => context.appWarning('请至少勾选一行要上架的待检明细')
               : null,
-          child: Text('确认先入库上架($selectedCount 行)'),
+          child: Text(
+            _pendingCommand != null ? '核对原上架提交' : '确认先入库上架($selectedCount 行)',
+          ),
         ),
       ],
     );
@@ -511,6 +728,13 @@ class WarehousePreStockRow extends EditableGridRow {
 
   String? get warehouseId => _warehouseId;
   String? get warehouseName => _warehouseName;
+
+  void restoreInput(Map<Object?, Object?> input) {
+    selected = input['selected'] == true;
+    _warehouseId = input['warehouseId'] as String?;
+    _warehouseName = input['warehouseName'] as String?;
+    place.text = input['place'] as String? ?? '';
+  }
 
   String get goodsLabel =>
       line.goodsLabel.isEmpty ? line.inspectionItemId : line.goodsLabel;

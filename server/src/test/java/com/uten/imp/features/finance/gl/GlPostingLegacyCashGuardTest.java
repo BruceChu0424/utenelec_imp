@@ -10,7 +10,9 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,13 +26,18 @@ class GlPostingLegacyCashGuardTest {
     @ParameterizedTest
     @ValueSource(strings={"receipt", "receiptReverse", "payment", "paymentReverse", "expense", "expenseConfirm",
             "removePayment", "removeExpense", "removeIncome", "removeTransfer"})
-    void everyDirectWriterRefusesLegacyCashBeforeAnyGlStatement(String action) {
+    void everyDirectWriterRefusesLegacyCashBeforeAnyGlReadOrMutation(String action) {
         EntityManager em=mock(EntityManager.class);
         List<String> statements=new ArrayList<>();
+        List<Map<String,Object>> parameters=new ArrayList<>();
         when(em.createNativeQuery(anyString())).thenAnswer(invocation->{
             String sql=invocation.getArgument(0); statements.add(sql);
+            Map<String,Object> bound=new HashMap<>();parameters.add(bound);
             Query query=mock(Query.class);
-            when(query.setParameter(anyString(),any())).thenReturn(query);
+            when(query.setParameter(anyString(),any())).thenAnswer(parameter->{
+                bound.put(parameter.getArgument(0),parameter.getArgument(1));
+                return query;
+            });
             when(query.getResultList()).thenReturn(List.of(906002));
             return query;
         });
@@ -51,6 +58,27 @@ class GlPostingLegacyCashGuardTest {
                 default -> throw new AssertionError(action);
             }
         }).isInstanceOf(ApiException.class).hasMessageContaining("历史资金记录仅供核对");
-        assertThat(statements).hasSize(1).allSatisfy(sql->assertThat(sql).startsWith("SELECT legacy_id FROM finance_"));
+        if(action.startsWith("remove")) {
+            // Removal holds the same period lock as regeneration before reading
+            // the source guard. The lock reads no accounting rows and writes none.
+            assertThat(statements).hasSize(2);
+            assertThat(statements.getFirst())
+                    .isEqualTo("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))");
+            assertThat(parameters.getFirst()).containsExactlyEntriesOf(Map.of(
+                    "key","uten:gl:auto-period:"+java.time.YearMonth.from(BusinessTime.today())));
+        } else {
+            assertThat(statements).hasSize(1);
+        }
+        String family=switch(action) {
+            case "receipt","receiptReverse"->"receipts";
+            case "payment","paymentReverse","removePayment"->"payments";
+            case "expense","expenseConfirm","removeExpense"->"expenses";
+            case "removeIncome"->"other_incomes";
+            case "removeTransfer"->"bank_transfers";
+            default->throw new AssertionError(action);
+        };
+        assertThat(statements.getLast()).isEqualTo("SELECT legacy_id FROM finance_"+family+" WHERE id=:id");
+        assertThat(parameters.getLast()).containsExactlyEntriesOf(Map.of("id",id));
+        assertThat(statements).noneMatch(sql->sql.contains("gl_vouchers") || sql.contains("gl_entries"));
     }
 }

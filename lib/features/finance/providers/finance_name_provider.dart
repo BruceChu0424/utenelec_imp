@@ -219,7 +219,12 @@ class FinanceNameService extends ChangeNotifier {
         final id = item['id'] as String;
         refs[id] = FinanceCurrencyReference(
           id: id,
-          name: (item['name'] ?? '') as String,
+          name:
+              financeCurrencyDisplayLabel(
+                name: item['name'] as String?,
+                code: item['code'] as String?,
+              ) ??
+              '',
           exchangeRateText: financeExactDecimal(
             item['exchangeRateText'] ?? item['exchangeRate'],
           ),

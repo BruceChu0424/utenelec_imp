@@ -70,7 +70,10 @@ void main() {
       ),
     );
     final table = tableWidget();
-    expect(table.facets.keys, containsAll(<String>['status', 'currency']));
+    expect(table.facets.keys, contains('currency'));
+    // 草稿是当前业务大类的固定口径，表头不再提供无法清除的状态筛选。
+    expect(table.facets.containsKey('status'), isFalse);
+    expect(table.filters['status'], isNull);
     // 币种桶来自 currencies/dict：value=字典 id，label=币种名。
     expect(table.facets['currency']?.single.value, 'currency-1');
     expect(table.facets['currency']?.single.label, '美元');
@@ -81,6 +84,7 @@ void main() {
     table.onFilterChanged('currency', 'currency-1');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['currencyId'], 'currency-1');
+    expect(api.lastQuery?['status'], 0);
     expect(api.lastQuery?['page'], 1);
 
     final refreshed = tableWidget();

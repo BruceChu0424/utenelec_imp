@@ -66,68 +66,7 @@ public class SalesOrderFinanceConfirmService {
     // ADR-128: 客户应收只经 finance 的共用余额查询取, 本服务不再自写 ar_ap_ledger 汇总。
     private final PartyOpenBalancePort partyBalances;
 
-    public record FinanceAmendmentRequest(
-            @NotNull @jakarta.validation.constraints.Min(0) Long expectedRevision,
-            @NotNull UUID expectedClaimId,
-            @NotEmpty @Size(max = 500) List<@jakarta.validation.Valid FinanceLineEdit> lines) {}
 
-    public record FinanceLineEdit(@NotNull UUID itemId,
-            @jakarta.validation.constraints.DecimalMin("0") BigDecimal price,
-            @jakarta.validation.constraints.DecimalMin("0") BigDecimal discount) {}
-
-    /** Dedicated initial-review correction: preserves quantities, reservations and source UUIDs. */
-    @Transactional
-    @PreAuthorize("hasAuthority('sales_order_finance:view') and hasAuthority('sales_order_finance:confirm')")
-    public SalesOrderFinanceReviewDto amend(UUID orderId, FinanceAmendmentRequest request) {
-        tx.bind();
-        requireEligibleConfirmer();
-        if (request == null || request.expectedRevision() == null || request.expectedClaimId() == null
-                || request.lines() == null || request.lines().isEmpty() || request.lines().size() > 500) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "审核修改必须绑定当前版本、认领和修改明细");
-        }
-        SalesOrder order = requireDecisionOrderForUpdate(orderId);
-        requireReviewRevision(order, request.expectedRevision());
-        requireConfirmable(order);
-        if (order.isFinanceConfirmed() || order.getFinanceConfirmedAt() != null) {
-            throw new ApiException(ErrorCode.CONFLICT, "已有财务放行或下游执行的订单，须处理下游并反审后修改金额");
-        }
-        taskClaim.requireActiveClaimByMe("SALES_ORDER_FINANCE_CONFIRM", orderId.toString(), request.expectedClaimId());
-        requireNoShipmentWorkForRejection(orderId);
-        List<SalesOrderItem> items = em.createQuery(
-                "SELECT i FROM SalesOrderItem i WHERE i.orderId=:id AND i.deleted=false ORDER BY i.id", SalesOrderItem.class)
-                .setParameter("id", orderId).setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE).getResultList();
-        Map<UUID, SalesOrderItem> byId = items.stream().collect(java.util.stream.Collectors.toMap(SalesOrderItem::getId, java.util.function.Function.identity()));
-        java.util.Set<UUID> seen = new java.util.HashSet<>();
-        for (var line : request.lines()) {
-            if (line == null || line.itemId() == null || !seen.add(line.itemId()) || !byId.containsKey(line.itemId())
-                    || (line.price() == null && line.discount() == null)) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "修改行不属于当前订单、重复或没有金额输入");
-            }
-            if (line.price() != null) {
-                com.uten.imp.common.util.FinancialExactAmount.unitPrice(line.price(), "财务核改单价");
-                com.uten.imp.features.sales.SalesPriceAuthority.requireClientPrice(line.price(), "财务核改单价");
-            }
-            if (line.discount() != null) com.uten.imp.features.sales.SalesPriceAuthority.normalizeExplicitDiscount(line.discount());
-        }
-        String before = revisions.snapshot(orderId);
-        for (var line : request.lines()) {
-            SalesOrderItem item = byId.get(line.itemId());
-            if (line.price() != null) item.setPrice(line.price());
-            if (line.discount() != null) item.setDiscount(com.uten.imp.features.sales.SalesPriceAuthority.normalizeExplicitDiscount(line.discount()));
-            item.setAmountOriginal(com.uten.imp.common.columns.ExtraColumnCalculator.apply(
-                    SalesOrderService.authoritativeOrderAmount(item.getQty(), item.getPrice(), item.getDiscount()), item.getExtraColumns()));
-            item.setAmountLocal(null);
-        }
-        order.setTotalOriginal(items.stream().map(SalesOrderItem::getAmountOriginal).reduce(BigDecimal.ZERO, BigDecimal::add));
-        order.setTotalLocal(null);
-        orderRepo.save(order);
-        em.flush();
-        if (revisions.record(orderId, before)) {
-            order.setFinanceReviewRevision(order.getFinanceReviewRevision() + 1);
-            orderRepo.saveAndFlush(order);
-        }
-        return review(orderId);
-    }
 
     /** 客户信用额度: 迁入客户的旧额度不可信, 按未设置处理(列表与审核页同一表达式)。 */
     private static final String CLIENT_CREDIT_SQL =
@@ -201,6 +140,14 @@ public class SalesOrderFinanceConfirmService {
     public PageResponse<SalesOrderFinancePendingDto> pending(
             int page, int size, Boolean rejected, String keyword, Boolean changesOnly,
             String sort, String order, String billNo) {
+        return pending(page, size, rejected, keyword, changesOnly, sort, order, billNo, false);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public PageResponse<SalesOrderFinancePendingDto> pending(
+            int page, int size, Boolean rejected, String keyword, Boolean changesOnly,
+            String sort, String order, String billNo, boolean confirmed) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
         String rejectedFilter = rejected == null ? ""
@@ -226,9 +173,7 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN clients c ON c.id = o.client_id
                 LEFT JOIN employees e ON e.id = o.seller_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
-                  AND o.finance_confirmed = FALSE
-                """ + rejectedFilter + changesFilter + keywordFilter + billNoFilter);
+                """ + confirmationPoolFilter(confirmed) + rejectedFilter + changesFilter + keywordFilter + billNoFilter);
         if (!normalizedKeyword.isEmpty()) {
             countQuery.setParameter("keyword", normalizedKeyword);
         }
@@ -267,7 +212,8 @@ public class SalesOrderFinanceConfirmService {
                        """ + CLIENT_CREDIT_SQL + """
                        , o.currency_id
                        , source_quote.id, source_quote.bill_no,
-                       COALESCE(quote_confirmer.full_name, ''), source_quote.finance_confirmed_at
+                       COALESCE(quote_confirmer.full_name, ''), source_quote.finance_confirmed_at,
+                       o.finance_confirmed
                 FROM sales_orders o
                 LEFT JOIN sales_quotes source_quote ON source_quote.id = o.source_quote_id
                      AND source_quote.is_deleted = FALSE
@@ -277,9 +223,7 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN employees e ON e.id = o.seller_id
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
-                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
-                  AND o.finance_confirmed = FALSE
-                """ + String.join("\n", rejectedFilter, changesFilter,
+                """ + confirmationPoolFilter(confirmed) + String.join("\n", rejectedFilter, changesFilter,
                         keywordFilter, billNoFilter, pendingOrderBy(sort, order),
                         "LIMIT :lim OFFSET :off"));
         if (!normalizedKeyword.isEmpty()) {
@@ -323,7 +267,8 @@ public class SalesOrderFinanceConfirmService {
                                 ((String) r[21]).isBlank() ? null : (String) r[21],
                                 com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(r[22]),
                                 Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0]))),
-                        r[19] == null ? null : Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0]))))
+                        r[19] == null ? null : Boolean.TRUE.equals(allLinesMatch.get((UUID) r[0])),
+                        Boolean.TRUE.equals(r[23])))
                 .toList();
         return new PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -341,6 +286,15 @@ public class SalesOrderFinanceConfirmService {
                 OR EXISTS(SELECT 1 FROM sales_order_qty_change_logs change_log
                     WHERE change_log.order_id = o.id
                       AND change_log.changed_at > COALESCE(o.finance_confirmed_at, to_timestamp(0)))
+                """;
+    }
+
+    /** Approved orders remain reachable after closure/stop/requotation; pending work still uses the gate pool. */
+    static String confirmationPoolFilter(boolean confirmed) {
+        return confirmed ? " AND o.finance_confirmed = TRUE\n" : """
+                 AND (o.is_closed = FALSE OR o.finance_review_revision > 0)
+                 AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
+                 AND o.finance_confirmed = FALSE
                 """;
     }
 
@@ -365,6 +319,13 @@ public class SalesOrderFinanceConfirmService {
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> pendingFacets(
             Boolean rejected, String keyword, Boolean changesOnly) {
+        return pendingFacets(rejected, keyword, changesOnly, false);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_finance:view')")
+    public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> pendingFacets(
+            Boolean rejected, String keyword, Boolean changesOnly, boolean confirmed) {
         String rejectedFilter = rejected == null ? ""
                 : rejected ? " AND o.finance_rejected = TRUE" : " AND o.finance_rejected = FALSE";
         String changesFilter = changesOnly == null ? ""
@@ -384,9 +345,7 @@ public class SalesOrderFinanceConfirmService {
                         LEFT JOIN clients c ON c.id = o.client_id
                         LEFT JOIN employees e ON e.id = o.seller_id
                         WHERE o.status = 1 AND o.is_deleted = FALSE
-                          AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
-                          AND o.finance_confirmed = FALSE
-                        """ + rejectedFilter + changesFilter + keywordFilter
+                        """ + confirmationPoolFilter(confirmed) + rejectedFilter + changesFilter + keywordFilter
                         + " GROUP BY 1 ORDER BY 1")
                 .setMaxResults(500);
         if (!normalizedKeyword.isEmpty()) {

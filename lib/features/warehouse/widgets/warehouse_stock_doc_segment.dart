@@ -4,14 +4,16 @@
 // 生产领料/生产退料）共用本组件：状态分段（草稿/已审/红冲，2026-09-03 起无「全部」
 // 段；已审+红冲即历史；徽章口径：草稿不计入待办数——单据草稿尚未进入待办流，
 // 各分段一律不挂徽章）+ 末尾「历史单据」段（时间门控：时间段/全部，未选时间
-// 不发请求；不限状态）+（DRAW/WDRAW 领退料选中状态后另带出库进度分段，
-// 无「全部进度」段）+ 总结行（左「共 N 条」右「新建」按钮，按 stock_doc:create
+// 不发请求；不限状态）+（DRAW 出库进度在表头筛选）+ 总结行（左「共 N 条」右「新建」按钮，按 stock_doc:create
 // 门控）+ MasterDataTableView（双击进详情；新建/编辑/详情保存与审核都会 bump
 // listRefreshTick，本组件据此重拉）。小类行进页面不预选（未选不发请求，
 // 显示引导占位），不再渲染 icon + 标题分段头——分类语境已由上方大类分段表达。
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../models/warehouse_task_form_drafts.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +23,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_history_time_filter.dart';
@@ -37,6 +40,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/mixins/draft_bulk_delete_mixin.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../models/stock_doc.dart';
 import '../repositories/stock_doc_repository.dart';
@@ -147,7 +151,7 @@ class _WarehouseStockDocSegmentState
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _StockSegSeg? _seg;
 
-  /// DRAW/WDRAW 出库进度小类；null = 未选择（不附加过滤）。
+  /// DRAW 出库进度表头筛选；null = 不附加过滤。
   int? _issueStatus;
 
   /// 历史单据段的时间门控值；none = 尚未选择（历史段下同样不发请求）。
@@ -392,6 +396,19 @@ class _WarehouseStockDocSegmentState
     _reload(1);
   }
 
+  Future<void> _openStockTask(StockDocListItem document) async {
+    final drafts = stockTaskDrafts(ref.read(formDraftsProvider), document.id);
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _reload();
+      return;
+    }
+    await context.push(
+      RoutePath.stockDocDetail(widget.docType.code, document.id),
+    );
+    if (mounted) await _reload();
+  }
+
   List<MasterColumnDef<StockDocListItem>> _columns() {
     final isTransfer = widget.docType == StockDocType.transfer;
     final isDraw = widget.docType == StockDocType.draw;
@@ -400,7 +417,12 @@ class _WarehouseStockDocSegmentState
         key: 'status',
         label: '状态',
         width: 72,
-        value: (it) => widget.docType == StockDocType.wdraw
+        value: (it) =>
+            stockTaskDrafts(ref.read(formDraftsProvider), it.id).isNotEmpty
+            ? taskDraftStatus(
+                stockTaskDrafts(ref.read(formDraftsProvider), it.id),
+              )
+            : widget.docType == StockDocType.wdraw
             ? switch (it.status) {
                 0 => '待仓库收料',
                 1 => '仓库已收料',
@@ -412,8 +434,11 @@ class _WarehouseStockDocSegmentState
         // docStatusBadgeType——wdraw 的「待仓库收料」也是 status=0 的未办结单
         // （灰），「仓库已收料」=绿、「已红冲」=红；该段的行动性由分段上的
         // 可办徽章计数表达，状态列只讲单据状态机。
-        cellColor: (context, it) =>
-            utenStatusBadgeCellColor(docStatusBadgeType(it.status)),
+        cellColor: (context, it) => utenStatusBadgeCellColor(
+          stockTaskDrafts(ref.read(formDraftsProvider), it.id).isEmpty
+              ? docStatusBadgeType(it.status)
+              : UtenStatusBadgeType.neutral,
+        ),
       ),
       // 2026-10-08 用户口径「状态或进度列默认放最前」：出库进度（未出库 /
       // 部分出库 / 已出完）是领料单的第二条进度列，紧跟状态列前置。
@@ -491,6 +516,7 @@ class _WarehouseStockDocSegmentState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     final theme = Theme.of(context);
     final docType = widget.docType;
     final l10n =
@@ -549,8 +575,8 @@ class _WarehouseStockDocSegmentState
               // 进页面不预选（未选不发请求，显示引导占位）。
               // 徽章口径：草稿不计入待办数，各段不挂。
               Padding(
-                padding: EdgeInsets.only(
-                  bottom: showIssueStatus ? UtenSpacing.s12 : UtenSpacing.s8,
+                padding: const EdgeInsets.only(
+                  bottom: UtenSpacing.s8,
                   left: UtenSpacing.s4,
                   right: UtenSpacing.s4,
                 ),
@@ -582,34 +608,6 @@ class _WarehouseStockDocSegmentState
                   onSelectionChanged: _selectSeg,
                 ),
               ),
-              // 小类行 2（领退料）：出库进度——选中真实状态段后出现；
-              // 无「全部进度」段，默认不选 = 不附加过滤。
-              if (showIssueStatus)
-                Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
-                  child: UtenFilterToolbar<int>(
-                    segmentsKey: Key(
-                      'stock-doc-segment-issue-${widget.docType.code}',
-                    ),
-                    segments: const [
-                      UtenFilterSegment(value: 0, label: '未出库'),
-                      UtenFilterSegment(value: 1, label: '部分出库'),
-                      UtenFilterSegment(value: 2, label: '已出完'),
-                    ],
-                    selected: _issueStatus == null
-                        ? const <int>{}
-                        : {_issueStatus!},
-                    onSelectionChanged: (value) {
-                      clearDraftSelection();
-                      setState(() => _issueStatus = value);
-                      _reload(1);
-                    },
-                  ),
-                ),
               // 历史单据段时间行。
               if (seg?.history == true)
                 Padding(
@@ -764,10 +762,34 @@ class _WarehouseStockDocSegmentState
                     columns: _columns(),
                     items: _list.page?.items ?? const [],
                     // 2026-09-25 单号列统一：单据号桶走服务端（与列表同一过滤口径）。
-                    facets: {'billNo': _columnFilters.bucketOf('billNo')},
+                    facets: {
+                      'billNo': _columnFilters.bucketOf('billNo'),
+                      if (showIssueStatus)
+                        'issueStatus': const [
+                          MasterFacetBucket(value: '0', count: 0, label: '未出库'),
+                          MasterFacetBucket(
+                            value: '1',
+                            count: 0,
+                            label: '部分出库',
+                          ),
+                          MasterFacetBucket(value: '2', count: 0, label: '已出完'),
+                        ],
+                    },
                     nullCounts: const {},
-                    filters: {'billNo': _columnFilters['billNo']},
+                    filters: {
+                      'billNo': _columnFilters['billNo'],
+                      if (showIssueStatus)
+                        'issueStatus': _issueStatus?.toString(),
+                    },
                     onFilterChanged: (key, value) {
+                      if (key == 'issueStatus' && showIssueStatus) {
+                        final next = int.tryParse(value ?? '');
+                        if (_issueStatus == next) return;
+                        clearDraftSelection();
+                        setState(() => _issueStatus = next);
+                        _reload(1);
+                        return;
+                      }
                       if (key != 'billNo') return;
                       _columnFilters.handleFilterChanged(
                         key,
@@ -782,9 +804,7 @@ class _WarehouseStockDocSegmentState
                     sortColumn: _list.sortKey == 'total' ? null : _list.sortKey,
                     sortAscending: _list.sortAsc,
                     onSortChange: _onSortChange,
-                    onRowTap: (it) => context.push(
-                      RoutePath.stockDocDetail(widget.docType.code, it.id),
-                    ),
+                    onRowTap: _openStockTask,
                     isLoading: _list.isLoadingFirst,
                     loadingMore: _list.isLoadingMore,
                     error: _list.error,

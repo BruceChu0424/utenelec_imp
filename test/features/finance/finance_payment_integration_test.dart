@@ -205,6 +205,15 @@ void main() {
       await tester.tap(find.text('引用应付'));
       await tester.pumpAndSettle();
 
+      // The payment editor and its AP picker share the same bill-number
+      // label. Inspect the actual popup grid, anchored by its AP row checkbox.
+      final pickerGrid = find.ancestor(
+        of: find.byKey(const ValueKey('ar-ap-select-ap-usd')),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is UtenEditableGrid<EditableGridRow>,
+        ),
+      );
+      expect(pickerGrid, findsOneWidget);
       for (final label in const [
         '应付单号',
         '关联单号',
@@ -213,7 +222,10 @@ void main() {
         '未付金额',
         '本次付款金额',
       ]) {
-        expect(find.text(label), findsOneWidget);
+        expect(
+          find.descendant(of: pickerGrid, matching: find.text(label)),
+          findsOneWidget,
+        );
       }
       expect(find.text('搜索应付单号、关联单号或供应商'), findsOneWidget);
 
@@ -231,7 +243,7 @@ void main() {
       expect(checkbox('ap-usd').value, isTrue);
       expect(checkbox('ap-eur').onChanged, isNull);
       expect(checkbox('ap-incomplete').onChanged, isNull);
-      expect(find.text('本次币种：USD'), findsOneWidget);
+      expect(find.text('本次币种：美金'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('ar-ap-confirm')));
       await tester.pumpAndSettle();

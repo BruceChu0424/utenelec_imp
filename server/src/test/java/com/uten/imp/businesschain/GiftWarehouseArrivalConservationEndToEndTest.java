@@ -40,10 +40,10 @@ import static org.assertj.core.api.Assertions.*;
         "uten.reporting.materialized-view-refresh.enabled=false", "uten.production.readiness-reconcile.enabled=false",
         "uten.features.goods-owner-scope-enabled=false", "uten.storage.uploads-enabled=false",
         "uten.inventory.value-work.enabled=false",
-        "uten.jwt.secret=gift-regression-isolated-jwt-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
-        "uten.crypto.pgp-master-key=gift-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic cryptographic key for this isolated JUnit SpringBootTest.
+        "uten.jwt.secret=gift-regression-isolated-jwt-key-0123456789-abcdef", // gitleaks:allow synthetic test-only cryptographic fixture.
+        "uten.crypto.pgp-master-key=gift-regression-isolated-pgp-key-0123456789-abcdef", // gitleaks:allow synthetic test-only cryptographic fixture.
         "uten.crypto.hmac-key=gift-regression-isolated-hmac-key-0123456789-abcdef",
-        "uten.bootstrap.admin-login=gift-regression-bootstrap", "uten.bootstrap.admin-password=GiftRegressionAdmin-1!"})
+        "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class GiftWarehouseArrivalConservationEndToEndTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {

@@ -124,19 +124,6 @@ public class FinancePaymentController {
         return service.update(id, req);
     }
 
-    @GetMapping("/{id}/review")
-    @PreAuthorize("hasAuthority('finance_payment:view') and hasAuthority('finance_payment:approve')")
-    public com.uten.imp.features.finance.FinanceDraftReview.View<FinancePaymentDetail> review(@PathVariable UUID id) {
-        return service.review(id);
-    }
-
-    @PostMapping("/{id}/review")
-    @PreAuthorize("hasAuthority('finance_payment:view') and hasAuthority('finance_payment:approve')")
-    public FinancePaymentDetail saveReview(@PathVariable UUID id,
-            @Valid @RequestBody com.uten.imp.features.finance.FinanceDraftReview.Save<FinancePaymentSaveRequest> request) {
-        return service.updateReviewed(id, request.document(), request.expectedSnapshot(), request.approveNow());
-    }
-
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('finance_payment:delete')")
     public void delete(@PathVariable UUID id) {

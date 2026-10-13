@@ -85,6 +85,14 @@ class DocumentUnapprovalCapabilityTest {
         assertThatThrownBy(()->service.unapprove("purchaseOrder",original,new DocumentUnapprovalService.UnapproveRequest("capability-stale-key","修改后再审核","0".repeat(64))))
                 .isInstanceOf(ApiException.class).hasMessageContaining("确认期间已变化");noEffects();
     }
+    @Test void requestWithoutSnapshotStillRequiresCurrentDomainEligibility(){
+        when(adapter.eligibility(original)).thenReturn(DocumentUnapprovalPort.Eligibility.blocked(
+                "SOURCE_COST_PENDING","本单成本来源仍待传播","b".repeat(64)));
+        assertThatThrownBy(()->service.unapprove("purchaseOrder",original,
+                new DocumentUnapprovalService.UnapproveRequest("legacy-no-snapshot","真实反审核对")))
+                .isInstanceOf(ApiException.class).hasMessageContaining("本单成本来源仍待传播");
+        noEffects();
+    }
     @Test void alreadyCommittedRetryReturnsKnownSuccessorBeforeSnapshotRevalidation(){
         when(links.getResultList()).thenReturn(List.of(successor));
         var result=(DocumentHistoryMetadata)service.unapprove("purchaseOrder",original,

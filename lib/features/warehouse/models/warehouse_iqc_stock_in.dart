@@ -69,6 +69,23 @@ class WarehouseIqcStockInConfirmCommand {
   final String idempotencyKey;
   final List<WarehouseIqcStockInConfirmItem> items;
 
+  factory WarehouseIqcStockInConfirmCommand.fromDraft(
+    Map<String, dynamic> data,
+  ) => WarehouseIqcStockInConfirmCommand(
+    idempotencyKey: data['idempotencyKey'] as String,
+    items: [
+      for (final item in _requiredDraftRows(data['items']))
+        WarehouseIqcStockInConfirmItem(
+          passEventId: item['passEventId'] as String,
+          baseQty: (item['baseQty'] as num).toDouble(),
+          expectedRemainingBaseQty: (item['expectedRemainingBaseQty'] as num)
+              .toDouble(),
+          warehouseId: item['warehouseId'] as String,
+          place: item['place'] as String,
+        ),
+    ],
+  );
+
   Map<String, dynamic> toJson() => {
     'idempotencyKey': idempotencyKey,
     'items': items.map((item) => item.toJson()).toList(growable: false),
@@ -98,6 +115,18 @@ class WarehouseIqcPreStockInCommand {
   const WarehouseIqcPreStockInCommand({required this.items});
 
   final List<WarehouseIqcPreStockInItem> items;
+
+  factory WarehouseIqcPreStockInCommand.fromDraft(Map<String, dynamic> data) =>
+      WarehouseIqcPreStockInCommand(
+        items: [
+          for (final item in _requiredDraftRows(data['items']))
+            WarehouseIqcPreStockInItem(
+              inspectionItemId: item['inspectionItemId'] as String,
+              warehouseId: item['warehouseId'] as String,
+              place: item['place'] as String,
+            ),
+        ],
+      );
 
   Map<String, dynamic> toJson() => {
     'items': [for (final item in items) item.toJson()],
@@ -160,6 +189,13 @@ String _requiredText(Object? value, String message) {
   final result = _text(value);
   if (result == null) throw FormatException(message);
   return result;
+}
+
+List<Map<Object?, Object?>> _requiredDraftRows(Object? raw) {
+  if (raw is! List || raw.isEmpty || raw.any((row) => row is! Map)) {
+    throw const FormatException('原提交明细不完整，请保留本机记录并核对');
+  }
+  return raw.cast<Map<Object?, Object?>>();
 }
 
 String? _text(Object? value) {

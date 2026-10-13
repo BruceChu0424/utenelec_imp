@@ -241,6 +241,10 @@ abstract final class BadgeFact {
   static const warehouseInboundExpectationSubcontract =
       'warehouseInboundExpectation.SUBCONTRACT';
   static const warehouseArrivalException = 'warehouseArrivalException.count';
+  static const warehouseArrivalExceptionPurchase =
+      'warehouseArrivalException.PURCHASE';
+  static const warehouseArrivalExceptionSubcontract =
+      'warehouseArrivalException.SUBCONTRACT';
   static const finishedInbound = 'finishedInbound.count';
   static const productionDraw = 'productionDraw.count';
   static const productionReturn = 'productionReturn.count';

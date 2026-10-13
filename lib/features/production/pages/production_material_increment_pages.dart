@@ -108,6 +108,7 @@ class _IncrementListState
             children: [
               UtenFilterToolbar<String>(
                 segments: const [
+                  UtenFilterSegment(value: 'ALL', label: '全部'),
                   UtenFilterSegment(value: 'PENDING', label: '待审批'),
                   UtenFilterSegment(value: 'APPROVED', label: '已批准'),
                   UtenFilterSegment(value: 'RETURNED', label: '已退回'),

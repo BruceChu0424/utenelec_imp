@@ -94,7 +94,7 @@ final class WarehouseInsightSql {
 
     /** 货品基本单位名 (UUID 关系优先, 缺失时按 legacy 快照), 以 LATERAL 取一条。 */
     static String unitLateral(String goodsAlias) {
-        return "LEFT JOIN LATERAL (SELECT un.name FROM units un WHERE un.id = " + goodsAlias + ".unit_id OR ("
+        return "LEFT JOIN LATERAL (SELECT un.id,un.name FROM units un WHERE un.id = " + goodsAlias + ".unit_id OR ("
                 + goodsAlias + ".unit_id IS NULL AND un.legacy_id = NULLIF(" + goodsAlias + ".unit_legacy_id, 0))"
                 + " ORDER BY (un.id = " + goodsAlias + ".unit_id) DESC LIMIT 1) u ON true\n";
     }
@@ -214,7 +214,7 @@ final class WarehouseInsightSql {
                 """.formatted(ZERO_COLOR, goodsB, goodsP) + flowsCtes() + """
 
                 SELECT bal.goods_id, NULLIF(bal.ck, %1$s) AS color_id, g.code, g.name, g.category_id, g.model,
-                       c.name AS color_name, u.name AS unit_name,
+                       c.name AS color_name, u.name AS unit_name,u.id AS unit_id,
                        bal.qty, bal.weight_kg, bal.weight_estimated, bal.amount_local, bal.last_movement_at,
                        bal.dims, bal.dims_weighed,
                        COALESCE(ag.age_0_30, 0) AS age_0_30, COALESCE(ag.age_31_90, 0) AS age_31_90,

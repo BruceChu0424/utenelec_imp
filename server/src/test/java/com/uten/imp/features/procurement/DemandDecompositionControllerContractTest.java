@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +28,11 @@ class DemandDecompositionControllerContractTest {
             "goodsId", "colorId", "unitId", "unitRate", "requestedQty",
             "orderedQty", "pendingQty", "remainingQty", "needDate",
             "warehouseId", "sourcePlanNo"
+    };
+    private static final Class<?>[] LINE_TYPES = {
+            UUID.class, String.class, UUID.class, UUID.class, UUID.class, UUID.class,
+            BigDecimal.class, BigDecimal.class, BigDecimal.class, BigDecimal.class,
+            BigDecimal.class, LocalDate.class, UUID.class, String.class
     };
 
     @Test
@@ -52,17 +59,49 @@ class DemandDecompositionControllerContractTest {
     }
 
     @Test
-    void bothPreviewLinesShareTheDemandShapeAndSubcontractAppendsKitFields() {
+    void bothPreviewLinesKeepTheTypedDemandPrefixAndAppendTheirOwnFields() {
+        String[] purchaseFields = Arrays.copyOf(LINE_FIELDS, LINE_FIELDS.length + 6);
+        System.arraycopy(new String[]{"quantitySemantics", "giftQty", "giftOrderedQty",
+                "pendingGiftQty", "remainingGiftQty", "physicalRemainingQty"},
+                0, purchaseFields, LINE_FIELDS.length, 6);
+        Class<?>[] purchaseTypes = Arrays.copyOf(LINE_TYPES, LINE_TYPES.length + 6);
+        purchaseTypes[LINE_TYPES.length] = String.class;
+        Arrays.fill(purchaseTypes, LINE_TYPES.length + 1, purchaseTypes.length, BigDecimal.class);
         assertLineFields(
                 com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem.class,
-                LINE_FIELDS);
-        // ADR-156: 委外行在同一份需求字段之后追加「够做的套数 / 这次能下单的数量」, 采购行不变。
+                purchaseFields, purchaseTypes);
+        // ADR-156: 委外在同一份14项需求前缀之后只追加齐套/可下单量。
         String[] subcontractFields = Arrays.copyOf(LINE_FIELDS, LINE_FIELDS.length + 2);
         subcontractFields[LINE_FIELDS.length] = "kitQty";
         subcontractFields[LINE_FIELDS.length + 1] = "orderableQty";
+        Class<?>[] subcontractTypes = Arrays.copyOf(LINE_TYPES, LINE_TYPES.length + 2);
+        Arrays.fill(subcontractTypes, LINE_TYPES.length, subcontractTypes.length, BigDecimal.class);
         assertLineFields(
                 com.uten.imp.features.subcontract.application.dto.DecompositionPreviewItem.class,
-                subcontractFields);
+                subcontractFields, subcontractTypes);
+    }
+
+    @Test
+    void purchasePreviewStillAcceptsTheOriginalFourteenArgumentConstructor() throws Exception {
+        Class<com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem> lineType =
+                com.uten.imp.features.purchase.request.dto.DecompositionPreviewItem.class;
+        Object[] original = {UUID.randomUUID(), "PR-compat", UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("999999999999.000001"),
+                new BigDecimal("99.1250"), new BigDecimal("60.0000"), new BigDecimal("10.1250"),
+                new BigDecimal("29.0000"), LocalDate.of(2026, 10, 12), UUID.randomUUID(), "PLAN-compat"};
+        var line = lineType.getConstructor(LINE_TYPES).newInstance(original);
+        for (int index = 0; index < LINE_FIELDS.length; index++) {
+            assertThat(lineType.getRecordComponents()[index].getAccessor().invoke(line))
+                    .as(LINE_FIELDS[index]).isEqualTo(original[index]);
+        }
+        assertThat(line.quantitySemantics()).isEqualTo(
+                com.uten.imp.common.finance.ProcurementQuantities.LEGACY);
+        assertThat(line.giftQty()).isZero();
+        assertThat(line.giftOrderedQty()).isZero();
+        assertThat(line.pendingGiftQty()).isZero();
+        assertThat(line.remainingGiftQty()).isZero();
+        assertThat(line.physicalRemainingQty()).isEqualTo(line.remainingQty());
+        assertThat(line.getUnitRateExact()).isEqualTo("999999999999.000001");
     }
 
     private static void assertReadOnlySurface(Class<?> controllerType) throws NoSuchMethodException {
@@ -130,9 +169,13 @@ class DemandDecompositionControllerContractTest {
                 .isEqualTo(permission);
     }
 
-    private static void assertLineFields(Class<?> lineType, String... fields) {
+    private static void assertLineFields(Class<?> lineType, String[] fields, Class<?>[] types) {
+        assertThat(lineType.isRecord()).isTrue();
         assertThat(Arrays.stream(lineType.getRecordComponents())
                         .map(component -> component.getName()))
                 .containsExactly(fields);
+        Class<?>[] actualTypes = Arrays.stream(lineType.getRecordComponents())
+                .map(component -> component.getType()).toArray(Class<?>[]::new);
+        assertThat(actualTypes).containsExactly(types);
     }
 }

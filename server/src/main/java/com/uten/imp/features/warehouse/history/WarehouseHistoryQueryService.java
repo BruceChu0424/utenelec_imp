@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.history;
 
+import com.uten.imp.application.port.WarehouseTaskScopePort;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.util.EmployeeNameResolver;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
@@ -13,6 +15,7 @@ import jakarta.persistence.Query;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -27,12 +30,15 @@ public class WarehouseHistoryQueryService {
 
     private final EntityManager entityManager;
     private final EmployeeNameResolver employeeNames;
+    private final WarehouseTaskScopePort warehouseScopes;
 
     public WarehouseHistoryQueryService(
             EntityManager entityManager,
-            EmployeeNameResolver employeeNames) {
+            EmployeeNameResolver employeeNames,
+            WarehouseTaskScopePort warehouseScopes) {
         this.entityManager = entityManager;
         this.employeeNames = employeeNames;
+        this.warehouseScopes = warehouseScopes;
     }
 
     @Transactional(readOnly = true)
@@ -63,6 +69,14 @@ public class WarehouseHistoryQueryService {
             String order,
             String billNo,
             String sourceDocNo) {
+        return list(type, keyword, status, dateFrom, dateTo, page, size, sort, order, billNo, sourceDocNo, null);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResponse<WarehouseHistoryListItem> list(
+            WarehouseHistoryType type, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo,
+            int page, int size, String sort, String order, String billNo, String sourceDocNo, UUID requestedWarehouse) {
+        WarehouseTaskScope scope = warehouseScopes.current(requestedWarehouse);
         PageRequest pageable = Pageables.of(page, size);
         int safePage = pageable.getPageNumber() + 1;
         int safeSize = pageable.getPageSize();
@@ -72,13 +86,13 @@ public class WarehouseHistoryQueryService {
 
         Query countQuery = bindFilters(
                 entityManager.createNativeQuery(
-                        WarehouseHistoryQueries.countSql(type)),
+                        WarehouseHistoryQueries.countSql(type, scope)),
                 normalizedKeyword,
                 status,
                 dateFrom,
                 dateTo,
                 normalizedBillNo,
-                normalizedSourceDocNo);
+                normalizedSourceDocNo, scope);
         long total = number(countQuery.getSingleResult()).longValue();
         if (total == 0) {
             return new PageResponse<>(List.of(), safePage, safeSize, 0, 0);
@@ -87,13 +101,13 @@ public class WarehouseHistoryQueryService {
         Query rowsQuery = bindFilters(
                 entityManager.createNativeQuery(
                         WarehouseHistoryQueries.listSql(
-                                type, WarehouseHistoryQueries.orderBy(sort, order))),
+                                type, WarehouseHistoryQueries.orderBy(sort, order), scope)),
                 normalizedKeyword,
                 status,
                 dateFrom,
                 dateTo,
                 normalizedBillNo,
-                normalizedSourceDocNo)
+                normalizedSourceDocNo, scope)
                 .setParameter("limit", safeSize)
                 .setParameter("offset", pageable.getOffset());
         Map<UUID, String> employeeCache = new HashMap<>();
@@ -115,36 +129,49 @@ public class WarehouseHistoryQueryService {
             Short status,
             LocalDate dateFrom,
             LocalDate dateTo) {
+        return facets(type, keyword, status, dateFrom, dateTo, null);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Map<String, List<Map<String, Object>>> facets(
+            WarehouseHistoryType type, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo, UUID requestedWarehouse) {
+        WarehouseTaskScope scope = warehouseScopes.current(requestedWarehouse);
         String normalizedKeyword = normalize(keyword);
         return Map.of(
                 "billNo", billBuckets(type, "COALESCE(h.bill_no, '')",
-                        normalizedKeyword, status, dateFrom, dateTo),
+                        normalizedKeyword, status, dateFrom, dateTo, scope),
                 "sourceDocNo", billBuckets(type, "COALESCE(h.source_doc_no, '')",
-                        normalizedKeyword, status, dateFrom, dateTo));
+                        normalizedKeyword, status, dateFrom, dateTo, scope));
     }
 
     private List<Map<String, Object>> billBuckets(
             WarehouseHistoryType type, String expr, String keyword, Short status,
-            LocalDate dateFrom, LocalDate dateTo) {
+            LocalDate dateFrom, LocalDate dateTo, WarehouseTaskScope scope) {
         return NativeFacets.rowsOf(bindFilters(
                 entityManager.createNativeQuery(
-                        WarehouseHistoryQueries.facetsSql(type, expr)),
-                keyword, status, dateFrom, dateTo, null, null)
+                        WarehouseHistoryQueries.facetsSql(type, expr, scope)),
+                keyword, status, dateFrom, dateTo, null, null, scope)
                 .setMaxResults(500));
     }
 
     @Transactional(readOnly = true)
     public WarehouseHistoryDetail detail(WarehouseHistoryType type, UUID id) {
+        return detail(type, id, null);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public WarehouseHistoryDetail detail(WarehouseHistoryType type, UUID id, UUID requestedWarehouse) {
+        WarehouseTaskScope scope = warehouseScopes.current(requestedWarehouse);
         List<Object[]> headers = NativeQueryResults.objectArrayRows(
-                entityManager.createNativeQuery(
-                                WarehouseHistoryQueries.detailHeaderSql(type))
+                bindScope(entityManager.createNativeQuery(
+                                WarehouseHistoryQueries.detailHeaderSql(type, scope)), scope)
                         .setParameter("id", id)
                         .setMaxResults(1));
         if (headers.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "仓库历史单据不存在");
         }
         List<WarehouseHistoryLine> lines = NativeQueryResults.objectArrayRows(
-                        entityManager.createNativeQuery(WarehouseHistoryQueries.detailLinesSql(type))
+                        bindScope(entityManager.createNativeQuery(WarehouseHistoryQueries.detailLinesSql(type, scope)), scope)
                                 .setParameter("id", id))
                 .stream()
                 .map(this::toLine)
@@ -173,14 +200,18 @@ public class WarehouseHistoryQueryService {
 
     private Query bindFilters(
             Query query, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo,
-            String billNo, String sourceDocNo) {
-        return query.setParameter("keyword", keyword)
+            String billNo, String sourceDocNo, WarehouseTaskScope scope) {
+        return bindScope(query, scope).setParameter("keyword", keyword)
                 .setParameter("keyword_pattern", "%" + keyword.toLowerCase() + "%")
                 .setParameter("status", status)
                 .setParameter("date_from", dateFrom)
                 .setParameter("date_to", dateTo)
                 .setParameter("bill_no", billNo)
                 .setParameter("source_doc_no", sourceDocNo);
+    }
+
+    private Query bindScope(Query query, WarehouseTaskScope scope) {
+        return scope.active() ? query.setParameter("warehouse_scope", scope.idsCsv()) : query;
     }
 
     private WarehouseHistoryListItem toListItem(

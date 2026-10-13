@@ -100,7 +100,8 @@ class DocumentDirectLockTest {
                 () -> service.delete(reversedId));
 
         assertThat(denied.getCode()).isEqualTo(ErrorCode.BUSINESS);
-        assertThat(denied.getMessage()).contains("仅草稿", "红冲历史必须保留");
+        assertThat(denied.getMessage()).contains("仅草稿", "原审核历史必须保留");
+        verify(em).find(StockDocument.class, reversedId, LockModeType.PESSIMISTIC_WRITE);
         verify(documents, never()).save(reversed);
         assertThat(reversed.isDeleted()).isFalse();
     }
@@ -383,7 +384,8 @@ class DocumentDirectLockTest {
                 () -> service.delete(reversedId));
 
         assertThat(denied.getCode()).isEqualTo(ErrorCode.BUSINESS);
-        assertThat(denied.getMessage()).contains("仅草稿", "红冲历史必须保留");
+        assertThat(denied.getMessage()).contains("仅草稿", "原审核历史必须保留");
+        verify(em).find(ProductionDailyReport.class, reversedId, LockModeType.PESSIMISTIC_WRITE);
         verify(reports, never()).save(reversed);
         assertThat(reversed.isDeleted()).isFalse();
     }

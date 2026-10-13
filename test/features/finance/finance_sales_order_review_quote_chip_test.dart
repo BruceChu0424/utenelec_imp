@@ -2,6 +2,7 @@
 // 一致 / 有 N 行和报价不同」，明细多出报价单价/报价折扣/与报价，以及客户文件三列；
 // 非报价转入的老订单不出现这些内容(也不要求本地化实例)。列表状态列在一致时加注。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -25,30 +26,10 @@ class _Session extends SessionNotifier {
   );
 }
 
-class _Repo
-    implements
-        SalesOrderFinanceConfirmationRepository,
-        SalesOrderFinanceAmendmentRepository {
+class _Repo implements SalesOrderFinanceConfirmationRepository {
   _Repo(this.value);
   SalesOrderFinanceReview value;
-  SalesOrderFinanceReview? amended;
-  final List<Map<String, dynamic>> saves = [];
   final List<int?> confirms = [];
-  @override
-  Future<SalesOrderFinanceReview> amendReview(
-    String orderId, {
-    required int expectedRevision,
-    required String expectedClaimId,
-    required List<Map<String, dynamic>> lines,
-  }) async {
-    saves.add({
-      'expectedRevision': expectedRevision,
-      'expectedClaimId': expectedClaimId,
-      'lines': lines,
-    });
-    return value = amended ?? value;
-  }
-
   @override
   Future<SalesOrderFinanceReview> review(String orderId) async => value;
 
@@ -59,6 +40,7 @@ class _Repo
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,
@@ -75,6 +57,7 @@ class _Repo
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   }) async => const [];
 
   @override
@@ -122,6 +105,7 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.salesOrderFinanceView,
@@ -186,75 +170,28 @@ List<String> _columnKeys(WidgetTester tester) => tester
     .toList();
 
 void main() {
-  testWidgets('销售财审改单价保留原值红线，未保存不可确认，保存后用新revision确认', (tester) async {
+  testWidgets('销售财审金额只读，按已查看版本确认且不修改商业事实', (tester) async {
     final json = _order();
     final repository = _Repo(SalesOrderFinanceReview.fromJson(json));
-    repository.amended = SalesOrderFinanceReview.fromJson({
-      ...json,
-      'financeReviewRevision': 2,
-      'totalOriginal': '342',
-      'items': [
-        {
-          'itemId': 'line-1',
-          'goodsName': '台灯',
-          'qty': '4',
-          'price': '90',
-          'discount': '0.95',
-          'amountOriginal': '342',
-        },
-      ],
-      'revisionDiff': {
-        'beforeItems': [
-          {
-            'itemId': 'line-1',
-            'goodsName': '台灯',
-            'values': {'数量': '4', '单价': '100', '折扣': '0.95', '原币金额': '380'},
-          },
-        ],
-        'afterItems': [
-          {
-            'itemId': 'line-1',
-            'goodsName': '台灯',
-            'values': {'数量': '4', '单价': '90', '折扣': '0.95', '原币金额': '342'},
-          },
-        ],
-        'changedItemIds': ['line-1'],
-        'headerChanges': <Map<String, dynamic>>[],
-      },
-    });
     await _pump(tester, json, repository: repository);
-    final price = find.byKey(const ValueKey('sales-finance-price-line-1'));
-    await tester.ensureVisible(price);
-    await tester.enterText(price, '90');
-    await tester.pump();
-    expect(
-      tester
-          .widget<Text>(
-            find.byKey(const ValueKey('sales-finance-before-price-line-1')),
-          )
-          .style!
-          .decoration,
-      TextDecoration.lineThrough,
-    );
-    await tester.tap(find.byKey(const Key('finance-review-confirm')));
-    await tester.pumpAndSettle();
-    expect(repository.confirms, isEmpty);
-    await tester.tap(find.byKey(const Key('sales-finance-save-edits')));
-    await tester.pumpAndSettle();
-    expect(repository.saves.single['expectedRevision'], 1);
-    expect(repository.saves.single['expectedClaimId'], isNotNull);
-    expect(repository.saves.single['lines'], [
-      {'itemId': 'line-1', 'price': '90'},
-    ]);
+    expect(find.byKey(const Key('sales-finance-save-edits')), findsNothing);
     expect(
       find.byKey(const ValueKey('sales-finance-price-line-1')),
-      findsOneWidget,
+      findsNothing,
     );
+    expect(
+      find.byKey(const ValueKey('sales-finance-discount-line-1')),
+      findsNothing,
+    );
+    expect(find.byType(TextField), findsNothing);
     await tester.tap(find.byKey(const Key('finance-review-confirm')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('finance-review-confirm-submit')));
     await tester.pumpAndSettle();
-    expect(repository.confirms, [2]);
+    expect(repository.confirms, [1]);
+    expect(repository.value.items.single.price, '100');
+    expect(repository.value.items.single.qty, '4');
+    expect(repository.value.items.single.discount, '0.95');
   });
   testWidgets(
     'finance-only readers see the retained first-quote explanation without a sales history link',

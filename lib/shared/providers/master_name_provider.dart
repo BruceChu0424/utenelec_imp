@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
+import '../../core/utils/currency_display.dart';
 import 'master_dictionary_repository.dart';
 import 'master_lookup_queue.dart';
 import 'session_provider.dart';
@@ -292,7 +293,15 @@ class MasterDictionaryService {
   );
 
   void _applyCurrencies(List<Map<String, dynamic>> entries) {
-    _currencies = _nameMap(entries);
+    _currencies = {
+      for (final entry in entries)
+        entry['id'] as String:
+            financeCurrencyDisplayLabel(
+              name: entry['name'] as String?,
+              code: entry['code'] as String?,
+            ) ??
+            '',
+    };
     _baseCurrencyId = null;
     for (final entry in entries) {
       if (entry['baseCurrency'] == true && entry['id'] is String) {

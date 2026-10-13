@@ -98,15 +98,9 @@ const _feeModeDeducted = 'DEDUCTED_FROM_PROCEEDS';
 const _feeModeSeparate = 'PAID_SEPARATELY';
 
 class FinanceDocEditPage extends ConsumerStatefulWidget {
-  const FinanceDocEditPage({
-    super.key,
-    required this.docType,
-    this.id,
-    this.reviewMode = false,
-  });
+  const FinanceDocEditPage({super.key, required this.docType, this.id});
   final FinanceDocType docType;
   final String? id; // null=新建
-  final bool reviewMode;
 
   @override
   ConsumerState<FinanceDocEditPage> createState() => _FinanceDocEditPageState();
@@ -145,9 +139,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   String _feeSettlementMode = _feeModeNone;
   String _createIdempotencyKey = const Uuid().v4();
   int? _expectedVersion;
-  String? _reviewSnapshot;
-  Map<String, dynamic>? _reviewOriginal;
-  Map<FinanceGridRow, Map<String, String?>>? _reviewCellBaseline;
   String _receiptKind = _receiptKindArSettlement;
   String? _receiptSalesOrderId;
   String? _receiptSalesOrderBillNo;
@@ -446,18 +437,15 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       }
       if (widget.id != null) {
         final repo = ref.read(financeRepositoryProvider(widget.docType));
-        final review = widget.reviewMode ? await repo.review(widget.id!) : null;
-        final d = review?.detail ?? await repo.detail(widget.id!);
-        _reviewSnapshot = review?.snapshot;
+        final d = await repo.detail(widget.id!);
         final writable =
             !d.legacyImported &&
             d.status == kFinanceStatusDraft &&
-            (widget.reviewMode ||
-                await loadDocumentOwnerCanWrite(
-                  ref,
-                  DocumentDataScope.finance,
-                  d.makerId,
-                ));
+            await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.finance,
+              d.makerId,
+            );
         if (!mounted) return;
         if (!writable) {
           _initializationError = d.legacyImported
@@ -572,18 +560,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         }
         _grid.replaceAll(rows);
         _syncReceiptRateToRows();
-        if (widget.reviewMode) {
-          _reviewOriginal = captureFormDraft();
-          _reviewCellBaseline = {
-            for (final row in rows)
-              row: financeGridReviewValues(
-                row,
-                names,
-                widget.docType,
-                _cfg.type == FinanceDocType.receipt ? _bankReference : null,
-              ),
-          };
-        }
       }
       if (_grid.isEmpty && !_cfg.isSettle) {
         _grid.addRow(FinanceGridRow(mode: _cfg.itemMode));
@@ -1205,17 +1181,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       final repo = ref.read(financeRepositoryProvider(widget.docType));
       final d = widget.id == null
           ? await runFormDraftSubmission(() => repo.create(body))
-          : widget.reviewMode
-          ? await repo.saveReviewed(widget.id!, body, _reviewSnapshot!)
           : await repo.update(widget.id!, body);
       if (!mounted) return;
-      context.appSuccess(
-        widget.reviewMode
-            ? '已保存修改并审核'
-            : widget.id == null
-            ? '已创建'
-            : '已保存',
-      );
+      context.appSuccess(widget.id == null ? '已创建' : '已保存');
       bumpListRefresh(ref, _cfg.refreshKey);
       if (widget.id == null && _pendingFiles.isNotEmpty) {
         setState(() => _createdDocId = d.id);
@@ -1225,10 +1193,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       }
       await completeFormDraft();
       if (!mounted) return;
-      if (widget.reviewMode) {
-        Navigator.of(context).pop();
-        return;
-      }
       context.replace('/finance/${_cfg.type.pathSegment}/${d.id}');
     } on ApiException catch (e) {
       if (mounted) context.appError(e.message);
@@ -1548,125 +1512,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
-  Widget _reviewChanges() => ListenableBuilder(
-    listenable: Listenable.merge(formDraftListenables.toList()),
-    builder: (context, _) {
-      final original = _reviewOriginal;
-      if (original == null) return const SizedBox.shrink();
-      final current = captureFormDraft();
-      final names = ref.read(financeNameServiceProvider);
-      final changes = <({String label, String before, String after})>[];
-      String text(String key, Object? value) {
-        final raw = value?.toString() ?? '';
-        if (raw.isEmpty) return '未填写';
-        return switch (key) {
-          'accountId' ||
-          'inAccountId' ||
-          'feePaymentAccountId' => names.accountEntries[raw] ?? '账户已调整',
-          'currencyId' => names.currencyEntries[raw] ?? '币种已调整',
-          'partyId' =>
-            (_cfg.type == FinanceDocType.receipt
-                    ? names.clientEntries
-                    : names.supplierEntries)[raw] ??
-                '往来单位已调整',
-          'styleId' || 'otherFeeStyleId' => names.styleName(
-            raw,
-            _cfg.type == FinanceDocType.otherIncome ? 'INCOME' : 'EXPENSE',
-          ),
-          'operatorId' => _empCache[raw]?.name ?? '经办人已调整',
-          _ => raw,
-        };
-      }
-
-      void compare(
-        String label,
-        String key,
-        Map<String, dynamic> before,
-        Map<String, dynamic> after,
-      ) {
-        if (before[key]?.toString() != after[key]?.toString()) {
-          changes.add((
-            label: label,
-            before: text(key, before[key]),
-            after: text(key, after[key]),
-          ));
-        }
-      }
-
-      for (final field in const {
-        'billDate': '单据日期',
-        'accountId': '账户',
-        'partyId': '往来单位',
-        'currencyId': '币种',
-        'rate': '汇率',
-        'amountOriginal': '原币金额',
-        'accountAmount': '银行实收/实付',
-        'bankFee': '银行手续费',
-        'otherFee': '其它费用',
-        'invoiceNo': '票据号',
-        'bankReference': '银行流水号',
-        'operatorId': '经办人',
-        'remark': '备注',
-      }.entries) {
-        compare(field.value, field.key, original, current);
-      }
-      final beforeRows = (original['rows'] as List)
-          .cast<Map<String, dynamic>>();
-      final afterRows = (current['rows'] as List).cast<Map<String, dynamic>>();
-      final count = beforeRows.length > afterRows.length
-          ? beforeRows.length
-          : afterRows.length;
-      for (var index = 0; index < count; index++) {
-        final before = index < beforeRows.length
-            ? beforeRows[index]
-            : <String, dynamic>{};
-        final after = index < afterRows.length
-            ? afterRows[index]
-            : <String, dynamic>{};
-        for (final field in const {
-          'qty': '数量',
-          'price': '单价',
-          'amount': '金额',
-          'writeOff': '核销',
-          'exchangeRate': '汇率',
-          'styleId': '项目',
-          'inAccountId': '转入账户',
-          'occurDate': '日期',
-          'department': '部门',
-          'remark': '备注',
-        }.entries) {
-          compare('第 ${index + 1} 行${field.value}', field.key, before, after);
-        }
-      }
-      return Padding(
-        key: const Key('finance-review-changes'),
-        padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('核对并修改后，点击“保存并审核”完成本次审核。'),
-            for (final change in changes)
-              Wrap(
-                spacing: 8,
-                children: [
-                  Text('${change.label}：'),
-                  Text(
-                    change.before,
-                    style: const TextStyle(
-                      color: Colors.red,
-                      decoration: TextDecoration.lineThrough,
-                      decorationColor: Colors.red,
-                    ),
-                  ),
-                  Text(change.after),
-                ],
-              ),
-          ],
-        ),
-      );
-    },
-  );
 
   Widget _sectionHeading(
     ThemeData theme, {
@@ -2405,9 +2250,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
-          title: widget.reviewMode
-              ? '修改后审核${_cfg.label}'
-              : _isCustomerPrepayment
+          title: _isCustomerPrepayment
               ? '登记订单预收'
               : compact && isReceipt
               ? (widget.id == null ? '新建收款' : '编辑收款')
@@ -2447,7 +2290,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                             UtenFloatingActionGroup.scrollClearance,
                           ),
                           children: [
-                            if (widget.reviewMode) _reviewChanges(),
                             _entryCard(
                               key: const ValueKey('finance-entry-basics'),
                               child: _savedFields(
@@ -2712,7 +2554,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                     context: context,
                                     names: names,
                                     type: _cfg.type,
-                                    reviewBaseline: _reviewCellBaseline,
                                     bankReferenceController: isReceipt
                                         ? _bankReference
                                         : null,
@@ -2833,7 +2674,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         floatingActionButton: _loading || _initializationError != null
             ? null
             : UtenEditFloatingActions(
-                saveLabel: widget.reviewMode ? '保存并审核' : '保存',
                 onCancel: () =>
                     popOrBackTo(context, defaultPath: RouteName.finance),
                 onSave: _intakeBusy ? null : _save,

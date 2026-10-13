@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_batch_reject_dialog.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
@@ -13,6 +14,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/hr_profile/pages/hr_profile_changes_list_page.dart';
+import 'package:uten_imp/features/hr_profile/pages/hr_profile_change_detail_page.dart';
 import 'package:uten_imp/features/profile/models/profile_change_request.dart';
 import 'package:uten_imp/features/profile/repositories/profile_change_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -37,6 +39,12 @@ class _FakeProfileChangeRepository extends Fake
       'status': status,
       'departmentId': departmentId,
     });
+    final itemStatus = switch (status) {
+      'applied' => ProfileChangeStatus.applied,
+      'rejected' => ProfileChangeStatus.rejected,
+      'cancelled' => ProfileChangeStatus.cancelled,
+      _ => ProfileChangeStatus.pending,
+    };
     return ProfileChangePage(
       items: [
         HrProfileChangeListItem(
@@ -45,7 +53,7 @@ class _FakeProfileChangeRepository extends Fake
           employeeName: '王小明',
           employeeCode: 'UT0001',
           departmentName: '研发部',
-          status: ProfileChangeStatus.pending,
+          status: itemStatus,
           itemCount: 2,
           fieldCodes: const ['phone', 'email'],
           submittedAt: DateTime(2026, 9, 9, 10, 30),
@@ -56,7 +64,7 @@ class _FakeProfileChangeRepository extends Fake
           employeeName: '李小红',
           employeeCode: 'UT0002',
           departmentName: '财务部',
-          status: ProfileChangeStatus.pending,
+          status: itemStatus,
           itemCount: 1,
           fieldCodes: const ['address'],
           submittedAt: DateTime(2026, 9, 9, 11, 30),
@@ -95,12 +103,24 @@ class _FakeProfileChangeRepository extends Fake
       submittedAt: DateTime(2026, 9, 9),
     );
   }
+
+  @override
+  Future<ProfileChangeBatch> hrBatchDetail(String batchId) async =>
+      ProfileChangeBatch(
+        batchId: batchId,
+        employeeId: 'emp-1',
+        status: ProfileChangeStatus.cancelled,
+        itemCount: 0,
+        items: const [],
+        submittedAt: DateTime(2026, 9, 9),
+      );
 }
 
 Widget _app(
   _FakeProfileChangeRepository repo,
   SharedPreferences preferences, {
   BadgeSummaryNotifier? badges,
+  GoRouter? router,
 }) => ProviderScope(
   overrides: [
     profileChangeRepositoryProvider.overrideWithValue(repo),
@@ -108,12 +128,19 @@ Widget _app(
     sharedPreferencesProvider.overrideWithValue(preferences),
     if (badges != null) badgeSummaryProvider.overrideWith(() => badges),
   ],
-  child: const MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    locale: Locale('zh'),
-    home: HrProfileChangesListPage(),
-  ),
+  child: router == null
+      ? const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: Locale('zh'),
+          home: HrProfileChangesListPage(),
+        )
+      : MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
 );
 
 MasterDataTableView<HrProfileChangeListItem> _table(WidgetTester tester) =>
@@ -140,6 +167,51 @@ class _FakeBadgeSummary extends BadgeSummaryNotifier {
 }
 
 void main() {
+  testWidgets('cancelled requests have a browsing queue and reachable detail', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeProfileChangeRepository();
+    final router = GoRouter(
+      initialLocation: '/hr/profile-changes',
+      routes: [
+        GoRoute(
+          path: '/hr/profile-changes',
+          builder: (_, _) => const HrProfileChangesListPage(),
+        ),
+        GoRoute(
+          path: '/hr/profile-changes/:id',
+          builder: (_, state) =>
+              HrProfileChangeDetailPage(batchId: state.pathParameters['id']!),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(_app(repo, preferences, router: router));
+    await tester.pumpAndSettle();
+    final segments = find.byKey(const Key('hr-profile-changes-segments'));
+    await tester.tap(find.descendant(of: segments, matching: find.text('已撤销')));
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['status'], 'cancelled');
+    expect(repo.listCalls.last['page'], 1);
+    final table = _table(tester);
+    expect(table.selectable, isFalse);
+    expect(table.batchActionsBuilder, isNull);
+    expect(table.filters['status'], 'cancelled');
+    expect(
+      table.facets['status']!.any((bucket) => bucket.value == 'cancelled'),
+      isTrue,
+    );
+    table.onRowTap!(table.items.first);
+    await tester.pumpAndSettle();
+    expect(find.byType(HrProfileChangeDetailPage), findsOneWidget);
+    expect(find.text('通过'), findsNothing);
+    expect(find.text('驳回'), findsNothing);
+    expect(repo.reviewCalls, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('pending segment carries the red todo badge from badge summary', (
     tester,
   ) async {

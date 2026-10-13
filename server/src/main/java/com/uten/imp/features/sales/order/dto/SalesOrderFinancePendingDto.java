@@ -43,5 +43,6 @@ public record SalesOrderFinancePendingDto(
          */
         SalesOrderFinanceReviewDto.SourceQuote sourceQuote,
         /** 与审核页同口径: 报价转入的订单每行都与报价核定一致为 true、有不一致为 false; 不是报价转入为 null。 */
-        Boolean matchesQuote) {
+        Boolean matchesQuote,
+        boolean financeConfirmed) {
 }

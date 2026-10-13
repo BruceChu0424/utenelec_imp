@@ -1,8 +1,7 @@
 // 仓库管理入口页（hub）—— 2026-09-24 模块三段式统一：
 //
-// 任务中心：仓库任务中心（合并页 /warehouse/tasks，出库 / 入库 / 生产领料 /
-//   品质检查结果 / 委外成品退货 / 委外损耗 六大类；原四张任务中心卡与两张
-//   历史只读卡收拢为一张卡，卡角标 = 模块待办累计，与顶栏药丸/工作台仓库卡同源）。
+// 任务中心：出库 / 入库 / 品质检查结果 / 车间内料仓 / 委外成品退货。
+// 生产领料归出库、退料归入库；损耗由委外/财务处理。卡角标与模块待办同源。
 // 新建单据：仓库原生单据的直达新建入口（其它出库 / 产成品出库 / 其它入库 /
 //   产成品进仓 / 调拨 / 盘点，按 stock_doc:create 门控只对能新建的人显示；
 //   2026-09-24 用户口径：新建入口一律不挂徽章）。
@@ -71,7 +70,7 @@ class WarehouseHubPage extends ConsumerWidget {
             (
               icon: Icons.task_alt_outlined,
               label: '仓库任务中心',
-              description: '出库 · 入库 · 领料 · 品质结果 · 盘点审核',
+              description: '出库 · 入库 · 品质结果 · 内料仓 · 盘点审核',
               location: RouteName.warehouseTasks,
             ),
         ].toList();
@@ -296,7 +295,7 @@ class _StockQueryEntry {
 
 // 出入库单据区（调拨/盘点列表 + 委外历史专页）已于 2026-09-24 三段式统一时撤下：
 // 调拨/盘点改入「新建单据」区直达新建页，浏览在仓库任务中心对应大类；
-// 委外成品退货单/委外损耗单历史并入任务中心大类（路由保留）。
+// 委外成品退货是仓库实物出口；旧历史路由保留以承接已有链接。
 
 // 仓库报表卡标题/副标题本地化（按 WarehouseReportKind 枚举查）。
 String _warehouseReportTitle(WarehouseReportKind k, AppLocalizations l10n) =>

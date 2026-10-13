@@ -49,7 +49,7 @@ public class WarehouseIqcReturnProjectionService {
         if (rows.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "IQC不合格实物退回任务不存在");
         }
-        return view(rows.getFirst(), has(WarehouseIqcReturnPermissions.RECORD_RETURN));
+        return view(rows.getFirst(), canRecordReturn());
     }
 
     @Transactional
@@ -153,9 +153,11 @@ public class WarehouseIqcReturnProjectionService {
                 canRecord && serverAllowsRecord ? List.of("RECORD_RETURN") : List.of());
     }
 
-    private boolean has(String permission) {
+    private boolean canRecordReturn() {
         return currentUser.get()
-                .map(user -> user.isSuperAdmin() || user.getPermissions().contains(permission))
+                .map(user -> user.getImpersonatedBy() == null
+                        && user.getPermissions().contains(WarehouseIqcReturnPermissions.VIEW)
+                        && user.getPermissions().contains(WarehouseIqcReturnPermissions.RECORD_RETURN))
                 .orElse(false);
     }
 

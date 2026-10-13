@@ -42,13 +42,28 @@ public class ProcurementFinanceApprovalController {
         return service.tasks(page, size, orderType, keyword, sort, order, billNo);
     }
 
+    /** Historical approval rounds share the same view permission and immutable review snapshots. */
+    @GetMapping("/history")
+    public PageResponse<ApprovalTask> history(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "") String orderType,
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(defaultValue = "APPROVED") String status,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String order,
+            @RequestParam(required = false) String billNo) {
+        return service.tasks(page, size, orderType, keyword, sort, order, billNo, status);
+    }
+
     /** 待审任务 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——
      *  同列表过滤口径（不含 billNo 自身值筛选）。 */
     @GetMapping("/tasks/facets")
     public Map<String, List<Map<String, Object>>> taskFacets(
             @RequestParam(defaultValue = "") String orderType,
-            @RequestParam(defaultValue = "") String keyword) {
-        return service.taskFacets(orderType, keyword);
+            @RequestParam(defaultValue = "") String keyword,
+            @RequestParam(defaultValue = "PENDING") String status) {
+        return service.taskFacets(orderType, keyword, status);
     }
 
     @GetMapping("/count")
@@ -58,8 +73,8 @@ public class ProcurementFinanceApprovalController {
 
     /** 待审任务按订货类型计数（全部/采购/委外筛选卡的全量口径）。 */
     @GetMapping("/type-counts")
-    public Map<String, Long> typeCounts() {
-        return service.countTasksByType();
+    public Map<String, Long> typeCounts(@RequestParam(defaultValue = "PENDING") String status) {
+        return service.countTasksByType(status);
     }
 
     /**
@@ -83,14 +98,6 @@ public class ProcurementFinanceApprovalController {
             @Valid @RequestBody BatchApprovalRequest request) {
         return service.approveBatch(
                 request.items(), request.remark(), request.exchangeRate());
-    }
-
-    @PostMapping("/tasks/{caseId}/amend")
-    @PreAuthorize("hasAuthority('finance_order_approval:view') and hasAuthority('finance_order_approval:approve')")
-    public ProcurementApprovalContracts.ApprovalReview amend(
-            @PathVariable UUID caseId,
-            @Valid @RequestBody ProcurementApprovalContracts.ReviewAmendmentRequest request) {
-        return service.amend(caseId, request);
     }
 
     /** 整批使用同一退回原因；任一项失败则全部回滚。 */

@@ -63,9 +63,21 @@ public final class ReportTotalsCalculator {
      * @param label    合计项标题（如「合计数量」）
      * @param type     {@link #TYPE_NUMBER} / {@link #TYPE_MONEY} / {@link #TYPE_WEIGHT} / {@link #TYPE_COUNT}
      *                 (原样下发，只决定前端格式化口径；聚合一律 SUM)
-     * @param groupKey 分组列 key(单位名/币种名)；null = 不分组(重量与计数恒不分组)
+     * @param groupKey 展示名称列 key；null = 不分组(重量、计数和固定本币恒不分组)
+     * @param groupIdentityKey 真实单位/币种身份列 key；名称不提供可相加的证明，缺少身份的分组只返回待核验
      */
-    public record Spec(String key, String label, String type, String groupKey) {}
+    public record Spec(String key, String label, String type, String groupKey, String groupIdentityKey) {
+        /** Legacy grouped specifications lack identity evidence and produce pending totals. */
+        public Spec(String key,String label,String type,String groupKey) {
+            this(key,label,type,groupKey,null);
+        }
+    }
+
+    private record Dimension(String displayKey,String identityKey) { }
+    private record Group(String unit,String identity) { }
+    private static final java.util.Comparator<Group> GROUP_ORDER=java.util.Comparator
+            .comparing(Group::unit,java.util.Comparator.nullsLast(java.util.Comparator.<String>naturalOrder()))
+            .thenComparing(Group::identity,java.util.Comparator.nullsLast(java.util.Comparator.<String>naturalOrder()));
 
     /**
      * 跑合计。任一环节不满足（无 spec / 列名不合法 / 结果全为 NULL）都返回空，
@@ -90,31 +102,43 @@ public final class ReportTotalsCalculator {
         if (em == null || specs == null || specs.isEmpty()) return List.of();
 
         // 按分组维度归并：同一个 groupKey 的所有列合并进一条聚合查询。
-        Map<String, List<Spec>> byGroup = new LinkedHashMap<>();
+        Map<Dimension, List<Spec>> byGroup = new LinkedHashMap<>();
         for (Spec s : specs) {
             if (s == null || !safe(s.key())) continue;
+            if (s.groupKey()!=null&&!safe(s.groupKey())) continue;
             String g = safe(s.groupKey()) ? s.groupKey() : null;
-            byGroup.computeIfAbsent(g == null ? "" : g, k -> new ArrayList<>()).add(s);
+            String identity=g==null?null:safe(s.groupIdentityKey())?s.groupIdentityKey():null;
+            byGroup.computeIfAbsent(new Dimension(g,identity), k -> new ArrayList<>()).add(s);
         }
         if (byGroup.isEmpty()) return List.of();
 
         String inner = dataSelect + " " + fromJoin + " " + (whereSql == null ? "" : whereSql);
         Map<String, ReportTotal> out = new LinkedHashMap<>();
 
-        for (Map.Entry<String, List<Spec>> e : byGroup.entrySet()) {
-            String groupKey = e.getKey().isEmpty() ? null : e.getKey();
+        for (Map.Entry<Dimension, List<Spec>> e : byGroup.entrySet()) {
+            String groupKey = e.getKey().displayKey();
+            String identityKey=e.getKey().identityKey();
             // 同一维度内列 key 去重，保持声明顺序。
             List<Spec> cols = dedupe(e.getValue());
 
             StringBuilder sql = new StringBuilder("SELECT ");
-            if (groupKey != null) sql.append("t.\"").append(groupKey).append("\" AS __grp, ");
+            String display=groupKey==null?null:"t.\""+groupKey+"\"";
+            String identity=identityKey==null?"NULL::text":"t.\""+identityKey+"\"";
+            if (groupKey != null) sql.append(identity).append(" AS __identity, ").append(display).append(" AS __grp, ");
             for (int i = 0; i < cols.size(); i++) {
                 if (i > 0) sql.append(", ");
+                if (groupKey != null) sql.append("CASE WHEN NULLIF(BTRIM(").append(identity)
+                        .append("::text),'') IS NULL OR NULLIF(BTRIM(").append(display)
+                        .append("::text),'') IS NULL THEN NULL ELSE ");
                 sql.append("SUM(t.\"").append(cols.get(i).key()).append("\")");
+                if (groupKey != null) sql.append(" END");
             }
             sql.append(" FROM (").append(inner).append(") t");
             if (groupKey != null) {
-                sql.append(" GROUP BY t.\"").append(groupKey).append("\" ORDER BY 1 NULLS LAST");
+                sql.append(" GROUP BY ").append(display);
+                if(identityKey!=null)sql.append(", ").append(identity);
+                sql.append(" ORDER BY ").append(display).append(" NULLS LAST");
+                if(identityKey!=null)sql.append(", ").append(identity).append(" NULLS LAST");
             }
 
             Query q = em.createNativeQuery(sql.toString());
@@ -122,26 +146,32 @@ public final class ReportTotalsCalculator {
             @SuppressWarnings("unchecked")
             List<Object> raw = q.getResultList();
 
-            // 收集：列 key → 分组列表（丢掉 SUM 为 NULL 的组，即该组无数据）。
-            Map<String, List<ReportTotalGroup>> groups = new LinkedHashMap<>();
+            // Unknown display dimensions may contain different real identities; never expose their sum.
+            Map<String, java.util.SortedMap<Group,BigDecimal>> groups = new LinkedHashMap<>();
             for (Object rowObj : raw) {
                 Object[] row = (rowObj instanceof Object[] arr) ? arr : new Object[] {rowObj};
-                int offset = groupKey == null ? 0 : 1;
-                String unit = groupKey == null ? null : Objects.toString(row[0], null);
+                int offset = groupKey == null ? 0 : 2;
+                String groupIdentity=groupKey==null?null:maintainedGroup(row[0]);
+                String unit = groupKey == null ? null : maintainedGroup(row[1]);
+                Group group=new Group(unit,groupIdentity);
                 for (int i = 0; i < cols.size(); i++) {
                     int idx = i + offset;
                     if (idx >= row.length) continue;
+                    if (groupKey != null && (unit == null||groupIdentity==null)) {
+                        groups.computeIfAbsent(cols.get(i).key(),key->new java.util.TreeMap<>(GROUP_ORDER)).put(group,null);
+                        continue;
+                    }
                     BigDecimal v = toDecimal(row[idx]);
                     if (v == null) continue;
-                    groups.computeIfAbsent(cols.get(i).key(), k -> new ArrayList<>())
-                            .add(new ReportTotalGroup(unit, v));
+                    groups.computeIfAbsent(cols.get(i).key(),key->new java.util.TreeMap<>(GROUP_ORDER)).put(group,v);
                 }
             }
 
             for (Spec s : cols) {
-                List<ReportTotalGroup> g = groups.get(s.key());
+                var g = groups.get(s.key());
                 if (g == null || g.isEmpty()) continue;
-                out.put(s.key(), new ReportTotal(s.key(), s.label(), s.type(), groupKey, List.copyOf(g)));
+                var values=g.entrySet().stream().map(groupValue->new ReportTotalGroup(groupValue.getKey().unit(),groupValue.getValue(),groupValue.getKey().identity())).toList();
+                out.put(s.key(), new ReportTotal(s.key(), s.label(), s.type(), groupKey, values));
             }
         }
 
@@ -173,22 +203,28 @@ public final class ReportTotalsCalculator {
         List<ReportTotal> out = new ArrayList<>();
         for (Spec s : dedupe(specs)) {
             if (!safe(s.key())) continue;
+            if (s.groupKey()!=null&&!safe(s.groupKey())) continue;
             String groupKey = safe(s.groupKey()) ? s.groupKey() : null;
             // null 分组值排在最后，与 SQL 版的 ORDER BY 1 NULLS LAST 一致。
-            Map<String, BigDecimal> sums = new java.util.TreeMap<>(
-                    java.util.Comparator.nullsLast(java.util.Comparator.<String>naturalOrder()));
+            Map<Group, BigDecimal> sums = new java.util.TreeMap<>(GROUP_ORDER);
             boolean any = false;
             for (Map<String, Object> row : rows) {
                 if (row == null) continue;
+                String g = groupKey == null ? null : maintainedGroup(row.get(groupKey));
+                String identity=groupKey==null?null:safe(s.groupIdentityKey())?maintainedGroup(row.get(s.groupIdentityKey())):null;
+                Group group=new Group(g,identity);
+                if (groupKey != null && (g == null||identity==null)) {
+                    sums.put(group,null);any=true;
+                    continue;
+                }
                 BigDecimal v = toDecimal(row.get(s.key()));
                 if (v == null) continue;
-                String g = groupKey == null ? null : Objects.toString(row.get(groupKey), null);
-                sums.merge(g, v, BigDecimal::add);
+                sums.merge(group, v, BigDecimal::add);
                 any = true;
             }
             if (!any) continue;
             List<ReportTotalGroup> groups = new ArrayList<>(sums.size());
-            sums.forEach((g, v) -> groups.add(new ReportTotalGroup(groupKey == null ? null : g, v)));
+            sums.forEach((g, v) -> groups.add(new ReportTotalGroup(g.unit(),v,g.identity())));
             out.add(new ReportTotal(s.key(), s.label(), s.type(), groupKey, List.copyOf(groups)));
         }
         return List.copyOf(out);
@@ -202,6 +238,11 @@ public final class ReportTotalsCalculator {
 
     private static boolean safe(String ident) {
         return ident != null && !ident.isBlank() && SAFE_IDENT.matcher(ident).matches();
+    }
+
+    private static String maintainedGroup(Object value) {
+        String group = Objects.toString(value, null);
+        return group == null || group.isBlank() ? null : group;
     }
 
     private static BigDecimal toDecimal(Object v) {

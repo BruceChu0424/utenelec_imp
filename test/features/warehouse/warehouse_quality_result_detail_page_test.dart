@@ -15,9 +15,126 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_resul
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final scenario in [
+    (
+      name: 'sparse-superadmin-no-stock-view',
+      permissions: <String>{
+        Perm.warehouseIqcReturnView,
+        Perm.warehouseIqcStockInConfirm,
+      },
+      superAdmin: true,
+      readOnly: false,
+      confirm: false,
+      record: false,
+    ),
+    (
+      name: 'stock-view-and-record-no-return-view',
+      permissions: <String>{
+        Perm.warehouseIqcStockInView,
+        Perm.procurementIqcRejectionRecordReturn,
+      },
+      superAdmin: false,
+      readOnly: false,
+      confirm: false,
+      record: false,
+    ),
+    (
+      name: 'readonly-full-native-grants',
+      permissions: <String>{
+        Perm.warehouseIqcStockInView,
+        Perm.warehouseIqcStockInConfirm,
+        Perm.warehouseIqcReturnView,
+        Perm.procurementIqcRejectionRecordReturn,
+      },
+      superAdmin: false,
+      readOnly: true,
+      confirm: false,
+      record: false,
+    ),
+    (
+      name: 'full-native-grants',
+      permissions: <String>{
+        Perm.warehouseIqcStockInView,
+        Perm.warehouseIqcStockInConfirm,
+        Perm.warehouseIqcReturnView,
+        Perm.procurementIqcRejectionRecordReturn,
+      },
+      superAdmin: false,
+      readOnly: false,
+      confirm: true,
+      record: true,
+    ),
+  ]) {
+    testWidgets(
+      'ordinary detail obeys native grants and readonly ${scenario.name}',
+      (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(1800, 1500);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final preferences = await SharedPreferences.getInstance();
+        final detail = {
+          ..._detailJson(),
+          'rejections': [
+            {
+              'id': 'rejection-a',
+              'inspectionItemId': 'inspection-failed',
+              'goodsId': 'goods-2',
+              'failedQty': 2,
+              'physicalStatus': 'PENDING_RETURN',
+              'rowVersion': 7,
+              'canRecordReturn': true,
+            },
+          ],
+        };
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              warehouseQualityResultRepositoryProvider.overrideWithValue(
+                _QualityGateway(detail),
+              ),
+              warehouseIqcStockInRepositoryProvider.overrideWithValue(
+                _StockInGateway(),
+              ),
+              warehouseIqcReturnRepositoryProvider.overrideWithValue(
+                _FailingReturnGateway(),
+              ),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              currentPermissionsProvider.overrideWithValue(
+                scenario.permissions,
+              ),
+              isSuperAdminProvider.overrideWithValue(scenario.superAdmin),
+              if (scenario.readOnly)
+                authenticatedScopeProvider.overrideWithValue(
+                  const AuthenticatedScope(userId: 'keeper', readOnly: true),
+                ),
+            ],
+            child: const MaterialApp(
+              home: WarehouseQualityResultDetailPage(
+                receiptType: 'PURCHASE',
+                receiptId: 'receipt-1',
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('warehouse-quality-detail-confirm')),
+          scenario.confirm ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.text('登记退回'),
+          scenario.record ? findsOneWidget : findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   test('inspection line verdict derives from quantities and open status', () {
     WarehouseQualityInspectionLine line(Map<String, dynamic> json) =>

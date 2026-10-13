@@ -115,6 +115,8 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
       VisitorApplicationStatus.pending,
       VisitorApplicationStatus.approved,
       VisitorApplicationStatus.rejected,
+      VisitorApplicationStatus.checkedIn,
+      VisitorApplicationStatus.cancelled,
     ])
       MasterFacetBucket(
         value: status.name,
@@ -283,17 +285,19 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
                   : null,
               // 确认接待/拒绝保留为行菜单（右击/长按）；无行详情路由。
               rowMenuBuilder: (app) => [
-                UtenMenuItem(
-                  label: l10n.myVisitorsConfirm,
-                  icon: Icons.check_circle_outline_rounded,
-                  onTap: () => _confirm(context, app, true, l10n),
-                ),
-                UtenMenuItem(
-                  label: l10n.myVisitorsReject,
-                  icon: Icons.cancel_outlined,
-                  destructive: true,
-                  onTap: () => _confirm(context, app, false, l10n),
-                ),
+                if (app.status == VisitorApplicationStatus.hostReviewing) ...[
+                  UtenMenuItem(
+                    label: l10n.myVisitorsConfirm,
+                    icon: Icons.check_circle_outline_rounded,
+                    onTap: () => _confirm(context, app, true, l10n),
+                  ),
+                  UtenMenuItem(
+                    label: l10n.myVisitorsReject,
+                    icon: Icons.cancel_outlined,
+                    destructive: true,
+                    onTap: () => _confirm(context, app, false, l10n),
+                  ),
+                ],
               ],
               emptyMessage: l10n.myVisitorsEmpty,
               // 被访人待确认是个人 + 瞬态（status=hostReviewing，确认后即脱离），
@@ -311,7 +315,7 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
             ),
           );
           // 分段栏(ADR-100)：本页此前只有表头下拉筛状态、且不带任何计数，于是
-          // 工作台「我的访客」卡上的黄数字点进来无处落地。现在四段各挂各的数：
+          // 工作台「我的访客」卡上的黄数字点进来无处落地。各办理段挂各自计数：
           //   待我确认 = 红(轮到我动手) · HR 审批中 / 已通过待来访 = 黄(我已确认、
           //   球在 HR 或访客手上) · 已拒绝 = 终态不挂。
           // 两个黄段之和恒等于卡面那枚黄徽章——服务端同一次扫描给出
@@ -360,6 +364,20 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
                       value: 'rejected',
                       label: visitorStatusLabel(
                         VisitorApplicationStatus.rejected,
+                        l10n,
+                      ),
+                    ),
+                    UtenFilterSegment(
+                      value: 'checkedIn',
+                      label: visitorStatusLabel(
+                        VisitorApplicationStatus.checkedIn,
+                        l10n,
+                      ),
+                    ),
+                    UtenFilterSegment(
+                      value: 'cancelled',
+                      label: visitorStatusLabel(
+                        VisitorApplicationStatus.cancelled,
                         l10n,
                       ),
                     ),

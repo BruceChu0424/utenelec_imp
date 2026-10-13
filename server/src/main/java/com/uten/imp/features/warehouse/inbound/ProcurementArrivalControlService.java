@@ -792,16 +792,36 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_order_approval:view')")
     public PageResponse<ArrivalExceptionTask> financeTasks(int page, int size) {
+        return financeTasks(page, size, PENDING_FINANCE);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_order_approval:view')")
+    public PageResponse<ArrivalExceptionTask> financeTasks(int page, int size, String status) {
         int safePage = safePage(page);
         int safeSize = safeSize(size);
-        long total = countFinanceTasks();
+        String predicate = financeTaskPredicate(status);
+        Long count = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM procurement_arrival_exceptions exception WHERE " + predicate,
+                Long.class);
+        long total = count == null ? 0 : count;
         List<ArrivalExceptionTask> items = queryExceptions(
-                "exception.status = 'PENDING_FINANCE'",
+                predicate,
                 ActionScope.FINANCE,
                 "LIMIT ? OFFSET ?",
                 safeSize,
                 (safePage - 1) * safeSize);
         return page(items, safePage, safeSize, total);
+    }
+
+    static String financeTaskPredicate(String status) {
+        if (status == null || status.isBlank() || PENDING_FINANCE.equals(status)) {
+            return "exception.status = 'PENDING_FINANCE'";
+        }
+        if ("PROCESSED".equals(status)) {
+            return "exception.status <> 'PENDING_FINANCE'";
+        }
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "到货审批状态筛选无效");
     }
 
     @Transactional(readOnly = true)
@@ -1284,6 +1304,25 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         return count == null ? 0 : count;
     }
 
+    /** Source-specific facts for the two-level inbound navigation, using the existing queue predicate. */
+    @Transactional(readOnly = true)
+    public Map<String, Long> countWarehouseExceptionsByType(WarehouseTaskScope warehouseScope) {
+        WarehouseExceptionFilters filters = warehouseExceptionFilters("", false, null, null, null, warehouseScope);
+        Map<String, Long> counts = new java.util.LinkedHashMap<>();
+        counts.put(PURCHASE, 0L);
+        counts.put(SUBCONTRACT, 0L);
+        jdbc.query("""
+                SELECT exception.order_type, COUNT(*)
+                FROM procurement_arrival_exceptions exception
+                JOIN goods goods ON goods.id=exception.goods_id
+                LEFT JOIN suppliers supplier ON supplier.id=exception.supplier_id
+                WHERE
+                """ + filters.where() + " GROUP BY exception.order_type",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> counts.put(rs.getString(1),rs.getLong(2)),
+                filters.args().toArray());
+        return Map.copyOf(counts);
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<InboundExpectationTask> expectations(
             int page, int size, String orderType, String keyword) {
@@ -1628,6 +1667,13 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
      * 徽章计数与「采购财务通过」通知共用。
      */
     static final String EXPECTATION_WAREHOUSES = "fn_inbound_expectation_warehouse_ids(expectation.id)";
+
+    /** Fixed authority fragments for the warehouse task-center read projection. No request SQL. */
+    public static String taskCenterWorkRemainingPredicate() { return warehouseWorkRemaining(); }
+    public static String taskCenterExpectationVisiblePredicate() { return expectationVisible(); }
+    public static String taskCenterItemVisiblePredicate() { return subcontractItemVisible("item"); }
+    public static String taskCenterReceivableQuantity() { return currentReceivableQty("item"); }
+    public static String taskCenterReceivableGiftQuantity() { return currentReceivableGiftQty("item"); }
 
     /** 预计到货过滤基座（2026-09-25 单号列统一）：类型/供应商/仓库范围/关键字 +
      *  订货单号等值筛选的 WHERE 片段与参数。列表 / 计数 / facets 三处共用同一份文本，

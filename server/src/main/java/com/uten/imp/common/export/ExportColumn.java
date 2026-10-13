@@ -8,7 +8,11 @@ package com.uten.imp.common.export;
  * @param label 表头文案
  * @param type text / date / money / number / qty / bool(常量见下)
  */
-public record ExportColumn(String key, String label, String type, Double width) {
+public record ExportColumn(String key, String label, String type, Double width,
+                           String unitLabel, String unitKey) {
+    public ExportColumn(String key, String label, String type, Double width) {
+        this(key, label, type, width, null, null);
+    }
     public ExportColumn(String key, String label, String type) { this(key, label, type, null); }
     public static final String TEXT = "text";
     public static final String DATE = "date";

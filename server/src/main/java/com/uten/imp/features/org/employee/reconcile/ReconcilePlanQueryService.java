@@ -162,7 +162,7 @@ public class ReconcilePlanQueryService {
         }
         ActiveClaim claim = claims.get(row.employeeId());
         return new RowView(
-                row.rowNo(), row.kind(), employeeRef(employee),
+                row.rowNo(), row.kind(), employeeRef(employee), row.employeeVersion(),
                 reason,
                 claim == null ? null : new ClaimView(
                         claimantName(claim.claimedBy(), employees),

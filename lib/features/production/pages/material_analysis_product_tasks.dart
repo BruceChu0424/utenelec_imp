@@ -993,6 +993,7 @@ abstract class _MaterialAnalysisProductTasksState
         return const {
           'SUBMITTED',
           'APPROVED',
+          'PLANNING_REQUIRED',
           'WAITING',
           'READY',
           'DISPATCHED',
@@ -1657,7 +1658,10 @@ abstract class _MaterialAnalysisProductTasksState
     // 2026-09-06 统一流程阶段优先：已下达/链路中的行显示真实停在哪一步。
     // 锚点模型下已转生产的行 requiredQty 常为 0——不能因此退化为
     // 「本批需求已转入生产计划」这类通用文案，进度必须与具体单据对应。
-    if (_hasUnlinkedIssuedPlan(material)) {
+    // 已转交路径可显示精确目标的真实阶段；普通旧行缺子件身份时仍提示
+    // 同步未完成，不能把孤立的 MAKE_* 键显示成可以再次办理的任务。
+    if (_hasUnlinkedIssuedPlan(material) &&
+        !_hasResolvedDelegatedFlowStageSource(material)) {
       return _StatusView(
         _l10n.materialIssuedPlanSyncPending,
         facetKey: 'inTransit',
@@ -1840,6 +1844,32 @@ abstract class _MaterialAnalysisProductTasksState
         _ => ProductionFlowRoute.buy,
       },
     );
+  }
+
+  bool _hasResolvedDelegatedFlowStageSource(
+    ProductionMaterialAnalysisMaterial material,
+  ) {
+    final targetId = material.aggregateTargetMaterialLineId;
+    if (material.requirementState !=
+            MaterialRequirementState.delegatedToMakeChild ||
+        targetId == null ||
+        targetId == material.materialLineId ||
+        material.aggregateDelegatedQty <= 0 ||
+        material.aggregatePreparation?.targetMaterialLineIds.contains(
+              targetId,
+            ) !=
+            true) {
+      return false;
+    }
+    final target = _materialOfLine(targetId);
+    return target != null &&
+        material.goodsId != null &&
+        material.unitId != null &&
+        material.delegatedToAnalysisLineId != null &&
+        target.analysisLineId == material.delegatedToAnalysisLineId &&
+        target.goodsId == material.goodsId &&
+        target.colorId == material.colorId &&
+        target.unitId == material.unitId;
   }
 
   /// 未下达的第一步文案：按路线显示「等待下发采购 / 等待下发委外 /

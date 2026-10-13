@@ -95,8 +95,8 @@ String workbenchRouteFor(
   'PROFILE_CHANGE_SUBMITTED' => '/hr/profile-changes',
   'VISITOR_APPLY_SUBMITTED' => '/visitor-approval',
   'VISITOR_HOST_CONFIRM_REQUIRED' => '/my-visitors',
-  'EXPENSE_CLAIM_SUBMITTED' ||
-  'EXPENSE_CLAIM_PENDING_PAYMENT' => '/expense/approval',
+  'EXPENSE_CLAIM_SUBMITTED' => '/expense/approval?queue=pending',
+  'EXPENSE_CLAIM_PENDING_PAYMENT' => '/expense/approval?queue=payable',
   'EXPENSE_CLAIM_REJECTED' => RouteName.expense,
   'PAYROLL_BATCH_SUBMITTED' ||
   'PAYROLL_BATCH_PENDING_PUBLISH' => '/payroll/review',

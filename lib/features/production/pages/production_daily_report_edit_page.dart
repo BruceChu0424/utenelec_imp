@@ -9,10 +9,6 @@
 //   - 不良数(ADR-129)：可选，只记录，不影响完工量、库存与产量分流；用来算实产单耗和不良率。
 //
 // 仅草稿可编辑（后端校验；已审走详情页红冲）。
-import '../../../shared/auth/native_read_view_scope_mixin.dart';
-import '../../../shared/widgets/reviewed_grid_columns.dart';
-import '../../../components/data_display/uten_review_input_cell.dart';
-import '../../../components/feedback/uten_empty.dart';
 import 'package:flutter/material.dart';
 import '../../../shared/widgets/saved_document_fields.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
@@ -96,10 +92,8 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
     this.initialExecutionSegmentIds = const [],
     this.initialSupplement,
     this.returnToWorkshopTasks = false,
-    this.reviewMode = false,
   });
   final String? id; // null=新建
-  final bool reviewMode;
   final String? initialExecutionSegmentId;
   final List<String> initialExecutionSegmentIds;
   final ProductionOutputSupplementView? initialSupplement;
@@ -115,100 +109,10 @@ class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
 
 class _ProductionDailyReportEditPageState
     extends ConsumerState<ProductionDailyReportEditPage>
-    with
-        FormDraftMixin<ProductionDailyReportEditPage>,
-        NativeReadViewScopeMixin<ProductionDailyReportEditPage> {
-  String? _reviewSnapshot;
-  String? _reviewLoadError;
+    with FormDraftMixin<ProductionDailyReportEditPage> {
   String? _savedWarehouseId;
   String? _savedSupplierId;
   String? _savedSourceDocNo;
-  String? _originalRemark;
-  final Map<DailyGridRow, Map<String, String?>> _reviewBaseline = {};
-  bool get _serverReviewAuthorized =>
-      _reviewSnapshot != null && nativeReadCanWrite;
-  @override
-  void nativeReadOwnerChanged() {
-    if (mounted) {
-      setState(() {
-        _reviewSnapshot = null;
-        _reviewLoadError = null;
-        _savedWarehouseId = null;
-        _savedSupplierId = null;
-        _savedSourceDocNo = null;
-        _reviewBaseline.clear();
-        _detailLoaded = false;
-        _grid.replaceAll([]);
-      });
-    }
-  }
-
-  @override
-  void nativeReadPermissionChanged() {
-    if (mounted) {
-      setState(() {
-        if (widget.reviewMode) {
-          _reviewSnapshot = null;
-        }
-      });
-    }
-  }
-
-  @override
-  Future<void> nativeReadReload() => _init();
-  Map<String, String?> _reviewValues(DailyGridRow row) => {
-    'qty': row.qty.text,
-    'defectQty': row.defectQty.text,
-    'remark': row.remark.text,
-    'overLimitReason': row.overLimitReason.text,
-    'materialUsed': row.materialUsed.text,
-    'allocationQty': row.allocationQty.text,
-  };
-  Widget _reviewHeader(Widget child) => widget.reviewMode
-      ? Focus(
-          canRequestFocus: false,
-          descendantsAreFocusable: false,
-          child: AbsorbPointer(child: child),
-        )
-      : child;
-  Widget _reviewRemark(Widget child) => !widget.reviewMode
-      ? child
-      : ListenableBuilder(
-          listenable: _remark,
-          builder: (context, _) => UtenReviewInputCell(
-            before: _originalRemark,
-            after: _remark.text,
-            child: child,
-          ),
-        );
-  List<EditableGridColumn<DailyGridRow>> _reviewColumns(
-    List<EditableGridColumn<DailyGridRow>> columns,
-  ) => !widget.reviewMode
-      ? columns
-      : reviewedGridColumns(
-          columns: columns,
-          baseline: _reviewBaseline,
-          valuesOf: _reviewValues,
-          listenableOf: (row) => Listenable.merge([
-            row.qty,
-            row.defectQty,
-            row.remark,
-            row.overLimitReason,
-            row.materialUsed,
-            row.allocationQty,
-          ]),
-          editableKeys: {
-            'qty',
-            'defectQty',
-            'remark',
-            'overLimitReason',
-            'materialUsed',
-            'allocationQty',
-          },
-          allowReadOnlyInteraction: (row, columnKey) =>
-              row.isGroupHeaderRow && columnKey == 'goods',
-          keyPrefix: 'daily-review-before',
-        );
   bool _saveOperationActive = false;
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
   final _remark = TextEditingController();
@@ -832,18 +736,6 @@ class _ProductionDailyReportEditPageState
   void initState() {
     super.initState();
     startFormDraftIdentityGuard();
-    if (widget.reviewMode) {
-      initializeNativeReadScope();
-      ref.listenManual(currentPermissionsProvider, (previous, next) {
-        if (previous != next) {
-          invalidateNativeReadAccess();
-          nativeReadOwnerChanged();
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _init();
-          });
-        }
-      });
-    }
     _grid.addListener(_scheduleMaterialOwnershipRefresh);
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
@@ -871,15 +763,8 @@ class _ProductionDailyReportEditPageState
   }
 
   Future<void> _init() async {
-    _reviewLoadError = null;
-    final isCurrent = widget.reviewMode
-        ? captureNativeRead(widget.id ?? '', () => widget.id ?? '')
-        : () => mounted;
+    bool isCurrent() => mounted;
     setState(() => _loading = true);
-    if (widget.reviewMode && !isCurrent()) {
-      setState(() => _loading = false);
-      return;
-    }
     await ref.read(masterNameServiceProvider).ensureLoaded();
     if (!mounted || !isCurrent()) return;
     await _resolveDeptIds();
@@ -887,19 +772,15 @@ class _ProductionDailyReportEditPageState
     if (widget.id != null) {
       try {
         final repo = ref.read(productionDailyReportRepositoryProvider);
-        final review = widget.reviewMode ? await repo.review(widget.id!) : null;
-        final d = review?.detail ?? await repo.detail(widget.id!);
+        final d = await repo.detail(widget.id!);
         if (!isCurrent()) return;
-        _reviewSnapshot = review?.snapshot;
         final writable =
             d.status == kProductionStatusDraft &&
-            (widget.reviewMode
-                ? _reviewSnapshot != null
-                : await loadDocumentOwnerCanWrite(
-                    ref,
-                    DocumentDataScope.productionPlan,
-                    d.makerId,
-                  ));
+            await loadDocumentOwnerCanWrite(
+              ref,
+              DocumentDataScope.productionPlan,
+              d.makerId,
+            );
         if (!mounted || !isCurrent()) return;
         if (!writable) {
           context.appWarning(documentScopeReadOnlyMessage, force: true);
@@ -996,12 +877,8 @@ class _ProductionDailyReportEditPageState
         _grid.replaceAll(rows);
         _detailLoaded = true;
       } on ApiException catch (e) {
-        if (widget.reviewMode && isCurrent()) _reviewLoadError = e.message;
         if (mounted) context.appError(e.message);
       } catch (_) {
-        if (widget.reviewMode && isCurrent()) {
-          _reviewLoadError = '日报审核信息读取失败，请重试';
-        }
         if (mounted) context.appError('日报草稿读取失败，请重试后再编辑');
       }
     }
@@ -1050,20 +927,7 @@ class _ProductionDailyReportEditPageState
     await _reloadMaterialRows();
     if (mounted && isCurrent()) {
       setState(() => _loading = false);
-      if (widget.reviewMode) {
-        _originalRemark = _remark.text;
-        _reviewBaseline.clear();
-        for (final row in {
-          ..._grid.rows,
-          ..._allMaterialRows,
-          for (final product in _productRows) ...product.allocationRows,
-        }) {
-          _reviewBaseline[row] = _reviewValues(row);
-        }
-        acceptNativeRead();
-      } else {
-        await initializeFormDraft();
-      }
+      await initializeFormDraft();
     }
   }
 
@@ -2869,11 +2733,6 @@ class _ProductionDailyReportEditPageState
 
   Future<void> _save() async {
     if (_saving || _saveOperationActive || !formDraftIdentityIsCurrent) return;
-    if (widget.reviewMode &&
-        (!_serverReviewAuthorized || _reviewSnapshot == null)) {
-      return;
-    }
-    if (widget.reviewMode && ModalRoute.of(context)?.isCurrent != true) return;
     _saveOperationActive = true;
     try {
       final requestScope = await captureFormDraftRequestScope();
@@ -3231,8 +3090,6 @@ class _ProductionDailyReportEditPageState
       itemsBody.add({
         ...platformRowPayload(r),
         'goodsId': r.goods!.id,
-        if (widget.reviewMode)
-          'reviewSourceItemId': r.platformFields.sourceRecordId,
         'qty': qty,
         // 不良数只记录，不改良品数；空或 0 不提交。
         'defectQty': ?productionReportDefectQty(r),
@@ -3335,12 +3192,11 @@ class _ProductionDailyReportEditPageState
       return;
     }
     await requestScope.verify();
-    if (!widget.reviewMode &&
-        !await _prepareActualOutputSupplements(
-          rows.where((row) => row.goods != null).toList(),
-          body,
-          requestScope,
-        )) {
+    if (!await _prepareActualOutputSupplements(
+      rows.where((row) => row.goods != null).toList(),
+      body,
+      requestScope,
+    )) {
       return;
     }
     if (!mounted || !formDraftIdentityIsCurrent) return;
@@ -3360,16 +3216,8 @@ class _ProductionDailyReportEditPageState
       context.appWarning('当前身份、创建或查看权限尚未确认，输入已保留');
       return;
     }
-    final ownsReview = widget.reviewMode
-        ? captureNativeOwnership()
-        : () => mounted;
-    final reviewRoute = widget.reviewMode ? ModalRoute.of(context) : null;
     bool ownsSubmission() =>
         mounted &&
-        ownsReview() &&
-        (!widget.reviewMode ||
-            (reviewRoute?.isCurrent == true &&
-                identical(ModalRoute.of(context), reviewRoute))) &&
         requestScope.isCurrent &&
         formDraftIdentityIsCurrent &&
         ref.read(authenticatedScopeProvider) == submissionScope &&
@@ -3382,7 +3230,6 @@ class _ProductionDailyReportEditPageState
     if (!ownsSubmission()) return;
     var dispatched = false;
     var createAcknowledged = false;
-    ProductionDailyReportDetail? acknowledgedReviewDraft;
     bool mayTreatCreateAsRejected(ApiException error) =>
         !createAcknowledged &&
         ref
@@ -3447,16 +3294,6 @@ class _ProductionDailyReportEditPageState
               return resolution.detail!;
             }, isDefiniteRejection: mayTreatCreateAsRejected)
           : await requestScope.run(() async {
-              if (widget.reviewMode) {
-                final saved = await repo.saveReviewed(
-                  widget.id!,
-                  body,
-                  _reviewSnapshot!,
-                  approveNow: false,
-                );
-                acknowledgedReviewDraft = saved;
-                return saved;
-              }
               return repo.update(
                 widget.id!,
                 body,
@@ -3464,24 +3301,7 @@ class _ProductionDailyReportEditPageState
               );
             });
       if (!ownsSubmission()) {
-        if (widget.reviewMode && acknowledgedReviewDraft != null && mounted) {
-          context.appWarning('核改已保存为草稿；身份、服务器或权限已变化，本次未继续审核。请在原身份下重新读取核对');
-        }
         if (widget.id == null) holdFormDraftForReadRecovery();
-        return;
-      }
-      if (widget.reviewMode) {
-        if (!mounted) return;
-        if (d.id != widget.id || d.status != kProductionStatusDraft) {
-          throw StateError('核改草稿响应身份或状态不一致，本次未继续审核');
-        }
-        context.appSuccess('核改已保存为草稿，请逐料核对余料处理后审核');
-        refreshBadges(ref);
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop(d);
-        } else {
-          _openSavedReport(d.id);
-        }
         return;
       }
       if (widget.id == null) {
@@ -3506,11 +3326,7 @@ class _ProductionDailyReportEditPageState
       }
       if (!mounted || !ownsSubmission()) return;
       context.appSuccess(
-        widget.reviewMode && d.status == kProductionStatusApproved
-            ? '审核修改已保存并审核'
-            : d.status == 0
-            ? '报工草稿已保存，待审核'
-            : '已确认原提交对应的生产日报，请查看当前状态',
+        d.status == 0 ? '报工草稿已保存，待审核' : '已确认原提交对应的生产日报，请查看当前状态',
       );
       // 同生产计划单：本页不走 bumpListRefresh，草稿计数在这里单独失效。
       refreshBadges(ref);
@@ -3524,12 +3340,6 @@ class _ProductionDailyReportEditPageState
       if (!ownsSubmission()) return;
       _openSavedReport(d.id);
     } on ApiException catch (e) {
-      if (widget.reviewMode && acknowledgedReviewDraft != null) {
-        if (mounted) {
-          context.appWarning('核改已保存为草稿；后续身份或权限核对未完成，本次未继续审核。请重新读取核对');
-        }
-        return;
-      }
       if (!mounted || !ownsSubmission()) return;
       if (widget.id == null && (!dispatched || mayTreatCreateAsRejected(e))) {
         try {
@@ -4001,27 +3811,25 @@ class _ProductionDailyReportEditPageState
     required Map<String, String> colorEntries,
     required Map<String, String> unitEntries,
   }) {
-    final pool = _reviewColumns(
-      dailyGridColumns(
-        context: context,
-        onPickGoods: _pickGoods,
-        onPickSource: _pickSource,
-        onOpenSource:
-            ref.watch(isSuperAdminProvider) ||
-                ref
-                    .watch(currentPermissionsProvider)
-                    .contains(Perm.productionPlanView)
-            ? _openSource
-            : null,
-        onClearSource: _clearSource,
-        colorEntries: colorEntries,
-        unitEntries: unitEntries,
-        standaloneDetails: true,
-        onMaterialChanged: () => setState(() {}),
-        onAllocationDestinationChanged: _onAllocationDestinationChanged,
-        onAllocationQtyChanged: _onAllocationQtyChanged,
-        onAllocationQtyFocus: _onAllocationQtyFocus,
-      ),
+    final pool = dailyGridColumns(
+      context: context,
+      onPickGoods: _pickGoods,
+      onPickSource: _pickSource,
+      onOpenSource:
+          ref.watch(isSuperAdminProvider) ||
+              ref
+                  .watch(currentPermissionsProvider)
+                  .contains(Perm.productionPlanView)
+          ? _openSource
+          : null,
+      onClearSource: _clearSource,
+      colorEntries: colorEntries,
+      unitEntries: unitEntries,
+      standaloneDetails: true,
+      onMaterialChanged: () => setState(() {}),
+      onAllocationDestinationChanged: _onAllocationDestinationChanged,
+      onAllocationQtyChanged: _onAllocationQtyChanged,
+      onAllocationQtyFocus: _onAllocationQtyFocus,
     );
     const detailOnlyKeys = {
       'issuedQty',
@@ -4038,8 +3846,7 @@ class _ProductionDailyReportEditPageState
     final editable =
         !_loading && !_saving && !_resumeBlocked && _createdReportId == null;
     return UtenEditableGrid<DailyGridRow>(
-      columnEditingEnabled:
-          !widget.reviewMode && editable && (_isCreate || _detailLoaded),
+      columnEditingEnabled: editable && (_isCreate || _detailLoaded),
       tableKey: 'production.daily.items',
       controller: _grid,
       stickyHeaderPinned: _gridPinned,
@@ -4088,50 +3895,28 @@ class _ProductionDailyReportEditPageState
                 )
               : quantityCell(context, row),
           materialUsageBuilder: materialCell,
-          onAllocationDestinationChanged: widget.reviewMode
-              ? null
-              : _onAllocationDestinationChanged,
-          destinationsEditable: !widget.reviewMode,
+          onAllocationDestinationChanged: _onAllocationDestinationChanged,
           onAddAllocation:
-              !widget.reviewMode &&
-                  detailEditable &&
+              detailEditable &&
                   !product.isFqcRecovery &&
                   !product.directTransferLoadFailed &&
                   product.directTransferPrecisionIssue == null &&
                   product.directTransferCandidates.isNotEmpty
               ? () => _addAllocation(product)
               : null,
-          onRemoveAllocation: !widget.reviewMode && detailEditable
-              ? _removeAllocation
-              : null,
+          onRemoveAllocation: detailEditable ? _removeAllocation : null,
           enabled: detailEditable,
         );
       },
       createBlankRow: () => DailyGridRow(),
       cloneRow: (row) => row.clone(),
-      showAddRow: !widget.reviewMode,
-      showRowDelete: !widget.reviewMode,
-      showRemoveRowsAction: !widget.reviewMode,
-      selectionEnabled: !widget.reviewMode,
-      canDeleteRow: (row) => !widget.reviewMode && !row.hasFixedSupplement,
+      canDeleteRow: (row) => !row.hasFixedSupplement,
       onDeleteRow: _deleteProductRow,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.reviewMode && (!_serverReviewAuthorized)) {
-      return Scaffold(
-        appBar: const UtenAppBar(title: '修改后审核生产日报', showBackButton: true),
-        body: _reviewLoadError == null
-            ? nativeReadAccessNotice()
-            : UtenEmpty.error(
-                message: _reviewLoadError!,
-                actionLabel: '重试',
-                onAction: _init,
-              ),
-      );
-    }
     final theme = Theme.of(context);
     final names = ref.watch(masterNameServiceProvider);
     final workforceTree = ref
@@ -4140,11 +3925,7 @@ class _ProductionDailyReportEditPageState
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
-          title: widget.reviewMode
-              ? '修改后审核生产日报'
-              : widget.id == null
-              ? '新建生产日报'
-              : '编辑生产日报',
+          title: widget.id == null ? '新建生产日报' : '编辑生产日报',
           showBackButton: true,
           actions: _draftsAction,
         ),
@@ -4192,107 +3973,100 @@ class _ProductionDailyReportEditPageState
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     _savedFields(
-                                      _reviewHeader(
-                                        UtenFormGrid(
-                                          children: [
-                                            // 单据号：系统自动生成，只读显示。
-                                            TextFormField(
-                                              errorBuilder:
-                                                  utenTextFieldErrorBuilder,
-                                              readOnly: true,
-                                              controller: _billNo,
-                                              decoration: UtenInputDecoration(
-                                                InputDecoration(
-                                                  labelText: '单据号',
-                                                  hintText: _billNo.text.isEmpty
-                                                      ? '保存后自动生成'
-                                                      : null,
-                                                  filled: _billNo.text.isEmpty,
-                                                  suffixIcon:
-                                                      _billNo.text.isEmpty
-                                                      ? const Icon(
-                                                          Icons
-                                                              .autorenew_outlined,
-                                                          size: 18,
-                                                        )
-                                                      : const Icon(
-                                                          Icons.lock_outline,
-                                                          size: 16,
-                                                        ),
-                                                ),
+                                      UtenFormGrid(
+                                        children: [
+                                          // 单据号：系统自动生成，只读显示。
+                                          TextFormField(
+                                            errorBuilder:
+                                                utenTextFieldErrorBuilder,
+                                            readOnly: true,
+                                            controller: _billNo,
+                                            decoration: UtenInputDecoration(
+                                              InputDecoration(
+                                                labelText: '单据号',
+                                                hintText: _billNo.text.isEmpty
+                                                    ? '保存后自动生成'
+                                                    : null,
+                                                filled: _billNo.text.isEmpty,
+                                                suffixIcon: _billNo.text.isEmpty
+                                                    ? const Icon(
+                                                        Icons
+                                                            .autorenew_outlined,
+                                                        size: 18,
+                                                      )
+                                                    : const Icon(
+                                                        Icons.lock_outline,
+                                                        size: 16,
+                                                      ),
                                               ),
                                             ),
-                                            // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                            ...utenMakerAuditCells(
-                                              ref,
-                                              makerName: _makerName,
-                                              createdAt: _createdAt,
-                                            ),
-                                            UtenDateField(
-                                              label: '单据日期',
-                                              required: true,
-                                              value: _billDate,
-                                              onChanged: (d) =>
-                                                  setState(() => _billDate = d),
-                                            ),
-                                            // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
-                                            UtenDepartmentPicker(
-                                              mode: UtenDepartmentPickerMode
-                                                  .single,
-                                              label: '车间',
-                                              hint: '选择生产车间(部门)',
-                                              selectablePredicate: (node) =>
-                                                  workforceTree
-                                                          ?.productionDepartmentId !=
-                                                      null &&
-                                                  node.parentId ==
-                                                      workforceTree!
-                                                          .productionDepartmentId,
-                                              treeOverride:
-                                                  workforceTree?.tree ??
-                                                  const [],
-                                              expandOnRowTap: true,
-                                              initiallyExpandedIds:
-                                                  workforceTree
-                                                      ?.initiallyExpandedIds ??
-                                                  const {},
-                                              initialSelection:
-                                                  _departmentId == null
-                                                  ? const []
-                                                  : [
-                                                      DeptSelection(
-                                                        id: _departmentId!,
-                                                        name:
-                                                            _workshopName ?? '',
-                                                        fullPath: '',
-                                                        level: '',
-                                                      ),
-                                                    ],
-                                              onChanged: (sel) {
-                                                final s = sel.isEmpty
-                                                    ? null
-                                                    : sel.first;
-                                                setState(() {
-                                                  _departmentId = s?.id;
-                                                  _workshopName =
-                                                      s?.name; // 部门名冗余
-                                                });
-                                              },
-                                            ),
-                                            _workerPicker(),
-                                          ],
-                                        ),
+                                          ),
+                                          // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                          ...utenMakerAuditCells(
+                                            ref,
+                                            makerName: _makerName,
+                                            createdAt: _createdAt,
+                                          ),
+                                          UtenDateField(
+                                            label: '单据日期',
+                                            required: true,
+                                            value: _billDate,
+                                            onChanged: (d) =>
+                                                setState(() => _billDate = d),
+                                          ),
+                                          // 车间 = 部门选择器（落 department_id；部门名冗余 workshop_name）。
+                                          UtenDepartmentPicker(
+                                            mode:
+                                                UtenDepartmentPickerMode.single,
+                                            label: '车间',
+                                            hint: '选择生产车间(部门)',
+                                            selectablePredicate: (node) =>
+                                                workforceTree
+                                                        ?.productionDepartmentId !=
+                                                    null &&
+                                                node.parentId ==
+                                                    workforceTree!
+                                                        .productionDepartmentId,
+                                            treeOverride:
+                                                workforceTree?.tree ?? const [],
+                                            expandOnRowTap: true,
+                                            initiallyExpandedIds:
+                                                workforceTree
+                                                    ?.initiallyExpandedIds ??
+                                                const {},
+                                            initialSelection:
+                                                _departmentId == null
+                                                ? const []
+                                                : [
+                                                    DeptSelection(
+                                                      id: _departmentId!,
+                                                      name: _workshopName ?? '',
+                                                      fullPath: '',
+                                                      level: '',
+                                                    ),
+                                                  ],
+                                            onChanged: (sel) {
+                                              final s = sel.isEmpty
+                                                  ? null
+                                                  : sel.first;
+                                              setState(() {
+                                                _departmentId = s?.id;
+                                                _workshopName =
+                                                    s?.name; // 部门名冗余
+                                              });
+                                            },
+                                          ),
+                                          _workerPicker(),
+                                        ],
                                       ),
                                     ),
                                     const SizedBox(height: UtenSpacing.s12),
-                                    _reviewRemark(
-                                      TextField(
-                                        controller: _remark,
-                                        decoration: const InputDecoration(
-                                          labelText: '备注',
-                                        ),
-                                        maxLines: 2,
+                                    TextField(
+                                      controller: _remark,
+                                      decoration: const InputDecoration(
+                                        labelText: '备注',
                                       ),
+                                      maxLines: 2,
                                     ),
                                   ],
                                 ),
@@ -4484,7 +4258,6 @@ class _ProductionDailyReportEditPageState
                     ),
                     onSave: hasCheckedLine ? _save : null,
                     saving: _saving,
-                    saveLabel: widget.reviewMode ? '保存并审核' : '保存',
                     saveDisabledHint: hasCheckedLine
                         ? null
                         : '请先勾选要报工的明细行（未勾选的行不会写入本张日报）',

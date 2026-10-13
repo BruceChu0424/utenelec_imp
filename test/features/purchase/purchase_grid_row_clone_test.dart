@@ -4,9 +4,51 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
+import 'package:uten_imp/features/purchase/widgets/doc_link_picker.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
+  test(
+    'frozen alternate-unit rate retains all12+6 digits through linked row clone and draft',
+    () {
+      final row = PurchaseGridRow.fromLinked(
+        const LinkedItem(
+          goodsId: 'g1',
+          qty: 0.0001,
+          qtyText: '0.0001',
+          unitId: 'validated-alternate-unit',
+          unitRate: 1000000000000,
+          unitRateText: '999999999999.999999',
+          upstreamItemId: 'source-1',
+        ),
+        const GoodsOption(id: 'g1', name: '物料'),
+      );
+      addTearDown(row.dispose);
+      expect(row.recordedUnitRateText, '999999999999.999999');
+      expect(row.unitRateInputValid, isTrue);
+      final clone = row.clone();
+      addTearDown(clone.dispose);
+      expect(clone.recordedUnitRateText, '999999999999.999999');
+      final restored = PurchaseGridRow.fromDraft(row.exportDraft());
+      addTearDown(restored.dispose);
+      expect(restored.recordedUnitRateText, '999999999999.999999');
+      expect(restored.upstreamItemId, 'source-1');
+      expect(restored.unitRateInputValid, isTrue);
+    },
+  );
+  for (final raw in <String?>[
+    null,
+    '0',
+    'unknown',
+    '1.0000001',
+    '1000000000000',
+  ]) {
+    test('unknown or invalid source unit rate cannot be submitted: $raw', () {
+      final row = PurchaseGridRow(sourceLocked: true)..unitRateText = raw;
+      addTearDown(row.dispose);
+      expect(row.unitRateInputValid, isFalse);
+    });
+  }
   test('clone 拷贝录入与主档透传，金额随构造器自动重算', () {
     final src = PurchaseGridRow(sourceLocked: true)
       ..goods = const GoodsOption(id: 'g1', code: 'C1', name: '货品1')

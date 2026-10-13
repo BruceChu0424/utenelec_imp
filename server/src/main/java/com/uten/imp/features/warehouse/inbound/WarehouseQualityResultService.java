@@ -94,6 +94,13 @@ public class WarehouseQualityResultService {
             END
             """;
 
+    /** Shares the actual release/return facts with the unified physical warehouse list. */
+    public static String taskCenterStatusExpression() { return STATUS_CASE; }
+
+    public static String taskCenterFactCtes() {
+        return AGGREGATE_CTE.replaceFirst("^\\s*WITH\\s+", "");
+    }
+
     /**
      * 聚合管线：scope 先按 :type 收窄（两段 UNION 各自判定，只扫需要的收货表），
      * 各事实聚合再 JOIN scope，聚合量随筛选收窄。判定列由 V448 覆盖索引供给。
@@ -483,10 +490,12 @@ public class WarehouseQualityResultService {
         // 前端复核提示的标记，不再阻断入库确认。
         boolean containsOwnRelease = actorEmployeeId != null
                 && containsOwnRelease(type, receiptId, actorEmployeeId);
-        boolean canConfirm = hasAuthority(ProcurementIqcStockInPermissions.CONFIRM)
+        boolean canConfirm = hasWarehouseWriteAuthority(ProcurementIqcStockInPermissions.VIEW,
+                ProcurementIqcStockInPermissions.CONFIRM)
                 && !slices.isEmpty();
         // 先入库后检(V596)：仍有「等结论且未上架」的行时可先上架；权限独立于确认入库。
-        boolean canPreStockIn = hasAuthority(ProcurementIqcStockInPermissions.BEFORE_INSPECTION)
+        boolean canPreStockIn = hasWarehouseWriteAuthority(ProcurementIqcStockInPermissions.VIEW,
+                ProcurementIqcStockInPermissions.BEFORE_INSPECTION)
                 && lines.stream().anyMatch(InspectionLineItem::preStockable);
         List<String> allowedActions = new java.util.ArrayList<>();
         if (canConfirm) allowedActions.add("CONFIRM");
@@ -694,7 +703,8 @@ public class WarehouseQualityResultService {
                                COALESCE(pending_release.pending_qty, 0),inspection.warehouse_id,source_warehouse.name,
                                inspection.pre_stocked_warehouse_id, pre_stocked_warehouse.name,
                                inspection.pre_stocked_place, inspection.pre_stocked_at, pre_stocked_by.full_name,
-                               COALESCE(preference.place, NULLIF(BTRIM(goods.stock_place), ''))
+                               COALESCE(preference.place, NULLIF(BTRIM(goods.stock_place), '')),
+                               inspection.quantity_tranche
                         FROM procurement_inspection_items inspection
                         LEFT JOIN warehouses source_warehouse ON source_warehouse.id=inspection.warehouse_id
                         LEFT JOIN warehouses pre_stocked_warehouse
@@ -853,7 +863,7 @@ public class WarehouseQualityResultService {
                                item.base_qty, item.weight,
                                item.place_snapshot, employee.full_name,
                                batch.confirmed_at,item.warehouse_id,actual_warehouse.name,
-                               batch.origin
+                               batch.origin, inspection.quantity_tranche
                         FROM procurement_iqc_stock_in_batch_items item
                         JOIN procurement_iqc_stock_in_batches batch
                           ON batch.id = item.batch_id
@@ -886,7 +896,8 @@ public class WarehouseQualityResultService {
     /** 检查不合格的实物退回案件（V440 拒收案件在仓库侧的投影）。 */
     @SuppressWarnings("unchecked")
     private List<RejectionCaseItem> rejections(String receiptType, UUID receiptId) {
-        boolean canRecord = hasAuthority(WarehouseQualityResultPermissions.RECORD_RETURN);
+        boolean canRecord = hasWarehouseWriteAuthority(WarehouseQualityResultPermissions.RETURN_VIEW,
+                WarehouseQualityResultPermissions.RECORD_RETURN);
         List<Object[]> rows = em.createNativeQuery("""
                         SELECT rejection.id,
                                rejection.inspection_item_id,
@@ -1039,6 +1050,15 @@ public class WarehouseQualityResultService {
     private static String likePattern(String value) {
         return "%" + value.replace("\\", "\\\\")
                 .replace("%", "\\%").replace("_", "\\_") + "%";
+    }
+
+    private static boolean hasWarehouseWriteAuthority(String viewAuthority, String actionAuthority) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) return false;
+        // Match the native HTTP write guard; read access itself remains unchanged.
+        if (authentication.getPrincipal() instanceof com.uten.imp.security.AuthUser user
+                && user.getImpersonatedBy() != null) return false;
+        return hasAuthority(viewAuthority) && hasAuthority(actionAuthority);
     }
 
     private static boolean hasAuthority(String authority) {

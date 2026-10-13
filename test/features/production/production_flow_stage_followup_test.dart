@@ -5,6 +5,27 @@ import 'package:uten_imp/features/production/pages/production_workshop_tasks_pag
 import 'package:uten_imp/features/production/widgets/production_flow_stage_cell.dart';
 
 void main() {
+  test(
+    'cancelled execution arrangement retains the plan without claiming workshop receipt',
+    () {
+      final product = ProductionFlowStage.forProduct(
+        planExecutionStatus: 'PLANNING_REQUIRED',
+      );
+      final material = ProductionFlowStage.fromServerKey(
+        'MAKE_PLANNING_REQUIRED',
+        route: ProductionFlowRoute.make,
+      );
+      expect(product.label, '计划保留 · 待重新安排');
+      expect(material.label, product.label);
+      expect(material.key, product.key);
+      expect(product.tone, ProductionFlowTone.pending);
+      expect(product.label, isNot(contains('车间已收到')));
+      expect(
+        ProductionFlowStage.forProduct(planExecutionStatus: 'WAITING').label,
+        '车间已收到 · 等待物料',
+      );
+    },
+  );
   test('adopted MAKE supply awaiting receipt remains in progress', () {
     final stage = ProductionFlowStage.fromServerKey(
       'MAKE_WAIT_STOCK_IN',
@@ -278,6 +299,8 @@ void main() {
       );
       expect(stage.label, '持续生产中 · 按实际投料报工');
       expect(stage.progressPercent, 10);
+      expect(stage.displayLabel, '持续生产中 · 按实际投料报工');
+      expect(stage.displayLabel, isNot(contains('%')));
     },
   );
   test(

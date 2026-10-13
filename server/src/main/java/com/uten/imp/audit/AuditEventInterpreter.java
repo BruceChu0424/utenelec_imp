@@ -108,6 +108,7 @@ public class AuditEventInterpreter {
             Map.entry("view_procurement_iqc_rejection_detail",
                     "查看采购质检不合格闭环详情"),
             Map.entry("view_procurement_arrival_exception_detail", "查看采购到货异常详情"),
+            Map.entry("view_warehouse_inbound_expectation_detail", "查看仓库到货预期详情"),
             Map.entry("view_finance_procurement_arrival_exception_detail",
                     "查看采购到货异常财务审批详情"),
             Map.entry("view_expense_claim_detail", "查看费用报销详情"),
@@ -129,6 +130,7 @@ public class AuditEventInterpreter {
             Map.entry("view_subcontract_short_delivery_detail", "查看委外回厂短交案件详情"),
             Map.entry("view_production_plan_detail", "查看生产计划详情"),
             Map.entry("view_production_daily_report_detail", "查看生产日报详情"),
+            Map.entry("view_production_finished_arrival_registration_detail", "查看成品送检登记详情"),
             Map.entry("view_production_daily_report_approval_receipt", "核对生产日报原审核记录"),
             Map.entry("view_procurement_inspection_record_detail", "查看IQC检测决定记录"),
             Map.entry("view_production_fqc_decision_record_detail", "查看FQC检测决定记录"),
@@ -1129,6 +1131,7 @@ public class AuditEventInterpreter {
         values.put("procurement_iqc_stock_in_batches", "IQC合格仓库入库批次");
         values.put("procurement_iqc_stock_in_batch_items", "IQC合格仓库入库明细");
         values.put("inbound_expectations", "到货登记");
+        values.put("production_finished_arrival_registrations", "成品送检登记");
         values.put("inbound_expectation_items", "到货登记明细");
         values.put("warehouse_arrival_registration_commands", "到货登记指令");
         // 委外

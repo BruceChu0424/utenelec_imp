@@ -28,6 +28,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -36,6 +37,63 @@ import '../feedback/uten_context_menu.dart';
 import '../feedback/uten_context_menu_policy.dart';
 import '../inputs/uten_field_hint_icon.dart';
 import 'uten_drag_reorder_list.dart';
+
+/// Shared column-edge control. It changes presentation widths only; the host
+/// owns its minimum width, automatic sizing and persistence.
+class UtenColumnResizeHandle extends StatelessWidget {
+  const UtenColumnResizeHandle({
+    super.key,
+    required this.label,
+    required this.onResize,
+    this.onReset,
+  });
+
+  final String label;
+  final ValueChanged<double> onResize;
+  final VoidCallback? onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final direction = Directionality.of(context) == TextDirection.rtl ? -1 : 1;
+    return Tooltip(
+      message: onReset == null ? '拖动调整 $label 列宽' : '拖动调整 $label 列宽，双击恢复自动宽度',
+      child: Semantics(
+        label: '调整 $label 列宽',
+        onIncrease: () => onResize(20),
+        onDecrease: () => onResize(-20),
+        child: TextFieldTapRegion(
+          child: Focus(
+            onKeyEvent: (_, event) {
+              if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+                return KeyEventResult.ignored;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                onResize(20 * direction.toDouble());
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                onResize(-20 * direction.toDouble());
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: MouseRegion(
+              cursor: SystemMouseCursors.resizeColumn,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                dragStartBehavior: DragStartBehavior.down,
+                onHorizontalDragUpdate: (details) =>
+                    onResize(details.delta.dx * direction),
+                onDoubleTap: onReset,
+                child: const SizedBox.expand(),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// 全站表格「选中行」底色（MasterDataTableView / UtenEditableGrid 共用，2026-09-22）。
 ///

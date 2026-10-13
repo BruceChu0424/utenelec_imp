@@ -15,16 +15,18 @@ abstract interface class FinanceProcurementWorkflowRepository {
     String? sort,
     String? order,
     String? billNo,
+    String status = 'PENDING',
   });
 
   /// 待审任务订货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String status = 'PENDING',
   });
 
   /// 待审任务按订货类型计数（全部/采购/委外筛选卡的全量口径）：{PURCHASE: n, ...}。
-  Future<Map<String, int>> approvalTypeCounts();
+  Future<Map<String, int>> approvalTypeCounts({String status = 'PENDING'});
 
   /// 审核详情（财务专用视图）：订单头 + 供应商应付快照 + 明细 + 审批历史。
   Future<FinanceProcurementApprovalReview> review(String caseId);
@@ -42,13 +44,6 @@ abstract interface class FinanceProcurementWorkflowRepository {
   Future<void> rejectOrdersBatch(
     List<FinanceProcurementDecisionItem> items,
     String reason,
-  );
-}
-
-abstract interface class FinanceProcurementReviewAmendmentRepository {
-  Future<FinanceProcurementApprovalReview> amendReview(
-    FinanceProcurementDecisionItem decision,
-    List<Map<String, dynamic>> lines,
   );
 }
 
@@ -92,25 +87,9 @@ extension ProcurementExactRateAccess on FinanceProcurementWorkflowRepository {
   }
 }
 
-extension ProcurementReviewAmendmentAccess
-    on FinanceProcurementWorkflowRepository {
-  Future<FinanceProcurementApprovalReview> amendReview(
-    FinanceProcurementDecisionItem decision,
-    List<Map<String, dynamic>> lines,
-  ) {
-    final repository = this;
-    if (repository is FinanceProcurementReviewAmendmentRepository) {
-      return (repository as FinanceProcurementReviewAmendmentRepository)
-          .amendReview(decision, lines);
-    }
-    throw UnsupportedError('当前连接不支持审核修改');
-  }
-}
-
 class DioFinanceProcurementWorkflowRepository
     implements
         FinanceProcurementWorkflowRepository,
-        FinanceProcurementReviewAmendmentRepository,
         FinanceProcurementExactApprovalRepository {
   const DioFinanceProcurementWorkflowRepository(this.api);
 
@@ -149,12 +128,16 @@ class DioFinanceProcurementWorkflowRepository
     String? sort,
     String? order,
     String? billNo,
+    String status = 'PENDING',
   }) async {
     final json = await api.get(
-      ApiEndpoints.financeProcurementApprovalTasks,
+      status == 'PENDING'
+          ? ApiEndpoints.financeProcurementApprovalTasks
+          : '/finance/procurement-approvals/history',
       query: <String, dynamic>{
         'page': page,
         'size': size,
+        if (status != 'PENDING') 'status': status,
         if (orderType != null &&
             orderType != FinanceProcurementOrderType.unknown)
           'orderType': orderType.name.toUpperCase(),
@@ -172,10 +155,12 @@ class DioFinanceProcurementWorkflowRepository
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String status = 'PENDING',
   }) async {
     final json = await api.get(
       ApiEndpoints.financeProcurementApprovalFacets,
       query: <String, dynamic>{
+        if (status != 'PENDING') 'status': status,
         if (orderType != null &&
             orderType != FinanceProcurementOrderType.unknown)
           'orderType': orderType.name.toUpperCase(),
@@ -186,9 +171,12 @@ class DioFinanceProcurementWorkflowRepository
   }
 
   @override
-  Future<Map<String, int>> approvalTypeCounts() async {
+  Future<Map<String, int>> approvalTypeCounts({
+    String status = 'PENDING',
+  }) async {
     final json = await api.get(
       ApiEndpoints.financeProcurementApprovalTypeCounts,
+      query: {if (status != 'PENDING') 'status': status},
     );
     return {
       for (final entry in (json as Map).entries)
@@ -202,22 +190,6 @@ class DioFinanceProcurementWorkflowRepository
       ApiEndpoints.financeProcurementApprovalReview(
         Uri.encodeComponent(caseId),
       ),
-    );
-    return FinanceProcurementApprovalReview.fromJson(json);
-  }
-
-  @override
-  Future<FinanceProcurementApprovalReview> amendReview(
-    FinanceProcurementDecisionItem decision,
-    List<Map<String, dynamic>> lines,
-  ) async {
-    final json = await api.post(
-      '${ApiEndpoints.financeProcurementApprovalTasks}/${Uri.encodeComponent(decision.caseId)}/amend',
-      body: {
-        'expectedVersion': decision.expectedVersion,
-        'expectedClaimId': decision.expectedClaimId,
-        'lines': lines,
-      },
     );
     return FinanceProcurementApprovalReview.fromJson(json);
   }

@@ -45,6 +45,42 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
+    void approvedHistoryQueriesUseDecisionRateAndFrozenSupplier() throws Exception {
+        // Real SQL must keep approved snapshots independent from current master-data renames.
+        try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("procurement_finance_history")
+                .withUsername("uten").withPassword("uten-test-only")) {
+            postgres.start();
+            JdbcTemplate jdbc = new JdbcTemplate(new DriverManagerDataSource(
+                    postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword()));
+            schema(jdbc);
+            applyV835(jdbc);
+            for (String type : List.of("PURCHASE", "SUBCONTRACT")) {
+                Harness harness = harness(jdbc, type);
+                UUID caseId = submit(jdbc, harness);
+                harness.service.approveBatch(List.of(new ProcurementApprovalContracts.BatchDecisionItem(caseId, 1L)),
+                        null, new BigDecimal("6.85"));
+                jdbc.update("UPDATE procurement_order_approval_cases SET display_snapshot=\n"
+                        + "submission_snapshot || jsonb_build_object('supplierName','冻结供应商') WHERE id=?", caseId);
+                jdbc.update("UPDATE suppliers SET name='当前已改名' WHERE id=?", harness.snapshot.supplierId());
+                var history = harness.service.tasks(1, 20, type, "冻结供应商", null, null, null, "APPROVED");
+                assertThat(history.getTotal()).isEqualTo(1);
+                assertThat(history.getItems()).singleElement().satisfies(task -> {
+                    assertThat(task.status()).isEqualTo("APPROVED");
+                    assertThat(task.supplierName()).isEqualTo("冻结供应商");
+                    assertThat(task.amount()).isEqualByComparingTo("137");
+                    assertThat(task.exchangeRate()).isEqualByComparingTo("6.85");
+                    assertThat(task.expectedDate()).isEqualTo(harness.snapshot.deliverDate());
+                    assertThat(task.allowedActions()).isEmpty();
+                });
+                assertThat(harness.service.taskFacets(type, "冻结供应商", "APPROVED").get("billNo")).hasSize(1);
+                assertThat(harness.service.countTasksByType("APPROVED").get(type)).isEqualTo(1);
+                assertThat(harness.service.tasks(1, 20, type, "冻结供应商").getItems()).isEmpty();
+            }
+        }
+    }
+
+    @Test
     void approveRecordsFinanceRateOnTheCaseWithoutTouchingSubmissionFacts() throws Exception {
         try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
                 .withDatabaseName("procurement_finance_rate")

@@ -1,16 +1,14 @@
 // 业务审核中心（/finance/audits）——财务全部审核/审批队列的一站式工作台。
 //
-// 2026-09-18 重组：原钱流管理 hub 任务中心的 6 张卡（销售订单财务确认/销售订单
-// 修改/出货财务审核/订货审批/超量到货审批/IQC 不合格退回与贷项）合并为一张
+// 原钱流管理 hub 的审核卡合并为一张
 // 「业务审核中心」卡，本页以大类分段承接全部队列。布局对齐仓库任务中心三页范式
 // （WarehouseTaskCenterScaffold）：UtenFilterToolbar 大类分段在上（每段右侧红色
 // 待办徽章，取后端全量口径），各分段内容自带小类行与搜索在下；进页面不预选大类
 // （未选择时显示引导空态）。
 //
 // 徽章口径（docs/00-项目准则/14-徽章与计数口径.md）：
-//   · 每段红徽章 = 该队列「等我处理」数；「订单修改确认」与「销售订单确认」是
-//     同一批单据的两个队列切片，各显各的队列数，累加进 hub 卡/工作台的只有总数
-//     一次(服务端徽章目录 financeAuditCenter 入口)。
+//   · 每段红徽章 = 该队列「等我处理」数；销售订单内首次/修改是互斥状态，
+//     父级只使用总数一次(服务端徽章目录 financeAuditCenter 入口)。
 //   · 刷新按钮/返回本页：递增 refreshTick 传给当前分段（分段页据此重拉列表），
 //     并重拉徽章汇总(分段徽章与上级角标同源，ADR-108)。
 //   · 旧队列路由（/finance/sales-order-confirmations 等）全部保留：通知深链与
@@ -32,6 +30,7 @@ import '../../procurement_iqc_rejection/pages/procurement_iqc_rejection_list_pag
 import '../../sales/widgets/sales_shipment_task_workbench.dart';
 import '../../warehouse/pages/finance_arrival_exception_pages.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
+import '../../../shared/drafts/review_task_draft.dart';
 import 'finance_procurement_approval_tasks_page.dart';
 import 'finance_sales_order_confirmation_page.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -46,10 +45,17 @@ class _AuditSegment {
 }
 
 class FinanceAuditCenterPage extends ConsumerStatefulWidget {
-  const FinanceAuditCenterPage({super.key, this.initialSegment});
+  const FinanceAuditCenterPage({
+    super.key,
+    this.initialSegment,
+    this.initialSalesState,
+    this.initialProcurementStatus,
+  });
 
   /// 深链直落某分段（?segment=xxx；无效值按未预选处理）。
   final String? initialSegment;
+  final String? initialSalesState;
+  final String? initialProcurementStatus;
 
   @override
   ConsumerState<FinanceAuditCenterPage> createState() =>
@@ -65,7 +71,9 @@ class _FinanceAuditCenterPageState
   @override
   void initState() {
     super.initState();
-    _segment = widget.initialSegment;
+    _segment = widget.initialSegment == 'salesChanges'
+        ? 'salesConfirm'
+        : widget.initialSegment;
   }
 
   void _refresh() {
@@ -88,25 +96,14 @@ class _FinanceAuditCenterPageState
     final canProcurement = can(Perm.financeOrderApprovalView);
     final canIqc = can(Perm.procurementIqcRejectionView);
 
-    // 各队列待办数随工作台徽章汇总带回(ADR-108, 与业务审核中心卡同源); 「订单修改确认」
-    // 是销售订单确认队列的切片, 页内专用计数(不进任何徽章入口)。
+    // 各队列待办数随工作台徽章汇总带回(ADR-108, 与业务审核中心卡同源)。
     int? fact(String key) => ref.watch(badgeFactOrNullProvider(key));
-    final salesChanges = canSales
-        ? ref.watch(salesOrderFinanceQueueCountProvider(true)).valueOrNull
-        : null;
-
     final segments = <_AuditSegment>[
       if (canSales)
         _AuditSegment(
           value: 'salesConfirm',
           label: '销售订单确认',
           count: fact(BadgeFact.salesOrderFinance),
-        ),
-      if (canSales)
-        _AuditSegment(
-          value: 'salesChanges',
-          label: '订单修改确认',
-          count: salesChanges,
         ),
       if (canShipment)
         _AuditSegment(
@@ -180,7 +177,9 @@ class _FinanceAuditCenterPageState
     );
   }
 
-  Widget _categoryBar(List<_AuditSegment> segments) =>
+  Widget _categoryBar(List<_AuditSegment> segments) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
       UtenFilterToolbar<String>(
         segmentsKey: const Key('finance-audit-center-segments'),
         segments: [
@@ -195,17 +194,27 @@ class _FinanceAuditCenterPageState
         ],
         selected: _segment == null ? const <String>{} : {_segment!},
         onSelectionChanged: (value) => setState(() => _segment = value),
-      );
+      ),
+      const TaskDraftRecoveryNotice(
+        scope: FormDraftCategoryScope(
+          module: BadgeModule.finance,
+          routePrefixes: {
+            '/finance/sales-order-confirmations/',
+            '/finance/procurement-approvals/',
+            '/finance/quote-review/',
+            '/finance/sales-shipment-audits/',
+          },
+        ),
+      ),
+    ],
+  );
 
   Widget _buildSegment(String value, {Widget? externalHeader}) =>
       switch (value) {
         'salesConfirm' => FinanceSalesOrderConfirmationPage(
-          embedded: true,
-          refreshTick: _refreshTick,
-          externalHeader: externalHeader,
-        ),
-        'salesChanges' => FinanceSalesOrderConfirmationPage(
-          changesOnly: true,
+          initialState:
+              widget.initialSalesState ??
+              (widget.initialSegment == 'salesChanges' ? 'changes' : null),
           embedded: true,
           refreshTick: _refreshTick,
           externalHeader: externalHeader,
@@ -217,6 +226,7 @@ class _FinanceAuditCenterPageState
           externalHeader: externalHeader,
         ),
         'procurement' => FinanceProcurementApprovalTasksPage(
+          initialStatus: widget.initialProcurementStatus,
           embedded: true,
           refreshTick: _refreshTick,
           externalHeader: externalHeader,

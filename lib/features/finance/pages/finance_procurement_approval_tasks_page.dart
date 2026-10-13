@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -26,6 +27,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../core/network/server_config.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
@@ -36,6 +39,7 @@ import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
+import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/badges/badge_registry.dart';
 
 /// 订货审批任务中心（采购/委外订货的财务审核队列）。
@@ -48,6 +52,7 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
     this.embedded = false,
     this.externalHeader,
     this.refreshTick = 0,
+    this.initialStatus,
   });
 
   final bool embedded;
@@ -58,6 +63,7 @@ class FinanceProcurementApprovalTasksPage extends ConsumerStatefulWidget {
 
   /// 外层（业务审核中心）触发的刷新信号；数值变化时重拉当前页。
   final int refreshTick;
+  final String? initialStatus;
 
   @override
   ConsumerState<FinanceProcurementApprovalTasksPage> createState() =>
@@ -73,14 +79,11 @@ class _FinanceProcurementApprovalTasksPageState
   String? _error;
   int _requestVersion = 0;
 
-  /// 类型筛选卡：null = 全部待审；否则只看采购/委外。
-  /// 进页面不预选（不选=不过滤），点分段后才算选中。
+  /// 类型筛选由状态表头承接；null = 同时展示采购和委外。
   FinanceProcurementOrderType? _orderType;
-  bool _typeSelected = false;
 
-  /// 按类型计数（后端全量口径）；null = 尚未返回，卡片显示 '—'。
-  Map<String, int>? _typeCounts;
   String _keyword = '';
+  String _status = 'PENDING';
 
   /// 表头排序 + 订货单号列值筛选 + facets 桶 + 防串台代数
   /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
@@ -159,20 +162,78 @@ class _FinanceProcurementApprovalTasksPageState
   @override
   void initState() {
     super.initState();
+    _status =
+        const {
+          'PENDING',
+          'APPROVED',
+          'REJECTED',
+          'ALL',
+        }.contains(widget.initialStatus)
+        ? widget.initialStatus!
+        : 'PENDING';
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) _invalidateScope();
+    });
+    ref.listenManual(apiBaseUrlProvider, (previous, next) {
+      if (previous != next) _invalidateScope();
+    });
+    ref.listenManual(currentPermissionsProvider, (previous, next) {
+      if (!setEquals(previous, next)) _invalidateScope();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+  }
+
+  void _invalidateScope() {
+    ++_requestVersion;
+    ++_columnFilters.generation;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _columnFilters.reset();
+      _clearSelectionState();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load(1);
+    });
   }
 
   @override
   void didUpdateWidget(FinanceProcurementApprovalTasksPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.initialStatus != oldWidget.initialStatus) {
+      _selectStatus(
+        const {
+              'PENDING',
+              'APPROVED',
+              'REJECTED',
+              'ALL',
+            }.contains(widget.initialStatus)
+            ? widget.initialStatus!
+            : 'PENDING',
+      );
+    }
     if (widget.refreshTick != oldWidget.refreshTick) _refreshCurrent();
   }
 
   void _selectType(FinanceProcurementOrderType? type) {
-    if (_orderType == type && _typeSelected) return;
+    if (_busyDecision || _orderType == type) return;
     setState(() {
       _orderType = type;
-      _typeSelected = true;
+      _result = null;
+      ++_columnFilters.generation;
+      _clearSelectionState();
+    });
+    _load(1);
+  }
+
+  void _selectStatus(String status) {
+    if (_busyDecision || _status == status) return;
+    ++_requestVersion;
+    setState(() {
+      _status = status;
+      _result = null;
+      ++_columnFilters.generation;
+      _columnFilters.reset();
       _clearSelectionState();
     });
     _load(1);
@@ -198,16 +259,6 @@ class _FinanceProcurementApprovalTasksPageState
     _load(_result?.page ?? 1);
   }
 
-  int? _typeCount(FinanceProcurementOrderType type) {
-    final counts = _typeCounts;
-    if (counts == null) return null;
-    return switch (type) {
-      FinanceProcurementOrderType.purchase => counts['PURCHASE'] ?? 0,
-      FinanceProcurementOrderType.subcontract => counts['SUBCONTRACT'] ?? 0,
-      _ => 0,
-    };
-  }
-
   Future<void> _load(int page) async {
     if (!_allowed) return;
     final requestVersion = ++_requestVersion;
@@ -226,14 +277,9 @@ class _FinanceProcurementApprovalTasksPageState
             ? null
             : (_columnFilters.sortAscending ? 'asc' : 'desc'),
         billNo: _columnFilters['billNo'],
+        status: _status,
       );
-      // 类型计数失败不阻断列表（卡片降级为 '—'）。
-      repo
-          .approvalTypeCounts()
-          .then((counts) {
-            if (mounted) setState(() => _typeCounts = counts);
-          })
-          .catchError((_) {});
+      if (!mounted || requestVersion != _requestVersion) return;
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
       unawaited(_loadBillNoFacets());
       if (!mounted || requestVersion != _requestVersion) return;
@@ -266,6 +312,7 @@ class _FinanceProcurementApprovalTasksPageState
 
   /// 表头排序变化：服务端重排整个结果集，回第 1 页（勾选清空防指向已变化任务）。
   void _onSortChange(String? column, bool ascending) {
+    if (_busyDecision) return;
     final next = column != null && _kSortFields.containsKey(column)
         ? column
         : null;
@@ -277,7 +324,7 @@ class _FinanceProcurementApprovalTasksPageState
       next,
       ascending,
       onChanged: () {
-        if (mounted) setState(() {});
+        if (mounted) setState(_clearSelectionState);
         _load(1);
       },
     );
@@ -292,6 +339,7 @@ class _FinanceProcurementApprovalTasksPageState
           .approvalBillNoFacets(
             orderType: _orderType,
             keyword: _keyword.isEmpty ? null : _keyword,
+            status: _status,
           ),
     },
     onLoaded: () {
@@ -300,6 +348,12 @@ class _FinanceProcurementApprovalTasksPageState
   );
 
   Future<void> _open(FinanceProcurementApprovalTask task) async {
+    final drafts = _taskDrafts(task);
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) _refreshCurrent();
+      return;
+    }
     // 双击/行菜单主入口 → 财务专用审核详情页（底部通过/驳回，不退回本列表即可决策）；
     // 与采购/委外业务订货详情页彻底分离（ADR-027 §五 2026-09-03 增补）。
     if (task.caseId.isEmpty) {
@@ -332,9 +386,17 @@ class _FinanceProcurementApprovalTasksPageState
   ];
 
   bool _canSelectTask(FinanceProcurementApprovalTask task) =>
+      _taskDrafts(task).isEmpty &&
       task.decisionItem != null &&
       (task.allowedActions.contains('APPROVE') ||
           task.allowedActions.contains('REJECT'));
+
+  List<FormDraft> _taskDrafts(FinanceProcurementApprovalTask task) =>
+      reviewTaskDraftsFor(
+        ref.read(formDraftsProvider),
+        FormDraftCatalog.financeProcurementReview,
+        task.caseId,
+      );
 
   void _setSelectedIds(Set<String> next) {
     if (_batchClaim != null) return;
@@ -560,6 +622,7 @@ class _FinanceProcurementApprovalTasksPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     final permissions = ref.watch(currentPermissionsProvider);
     final allowed =
         ref.watch(isSuperAdminProvider) ||
@@ -657,7 +720,7 @@ class _FinanceProcurementApprovalTasksPageState
     final canReject =
         result.items.any((task) => task.allowedActions.contains('REJECT')) ||
         _selectedTasks.any((task) => task.allowedActions.contains('REJECT'));
-    final selectable = canApprove || canReject;
+    final selectable = _status == 'PENDING' && (canApprove || canReject);
 
     // 2026-09-24 对齐物料分析页口径：工具条/提示行进折叠头（上滑先收走，
     // 表头顶到头再表内滚），body 只剩表格；独立页与业务审核中心嵌入态同款。
@@ -670,7 +733,14 @@ class _FinanceProcurementApprovalTasksPageState
             widget.externalHeader!,
             const SizedBox(height: UtenSpacing.s12),
           ],
-          _buildToolbar(result),
+          _buildToolbar(),
+          if (!widget.embedded)
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(
+                module: BadgeModule.finance,
+                routePrefix: '/finance/procurement-approvals/',
+              ),
+            ),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
             _InlineError(message: _error!, onRetry: () => _load(result.page)),
@@ -681,7 +751,12 @@ class _FinanceProcurementApprovalTasksPageState
       body: MasterDataTableView<FinanceProcurementApprovalTask>(
         rowsController: _tableRows,
         paginationRevision: _result,
-        paginationScope: (_keyword, _orderType),
+        paginationScope: (
+          _keyword,
+          _orderType,
+          _status,
+          _columnFilters['billNo'],
+        ),
         tableKey:
             'features.finance.pages.finance_procurement_approval_tasks_page.FinanceProcurementApprovalTasksPageState._buildList.1',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
@@ -690,16 +765,24 @@ class _FinanceProcurementApprovalTasksPageState
         columns: _columns(context),
         items: result.items,
         facets: {
-          'orderType': const [
-            MasterFacetBucket(value: 'PURCHASE', count: 0, label: '采购订货'),
-            MasterFacetBucket(value: 'SUBCONTRACT', count: 0, label: '委外订货'),
+          'status': [
+            MasterFacetBucket(
+              value: 'PURCHASE',
+              count: 0,
+              label: _typeStatusLabel('采购'),
+            ),
+            MasterFacetBucket(
+              value: 'SUBCONTRACT',
+              count: 0,
+              label: _typeStatusLabel('委外'),
+            ),
           ],
           // 订货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
           'billNo': _columnFilters.bucketOf('billNo'),
         },
         nullCounts: const {},
         filters: {
-          'orderType': _orderType?.name.toUpperCase(),
+          'status': _orderType?.name.toUpperCase(),
           'billNo': _columnFilters['billNo'],
         },
         // 表头排序走服务端（2026-09-25 单号列统一）。
@@ -707,19 +790,20 @@ class _FinanceProcurementApprovalTasksPageState
         sortAscending: _columnFilters.sortAscending,
         onSortChange: _onSortChange,
         onFilterChanged: (key, value) {
+          if (_busyDecision) return;
           if (key == 'billNo') {
             // 订货单号值筛选（2026-09-25 单号列统一）：服务端精确匹配。
             _columnFilters.handleFilterChanged(
               key,
               value,
               onChanged: () {
-                if (mounted) setState(() {});
+                if (mounted) setState(_clearSelectionState);
                 _load(1);
               },
             );
             return;
           }
-          if (key != 'orderType') return;
+          if (key != 'status') return;
           _selectType(switch (value) {
             'PURCHASE' => FinanceProcurementOrderType.purchase,
             'SUBCONTRACT' => FinanceProcurementOrderType.subcontract,
@@ -769,44 +853,78 @@ class _FinanceProcurementApprovalTasksPageState
     );
   }
 
-  Widget _buildToolbar(FinanceProcurementApprovalPage result) {
-    // 全平台统一筛选工具条：分段 + 胶囊搜索框，计数取后端全量口径。
-    // 计数形态：本页整条工具条就是财务的待审队列，两个类型段都是「等我审」，
-    // 挂红徽章（「全部待审」不传 count，故没有总量段与之重复）。
-    // 2026-10-10 用户口径：「显示财务审核组共享的…」提示行退役（全站提示卡口径）。
+  String _typeStatusLabel(String type) => switch (_status) {
+    'PENDING' => '$type待审批',
+    'APPROVED' => '$type已批准',
+    'REJECTED' => '$type已驳回',
+    _ => '$type订货',
+  };
+
+  String _taskStatusLabel(FinanceProcurementApprovalTask task) {
+    final type = switch (task.orderType) {
+      FinanceProcurementOrderType.purchase => '采购',
+      FinanceProcurementOrderType.subcontract => '委外',
+      FinanceProcurementOrderType.unknown => '未知类型',
+    };
+    final drafts = _taskDrafts(task);
+    if (drafts.isNotEmpty) return '$type · ${taskDraftStatus(drafts)}';
+    return switch (task.status) {
+      'APPROVED' => '$type已批准',
+      'REJECTED' => '$type已驳回',
+      'CANCELED' => '$type已撤回',
+      'SUPERSEDED' => '$type · 已被新一轮替代',
+      null || 'PENDING' =>
+        task.changeCount > 0
+            ? '$type · ${AppLocalizations.of(context).procurementApprovalStatusChanged(task.changeCount)}'
+            : (task.attempt ?? 1) > 1
+            ? '$type · 重新提交待审批'
+            : '$type待审批',
+      _ => '$type · 未知审批状态',
+    };
+  }
+
+  UtenStatusBadgeType _taskStatusType(FinanceProcurementApprovalTask task) {
+    if (_taskDrafts(task).isNotEmpty) return UtenStatusBadgeType.neutral;
+    return switch (task.status) {
+      'REJECTED' => UtenStatusBadgeType.danger,
+      'APPROVED' => UtenStatusBadgeType.success,
+      null || 'PENDING' =>
+        task.changeCount > 0 || (task.attempt ?? 1) > 1
+            ? UtenStatusBadgeType.orange
+            : task.orderType == FinanceProcurementOrderType.purchase
+            ? UtenStatusBadgeType.success
+            : task.orderType == FinanceProcurementOrderType.subcontract
+            ? UtenStatusBadgeType.accent
+            : UtenStatusBadgeType.neutral,
+      _ => UtenStatusBadgeType.neutral,
+    };
+  }
+
+  Widget _buildToolbar() {
+    // 保留审批工作阶段；采购/委外由每行状态与状态表头区分。
     return UtenFilterToolbar<String>(
-      segmentsKey: const Key('finance-approval-type-segments'),
+      enabled: !_busyDecision,
+      segmentsKey: const Key('finance-approval-status-segments'),
       searchKey: const Key('finance-approval-search'),
       segments: [
-        // 「全部待审」不挂徽章——徽章只挂各类型分段的待审数量。
-        const UtenFilterSegment(value: 'all', label: '全部待审'),
         UtenFilterSegment(
-          value: 'purchase',
-          label: '采购订货',
-          count: _typeCount(FinanceProcurementOrderType.purchase),
+          value: 'PENDING',
+          label: '待审批',
+          count: ref.watch(
+            badgeFactOrNullProvider(BadgeFact.procurementApproval),
+          ),
           countForm: UtenSegmentCountForm.actionable,
         ),
-        UtenFilterSegment(
-          value: 'subcontract',
-          label: '委外订货',
-          count: _typeCount(FinanceProcurementOrderType.subcontract),
-          countForm: UtenSegmentCountForm.actionable,
+        const UtenFilterSegment(value: 'APPROVED', label: '已批准'),
+        const UtenFilterSegment(
+          value: 'REJECTED',
+          label: '已驳回',
+          countForm: UtenSegmentCountForm.inProgress,
         ),
+        const UtenFilterSegment(value: 'ALL', label: '全部记录'),
       ],
-      selected: _typeSelected
-          ? {
-              _orderType == null
-                  ? 'all'
-                  : _orderType == FinanceProcurementOrderType.purchase
-                  ? 'purchase'
-                  : 'subcontract',
-            }
-          : const {},
-      onSelectionChanged: (value) => _selectType(switch (value) {
-        'purchase' => FinanceProcurementOrderType.purchase,
-        'subcontract' => FinanceProcurementOrderType.subcontract,
-        _ => null,
-      }),
+      selected: {_status},
+      onSelectionChanged: _selectStatus,
       searchHint: '搜索订货单号 / 供应商 / 提交人',
       initialSearchValue: _keyword,
       onSearchInputChanged: (_) => _requestVersion++,
@@ -822,28 +940,12 @@ class _FinanceProcurementApprovalTasksPageState
     MasterColumnDef(
       key: 'status',
       label: '状态',
-      width: 72,
-      value: (task) => task.changeCount > 0
-          ? AppLocalizations.of(
-              context,
-            ).procurementApprovalStatusChanged(task.changeCount)
-          : (task.attempt ?? 1) > 1
-          ? '重新提交待审核'
-          : AppLocalizations.of(context).procurementApprovalStatusPending,
-      // 状态列档位（ADR-169）：本页整条就是财务的待审队列——普通待审核=绿
-      // （「就绪可动手」，轮到我审=绿灯）；改量/重新提交=橙（未死锁但需注意，
-      // 要先看审核详情的前后对比再批）。
-      cellColor: (context, task) => utenStatusBadgeCellColor(
-        task.changeCount > 0 || (task.attempt ?? 1) > 1
-            ? UtenStatusBadgeType.orange
-            : UtenStatusBadgeType.success,
-      ),
-    ),
-    MasterColumnDef(
-      key: 'orderType',
-      label: '订货类型',
-      width: 110,
-      value: (task) => task.orderTypeLabel,
+      width: 180,
+      value: (task) => _taskStatusLabel(task),
+      // 类型不冒充风险；正常采购待审用绿、委外待审用青区分，
+      // 修改/重提仍是橙色提示，已驳回用红、退出队列用中性灰。
+      cellColor: (context, task) =>
+          utenStatusBadgeCellColor(_taskStatusType(task)),
     ),
     MasterColumnDef(
       key: 'billNo',

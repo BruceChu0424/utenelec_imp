@@ -23,6 +23,22 @@ class AuditEventInterpreterTest {
         assertEquals("核对生产日报原审核记录", interpretStored(log).actionLabel());
     }
 
+    @Test
+    void warehousePhysicalViewsHaveRegisteredNamesAndRetainTheirLowRiskBusinessClassification() {
+        for (var action : Map.of("view_warehouse_inbound_expectation_detail", "查看仓库到货预期详情",
+                "view_production_finished_arrival_registration_detail", "查看成品送检登记详情").entrySet()) {
+            AuditLog log = new AuditLog();
+            log.setAction(action.getKey());
+            log.setTargetType(action.getKey().contains("expectation") ? "inbound_expectations" : "production_finished_arrival_registrations");
+            log.setEventSource("business");
+            log.setResult("success");
+            var event = interpretStored(log);
+            assertEquals(action.getValue(), event.actionLabel());
+            assertEquals("business", event.category());
+            assertEquals("low", event.riskLevel());
+        }
+    }
+
     /** 与写入时一致: 风险等级与事件类型由 AuditClassifier 算好存进行里, 解释器只读存储列。 */
     private AuditEventInterpreter.InterpretedEvent interpretStored(AuditLog log) {
         AuditClassifier.Classification classification = AuditClassifier.classify(

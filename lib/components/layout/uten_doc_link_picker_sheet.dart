@@ -81,6 +81,7 @@ class UtenDocLinkPickedItem {
     this.colorId,
     this.unitId,
     this.unitRate,
+    this.unitRateText,
   });
 
   final String goodsId;
@@ -95,6 +96,7 @@ class UtenDocLinkPickedItem {
   final String? colorId;
   final String? unitId;
   final double? unitRate;
+  final String? unitRateText;
 }
 
 /// 「从上游引入」的确认返回：所选明细 + 上游单据往来方 id
@@ -152,6 +154,7 @@ class UtenDocLinkItemFields<I> {
     required this.price,
     required this.upstreamItemId,
     this.unitRate,
+    this.unitRateText,
   });
 
   final String? Function(I item) goodsId;
@@ -160,6 +163,7 @@ class UtenDocLinkItemFields<I> {
   final double? Function(I item) price;
   final String? Function(I item) upstreamItemId;
   final double? Function(I item)? unitRate;
+  final String? Function(I item)? unitRateText;
 }
 
 /// 两步引入面板的领域配置（由采购/销售/委外的引入入口提供）。
@@ -194,6 +198,7 @@ class UtenDocLinkPickerConfig<D, I, N> {
     this.remainQtyText,
     this.remainGiftQtyText,
     this.allowOverRemaining = false,
+    this.allowGiftOverRemaining = false,
   });
 
   /// Step1 标题，如「从订货引入」。
@@ -280,6 +285,10 @@ class UtenDocLinkPickerConfig<D, I, N> {
   /// 剩余量仍作为默认值与只读对照。采购/委外订货引入申请时置 true；
   /// 收货/退货等实物单据保持上限（默认 false）。
   final bool allowOverRemaining;
+
+  /// Only demand-to-new-order entry may offer extra gifts beyond the request's
+  /// declared gift default. Approved receipt/return sources keep strict caps.
+  final bool allowGiftOverRemaining;
 }
 
 /// 弹出「从上游引入」两步面板（compact 底部弹层 / 宽屏 840 右滑入）。
@@ -442,7 +451,11 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       final visible = detail.items
           .where(
             (it) =>
-                _cfg.remainQty(it) > 0 ||
+                (_cfg.remainQtyText == null
+                    ? _cfg.remainQty(it) > 0
+                    : (financeExactDecimalUnits(_cfg.remainQtyText!.call(it)) ??
+                              BigInt.zero) >
+                          BigInt.zero) ||
                 (financeExactDecimalUnits(_cfg.remainGiftQtyText?.call(it)) ??
                         BigInt.zero) >
                     BigInt.zero,
@@ -518,7 +531,7 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       _cfg.remainGiftQtyText?.call(row.item),
     );
     if (maxGift == null) return '来源赠品可用量尚未留存，请刷新后核对';
-    if (gift > maxGift) return '赠品量不能超过来源可用赠品量';
+    if (!_cfg.allowGiftOverRemaining && gift > maxGift) return '赠品量不能超过来源可用赠品量';
     if (!_cfg.allowOverRemaining && (maxQty == null || qty > maxQty)) {
       return '收费量不能超过来源剩余量';
     }
@@ -556,13 +569,16 @@ class _UtenDocLinkPickerSheetState<D, I, N>
               ? null
               : row.giftQty.text.trim(),
           maxQtyText: _cfg.remainQtyText?.call(it),
-          maxGiftQtyText: _cfg.remainGiftQtyText?.call(it),
+          maxGiftQtyText: _cfg.allowGiftOverRemaining
+              ? null
+              : _cfg.remainGiftQtyText?.call(it),
           maxQty: remaining,
           price: _cfg.itemFields.price(it),
           upstreamItemId: _cfg.itemFields.upstreamItemId(it),
           colorId: _cfg.itemFields.colorId(it),
           unitId: _cfg.itemFields.unitId(it),
           unitRate: _cfg.itemFields.unitRate?.call(it),
+          unitRateText: _cfg.itemFields.unitRateText?.call(it),
         ),
       );
     }
@@ -866,7 +882,9 @@ class _UtenDocLinkPickerSheetState<D, I, N>
       width: 120,
       numeric: true,
       cellBuilder: (context, row) {
-        final text = formatLinkQuantity(_cfg.remainQty(row.item));
+        final text = _cfg.remainQtyText == null
+            ? formatLinkQuantity(_cfg.remainQty(row.item))
+            : financeExactTrimmed(_cfg.remainQtyText!.call(row.item)) ?? '—';
         final unit = _cfg
             .unitName(names, _cfg.itemFields.unitId(row.item))
             .trim();
@@ -896,11 +914,13 @@ class _UtenDocLinkPickerSheetState<D, I, N>
           ),
           onChanged: (value) {
             if (row.qtyError.value != null) {
-              row.qtyError.value = validateLinkQuantity(
-                value,
-                remaining: _cfg.remainQty(row.item),
-                allowOverRemaining: _cfg.allowOverRemaining,
-              );
+              row.qtyError.value = _cfg.remainGiftQtyText != null
+                  ? _giftQuantityError(row)
+                  : validateLinkQuantity(
+                      value,
+                      remaining: _cfg.remainQty(row.item),
+                      allowOverRemaining: _cfg.allowOverRemaining,
+                    );
             }
           },
         ),

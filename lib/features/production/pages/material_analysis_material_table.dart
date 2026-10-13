@@ -4688,6 +4688,18 @@ abstract class _MaterialAnalysisMaterialTableState
   /// 下单数量/追加下单两格与车间负责人两列的权威判据。它产出的人话原因原本只挂在
   /// 置灰的下达按钮上, 现在改挂到「下单数量」格的悬浮说明里。
   String? _materialTableHandleText(_MaterialTableRow row) {
+    if (_bomAggregateByMaterial) {
+      final groups = row.aggregate == null
+          ? <_MaterialGroup>[?_tableEditableGroup(row)]
+          : _aggregateTable.groupsOf(row.aggregate!);
+      final text = _aggregateTable.planText(
+        materialLineIds: groups.expand(
+          (group) => group.paths.map((path) => path.materialLineId),
+        ),
+        groups: groups,
+      );
+      if (text != null) return text;
+    }
     final group = _tableEditableGroup(row);
     if (group == null) return '—';
     // 汇总视图顶层产品行：已下单后由撤回 / 车间计划口径渲染（格子里是按钮
@@ -7109,11 +7121,13 @@ abstract class _MaterialAnalysisMaterialTableState
     if (operation == 'FUTURE_TRANSFER') return false;
     if (operation == 'AGGREGATE_SUPPLY') {
       final action = _supplyActionOf(actionId);
-      return _permissions.contains(
-        action?.route == MaterialSupplyRoute.make
-            ? Perm.productionMaterialAnalysisGenerate
-            : Perm.productionMaterialAnalysisNotify,
-      );
+      if (action?.route == MaterialSupplyRoute.make) {
+        final plans = _aggregateTable._actionMakePlans(action!);
+        return _canGenerate &&
+            plans.isNotEmpty &&
+            plans.every(_hasPlanLifecyclePermission);
+      }
+      return _permissions.contains(Perm.productionMaterialAnalysisNotify);
     }
     return _permissions.contains(
       operation == 'SHARED_FUTURE_CLAIM'
@@ -7535,36 +7549,27 @@ abstract class _MaterialAnalysisMaterialTableState
     return true;
   }
 
-  bool get _canCancelPlanningPackage =>
-      _permissions.contains(Perm.productionPlanningPackageCancel);
+  bool _hasPlanLifecyclePermission(MaterialAnalysisPlanReference plan) =>
+      switch (plan.status) {
+        1 => _permissions.contains(Perm.productionPlanReverse),
+        0 => _permissions.contains(Perm.productionPlanDelete),
+        _ => false,
+      };
 
-  /// 汇总视图办理列的「整批撤回」（2026-10-10 用户口径）：顶层/聚合行按自制
-  /// 锚点计划下达后，在这里直接取消**最新一个计划包**——与生产计划详情页同一
-  /// 端点、同一必填原因与幂等键口径。仅未开工且没有执行事实的计划包可取消
-  ///（服务端原子释放占用并关闭可撤销的下游草稿），已开工的会被拒绝并提示去
-  /// 生产计划里办理；取消成功后静默重载分析，已下计划量与缺口当场回滚。
-  Future<bool> _cancelIssuedPlanningPackage({
-    required String planId,
-    required String? planNo,
-  }) async {
-    if (_busy || !_canCancelPlanningPackage) return false;
-    final repo = ref.read(productionPlanRepositoryProvider);
-    bucketActionBusyMessage.value = '正在读取计划包';
-    final String packageId;
-    try {
-      packageId = (await repo.latestPlanningPackageResult(planId)).packageId;
-    } catch (error) {
-      bucketActionBusyMessage.value = null;
-      if (mounted) {
-        context.appWarning(
-          productionErrorMessage(error, fallback: '没有读到可取消的计划包，请到生产计划里核对'),
-        );
-      }
+  bool _canWithdrawIssuedAnalysisPlan(MaterialAnalysisPlanReference plan) =>
+      _canGenerate && _hasPlanLifecyclePermission(plan);
+
+  /// 准备页撤回的是完整来源计划，不是保留计划的执行包重排动作。
+  Future<bool> _withdrawIssuedAnalysisPlan(
+    MaterialAnalysisPlanReference plan,
+  ) async {
+    final analysis = _analysis;
+    if (analysis == null || _busy || !_canWithdrawIssuedAnalysisPlan(plan)) {
       return false;
     }
-    bucketActionBusyMessage.value = null;
-    if (!mounted) return false;
+    final sessionScope = _sessionScopeKey();
     final reasonController = TextEditingController();
+    final planNo = plan.planNo?.trim();
     final confirmed = await UtenDialog.show(
       context,
       title: '整批撤回生产计划${(planNo ?? '').isEmpty ? '' : '（$planNo）'}',
@@ -7576,10 +7581,10 @@ abstract class _MaterialAnalysisMaterialTableState
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '将取消这一行最新下达的生产计划包 $packageId。'
-              '仅未开工且没有执行事实的计划包可取消；系统会原子释放占用并关闭'
-              '可撤销的下游草稿，本分析的缺口随之恢复。',
+            const Text(
+              '将撤回所选生产计划及其有效执行安排，恢复这个来源对应的待安排数量。'
+              '其它产品计划和共享子件批次保留。'
+              '存在实际领用、报工、库存或下游单据依赖时，系统会阻止整批撤回。',
             ),
             const SizedBox(height: UtenSpacing.s12),
             TextField(
@@ -7593,41 +7598,50 @@ abstract class _MaterialAnalysisMaterialTableState
       ),
     );
     final reason = reasonController.text.trim();
-    // 不在这里 dispose：弹窗退场动画期间 TextField 还会 rebuild 一次，立即
-    // dispose 会触发「used after being disposed」（与同文件整批撤回供给任务
-    // 的原因框同一处理）。
-    if (!mounted) return false;
-    if (confirmed != true) return false;
-    if (reason.isEmpty) {
-      context.appWarning('必须填写撤回原因');
+    // 退场动画仍会使用控制器，不在确认后的同一帧销毁它。
+    if (!mounted || confirmed != true) return false;
+    if (reason.length < 2) {
+      context.appWarning('撤回原因至少填写两个字');
       return false;
     }
-    bucketActionBusyMessage.value = '正在取消生产计划包';
+    if (_busy ||
+        !_sameAnalysisSnapshot(analysis, sessionScope) ||
+        !_canWithdrawIssuedAnalysisPlan(plan)) {
+      context.appWarning('分析状态或撤回权限已变化，请按最新资料重新核对');
+      return false;
+    }
+    final idempotencyKey = businessIdempotencyKey(
+      'material-analysis-plan-withdraw',
+      '${analysis.analysisId}|${plan.planId}|${analysis.version}|${analysis.fingerprint}|$reason',
+    );
+    setState(() => _cancellingAction = true);
+    bucketActionBusyMessage.value = '正在撤回生产计划';
     try {
-      await repo.changePlanningPackageLifecycle(
-        planId,
-        packageId,
-        ProductionPlanningPackageLifecycleAction.cancel,
-        idempotencyKey: businessIdempotencyKey(
-          'production-planning-package-cancel',
-          '$planId|$packageId|$reason',
-        ),
-        reason: reason,
-      );
-      bucketActionBusyMessage.value = null;
-      if (!mounted) return true;
-      context.appSuccess('生产计划包已取消，占用已释放；分析已按最新事实重载');
-      await _reloadAnalysisSilently(protectUnsavedEditing: true);
+      final current = await ref
+          .read(productionPlanRepositoryProvider)
+          .withdrawMaterialAnalysisPlan(
+            analysis: analysis,
+            planId: plan.planId,
+            idempotencyKey: idempotencyKey,
+            reason: reason,
+          );
+      if (!mounted || !_sameAnalysisSnapshot(analysis, sessionScope)) {
+        return false;
+      }
+      setState(() => _applyAnalysis(current));
+      refreshBadges(ref);
+      context.appSuccess('生产计划已撤回，来源待安排数量已恢复');
       return true;
     } catch (error) {
-      bucketActionBusyMessage.value = null;
-      if (mounted) {
-        context.appError(
-          productionErrorMessage(error, fallback: '取消生产计划包失败，请刷新后重试'),
-          force: true,
+      if (mounted && _sameAnalysisSnapshot(analysis, sessionScope)) {
+        context.appWarning(
+          productionErrorMessage(error, fallback: '撤回失败，请核对后重试'),
         );
       }
       return false;
+    } finally {
+      bucketActionBusyMessage.value = null;
+      if (mounted) setState(() => _cancellingAction = false);
     }
   }
 

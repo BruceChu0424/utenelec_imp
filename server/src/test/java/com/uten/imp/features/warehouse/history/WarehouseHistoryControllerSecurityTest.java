@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.lang.reflect.Method;
 import java.time.LocalDate;
@@ -65,13 +66,14 @@ class WarehouseHistoryControllerSecurityTest {
         // @RequestParam(required=false) 参数（单号列排序 + 值筛选）。
         Class<?>[] parameters = list
                 ? new Class<?>[]{String.class, Short.class, LocalDate.class, LocalDate.class,
-                    int.class, int.class, String.class, String.class, String.class, String.class}
-                : new Class<?>[]{java.util.UUID.class};
+                    int.class, int.class, String.class, String.class, String.class, String.class, java.util.UUID.class}
+                : new Class<?>[]{java.util.UUID.class, java.util.UUID.class};
         Method method = WarehouseHistoryController.class.getDeclaredMethod(methodName, parameters);
         GetMapping mapping = method.getAnnotation(GetMapping.class);
         PreAuthorize authorize = method.getAnnotation(PreAuthorize.class);
         assertThat(mapping.value()).containsExactly(path);
         assertThat(authorize.value()).isEqualTo("hasAuthority('" + permission + "')");
+        assertOptionalWarehouseScope(method);
     }
 
     /** facets 端点（2026-09-25 单号列统一）：同分段查看权限，参数只有关键字/状态/日期。 */
@@ -79,11 +81,18 @@ class WarehouseHistoryControllerSecurityTest {
             String methodName,
             String path,
             String permission) throws Exception {
-        Class<?>[] parameters = new Class<?>[]{String.class, Short.class, LocalDate.class, LocalDate.class};
+        Class<?>[] parameters = new Class<?>[]{String.class, Short.class, LocalDate.class, LocalDate.class, java.util.UUID.class};
         Method method = WarehouseHistoryController.class.getDeclaredMethod(methodName, parameters);
         GetMapping mapping = method.getAnnotation(GetMapping.class);
         PreAuthorize authorize = method.getAnnotation(PreAuthorize.class);
         assertThat(mapping.value()).containsExactly(path);
         assertThat(authorize.value()).isEqualTo("hasAuthority('" + permission + "')");
+        assertOptionalWarehouseScope(method);
+    }
+
+    private static void assertOptionalWarehouseScope(Method method) {
+        var scope = method.getParameters()[method.getParameterCount() - 1];
+        assertThat(scope.getType()).isEqualTo(java.util.UUID.class);
+        assertThat(scope.getAnnotation(RequestParam.class).required()).isFalse();
     }
 }

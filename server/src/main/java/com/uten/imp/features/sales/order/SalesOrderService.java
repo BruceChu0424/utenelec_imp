@@ -378,11 +378,10 @@ public class SalesOrderService {
             // 草稿单（bill_status=0 且未驳回）：只有 stage='DRAFT' 才会进本查询。
             boolean draft = !financeRejected && row[22] != null
                     && ((Number) row[22]).intValue() == 0;
-            double pct = orderQty > 0 ? Math.min(1.0, producedQty / orderQty) : 0.0;
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
-                    pct, progressStageOf(
+                    null, progressStageOf(
                             orderQty, producedQty, shippedQty,
                             reservedQty, plannedQty, unplannedQty,
                             financeRejected, stopped, closed,

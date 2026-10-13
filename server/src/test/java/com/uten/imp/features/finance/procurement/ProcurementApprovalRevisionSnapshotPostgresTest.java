@@ -37,9 +37,15 @@ class ProcurementApprovalRevisionSnapshotPostgresTest {
                     CREATE TABLE colors (id uuid, name text);
                     CREATE TABLE units (id uuid, name text);
                     CREATE TABLE currencies (id uuid, name text);
-                    CREATE TABLE purchase_order_item_sources (order_item_id uuid, request_item_id uuid);
-                    CREATE TABLE purchase_request_items (row_version bigint NOT NULL DEFAULT 0, id uuid, request_id uuid);
-                    CREATE TABLE purchase_requests (id uuid, bill_no text);
+                    CREATE TABLE purchase_order_item_sources (order_item_id uuid, request_item_id uuid,
+                        allocated_gift_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(allocated_gift_qty>=0));
+                    CREATE TABLE purchase_request_items (row_version bigint NOT NULL DEFAULT 0, id uuid, request_id uuid,
+                        gift_ordered_qty numeric(18,4) NOT NULL DEFAULT 0 CHECK(gift_ordered_qty>=0),
+                        quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED'
+                            CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')));
+                    CREATE TABLE purchase_requests (id uuid, bill_no text,
+                        quantity_semantics text NOT NULL DEFAULT 'LEGACY_RECORDED'
+                            CHECK(quantity_semantics IN('LEGACY_RECORDED','CHARGED_PLUS_GIFT_V1')));
                     CREATE TABLE subcontract_order_item_sources (order_item_id uuid, application_item_id uuid);
                     CREATE TABLE subcontract_application_items (id uuid, application_id uuid);
                     CREATE TABLE subcontract_applications (id uuid, bill_no text);

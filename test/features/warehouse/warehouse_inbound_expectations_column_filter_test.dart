@@ -46,6 +46,11 @@ void main() {
       containsAll(<String>['orderType', 'supplierName']),
     );
     expect(table.facets['supplierName']?.single.value, 'supplier-1');
+    expect(
+      find.byKey(const Key('inbound-expectation-type-segments')),
+      findsNothing,
+    );
+    expect(api.lastQuery?.containsKey('orderType'), isFalse);
 
     api.lastQuery = null;
     table.onFilterChanged('supplierName', 'supplier-1');
@@ -57,6 +62,17 @@ void main() {
       find.byKey(const Key('inbound-expectation-task-table')),
     );
     expect(refreshed.filters['supplierName'], 'supplier-1');
+    refreshed.onFilterChanged('orderType', 'SUBCONTRACT');
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['orderType'], 'SUBCONTRACT');
+    expect(api.lastQuery?['supplierId'], 'supplier-1');
+    expect(api.lastQuery?['page'], 1);
+    final typed = tester.widget<MasterDataTableView<InboundExpectation>>(
+      find.byKey(const Key('inbound-expectation-task-table')),
+    );
+    typed.onFilterChanged('orderType', null);
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?.containsKey('orderType'), isFalse);
     expect(tester.takeException(), isNull);
   });
 

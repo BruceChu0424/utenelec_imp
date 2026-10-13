@@ -142,6 +142,36 @@ Future<void> _pumpPendingOrder(
 }
 
 void main() {
+  testWidgets(
+    'reversed subcontract hides historical rejection correction instructions',
+    (tester) async {
+      tester.view.physicalSize = const Size(1400, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final detail = _pendingOrderDetail()
+        ..['status'] = kSubcontractStatusReversed;
+      detail['financeApproval'] = {
+        'status': 'REJECTED',
+        'attempt': 1,
+        'allowedActions': <String>[],
+      };
+      await _pumpPendingOrder(
+        tester,
+        _api(
+          (request) => request.path.contains('/subcontract/orders/order-1')
+              ? detail
+              : <String, dynamic>{},
+        ),
+      );
+      expect(find.text('财务已退回，请修改后重新提交'), findsNothing);
+      expect(find.text('财务已退回，等待修改后重提'), findsNothing);
+      expect(find.text('已反审'), findsWidgets);
+      expect(find.text('重新提交财务'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('按总金额计价显示完整参考单价及服务端真实总金额', (tester) async {
     tester.view.physicalSize = const Size(1400, 1800);
     tester.view.devicePixelRatio = 1;

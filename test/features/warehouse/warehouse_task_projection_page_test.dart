@@ -105,6 +105,7 @@ void main() {
             _FailingStockInGateway(),
           ),
           currentPermissionsProvider.overrideWithValue(const {
+            Perm.warehouseIqcReturnView,
             Perm.procurementIqcRejectionRecordReturn,
           }),
         ],

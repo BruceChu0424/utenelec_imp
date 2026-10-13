@@ -22,6 +22,7 @@ import '../providers/draft_counts_provider.dart';
 import '../providers/master_name_provider.dart';
 import 'draft_workspace_sources.dart';
 import 'form_draft_category.dart';
+import 'task_form_drafts.dart';
 import 'form_draft_store.dart';
 import 'form_draft_history_view.dart';
 
@@ -345,7 +346,10 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
       }
       if (value.hasError) failures.add(draftWorkspaceKindLabel(kind));
     }
-    final local = ref.watch(formDraftCategoryProvider(widget.localScope));
+    final local = ref
+        .watch(formDraftCategoryProvider(widget.localScope))
+        .where((draft) => !isTaskFormDraft(draft))
+        .toList();
     final search = '${widget.search} $_search'.trim().toLowerCase();
     final searchable =
         mergeDraftWorkspaceRows(

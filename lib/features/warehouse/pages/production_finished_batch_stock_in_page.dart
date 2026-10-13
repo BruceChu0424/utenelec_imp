@@ -26,6 +26,9 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_field_codec.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_finished_inbound_task.dart';
 import '../repositories/production_finished_inbound_task_repository.dart';
@@ -42,21 +45,103 @@ class ProductionFinishedBatchStockInPage extends ConsumerStatefulWidget {
 }
 
 class _ProductionFinishedBatchStockInPageState
-    extends ConsumerState<ProductionFinishedBatchStockInPage> {
+    extends ConsumerState<ProductionFinishedBatchStockInPage>
+    with FormDraftMixin<ProductionFinishedBatchStockInPage> {
+  late List<ProductionFinishedInboundTask> _targets = widget.targets;
   final Set<String> _selectedDocumentIds = {};
   bool _saving = false;
   String? _batchSelectionFingerprint;
   String? _batchIdempotencyKey;
+  bool _uncertain = false;
+
+  @override
+  bool get formDraftBusy => _saving;
+  @override
+  bool get formDraftCanReplaySubmission => true;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  FormDraftSpec get formDraftSpec =>
+      FormDraftCatalog.productionFinishedBatchStockIn.spec(
+        title: '产成品批量点收',
+        route: Uri(
+          path: RouteName.warehouseProductionFinishedBatchStockIn,
+          queryParameters: {
+            'documentIds': _targets
+                .map((task) => task.documentId)
+                .whereType<String>()
+                .join(','),
+          },
+        ).toString(),
+      );
+  @override
+  Map<String, dynamic> captureFormDraft() => {
+    'documentIds': _targets
+        .map((task) => task.documentId)
+        .whereType<String>()
+        .toList(),
+    'selectedDocumentIds': _selectedDocumentIds.toList()..sort(),
+    'fingerprint': _batchSelectionFingerprint,
+    'idempotencyKey': _batchIdempotencyKey,
+    'uncertain': _uncertain,
+    'targets': [
+      for (final task in _targets)
+        {
+          'taskId': task.taskId,
+          'taskStage': task.taskStage.code,
+          'documentId': task.documentId,
+          'documentNo': task.documentNo,
+          'documentDate': task.documentDate.toIso8601String(),
+          'reportId': task.reportId,
+          'warehouseId': task.warehouseId,
+          'warehouseName': task.warehouseName,
+          'planId': task.planId,
+          'planNo': task.planNo,
+          'reportNos': task.reportNos,
+          'goodsSummary': task.goodsSummary,
+          'lineCount': task.lineCount,
+          'pendingQty': task.pendingQty,
+          'createdAt': task.createdAt.toIso8601String(),
+          'residualTask': task.residualTask,
+          'publicQty': task.publicQty,
+          'actualSurplusQty': task.actualSurplusQty,
+          'actualSurplusNote': task.actualSurplusNote,
+        },
+    ],
+  };
+  @override
+  Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    final saved = draftMaps(
+      data['targets'],
+    ).map(ProductionFinishedInboundTask.fromJson).toList();
+    if (saved.isNotEmpty) _targets = saved;
+    _selectedDocumentIds
+      ..clear()
+      ..addAll(draftStrings(data['selectedDocumentIds']));
+    _batchSelectionFingerprint = data['fingerprint'] as String?;
+    _batchIdempotencyKey = data['idempotencyKey'] as String?;
+    _uncertain = data['uncertain'] == true || formDraftHasUnknownSubmission;
+    final selected = _selectedDocumentIds.toList()..sort();
+    if (_uncertain &&
+        (_batchIdempotencyKey == null ||
+            _selectedDocumentIds.isEmpty ||
+            _batchSelectionFingerprint != selected.join('|'))) {
+      throw const FormatException('原批量点收提交身份不完整，请返回任务中心核对');
+    }
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     _selectedDocumentIds.addAll(
       widget.targets
           .map((task) => task.documentId)
           .whereType<String>()
           .where((id) => id.isNotEmpty),
     );
+    Future.microtask(initializeFormDraft);
   }
 
   /// 幂等键随选择集派生：选择不变重试复用同键（服务端按 用户+键 去重安全重放）。
@@ -73,7 +158,8 @@ class _ProductionFinishedBatchStockInPageState
 
   Future<void> _submit() async {
     if (_saving || _selectedDocumentIds.isEmpty) return;
-    if (!ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove)) {
+    if (!ref.read(isSuperAdminProvider) &&
+        !ref.read(currentPermissionsProvider).contains(Perm.stockDocApprove)) {
       context.appWarning('当前账号没有仓库入库确认权限');
       return;
     }
@@ -91,14 +177,25 @@ class _ProductionFinishedBatchStockInPageState
       ]),
     );
     if (confirmed != true || !mounted) return;
+    if (!formDraftIdentityIsCurrent ||
+        (!ref.read(isSuperAdminProvider) &&
+            !ref
+                .read(currentPermissionsProvider)
+                .contains(Perm.stockDocApprove))) {
+      return;
+    }
+    final key = _batchKey(_selectedDocumentIds);
     setState(() => _saving = true);
     try {
-      final result = await ref
-          .read(productionFinishedInboundTaskRepositoryProvider)
-          .confirmAll(
-            documentIds: ids,
-            idempotencyKey: _batchKey(_selectedDocumentIds),
-          );
+      _uncertain = true;
+      final result = await runFormDraftSubmission(
+        () => ref
+            .read(productionFinishedInboundTaskRepositoryProvider)
+            .confirmAll(documentIds: ids, idempotencyKey: key),
+      );
+      if (!mounted) return;
+      _uncertain = false;
+      await completeFormDraft();
       if (!mounted) return;
       context.appSuccess(
         result.replay
@@ -108,8 +205,21 @@ class _ProductionFinishedBatchStockInPageState
       // 徽章兜底：宿主待点收视图 pop 返回后会重拉任务计数，深链直入本页时
       // 仓库徽章也要即时跟上（与其它批量入库页口径一致）。
       refreshBadges(ref);
-      if (context.canPop()) context.pop(true);
+      if (context.canPop()) {
+        context.pop(true);
+      } else {
+        backTo(
+          context,
+          defaultPath: RouteName.warehouseProductionFinishedInboundTasks,
+        );
+      }
     } on ApiException catch (error) {
+      if (error.httpStatus == 400 ||
+          error.httpStatus == 422 ||
+          (error.httpStatus == 409 && error.code == 'CONFLICT')) {
+        _uncertain = false;
+        await saveFormDraftNow();
+      }
       if (mounted) context.appError(error.message);
     } catch (_) {
       if (mounted) context.appError('批量点收入库失败，请保持当前选择后重试');
@@ -133,56 +243,58 @@ class _ProductionFinishedBatchStockInPageState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final rows = widget.targets
+    final rows = _targets
         .where((task) => (task.documentId ?? '').isNotEmpty)
         .toList(growable: false);
-    return PopScope(
-      canPop: !_saving,
-      child: Scaffold(
-        appBar: UtenAppBar(
-          title: '批量全量点收 · ${rows.length} 张',
-          leading: UtenBackButton(
-            color: _saving ? theme.disabledColor : null,
-            onPressed: _saving
-                ? null
-                : () => popOrBackTo(
-                    context,
-                    defaultPath:
-                        RouteName.warehouseProductionFinishedInboundTasks,
-                  ),
+    return withFormDraft(
+      PopScope(
+        canPop: !_saving,
+        child: Scaffold(
+          appBar: UtenAppBar(
+            title: '批量全量点收 · ${rows.length} 张',
+            leading: UtenBackButton(
+              color: _saving ? theme.disabledColor : null,
+              onPressed: _saving
+                  ? null
+                  : () => popOrBackTo(
+                      context,
+                      defaultPath:
+                          RouteName.warehouseProductionFinishedInboundTasks,
+                    ),
+            ),
           ),
-        ),
-        body: SafeArea(
-          child: Stack(
-            children: [
-              AbsorbPointer(
-                absorbing: _saving,
-                child: UtenContentContainer.wide(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Expanded(
-                        child: rows.isEmpty
-                            ? const UtenEmpty(
-                                icon: Icons.inventory_rounded,
-                                message: '所选任务状态已变化',
-                                description: '请返回任务中心刷新后重新选择。',
-                              )
-                            : _buildTable(rows),
-                      ),
-                    ],
+          body: SafeArea(
+            child: Stack(
+              children: [
+                AbsorbPointer(
+                  absorbing: _saving,
+                  child: UtenContentContainer.wide(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: rows.isEmpty
+                              ? const UtenEmpty(
+                                  icon: Icons.inventory_rounded,
+                                  message: '所选任务状态已变化',
+                                  description: '请返回任务中心刷新后重新选择。',
+                                )
+                              : _buildTable(rows),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              // 2026-09-12 用户口径：批量全量点收提交期间屏幕中间加载动画。
-              if (_saving)
-                const Positioned.fill(
-                  child: UtenBusyOverlay(
-                    title: '正在批量全量点收',
-                    description: '正在一次性写入库存和入库记录，请稍候。',
+                // 2026-09-12 用户口径：批量全量点收提交期间屏幕中间加载动画。
+                if (_saving)
+                  const Positioned.fill(
+                    child: UtenBusyOverlay(
+                      title: '正在批量全量点收',
+                      description: '正在一次性写入库存和入库记录，请稍候。',
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -230,6 +342,7 @@ class _ProductionFinishedBatchStockInPageState
           idOf: (task) => task.documentId,
           selectedIds: _selectedDocumentIds,
           onSelectedIdsChanged: (next) => setState(() {
+            if (_uncertain) return;
             _selectedDocumentIds
               ..clear()
               ..addAll(next);

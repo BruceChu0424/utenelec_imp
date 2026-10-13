@@ -288,6 +288,7 @@ ProductionMaterialAnalysisProduct _productWithOwnership(
   planExecutionStatus: current.planExecutionStatus,
   latestPlanId: current.latestPlanId,
   latestPlanNo: current.latestPlanNo,
+  planReferences: current.planReferences,
   planExecutionPlannedQty: current.planExecutionPlannedQty,
   planExecutionInboundQty: current.planExecutionInboundQty,
   planExecutionProgressRatio: current.planExecutionProgressRatio,

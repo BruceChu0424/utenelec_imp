@@ -1,6 +1,7 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.support.MigratedSchemaBaseline;
 import com.uten.imp.features.documents.DocumentUnapprovalService;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
@@ -18,8 +19,13 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.util.*;
@@ -36,8 +42,23 @@ import static org.assertj.core.api.Assertions.*;
     "uten.crypto.hmac-key=gift-regression-isolated-hmac-key-0123456789-abcdef",
     "uten.bootstrap.admin-login=gift-regression-bootstrap","uten.bootstrap.admin-password=GiftRegressionAdmin-1!"})
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners=PurchaseReturnActualCostGlEndToEndTest.Cleanup.class,
+    mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class PurchaseReturnActualCostGlEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
+    private static MigratedSchemaBaseline.ScopedDatabase database;
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry) throws Exception {
+        // Period-wide regeneration and posting-role configuration must not adopt
+        // another full-chain scenario's confirmed expense or configured variance role.
+        database=MigratedSchemaBaseline.openDatabase("purchase_return_gl");
+        registry.add("spring.datasource.url",database::getJdbcUrl);
+        registry.add("spring.datasource.username",database::getUsername);
+        registry.add("spring.datasource.password",database::getPassword);
+    }
+    public static class Cleanup extends AbstractTestExecutionListener {
+        @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
+        @Override public void afterTestClass(TestContext ignored) throws Exception {if(database!=null)database.close();}
+    }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired PurchaseRequestService requests;
@@ -91,14 +112,33 @@ class PurchaseReturnActualCostGlEndToEndTest {
     }
 
     @Test @Order(1) void missingVarianceRoleFailsBeforeDeletingAnExistingBalancedProjection(){
-        F f=fixture();harness.seedChartOfAccounts();UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
+        F f=fixture();harness.seedChartOfAccounts();configureVarianceRole();
+        UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
         String period=java.time.YearMonth.from(BusinessTime.today()).toString();gl.generate(period);
         UUID previous=db.queryForObject("SELECT id FROM gl_vouchers WHERE source_type='AP_POST' AND source_doc_id=?",UUID.class,receipt);
         UUID returned=returned(f,receipts.detail(receipt).getItems().getFirst().getId(),"0","1");returns.approve(returned);
-        assertThatThrownBy(()->gl.generate(period)).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("退货价差科目");
-        assertThat(db.queryForObject("SELECT id FROM gl_vouchers WHERE source_type='AP_POST' AND source_doc_id=?",UUID.class,receipt)).isEqualTo(previous);
-        assertThat(stock(f)).isEqualByComparingTo("10");assertThat(value(f)).isEqualByComparingTo("90.9091");
-        configureVarianceRole();returns.reverse(returned);gl.generate(period);
+        // The private GL database isolates period-wide regeneration. Explicitly
+        // remove the configured role here to prove the missing-role rollback path.
+        // Only this isolated test fixture temporarily removes the one required mapping;
+        // the public configure API correctly cannot remove an operational assignment.
+        UUID previousRole=db.queryForObject("SELECT style_id FROM system_posting_style_roles WHERE role_key='PROCUREMENT_RETURN_VARIANCE'",UUID.class);
+        assertThat(previousRole).isNotNull();
+        String otherRoles=db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(role) ORDER BY role_key),'[]'::jsonb)::text FROM system_posting_style_roles role WHERE role_key<>'PROCUREMENT_RETURN_VARIANCE'",String.class);
+        String projectionSql="SELECT jsonb_build_object('vouchers',(SELECT COALESCE(jsonb_agg(to_jsonb(v) ORDER BY v.id),'[]'::jsonb) FROM gl_vouchers v WHERE v.period=?), 'entries',(SELECT COALESCE(jsonb_agg(to_jsonb(e) ORDER BY e.id),'[]'::jsonb) FROM gl_entries e WHERE e.period=?))::text";
+        String previousProjection=db.queryForObject(projectionSql,String.class,period,period);
+        try {
+            assertThat(db.update("UPDATE system_posting_style_roles SET style_id=NULL WHERE role_key='PROCUREMENT_RETURN_VARIANCE' AND style_id=?",previousRole)).isEqualTo(1);
+            assertThat(db.queryForObject("SELECT system_posting_style_id('PROCUREMENT_RETURN_VARIANCE')",UUID.class)).isNull();
+            assertThatThrownBy(()->gl.generate(period)).isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("退货价差科目");
+            assertThat(db.queryForObject("SELECT id FROM gl_vouchers WHERE source_type='AP_POST' AND source_doc_id=?",UUID.class,receipt)).isEqualTo(previous);
+            assertThat(db.queryForObject(projectionSql,String.class,period,period)).as("missing role must preserve every previous period voucher and entry").isEqualTo(previousProjection);
+            assertThat(stock(f)).isEqualByComparingTo("10");assertThat(value(f)).isEqualByComparingTo("90.9091");
+        } finally {
+            assertThat(db.update("UPDATE system_posting_style_roles SET style_id=? WHERE role_key='PROCUREMENT_RETURN_VARIANCE' AND style_id IS NULL",previousRole)).isEqualTo(1);
+        }
+        assertThat(db.queryForObject("SELECT system_posting_style_id('PROCUREMENT_RETURN_VARIANCE')",UUID.class)).isEqualTo(previousRole);
+        assertThat(db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(role) ORDER BY role_key),'[]'::jsonb)::text FROM system_posting_style_roles role WHERE role_key<>'PROCUREMENT_RETURN_VARIANCE'",String.class)).isEqualTo(otherRoles);
+        returns.reverse(returned);gl.generate(period);
     }
 
     @Test @Order(4) void partialReturnCostsAndCreditsKeepTheirRemaindersAndReverseToTheOriginalAsset(){

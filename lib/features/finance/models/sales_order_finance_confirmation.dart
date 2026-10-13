@@ -71,6 +71,7 @@ class SalesOrderFinancePendingItem {
     this.financeRejectedAt,
     this.changeCount = 0,
     this.financeReviewRevision = 0,
+    this.financeConfirmed = false,
     this.sourceQuote,
     this.matchesQuote,
   });
@@ -105,6 +106,7 @@ class SalesOrderFinancePendingItem {
   /// 上次财务确认之后的改量处数（>0 = 确认后修改、待重新确认）。
   final int changeCount;
   final int financeReviewRevision;
+  final bool financeConfirmed;
 
   /// 来源报价(ADR-134)；非报价转入为 null。
   final SalesOrderSourceQuote? sourceQuote;
@@ -136,6 +138,7 @@ class SalesOrderFinancePendingItem {
       financeRejectedAt: _string(json['financeRejectedAt']),
       changeCount: _int(json['changeCount']) ?? 0,
       financeReviewRevision: _int(json['financeReviewRevision']) ?? 0,
+      financeConfirmed: json['financeConfirmed'] == true,
       sourceQuote: SalesOrderSourceQuote.tryFromJson(json['sourceQuote']),
       matchesQuote: _matchesQuote(json),
     );

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show setEquals;
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -33,6 +34,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../core/network/server_config.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/models/party_open_balance.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
@@ -44,6 +47,7 @@ import '../models/sales_order_finance_confirmation.dart';
 import '../providers/finance_name_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
 import '../repositories/sales_order_finance_confirmation_repository.dart';
+import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../core/router/page_resume_provider.dart';
 
@@ -59,12 +63,14 @@ class FinanceSalesOrderConfirmationPage extends ConsumerStatefulWidget {
   const FinanceSalesOrderConfirmationPage({
     super.key,
     this.changesOnly = false,
+    this.initialState,
     this.embedded = false,
     this.externalHeader,
     this.refreshTick = 0,
   });
 
   final bool changesOnly;
+  final String? initialState;
   final bool embedded;
 
   /// 宿主（业务审核中心）的大类行：挂进本页折叠头，随页一起滚走
@@ -107,12 +113,23 @@ class _FinanceSalesOrderConfirmationPageState
     super.dispose();
   }
 
-  /// 分段视图：false=待确认（默认）；true=已驳回。
-  bool _showRejected = false;
+  String _state = 'pending';
+  String? _confirmationKind;
+  bool get _showRejected => _state == 'rejected';
+  bool get _showConfirmed => _state == 'confirmed';
+  bool get _canBatchDecide => !_showRejected && !_showConfirmed;
+  bool? get _changesFilter => !_canBatchDecide
+      ? null
+      : switch (_confirmationKind) {
+          'initial' => false,
+          'changes' => true,
+          _ => null,
+        };
 
   /// 「已驳回」段的全量张数(中性括号, 下一步在销售手上; 2026-09-21 父有红徽章子也要有数)。
   /// null = 尚未取到, 不渲染数字。
   int? _rejectedCount;
+  int? _confirmedCount;
 
   /// 表头排序 + 销售单号列值筛选 + facets 桶 + 防串台代数
   /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
@@ -136,6 +153,17 @@ class _FinanceSalesOrderConfirmationPageState
   @override
   void initState() {
     super.initState();
+    _state = _initialSelection.state;
+    _confirmationKind = _initialSelection.kind;
+    ref.listenManual(authenticatedScopeProvider, (previous, next) {
+      if (previous != next) _invalidateScope();
+    });
+    ref.listenManual(apiBaseUrlProvider, (previous, next) {
+      if (previous != next) _invalidateScope();
+    });
+    ref.listenManual(currentPermissionsProvider, (previous, next) {
+      if (!setEquals(previous, next)) _invalidateScope();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 客户应收列前缀要显示本位币名(币种字典 baseCurrency 标记)。
       ref.read(financeNameServiceProvider).ensureLoaded();
@@ -143,9 +171,32 @@ class _FinanceSalesOrderConfirmationPageState
     });
   }
 
+  void _invalidateScope() {
+    ++_requestVersion;
+    ++_columnFilters.generation;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _rejectedCount = null;
+      _confirmedCount = null;
+      _columnFilters.reset();
+      _clearSelectionState();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load(1);
+    });
+  }
+
   @override
   void didUpdateWidget(FinanceSalesOrderConfirmationPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialState != widget.initialState ||
+        oldWidget.changesOnly != widget.changesOnly) {
+      _switchTab(
+        _initialSelection.state,
+        confirmationKind: _initialSelection.kind,
+      );
+    }
     if (widget.refreshTick != oldWidget.refreshTick) _refreshCurrent();
   }
 
@@ -158,9 +209,7 @@ class _FinanceSalesOrderConfirmationPageState
     });
     // 「已驳回」段全量数(不带关键字)先于列表请求发出, 列表请求始终是本轮最后一个请求;
     // 已驳回段下且未搜索时本页 total 就是全量驳回数, 不另发。
-    if (!_showRejected || _keyword.isNotEmpty) {
-      unawaited(_loadRejectedCount());
-    }
+    unawaited(_loadHistoryCounts(requestVersion));
     try {
       final result = await ref
           .read(salesOrderFinanceConfirmationRepositoryProvider)
@@ -168,7 +217,8 @@ class _FinanceSalesOrderConfirmationPageState
             page: page,
             rejected: _showRejected,
             keyword: _keyword.isEmpty ? null : _keyword,
-            changesOnly: widget.changesOnly,
+            changesOnly: _changesFilter,
+            confirmed: _showConfirmed,
             sort: _kSortFields[_columnFilters.sortColumn],
             order: _columnFilters.sortColumn == null
                 ? null
@@ -191,8 +241,15 @@ class _FinanceSalesOrderConfirmationPageState
           _activeItem = null;
         }
         // 已驳回段下且未搜索: 本页 total 就是全量驳回数, 不另发请求。
-        if (_showRejected && _keyword.isEmpty) {
+        if (_showRejected &&
+            _keyword.isEmpty &&
+            _columnFilters['billNo'] == null) {
           _rejectedCount = result.total;
+        }
+        if (_showConfirmed &&
+            _keyword.isEmpty &&
+            _columnFilters['billNo'] == null) {
+          _confirmedCount = result.total;
         }
       });
       // 分段计数与列表同源, 随列表加载一并失效(页内专用, 不连带整份徽章汇总)。
@@ -212,14 +269,19 @@ class _FinanceSalesOrderConfirmationPageState
     }
   }
 
-  /// 「已驳回」段全量计数(size=1 只取 total; 失败保持旧值, 不把未知伪装成 0)。
-  Future<void> _loadRejectedCount() async {
+  /// 历史状态的全量计数(size=1 只取 total; 失败保持未知, 不把未知伪装成 0)。
+  Future<void> _loadHistoryCounts(int requestVersion) async {
     try {
-      final page = await ref
-          .read(salesOrderFinanceConfirmationRepositoryProvider)
-          .pending(size: 1, rejected: true, changesOnly: widget.changesOnly);
-      if (!mounted) return;
-      setState(() => _rejectedCount = page.total);
+      final repo = ref.read(salesOrderFinanceConfirmationRepositoryProvider);
+      final pages = await Future.wait([
+        repo.pending(size: 1, rejected: true),
+        repo.pending(size: 1, confirmed: true),
+      ]);
+      if (!mounted || requestVersion != _requestVersion) return;
+      setState(() {
+        _rejectedCount = pages[0].total;
+        _confirmedCount = pages[1].total;
+      });
     } catch (_) {
       // 计数失败静默: 分段不显示数字, 不影响列表。
     }
@@ -256,7 +318,8 @@ class _FinanceSalesOrderConfirmationPageState
           .billNoFacets(
             rejected: _showRejected,
             keyword: _keyword.isEmpty ? null : _keyword,
-            changesOnly: widget.changesOnly,
+            changesOnly: _changesFilter,
+            confirmed: _showConfirmed,
           ),
     },
     onLoaded: () {
@@ -264,16 +327,44 @@ class _FinanceSalesOrderConfirmationPageState
     },
   );
 
-  void _switchTab(bool rejected) {
-    if (rejected == _showRejected) return;
+  ({String state, String? kind}) get _initialSelection {
+    final requested =
+        const {
+          'pending',
+          'initial',
+          'changes',
+          'confirmed',
+          'rejected',
+        }.contains(widget.initialState)
+        ? widget.initialState!
+        : widget.changesOnly
+        ? 'changes'
+        : 'pending';
+    return switch (requested) {
+      'initial' || 'changes' => (state: 'pending', kind: requested),
+      _ => (state: requested, kind: null),
+    };
+  }
+
+  void _switchTab(String state, {String? confirmationKind}) {
+    if (state == _state && confirmationKind == _confirmationKind) return;
     ++_requestVersion;
     setState(() {
-      _showRejected = rejected;
+      _state = state;
+      _confirmationKind = confirmationKind;
       _result = null;
       _error = null;
+      ++_columnFilters.generation;
+      _columnFilters.reset();
       _clearSelectionState();
     });
     _load(1);
+  }
+
+  void _filterConfirmationKind(String? value) {
+    if (_state != 'pending' || _batchBusy || _batchClaim != null) return;
+    if (value != null && value != 'initial' && value != 'changes') return;
+    _switchTab('pending', confirmationKind: value);
   }
 
   void _clearSelectionState() {
@@ -324,6 +415,12 @@ class _FinanceSalesOrderConfirmationPageState
 
   /// 打开财务审核详情页；确认/驳回后返回 true → 刷新当前视图。
   Future<void> _open(SalesOrderFinancePendingItem item) async {
+    final drafts = _taskDrafts(item);
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _refreshCurrent();
+      return;
+    }
     final route = Uri.parse(
       item.detailRoute,
     ).replace(queryParameters: {'returnTo': _returnPath});
@@ -338,15 +435,17 @@ class _FinanceSalesOrderConfirmationPageState
   }
 
   List<SalesOrderFinancePendingItem> get _selectedTasks {
-    final tasks = _selectedItems.values.toList(growable: false);
+    final tasks = _selectedItems.values
+        .where((item) => _taskDrafts(item).isEmpty)
+        .toList(growable: false);
     tasks.sort((a, b) => a.billNo.compareTo(b.billNo));
     return tasks;
   }
 
   Future<void> _confirmSelected() async {
     if (_batchBusy || _batchClaim != null) return;
-    if (_showRejected) {
-      context.appWarning('已驳回订单须由销售修订并重新审核后才能确认');
+    if (!_canBatchDecide) {
+      context.appWarning('只有待确认或订单修改待确认的订单可以批量确认');
       return;
     }
     if (!_canConfirm) {
@@ -545,14 +644,20 @@ class _FinanceSalesOrderConfirmationPageState
 
   /// 审核详情的返回落点：嵌入审核中心时回审核中心；独立页时回对应队列
   /// （详情页办结后 bumpListRefresh 也用同一 key，见 finance_sales_order_review_page）。
-  String get _returnPath => widget.embedded
-      ? RouteName.financeAudits
-      : widget.changesOnly
-      ? '/finance/sales-order-changes'
-      : '/finance/sales-order-confirmations';
+  String get _returnPath => Uri(
+    path: widget.embedded
+        ? RouteName.financeAudits
+        : '/finance/sales-order-confirmations',
+    queryParameters: {
+      if (widget.embedded) 'segment': 'salesConfirm',
+      // Legacy state=changes remains a stable return/deep-link encoding.
+      'state': _confirmationKind ?? _state,
+    },
+  ).toString();
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     final returnPath = _returnPath;
     // 审核页确认/驳回成功 bump 的信号: 本队列就在栈顶时立即重拉, 被审核页盖着时
     // 留给返回时的刷新(ADR-108)。
@@ -607,14 +712,14 @@ class _FinanceSalesOrderConfirmationPageState
         body: body,
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
         floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-        floatingActionButton: allowed && canConfirm && !_showRejected
+        floatingActionButton: allowed && canConfirm && _canBatchDecide
             ? _floatingSelectionActions()
             : null,
       );
     }
     return Scaffold(
       appBar: UtenAppBar(
-        title: widget.changesOnly ? '销售订单修改' : '销售订单财务确认',
+        title: '销售订单财务确认',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: '/finance'),
         ),
@@ -633,7 +738,7 @@ class _FinanceSalesOrderConfirmationPageState
       body: body,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: allowed && canConfirm && !_showRejected
+      floatingActionButton: allowed && canConfirm && _canBatchDecide
           ? _floatingSelectionActions()
           : null,
     );
@@ -748,6 +853,13 @@ class _FinanceSalesOrderConfirmationPageState
             const SizedBox(height: UtenSpacing.s12),
           ],
           _filters(theme),
+          if (!widget.embedded)
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(
+                module: BadgeModule.finance,
+                routePrefix: '/finance/sales-order-confirmations/',
+              ),
+            ),
           if (_error != null) ...[
             const SizedBox(height: UtenSpacing.s12),
             _InlineError(message: _error!, onRetry: () => _load(result.page)),
@@ -758,12 +870,12 @@ class _FinanceSalesOrderConfirmationPageState
       body: MasterDataTableView<SalesOrderFinancePendingItem>(
         rowsController: _tableRows,
         paginationRevision: _result,
-        paginationScope: (_keyword, _showRejected, widget.changesOnly),
+        paginationScope: (_keyword, _state, _confirmationKind),
         tableKey: 'sales.order.items',
         // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
         primary: true,
         key: const Key('sales-order-finance-desktop-table'),
-        bottomContentPadding: !_showRejected && canConfirm
+        bottomContentPadding: _canBatchDecide && canConfirm
             ? UtenFloatingActionGroup.scrollClearance
             : widget.embedded
             ? UtenSpacing.s24
@@ -771,8 +883,8 @@ class _FinanceSalesOrderConfirmationPageState
                 UtenSpacing.s24,
                 UtenCapsuleNavScope.occlusionOf(context),
               ),
-        selectable: !_showRejected && canConfirm,
-        idOf: (item) => item.orderId,
+        selectable: _canBatchDecide && canConfirm,
+        idOf: (item) => _taskDrafts(item).isEmpty ? item.orderId : null,
         selectedIds: _selectedIds,
         onSelectedIdsChanged: _setSelectedIds,
         // 已选胶囊由页面右下 FAB 自摆（_floatingSelectionActions 首位）；
@@ -782,15 +894,27 @@ class _FinanceSalesOrderConfirmationPageState
         items: result.items,
         // 销售单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
         facets: <String, List<MasterFacetBucket>>{
+          if (_canBatchDecide)
+            'status': const [
+              MasterFacetBucket(value: 'initial', count: 0, label: '首次待确认'),
+              MasterFacetBucket(value: 'changes', count: 0, label: '订单修改待确认'),
+            ],
           'billNo': _columnFilters.bucketOf('billNo'),
         },
         nullCounts: const <String, int>{},
-        filters: <String, String?>{'billNo': _columnFilters['billNo']},
+        filters: <String, String?>{
+          'status': _confirmationKind,
+          'billNo': _columnFilters['billNo'],
+        },
         // 表头排序走服务端（2026-09-25 单号列统一）。
         sortColumn: _columnFilters.sortColumn,
         sortAscending: _columnFilters.sortAscending,
         onSortChange: _onSortChange,
         onFilterChanged: (key, value) {
+          if (key == 'status') {
+            _filterConfirmationKind(value);
+            return;
+          }
           if (key == 'billNo') {
             _columnFilters.handleFilterChanged(
               key,
@@ -803,15 +927,15 @@ class _FinanceSalesOrderConfirmationPageState
           }
         },
         onRowTap: _open,
-        onSelectionChanged: canConfirm
+        onSelectionChanged: canConfirm && _canBatchDecide
             ? null
             : (item) => setState(() => _activeItem = item),
-        onSelectionCleared: canConfirm
+        onSelectionCleared: canConfirm && _canBatchDecide
             ? null
             : () => setState(() => _activeItem = null),
         rowMenuBuilder: (item) => [
           UtenMenuItem(
-            label: '查看审核详情',
+            label: _taskDrafts(item).isEmpty ? '查看审核详情' : '继续填写审核',
             icon: Icons.open_in_new_rounded,
             onTap: () => _open(item),
           ),
@@ -822,7 +946,7 @@ class _FinanceSalesOrderConfirmationPageState
         currentPage: result.page,
         totalPages: result.totalPages,
         onPageChange: _load,
-        toolbarActions: canConfirm
+        toolbarActions: canConfirm && _canBatchDecide
             ? null
             : [
                 UtenButton(
@@ -844,11 +968,15 @@ class _FinanceSalesOrderConfirmationPageState
     MasterColumnDef(
       key: 'status',
       label: '审核状态 / 原因',
-      width: 72,
-      value: (item) => item.financeRejected
+      width: 188,
+      value: (item) => _taskDrafts(item).isNotEmpty
+          ? taskDraftStatus(_taskDrafts(item))
+          : item.financeConfirmed
+          ? '已批准'
+          : item.financeRejected
           ? '已驳回：${item.financeRejectedReason ?? '未注明原因'}'
           : item.changeCount > 0
-          ? '修改后待确认 · ${item.changeCount} 次变更'
+          ? '订单修改待确认 · ${item.changeCount} 次变更'
           // 报价转入且各行单价/折扣与财务核定的报价一致(ADR-134)：本次只核信用与条款。
           : item.sourceQuote != null && item.matchesQuote == true
           ? '待财务确认 · ${AppLocalizations.of(context).quoteFinanceOrderAllMatch}'
@@ -857,7 +985,9 @@ class _FinanceSalesOrderConfirmationPageState
       // （「就绪可动手」，轮到我审=绿灯，与报价一致只是文案差异）；
       // 修改后待确认=橙（改过 N 次需注意前后对比）；已驳回=红（驳回需销售修订）。
       cellColor: (context, item) => utenStatusBadgeCellColor(
-        item.financeRejected
+        item.financeConfirmed
+            ? UtenStatusBadgeType.success
+            : item.financeRejected
             ? UtenStatusBadgeType.danger
             : item.changeCount > 0
             ? UtenStatusBadgeType.orange
@@ -939,15 +1069,22 @@ class _FinanceSalesOrderConfirmationPageState
   ];
 
   Widget _filters(ThemeData theme) {
-    final count = ref.watch(
-      salesOrderFinanceQueueCountProvider(widget.changesOnly),
-    );
-    final pendingCount = count.isLoading || count.hasError
+    final count = ref.watch(salesOrderFinanceQueueCountProvider(false));
+    final changedCount = ref.watch(salesOrderFinanceQueueCountProvider(true));
+    // false/true are complementary slices of the same pending predicate.
+    // Sum once for the main queue; these page counts never enter global totals.
+    final pendingCount =
+        count.isLoading ||
+            count.hasError ||
+            changedCount.isLoading ||
+            changedCount.hasError
         ? null
-        : count.valueOrNull;
+        : count.valueOrNull == null || changedCount.valueOrNull == null
+        ? null
+        : count.valueOrNull! + changedCount.valueOrNull!;
     // 全平台统一筛选工具条：分段 + 胶囊搜索框（窄屏自动换行）。
     // 整批提交期间不响应分段切换（原 onSelectionChanged 置空的语义收进回调守卫）。
-    return UtenFilterToolbar<bool>(
+    return UtenFilterToolbar<String>(
       segmentsKey: const Key('sales-order-finance-tabs'),
       searchKey: const Key('sales-order-finance-search'),
       compactBreakpoint: UtenBreakpoints.mediumStart,
@@ -958,21 +1095,26 @@ class _FinanceSalesOrderConfirmationPageState
         // 注意与销售自己的出货/订货列表页相反: 在那边这批单是「本人要改单重报」的活,
         // 必须红; 同一批单在两条链上各答各的问题, 不是双计。
         UtenFilterSegment(
-          value: false,
+          value: 'pending',
           label: '待确认',
           count: pendingCount,
           countForm: UtenSegmentCountForm.actionable,
         ),
         UtenFilterSegment(
-          value: true,
+          value: 'confirmed',
+          label: '已批准',
+          count: _confirmedCount,
+        ),
+        UtenFilterSegment(
+          value: 'rejected',
           label: '已驳回',
           count: _rejectedCount,
           countForm: UtenSegmentCountForm.inProgress,
         ),
       ],
-      selected: {_showRejected},
+      selected: {_state},
       onSelectionChanged: (value) {
-        if (_batchBusy) return;
+        if (_batchBusy || _batchClaim != null) return;
         _switchTab(value);
       },
       searchHint: '搜索单号 / 客户 / 业务员',
@@ -987,6 +1129,13 @@ class _FinanceSalesOrderConfirmationPageState
       ),
     );
   }
+
+  List<FormDraft> _taskDrafts(SalesOrderFinancePendingItem item) =>
+      reviewTaskDraftsFor(
+        ref.read(formDraftsProvider),
+        FormDraftCatalog.financeSalesOrderReview,
+        item.orderId,
+      );
 
   Color? _rowColor(ThemeData theme, SalesOrderFinancePendingItem item) {
     if (item.financeRejected) {
@@ -1005,7 +1154,13 @@ class _FinanceSalesOrderConfirmationPageState
 
   String get _emptyMessage {
     if (_keyword.isNotEmpty) return '没有匹配“$_keyword”的订单';
-    return _showRejected ? '没有被财务驳回的销售订单' : '目前没有待财务确认的销售订单';
+    return switch (_state) {
+      'confirmed' => '没有已获财务批准的销售订单',
+      'rejected' => '没有被财务驳回的销售订单',
+      'pending' when _confirmationKind == 'changes' => '目前没有订单修改待确认的销售订单',
+      'pending' when _confirmationKind == 'initial' => '目前没有首次待财务确认的销售订单',
+      _ => '目前没有待财务确认的销售订单',
+    };
   }
 }
 

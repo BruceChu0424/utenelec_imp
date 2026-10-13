@@ -52,6 +52,7 @@ public class SalesOrderFinanceConfirmController {
             @RequestParam(required = false) String rejected,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Boolean changesOnly,
+            @RequestParam(defaultValue = "false") boolean confirmed,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo) {
@@ -60,7 +61,7 @@ public class SalesOrderFinanceConfirmController {
         Boolean filter = rejected == null || rejected.isBlank()
                 ? Boolean.FALSE
                 : "all".equalsIgnoreCase(rejected) ? null : Boolean.valueOf(rejected);
-        return service.pending(page, size, filter, keyword, changesOnly, sort, order, billNo);
+        return service.pending(page, size, filter, keyword, changesOnly, sort, order, billNo, confirmed);
     }
 
     /** 销售单号 facets（2026-09-25 单号列统一）：{billNo:[各销售单号]}——
@@ -70,11 +71,12 @@ public class SalesOrderFinanceConfirmController {
     public Map<String, List<Map<String, Object>>> pendingFacets(
             @RequestParam(required = false) String rejected,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Boolean changesOnly) {
+            @RequestParam(required = false) Boolean changesOnly,
+            @RequestParam(defaultValue = "false") boolean confirmed) {
         Boolean filter = rejected == null || rejected.isBlank()
                 ? Boolean.FALSE
                 : "all".equalsIgnoreCase(rejected) ? null : Boolean.valueOf(rejected);
-        return service.pendingFacets(filter, keyword, changesOnly);
+        return service.pendingFacets(filter, keyword, changesOnly, confirmed);
     }
 
     @GetMapping("/finance-confirmation/count")
@@ -87,13 +89,6 @@ public class SalesOrderFinanceConfirmController {
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public SalesOrderFinanceReviewDto review(@PathVariable UUID id) {
         return service.review(id);
-    }
-
-    @PostMapping("/{id}/finance-confirmation/amend")
-    @PreAuthorize("hasAuthority('sales_order_finance:view') and hasAuthority('sales_order_finance:confirm')")
-    public SalesOrderFinanceReviewDto amend(@PathVariable UUID id,
-            @Valid @RequestBody SalesOrderFinanceConfirmService.FinanceAmendmentRequest request) {
-        return service.amend(id, request);
     }
 
     @PostMapping("/{id}/finance-confirmation")

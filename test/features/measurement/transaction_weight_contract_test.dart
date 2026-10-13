@@ -134,7 +134,18 @@ void main() {
     );
 
     expect(picker, contains('unitRate: _cfg.itemFields.unitRate?.call(it)'));
-    expect(purchaseEdit, contains("'unitRate': r.unitRate"));
+    // Exact source text is authoritative for procurement: legal 12+6 rates
+    // must survive picker -> frozen row -> wire without a double conversion.
+    expect(
+      picker,
+      contains('unitRateText: _cfg.itemFields.unitRateText?.call(it)'),
+    );
+    expect(purchaseEdit, contains('..unitRateText = it.unitRateExactText'));
+    expect(
+      purchaseEdit,
+      contains('if (r.unitRateText != null || r.unitRate != null)'),
+    );
+    expect(purchaseEdit, contains("'unitRate': r.unitRateText ?? r.unitRate"));
     expect(salesEdit, contains("'unitRate': r.unitRate"));
     expect(salesEdit, isNot(contains('_computedParcelCount')));
     expect(salesEdit, contains("labelText: '物流件数'"));

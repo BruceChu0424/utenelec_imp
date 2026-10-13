@@ -149,6 +149,62 @@ class WarehouseDataScopeResolutionTest {
         assertThat(service.access().role()).isEqualTo(Role.SUPERVISOR);
     }
 
+    @Test
+    void queryLeaseSharesNestedReadersAndKeepsAnExistingCommandWindow() {
+        database.set(member());
+        service.withQueryScopeCache(() -> {
+            service.access();
+            database.set(outsider());
+            assertThatThrownBy(() -> service.withQueryScopeCache(() -> {
+                assertThat(service.access().warehouseParticipant()).isTrue();
+                return service.withQueryScopeCache(() -> { throw new IllegalStateException("nested reader failed"); });
+            })).isInstanceOf(IllegalStateException.class).hasMessage("nested reader failed");
+            assertThat(service.access().warehouseParticipant()).isTrue();
+            return null;
+        });
+        assertThat(service.access().warehouseParticipant()).isFalse();
+        verify(jdbc, times(2)).sql(contains(ACCESS_SQL));
+
+        database.set(member());
+        service.withScopeCache(() -> service.withQueryScopeCache(() -> {
+            service.access();
+            database.set(outsider());
+            return service.current(null);
+        }));
+        assertThat(service.access().warehouseParticipant()).isFalse();
+        verify(jdbc, times(4)).sql(contains(ACCESS_SQL));
+    }
+
+    @Test
+    void failingOwnedQueryLeaseIsRemovedBeforeTheNextDecision() {
+        database.set(member());
+        assertThatThrownBy(() -> service.withQueryScopeCache(() -> {
+            service.access();
+            database.set(outsider());
+            throw new IllegalArgumentException("query failed");
+        })).isInstanceOf(IllegalArgumentException.class).hasMessage("query failed");
+        assertThat(service.access().warehouseParticipant()).isFalse();
+        verify(jdbc, times(2)).sql(contains(ACCESS_SQL));
+    }
+
+    @Test
+    void queryLeaseKeepsSelectedWarehouseAndDistinctActorsInsideTheOuterWindow() {
+        database.set(supervisor());
+        service.withRequestedWarehouse(warehouse, () -> service.withQueryScopeCache(() -> {
+            assertThat(service.warehousePicked()).isTrue();
+            assertThat(service.current(null).warehouseIds()).containsExactly(warehouse);
+            when(currentUser.id()).thenReturn(Optional.of(userB));
+            assertThat(service.current(null).warehouseIds()).containsExactly(warehouse);
+            when(currentUser.id()).thenReturn(Optional.of(userA));
+            return service.current(null);
+        }));
+        assertThat(service.warehousePicked()).isFalse();
+        verify(jdbc, times(2)).sql(contains(ACCESS_SQL));
+        verify(jdbc, times(2)).sql(contains(SUBTREE_SQL));
+        assertThat(service.current(null)).isEqualTo(WarehouseTaskScope.ALL);
+        verify(jdbc, times(3)).sql(contains(ACCESS_SQL));
+    }
+
     private WarehouseAccess member() {
         return new WarehouseAccess(Role.OTHER, List.of(), new WarehouseTaskScope(true, List.of(other), true), true);
     }

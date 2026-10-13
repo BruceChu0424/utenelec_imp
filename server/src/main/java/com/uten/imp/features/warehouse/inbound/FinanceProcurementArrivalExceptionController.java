@@ -31,8 +31,9 @@ public class FinanceProcurementArrivalExceptionController {
     @GetMapping("/tasks")
     public PageResponse<ArrivalExceptionTask> tasks(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.financeTasks(page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "PENDING_FINANCE") String status) {
+        return service.financeTasks(page, size, status);
     }
 
     @GetMapping("/count")

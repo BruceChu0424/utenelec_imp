@@ -7,6 +7,7 @@ import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.org.employee.reconcile.dto.CreateIdRepairPlanRequest;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcileApplyRequest;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyResult;
+import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.ApplyReceipt;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.PlanSummary;
 import com.uten.imp.features.org.employee.reconcile.dto.ReconcilePlanViews.PlanView;
 import com.uten.imp.security.AuthUser;
@@ -69,6 +70,12 @@ public class ReconcilePlanController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return queryService.list(page, size);
+    }
+
+    /** 只读核对原请求回执，不消耗再认证、不重放更正；属主边界由服务复核。 */
+    @GetMapping("/plans/{id}/applies/{requestId}")
+    public ApplyReceipt receipt(@PathVariable UUID id, @PathVariable String requestId) {
+        return applyService.receipt(actor(), id, requestId);
     }
 
     /** 执行一轮更正：先重新输密码（再认证），逐人走 changeIdentity，逐处结果回写。 */

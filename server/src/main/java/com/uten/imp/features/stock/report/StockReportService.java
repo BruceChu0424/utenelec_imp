@@ -89,6 +89,8 @@ public class StockReportService {
         String dt = normalizeDocType(docType);
         // 末尾追加隐藏 __srcId（= 单据头 stock_documents.id）：行点击跳该单据编辑页。
         List<Col> cols = new ArrayList<>(detailCols(dt));
+        cols.add(c("__unitId", "", "text", null, "i.unit_id"));
+        if (DOC_DRAW.equals(dt)) cols.add(c("__baseUnitName", "", "text", null, "base_unit.name"));
         cols.add(c("__srcId", "", "text", null, "o.id"));
         String dataSelect = "SELECT " + selectClause(cols);
         String fromJoin = DETAIL_FROM;
@@ -178,9 +180,8 @@ public class StockReportService {
                     ct("weight", "重量", WEIGHT, null, "i.weight", "合计重量", null),
                     ct("drawQty", "领料数量", "number", null, "i.qty", "合计领料数量", "unitName"),
                     ct("issuedQty", "已出库", "number", null, "i.issued_qty", "合计已出库", "unitName"),
-                    // 实发数量 = base_qty = qty x unit_rate，是**库存基本单位**量，与本行 unitName
-                    // 不是同一口径；本报表没有基本单位名列，按 unitName 分组会贴错单位标签，故不声明合计。
-                    c("actualQty", "实发数量", "number", null, "i.base_qty"));
+                    // 实发数量为库存基本单位量，独立投影基本单位名，不能贴本行订货单位。
+                    new Col(new ReportColumn("actualQty", "实发数量", "number", null).withUnitKey("__baseUnitName"), "i.base_qty"));
             case DOC_WDRAW -> List.of(
                     c("billNo", "单号", "text", 140, "o.bill_no"),
                     c("billDate", "开单日期", "date", null, "o.bill_date"),
@@ -321,6 +322,7 @@ public class StockReportService {
             LEFT JOIN goods g ON g.id = i.goods_id
             LEFT JOIN colors col ON col.id = i.color_id
             LEFT JOIN units un ON un.id = i.unit_id
+            LEFT JOIN units base_unit ON base_unit.id = g.unit_id
             """;
 
     private static final String SUMMARY_FROM = """
@@ -443,7 +445,7 @@ public class StockReportService {
         if (com.uten.imp.common.report.ReportTotalsCalculator.TYPE_COUNT.equals(c.type())) {
             return new ExportColumn(c.key(), c.label(), ExportColumn.NUMBER);
         }
-        return new ExportColumn(c.key(), c.label(), c.type());
+        return new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey());
     }
 
     /**
@@ -464,15 +466,15 @@ public class StockReportService {
                 ReportColumn.text("spec", "规格", 120),
                 ReportColumn.text("unit", "单位", 70),
                 ReportColumn.text("remark", "备注", 90),
-                ReportColumn.number("qty", "库存数量"),
+                ReportColumn.number("qty", "库存数量").withUnitKey("unit"),
                 // 文件里不混单位：整列按一个导出单位(默认千克)写数值，估算/未称另列说明。
                 ReportColumn.number("weight", "库存重量(" + weightUnit.label() + ")"),
                 ReportColumn.text("weightStatus", "重量状态", 80),
-                ReportColumn.number("pendingQty", "待检量")));
+                ReportColumn.number("pendingQty", "待检量").withUnitKey("unit")));
         if (canViewCost) {
-            columns.add(ReportColumn.money("costAmount", "库存台账金额"));
+            columns.add(ReportColumn.money("costAmount", "库存台账金额").withUnitLabel("元"));
         }
-        columns.add(ReportColumn.number("moreQty", "多排数量"));
+        columns.add(ReportColumn.number("moreQty", "多排数量").withUnitKey("unit"));
         return List.copyOf(columns);
     }
 
@@ -534,7 +536,7 @@ public class StockReportService {
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
-                        .map(c -> new ExportColumn(c.key(), c.label(), c.type())).toList(),
+                        .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
                 ReportTableResponse::rows);
     }
 
@@ -580,7 +582,7 @@ public class StockReportService {
                 new ExportColumn("colorName", "颜色", "text"),
                 new ExportColumn("series", "物料系列", "text"),
                 new ExportColumn("unitName", "单位", "text"),
-                  new ExportColumn("qty", "仓库颜色库存(非库位盘点数)", "number")));
+                  new ExportColumn("qty", "仓库颜色库存(非库位盘点数)", "number", null, null, "unitName")));
         if (includeDisabled) {
             cols.add(new ExportColumn("status", "状态", "text"));
         }
@@ -646,6 +648,7 @@ public class StockReportService {
         for (Object[] r : rows) {
             Map<String, Object> m = new LinkedHashMap<>();
             for (int i = 0; i < columns.size(); i++) m.put(columns.get(i).key(), norm(r[i]));
+            com.uten.imp.common.report.ReportQueryKit.includeDecimalTexts(m);
             items.add(m);
         }
 
@@ -681,6 +684,7 @@ public class StockReportService {
                         em, dataSelect, fromJoin, full.sql(), full.params(),
                         reportTotalSpecs(columns, columns));
 
+        totals = com.uten.imp.common.report.ReportTotal.withColumnUnits(totals, columns);
         List<ReportColumn> visible = columns.stream().filter(c -> !c.key().startsWith("__")).toList();
         return new ReportTableResponse(visible, items, facets, safePage, safeSize, total, totalPages, totals);
     }
@@ -704,8 +708,10 @@ public class StockReportService {
             if (label == null || label.isBlank()) continue;
             String g = c.totalGroupKey();
             if (g != null && !present.contains(g)) continue;
+            String identity=c.totalGroupIdentityKey();
+            if(identity!=null&&!present.contains(identity))identity=null;
             specs.add(new com.uten.imp.common.report.ReportTotalsCalculator.Spec(
-                    c.key(), label, c.type(), g));
+                    c.key(), label, c.type(), g,identity));
         }
         return specs;
     }
@@ -757,6 +763,7 @@ public class StockReportService {
      */
     private static Col ct(String key, String label, String type, Integer width, String expr,
                           String totalLabel, String totalGroupKey) {
-        return new Col(new ReportColumn(key, label, type, width).totaled(totalLabel, totalGroupKey), expr);
+        return new Col(new ReportColumn(key, label, type, width).withUnitKey(totalGroupKey)
+                .totaled(totalLabel,totalGroupKey,totalGroupKey==null?null:"__unitId"),expr);
     }
 }

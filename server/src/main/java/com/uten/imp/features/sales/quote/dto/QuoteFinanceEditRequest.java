@@ -22,8 +22,7 @@ import java.util.UUID;
  *   <li>giftZeroPrice = true: 赠品/0 价(财务定价 0);</li>
  *   <li>useMasterPrice = true: 按货品资料最新标价刷新单价(财务刚维护了标价时用), 折扣不变。</li>
  * </ul>
- * 财务还可填写 price（报价基价，可与 discount 同时填写）、qty（正数数量），或 removed=true 删除整行。
- * 删除不允许混合其他操作，至少保留一行。所有变化追加修订快照；新增或替换货品由销售重开修改。
+ * 数量、货品与行身份只读；需要改单时退回销售。核价变化仍追加修订快照。
  */
 public record QuoteFinanceEditRequest(
         @NotNull(message = "缺少核价修订号, 请刷新后重试") Integer expectedRevision,
@@ -38,13 +37,10 @@ public record QuoteFinanceEditRequest(
             BigDecimal discount,
             BigDecimal dealPrice,
             Boolean giftZeroPrice,
-            Boolean useMasterPrice,
-            BigDecimal qty,
-            BigDecimal price,
-            Boolean removed) {
-        public Line(UUID itemId, BigDecimal discount, BigDecimal dealPrice, Boolean giftZeroPrice,
-                    Boolean useMasterPrice) {
-            this(itemId, discount, dealPrice, giftZeroPrice, useMasterPrice, null, null, null);
+            Boolean useMasterPrice) {
+        @com.fasterxml.jackson.annotation.JsonAnySetter
+        public void rejectUnsupportedInput(String name, Object value) {
+            throw new IllegalArgumentException("核价不支持修改字段：" + name + "，需要改单请退回销售");
         }
     }
 }

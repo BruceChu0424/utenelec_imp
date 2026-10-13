@@ -186,61 +186,6 @@ public class ProductionDailyReportService {
         return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_daily_reports", p.getContent()) : result;
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<ProductionDailyReportService> reviewedDraftProxy;
-
-    @Transactional
-    @PreAuthorize("hasAuthority('production_daily_report:view') and hasAuthority('production_daily_report:approve')")
-    public com.uten.imp.common.review.DocumentDraftReview.View<DailyReportDetail> review(UUID id) {
-        tx.bind();
-        ReportPeriodFacts facts = reportPeriodFacts(id);
-        guardWorkshopMaterialPeriods(id, facts.billDate(), facts.segmentIds(), WorkshopMaterialReportGuardPort.Operation.SAVE);
-        ProductionDailyReport report = requireReportForUpdate(id);
-        com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, report.getMakerId(), "production_daily_report");
-        if (report.getStatus() == null || report.getStatus() != STATUS_DRAFT)
-            throw new ApiException(ErrorCode.CONFLICT, "仅草稿日报可修改后审核");
-        return new com.uten.imp.common.review.DocumentDraftReview.View<>(com.uten.imp.common.review.DocumentDraftReview.snapshot(em,
-                com.uten.imp.common.review.DocumentDraftReview.Kind.DAILY_REPORT, id), detail(id));
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('production_daily_report:view') and hasAuthority('production_daily_report:approve')")
-    public DailyReportDetail updateReviewed(UUID id, DailyReportSaveRequest request, String expectedSnapshot, boolean approveNow) {
-        tx.bind();
-        var sourceIdentities = request == null || request.getItems() == null ? List.of() : request.getItems().stream()
-                .map(line -> line == null ? "null" : String.valueOf(line.getReviewSourceItemId())).toList();
-        String reviewKey = "daily-review-" + CanonicalFingerprint.sha256(List.of(id.toString(), String.valueOf(expectedSnapshot), createRequestHash(request), sourceIdentities.toString()));
-        UUID actor = currentUser.requireId();
-        if (approveNow) {
-            lockCommand(COMMAND_APPROVE, actor, reviewKey);
-            ReportCommand replay = findCommand(actor, reviewKey);
-            if (replay != null) {
-                com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, historyReport(id).getMakerId(), "production_daily_report");
-                if (!COMMAND_APPROVE.equals(replay.commandKind()) || !id.equals(replay.reportId()))
-                    throw new ApiException(ErrorCode.CONFLICT, "审核更正回执不属于此日报");
-                return withApprovalReceipt(commandDetail(id), reviewKey, replay.approvalProtocolVersion(), replay.reviewedRowVersion(), true);
-            }
-        }
-        review(id);
-        com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em,
-                com.uten.imp.common.review.DocumentDraftReview.Kind.DAILY_REPORT, id, expectedSnapshot);
-        com.uten.imp.features.production.ProductionReviewedInputGuard.daily(requireReport(id), itemRepo.findByReportIdOrderByLineNoAsc(id), request);
-        DailyReportDetail saved;
-        try (var reviewScope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("production_daily_report_item", id, actor)) {
-            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, request, expectedSnapshot);
-        }
-        if (!approveNow) return saved;
-        DailyReportApproveRequest approve = new DailyReportApproveRequest();
-        approve.setIdempotencyKey(reviewKey); approve.setCommandVersion(2); approve.setExpectedVersion(saved.getRowVersion());
-        return approve(id, approve);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('production_daily_report:view') and hasAuthority('production_daily_report:approve')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_daily_report_item", requestArgument=1, documentIdArgument=0, mapping=com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave.Mapping.DOMAIN_LINEAGE)
-    public DailyReportDetail saveReviewedDraft(UUID id, DailyReportSaveRequest request, String expectedSnapshot) {
-        return updateDraft(id, request, true, expectedSnapshot);
-    }
 
     @Transactional(readOnly = true, noRollbackFor=ApiException.class)
     public DailyReportDetail detail(UUID id) {
@@ -444,10 +389,6 @@ public class ProductionDailyReportService {
     @PreAuthorize("hasAuthority('production_daily_report:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="production_daily_report_item", requestArgument=1, documentIdArgument=0, mapping=com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave.Mapping.DOMAIN_LINEAGE)
     public DailyReportDetail update(UUID id, DailyReportSaveRequest req) {
-        return updateDraft(id, req, false, null);
-    }
-
-    private DailyReportDetail updateDraft(UUID id, DailyReportSaveRequest req, boolean review, String expectedSnapshot) {
         tx.bind();
         if (req != null) DailyReportOutputAllocationService.rejectStaleRouteShape(req.getItems());
         // ADR-131 §10 锁序：车间内料仓期间的共享锁先于日报行锁；按请求里的新日期与明细段核对。
@@ -456,12 +397,7 @@ public class ProductionDailyReportService {
                     WorkshopMaterialReportGuardPort.Operation.SAVE);
         }
         ProductionDailyReport r = requireReportForUpdate(id);
-        if (review) {
-            com.uten.imp.common.review.DocumentDraftReview.requireReviewer(access, currentUser, r.getMakerId(), "production_daily_report");
-            com.uten.imp.common.review.DocumentDraftReview.requireCurrent(em,
-                    com.uten.imp.common.review.DocumentDraftReview.Kind.DAILY_REPORT, id, expectedSnapshot);
-            com.uten.imp.features.production.ProductionReviewedInputGuard.daily(r, itemRepo.findByReportIdOrderByLineNoAsc(id), req);
-        } else access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
+        access.requireWritable(r.getMakerId(), "只能操作本人负责的生产日报");
         requireExpectedVersion(req == null ? null : req.getExpectedVersion(),
                 r.getRowVersion());
         if (r.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");
@@ -475,12 +411,7 @@ public class ProductionDailyReportService {
                 "已批准的追加批次关联不可在同一草稿中移除或替换；本单其他行未改变。需要撤回本批时请先删除草稿，再按原申请办理取消或新单续报");
         List<UUID> workerIds = normalizeWorkerIds(req);
         validateWorkerIds(workerIds);
-        if (review) {
-            if (!workerIds.equals(reportWorkerIds(id,r.getWorkerId())))
-                throw new ApiException(ErrorCode.CONFLICT,"审核修改不能更换原报工参与人员");
-            r.setRemark(req.getRemark());
-            r.setSurplusReturnRequested(Boolean.TRUE.equals(req.getSurplusReturnRequested()));
-        } else applyHeader(req, r, workerIds);
+        applyHeader(req, r, workerIds);
         itemRepo.deleteByReportId(id);
         itemRepo.flush();
         saveItems(r, req.getItems());

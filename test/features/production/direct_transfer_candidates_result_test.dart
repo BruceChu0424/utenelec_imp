@@ -5,6 +5,73 @@ import 'package:uten_imp/features/production/models/production_direct_transfer_c
 
 void main() {
   test(
+    'receiving product code and color parse separately from the material color',
+    () {
+      final result = DirectTransferCandidatesResult.fromJson(const {
+        'candidates': [
+          {
+            'demandId': 'd',
+            'executionSegmentId': 's',
+            'goodsCode': 'M-100',
+            'colorName': '转送料深灰',
+            'receivingGoodsCode': 'P-100',
+            'receivingGoodsName': '接收成品',
+            'receivingColorName': '成品珍珠白',
+            'remainingQty': 10,
+          },
+        ],
+        'blockedTargets': [
+          {
+            'demandId': 'blocked',
+            'receivingGoodsCode': 'P-200',
+            'receivingColorName': '成品米白',
+            'reasonCode': 'DIFFERENT_WORKSHOP',
+            'reason': '跨车间必须送入仓库',
+          },
+        ],
+      });
+      final candidate = result.candidates.single;
+      expect(candidate.goodsCode, 'M-100');
+      expect(candidate.colorName, '转送料深灰');
+      expect(candidate.receivingGoodsCode, 'P-100');
+      expect(candidate.receivingColorName, '成品珍珠白');
+      expect(candidate.remainingQty, 10);
+      expect(result.blockedTargets.single.receivingColorName, '成品米白');
+      expect(result.blockedTargets.single.reasonCode, 'DIFFERENT_WORKSHOP');
+    },
+  );
+
+  test(
+    'old or null receiving color never falls back to the transferred material color',
+    () {
+      for (final extra in [
+        <String, dynamic>{},
+        <String, dynamic>{'receivingColorName': null},
+      ]) {
+        final candidate = ProductionDirectTransferCandidate.fromJson({
+          'demandId': 'd',
+          'executionSegmentId': 's',
+          'remainingQty': 10,
+          'colorName': '转送料深灰',
+          'receivingGoodsName': '接收成品',
+          ...extra,
+        });
+        final blocked = ProductionDirectTransferBlockedTarget.fromJson({
+          'demandId': 'blocked',
+          'colorName': '转送料深灰',
+          'reason': '暂不能接收',
+          ...extra,
+        });
+        expect(candidate.receivingColorName, isNull);
+        expect(candidate.colorName, '转送料深灰');
+        expect(candidate.receivingGoodsLabel, '接收成品');
+        expect(blocked.receivingColorName, isNull);
+        expect(blocked.reason, '暂不能接收');
+      }
+    },
+  );
+
+  test(
     'parses receivers in urgency order, blocked parents and the receiver limit',
     () {
       final result = DirectTransferCandidatesResult.fromJson(const {

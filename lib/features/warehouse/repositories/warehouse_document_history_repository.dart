@@ -2,6 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../config/warehouse_document_history_config.dart';
 import '../models/warehouse_document_history.dart';
@@ -34,10 +37,15 @@ abstract interface class WarehouseDocumentHistoryGateway {
 
 class WarehouseDocumentHistoryRepository
     implements WarehouseDocumentHistoryGateway {
-  const WarehouseDocumentHistoryRepository(this.api, this.type);
+  const WarehouseDocumentHistoryRepository(
+    this.api,
+    this.type, {
+    this.warehouseScope = const WarehouseTaskScope.all(),
+  });
 
   final ApiClient api;
   final WarehouseDocumentHistoryType type;
+  final WarehouseTaskScope warehouseScope;
 
   String get _basePath => '/warehouse/document-history/${type.segment}';
 
@@ -56,7 +64,11 @@ class WarehouseDocumentHistoryRepository
   }) async {
     final safePage = page < 1 ? 1 : page;
     final safeSize = size.clamp(1, 100);
-    final query = <String, dynamic>{'page': safePage, 'size': safeSize};
+    final query = <String, dynamic>{
+      'page': safePage,
+      'size': safeSize,
+      ...warehouseScope.queryParameters,
+    };
     final safeKeyword = _trimmed(keyword);
     final safeStatus = _trimmed(status);
     if (safeKeyword != null) {
@@ -88,7 +100,7 @@ class WarehouseDocumentHistoryRepository
     String? dateFrom,
     String? dateTo,
   }) async {
-    final query = <String, dynamic>{};
+    final query = <String, dynamic>{...warehouseScope.queryParameters};
     final safeKeyword = _trimmed(keyword);
     final safeStatus = _trimmed(status);
     if (safeKeyword != null) {
@@ -110,7 +122,10 @@ class WarehouseDocumentHistoryRepository
   Future<WarehouseDocumentHistoryDetail> detail(String id) async {
     final safeId = id.trim();
     if (safeId.isEmpty) throw const FormatException('仓库历史记录 id 不能为空');
-    final json = await api.get('$_basePath/${Uri.encodeComponent(safeId)}');
+    final json = await api.get(
+      '$_basePath/${Uri.encodeComponent(safeId)}',
+      query: warehouseScope.queryParameters,
+    );
     final body = json['data'] is Map
         ? Map<String, dynamic>.from(json['data'] as Map)
         : json;
@@ -128,8 +143,11 @@ final warehouseDocumentHistoryRepositoryProvider =
       WarehouseDocumentHistoryGateway,
       WarehouseDocumentHistoryType
     >((ref, type) {
+      ref.watch(authenticatedScopeProvider);
+      ref.watch(currentPermissionsProvider);
       return WarehouseDocumentHistoryRepository(
         ref.watch(apiClientProvider),
         type,
+        warehouseScope: ref.watch(warehouseTaskScopeProvider),
       );
     });

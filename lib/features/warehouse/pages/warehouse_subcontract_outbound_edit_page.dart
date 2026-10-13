@@ -24,6 +24,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
+import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft_field_codec.dart';
 
 import '../../../components/buttons/uten_app_bar_action_button.dart';
@@ -124,6 +125,8 @@ class _WarehouseSubcontractOutboundEditPageState
   bool _requiresReload = false;
   bool _requestUncertain = false;
   bool _writeStarted = false;
+  Map<String, dynamic>? _frozenRecoveryInput;
+  String? _pendingReturnReason;
   int _loadGeneration = 0;
   String? _error;
 
@@ -132,7 +135,15 @@ class _WarehouseSubcontractOutboundEditPageState
   List<SubcontractOutboundLineDraft> _lines = const [];
 
   @override
-  bool get formDraftBusy => _saving || _confirming || _requestUncertain;
+  bool get formDraftBusy => _saving || _confirming;
+  @override
+  bool get formDraftHasUnknownSubmission => _requestUncertain;
+  @override
+  Widget? get formDraftSubmissionRecoveryAction => UtenButton(
+    type: UtenButtonType.secondary,
+    onPressed: _saving || _loading ? null : _verifyExecution,
+    child: const Text('核对出仓结果'),
+  );
   @override
   Future<void> Function()? get formDraftReloadSource => () async {
     await _load();
@@ -154,39 +165,54 @@ class _WarehouseSubcontractOutboundEditPageState
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
-    'remark': _remark.text,
-    'warehouseId': _warehouseId,
-    'workerId': _workerId,
-    'billDate': _billDate.toIso8601String(),
-    'deliverDate': _deliverDate?.toIso8601String(),
-    'draftId': _document?.id,
-    if (_document != null)
-      'serverFingerprint': subcontractOutboundDraftFingerprint(_document!),
-    'employees': _empCache.values.map(draftEmployee).toList(),
-    'rows': [
-      for (final row in _lines)
-        {
-          'planItemId': row.line.planItemId,
-          'draftItemId': row.draftItemId,
-          'sourceIdentity': _draftSourceIdentity(row),
-          'qty': row.qty.text,
-          'qtyAutofilled': row.qty.autofilled,
-          'weightKg': row.weight.kg,
-          'weightEntry': weightEntryDraft(row.weight.weight, qty: row.qty),
-          'qtyFromWeight': row.weight.qtyFromWeight,
-          'remark': row.remarkController.text,
-        },
-    ],
+    if (_frozenRecoveryInput != null)
+      ..._frozenRecoveryInput!
+    else ...{
+      'remark': _remark.text,
+      'warehouseId': _warehouseId,
+      'workerId': _workerId,
+      'billDate': _billDate.toIso8601String(),
+      'deliverDate': _deliverDate?.toIso8601String(),
+      'draftId': _document?.id,
+      if (_document != null)
+        'serverFingerprint': subcontractOutboundDraftFingerprint(_document!),
+      'employees': _empCache.values.map(draftEmployee).toList(),
+      'rows': [
+        for (final row in _lines)
+          {
+            'planItemId': row.line.planItemId,
+            'draftItemId': row.draftItemId,
+            'sourceIdentity': _draftSourceIdentity(row),
+            'qty': row.qty.text,
+            'qtyAutofilled': row.qty.autofilled,
+            'weightKg': row.weight.kg,
+            'weightEntry': weightEntryDraft(row.weight.weight, qty: row.qty),
+            'qtyFromWeight': row.weight.qtyFromWeight,
+            'remark': row.remarkController.text,
+          },
+      ],
+    },
+    'requestUncertain': _requestUncertain,
+    'pendingReturnReason': _pendingReturnReason,
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _requestUncertain =
+        data['requestUncertain'] == true ||
+        data[formDraftUnknownSubmissionKey] == true;
+    _pendingReturnReason = data['pendingReturnReason'] as String?;
+    if (_requestUncertain) {
+      _requiresReload = true;
+      _frozenRecoveryInput = data;
+    }
     final saved = draftMaps(data['rows']);
     final bySource = {for (final row in _lines) row.line.planItemId: row};
     final savedSourceIds = saved.map((item) => item['planItemId']).toSet();
     // 计划行 UUID 是一行明细不变的身份; 提交时用服务器最新的草稿明细 id。
     // 绝不按货品/名称套行, 也不跨单据、跨来源集合恢复。
     if (data['draftId'] != _document?.id ||
-        (data['serverFingerprint'] != null &&
+        (!_requestUncertain &&
+            data['serverFingerprint'] != null &&
             (_document == null ||
                 data['serverFingerprint'] !=
                     subcontractOutboundDraftFingerprint(_document!))) ||
@@ -246,6 +272,7 @@ class _WarehouseSubcontractOutboundEditPageState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -274,6 +301,37 @@ class _WarehouseSubcontractOutboundEditPageState
       final docRepo = ref.read(
         subcontractRepositoryProvider(SubcontractDocType.materialIssue),
       );
+      await ref.read(formDraftsProvider.notifier).ready;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      final resumeId = goRouterPageStateOrNull(
+        context,
+      )?.uri.queryParameters['draftId'];
+      final recovery = ref
+          .read(formDraftsProvider)
+          .where((draft) => draft.id == resumeId)
+          .firstOrNull;
+      if (recovery != null &&
+          recovery.hasUnknownSubmission &&
+          formDraftSpec.canRestore(
+            recovery,
+            currentRoute: formDraftSpec.route,
+          )) {
+        _requestUncertain = true;
+        _requiresReload = true;
+        _frozenRecoveryInput = recovery.data;
+        final source = await docRepo.detail(widget.issueId);
+        if (!mounted || !formDraftIdentityIsCurrent) return;
+        _document = source;
+        if (source.status == 1) {
+          await initializeFormDraft();
+          await completeFormDraft();
+          if (!mounted || !formDraftIdentityIsCurrent) return;
+          setState(() => _loading = false);
+          context.appSuccess(_l10n.warehouseSubcontractOutboundDone);
+          returnToSubcontractOutboundTasks(context);
+          return;
+        }
+      }
       final results = await Future.wait([
         ref.read(mn.masterNameServiceProvider).ensureWarehousesLoaded(),
         loadSubcontractOutboundDetails(
@@ -282,7 +340,11 @@ class _WarehouseSubcontractOutboundEditPageState
           documentDetail: docRepo.detail,
         ),
       ]);
-      if (!mounted || generation != _loadGeneration) return;
+      if (!mounted ||
+          generation != _loadGeneration ||
+          !formDraftIdentityIsCurrent) {
+        return;
+      }
       final bundle = (results[1] as List<SubcontractOutboundReadBundle>).single;
       final detail = bundle.task;
       final document = bundle.document;
@@ -330,12 +392,12 @@ class _WarehouseSubcontractOutboundEditPageState
         }
         _lines = lines;
         _loading = false;
-        _requiresReload = false;
+        _requiresReload = _requestUncertain;
       });
       unawaited(_preloadEmployees([workerId], generation));
       await initializeFormDraft();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final gone = error.httpStatus == 404 || error.code == 'NOT_FOUND';
       setState(() {
         _gone = gone;
@@ -465,13 +527,21 @@ class _WarehouseSubcontractOutboundEditPageState
       subcontractRepositoryProvider(SubcontractDocType.materialIssue),
     );
     final fresh = await repo.detail(document.id);
+    if (!mounted || !formDraftIdentityIsCurrent) return false;
     if (subcontractOutboundDraftFingerprint(fresh) !=
         subcontractOutboundDraftFingerprint(document)) {
       _requiresReload = true;
       throw ApiException('CONFLICT', _documentChangedMessage, httpStatus: 409);
     }
+    _requestUncertain = true;
+    await saveFormDraftNow();
+    if (!mounted || !formDraftIdentityIsCurrent) return false;
     _writeStarted = true;
     _document = await repo.update(document.id, body);
+    if (!mounted || !formDraftIdentityIsCurrent) return false;
+    _requestUncertain = false;
+    _frozenRecoveryInput = null;
+    await checkpointFormDraftAfterCreation();
     return true;
   }
 
@@ -488,7 +558,7 @@ class _WarehouseSubcontractOutboundEditPageState
       context.appSuccess('拣货修改已保存');
       context.pop(true);
     } on ApiException catch (error) {
-      if (mounted) {
+      if (mounted && formDraftIdentityIsCurrent) {
         _requiresReload = true;
         _requestUncertain =
             _writeStarted &&
@@ -496,7 +566,7 @@ class _WarehouseSubcontractOutboundEditPageState
         context.appError(error.message);
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && formDraftIdentityIsCurrent) {
         _requiresReload = true;
         _requestUncertain = _writeStarted;
         context.appError(_l10n.warehouseSubcontractOutboundUncertain);
@@ -537,6 +607,7 @@ class _WarehouseSubcontractOutboundEditPageState
       );
       final document = _document!;
       final fresh = await repo.detail(document.id);
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       if (subcontractOutboundDraftFingerprint(fresh) !=
           subcontractOutboundDraftFingerprint(document)) {
         throw ApiException(
@@ -545,6 +616,9 @@ class _WarehouseSubcontractOutboundEditPageState
           httpStatus: 409,
         );
       }
+      _requestUncertain = true;
+      await saveFormDraftNow();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       _writeStarted = true;
       final approved = await repo.approve(document.id);
       if (approved.status != 1) {
@@ -553,14 +627,15 @@ class _WarehouseSubcontractOutboundEditPageState
           _l10n.warehouseSubcontractOutboundUncertain,
         );
       }
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      _requestUncertain = false;
       invalidateWarehouseTaskCounts(ref);
       await completeFormDraft();
       if (!mounted) return;
       context.appSuccess('委外领料已出仓，可通知委外商加工');
       returnToSubcontractOutboundTasks(context);
     } on ApiException catch (error) {
-      if (mounted) {
+      if (mounted && formDraftIdentityIsCurrent) {
         _requiresReload = true;
         _requestUncertain =
             _writeStarted &&
@@ -568,7 +643,7 @@ class _WarehouseSubcontractOutboundEditPageState
         context.appError(error.message);
       }
     } catch (_) {
-      if (mounted) {
+      if (mounted && formDraftIdentityIsCurrent) {
         _requiresReload = true;
         _requestUncertain = _writeStarted;
         context.appError(_l10n.warehouseSubcontractOutboundUncertain);
@@ -600,11 +675,19 @@ class _WarehouseSubcontractOutboundEditPageState
       _confirming = false;
       _saving = true;
     });
+    var returnWriteStarted = false;
     try {
+      _pendingReturnReason = reason;
+      _requestUncertain = true;
+      await saveFormDraftNow();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      returnWriteStarted = true;
       await ref
           .read(warehouseSubcontractOutboundRepositoryProvider)
           .returnToDraw(widget.issueId, reason: reason);
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      _requestUncertain = false;
+      _pendingReturnReason = null;
       invalidateWarehouseTaskCounts(ref);
       await completeFormDraft();
       if (!mounted) return;
@@ -612,10 +695,12 @@ class _WarehouseSubcontractOutboundEditPageState
       context.appSuccess('已退回委外：这张领料单不发了，占用的库存已退回，并通知了委外人员');
       returnToSubcontractOutboundTasks(context);
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       final status = error.httpStatus;
       setState(() {
         _saving = false;
+        _requestUncertain =
+            returnWriteStarted && (status == null || status >= 500);
         // 领料单已被撤回 / 已出仓 / 被改过，或回执没收到：先刷新核对再处理。
         if (status == null || status == 404 || status == 409 || status >= 500) {
           _requiresReload = true;
@@ -623,9 +708,10 @@ class _WarehouseSubcontractOutboundEditPageState
       });
       context.appError(error.message);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       setState(() {
         _saving = false;
+        _requestUncertain = returnWriteStarted;
         _requiresReload = true;
       });
       context.appError('暂未确认是否已退回委外，请点「刷新」核对这张领料单');
@@ -636,14 +722,14 @@ class _WarehouseSubcontractOutboundEditPageState
     if (_saving) return;
     setState(() => _saving = true);
     try {
-      final document = _document;
-      if (document != null) {
+      {
         final fresh = await ref
             .read(
               subcontractRepositoryProvider(SubcontractDocType.materialIssue),
             )
-            .detail(document.id);
-        if (fresh.status == 1 && mounted) {
+            .detail(_document?.id ?? widget.issueId);
+        if (!mounted || !formDraftIdentityIsCurrent) return;
+        if (fresh.status == 1) {
           invalidateWarehouseTaskCounts(ref);
           await completeFormDraft();
           if (!mounted) return;

@@ -16,6 +16,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import com.uten.imp.common.report.ReportTotal;
+import com.uten.imp.common.report.ReportTotalGroup;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,6 +36,24 @@ class SalesReportOwnerScopeTest {
     @Mock private SystemSettingsService settings;
     @Mock private SalesPriceMasker priceMasker;
     @Mock private SalesDocumentAccessPolicy accessPolicy;
+
+    @Test
+    void hiddenPricesCannotLeakThroughDecimalTextOrLocalAndOriginalTotals() {
+        when(priceMasker.canView()).thenReturn(false);
+        Map<String, Object> row = new LinkedHashMap<>(Map.of(
+                "amount", new BigDecimal("37.28"), "amountExact", "37.2800",
+                "billedLocalAmount", new BigDecimal("260.96"), "billedLocalAmountExact", "260.9600"));
+        var group = List.of(new ReportTotalGroup("美金", new BigDecimal("37.28")));
+        var response = new ReportTableResponse(List.of(), List.of(row), Map.of(), 1, 50, 1, 1,
+                List.of(new ReportTotal("amount", "金额", "money", "currencyCode", group),
+                        new ReportTotal("billedLocalAmount", "已出货人民币", "money", null, group),
+                        new ReportTotal("qty", "数量", "number", "unitName", group)));
+        ReportTableResponse masked = ReflectionTestUtils.invokeMethod(service(), "maskOrderPricesIfNeeded", response);
+        org.junit.jupiter.api.Assertions.assertNotNull(masked);
+        row.values().forEach(org.junit.jupiter.api.Assertions::assertNull);
+        org.junit.jupiter.api.Assertions.assertEquals(List.of("qty"),
+                masked.totals().stream().map(ReportTotal::key).toList());
+    }
 
     @Test
     void scopedMonthlyReportUsesOwnerDimensionInMaterializedView() {
@@ -107,12 +130,19 @@ class SalesReportOwnerScopeTest {
         String allSql = String.join("\n", sql.getAllValues());
         assertTrue(allSql.contains("o.total_original AS \"totalAmount\""));
         assertTrue(allSql.contains("i.amount_original AS \"amount\""));
-        assertTrue(allSql.contains("SUM(amount_original) AS amount"));
+        assertTrue(allSql.contains("SUM(amount_original) END AS amount"));
+        assertTrue(allSql.contains("FILTER(WHERE amount_original IS NULL)>0"));
         assertTrue(allSql.contains("GROUP BY o.client_id, o.currency_id"));
         assertTrue(allSql.contains("o.currency_id=:currencyId"));
         assertTrue(allSql.contains("o.currency_id AS \"__currencyId\""));
         assertTrue(allSql.contains("t.\"__clientId\", t.\"__currencyId\""));
-        assertTrue(allSql.contains("currency.code AS \"currencyCode\""));
+        assertTrue(allSql.contains("BTRIM(currency.name)"));
+        assertTrue(allSql.contains("'USD' THEN '美金'"));
+        assertFalse(allSql.contains("currency.code AS \"currencyCode\""));
+        assertTrue(allSql.contains("shipment.warehouse_work_status = 'SHIPPED'"));
+        assertTrue(allSql.contains("SUM(shipped.amount_local)"));
+        assertTrue(summary.columns().stream().anyMatch(column ->
+                "billedLocalTotal".equals(column.key()) && "元".equals(column.unitLabel())));
         assertFalse(allSql.contains("o.total_local AS \"totalAmount\""));
         assertFalse(allSql.contains("i.amount_local AS \"amount\""));
         // Hidden drilldown metadata lives in each row map; execute intentionally

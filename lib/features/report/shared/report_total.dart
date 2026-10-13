@@ -14,23 +14,45 @@
 
 import 'package:flutter/widgets.dart';
 
-import '../../../core/formatters/china_number_format.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
-import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/quantity_display.dart';
 
 /// 一个合计项的一组值（一个单位 / 一个币种）。
 class ReportTotalGroup {
-  const ReportTotalGroup({required this.unit, required this.value});
+  const ReportTotalGroup({
+    required this.unit,
+    required this.value,
+    this.valueExactText,
+    this.valueAvailable = true,
+    this.identity,
+  });
 
   /// 分组名（单位名或币种名）；报表无分组维度时为 null。
   final String? unit;
   final double value;
+  final String? valueExactText;
+  final bool valueAvailable;
+  final String? identity;
+  String? get valueText => valueAvailable
+      ? valueExactText ?? financeExactDecimal(value.toString())
+      : null;
 
-  factory ReportTotalGroup.fromJson(Map<String, dynamic> j) => ReportTotalGroup(
-    unit: (j['unit'] as Object?)?.toString(),
-    value: (j['value'] as num?)?.toDouble() ?? 0,
-  );
+  factory ReportTotalGroup.fromJson(Map<String, dynamic> j) {
+    final value = j['value'];
+    final raw = financeExactDecimal(value?.toString());
+    final available = value is num || raw != null;
+    final exact = available ? financeExactDecimal(j['valueExact']) : null;
+    return ReportTotalGroup(
+      unit: j['unit']?.toString(),
+      value: value is num ? value.toDouble() : double.tryParse(raw ?? '') ?? 0,
+      valueExactText: exact ?? raw,
+      valueAvailable: available,
+      identity: j['identity']?.toString(),
+    );
+  }
 }
 
 /// 一个合计项（对应一列）。
@@ -41,6 +63,7 @@ class ReportTotal {
     required this.type,
     required this.groupKey,
     required this.groups,
+    this.unitLabel,
   });
 
   final String key;
@@ -54,6 +77,7 @@ class ReportTotal {
   final String? groupKey;
 
   final List<ReportTotalGroup> groups;
+  final String? unitLabel;
 
   bool get grouped => groupKey != null && groupKey!.isNotEmpty;
 
@@ -62,6 +86,7 @@ class ReportTotal {
     label: (j['label'] ?? '').toString(),
     type: (j['type'] ?? 'number').toString(),
     groupKey: (j['groupKey'] as Object?)?.toString(),
+    unitLabel: j['unitLabel']?.toString(),
     groups: (j['groups'] as List? ?? const [])
         .map((g) => ReportTotalGroup.fromJson(g as Map<String, dynamic>))
         .toList(),
@@ -70,10 +95,10 @@ class ReportTotal {
 
 /// 把服务端合计项转成合计条的一项。
 ///
-/// 多分组一律走 [measurementTotalsText]（全站唯一的「不跨单位相加」口径），拼成
-/// 「12 个 · 3 箱」；**本函数不做任何跨组加法**，跨单位/跨币种相加在结构上就不可能发生。
+/// 多分组只拼接服务端结果，数量/金额复用全站显示函数；
+/// **本函数不做任何跨组加法**，也不按相同显示名重聚合不同来源。
 ///
-/// - 无分组维度（[ReportTotal.grouped] 为 false）：渲染纯数值，不带「单位未维护」后缀；
+/// - 无分组维度（[ReportTotal.grouped] 为 false）：有固定单位元数据时带后缀，否则渲染纯数值；
 /// - 有分组维度但某组的分组值为空：那是「该行单位/币种没维护」，照常渲染「单位未维护」；
 /// - 无任何分组（服务端聚合结果全为 NULL，即没有数据）：返回值为空串，由合计条整体隐藏该项，
 ///   **不伪造 0**。
@@ -98,41 +123,63 @@ UtenTotalEntry reportTotalEntry(
     );
   }
   if (total.type == 'count') {
-    final value = total.groups.isEmpty ? 0 : total.groups.first.value.round();
+    final group = total.groups.firstOrNull;
+    final raw = group?.valueText;
+    final value = raw == null
+        ? null
+        : financeExactDecimalUnits(raw, scale: 0) ??
+              BigInt.from(group!.value.round());
+    final unit = total.unitLabel?.trim();
     return UtenTotalEntry(
       total.label,
-      value == 0 ? '' : formatChinaNumber(value, decimalDigits: 0),
+      value == null || value == BigInt.zero
+          ? ''
+          : unit?.isNotEmpty == true
+          ? formatExactQtyWithUnit(value.toString(), unit)
+          : value.toString().replaceAllMapped(
+              RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
+              (match) => '${match[1]},',
+            ),
       danger: danger,
     );
   }
 
-  String fmt(double v) =>
-      total.type == 'money' ? formatChinaNumber(v) : formatMeasurementValue(v);
-
-  if (total.groups.isEmpty) {
+  bool knownUnit(ReportTotalGroup group) => total.type == 'money'
+      ? financeCurrencyText(name: group.unit, fallback: '').isNotEmpty
+      : group.unit?.trim().isNotEmpty == true;
+  final hasUnknownUnit =
+      total.grouped && total.groups.any((group) => !knownUnit(group));
+  final unitWarning = hasUnknownUnit
+      ? total.type == 'money'
+            ? '币种未维护，合计待核验'
+            : '单位未维护，合计待核验'
+      : null;
+  final availableGroups = total.groups
+      .where(
+        (group) =>
+            group.valueText != null && (!total.grouped || knownUnit(group)),
+      )
+      .toList(growable: false);
+  if (availableGroups.isEmpty) {
     // 服务端聚合无数据：值留空，由合计条整体隐藏该项，不伪造 0。
-    return UtenTotalEntry(total.label, '', danger: danger);
+    return UtenTotalEntry(total.label, unitWarning ?? '', danger: danger);
   }
 
-  if (!total.grouped) {
-    // 无分组维度：服务端只会给一组，直接渲染数值。
-    return UtenTotalEntry(
-      total.label,
-      fmt(total.groups.first.value),
-      danger: danger,
-    );
+  String text(ReportTotalGroup group) {
+    final raw = group.valueText!;
+    final unit = total.grouped ? group.unit : total.unitLabel;
+    final rendered = total.type == 'money'
+        ? financeMoneyWithUnitSuffix(raw, currencyName: unit)
+        : formatExactQtyWithUnit(raw, unit);
+    return rendered;
   }
 
   return UtenTotalEntry(
     total.label,
-    measurementTotalsText(
-      [
-        for (final g in total.groups)
-          MeasuredAmount(value: g.value, unitId: g.unit, unitName: g.unit),
-      ],
-      formatValue: fmt,
-      emptyLabel: '',
-    ),
+    // Already grouped and summed by the server. Never add response groups here.
+    total.grouped
+        ? [...availableGroups.map(text), ?unitWarning].join(' · ')
+        : text(availableGroups.first),
     danger: danger,
   );
 }

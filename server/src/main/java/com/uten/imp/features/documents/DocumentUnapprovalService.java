@@ -58,16 +58,14 @@ public class DocumentUnapprovalService {
                 .setParameter("id",originalId).getSingleResult()))
             throw new ApiException(ErrorCode.CONFLICT,"历史原始记录仅供核对，不能通用反审生成新业务");
         adapter.requireSupported(originalId);
-        if (request.expectedSnapshot() != null) {
-            if (!request.expectedSnapshot().matches("[a-f0-9]{64}"))
-                throw new ApiException(ErrorCode.VALIDATION_FAILED,"反审核对版本无效，请重新核对");
-            var capability = capability(family, originalId);
-            if (!capability.eligible())
-                throw new ApiException(ErrorCode.CONFLICT,capability.reasons().stream()
-                        .map(DocumentUnapprovalPort.Reason::message).collect(Collectors.joining("；")));
-            if (!request.expectedSnapshot().equals(capability.factsSnapshot()))
-                throw new ApiException(ErrorCode.CONFLICT,"反审条件在确认期间已变化，请重新核对");
-        }
+        if (request.expectedSnapshot() != null && !request.expectedSnapshot().matches("[a-f0-9]{64}"))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"反审核对版本无效，请重新核对");
+        var capability = capability(family, originalId);
+        if (!capability.eligible())
+            throw new ApiException(ErrorCode.CONFLICT,capability.reasons().stream()
+                    .map(DocumentUnapprovalPort.Reason::message).collect(Collectors.joining("；")));
+        if (request.expectedSnapshot() != null && !request.expectedSnapshot().equals(capability.factsSnapshot()))
+            throw new ApiException(ErrorCode.CONFLICT,"反审条件在确认期间已变化，请重新核对");
         adapter.reverse(originalId);
         em.flush();
         var draftId = UUID.randomUUID();

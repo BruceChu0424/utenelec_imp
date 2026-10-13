@@ -35,7 +35,10 @@ class SubcontractDraftTaskCategory extends ConsumerWidget {
               permissions.contains(SubcontractDocConfig.by(type).listPerm))
             SubcontractDocConfig.by(type).draftKind!,
       ],
-      localScope: const FormDraftCategoryScope(module: BadgeModule.subcontract),
+      localScope: const FormDraftCategoryScope(
+        module: BadgeModule.subcontract,
+        excludeTaskDrafts: true,
+      ),
       search: search,
       showSearch: externalHeader == null,
       externalHeader: externalHeader,

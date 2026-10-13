@@ -32,7 +32,8 @@ class CrossReallocationCandidateContractTest {
                         .ProductionGoodsWorkshopPreferenceService.class),
                 mock(MaterialAnalysisSupplyProgressService.class),
                 mock(com.uten.imp.features.production.analysis.AnalysisLinkedSalesOrderService.class),
-                mock(com.uten.imp.audit.AuditDetailViewRecorder.class), null);
+                mock(com.uten.imp.audit.AuditDetailViewRecorder.class), null,
+                mock(MaterialAnalysisPlanWithdrawalService.class));
         UUID sourceAnalysisId = UUID.randomUUID();
         UUID sourceMaterialId = UUID.randomUUID();
         CrossReallocationCandidate candidate = new CrossReallocationCandidate(

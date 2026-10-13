@@ -560,7 +560,7 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
   return [
     EditableGridColumn<FinanceGridRow>(
       key: 'appliedBillNo',
-      label: '核销单据号',
+      label: '应付单号',
       width: 260,
       textOf: (r) => r.appliedBillNo ?? '',
       cellBuilder: (context, row) => Text(
@@ -574,7 +574,7 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
-      label: '本次金额',
+      label: '本次付款(原币)',
       width: 140,
       numeric: true,
       required: true,

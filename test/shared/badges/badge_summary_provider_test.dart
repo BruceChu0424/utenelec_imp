@@ -20,6 +20,8 @@ import 'package:uten_imp/shared/providers/app_visibility_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/repositories/public_settings_repository.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 late SharedPreferences _prefs;
 
@@ -30,6 +32,7 @@ class _BadgeApi extends ApiClient {
   Completer<void>? gate;
   Object? failWith;
   Map<String, dynamic> body = _summaryJson(todo: 1);
+  final Map<String, Map<String, dynamic>> scopedBodies = {};
 
   @override
   Future<Map<String, dynamic>> get(
@@ -44,7 +47,7 @@ class _BadgeApi extends ApiClient {
     if (pending != null) await pending.future;
     final error = failWith;
     if (error != null) throw error;
-    return body;
+    return scopedBodies[query?['scopeWarehouseId']] ?? body;
   }
 }
 
@@ -90,6 +93,39 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'unchanged global totals still refresh a changed warehouse queue',
+    (tester) async {
+      final (container, api) = _container();
+      const scope = WarehouseTaskScope.warehouse('hw');
+      api.scopedBodies['hw'] = _summaryJson(todo: 1);
+      final subscription = container.listen(
+        warehouseScopedBadgesProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      await _settle(tester);
+      await _settle(tester);
+      expect(
+        container.read(warehouseScopedBadgesProvider(scope)).total.todo,
+        1,
+      );
+      // A task moved to another warehouse; the user's global total is unchanged.
+      api.scopedBodies['hw'] = _summaryJson(todo: 0);
+      await container.read(badgeSummaryProvider.notifier).refresh();
+      await _settle(tester);
+      expect(container.read(badgeSummaryProvider).total.todo, 1);
+      expect(
+        container.read(warehouseScopedBadgesProvider(scope)).total.todo,
+        0,
+      );
+      subscription.close();
+      await _settle(tester);
+      container.dispose();
+      await _settle(tester);
+    },
+  );
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _prefs = await SharedPreferences.getInstance();

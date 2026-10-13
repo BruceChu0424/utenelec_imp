@@ -778,6 +778,79 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         assertThat(service.list(1, 50, null, WORKSHOP, false, null, null, null).getTotal()).isEqualTo(1);
         assertThat(service.workOrders("PLAN", PLAN, 1, 2).getItems()).hasSize(2);
     }
+
+    @Test
+    void productCompletionCountsAppendAsUnfinishedWithoutQuantityOrSegmentPercentages() {
+        UUID root = UUID.randomUUID(), color = UUID.randomUUID(), unit = UUID.randomUUID();
+        List<UUID> segments = new java.util.ArrayList<>();
+        jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id,product_count,segment_count,completed_count,root_progress_ratio) VALUES (?,?,8,12,9,0.22680412371134020619)", root, EMPLOYEE);
+        try {
+            for (int product = 0; product < 8; product++) {
+                UUID goods = UUID.randomUUID();
+                addCompletionSegment(segments, root, goods, color, unit, "COMPLETED");
+                if (product == 0) addCompletionSegment(segments, root, goods, color, unit, "COMPLETED");
+                if (product >= 1 && product <= 3) addCompletionSegment(segments, root, goods, color, unit, "READY");
+                if (product == 0) {
+                    addCompletionSegment(segments, root, goods, color, unit, "CANCELLED");
+                    addCompletionSegment(segments, root, goods, color, unit, "REVERSED");
+                }
+            }
+            // A withdrawn-only identity is history, not an unfinished product.
+            addCompletionSegment(segments, root, UUID.randomUUID(), color, unit, "REVERSED");
+            var detail = service.group("PLAN", root);
+            assertThat(detail.completedCount()).isEqualTo(9); // old field remains a segment count
+            assertThat(detail.completedProductCount()).isEqualTo(5);
+            assertThat(detail.unfinishedProductCount()).isEqualTo(3);
+            var listed = service.list(1, 50, null, WORKSHOP, false, null, null, null)
+                    .getItems().stream().filter(item -> item.rootId().equals(root)).findFirst().orElseThrow();
+            assertThat(listed.completedProductCount()).isEqualTo(detail.completedProductCount());
+            assertThat(listed.unfinishedProductCount()).isEqualTo(detail.unfinishedProductCount());
+
+            jdbc.update("UPDATE v_production_execution_workbench_roots SET owner_employee_id=? WHERE root_id=?", UUID.randomUUID(), root);
+            assertThat(service.list(1, 50, null, null, false, null, null, null).getItems())
+                    .noneMatch(item -> item.rootId().equals(root));
+            assertThatThrownBy(() -> service.group("PLAN", root)).isInstanceOf(ApiException.class);
+        } finally {
+            removeCompletionSegments(root, segments);
+        }
+    }
+
+    @Test
+    void productCompletionKeepsColorUnitAndNullColorAsDistinctIdentities() {
+        UUID root = UUID.randomUUID(), goods = UUID.randomUUID();
+        UUID colorA = UUID.randomUUID(), colorB = UUID.randomUUID();
+        UUID unitA = UUID.randomUUID(), unitB = UUID.randomUUID();
+        List<UUID> segments = new java.util.ArrayList<>();
+        jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id) VALUES (?,?)", root, EMPLOYEE);
+        try {
+            addCompletionSegment(segments, root, goods, colorA, unitA, "COMPLETED");
+            addCompletionSegment(segments, root, goods, colorB, unitA, "COMPLETED");
+            addCompletionSegment(segments, root, goods, colorB, unitA, "IN_PROGRESS");
+            addCompletionSegment(segments, root, goods, colorA, unitB, "COMPLETED");
+            addCompletionSegment(segments, root, goods, null, unitA, "WAITING");
+            var detail = service.group("PLAN", root);
+            assertThat(detail.completedProductCount()).isEqualTo(2);
+            assertThat(detail.unfinishedProductCount()).isEqualTo(2);
+        } finally {
+            removeCompletionSegments(root, segments);
+        }
+    }
+
+    private static void addCompletionSegment(List<UUID> segments, UUID root, UUID goods,
+                                              UUID color, UUID unit, String status) {
+        UUID segment = UUID.randomUUID();
+        segments.add(segment);
+        jdbc.update("INSERT INTO production_execution_segments(id,status,plan_id,package_id,product_goods_id,product_color_id,product_unit_id,workshop_department_id,responsible_employee_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                segment, status, PLAN, PLAN, goods, color, unit, WORKSHOP, EMPLOYEE);
+        jdbc.update("INSERT INTO v_production_execution_workbench_segments(segment_id,plan_id,root_id,segment_status,workshop_department_id,product_goods_id,planned_qty,inbound_qty) VALUES (?,?,?,?,?,?,1000,1)",
+                segment, PLAN, root, status, WORKSHOP, goods);
+    }
+
+    private static void removeCompletionSegments(UUID root, List<UUID> segments) {
+        jdbc.update("DELETE FROM v_production_execution_workbench_segments WHERE root_id=?", root);
+        for (UUID segment : segments) jdbc.update("DELETE FROM production_execution_segments WHERE id=?", segment);
+        jdbc.update("DELETE FROM v_production_execution_workbench_roots WHERE root_id=?", root);
+    }
     @Test
     void relatedPlansHaveStableColumnNamesWhenOnlyProductionPlanViewIsAuthorized() {
         var documents = service.relatedDocuments("PLAN", PLAN, 99, 2);

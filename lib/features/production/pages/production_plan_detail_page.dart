@@ -46,7 +46,8 @@ import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/measurement/measurement_totals.dart';
+import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_execution_workbench.dart';
@@ -59,7 +60,6 @@ import '../repositories/production_repository.dart';
 import '../widgets/production_execution_card_print_preview.dart';
 import '../widgets/production_execution_segments_card.dart';
 import '../widgets/production_status_badge.dart';
-import '../widgets/progress_ring.dart';
 import '../widgets/production_material_settlement_sheet.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -952,7 +952,6 @@ class _ProductionPlanDetailPageState
   }
 
   Widget _subplanProgressRow(ThemeData theme, MrpSubplanRef sp) {
-    final pct = sp.percent.clamp(0.0, 1.0);
     final reversed = sp.status == -1;
     final done = !reversed && sp.closed;
     final statusText = reversed
@@ -981,8 +980,6 @@ class _ProductionPlanDetailPageState
         padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
         child: Row(
           children: [
-            ProgressRing(value: pct, size: 40, fontSize: 10, done: done),
-            const SizedBox(width: UtenSpacing.s8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1689,10 +1686,10 @@ class _ProductionPlanDetailPageState
     // 数量按单位分组合计（跨单位不相加，口径与产品摘要卡一致）。
     final totalQty = items.isEmpty
         ? '—'
-        : measurementTotalsText(
+        : exactMeasurementTotalsText(
             items.map(
-              (item) => MeasuredAmount(
-                value: item.qty ?? 0,
+              (item) => ExactMeasuredAmount(
+                value: item.qtyText ?? item.qty?.toString(),
                 unitId: item.unitId,
                 unitName: names.unit(item.unitId),
               ),
@@ -1947,17 +1944,18 @@ class _ProductionPlanDetailPageState
   /// authoritative operational surface while the item model remains intact.
   Widget _planProductSummary(ThemeData theme, MasterNameService names) {
     final items = _detail!.items;
-    String quantity(double? value) {
-      if (value == null) return '—';
-      return value == value.roundToDouble()
-          ? value.toStringAsFixed(0)
-          : value.toStringAsFixed(2);
+    String quantity(ProductionPlanItem item) {
+      final text = formatExactQtyWithUnit(
+        item.qtyText ?? item.qty?.toString(),
+        null,
+      );
+      return text.isEmpty ? '—' : text;
     }
 
-    final totalQty = measurementTotalsText(
+    final totalQty = exactMeasurementTotalsText(
       items.map(
-        (item) => MeasuredAmount(
-          value: item.qty ?? 0,
+        (item) => ExactMeasuredAmount(
+          value: item.qtyText ?? item.qty?.toString(),
           unitId: item.unitId,
           unitName: names.unit(item.unitId),
         ),
@@ -1980,7 +1978,7 @@ class _ProductionPlanDetailPageState
         ? ''
         : '${names.goods(first.goodsId)}'
               '${firstMeta.isEmpty ? '' : ' · ${firstMeta.join(' · ')}'}'
-              ' · 计划 ${quantity(first.qty)}'
+              ' · 计划 ${quantity(first)}'
               ' · 允许超产 ${productionRateText(first.allowedOverproductionRate)}'
               '${first.outboundDate == null ? '' : ' · 交货 ${productionDateOnly(first.outboundDate)}'}';
     final multiSummary =
@@ -2100,23 +2098,6 @@ class _ProductionPlanDetailPageState
             ),
           );
         }
-      }
-      if (_canApprove) {
-        if (children.isNotEmpty) {
-          children.add(const SizedBox(width: UtenSpacing.s8));
-        }
-        children.add(
-          UtenButton(
-            type: UtenButtonType.secondary,
-            icon: Icons.edit_note_outlined,
-            onPressed: _commandBusy
-                ? null
-                : () => _openLinkedPage(
-                    '/production/plans/${widget.id}/edit?review=1',
-                  ),
-            child: const Text('修改后审核'),
-          ),
-        );
       }
       if (_canApprove) {
         if (children.isNotEmpty) {

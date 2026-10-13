@@ -318,6 +318,31 @@ Future<void> deleteExpenseInvoice(
 
 enum ApprovalQueue { pending, payable, history }
 
+ApprovalQueue? expenseApprovalQueueFromRoute(String? value) => switch (value) {
+  'pending' => ApprovalQueue.pending,
+  'payable' => ApprovalQueue.payable,
+  'history' => ApprovalQueue.history,
+  _ => null,
+};
+
+ApprovalQueue expenseApprovalInitialQueue(
+  Set<String> permissions,
+  ApprovalQueue requested,
+) {
+  if (requested == ApprovalQueue.history ||
+      (requested == ApprovalQueue.pending &&
+          permissions.contains(Perm.expenseApprove)) ||
+      (requested == ApprovalQueue.payable &&
+          permissions.contains(Perm.expensePay))) {
+    return requested;
+  }
+  return permissions.contains(Perm.expenseApprove)
+      ? ApprovalQueue.pending
+      : permissions.contains(Perm.expensePay)
+      ? ApprovalQueue.payable
+      : ApprovalQueue.history;
+}
+
 extension ApprovalQueueValue on ApprovalQueue {
   String get label => switch (this) {
     ApprovalQueue.pending => '待审批',

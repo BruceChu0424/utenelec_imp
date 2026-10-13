@@ -111,6 +111,18 @@ class MaterialAnalysisFlowStageServiceTest {
     }
 
     @Test
+    void retainedPlanWithoutExecutionArrangementRequiresPlanningAcrossTheCanonicalStages() {
+        UUID line = UUID.randomUUID();
+        var stages = service.lineFlowStages(UUID.randomUUID(), Map.of(line, "MAKE"),
+                Map.of(line, new BigDecimal("1000")), Map.of(line, new BigDecimal("1000")),
+                Map.of(line, "PLANNING_REQUIRED"), Map.of());
+        assertThat(stages).containsEntry(line, "MAKE_PLANNING_REQUIRED");
+        assertThat(MaterialAnalysisService.preparationStageRank("MAKE_PLANNING_REQUIRED"))
+                .isLessThan(MaterialAnalysisService.preparationStageRank("MAKE_WAITING_MATERIAL"));
+        assertThat(MaterialAnalysisFlowStageService.makeStage("WAITING", false)).isEqualTo("MAKE_WAITING_MATERIAL");
+    }
+
+    @Test
     void subcontractWithoutApplicationIsPendingIssueAndIgnoresMakeAnchors() {
         // ADR-143：委外节点只下达为委外申请，不再有前置自制；自制锚点状态与委外行无关。
         UUID line = UUID.randomUUID();

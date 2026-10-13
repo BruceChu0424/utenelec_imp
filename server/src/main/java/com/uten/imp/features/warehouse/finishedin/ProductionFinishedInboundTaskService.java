@@ -203,6 +203,11 @@ public class ProductionFinishedInboundTaskService {
             """;
 
     private final EntityManager em;
+
+    /** Fixed shared CTEs; task-center pagination must use the same registration/residual facts. */
+    public static String taskCenterFactCtes() {
+        return BASE_SQL.replaceFirst("^\\s*WITH\\s+", "");
+    }
     private final ProductionStockTaskAccessPolicy access;
 
     @Transactional(readOnly = true)

@@ -7,6 +7,7 @@
 //  - 驳回：原因必填，空原因内联报错；
 //  - 非 PENDING / 无动作 case 不渲染底栏（服务端 allowedActions 为准）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
@@ -27,35 +28,16 @@ import '../../helpers/finance_claim_fixture.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
-class _FakeWorkflowRepo
-    implements
-        FinanceProcurementWorkflowRepository,
-        FinanceProcurementReviewAmendmentRepository {
+class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   @override
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String status = 'PENDING',
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeWorkflowRepo(this.reviewResult);
 
   FinanceProcurementApprovalReview reviewResult;
-  FinanceProcurementApprovalReview? amendedResult;
-  final List<
-    ({
-      FinanceProcurementDecisionItem decision,
-      List<Map<String, dynamic>> lines,
-    })
-  >
-  amendments = [];
-  @override
-  Future<FinanceProcurementApprovalReview> amendReview(
-    FinanceProcurementDecisionItem decision,
-    List<Map<String, dynamic>> lines,
-  ) async {
-    amendments.add((decision: decision, lines: lines));
-    return reviewResult = amendedResult ?? reviewResult;
-  }
-
   String? requestedCaseId;
   final List<
     ({
@@ -77,6 +59,7 @@ class _FakeWorkflowRepo
     String? sort,
     String? order,
     String? billNo,
+    String status = 'PENDING',
   }) async => const FinanceProcurementApprovalPage(
     items: [],
     page: 1,
@@ -86,7 +69,9 @@ class _FakeWorkflowRepo
   );
 
   @override
-  Future<Map<String, int>> approvalTypeCounts() async => {'PURCHASE': 1};
+  Future<Map<String, int>> approvalTypeCounts({
+    String status = 'PENDING',
+  }) async => {'PURCHASE': 1};
 
   @override
   Future<FinanceProcurementApprovalReview> review(String caseId) async {
@@ -256,6 +241,7 @@ Future<GoRouter> _pumpReviewPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         isSuperAdminProvider.overrideWithValue(false),
         currentPermissionsProvider.overrideWithValue({
           Perm.financeOrderApprovalView,
@@ -313,110 +299,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.exactRates, ['999999999999.123456']);
   });
-  testWidgets('审核改单价绑定旧case版本认领，保存后比较原值并使用新case审核', (tester) async {
-    final before = _pendingReviewJson(
-      allowedActions: {'APPROVE', 'REJECT', 'EDIT'},
-    );
-    final repository = _FakeWorkflowRepo(
-      FinanceProcurementApprovalReview.fromJson(before),
-    );
-    final after = {
-      ...before,
-      'caseId': 'case-2',
-      'attempt': 3,
-      'version': 1,
-      'totalOriginal': '9000',
-      'totalLocal': '63900',
-      'previousItems': before['items'],
-      'items': [
-        {
-          ...(before['items'] as List).single as Map<String, dynamic>,
-          'price': '90',
-          'amountOriginal': '9000',
-          'amountLocal': '63900',
-        },
-      ],
-    };
-    repository.amendedResult = FinanceProcurementApprovalReview.fromJson(after);
-    await _pumpReviewPage(tester, repository);
-    final price = find.byKey(
-      const ValueKey('finance-order-review-price-order-item-1'),
-    );
-    await tester.enterText(
-      find.byKey(const Key('finance-order-review-rate-field')),
-      '6.85',
-    );
-    await tester.ensureVisible(price);
-    await tester.enterText(price, '90');
-    await tester.pump();
-    final old = tester.widget<Text>(
-      find.byKey(const ValueKey('finance-order-review-before-order-item-1')),
-    );
-    expect(old.style!.decoration, TextDecoration.lineThrough);
-    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
-    await tester.pumpAndSettle();
-    expect(repository.approved, isEmpty);
-    await tester.tap(find.byKey(const Key('finance-order-review-save-edits')));
-    await tester.pumpAndSettle();
-    expect(repository.amendments.single.decision.caseId, 'case-1');
-    expect(repository.amendments.single.decision.expectedVersion, 3);
-    expect(repository.amendments.single.decision.expectedClaimId, isNotNull);
-    expect(repository.amendments.single.lines, [
-      {'itemId': 'order-item-1', 'price': '90'},
-    ]);
-    expect(repository.requestedCaseId, 'case-2');
-    expect(
-      tester
-          .widget<TextField>(
-            find.byKey(const Key('finance-order-review-rate-field')),
-          )
-          .controller!
-          .text,
-      '6.85',
-    );
-    final table = tester
-        .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
-          find.byType(UtenRevisionTable<FinanceProcurementReviewLine>),
+  for (final type in ['PURCHASE', 'SUBCONTRACT']) {
+    for (final totalPricing in [false, true]) {
+      testWidgets('$type 财审金额只读，旧 EDIT 动作不能开启修改，审批仍绑定原版本', (tester) async {
+        final json = _pendingReviewJson(
+          allowedActions: {'APPROVE', 'REJECT', 'EDIT'},
         );
-    expect(
-      table.rows.map((row) => row.kind),
-      containsAll([UtenRevisionKind.removed, UtenRevisionKind.added]),
-    );
-    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('finance-order-review-approve-submit')),
-    );
-    await tester.pumpAndSettle();
-    expect(repository.approved.single.items.single.caseId, 'case-2');
-    expect(repository.approved.single.items.single.expectedVersion, 1);
-  });
-
-  testWidgets('审核总金额计价只编辑总金额，负数阻止保存', (tester) async {
-    final json = _pendingReviewJson(
-      allowedActions: {'APPROVE', 'REJECT', 'EDIT'},
-    );
-    final totalLine =
-        (json['items'] as List<Object?>).single as Map<String, dynamic>;
-    totalLine['totalAmountInput'] = '10000';
-    final repository = _FakeWorkflowRepo(
-      FinanceProcurementApprovalReview.fromJson(json),
-    );
-    await _pumpReviewPage(tester, repository);
-    expect(
-      find.byKey(const ValueKey('finance-order-review-price-order-item-1')),
-      findsNothing,
-    );
-    final total = find.byKey(
-      const ValueKey('finance-order-review-total-order-item-1'),
-    );
-    await tester.ensureVisible(total);
-    await tester.enterText(total, '-1');
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('finance-order-review-save-edits')));
-    await tester.pumpAndSettle();
-    expect(repository.amendments, isEmpty);
-  });
+        json['orderType'] = type;
+        if (totalPricing) {
+          ((json['items'] as List).single as Map)['totalAmountInput'] = '10000';
+        }
+        final repository = _FakeWorkflowRepo(
+          FinanceProcurementApprovalReview.fromJson(json),
+        );
+        await _pumpReviewPage(tester, repository);
+        expect(
+          find.byKey(const ValueKey('finance-order-review-price-order-item-1')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('finance-order-review-total-order-item-1')),
+          findsNothing,
+        );
+        expect(find.text('保存审核修改'), findsNothing);
+        final table = tester
+            .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
+              find.byType(UtenRevisionTable<FinanceProcurementReviewLine>),
+            );
+        expect(table.cellBuilders?.containsKey('price'), isFalse);
+        expect(table.cellBuilders?.containsKey('amountOriginal'), isFalse);
+        await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('finance-order-review-approve-submit')),
+        );
+        await tester.pumpAndSettle();
+        expect(repository.approved.single.items.single.caseId, 'case-1');
+        expect(repository.approved.single.items.single.expectedVersion, 3);
+        expect(
+          repository.approved.single.items.single.expectedClaimId,
+          isNotNull,
+        );
+      });
+    }
+  }
   for (final type in ['PURCHASE', 'SUBCONTRACT']) {
     testWidgets('$type 总金额计价在财审中标记参考单价并保持金额原文', (tester) async {
       final json = _pendingReviewJson();
@@ -804,7 +730,7 @@ void main() {
     expect(find.text('已通过 · 订货已生效'), findsOneWidget);
     expect(find.byKey(const Key('finance-order-review-approve')), findsNothing);
     expect(find.byKey(const Key('finance-order-review-reject')), findsNothing);
-    expect(find.byKey(const Key('finance-order-review-back')), findsNothing);
+    expect(find.byKey(const Key('finance-order-review-back')), findsOneWidget);
   });
 
   testWidgets('pending case without server actions stays read-only', (
@@ -973,6 +899,19 @@ void main() {
       'amountLocal',
       'allowedOverReceiptPct',
     });
+  });
+
+  testWidgets('missing supplier balance retains local amount unit suffix', (
+    tester,
+  ) async {
+    final repository = _FakeWorkflowRepo(
+      FinanceProcurementApprovalReview.fromJson(
+        _pendingReviewJson()..['supplierBalance'] = null,
+      ),
+    );
+    await _pumpReviewPage(tester, repository);
+    expect(find.text('71000.00 元'), findsWidgets);
+    expect(find.text('71000.00'), findsNothing);
   });
 
   testWidgets('汇率编辑器：默认快照兜底，编辑实时重算折合人民币列与合计', (tester) async {

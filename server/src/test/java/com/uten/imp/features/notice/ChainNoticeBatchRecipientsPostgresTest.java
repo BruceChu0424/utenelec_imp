@@ -45,10 +45,7 @@ class ChainNoticeBatchRecipientsPostgresTest {
         draw=permission("subcontract_order:draw"); viewAll=permission("subcontract:view:all");
         jdbc.update("INSERT INTO department_permissions VALUES (?,?),(?,?),(?,?)",
                 data.finance,read,data.finance,view,data.finance,draw);
-        jdbc.execute("""
-                CREATE TABLE employment_history(employee_id uuid,event_type text);
-                CREATE TABLE user_data_scopes(user_id uuid,scope text,owner_employee_id uuid,owner_employment_generation bigint);
-                """);
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,"employment_history","user_data_scopes");
         var users=mock(UserAccountRepository.class);
         when(users.findAll()).thenAnswer(call -> jdbc.query("SELECT id,employee_id,status,is_deleted FROM users",(rs,row)->{
             var user=new UserAccount(); user.setId(rs.getObject(1,UUID.class)); user.setEmployeeId(rs.getObject(2,UUID.class));
@@ -66,13 +63,13 @@ class ChainNoticeBatchRecipientsPostgresTest {
         when(handover.currentResponsible("subcontract",owner)).thenReturn(responsible);
         chain.setHandoverVisibility(handover);
         data.grant(global,viewAll);
-        jdbc.update("INSERT INTO employment_history VALUES (?,'rehire')",owner);
-        jdbc.update("INSERT INTO user_data_scopes VALUES (?,'subcontract',?,1),(?,'subcontract',?,0)",scoped,owner,stale,owner);
+        jdbc.update("INSERT INTO employment_history(employee_id,event_type) VALUES (?,'rehire')",owner);
+        jdbc.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id,owner_employment_generation) VALUES (?,'subcontract',?,1),(?,'subcontract',?,0)",scoped,owner,stale,owner);
         source.statements.set(0);
         assertThat(drawRecipients(owner)).containsExactlyInAnyOrder(owner,responsible,scoped,global);
         assertThat(source.statements.get()).isEqualTo(4);
         verify(handover,times(1)).currentResponsible("subcontract",owner);
-        jdbc.update("INSERT INTO employment_history VALUES (?,'rehire')",owner);
+        jdbc.update("INSERT INTO employment_history(employee_id,event_type) VALUES (?,'rehire')",owner);
         assertThat(drawRecipients(owner)).containsExactlyInAnyOrder(owner,responsible,global);
         data.override(global,viewAll,"revoke","SUPER_ADMIN_CONFIRMED");
         assertThat(drawRecipients(owner)).containsExactlyInAnyOrder(owner,responsible);
@@ -104,14 +101,14 @@ class ChainNoticeBatchRecipientsPostgresTest {
         var handover=mock(EmployeeHandoverVisibility.class);
         when(handover.currentResponsible("production_plan",owner)).thenReturn(successor);
         chain.setHandoverVisibility(handover);
-        jdbc.update("INSERT INTO employment_history VALUES (?,'rehire')",owner);
-        jdbc.update("INSERT INTO user_data_scopes VALUES (?,'production_plan',?,1)",scoped,owner);
+        jdbc.update("INSERT INTO employment_history(employee_id,event_type) VALUES (?,'rehire')",owner);
+        jdbc.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id,owner_employment_generation) VALUES (?,'production_plan',?,1)",scoped,owner);
         source.statements.set(0);
         List<UUID> readers=ReflectionTestUtils.invokeMethod(chain,"productionAnalysisReaders",candidates,owner);
         assertThat(readers).containsExactlyInAnyOrder(owner,successor,scoped,global);
         assertThat(source.statements.get()).isEqualTo(2);
         data.override(global,allPlans,"revoke","SUPER_ADMIN_CONFIRMED");
-        jdbc.update("INSERT INTO employment_history VALUES (?,'rehire')",owner);
+        jdbc.update("INSERT INTO employment_history(employee_id,event_type) VALUES (?,'rehire')",owner);
         readers=ReflectionTestUtils.invokeMethod(chain,"productionAnalysisReaders",candidates,owner);
         assertThat(readers).containsExactlyInAnyOrder(owner,successor);
     }

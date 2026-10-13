@@ -34,6 +34,7 @@ public class ReturnItemDto {
         this.remark = remark;
     }
     public String getGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftQty);}
+    public String getUnitRateExact(){return com.uten.imp.common.util.DecimalText.of(unitRate);}
     public String getPhysicalQtyExact(){return com.uten.imp.common.finance.ProcurementQuantities.physicalText(quantitySemantics,qty,giftQty);}
 
 

@@ -120,6 +120,7 @@ class _RequestMaterialPickerState
                   [
                     if (material.goodsCode?.isNotEmpty == true)
                       material.goodsCode!,
+                    '颜色：${material.colorName ?? '未指定颜色'}',
                     '单位：${material.unitName ?? '未设置'}',
                     '仓库可发 ${wmQty(material.warehouseAvailableQty, maxDecimals: 4)} ${material.unitName ?? ''}',
                   ].join(' · '),

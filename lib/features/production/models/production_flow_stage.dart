@@ -187,6 +187,12 @@ class ProductionFlowStage {
     if (key == null) return null;
     return switch (key) {
       'MAKE_PENDING_ISSUE' => _make(0, '等待下达车间', ProductionFlowTone.pending),
+      'MAKE_PLANNING_REQUIRED' => _make(
+        1,
+        '计划保留 · 待重新安排',
+        ProductionFlowTone.pending,
+        key: 'MAKE_PLANNING_REQUIRED',
+      ),
       'MAKE_PLAN_SUBMITTED' => _make(1, '计划待审核', ProductionFlowTone.pending),
       'MAKE_WAITING_MATERIAL' => _make(
         2,
@@ -455,6 +461,12 @@ class ProductionFlowStage {
     }
     return switch (status) {
       'SUBMITTED' => _make(1, '计划待审核', ProductionFlowTone.pending),
+      'PLANNING_REQUIRED' => _make(
+        1,
+        '计划保留 · 待重新安排',
+        ProductionFlowTone.pending,
+        key: 'MAKE_PLANNING_REQUIRED',
+      ),
       'APPROVED' ||
       'WAITING' => _make(2, '车间已收到 · 等待物料', ProductionFlowTone.waiting),
       'READY' =>
@@ -520,22 +532,18 @@ class ProductionFlowStage {
     return _make(3, '备料中 · 等待领料指令', ProductionFlowTone.waiting);
   }
 
-  /// 带百分比的展示标签（生产中 N%）。
-  String get displayLabel {
-    if (progressPercent case final percent?) {
-      return '$label $percent%';
-    }
-    return label;
-  }
+  /// 展示真实阶段；完成数量保留在独立的数量事实里，不用数量比替代状态。
+  String get displayLabel => label;
 
   static ProductionFlowStage _make(
     int index,
     String label,
     ProductionFlowTone tone, {
     double? progress,
+    String? key,
   }) => ProductionFlowStage(
     route: ProductionFlowRoute.make,
-    key: 'MAKE_$index',
+    key: key ?? 'MAKE_$index',
     label: label,
     tone: tone,
     stepIndex: index,

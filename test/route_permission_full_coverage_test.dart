@@ -80,7 +80,9 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 当前工作区逐条核对：205 条守卫 / 17 条豁免(2026-10-06 V816 AI 用量看板：
+/// 原守卫基数 205，新增路径另由下方精确登记；当前 236 条守卫 / 17 条豁免。
+/// 2026-10-12 仓库三条批量办理地址登记，查看守卫与原任务一致；
+/// 2026-10-06 V816 AI 用量看板：
 /// /admin/ai-usage 与人员详情两路由上线，守卫 203→205；
 /// 2026-10-06 V812 权限抽屉：
 /// /page-permissions/:surfaceKey 独立设置页退役为页面内抽屉，豁免 18→17；
@@ -167,6 +169,11 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   // 2026-10-04 ADR-143 委外领料页：预览只读订货事实，提交由服务端按
   // subcontract_order:draw 判定，页面不再本地拼权限。
   '/operations/workbench/subcontract/draw-request': [Perm.subcontractOrderView],
+  // 2026-10-12 source-bound batch pages keep the same read gate as their
+  // original task. Dispatch still requires each server-side physical action.
+  '/warehouse/material-returns/batch-receive': [Perm.stockDocView],
+  '/warehouse/sales-outbound/batch': [Perm.warehouseSalesOutboundView],
+  '/warehouse/subcontract-outbound/batch': [Perm.subcontractOutboundView],
 };
 
 String _samplePath(String pattern) => pattern
@@ -315,6 +322,12 @@ void main() {
         '/warehouse/stock-count-review': 'warehouse-stock-count-review',
         '/warehouse/insights?segment=learning': 'warehouse-insights',
         '/warehouse/weigh-count': 'warehouse-weigh-count',
+        '/warehouse/material-returns/batch-receive?documentIds=sample':
+            'warehouse-material-returns-batch-receive',
+        '/warehouse/sales-outbound/batch?shipmentIds=sample':
+            'warehouse-sales-outbound-batch',
+        '/warehouse/subcontract-outbound/batch?issueIds=sample':
+            'warehouse-subcontract-outbound-batch',
         '/warehouse/CHECK/new': 'stock-doc-new',
         '/stock/item/goods-1?tab=ledger': 'stock-item-detail',
       };

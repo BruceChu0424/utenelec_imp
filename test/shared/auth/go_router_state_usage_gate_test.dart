@@ -42,9 +42,12 @@ void main() {
           3, // A+B: Tab 回调×2 + 根级 build×1
       'lib/features/subcontract/pages/subcontract_business_list_pages.dart':
           1, // B
-      // 2026-10-06 证件批量核对页(ADR-160)：GoRoute 页 didChangeDependencies
-      // 读路由身份/查询参数，同 B 类（声明式页路由，不发生爬升）。
-      'lib/features/hr_task/pages/hr_reconcile_page.dart': 1, // B
+      // ADR-160: the only production mount is the declarative hr-reconcile
+      // GoRoute. didChangeDependencies reads its identity once (B); original
+      // receipt recovery and interrupted-plan rebuild each capture and compare
+      // that identity in button/async continuations (A x4). No dialog builder or
+      // imperative child route calls this API.
+      'lib/features/hr_task/pages/hr_reconcile_page.dart': 5, // B x1 + A x4
       // Platform settings registers dirty-navigation state only after checking
       // that the enclosing route has declarative Page settings.
       'lib/features/admin/pages/admin_platform_settings_page.dart': 1, // B+C

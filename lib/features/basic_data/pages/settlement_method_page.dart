@@ -22,6 +22,7 @@ import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/latest_request_guard.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -47,6 +48,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   bool _loading = false;
   String? _error;
   String _keyword = '';
+  final _loadRequests = LatestRequestGuard();
 
   /// 表头筛选（字段→原始值；空值哨兵见 master_facet.dart）。落到服务端查询。
   Map<String, String?> _filters = {};
@@ -69,6 +71,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
   }
 
   Future<void> _load() async {
+    final generation = _loadRequests.begin();
     setState(() {
       _loading = true;
       _error = null;
@@ -77,19 +80,19 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
       final items = await ref
           .read(referenceMethodRepositoryProvider)
           .settlementAdminList(filters: _filters);
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _items = items;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_loadRequests.isCurrent(generation)) return;
       setState(() {
         _error = '加载结算方式失败';
         _loading = false;

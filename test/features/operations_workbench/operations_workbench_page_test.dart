@@ -1,10 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_status_badge.dart';
+import 'package:uten_imp/components/data_display/uten_status_cell_color.dart';
+import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/pages/operations_workbench_page.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
@@ -24,7 +28,89 @@ Future<void> _selectSegment(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+MasterDataTableView<OperationsWorkbenchTask> _table(WidgetTester tester) =>
+    tester.widget(find.byType(MasterDataTableView<OperationsWorkbenchTask>));
+
 void main() {
+  testWidgets(
+    'selected exception remains clearable when its latest count disappears',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _FakeGateway(
+        _emptyData(
+          department: OperationsWorkbenchDepartment.purchase,
+          statusCounts: const {'IN_PROGRESS': 1},
+          exceptionCounts: const {'OVERDUE': 1},
+        ),
+        dataAfterExceptionFilter: _emptyData(
+          department: OperationsWorkbenchDepartment.purchase,
+          statusCounts: const {'IN_PROGRESS': 1},
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      _table(tester).onFilterChanged('exception', 'OVERDUE');
+      await tester.pumpAndSettle();
+      expect(gateway.exceptions.last, 'OVERDUE');
+      expect(_table(tester).filters['exception'], 'OVERDUE');
+      expect(_table(tester).facets['exception']!.single.value, 'OVERDUE');
+      expect(_table(tester).facets['exception']!.single.count, 0);
+      _table(tester).onFilterChanged('exception', null);
+      await tester.pumpAndSettle();
+      expect(gateway.exceptions.last, isNull);
+      expect(gateway.statuses.last, 'IN_PROGRESS');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'finance return stays a status and never narrows in-progress automatically',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _FakeGateway(
+        _emptyData(
+          department: OperationsWorkbenchDepartment.purchase,
+          statusCounts: const {'FINANCE_REJECTED': 2, 'IN_PROGRESS': 5},
+          exceptionCounts: const {'FINANCE_REJECTED': 2},
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'IN_PROGRESS');
+      expect(gateway.exceptions, everyElement(isNull));
+      expect(
+        gateway.data.exceptionOptions.map((option) => option.value),
+        isNot(contains('FINANCE_REJECTED')),
+      );
+      expect(
+        _table(tester).facets['exception']!.map((bucket) => bucket.value),
+        isNot(contains('FINANCE_REJECTED')),
+      );
+      expect(find.text('财务已退回'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'purchase batch action requires every selected request item link',
     (tester) async {
@@ -416,7 +502,7 @@ void main() {
   });
 
   testWidgets(
-    'exception segment reloads with a backend-wide exception filter after a stage is chosen',
+    'exception header queries the dedicated backend filter and clears within the main stage',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(800, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -436,6 +522,7 @@ void main() {
               id: 'overdue-task',
               goodsName: '逾期物料',
               actionDocItemId: 'request-item-overdue',
+              exceptionCode: 'OVERDUE_SHORTAGE',
             ),
           ],
           page: 1,
@@ -462,21 +549,54 @@ void main() {
       // 没有红黄徽章就不自动选（2026-10-04 口径），进页面仍只有一次概览请求。
       expect(gateway.statuses, [null]);
 
-      // 点「申请待分解」阶段段：任务列表加载；异常小类行解锁后红1的
-      // 「逾期缺料」被自动选中（默认选中口径），异常参数随阶段组合直接生效。
+      // 主阶段加载完整任务；异常由表头选择，不再自动切到异常子分类。
       await _selectSegment(tester, '申请待分解');
       await tester.pumpAndSettle();
       expect(gateway.statuses.last, 'WAITING_ORDER');
+      expect(gateway.exceptions.last, isNull);
+      expect(
+        find.byKey(const Key('operations-workbench-exceptions-purchase')),
+        findsNothing,
+      );
+      final table = _table(tester);
+      expect(table.facets['exception']!.single.value, 'OVERDUE_SHORTAGE');
+      table.onSelectedIdsChanged!({'overdue-task'});
+      await tester.pump();
+      expect(_table(tester).selectedIds, {'overdue-task'});
+      _table(tester).onFilterChanged('exception', 'OVERDUE_SHORTAGE');
+      await tester.pumpAndSettle();
       expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
+      expect(gateway.statuses.last, 'WAITING_ORDER');
+      expect(gateway.pages.last, 1);
+      expect(
+        gateway.columnFilters.last.containsKey('exception'),
+        isFalse,
+        reason: '异常必须走专用exception，不能变成f.exception',
+      );
+      expect(_table(tester).selectedIds, isEmpty);
+      final row = _table(tester).items.single;
+      final statusColumn = _table(tester).columns.first;
+      expect(statusColumn.value(row), contains('逾期缺料'));
+      expect(
+        statusColumn.cellColor!(tester.element(find.byType(Scaffold)), row),
+        utenStatusBadgeCellColor(UtenStatusBadgeType.orange),
+      );
 
-      // 点已选中的异常段不重复发请求（单选点已选段不回调）。
+      // 重选同一表头值不会重复加载。
       final exceptionsBeforeRetap = gateway.exceptions.length;
-      await _selectSegment(tester, '逾期缺料');
+      _table(tester).onFilterChanged('exception', 'OVERDUE_SHORTAGE');
       await tester.pumpAndSettle();
       expect(gateway.exceptions.length, exceptionsBeforeRetap);
 
-      // 切到「进行中」阶段段：阶段单选切换，异常小类按页面口径重置为不带
-      // 异常参数重新加载；「全部逾期」（OVERDUE_ANY 聚合段）不显示。
+      _table(tester).onFilterChanged('exception', null);
+      await tester.pumpAndSettle();
+      expect(gateway.exceptions.last, isNull);
+      expect(gateway.statuses.last, 'WAITING_ORDER');
+      expect(_table(tester).filters['exception'], isNull);
+      _table(tester).onFilterChanged('exception', 'OVERDUE_SHORTAGE');
+      await tester.pumpAndSettle();
+
+      // 切主阶段清除旧异常，重新完整加载；OVERDUE_ANY 聚合项继续隐藏。
       await _selectSegment(tester, '进行中');
       await tester.pumpAndSettle();
       expect(gateway.statuses.last, 'IN_PROGRESS');
@@ -712,51 +832,48 @@ void main() {
     );
   }
 
-  testWidgets('zero-count overdue exception segment remains a valid filter', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(375, 667));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final gateway = _FakeGateway(
-      // 具体异常段（OVERDUE_ANY 聚合段已不显示）零计数：仍可点选过滤。
-      _emptyData(
-        department: OperationsWorkbenchDepartment.purchase,
-        exceptionCounts: const {'OVERDUE_SHORTAGE': 0},
-      ),
-    );
-    await tester.pumpWidget(
-      ProviderScope(
-        child: MaterialApp(
-          home: OperationsWorkbenchPage(
-            department: OperationsWorkbenchDepartment.purchase,
-            repository: gateway,
+  testWidgets(
+    'zero-count exception header option remains a backend-wide filter',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(375, 667));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _FakeGateway(
+        // OVERDUE_ANY 聚合项隐藏；具体异常零计数仍可从表头查询。
+        _emptyData(
+          department: OperationsWorkbenchDepartment.purchase,
+          exceptionCounts: const {'OVERDUE_SHORTAGE': 0},
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.purchase,
+              repository: gateway,
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    // 异常小类行在选中阶段后才出现：先点「申请待分解」，再点「逾期缺料」。
-    await _selectSegment(tester, '申请待分解');
-    await tester.pumpAndSettle();
-    await _selectSegment(tester, '逾期缺料');
-    await tester.pumpAndSettle();
+      // 当前页没有行也可以从部门全量桶选择异常，零计数不禁用。
+      await _selectSegment(tester, '申请待分解');
+      await tester.pumpAndSettle();
+      expect(_table(tester).facets['exception']!.single.count, 0);
+      _table(tester).onFilterChanged('exception', 'OVERDUE_SHORTAGE');
+      await tester.pumpAndSettle();
 
-    expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
-    expect(gateway.statuses.last, 'WAITING_ORDER');
-    expect(tester.takeException(), isNull);
-    // 零计数异常段仍保持选中（分段单选不因计数为 0/无徽章失效）。
-    final exceptionRow = tester.widget<UtenSegmentRow<dynamic>>(
-      find.byKey(const Key('operations-workbench-exceptions-purchase')),
-    );
-    expect(exceptionRow.selected.length, 1);
-  });
+      expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
+      expect(gateway.statuses.last, 'WAITING_ORDER');
+      expect(tester.takeException(), isNull);
+      expect(_table(tester).filters['exception'], 'OVERDUE_SHORTAGE');
+    },
+  );
 
-  testWidgets('stage segments stay single-select and gate the exception row', (
+  testWidgets('main-stage selection resets the exception header filter', (
     tester,
   ) async {
-    // 旧「指标卡互斥」语义的新范式等价物：阶段行单选；异常小类行仅在选中
-    // 阶段后出现并与阶段组合过滤；切换阶段时异常小类被重置（不残留）。
+    // 主阶段单选；异常表头在当前主阶段内收敛，切阶段清除旧异常。
     await tester.binding.setSurfaceSize(const Size(800, 1200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final gateway = _FakeGateway(
@@ -776,38 +893,124 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // 默认不选阶段（红/黄计数按 0 对待、无徽章不自动选）：只有一次概览
-    // 请求，异常小类行不出现，内容区为引导占位。
+    // 无主阶段红黄计数不自动选：只拉概览，内容区为引导占位。
     expect(gateway.statuses, [null]);
     expect(find.text('在上方选择阶段后开始办理'), findsOneWidget);
     expect(find.text('逾期缺料'), findsNothing);
 
-    // 点「申请待分解」阶段段：单选生效，异常小类行解锁出现；红1的
-    // 「逾期缺料」小类随解锁被自动选中（2026-10-04 默认选中口径）。
+    // 主阶段完整加载，异常仅在用户主动使用表头时收敛。
     await _selectSegment(tester, '申请待分解');
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'WAITING_ORDER');
-    expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
-    expect(find.text('逾期缺料'), findsOneWidget);
+    expect(gateway.exceptions.last, isNull);
+    expect(
+      _table(tester).facets['exception']!.single.value,
+      'OVERDUE_SHORTAGE',
+    );
+    _table(tester).onFilterChanged('exception', 'OVERDUE_SHORTAGE');
+    await tester.pumpAndSettle();
 
-    // 再点已选中的「逾期缺料」不重复发请求（单选点已选段不回调）。
-    await _selectSegment(tester, '逾期缺料');
+    // 重选同一异常表头值不重复请求。
+    _table(tester).onFilterChanged('exception', 'OVERDUE_SHORTAGE');
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'WAITING_ORDER');
     expect(gateway.exceptions.last, 'OVERDUE_SHORTAGE');
     expect(tester.takeException(), isNull);
 
-    // 切换到另一阶段段：阶段单选切换，且异常小类重置（不沿用上一个异常）。
+    // 切换主阶段后清除旧异常。
     // ADR-100 起采购只有两段, 第二段是合并后的「进行中」(status=IN_PROGRESS)。
     await _selectSegment(tester, '进行中');
     await tester.pumpAndSettle();
     expect(gateway.statuses.last, 'IN_PROGRESS');
     expect(gateway.exceptions.last, isNull);
-    final exceptionRow = tester.widget<UtenSegmentRow<dynamic>>(
-      find.byKey(const Key('operations-workbench-exceptions-purchase')),
-    );
-    expect(exceptionRow.selected, isEmpty);
+    expect(_table(tester).filters['exception'], isNull);
   });
+
+  testWidgets(
+    'warehouse exception header keeps picking stages and historical dates',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final gateway = _FakeGateway(
+        OperationsWorkbenchData(
+          department: OperationsWorkbenchDepartment.warehouse,
+          summary: const OperationsWorkbenchSummary(
+            totalTasks: 1,
+            overdueTasks: 0,
+            openTasks: 1,
+            openQty: 4,
+            statusCounts: {'READY_TO_PICK': 0},
+            exceptionCounts: {'SHORTAGE': 1},
+          ),
+          items: [_warehouseTask(exceptionCode: 'SHORTAGE')],
+          page: 1,
+          size: 20,
+          total: 1,
+          totalPages: 1,
+          capabilities: const OperationsWorkbenchCapabilities(),
+        ),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: OperationsWorkbenchPage(
+              department: OperationsWorkbenchDepartment.warehouse,
+              repository: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _selectSegment(tester, '待备料 / 待领取');
+      await tester.pumpAndSettle();
+      expect(_table(tester).selectable, isFalse);
+      _table(tester).onFilterChanged('exception', 'SHORTAGE');
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'READY_TO_PICK');
+      expect(gateway.exceptions.last, 'SHORTAGE');
+      expect(gateway.columnFilters.last.containsKey('exception'), isFalse);
+      final row = _table(tester).items.single;
+      final statusColumn = _table(tester).columns.first;
+      expect(statusColumn.value(row), contains('缺料'));
+      expect(
+        statusColumn.cellColor!(tester.element(find.byType(Scaffold)), row),
+        utenStatusBadgeCellColor(UtenStatusBadgeType.warning),
+      );
+      expect(find.byType(Checkbox), findsNothing);
+
+      _table(tester).onFilterChanged('exception', null);
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'READY_TO_PICK');
+      expect(gateway.exceptions.last, isNull);
+      _table(tester).onFilterChanged('exception', 'SHORTAGE');
+      await tester.pumpAndSettle();
+      await _selectSegment(tester, '部分领取');
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, 'PARTIAL');
+      expect(gateway.exceptions.last, isNull);
+      expect(_table(tester).filters['exception'], isNull);
+
+      await _selectSegment(tester, '历史记录');
+      await tester.pumpAndSettle();
+      tester
+          .widget<UtenHistoryTimeFilter>(find.byType(UtenHistoryTimeFilter))
+          .onChanged(
+            UtenHistoryTimeValue.range(
+              DateTimeRange(
+                start: DateTime(2026, 8),
+                end: DateTime(2026, 8, 31),
+              ),
+            ),
+          );
+      await tester.pumpAndSettle();
+      expect(gateway.statuses.last, isNull);
+      expect(gateway.exceptions.last, isNull);
+      expect(gateway.datesFrom.last, '2026-08-01');
+      expect(gateway.datesTo.last, '2026-08-31');
+      expect(_table(tester).facets.containsKey('exception'), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'selected stage segment stays selected when refreshed summary omits its count',
@@ -864,12 +1067,21 @@ void main() {
 }
 
 class _FakeGateway implements OperationsWorkbenchGateway {
-  _FakeGateway(this.data, {this.dataAfterStatusFilter});
+  _FakeGateway(
+    this.data, {
+    this.dataAfterStatusFilter,
+    this.dataAfterExceptionFilter,
+  });
 
   final OperationsWorkbenchData data;
   final OperationsWorkbenchData? dataAfterStatusFilter;
+  final OperationsWorkbenchData? dataAfterExceptionFilter;
   final List<String?> exceptions = [];
   final List<String?> statuses = [];
+  final List<int> pages = [];
+  final List<Map<String, String?>> columnFilters = [];
+  final List<String?> datesFrom = [];
+  final List<String?> datesTo = [];
 
   @override
   Future<OperationsWorkbenchData> load({
@@ -891,6 +1103,13 @@ class _FakeGateway implements OperationsWorkbenchGateway {
   }) async {
     exceptions.add(exception);
     statuses.add(status);
+    pages.add(page);
+    this.columnFilters.add(Map.of(columnFilters));
+    datesFrom.add(dateFrom);
+    datesTo.add(dateTo);
+    if (exception != null && dataAfterExceptionFilter != null) {
+      return dataAfterExceptionFilter!;
+    }
     // 概览请求（status=null）返回带完整计数的数据；选中具体阶段后的加载
     // 才触发「刷新后选项缺失」场景（返回无 statusCounts 的数据）。
     final specificStatus =
@@ -970,6 +1189,7 @@ OperationsWorkbenchTask _task({
   String? actionDocItemId,
   String actionDocStatus = '1',
   bool actionDocumentRestricted = false,
+  String? exceptionCode,
   int goodsCount = 0,
   int openLineCount = 0,
   List<String> actionItemIds = const [],
@@ -996,9 +1216,11 @@ OperationsWorkbenchTask _task({
     expectedDate: null,
     // 归组行没有单条明细链接，异常由明细行集合表达；单行任务保持
     // “无明细链接即 UNLINKED” 的旧口径。
-    exceptionCode: (actionDocItemId == null && actionItemIds.isEmpty)
-        ? 'UNLINKED'
-        : null,
+    exceptionCode:
+        exceptionCode ??
+        ((actionDocItemId == null && actionItemIds.isEmpty)
+            ? 'UNLINKED'
+            : null),
     updatedAt: '2026-07-31T10:00:00+08:00',
     actionDocument: (actionDocItemId == null && actionItemIds.isEmpty)
         ? null
@@ -1019,8 +1241,8 @@ OperationsWorkbenchTask _task({
   );
 }
 
-OperationsWorkbenchTask _warehouseTask() {
-  return const OperationsWorkbenchTask(
+OperationsWorkbenchTask _warehouseTask({String? exceptionCode}) {
+  return OperationsWorkbenchTask(
     taskId: 'warehouse-task',
     packageId: 'package-1',
     planId: 'plan-1',
@@ -1040,9 +1262,9 @@ OperationsWorkbenchTask _warehouseTask() {
     taskStatus: 'READY_TO_PICK',
     needDate: '2026-08-01',
     expectedDate: null,
-    exceptionCode: null,
+    exceptionCode: exceptionCode,
     updatedAt: '2026-08-22T10:00:00+08:00',
-    actionDocument: OperationsActionDocument(
+    actionDocument: const OperationsActionDocument(
       id: 'draw-1',
       docType: 'DRAW',
       number: 'LL-001',

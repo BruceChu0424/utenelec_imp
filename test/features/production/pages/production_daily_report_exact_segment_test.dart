@@ -49,6 +49,7 @@ import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
 import 'package:uten_imp/features/production/widgets/production_daily_product_details_card.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -65,7 +66,6 @@ part 'production_daily_report_create_recovery_cases.dart';
 part 'production_daily_report_attachment_late_ack_cases.dart';
 part 'production_daily_report_precision_cases.dart';
 part 'production_daily_report_session_boundary_cases.dart';
-part 'production_daily_report_reviewed_save_cases.dart';
 part 'production_daily_report_product_card_cases.dart';
 part 'production_daily_report_manual_destination_cases.dart';
 
@@ -96,7 +96,6 @@ class _ExactSegmentSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
-  registerDailyReviewedSaveTests();
   registerDailyReportProductCardTests();
   registerDailyReportManualDestinationTests();
   registerDailyReportSessionBoundaryTests();
@@ -1653,7 +1652,18 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('ZX-C · 上层工单 ZX-C 在二车间，跨车间必须送入仓库'), findsOneWidget);
+    final destinationField = tester.widget<UtenDropdownField>(
+      find.byKey(
+        ValueKey('daily-allocation-destination-${identityHashCode(second)}'),
+      ),
+    );
+    final blocked = destinationField.items.firstWhere(
+      (item) => item.value == 'C',
+    );
+    expect(blocked.label, '跨车间接收产品');
+    expect(blocked.enabled, isFalse);
+    expect(blocked.tooltip, contains('上层工单 ZX-C 在二车间，跨车间必须送入仓库'));
+    expect(find.text('跨车间接收产品'), findsOneWidget);
     await tester.tap(
       find.byKey(
         ValueKey<(String, Key?, String?)>((
@@ -1948,6 +1958,10 @@ void main() {
     final api = _api();
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
+    Finder mainHeader(String label) => find.descendant(
+      of: find.byType(UtenColumnHeaderMenuRegion),
+      matching: find.text(label),
+    );
 
     Future<void> rightClick(Finder finder) async {
       final gesture = await tester.startGesture(
@@ -2009,7 +2023,7 @@ void main() {
     expect(find.text('成品灯'), findsOneWidget);
 
     // 右击「编号」表头：六条菜单条目齐全（编号列有 textOf → 可固定）。
-    await rightClick(find.text('编号'));
+    await rightClick(mainHeader('编号'));
     expect(find.text('固定到左侧'), findsOneWidget);
     expect(find.text('向左移一格'), findsOneWidget);
     expect(find.text('向右移一格'), findsOneWidget);
@@ -2020,21 +2034,21 @@ void main() {
     // 隐藏「编号」列：表头与表体（P-001）一起消失。
     await tester.tap(find.text('隐藏此列'));
     await tester.pumpAndSettle();
-    expect(find.text('编号'), findsNothing);
+    expect(mainHeader('编号'), findsNothing);
     expect(find.text('P-001'), findsNothing);
 
     // 移动换位：「超限原因」放到最前 → 排到「颜色」之前
     //（2026-10-10 数量内联口径后表里已无「单位」列，换这两列验证）。
-    await rightClick(find.text('超限原因'));
+    await rightClick(mainHeader('超限原因'));
     await tester.tap(find.text('放到最前'));
     await tester.pumpAndSettle();
-    expect(dxOf(find.text('超限原因')), lessThan(dxOf(find.text('颜色'))));
+    expect(dxOf(mainHeader('超限原因')), lessThan(dxOf(mainHeader('颜色'))));
 
     // 固定：「颜色」固定到左侧 → 排到「超限原因」之前。
-    await rightClick(find.text('颜色'));
+    await rightClick(mainHeader('颜色'));
     await tester.tap(find.text('固定到左侧'));
     await tester.pumpAndSettle();
-    expect(dxOf(find.text('颜色')), lessThan(dxOf(find.text('超限原因'))));
+    expect(dxOf(mainHeader('颜色')), lessThan(dxOf(mainHeader('超限原因'))));
     expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
 
     // 必填列锁定：「完工申报量」的隐藏入口置灰（必填项不允许从界面消失；
@@ -2832,6 +2846,9 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
               {
                 'demandId': 'C',
                 'executionSegmentCode': 'ZX-C',
+                'receivingGoodsName': '跨车间接收产品',
+                'receivingGoodsCode': 'REC-C',
+                'receivingColorName': '接收蓝色',
                 'reasonCode': 'DIFFERENT_WORKSHOP',
                 'reason': '上层工单 ZX-C 在二车间，跨车间必须送入仓库',
               },

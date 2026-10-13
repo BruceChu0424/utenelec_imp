@@ -67,7 +67,8 @@ class SubcontractApplicationKitPostgresTest {
                     qty numeric(18,4), unit_rate numeric(18,6) DEFAULT 1, is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_order_item_sources(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     order_item_id uuid, application_item_id uuid, alloc_qty numeric(18,4), line_no integer);
-                CREATE TABLE procurement_order_approval_cases(order_type text, order_id uuid, status text);
+                CREATE TABLE procurement_order_approval_cases(order_type text, order_id uuid, status text,
+                    attempt integer DEFAULT 1, UNIQUE(order_type,order_id,attempt));
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text DEFAULT 'OPEN',
                     is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
@@ -103,6 +104,9 @@ class SubcontractApplicationKitPostgresTest {
         for (String name : V798_FUNCTIONS) execute(function(v798, name, "$$;"));
         String v809 = migration("V809__subcontract_application_kit_lock.sql");
         for (String name : V809_FUNCTIONS) execute(function(v809, name, "$function$;"));
+        String v854 = migration("V854__procurement_returned_source_commitments.sql");
+        execute(function(v854,"fn_procurement_order_latest_approval_status","$function$;"));
+        execute(function(v854,"fn_subcontract_application_open_qty","$function$;"));
         update("INSERT INTO warehouses(id) VALUES (?)", WAREHOUSE);
         update("INSERT INTO goods(id) VALUES (?), (?)", PARENT_GOODS, MATERIAL);
         update("INSERT INTO goods_bom_items(id, goods_id, component_goods_id, qty) VALUES (?, ?, ?, 1)",
@@ -225,8 +229,8 @@ class SubcontractApplicationKitPostgresTest {
         assertThat(shortages(1)).hasSize(1);
     }
 
-    /** 剩余未下单 = 申请 − 已下单 − 在审; 未审核或已结案的申请为 0(锁住)。 */
-    @Test void openQuantitySubtractsOrderedAndPendingApprovalOnly() throws Exception {
+    /** 剩余未下单 = 申请 − 已下单 − 在审/退回待修订; 未审核或已结案的申请为 0(锁住)。 */
+    @Test void openQuantityRetainsReturnedSharesAndUsesOnlyTheLatestAttempt() throws Exception {
         application(1, "100");
         publicStock("1000");
         update("UPDATE subcontract_application_items SET ordered_qty = 30 WHERE id = ?", app(1));
@@ -235,9 +239,23 @@ class SubcontractApplicationKitPostgresTest {
         source(1, 1, "20");
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
                 .as("未送审的草稿不扣剩余").isEqualByComparingTo("70");
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'PENDING')", orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status) VALUES ('SUBCONTRACT', ?, 'PENDING')", orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("50");
         assertThat(scalar("SELECT fn_subcontract_application_orderable_qty(?)", app(1))).isEqualByComparingTo("50");
+        update("UPDATE procurement_order_approval_cases SET status='REJECTED' WHERE order_id=?",orderId(1));
+        assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("50");
+        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'REJECTED', 2)",orderId(1));
+        assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
+                .as("重复驳回保留同一份额一次").isEqualByComparingTo("50");
+        update("UPDATE subcontract_order_item_sources SET alloc_qty=10 WHERE order_item_id=?",orderItemId(1));
+        assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("60");
+        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'CANCELED', 3)",orderId(1));
+        assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
+                .as("新轮已撤回时旧驳回不得复活").isEqualByComparingTo("70");
+        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'PENDING', 4)",orderId(1));
+        assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("60");
+        update("UPDATE subcontract_orders SET is_deleted=true WHERE id=?",orderId(1));
+        assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("70");
         update("UPDATE subcontract_applications SET is_closed = true WHERE id = ?", applicationHeader(1));
         assertThat(scalar("SELECT fn_subcontract_application_orderable_qty(?)", app(1))).isEqualByComparingTo("0");
     }
@@ -357,6 +375,7 @@ class SubcontractApplicationKitPostgresTest {
 
     private static String function(String migration, String name, String terminator) {
         int start = migration.indexOf("CREATE FUNCTION " + name + "(");
+        if (start<0) start=migration.indexOf("CREATE OR REPLACE FUNCTION " + name + "(");
         assertThat(start).as("production migration function %s", name).isGreaterThanOrEqualTo(0);
         int end = migration.indexOf(terminator, start);
         assertThat(end).isGreaterThan(start);

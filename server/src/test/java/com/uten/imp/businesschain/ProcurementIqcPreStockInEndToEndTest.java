@@ -4,6 +4,7 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.notice.outbox.BusinessOutboxProcessor;
+import com.uten.imp.features.notice.outbox.BusinessOutboxScheduler;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalContracts.WarehouseArrivalRegisterRequest;
@@ -35,9 +36,12 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
@@ -96,11 +100,14 @@ class ProcurementIqcPreStockInEndToEndTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired AutowireCapableBeanFactory beans;
+    @Autowired WebApplicationContext web;
     @Autowired ProcurementInspectionService inspections;
     @Autowired ProcurementIqcPreStockInService preStock;
     @Autowired WarehouseQualityResultService qualityResults;
     @Autowired WarehouseArrivalRegistrationService arrivals;
     @Autowired BusinessOutboxProcessor outbox;
+    // Keep delivery transactions real while this fixture owns their deterministic scheduling.
+    @MockitoBean BusinessOutboxScheduler outboxScheduler;
     @MockitoSpyBean com.uten.imp.features.production.fulfillment.ProductionPurchaseSupplyTransitionService purchase;
     @MockitoSpyBean com.uten.imp.features.production.fulfillment.ProductionSubcontractSupplyTransitionService subcontract;
 
@@ -181,7 +188,7 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals(1, moved.stockedLineCount());
         assertEquals("B-03", jdbc.queryForObject("SELECT pre_stocked_place FROM procurement_inspection_items WHERE id=?", String.class, line2.inspectionId()));
         assertEquals(3, events(c.receipt(), "PRE_STOCKED"));
-        drainOutbox();
+        drainOutbox(c.type(), c.receipt());
 
         // ③ 品质合格(整行)：按上架位置自动转正——库存进 first，批次 origin=PRE_STOCKED_AUTO，
         //    不再投递「待仓库确认入库」事件，库位学习为 A-01。
@@ -216,7 +223,7 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals("B-03", jdbc.queryForObject("SELECT item.place_snapshot FROM procurement_iqc_stock_in_batch_items item WHERE item.inspection_item_id=?", String.class, line2.inspectionId()));
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM business_outbox WHERE event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND aggregate_id=?", Integer.class, line2.inspectionId()));
         assertEquals(1, events(c.receipt(), "RECEIPT_RESOLVED"), "整单结案事件照常");
-        drainOutbox();
+        drainOutbox(c.type(), c.receipt());
 
         // ⑤ 出了结论就不能再改上架位置(服务 + 数据库触发器双闸)。
         conflict(() -> preStock.preStockIn("PURCHASE", c.receipt(), new PreStockInRequest(List.of(
@@ -228,6 +235,10 @@ class ProcurementIqcPreStockInEndToEndTest {
         TaskDetail detail = qualityResults.detail("PURCHASE", c.receipt());
         assertEquals(2, detail.lines().size());
         assertTrue(detail.lines().stream().allMatch(line -> line.preStocked() != null));
+        assertTrue(detail.lines().stream().allMatch(line -> "CHARGED".equals(line.quantityTranche())));
+        for(var line:detail.lines())assertEquals(jdbc.queryForObject(
+                "SELECT quantity_tranche FROM procurement_inspection_items WHERE id=? AND receipt_type=? AND receipt_id=?",
+                String.class,line.inspectionItemId(),"PURCHASE",c.receipt()),line.quantityTranche());
         assertEquals("A-01", detail.lines().stream().filter(line -> line.inspectionItemId().equals(line1.inspectionId())).findFirst().orElseThrow().preStocked().place());
         assertTrue(detail.history().stream().allMatch(item -> "PRE_STOCKED_AUTO".equals(item.origin())));
         assertEquals(0, detail.preStockedLineCount(), "全部出结论后不再有等结论的上架行");
@@ -259,7 +270,13 @@ class ProcurementIqcPreStockInEndToEndTest {
         inspections.passBatch("SUBCONTRACT", c.receipt(), request);
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", Integer.class, c.receipt()));
         for (var row : c.rows()) assertEquals(0, RECEIPT_QTY.compareTo(balance(leaf, row.goodsId())));
-        drainOutbox();
+        TaskDetail detail=qualityResults.detail("SUBCONTRACT",c.receipt());
+        assertEquals(c.rows().size(),detail.lines().size());
+        assertTrue(detail.lines().stream().allMatch(line -> "LEGACY".equals(line.quantityTranche())));
+        for(var line:detail.lines())assertEquals(jdbc.queryForObject(
+                "SELECT quantity_tranche FROM procurement_inspection_items WHERE id=? AND receipt_type=? AND receipt_id=?",
+                String.class,line.inspectionItemId(),"SUBCONTRACT",c.receipt()),line.quantityTranche());
+        drainOutbox(c.type(), c.receipt());
     }
 
     // ------------------------------------------------------------------ 守卫：非叶仓 / 空库位 / 不存在的明细
@@ -334,7 +351,7 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals(0, new BigDecimal("1.25").compareTo(balance(leaf, w.goodsD())));
         assertEquals("R-07", jdbc.queryForObject("SELECT place_snapshot FROM procurement_iqc_stock_in_batch_items WHERE inspection_item_id=?", String.class, inspectionId));
         assertEquals("PRE_STOCKED_AUTO", jdbc.queryForObject("SELECT origin FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", String.class, receipt));
-        drainOutbox();
+        drainOutbox("PURCHASE", receipt);
     }
 
     /**
@@ -409,7 +426,8 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals(0, jdbc.queryForObject(
                 "SELECT count(*) FROM warehouse_arrival_registration_commands WHERE batch_idempotency_key=?",
                 Integer.class, broken));
-        drainOutbox();
+        result.items().stream().map(ProcurementArrivalContracts.WarehouseArrivalBatchRegisterItem::receiptId)
+                .distinct().forEach(id -> drainOutbox("PURCHASE", id));
     }
 
     private static ProcurementArrivalContracts.WarehouseArrivalBatchRegisterRequest batchRequest(
@@ -422,6 +440,322 @@ class ProcurementIqcPreStockInEndToEndTest {
                                                                           UUID purchaseItem, String qty) {
         return new ProcurementArrivalContracts.BatchArrivalLine("PURCHASE", warehouse, w.employeeId(), w.goodsD(),
                 new BigDecimal(qty), purchaseItem, null, w.unitId(), BigDecimal.ONE, null, "PO-BATCH", null, null, null);
+    }
+
+    @Test
+    void returnedViewAndSpecialWithoutStockViewNeverAdvertisePreStockCapability() throws Exception {
+        Case c = prepare("PURCHASE");
+        var masters = new FullChainEndToEndTest();
+        beans.autowireBean(masters);
+        String tag = UUID.randomUUID().toString().substring(0, 8);
+        UUID returnReader = masters.createUserWithPerms(c.world(), "prestock-return-reader-" + tag,
+                "warehouse_iqc_return:view", "warehouse_iqc_stock_in:before_inspection");
+        masters.loginAs(returnReader);
+        TaskDetail denied = qualityResults.detail("PURCHASE", c.receipt());
+        assertFalse(denied.allowedActions().contains(TaskDetail.ACTION_PRE_STOCK_IN));
+        assertFalse(nativeDetailPreStockCapability(c));
+        UUID authorized = masters.createUserWithPerms(c.world(), "prestock-view-reader-" + tag,
+                "warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:before_inspection");
+        masters.loginAs(authorized);
+        assertTrue(qualityResults.detail("PURCHASE", c.receipt()).allowedActions().contains(TaskDetail.ACTION_PRE_STOCK_IN));
+        assertTrue(nativeDetailPreStockCapability(c));
+        masters.loginAs(authorized);
+        var readonly = readonlyWarehouseActor(SecurityContextHolder.getContext().getAuthentication(),
+                c.world().superAdminUserId());
+        var beforeReadonly = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(nativeWarehouseMvc(), "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/pre-stock-in",
+                new PreStockInRequest(List.of(new PreStockInItem(c.rows().getFirst().inspectionId(),
+                        c.leaves().getFirst(), "QA-READONLY-01"))), readonly, 403);
+        assertEquals(beforeReadonly, ordinaryWarehouseFacts(c));
+        SecurityContextHolder.getContext().setAuthentication(readonly);
+        assertFalse(nativeDetailPreStockCapability(c), "readonly actual principal cannot advertise an up-shelf write");
+        UUID baseOnly = masters.createUserWithPerms(c.world(), "prestock-base-reader-" + tag,
+                "warehouse_iqc_stock_in:view");
+        masters.loginAs(baseOnly);
+        assertFalse(qualityResults.detail("PURCHASE", c.receipt()).allowedActions().contains(TaskDetail.ACTION_PRE_STOCK_IN));
+        assertFalse(nativeDetailPreStockCapability(c));
+    }
+
+    private boolean nativeDetailPreStockCapability(Case c) throws Exception {
+        var mvc = MockMvcBuilders.webAppContextSetup(web)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var result = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/warehouse/quality-results/PURCHASE/" + c.receipt())
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn();
+        var json = beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class)
+                .readTree(result.getResponse().getContentAsString());
+        assertEquals(c.receipt().toString(), json.path("receiptId").asText());
+        assertTrue(json.path("lines").size() > 0);
+        for (var action : json.path("allowedActions")) {
+            if (TaskDetail.ACTION_PRE_STOCK_IN.equals(action.asText())) return true;
+        }
+        return false;
+    }
+
+    @Test
+    void ordinaryConfirmCapabilityMatchesNativeHttpViewAndCommandAuthorities() throws Exception {
+        Case c = prepareMixedOrdinaryReceipt();
+        var mvc = nativeWarehouseMvc();
+        var masters = new FullChainEndToEndTest();
+        beans.autowireBean(masters);
+        String tag = UUID.randomUUID().toString().substring(0, 8);
+        UUID missingView = masters.createUserWithPerms(c.world(), "iqc-confirm-no-view-" + tag,
+                "warehouse_iqc_return:view", "warehouse_iqc_stock_in:confirm");
+        masters.loginAs(missingView);
+        var deniedActor = SecurityContextHolder.getContext().getAuthentication();
+        var denied = nativeQualityDetail(mvc, c, deniedActor);
+        assertFalse(denied.path("items").isEmpty(), "actual qualified slice is still available");
+        var request = ordinaryConfirmRequest(denied, "iqc-authority-confirm-" + tag);
+        var before = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/confirm",
+                request, deniedActor, 403);
+        assertEquals(before, ordinaryWarehouseFacts(c), "missing base view must write no business facts");
+
+        UUID reader = masters.createUserWithPerms(c.world(), "iqc-confirm-reader-" + tag,
+                "warehouse_iqc_stock_in:view");
+        masters.loginAs(reader);
+        assertFalse(jsonAction(nativeQualityDetail(mvc, c,
+                SecurityContextHolder.getContext().getAuthentication()), "CONFIRM"));
+
+        UUID authorized = masters.createUserWithPerms(c.world(), "iqc-confirm-writer-" + tag,
+                "warehouse_iqc_stock_in:view", "warehouse_iqc_stock_in:confirm");
+        masters.loginAs(authorized);
+        var actor = SecurityContextHolder.getContext().getAuthentication();
+        var allowed = nativeQualityDetail(mvc, c, actor);
+        assertTrue(jsonAction(allowed, "CONFIRM"));
+        var readonly = readonlyWarehouseActor(actor, c.world().superAdminUserId());
+        var readOnlyBefore = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/confirm",
+                request, readonly, 403);
+        assertEquals(readOnlyBefore, ordinaryWarehouseFacts(c));
+        var readonlyMerged = nativeQualityDetail(mvc, c, readonly);
+        var readonlyNative = nativeWarehouseGet(mvc,
+                "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt(), readonly);
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertFalse(jsonAction(denied, "CONFIRM"), "return-view cannot advertise a stock-view command"),
+                () -> assertFalse(jsonAction(readonlyMerged, "CONFIRM"), "merged readonly actor cannot advertise confirm"),
+                () -> assertFalse(jsonAction(readonlyNative, "CONFIRM"), "native readonly detail cannot advertise confirm"));
+
+        var successful = ordinaryConfirmRequest(allowed, "iqc-authority-confirm-ok-" + tag);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/confirm",
+                successful, actor, 200);
+        assertEquals(0, new BigDecimal("0.75").compareTo(jdbc.queryForObject(
+                "SELECT warehouse_stocked_base_qty FROM procurement_inspection_items WHERE id=?",
+                BigDecimal.class, c.rows().getFirst().inspectionId())));
+        var committed = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-stock-ins/PURCHASE/" + c.receipt() + "/confirm",
+                successful, actor, 200);
+        assertEquals(committed, ordinaryWarehouseFacts(c), "actual native retry must not post twice");
+    }
+
+    @Test
+    void physicalReturnCapabilityMatchesNativeHttpReturnViewAndCommandAuthorities() throws Exception {
+        Case c = prepareMixedOrdinaryReceipt();
+        var mvc = nativeWarehouseMvc();
+        var masters = new FullChainEndToEndTest();
+        beans.autowireBean(masters);
+        String tag = UUID.randomUUID().toString().substring(0, 8);
+        UUID missingView = masters.createUserWithPerms(c.world(), "iqc-return-no-view-" + tag,
+                "warehouse_iqc_stock_in:view", "procurement_iqc_rejection:record_return");
+        masters.loginAs(missingView);
+        var deniedActor = SecurityContextHolder.getContext().getAuthentication();
+        var denied = nativeQualityDetail(mvc, c, deniedActor);
+        assertEquals(1, denied.path("rejections").size(), "real resolved rejection/outbox projection");
+        var rejection = denied.path("rejections").get(0);
+        UUID caseId = UUID.fromString(rejection.path("id").asText());
+        var request = new com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.RecordReturnRequest(
+                rejection.path("rowVersion").asLong(), UUID.randomUUID(), "QA-RETURN-" + tag,
+                BusinessTime.today(), "actual authority contract");
+        var before = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return",
+                request, deniedActor, 403);
+        assertEquals(before, ordinaryWarehouseFacts(c), "missing return view must write no business facts");
+        UUID sparse = masters.createUserWithPerms(c.world(), "iqc-return-sparse-" + tag,
+                "warehouse_iqc_return:view");
+        masters.loginAs(sparse);
+        var sparseUser = (com.uten.imp.security.AuthUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var sparsePrincipal = new com.uten.imp.security.AuthUser(sparseUser.getId(), sparseUser.getEmployeeId(),
+                sparseUser.getLoginAccount(), sparseUser.getPermissions(), false, true, true);
+        var sparseActor = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                sparsePrincipal, null, sparsePrincipal.getAuthorities());
+        assertTrue(sparsePrincipal.isSuperAdmin());
+        assertFalse(sparsePrincipal.getPermissions().contains("procurement_iqc_rejection:record_return"));
+        var sparseView = nativeWarehouseGet(mvc, "/api/warehouse/iqc-returns/" + caseId, sparseActor);
+        var sparseBefore = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return", request, sparseActor, 403);
+        assertEquals(sparseBefore, ordinaryWarehouseFacts(c));
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertFalse(rejection.path("canRecordReturn").asBoolean(), "stock-view cannot advertise return-view command"),
+                () -> assertFalse(jsonAction(sparseView, "RECORD_RETURN"), "standalone SA flag cannot replace native raw record authority"));
+
+        UUID reader = masters.createUserWithPerms(c.world(), "iqc-return-reader-" + tag,
+                "warehouse_iqc_return:view");
+        masters.loginAs(reader);
+        assertFalse(nativeQualityDetail(mvc, c, SecurityContextHolder.getContext().getAuthentication())
+                .path("rejections").get(0).path("canRecordReturn").asBoolean());
+
+        UUID authorized = masters.createUserWithPerms(c.world(), "iqc-return-writer-" + tag,
+                "warehouse_iqc_return:view", "procurement_iqc_rejection:record_return");
+        masters.loginAs(authorized);
+        var actor = SecurityContextHolder.getContext().getAuthentication();
+        assertTrue(jsonAction(nativeWarehouseGet(mvc, "/api/warehouse/iqc-returns/" + caseId, actor), "RECORD_RETURN"));
+        assertTrue(nativeQualityDetail(mvc, c, actor).path("rejections").get(0)
+                .path("canRecordReturn").asBoolean());
+        var readonly = readonlyWarehouseActor(actor, c.world().superAdminUserId());
+        var readOnlyBefore = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return",
+                request, readonly, 403);
+        assertEquals(readOnlyBefore, ordinaryWarehouseFacts(c));
+        org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertFalse(nativeQualityDetail(mvc, c, readonly).path("rejections").get(0)
+                        .path("canRecordReturn").asBoolean()),
+                () -> assertFalse(jsonAction(nativeWarehouseGet(mvc, "/api/warehouse/iqc-returns/" + caseId, readonly), "RECORD_RETURN")));
+
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return",
+                request, actor, 200);
+        assertNotNull(jdbc.queryForObject("SELECT return_recorded_at FROM procurement_iqc_rejection_cases WHERE id=?",
+                java.sql.Timestamp.class, caseId));
+        var committed = ordinaryWarehouseFacts(c);
+        nativeWarehousePost(mvc, "/api/warehouse/iqc-returns/" + caseId + "/record-return",
+                request, actor, 200);
+        assertEquals(committed, ordinaryWarehouseFacts(c), "actual return retry must not repeat effects");
+    }
+
+    private Case prepareMixedOrdinaryReceipt() {
+        return prepareMixedOrdinaryReceipt(true);
+    }
+
+    private Case prepareMixedOrdinaryReceipt(boolean deliver) {
+        Case c = prepare("PURCHASE");
+        inspections.decideBatch(c.type(), c.receipt(), new BatchInspectionDecideRequest(List.of(
+                new BatchInspectionDecideRequest.Item(c.rows().getFirst().inspectionId(), RECEIPT_QTY,
+                        new BigDecimal("0.75"), new BigDecimal("0.50"), "authority-mixed-" + UUID.randomUUID())),
+                "genuine mixed quality conclusion"));
+        if (deliver) drainOutbox(c.type(), c.receipt());
+        return c;
+    }
+
+    @Test
+    void receiptOutboxCompletionWaitsForAClaimedRejectionInsteadOfTreatingSkipLockedAsIdle() throws Exception {
+        Case c = prepareMixedOrdinaryReceipt(false);
+        UUID inspectionId = c.rows().getFirst().inspectionId();
+        UUID eventId = jdbc.queryForObject("""
+                SELECT id FROM business_outbox
+                WHERE event_type='PROCUREMENT_IQC_REJECTION_DETECTED' AND aggregate_id=? AND status=0
+                """, UUID.class, inspectionId);
+        assertNotNull(eventId);
+        var worker = java.util.concurrent.Executors.newSingleThreadExecutor(Thread.ofPlatform()
+                .name("iqc-fixture-delivery").inheritInheritableThreadLocals(false).factory());
+        try (var claim = jdbc.getDataSource().getConnection()) {
+            claim.setAutoCommit(false);
+            try (var lock = claim.prepareStatement("SELECT id FROM business_outbox WHERE id=? FOR UPDATE")) {
+                lock.setObject(1, eventId);
+                try (var locked = lock.executeQuery()) { assertTrue(locked.next()); }
+            }
+            try {
+                boolean noClaimableEvent = false;
+                for (int index = 0; index < 200; index++) {
+                    if (!outbox.processNext()) {
+                        noClaimableEvent = true;
+                        break;
+                    }
+                }
+                assertTrue(noClaimableEvent, "real SKIP LOCKED can report idle while the target event is claimed");
+                assertEquals(0, jdbc.queryForObject("SELECT status FROM business_outbox WHERE id=?", Integer.class, eventId));
+                assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_rejection_cases WHERE inspection_item_id=?",
+                        Integer.class, inspectionId));
+                assertTrue(qualityResults.detail(c.type(), c.receipt()).rejections().isEmpty());
+
+                var started = new java.util.concurrent.CountDownLatch(1);
+                var completion = worker.submit(() -> {
+                    started.countDown();
+                    drainOutbox(c.type(), c.receipt());
+                });
+                assertTrue(started.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                assertThrows(java.util.concurrent.TimeoutException.class,
+                        () -> completion.get(200, java.util.concurrent.TimeUnit.MILLISECONDS),
+                        "delivery completion must wait for the receipt's durable projection, not global idle");
+                assertEquals(0, jdbc.queryForObject("SELECT status FROM business_outbox WHERE id=?", Integer.class, eventId));
+                claim.commit();
+                completion.get(20, java.util.concurrent.TimeUnit.SECONDS);
+                assertEquals(1, jdbc.queryForObject("SELECT status FROM business_outbox WHERE id=?", Integer.class, eventId));
+                assertEquals(1, qualityResults.detail(c.type(), c.receipt()).rejections().size());
+            } finally {
+                claim.rollback();
+            }
+        } finally {
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
+
+    private org.springframework.test.web.servlet.MockMvc nativeWarehouseMvc() {
+        return MockMvcBuilders.webAppContextSetup(web)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode nativeQualityDetail(
+            org.springframework.test.web.servlet.MockMvc mvc, Case c,
+            org.springframework.security.core.Authentication actor) throws Exception {
+        return nativeWarehouseGet(mvc, "/api/warehouse/quality-results/PURCHASE/" + c.receipt(), actor);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode nativeWarehouseGet(
+            org.springframework.test.web.servlet.MockMvc mvc, String path,
+            org.springframework.security.core.Authentication actor) throws Exception {
+        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get(path)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor)))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn();
+        return beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class)
+                .readTree(response.getResponse().getContentAsString());
+    }
+
+    private void nativeWarehousePost(org.springframework.test.web.servlet.MockMvc mvc, String path, Object command,
+                                     org.springframework.security.core.Authentication actor, int expectedStatus) throws Exception {
+        var result = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor))
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content(beans.getBean(com.fasterxml.jackson.databind.ObjectMapper.class).writeValueAsString(command)))
+                .andReturn();
+        assertEquals(expectedStatus, result.getResponse().getStatus(),
+                "native " + path + ": " + result.getResponse().getContentAsString());
+    }
+
+    private com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest ordinaryConfirmRequest(
+            com.fasterxml.jackson.databind.JsonNode detail, String key) {
+        var slice = detail.path("items").get(0);
+        return new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest(key, List.of(
+                new com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmItem(
+                        UUID.fromString(slice.path("passEventId").asText()), slice.path("remainingBaseQty").decimalValue(),
+                        slice.path("remainingBaseQty").decimalValue(), "QA-CONFIRM-01",
+                        UUID.fromString(slice.path("warehouseId").asText()))));
+    }
+
+    private static boolean jsonAction(com.fasterxml.jackson.databind.JsonNode detail, String expected) {
+        for (var action : detail.path("allowedActions")) if (expected.equals(action.asText())) return true;
+        return false;
+    }
+
+    private static org.springframework.security.core.Authentication readonlyWarehouseActor(
+            org.springframework.security.core.Authentication actor, UUID impersonator) {
+        var user = (com.uten.imp.security.AuthUser) actor.getPrincipal();
+        var readonly = new com.uten.imp.security.AuthUser(user.getId(), user.getEmployeeId(), user.getLoginAccount(),
+                user.getPermissions(), false, true, user.isSuperAdmin(), false, impersonator);
+        return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(readonly, null, readonly.getAuthorities());
+    }
+
+    private Map<String, Object> ordinaryWarehouseFacts(Case c) {
+        return Map.of(
+                "inspection", jdbc.queryForList("SELECT to_jsonb(item)::text FROM procurement_inspection_items item WHERE receipt_id=? ORDER BY id", String.class, c.receipt()),
+                "stockBatches", jdbc.queryForObject("SELECT count(*) FROM procurement_iqc_stock_in_batches WHERE receipt_id=?", Integer.class, c.receipt()),
+                "inspectionEvents", jdbc.queryForObject("SELECT count(*) FROM procurement_inspection_events event JOIN procurement_inspection_items item ON item.id=event.inspection_item_id WHERE item.receipt_id=?", Integer.class, c.receipt()),
+                "rejections", jdbc.queryForList("SELECT to_jsonb(rejection)::text FROM procurement_iqc_rejection_cases rejection WHERE receipt_id=? ORDER BY id", String.class, c.receipt()),
+                "stockQty", balance(c.leaves().getFirst(), c.rows().getFirst().goodsId()));
     }
 
     // ------------------------------------------------------------------ helpers
@@ -449,10 +783,38 @@ class ProcurementIqcPreStockInEndToEndTest {
                         FullChainEndToEndTest.World world) {
     }
 
-    private void drainOutbox() {
-        int guard = 0;
-        while (outbox.processNext() && guard++ < 200) {
-            // 通知投递失败会抛出；这里只要求所有事件(含 PRE_STOCKED 通知)都能被处理完。
+    private void drainOutbox(String receiptType, UUID receiptId) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+        while (true) {
+            var pending = jdbc.queryForList("""
+                    SELECT event.id,event.event_type,event.status
+                    FROM business_outbox event
+                    WHERE event.status<>1 AND (
+                        event.aggregate_id=? OR event.payload->>'receiptId'=? OR EXISTS (
+                            SELECT 1 FROM procurement_inspection_items inspection
+                            WHERE inspection.receipt_type=? AND inspection.receipt_id=?
+                              AND (inspection.id=event.aggregate_id OR EXISTS (
+                                  SELECT 1 FROM procurement_inspection_events resolution
+                                  WHERE resolution.inspection_item_id=inspection.id AND resolution.id=event.aggregate_id))))
+                    ORDER BY event.created_at,event.id
+                    """, receiptId, receiptId.toString(), receiptType, receiptId);
+            var missingRejections = jdbc.queryForList("""
+                    SELECT inspection.id FROM procurement_inspection_items inspection
+                    WHERE inspection.receipt_type=? AND inspection.receipt_id=?
+                      AND inspection.status IN ('PARTIAL','RESOLVED') AND inspection.failed_base_qty>0
+                      AND NOT EXISTS (SELECT 1 FROM procurement_iqc_rejection_cases rejection
+                          WHERE rejection.inspection_item_id=inspection.id AND NOT rejection.is_deleted)
+                    """, UUID.class, receiptType, receiptId);
+            if (pending.isEmpty() && missingRejections.isEmpty()) return;
+            if (System.nanoTime() >= deadline) {
+                throw new AssertionError("Receipt outbox delivery did not commit: " + receiptType + "/" + receiptId
+                        + "; pending=" + pending + "; missingRejections=" + missingRejections);
+            }
+            // SKIP LOCKED false says nothing about a sibling worker's uncommitted projection.
+            if (!outbox.processNext()) {
+                java.util.concurrent.locks.LockSupport.parkNanos(java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(10));
+                if (Thread.currentThread().isInterrupted()) throw new AssertionError("Receipt outbox delivery interrupted");
+            }
         }
     }
 

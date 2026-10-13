@@ -19,9 +19,8 @@ import '../../../shared/business_columns/business_columns_table.dart';
 //    批量动作，整单决策仍走底部通过/驳回；
 //  - 审批历史卡：逐轮 提交/驳回/通过 事件与驳回原因；
 //  - 底栏三操作：驳回（必填原因）/ 通过（选填备注）/ 返回——不必退回任务中心即可决策。
-// 待生效订单可由财务在金额单元格核改：保存通过专用审核修订命令开新轮次，
-// 保留原提交快照、来源身份和数量份额。已生效订单复核不改金额。
-// 按服务端 allowedActions、版本与本人有效认领办理，保存后先核对新旧值再通过。
+// 财务核对单据并确认审批汇率，不修改业务金额；修改由制单人退回后办理。
+// 按服务端 allowedActions、版本与本人有效认领办理，历史修订与对比继续只读展示。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -30,7 +29,6 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/data_display/uten_revision_table.dart';
-import '../../../components/data_display/uten_review_input_cell.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/forms/maker_audit_fields.dart' show utenFmtIsoTime;
 import '../../../components/inputs/uten_field_message.dart';
@@ -57,6 +55,8 @@ import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
 import '../models/finance_procurement_revision.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
+import '../widgets/finance_document_unapproval_action.dart';
+import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/formatters/money_display.dart';
@@ -75,7 +75,10 @@ class FinanceProcurementApprovalReviewPage extends ConsumerStatefulWidget {
 }
 
 class _FinanceProcurementApprovalReviewPageState
-    extends ConsumerState<FinanceProcurementApprovalReviewPage> {
+    extends ConsumerState<FinanceProcurementApprovalReviewPage>
+    with
+        FormDraftMixin<FinanceProcurementApprovalReviewPage>,
+        ReviewTaskDraftMixin<FinanceProcurementApprovalReviewPage> {
   FinanceProcurementApprovalReview? _review;
   bool _loading = true;
   bool _busy = false;
@@ -83,39 +86,130 @@ class _FinanceProcurementApprovalReviewPageState
   TaskClaimSession? _reviewClaim;
   int _loadGeneration = 0;
   late String _caseId;
-  bool _amended = false;
-  final Map<String, TextEditingController> _amountInputs = {};
-
-  bool get _canEditAmounts =>
-      _review?.allowedActions.contains('EDIT') == true &&
+  final _approveRemark = TextEditingController();
+  final _rejectReason = TextEditingController();
+  @override
+  bool get formDraftBusy => _busy;
+  @override
+  bool get formDraftUseCurrentRoute => false;
+  @override
+  FormDraftDescriptor get reviewDraftDescriptor =>
+      FormDraftCatalog.financeProcurementReview;
+  @override
+  String get reviewDraftRoute =>
+      '/finance/procurement-approvals/${Uri.encodeComponent(_caseId)}';
+  @override
+  Map<String, dynamic> get reviewDraftSource => {
+    'subjectId': _caseId,
+    'orderId': _review?.orderId,
+    'version': _review?.version,
+    'attempt': _review?.attempt,
+    'lineIds':
+        (_review?.items
+                  .map((line) => line.orderItemId)
+                  .whereType<String>()
+                  .toList() ??
+              <String>[])
+          ..sort(),
+  };
+  @override
+  bool get reviewDraftEditable =>
+      _review?.isPending == true &&
+      (_review!.allowedActions.contains('APPROVE') ||
+          _review!.allowedActions.contains('REJECT'));
+  @override
+  bool canDispatchReviewCommand(String action) =>
+      _review?.isPending == true &&
       _reviewClaim?.isReady == true &&
-      !_busy;
+      _review?.allowedActions.contains(switch (action) {
+            'reject' => 'REJECT',
+            'approve' => 'APPROVE',
+            _ => '',
+          }) ==
+          true &&
+      (ref.read(isSuperAdminProvider) ||
+          ref
+              .read(currentPermissionsProvider)
+              .contains(
+                action == 'reject'
+                    ? Perm.financeOrderApprovalReject
+                    : Perm.financeOrderApprovalApprove,
+              ));
+  @override
+  Iterable<Listenable> get formDraftListenables => [
+    _rateController,
+    _approveRemark,
+    _rejectReason,
+  ];
+  @override
+  Map<String, dynamic> captureReviewInputs() => {
+    'rate': _rateController.text,
+    'approveRemark': _approveRemark.text,
+    'rejectReason': _rejectReason.text,
+  };
+  @override
+  void restoreReviewInputs(Map<String, dynamic> inputs) {
+    // 旧草稿中的业务金额输入已退役，只恢复审批汇率和意见。
+    _rateController.text = inputs['rate'] as String? ?? '';
+    _approveRemark.text = inputs['approveRemark'] as String? ?? '';
+    _rejectReason.text = inputs['rejectReason'] as String? ?? '';
+  }
 
-  String? _inputBaseline(FinanceProcurementReviewLine line) =>
-      line.totalAmountInput ?? line.price;
-
-  bool get _hasAmountEdits =>
-      _review?.items.any(
-        (line) =>
-            financeExactTrimmed(_amountInputs[line.orderItemId]?.text) !=
-            financeExactTrimmed(_inputBaseline(line)),
-      ) ==
-      true;
-
-  void _resetAmountInputs(FinanceProcurementApprovalReview review) {
-    for (final controller in _amountInputs.values) {
-      controller.dispose();
-    }
-    _amountInputs.clear();
-    for (final line in review.items) {
-      final id = line.orderItemId;
-      if (id != null) {
-        _amountInputs[id] = TextEditingController(
-          text: financeExactTrimmed(_inputBaseline(line)) ?? '',
-        );
-      }
+  @override
+  Future<void> reloadReviewSource() async {
+    await _load();
+    if (_error != null || _review == null) {
+      throw StateError(_error ?? '订货审批结果尚未读取');
     }
   }
+
+  @override
+  Future<bool> recoverReviewCommand(Map<String, dynamic> command) async {
+    final source = command['source'];
+    if (source is! Map ||
+        source['subjectId'] != _caseId ||
+        source['version'] is! int) {
+      return false;
+    }
+    final current = await ref
+        .read(financeProcurementWorkflowRepositoryProvider)
+        .review(_caseId);
+    if (current.caseId != _caseId ||
+        current.orderId != source['orderId'] ||
+        current.attempt != source['attempt'] ||
+        current.version != (source['version'] as int) + 1) {
+      return false;
+    }
+    return switch (command['action']) {
+      'approve' =>
+        current.status == 'APPROVED' &&
+            financeRateUnits(current.financeExchangeRate) != null &&
+            financeRateUnits(current.financeExchangeRate) ==
+                financeRateUnits(
+                  (command['request'] as Map?)?['exchangeRate'] as String?,
+                ) &&
+            current.history.any(
+              (entry) =>
+                  entry.attempt == current.attempt &&
+                  entry.eventType == 'APPROVED' &&
+                  (entry.reason ?? '').trim() ==
+                      ((command['request'] as Map?)?['remark'] as String? ?? '')
+                          .trim(),
+            ),
+      'reject' =>
+        current.status == 'REJECTED' &&
+            current.history.any(
+              (entry) =>
+                  entry.attempt == current.attempt &&
+                  entry.eventType == 'REJECTED' &&
+                  entry.reason == (command['request'] as Map?)?['reason'],
+            ),
+      _ => false,
+    };
+  }
+
+  @override
+  void closeRecoveredReview() => _closeAfterDecision();
 
   /// 汇率编辑框（case 级记账汇率，非行单位换算率）：加载后预填
   /// financeExchangeRate ?? 提交快照 exchangeRate ?? 1，未批 case 可改。
@@ -132,9 +226,8 @@ class _FinanceProcurementApprovalReviewPageState
   void dispose() {
     ++_loadGeneration;
     _rateController.dispose();
-    for (final controller in _amountInputs.values) {
-      controller.dispose();
-    }
+    _approveRemark.dispose();
+    _rejectReason.dispose();
     _reviewClaim?.removeListener(_claimChanged);
     _reviewClaim?.releaseAll().ignore();
     super.dispose();
@@ -161,10 +254,13 @@ class _FinanceProcurementApprovalReviewPageState
   void initState() {
     super.initState();
     _caseId = widget.caseId;
+    startFormDraftIdentityGuard();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   Future<void> _load() async {
+    await prepareReviewReload();
+    if (!mounted || !formDraftIdentityIsCurrent) return;
     if (!_canView) return;
     final generation = ++_loadGeneration;
     final container = ProviderScope.containerOf(context, listen: false);
@@ -208,8 +304,10 @@ class _FinanceProcurementApprovalReviewPageState
         _loading = false;
         // 汇率编辑框每次加载重置为 case 默认值（已批 = 财务落定值，未批 = 快照兜底）。
         _rateController.text = _defaultRateText(review);
-        _resetAmountInputs(review);
+        _approveRemark.clear();
+        _rejectReason.clear();
       });
+      await bindReviewDraft();
       if (!review.isPending) await _reviewClaim?.releaseAll();
     } on ApiException catch (e) {
       if (!mounted || generation != _loadGeneration) return;
@@ -228,143 +326,13 @@ class _FinanceProcurementApprovalReviewPageState
 
   String get widgetSafeBillNo => _review?.billNo ?? '';
 
-  Future<void> _saveAmountEdits() async {
-    final review = _review;
-    final claim = _reviewClaim;
-    if (review == null ||
-        claim == null ||
-        !_canEditAmounts ||
-        !_hasAmountEdits) {
-      return;
-    }
-    final generation = _loadGeneration;
-    final identity = ref.read(sessionProvider);
-    final pendingRateText = _rateController.text;
-    final lines = <Map<String, dynamic>>[];
-    for (final line in review.items) {
-      final text = _amountInputs[line.orderItemId]?.text;
-      if (financeExactTrimmed(text) ==
-          financeExactTrimmed(_inputBaseline(line))) {
-        continue;
-      }
-      final exact = financeExactTrimmed(text);
-      final units = financeAmountUnits(exact);
-      if (exact == null || units == null || units.isNegative) {
-        context.appWarning('第 ${line.lineNo} 行金额须为可精确保存的非负数字');
-        return;
-      }
-      lines.add({
-        'itemId': line.orderItemId,
-        if (line.totalAmountInput == null)
-          'price': exact
-        else
-          'totalAmountInput': exact,
-      });
-    }
-    final decision = review.decisionItem;
-    if (decision == null) return;
-    setState(() => _busy = true);
-    try {
-      if (!await claim.validateForDecision() ||
-          !mounted ||
-          generation != _loadGeneration ||
-          !identical(review, _review) ||
-          !ref.read(sessionProvider).isSameIdentity(identity)) {
-        return;
-      }
-      final amended = await ref
-          .read(financeProcurementWorkflowRepositoryProvider)
-          .amendReview(
-            decision.withClaimId(
-              claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', review.caseId)!,
-            ),
-            lines,
-          );
-      if (!mounted ||
-          generation != _loadGeneration ||
-          !ref.read(sessionProvider).isSameIdentity(identity)) {
-        return;
-      }
-      _caseId = amended.caseId;
-      _amended = true;
-      await _load();
-      if (mounted && ref.read(sessionProvider).isSameIdentity(identity)) {
-        if (_review?.caseId == amended.caseId && _review?.isPending == true) {
-          setState(() => _rateController.text = pendingRateText);
-        }
-        context.appSuccess('审核修改已保存，请核对原值与新值后通过');
-        refreshBadges(ref);
-      }
-    } on ApiException catch (error) {
-      if (mounted && ref.read(sessionProvider).isSameIdentity(identity)) {
-        context.appError(error.message);
-      }
-    } catch (_) {
-      if (mounted && ref.read(sessionProvider).isSameIdentity(identity)) {
-        context.appError('审核修改保存失败，请核对后重试');
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Widget _reviewAmountCell(
-    UtenRevisionRow<FinanceProcurementReviewLine> row, {
-    required bool total,
-  }) {
-    final line = row.value;
-    final controller = _amountInputs[line.orderItemId];
-    final editable =
-        _canEditAmounts &&
-        row.kind != UtenRevisionKind.removed &&
-        (line.totalAmountInput != null) == total &&
-        controller != null;
-    final recorded = total ? line.amountOriginal : line.price;
-    if (!editable) {
-      return Text(
-        financeMoneyWithUnitSuffix(
-              recorded,
-              currencyName: _review?.currencyName,
-            ) +
-            (!total && line.totalAmountInput != null ? '（参考）' : ''),
-      );
-    }
-    final changed =
-        financeExactTrimmed(controller.text) !=
-        financeExactTrimmed(_inputBaseline(line));
-    final red = Theme.of(context).colorScheme.error;
-    return UtenReviewInputCell(
-      before: _inputBaseline(line),
-      after: controller.text,
-      beforeLabel: financeMoneyWithUnitSuffix(
-        _inputBaseline(line),
-        currencyName: _review?.currencyName,
-      ),
-      beforeKey: ValueKey('finance-order-review-before-${line.orderItemId}'),
-      child: TextField(
-        key: ValueKey(
-          'finance-order-review-${total ? 'total' : 'price'}-${line.orderItemId}',
-        ),
-        controller: controller,
-        onChanged: (_) => setState(() {}),
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        style: changed
-            ? TextStyle(color: red, fontWeight: FontWeight.w700)
-            : null,
-        decoration: const InputDecoration(
-          isDense: true,
-          border: UnderlineInputBorder(),
-        ),
-      ),
-    );
-  }
-
   Future<void> _leaveReview() async {
+    if (!await confirmFormDraftExit() || !mounted) return;
     await _reviewClaim?.releaseAll();
     if (!mounted) return;
     final navigator = Navigator.of(context);
     if (navigator.canPop()) {
-      navigator.pop(_amended ? true : null);
+      navigator.pop();
     } else {
       context.go(FinanceWorkflowRoutes.approvalTasks);
     }
@@ -436,10 +404,6 @@ class _FinanceProcurementApprovalReviewPageState
   Future<void> _approve() async {
     final review = _review;
     if (review == null || _busy) return;
-    if (_hasAmountEdits) {
-      context.appWarning('请先保存审核修改，核对服务端重算后的金额再通过');
-      return;
-    }
     final claim = _reviewClaim;
     final generation = _loadGeneration;
     if (review.isPending && !_rateInputValid()) {
@@ -455,7 +419,7 @@ class _FinanceProcurementApprovalReviewPageState
       context.appWarning('当前账号不可办理该笔通过，请刷新后重试');
       return;
     }
-    final controller = TextEditingController();
+    final controller = _approveRemark;
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogCtx) => AlertDialog(
@@ -502,8 +466,12 @@ class _FinanceProcurementApprovalReviewPageState
       ),
     );
     final remark = controller.text;
-    Future<void>.delayed(const Duration(milliseconds: 300), controller.dispose);
     if (ok != true || !mounted) return;
+    if (!_rateInputValid()) {
+      context.appWarning(_rateInputError() ?? '请重新核对汇率');
+      return;
+    }
+    final reviewedRate = _effectiveRateText(review);
     setState(() => _busy = true);
     try {
       if (!await claim.validateForDecision() ||
@@ -515,18 +483,27 @@ class _FinanceProcurementApprovalReviewPageState
         }
         return;
       }
-      await ref
-          .read(financeProcurementWorkflowRepositoryProvider)
-          .approveOrdersWithExactRate(
-            [
-              decision.withClaimId(
-                claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', review.caseId)!,
-              ),
-            ],
-            remark: remark,
-            exchangeRate: _effectiveRateText(review),
-          );
+      await submitReviewCommand(
+        'approve',
+        () => ref
+            .read(financeProcurementWorkflowRepositoryProvider)
+            .approveOrdersWithExactRate(
+              [
+                decision.withClaimId(
+                  claim.claimIdFor(
+                    'PROCUREMENT_FINANCE_APPROVE',
+                    review.caseId,
+                  )!,
+                ),
+              ],
+              remark: remark,
+              exchangeRate: reviewedRate,
+            ),
+        request: {'exchangeRate': reviewedRate, 'remark': remark.trim()},
+      );
       if (!mounted) return;
+      await finishReviewDraft();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess('已通过 $widgetSafeBillNo，仓库预计到货任务已生成');
       refreshBadges(ref);
       _closeAfterDecision();
@@ -542,10 +519,6 @@ class _FinanceProcurementApprovalReviewPageState
   Future<void> _reject() async {
     final review = _review;
     if (review == null || _busy) return;
-    if (_hasAmountEdits) {
-      context.appWarning('请先保存审核修改或恢复原值，再驳回');
-      return;
-    }
     final claim = _reviewClaim;
     final generation = _loadGeneration;
     if (claim == null || !claim.isReady) {
@@ -557,7 +530,7 @@ class _FinanceProcurementApprovalReviewPageState
       context.appWarning('当前账号不可办理该笔驳回，请刷新后重试');
       return;
     }
-    final controller = TextEditingController();
+    final controller = _rejectReason;
     String? errorText;
     final ok = await showDialog<bool>(
       context: context,
@@ -622,7 +595,6 @@ class _FinanceProcurementApprovalReviewPageState
       ),
     );
     final reason = controller.text;
-    Future<void>.delayed(const Duration(milliseconds: 300), controller.dispose);
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
     try {
@@ -635,14 +607,20 @@ class _FinanceProcurementApprovalReviewPageState
         }
         return;
       }
-      await ref
-          .read(financeProcurementWorkflowRepositoryProvider)
-          .rejectOrdersBatch([
-            decision.withClaimId(
-              claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', review.caseId)!,
-            ),
-          ], reason);
+      await submitReviewCommand(
+        'reject',
+        () => ref
+            .read(financeProcurementWorkflowRepositoryProvider)
+            .rejectOrdersBatch([
+              decision.withClaimId(
+                claim.claimIdFor('PROCUREMENT_FINANCE_APPROVE', review.caseId)!,
+              ),
+            ], reason),
+        request: {'reason': reason.trim()},
+      );
       if (!mounted) return;
+      await finishReviewDraft();
+      if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess('已驳回 $widgetSafeBillNo，制单人将收到修正通知');
       refreshBadges(ref);
       _closeAfterDecision();
@@ -683,209 +661,237 @@ class _FinanceProcurementApprovalReviewPageState
     final review = _review;
     final showActions =
         review != null &&
-        review.isPending &&
-        (review.allowedActions.contains('APPROVE') ||
-            review.allowedActions.contains('REJECT'));
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '订货审批审核详情',
-        leading: UtenBackButton(onPressed: _leaveReview),
-      ),
-      body: SafeArea(
-        child: Stack(
-          children: [
-            !canView
-                ? Center(
-                    child: Text(
-                      '无权查看订货审批任务',
-                      style: TextStyle(color: theme.colorScheme.error),
-                    ),
-                  )
-                : _loading
-                ? const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  )
-                : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(UtenSpacing.s16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _error!,
-                            style: TextStyle(color: theme.colorScheme.error),
-                          ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          UtenButton(
-                            type: UtenButtonType.secondary,
-                            icon: Icons.refresh_rounded,
-                            onPressed: _load,
-                            child: const Text('重试'),
-                          ),
-                        ],
+        (review.isPending &&
+                (review.allowedActions.contains('APPROVE') ||
+                    review.allowedActions.contains('REJECT')) ||
+            review.status == 'APPROVED');
+    return withFormDraft(
+      Scaffold(
+        appBar: UtenAppBar(
+          title: '订货审批审核详情',
+          leading: UtenBackButton(onPressed: _leaveReview),
+        ),
+        body: SafeArea(
+          child: Stack(
+            children: [
+              !canView
+                  ? Center(
+                      child: Text(
+                        '无权查看订货审批任务',
+                        style: TextStyle(color: theme.colorScheme.error),
                       ),
-                    ),
-                  )
-                : review == null
-                ? const SizedBox.shrink()
-                // 2026-10-10 滚动结构对齐销售财审页：折叠头（卡片随页滚走）+
-                // body 明细表内滚——整页 ListView + embedded 吸顶表头的旧结构
-                // 会让表头吸到屏幕顶，弃。
-                : UtenContentContainer(
-                    child: UtenCollapsingHeaderScrollView(
-                      collapsingHeader: Padding(
-                        padding: const EdgeInsets.fromLTRB(
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                        ),
+                    )
+                  : _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    )
+                  : _error != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(UtenSpacing.s16),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (review.isPending &&
-                                review.allowedActions.isNotEmpty &&
-                                _reviewClaim?.isReady != true) ...[
-                              FinanceReviewClaimNotice(
-                                claim: _reviewClaim,
-                                onRetry: _busy ? null : _load,
-                              ),
-                              const SizedBox(height: UtenSpacing.s12),
-                            ],
-                            _statusStrip(theme, review),
+                            Text(
+                              _error!,
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
                             const SizedBox(height: UtenSpacing.s12),
-                            _supplierFinanceCard(theme, review),
-                            const SizedBox(height: UtenSpacing.s12),
-                            _orderCard(theme, review),
-                            if (procurementHeaderUnknownLabels(
-                              review.previousHeaderSnapshot,
-                              review.headerSnapshot,
-                            ).isNotEmpty)
-                              Text(
-                                '历史未留存${procurementHeaderUnknownLabels(review.previousHeaderSnapshot, review.headerSnapshot).join('、')}，无法确认这些字段是否修改。',
-                              ),
-                            if (procurementHeaderChanges(
-                              review.previousHeaderSnapshot,
-                              review.headerSnapshot,
-                            ).isNotEmpty) ...[
-                              const SizedBox(height: UtenSpacing.s12),
-                              UtenRevisionFields(
-                                changes: [
-                                  for (final change in procurementHeaderChanges(
-                                    review.previousHeaderSnapshot,
-                                    review.headerSnapshot,
-                                  ))
-                                    UtenRevisionField(
-                                      label: change.label,
-                                      before: change.before,
-                                      after: change.after,
-                                    ),
-                                ],
-                              ),
-                            ],
-                            // 财务审核只读查看采购/委外合同原件；后端按「待审可见」口径终审，
-                            // 审核页不提供上传/删除（原件不能在审批时被悄悄替换）。
-                            if (review.orderId.isNotEmpty &&
-                                review.orderType !=
-                                    FinanceProcurementOrderType.unknown) ...[
-                              const SizedBox(height: UtenSpacing.s12),
-                              BusinessAttachmentSection(
-                                key: const ValueKey(
-                                  'finance-order-review-attachments',
-                                ),
-                                ownerType:
-                                    review.orderType ==
-                                        FinanceProcurementOrderType.purchase
-                                    ? 'PURCHASE_ORDER'
-                                    : 'SUBCONTRACT_ORDER',
-                                ownerId: review.orderId,
-                                canView: true,
-                                canManage: false,
-                                title: '合同与确认文件（只读）',
-                              ),
-                            ],
-                            const SizedBox(height: UtenSpacing.s12),
-                            _historyCard(theme, review),
+                            UtenButton(
+                              type: UtenButtonType.secondary,
+                              icon: Icons.refresh_rounded,
+                              onPressed: _load,
+                              child: const Text('重试'),
+                            ),
                           ],
                         ),
                       ),
-                      body: Padding(
-                        // 底部留出右下悬浮操作组的高度，合计条不被按钮盖住。
-                        padding: const EdgeInsets.fromLTRB(
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenSpacing.s12,
-                          UtenFloatingActionGroup.controlHeight +
-                              UtenSpacing.s32,
+                    )
+                  : review == null
+                  ? const SizedBox.shrink()
+                  // 2026-10-10 滚动结构对齐销售财审页：折叠头（卡片随页滚走）+
+                  // body 明细表内滚——整页 ListView + embedded 吸顶表头的旧结构
+                  // 会让表头吸到屏幕顶，弃。
+                  : UtenContentContainer(
+                      child: UtenCollapsingHeaderScrollView(
+                        collapsingHeader: Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (review.isPending &&
+                                  review.allowedActions.isNotEmpty &&
+                                  _reviewClaim?.isReady != true) ...[
+                                FinanceReviewClaimNotice(
+                                  claim: _reviewClaim,
+                                  onRetry: _busy ? null : _load,
+                                ),
+                                const SizedBox(height: UtenSpacing.s12),
+                              ],
+                              _statusStrip(theme, review),
+                              const SizedBox(height: UtenSpacing.s12),
+                              _supplierFinanceCard(theme, review),
+                              const SizedBox(height: UtenSpacing.s12),
+                              _orderCard(theme, review),
+                              if (procurementHeaderUnknownLabels(
+                                review.previousHeaderSnapshot,
+                                review.headerSnapshot,
+                              ).isNotEmpty)
+                                Text(
+                                  '历史未留存${procurementHeaderUnknownLabels(review.previousHeaderSnapshot, review.headerSnapshot).join('、')}，无法确认这些字段是否修改。',
+                                ),
+                              if (procurementHeaderChanges(
+                                review.previousHeaderSnapshot,
+                                review.headerSnapshot,
+                              ).isNotEmpty) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                UtenRevisionFields(
+                                  changes: [
+                                    for (final change
+                                        in procurementHeaderChanges(
+                                          review.previousHeaderSnapshot,
+                                          review.headerSnapshot,
+                                        ))
+                                      UtenRevisionField(
+                                        label: change.label,
+                                        before: change.before,
+                                        after: change.after,
+                                      ),
+                                  ],
+                                ),
+                              ],
+                              // 财务审核只读查看采购/委外合同原件；后端按「待审可见」口径终审，
+                              // 审核页不提供上传/删除（原件不能在审批时被悄悄替换）。
+                              if (review.orderId.isNotEmpty &&
+                                  review.orderType !=
+                                      FinanceProcurementOrderType.unknown) ...[
+                                const SizedBox(height: UtenSpacing.s12),
+                                BusinessAttachmentSection(
+                                  key: const ValueKey(
+                                    'finance-order-review-attachments',
+                                  ),
+                                  ownerType:
+                                      review.orderType ==
+                                          FinanceProcurementOrderType.purchase
+                                      ? 'PURCHASE_ORDER'
+                                      : 'SUBCONTRACT_ORDER',
+                                  ownerId: review.orderId,
+                                  canView: true,
+                                  canManage: false,
+                                  title: '合同与确认文件（只读）',
+                                ),
+                              ],
+                              const SizedBox(height: UtenSpacing.s12),
+                              _historyCard(theme, review),
+                            ],
+                          ),
                         ),
-                        child: _itemsCard(theme, review),
+                        body: Padding(
+                          // 底部留出右下悬浮操作组的高度，合计条不被按钮盖住。
+                          padding: const EdgeInsets.fromLTRB(
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenSpacing.s12,
+                            UtenFloatingActionGroup.controlHeight +
+                                UtenSpacing.s32,
+                          ),
+                          child: _itemsCard(theme, review),
+                        ),
                       ),
                     ),
-                  ),
-            // 处理中屏幕中央加载动画（对齐财审专页口径：按钮 isLoading 同步转圈，
-            // 不再用固定底栏占位）。
-            if (_busy)
-              const Positioned.fill(child: UtenBusyOverlay(title: '正在处理，请稍候')),
-          ],
-        ),
-      ),
-      // 2026-09-14 UI 统一口径：吸底双决策改右下悬浮组，大小/高度/禁用态全站统一。
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: !showActions
-          ? null
-          : UtenFloatingActionGroup(
-              children: [
-                if (review.allowedActions.contains('EDIT'))
-                  UtenButton(
-                    key: const Key('finance-order-review-save-edits'),
-                    size: UtenButtonSize.large,
-                    icon: Icons.save_outlined,
-                    onPressed: _canEditAmounts && _hasAmountEdits
-                        ? _saveAmountEdits
-                        : null,
-                    child: const Text('保存审核修改'),
-                  ),
-                UtenButton(
-                  key: const Key('finance-order-review-back'),
-                  type: UtenButtonType.secondary,
-                  size: UtenButtonSize.large,
-                  icon: Icons.arrow_back_rounded,
-                  onPressed: _leaveReview,
-                  child: const Text('返回'),
+              // 处理中屏幕中央加载动画（对齐财审专页口径：按钮 isLoading 同步转圈，
+              // 不再用固定底栏占位）。
+              if (_busy)
+                const Positioned.fill(
+                  child: UtenBusyOverlay(title: '正在处理，请稍候'),
                 ),
-                if (review.allowedActions.contains('REJECT'))
+            ],
+          ),
+        ),
+        // 2026-09-14 UI 统一口径：吸底双决策改右下悬浮组，大小/高度/禁用态全站统一。
+        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+        floatingActionButton: !showActions
+            ? null
+            : UtenFloatingActionGroup(
+                children: [
+                  if (review.allowedActions.contains('UNAPPROVE') &&
+                      (ref.watch(isSuperAdminProvider) ||
+                          ref.watch(currentPermissionsProvider).containsAll({
+                            '${review.orderType == FinanceProcurementOrderType.purchase ? 'purchase_order' : 'subcontract_order'}:view',
+                            '${review.orderType == FinanceProcurementOrderType.purchase ? 'purchase_order' : 'subcontract_order'}:reverse',
+                          })))
+                    FinanceDocumentUnapprovalAction(
+                      key: const Key('finance-procurement-order-unapprove'),
+                      family:
+                          review.orderType ==
+                              FinanceProcurementOrderType.purchase
+                          ? 'purchaseOrder'
+                          : 'subcontractOrder',
+                      documentId: review.orderId,
+                      revision: review,
+                      validateReview: () async {
+                        final current = await ref
+                            .read(financeProcurementWorkflowRepositoryProvider)
+                            .review(review.caseId);
+                        return current.version == review.version &&
+                            current.allowedActions.contains('UNAPPROVE');
+                      },
+                      onCompleted: () {
+                        if (Navigator.of(context).canPop()) {
+                          Navigator.of(context).pop(true);
+                        } else {
+                          context.go(
+                            '${FinanceWorkflowRoutes.approvalTasks}?status=APPROVED',
+                          );
+                        }
+                      },
+                    ),
                   UtenButton(
-                    key: const Key('finance-order-review-reject'),
-                    type: UtenButtonType.danger,
+                    key: const Key('finance-order-review-back'),
+                    type: UtenButtonType.secondary,
                     size: UtenButtonSize.large,
-                    icon: Icons.undo_rounded,
-                    onPressed: _reviewClaim?.isReady == true && !_busy
-                        ? _reject
-                        : null,
-                    onDisabledTap: _reviewClaim?.isReady == true
-                        ? null
-                        : () => context.appWarning('请先完成审核认领，再驳回'),
-                    child: const Text('驳回'),
+                    icon: Icons.arrow_back_rounded,
+                    onPressed: _leaveReview,
+                    child: const Text('返回'),
                   ),
-                if (review.allowedActions.contains('APPROVE'))
-                  UtenButton(
-                    key: const Key('finance-order-review-approve'),
-                    type: UtenButtonType.success,
-                    size: UtenButtonSize.large,
-                    icon: Icons.check_circle_outline_rounded,
-                    isLoading: _busy,
-                    onPressed: _reviewClaim?.isReady == true && !_busy
-                        ? _approve
-                        : null,
-                    onDisabledTap: _reviewClaim?.isReady == true
-                        ? null
-                        : () => context.appWarning('请先完成审核认领，再通过'),
-                    child: const Text('通过'),
-                  ),
-              ],
-            ),
+                  if (review.allowedActions.contains('REJECT'))
+                    UtenButton(
+                      key: const Key('finance-order-review-reject'),
+                      type: UtenButtonType.danger,
+                      size: UtenButtonSize.large,
+                      icon: Icons.undo_rounded,
+                      onPressed: _reviewClaim?.isReady == true && !_busy
+                          ? _reject
+                          : null,
+                      onDisabledTap: _reviewClaim?.isReady == true
+                          ? null
+                          : () => context.appWarning('请先完成审核认领，再驳回'),
+                      child: const Text('驳回'),
+                    ),
+                  if (review.allowedActions.contains('APPROVE'))
+                    UtenButton(
+                      key: const Key('finance-order-review-approve'),
+                      type: UtenButtonType.success,
+                      size: UtenButtonSize.large,
+                      icon: Icons.check_circle_outline_rounded,
+                      isLoading: _busy,
+                      onPressed: _reviewClaim?.isReady == true && !_busy
+                          ? _approve
+                          : null,
+                      onDisabledTap: _reviewClaim?.isReady == true
+                          ? null
+                          : () => context.appWarning('请先完成审核认领，再通过'),
+                      child: const Text('通过'),
+                    ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -1007,7 +1013,7 @@ class _FinanceProcurementApprovalReviewPageState
         FinanceSnapshotMetric(
           '折合人民币',
           r.supplierBalance?.baseMoneyText(convertedTotal) ??
-              financeMoneyText(convertedTotal),
+              financeLocalMoneyWithUnitSuffix(convertedTotal),
         ),
         FinanceSnapshotMetric('税率', _trimNum(r.taxRate)),
       ],
@@ -1231,10 +1237,6 @@ class _FinanceProcurementApprovalReviewPageState
                 // 汇率列 = 表格内可编辑单元格（2026-10-10 用户口径：汇率写在表格
                 // 对应行的单元格里，不再表下另起一行编辑器）。
                 cellBuilders: {
-                  'price': (cellContext, row) =>
-                      _reviewAmountCell(row, total: false),
-                  'amountOriginal': (cellContext, row) =>
-                      _reviewAmountCell(row, total: true),
                   'exchangeRate': (cellContext, row) {
                     if (!r.isPending ||
                         row.kind == UtenRevisionKind.removed ||

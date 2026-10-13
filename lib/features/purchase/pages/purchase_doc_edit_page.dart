@@ -1,6 +1,3 @@
-import '../../../shared/auth/native_read_view_scope_mixin.dart';
-import '../../../shared/auth/permissions.dart';
-import '../../../shared/widgets/reviewed_grid_columns.dart';
 import '../../../shared/models/procurement_quantity.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/models/procurement_source_terms.dart';
@@ -108,15 +105,9 @@ String _rowIssueMessage(
 }
 
 class PurchaseDocEditPage extends ConsumerStatefulWidget {
-  const PurchaseDocEditPage({
-    super.key,
-    required this.docType,
-    this.id,
-    this.reviewMode = false,
-  });
+  const PurchaseDocEditPage({super.key, required this.docType, this.id});
   final PurchaseDocType docType;
   final String? id; // null=新建
-  final bool reviewMode;
 
   @override
   ConsumerState<PurchaseDocEditPage> createState() =>
@@ -124,9 +115,7 @@ class PurchaseDocEditPage extends ConsumerStatefulWidget {
 }
 
 class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
-    with
-        FormDraftMixin<PurchaseDocEditPage>,
-        NativeReadViewScopeMixin<PurchaseDocEditPage> {
+    with FormDraftMixin<PurchaseDocEditPage> {
   PurchaseDocConfig get _cfg => PurchaseDocConfig.by(widget.docType);
 
   final _billNo = TextEditingController(); // 只读显示（后端自动生成）
@@ -161,60 +150,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   bool _saving = false;
   bool _confirmGiftSemantics = false;
   bool _existingEditable = false;
-  String? _reviewSnapshot;
-  String? _reviewReadError;
-  Map<PurchaseGridRow, Map<String, String?>> _reviewBaseline = {};
-
-  Map<String, String?> _reviewValues(PurchaseGridRow row) => {
-    'qty': row.qty.text,
-    'giftQty': row.giftQty.text,
-    'remark': row.remark.text,
-  };
-
-  @override
-  void nativeReadOwnerChanged() {
-    if (!widget.reviewMode) return;
-    setState(() {
-      _existingEditable = false;
-      _reviewSnapshot = null;
-      _reviewReadError = null;
-      _reviewBaseline = {};
-      _grid.replaceAll([]);
-      _saving = false;
-    });
-  }
-
-  @override
-  void nativeReadPermissionChanged() {
-    if (widget.reviewMode && mounted) setState(() => _existingEditable = false);
-  }
-
-  @override
-  Future<void> nativeReadReload() async {
-    if (widget.reviewMode) await _init();
-  }
-
-  List<EditableGridColumn<PurchaseGridRow>> _reviewColumns(
-    List<EditableGridColumn<PurchaseGridRow>> columns,
-  ) => !widget.reviewMode
-      ? columns
-      : reviewedGridColumns(
-          columns: columns,
-          baseline: _reviewBaseline,
-          valuesOf: _reviewValues,
-          listenableOf: (row) =>
-              Listenable.merge(row.draftListenables.toList()),
-          editableKeys: const {'qty', 'giftQty', 'remark'},
-          keyPrefix: 'purchase-review-before',
-        );
-
-  Widget _frozenHeader(Widget child) => !widget.reviewMode
-      ? child
-      : Focus(
-          canRequestFocus: false,
-          descendantsAreFocusable: false,
-          child: AbsorbPointer(child: child),
-        );
   bool _loading = false;
   // 制单信息（服务端权威，只读展示）
   String? _makerName;
@@ -323,15 +258,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   @override
   void initState() {
     super.initState();
-    if (widget.reviewMode) initializeNativeReadScope();
-    if (widget.reviewMode) {
-      ref.listenManual(currentPermissionsProvider, (previous, next) {
-        if (!next.contains(_cfg.listPerm) || !next.contains(_cfg.approvePerm)) {
-          invalidateNativeReadAccess();
-          if (mounted) setState(() => _existingEditable = false);
-        }
-      });
-    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _init());
   }
 
@@ -348,28 +274,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
   }
 
   Future<void> _init() async {
-    final accepts = widget.reviewMode
-        ? captureNativeRead(
-            'purchase:${widget.docType.name}:${widget.id}',
-            () => 'purchase:${widget.docType.name}:${widget.id}',
-          )
-        : () => mounted;
+    bool accepts() => mounted;
     setState(() {
       _loading = true;
-      _reviewReadError = null;
     });
-    if (widget.reviewMode &&
-        (widget.id == null ||
-            !const {
-              PurchaseDocType.receipt,
-              PurchaseDocType.returnDoc,
-            }.contains(widget.docType))) {
-      setState(() {
-        _reviewReadError = '此单据请使用对应业务审核入口';
-        _loading = false;
-      });
-      return;
-    }
     await ref.read(masterNameServiceProvider).ensureLoaded();
     if (widget.id == null) {
       // 仓库预填「本类型最近一张单的仓库」（与销售 D1 同款），减少手选。
@@ -404,13 +312,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     if (widget.id != null) {
       try {
         final repo = ref.read(purchaseRepositoryProvider(widget.docType));
-        if (widget.reviewMode && !accepts()) return;
-        final reviewed = widget.reviewMode
-            ? await repo.review(widget.id!)
-            : null;
-        final d = reviewed?.detail ?? await repo.detail(widget.id!);
+        final d = await repo.detail(widget.id!);
         if (!accepts()) return;
-        _reviewSnapshot = reviewed?.snapshot;
         if (widget.docType == PurchaseDocType.receipt && d.legacyImported) {
           if (!mounted) return;
           context.appWarning(historicalReceiptReadOnlyMessage, force: true);
@@ -419,7 +322,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
           );
           return;
         }
-        if (!widget.reviewMode && widget.docType != PurchaseDocType.request) {
+        if (widget.docType != PurchaseDocType.request) {
           final writable =
               d.status == kPurchaseStatusDraft &&
               d.canEdit &&
@@ -489,21 +392,19 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         for (final it in d.items) {
           final upstreamItemId =
               it.receiptItemId ?? it.orderItemId ?? it.requestItemId;
-          final row =
-              PurchaseGridRow(
-                  sourceLocked: widget.reviewMode || upstreamItemId != null,
-                )
-                ..documentItemId = it.id
-                ..platformFields.sourceRecordId = it.id
-                // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
-                ..goods = ref
-                    .read(masterNameServiceProvider)
-                    .goodsOptionOf(it.goodsId)
-                // 优先级与 _linkItemKey 一致（receipt > order > request），保证 round-trip。
-                ..upstreamItemId = upstreamItemId
-                ..colorId = it.colorId
-                ..unitId = it.unitId
-                ..unitRate = it.unitRate;
+          final row = PurchaseGridRow(sourceLocked: upstreamItemId != null)
+            ..documentItemId = it.id
+            ..platformFields.sourceRecordId = it.id
+            // 名称+编号：回显行的编号列与名称列同源（goodsInfo 缓存）。
+            ..goods = ref
+                .read(masterNameServiceProvider)
+                .goodsOptionOf(it.goodsId)
+            // 优先级与 _linkItemKey 一致（receipt > order > request），保证 round-trip。
+            ..upstreamItemId = upstreamItemId
+            ..colorId = it.colorId
+            ..unitId = it.unitId
+            ..unitRate = it.unitRate
+            ..unitRateText = it.unitRateExactText;
           row.qty.text =
               financeExactTrimmed(it.qtyText ?? it.qty?.toString()) ?? '';
           row.giftQty.text = it.giftQtyText ?? it.giftQty?.toString() ?? '0';
@@ -524,20 +425,11 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         }
         if (!accepts()) return;
         _grid.replaceAll(rows);
-        if (widget.reviewMode) {
-          _reviewBaseline = {for (final row in rows) row: _reviewValues(row)};
-          acceptNativeRead();
-        }
       } on ApiException catch (e) {
         if (mounted && accepts()) {
-          _reviewReadError = e.message;
           context.appError(e.message);
         }
-      } catch (_) {
-        if (accepts() && widget.reviewMode) {
-          _reviewReadError = '审核数据读取失败，请重新打开核对';
-        }
-      }
+      } catch (_) {}
     }
     if (_grid.isEmpty) _grid.addRow(PurchaseGridRow());
     if (mounted && widget.id == null) await initializeFormDraft();
@@ -596,6 +488,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         ..colorId = goods.colorId
         ..unitId = goods.unitId
         ..unitRate = 1
+        ..unitRateText = '1'
         ..stockPlaceNotifier.value = goods.stockPlace;
     }
 
@@ -890,6 +783,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         }
       }
       final weightText = r.weight.text.trim();
+      if (!r.unitRateInputValid) {
+        badQty.add(labelOf(i, r));
+        rowOk = false;
+      }
       final weight = weightText.isEmpty ? null : double.tryParse(weightText);
       if (weightText.isNotEmpty && (weight == null || weight <= 0)) {
         badWeight.add(labelOf(i, r));
@@ -899,7 +796,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
       final remarkText = r.remark.text.trim();
       itemsBody.add({
         ...platformRowPayload(r),
-        if (widget.reviewMode) 'sourceItemId': r.documentItemId,
         if (widget.docType == PurchaseDocType.receipt) ...{
           if (r.replacementIntent != null)
             'replacementIntent': r.replacementIntent,
@@ -916,7 +812,8 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         if (r.sourceDocNo?.isNotEmpty == true) 'sourceDocNo': r.sourceDocNo,
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
-        if (r.unitRate != null) 'unitRate': r.unitRate,
+        if (r.unitRateText != null || r.unitRate != null)
+          'unitRate': r.unitRateText ?? r.unitRate,
         'weight': ?weight,
         if (remarkText.isNotEmpty) 'remark': remarkText,
       });
@@ -965,36 +862,15 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         'deliverDate': _fmt(_deliverDate!),
       'items': itemsBody,
     };
-    final owns = widget.reviewMode ? captureNativeOwnership() : () => mounted;
-    if (widget.reviewMode) {
-      if (!nativeReadCanWrite ||
-          _reviewSnapshot == null ||
-          !ref.read(currentPermissionsProvider).contains(_cfg.approvePerm)) {
-        return;
-      }
-      final confirmed = await showNativeReadReviewerConfirm(
-        context,
-        message: '核对修改后的实际数量和备注。保存后将按本次数量审核并推进下游业务。',
-        actionLabel: '${_cfg.label}修改后审核',
-      );
-      if (!mounted || !confirmed || !owns() || !nativeReadCanWrite) return;
-    }
+    bool owns() => mounted;
     setState(() => _saving = true);
     try {
       if (widget.id == null) await saveFormDraftNow();
       final repo = ref.read(purchaseRepositoryProvider(widget.docType));
       final d = widget.id == null
           ? await runFormDraftSubmission(() => repo.create(body))
-          : widget.reviewMode
-          ? await repo.saveReviewed(widget.id!, body, _reviewSnapshot!)
           : await repo.update(widget.id!, body);
       if (!mounted || !owns()) return;
-      if (widget.reviewMode) {
-        context.appSuccess('已保存修改并审核');
-        bumpListRefresh(ref, _cfg.refreshKey);
-        Navigator.of(context).pop();
-        return;
-      }
       if (widget.id == null) {
         setState(() => _draftCreatedId = d.id);
         await checkpointFormDraftAfterCreation();
@@ -1066,17 +942,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
 
   @override
   Widget build(BuildContext context) {
-    if (widget.reviewMode && !nativeReadAccessConfirmed) {
-      return Scaffold(
-        appBar: UtenAppBar(
-          title: '核对审核单据',
-          leading: UtenBackButton(onPressed: () => Navigator.of(context).pop()),
-        ),
-        body: _reviewReadError == null
-            ? nativeReadAccessNotice()
-            : Center(child: Text(_reviewReadError!)),
-      );
-    }
     return withFormDraft(_buildDraftPage(context));
   }
 
@@ -1091,11 +956,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
     };
     return Scaffold(
       appBar: UtenAppBar(
-        title: widget.reviewMode
-            ? '修改后审核${_cfg.label}'
-            : widget.id == null
-            ? '新建${_cfg.label}'
-            : '编辑${_cfg.label}',
+        title: widget.id == null ? '新建${_cfg.label}' : '编辑${_cfg.label}',
         leading: UtenBackButton(
           onPressed: () =>
               popOrBackTo(context, defaultPath: RouteName.purchase),
@@ -1131,216 +992,205 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _frozenHeader(
-                                    UtenFormGrid(
-                                      children: [
-                                        // 单据号：系统自动生成，只读显示。
-                                        TextFormField(
-                                          errorBuilder:
-                                              utenTextFieldErrorBuilder,
-                                          readOnly: true,
-                                          controller: _billNo,
-                                          decoration: UtenInputDecoration(
-                                            InputDecoration(
-                                              labelText: '单据号',
-                                              hintText: _billNo.text.isEmpty
-                                                  ? '保存后自动生成'
-                                                  : null,
-                                              filled: _billNo.text.isEmpty,
-                                              suffixIcon: _billNo.text.isEmpty
-                                                  ? const Icon(
-                                                      Icons.autorenew_outlined,
-                                                      size: 18,
-                                                    )
-                                                  : const Icon(
-                                                      Icons.lock_outline,
-                                                      size: 16,
-                                                    ),
-                                            ),
+                                  UtenFormGrid(
+                                    children: [
+                                      // 单据号：系统自动生成，只读显示。
+                                      TextFormField(
+                                        errorBuilder: utenTextFieldErrorBuilder,
+                                        readOnly: true,
+                                        controller: _billNo,
+                                        decoration: UtenInputDecoration(
+                                          InputDecoration(
+                                            labelText: '单据号',
+                                            hintText: _billNo.text.isEmpty
+                                                ? '保存后自动生成'
+                                                : null,
+                                            filled: _billNo.text.isEmpty,
+                                            suffixIcon: _billNo.text.isEmpty
+                                                ? const Icon(
+                                                    Icons.autorenew_outlined,
+                                                    size: 18,
+                                                  )
+                                                : const Icon(
+                                                    Icons.lock_outline,
+                                                    size: 16,
+                                                  ),
                                           ),
                                         ),
-                                        // 制单员/制单时间：服务端权威，只读展示（责任制）。
-                                        ...utenMakerAuditCells(
-                                          ref,
-                                          makerName: _makerName,
-                                          createdAt: _createdAt,
+                                      ),
+                                      // 制单员/制单时间：服务端权威，只读展示（责任制）。
+                                      ...utenMakerAuditCells(
+                                        ref,
+                                        makerName: _makerName,
+                                        createdAt: _createdAt,
+                                      ),
+                                      UtenDateField(
+                                        label: '单据日期',
+                                        required: true,
+                                        value: _billDate,
+                                        onChanged: (d) =>
+                                            setState(() => _billDate = d),
+                                      ),
+                                      // 收货/退货：表头单一供应商（订货单行级条款已走专属页）。
+                                      // 选商走右侧滑入面板（同销售订货单「客户」交互）：
+                                      // 分类树+搜索+分页+可内联新建，仅列启用供应商。
+                                      if (_cfg.hasSupplier)
+                                        SupplierPickerField(
+                                          initialId: _supplierId,
+                                          initialName: _supplierHeaderName(),
+                                          required: _cfg.supplierRequired,
+                                          onChanged: (v) {
+                                            setState(() => _supplierId = v);
+                                            unawaited(
+                                              _prefillSettlementForSupplier(
+                                                v,
+                                                null,
+                                              ),
+                                            );
+                                          },
+                                          onPick: () => showUtenSupplierPicker(
+                                            context,
+                                            ref,
+                                          ),
                                         ),
-                                        UtenDateField(
-                                          label: '单据日期',
+                                      if (_cfg.hasWarehouse)
+                                        // 到货登记模式也不锁仓：入库仓库在收货时确定，
+                                        // 预计到货任务可能不再携带仓库（订货单不带仓库）。
+                                        // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
+                                        UtenDropdownField(
+                                          label: '仓库',
+                                          value: _warehouseId,
+                                          required: _cfg.warehouseRequired,
+                                          items: warehouseHierarchyItems(
+                                            names.warehouseHierarchy,
+                                            use: widget.docType.warehouseUse,
+                                            defectiveTag: warehouseL10n(
+                                              context,
+                                            ).warehouseDefectiveTag,
+                                            currentValue: _warehouseId,
+                                          ),
+                                          onChanged: (v) =>
+                                              setState(() => _warehouseId = v),
+                                        ),
+                                      if (_cfg.hasDepartment)
+                                        UtenDepartmentPicker(
+                                          mode: UtenDepartmentPickerMode.single,
+                                          label: '申请部门',
+                                          initialSelection:
+                                              _departmentId == null
+                                              ? const []
+                                              : [
+                                                  DeptSelection(
+                                                    id: _departmentId!,
+                                                    name: '',
+                                                    fullPath: '',
+                                                    level: '',
+                                                  ),
+                                                ],
+                                          onChanged: (selection) => setState(
+                                            () => _departmentId =
+                                                selection.isEmpty
+                                                ? null
+                                                : selection.first.id,
+                                          ),
+                                        ),
+                                      if (_cfg.hasCurrency) ...[
+                                        _dropdown(
+                                          '币种',
+                                          _currencyId,
+                                          names.currencyEntries,
+                                          (v) =>
+                                              setState(() => _currencyId = v),
                                           required: true,
-                                          value: _billDate,
-                                          onChanged: (d) =>
-                                              setState(() => _billDate = d),
+                                          enabled:
+                                              !_commercialTermsInheritedFromSource,
                                         ),
-                                        // 收货/退货：表头单一供应商（订货单行级条款已走专属页）。
-                                        // 选商走右侧滑入面板（同销售订货单「客户」交互）：
-                                        // 分类树+搜索+分页+可内联新建，仅列启用供应商。
-                                        if (_cfg.hasSupplier)
-                                          SupplierPickerField(
-                                            initialId: _supplierId,
-                                            initialName: _supplierHeaderName(),
-                                            required: _cfg.supplierRequired,
-                                            onChanged: (v) {
-                                              setState(() => _supplierId = v);
-                                              unawaited(
-                                                _prefillSettlementForSupplier(
-                                                  v,
-                                                  null,
-                                                ),
-                                              );
-                                            },
-                                            onPick: () =>
-                                                showUtenSupplierPicker(
-                                                  context,
-                                                  ref,
-                                                ),
+                                        TextField(
+                                          controller: _rate,
+                                          readOnly:
+                                              _commercialTermsInheritedFromSource,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: const InputDecoration(
+                                            labelText: '汇率',
                                           ),
-                                        if (_cfg.hasWarehouse)
-                                          // 到货登记模式也不锁仓：入库仓库在收货时确定，
-                                          // 预计到货任务可能不再携带仓库（订货单不带仓库）。
-                                          // V476：仓库下拉带主/子层级（父仓置灰分组，单据落具体仓）。
-                                          UtenDropdownField(
-                                            label: '仓库',
-                                            value: _warehouseId,
-                                            required: _cfg.warehouseRequired,
-                                            items: warehouseHierarchyItems(
-                                              names.warehouseHierarchy,
-                                              use: widget.docType.warehouseUse,
-                                              defectiveTag: warehouseL10n(
-                                                context,
-                                              ).warehouseDefectiveTag,
-                                              currentValue: _warehouseId,
-                                            ),
-                                            onChanged: (v) => setState(
-                                              () => _warehouseId = v,
-                                            ),
+                                        ),
+                                        TextField(
+                                          controller: _taxRate,
+                                          readOnly:
+                                              _commercialTermsInheritedFromSource,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: const InputDecoration(
+                                            labelText: '税率(%)',
                                           ),
-                                        if (_cfg.hasDepartment)
-                                          UtenDepartmentPicker(
-                                            mode:
-                                                UtenDepartmentPickerMode.single,
-                                            label: '申请部门',
-                                            initialSelection:
-                                                _departmentId == null
-                                                ? const []
-                                                : [
-                                                    DeptSelection(
-                                                      id: _departmentId!,
-                                                      name: '',
-                                                      fullPath: '',
-                                                      level: '',
-                                                    ),
-                                                  ],
-                                            onChanged: (selection) => setState(
-                                              () => _departmentId =
-                                                  selection.isEmpty
-                                                  ? null
-                                                  : selection.first.id,
-                                            ),
-                                          ),
-                                        if (_cfg.hasCurrency) ...[
-                                          _dropdown(
-                                            '币种',
-                                            _currencyId,
-                                            names.currencyEntries,
-                                            (v) =>
-                                                setState(() => _currencyId = v),
-                                            required: true,
-                                            enabled:
-                                                !_commercialTermsInheritedFromSource,
-                                          ),
-                                          TextField(
-                                            controller: _rate,
-                                            readOnly:
-                                                _commercialTermsInheritedFromSource,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            decoration: const InputDecoration(
-                                              labelText: '汇率',
-                                            ),
-                                          ),
-                                          TextField(
-                                            controller: _taxRate,
-                                            readOnly:
-                                                _commercialTermsInheritedFromSource,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            decoration: const InputDecoration(
-                                              labelText: '税率(%)',
-                                            ),
-                                          ),
-                                        ],
-                                        if (_cfg.hasSettlement)
-                                          _dropdown(
-                                            '结账方式',
-                                            _settlementMethodId,
-                                            settlementEntries,
-                                            (value) => setState(() {
-                                              _settlementMethodId = value;
-                                              _settlementError = null;
-                                            }),
-                                            required: _cfg.settlementRequired,
-                                            allowClear:
-                                                !_cfg.settlementRequired,
-                                            errorMessage: _settlementError,
-                                            enabled:
-                                                !_commercialTermsInheritedFromSource,
-                                          ),
-                                        // 人员字段（按 config 显隐）
-                                        if (_cfg.hasApplicant)
-                                          _employeePicker(
-                                            label: '申请人',
-                                            currentId: _applicantId,
-                                            onChanged: (id) => setState(
-                                              () => _applicantId = id,
-                                            ),
-                                          ),
-                                        if (_cfg.hasPurchaser)
-                                          _employeePicker(
-                                            label: '采购员',
-                                            currentId: _purchaserId,
-                                            defaultDeptCode: kDeptCodePurchase,
-                                            onChanged: (id) => setState(
-                                              () => _purchaserId = id,
-                                            ),
-                                          ),
-                                        if (_cfg.hasSender)
-                                          _employeePicker(
-                                            label: '交货人',
-                                            currentId: _senderId,
-                                            onChanged: (id) =>
-                                                setState(() => _senderId = id),
-                                          ),
-                                        if (_cfg.hasReceiver)
-                                          _employeePicker(
-                                            label: '收货人',
-                                            currentId: _receiverId,
-                                            onChanged: (id) => setState(
-                                              () => _receiverId = id,
-                                            ),
-                                          ),
-                                        // 日期字段（按 config 显隐，统一 UtenDateField）
-                                        if (_cfg.hasNeedDate)
-                                          UtenDateField(
-                                            label: '需求日期',
-                                            value: _needDate,
-                                            onChanged: (d) =>
-                                                setState(() => _needDate = d),
-                                          ),
-                                        if (_cfg.hasDeliverDate)
-                                          UtenDateField(
-                                            label: '交货日期',
-                                            value: _deliverDate,
-                                            onChanged: (d) => setState(
-                                              () => _deliverDate = d,
-                                            ),
-                                          ),
+                                        ),
                                       ],
-                                    ),
+                                      if (_cfg.hasSettlement)
+                                        _dropdown(
+                                          '结账方式',
+                                          _settlementMethodId,
+                                          settlementEntries,
+                                          (value) => setState(() {
+                                            _settlementMethodId = value;
+                                            _settlementError = null;
+                                          }),
+                                          required: _cfg.settlementRequired,
+                                          allowClear: !_cfg.settlementRequired,
+                                          errorMessage: _settlementError,
+                                          enabled:
+                                              !_commercialTermsInheritedFromSource,
+                                        ),
+                                      // 人员字段（按 config 显隐）
+                                      if (_cfg.hasApplicant)
+                                        _employeePicker(
+                                          label: '申请人',
+                                          currentId: _applicantId,
+                                          onChanged: (id) =>
+                                              setState(() => _applicantId = id),
+                                        ),
+                                      if (_cfg.hasPurchaser)
+                                        _employeePicker(
+                                          label: '采购员',
+                                          currentId: _purchaserId,
+                                          defaultDeptCode: kDeptCodePurchase,
+                                          onChanged: (id) =>
+                                              setState(() => _purchaserId = id),
+                                        ),
+                                      if (_cfg.hasSender)
+                                        _employeePicker(
+                                          label: '交货人',
+                                          currentId: _senderId,
+                                          onChanged: (id) =>
+                                              setState(() => _senderId = id),
+                                        ),
+                                      if (_cfg.hasReceiver)
+                                        _employeePicker(
+                                          label: '收货人',
+                                          currentId: _receiverId,
+                                          onChanged: (id) =>
+                                              setState(() => _receiverId = id),
+                                        ),
+                                      // 日期字段（按 config 显隐，统一 UtenDateField）
+                                      if (_cfg.hasNeedDate)
+                                        UtenDateField(
+                                          label: '需求日期',
+                                          value: _needDate,
+                                          onChanged: (d) =>
+                                              setState(() => _needDate = d),
+                                        ),
+                                      if (_cfg.hasDeliverDate)
+                                        UtenDateField(
+                                          label: '交货日期',
+                                          value: _deliverDate,
+                                          onChanged: (d) =>
+                                              setState(() => _deliverDate = d),
+                                        ),
+                                    ],
                                   ),
                                   const SizedBox(height: UtenSpacing.s12),
                                   TextField(
@@ -1359,7 +1209,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                           Row(
                             children: [
                               const Spacer(),
-                              if (!widget.reviewMode && _cfg.hasUpstreamLink)
+                              if (_cfg.hasUpstreamLink)
                                 UtenImportButton(
                                   label: '从上游引入',
                                   onPressed: _importFromUpstream,
@@ -1367,7 +1217,7 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                             ],
                           ),
                           // 列显隐/排序按单据模式分桶持久化（账号级，跨设备生效）。
-                          if (!widget.reviewMode) _giftSemanticsConfirmation,
+                          _giftSemanticsConfirmation,
                           Builder(
                             builder: (_) {
                               final columnPrefs = ref.watch(
@@ -1375,7 +1225,6 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                               )[widget.docType.name];
                               return UtenEditableGrid<PurchaseGridRow>(
                                 columnEditingEnabled:
-                                    !widget.reviewMode &&
                                     !_loading &&
                                     !_saving &&
                                     _draftCreatedId == null &&
@@ -1399,27 +1248,21 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
                                           hidden,
                                           pinned,
                                         ),
-                                columns: _reviewColumns(
-                                  purchaseGridColumns(
-                                    _pickGoods,
-                                    context: context,
-                                    unitEntries: names.unitEntries,
-                                    // 收货/退货是实物出入库单据：显示库位号列（主档带出，上架/拣货指引）。
-                                    showStockPlace:
-                                        widget.docType ==
-                                            PurchaseDocType.receipt ||
-                                        widget.docType ==
-                                            PurchaseDocType.returnDoc,
-                                    // 每行末尾备注列（随行提交 remark）。
-                                    showRemark: true,
-                                  ),
+                                columns: purchaseGridColumns(
+                                  _pickGoods,
+                                  context: context,
+                                  unitEntries: names.unitEntries,
+                                  // 收货/退货是实物出入库单据：显示库位号列（主档带出，上架/拣货指引）。
+                                  showStockPlace:
+                                      widget.docType ==
+                                          PurchaseDocType.receipt ||
+                                      widget.docType ==
+                                          PurchaseDocType.returnDoc,
+                                  // 每行末尾备注列（随行提交 remark）。
+                                  showRemark: true,
                                 ),
                                 createBlankRow: () => PurchaseGridRow(),
-                                cloneRow: widget.reviewMode
-                                    ? null
-                                    : (r) => r.clone(),
-                                showAddRow: !widget.reviewMode,
-                                showRemoveRowsAction: !widget.reviewMode,
+                                cloneRow: (r) => r.clone(),
                                 // 合计条挂在明细表下方（原来挂在页面底部操作条里，
                                 // 2026-09-11 底部条改右下角悬浮后合计跟着回到表尾）：
                                 // 数量按单位分组绝不相加，金额币种取表头。
@@ -1537,12 +1380,10 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
               onSave: _save,
               saving: _saving,
               // 订货已走专属编辑页；本页三类单据统一「保存，下一步审核/保存」文案。
-              saveLabel: widget.reviewMode
-                  ? '保存并审核'
-                  : purchaseSaveActionLabel(
-                      widget.docType,
-                      submitFinance: false,
-                    ),
+              saveLabel: purchaseSaveActionLabel(
+                widget.docType,
+                submitFinance: false,
+              ),
             ),
     );
   }

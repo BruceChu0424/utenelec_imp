@@ -505,14 +505,11 @@ class SalesRepository {
     String goodsId, {
     String? colorId,
   }) async {
-    final json = await api.get(
+    final rows = await api.getList(
       '/sales/orders/reservations/scarce',
       query: {'goodsId': goodsId, 'colorId': ?colorId},
     );
-    return (json as List?)
-            ?.map((e) => ScarceReservation.fromJson(e as Map<String, dynamic>))
-            .toList() ??
-        const [];
+    return rows.map(ScarceReservation.fromJson).toList();
   }
 
   /// 报价转订货（POST /quotes/{id}/convert；SOP §三1，仅 quote 类型可用）。

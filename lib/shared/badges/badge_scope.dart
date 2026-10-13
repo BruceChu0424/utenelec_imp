@@ -89,5 +89,17 @@ final badgeScopeCountsProvider = Provider.family<BadgeCounts, BadgeScope>((
   final module = scope.formDraftModule;
   if (module == null) return counts;
   final drafts = ref.watch(formDraftModuleCountProvider(module));
-  return BadgeCounts(counts.todo + drafts, counts.inProgress);
+  final server = ref.watch(badgeSummaryProvider);
+  final effective = ref.watch(effectiveBadgeSummaryProvider);
+  final included = {?scope._todo, ...scope.additionalTodoEntries}
+      .where((entry) => entry.module == module)
+      .fold(
+        0,
+        (sum, entry) =>
+            sum + effective.entryTodo(entry) - server.entryTodo(entry),
+      );
+  // The selected draft entry already includes the local projection. Only add
+  // local drafts absent from that scope, never a second copy of the same work.
+  final remaining = (drafts - included).clamp(0, drafts).toInt();
+  return BadgeCounts(counts.todo + remaining, counts.inProgress);
 });

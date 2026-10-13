@@ -22,10 +22,13 @@ void main() {
       'lib/features/warehouse/pages/stock_doc_detail_page.dart',
     ).readAsStringSync();
     // 2026-09-24 仓库任务中心合并：四张任务中心卡收拢为一张，hub 卡角标 =
-    // 模块待办累计（服务端目录对 BadgeModule.warehouse 求和）；领料大类的
-    // 分段红数在合并页直接读 warehouseDrawCenter 入口（同一次徽章汇总带回）。
+    // 模块待办累计；领料现在归出库，其来源分段读同次汇总的 productionDraw 事实。
+    // 兼容旧深链的 warehouseDrawCenter 别名不能重复进入大类计数。
     final mergedTaskCenter = File(
       'lib/features/warehouse/pages/warehouse_task_center_page.dart',
+    ).readAsStringSync();
+    final outboundTaskCenter = File(
+      'lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart',
     ).readAsStringSync();
 
     expect(
@@ -49,6 +52,20 @@ void main() {
       reason:
           'approve/issue/reverse flows must refresh the warehouse draw badge',
     );
-    expect(mergedTaskCenter, contains('BadgeEntry.warehouseDrawCenter'));
+    final outboundFacts = RegExp(
+      r'warehouseOutboundCenter\(Module\.warehouse,\s*facts\(([^)]*)\)',
+    ).firstMatch(catalog)!.group(1)!;
+    expect(outboundFacts, contains('"productionDraw.count"'));
+    expect(
+      mergedTaskCenter,
+      contains('todo(BadgeEntry.warehouseOutboundCenter)'),
+    );
+    expect(
+      mergedTaskCenter,
+      isNot(contains('todo(BadgeEntry.warehouseDrawCenter)')),
+      reason: 'the legacy draw alias must not duplicate the outbound count',
+    );
+    expect(outboundTaskCenter, contains('fact(BadgeFact.productionDraw)'));
+    expect(outboundTaskCenter, contains('warehouseTaskFactOrNullProvider'));
   });
 }

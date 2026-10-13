@@ -50,7 +50,9 @@ class ProcurementInspectionQuantityProjectionPostgresTest {
                     received_base_qty numeric, passed_base_qty numeric, failed_base_qty numeric,
                     status text, warehouse_id uuid, received_weight numeric, received_at timestamptz,
                     pre_stocked_warehouse_id uuid, pre_stocked_place text, pre_stocked_at timestamptz,
-                    pre_stocked_by_employee_id uuid)
+                    pre_stocked_by_employee_id uuid,
+                    quantity_tranche text NOT NULL DEFAULT 'LEGACY'
+                        CHECK(quantity_tranche IN('LEGACY','CHARGED','GIFT')))
                 """);
         for (String prefix : new String[]{"purchase", "subcontract"}) {
             jdbc.execute("CREATE TABLE " + prefix + "_receipt_items(id uuid PRIMARY KEY, order_item_id uuid)");
@@ -119,6 +121,19 @@ class ProcurementInspectionQuantityProjectionPostgresTest {
             assertThat(row.passedBaseQty()).isEqualByComparingTo("12");
             assertThat(row.failedBaseQty()).isEqualByComparingTo("6");
             assertThat(row.remainingBaseQty()).isEqualByComparingTo("30");
+            assertThat(row.quantityTranche()).isEqualTo("LEGACY");
+            for(String tranche : new String[]{"CHARGED","GIFT"}) {
+                jdbc.update("UPDATE procurement_inspection_items SET quantity_tranche=? WHERE id=?",tranche,inspection);
+                var typed=controller.list(type,RECEIPT).getFirst();
+                assertThat(typed.quantityTranche()).isEqualTo(tranche);
+                assertThat(typed.receiptItemId()).isEqualTo(receiptItem);
+                assertThat(typed.sourceOrderNo()).isEqualTo(prefix + "-001");
+                assertThat(typed.receivedBaseQty()).isEqualByComparingTo("48");
+                assertThat(typed.remainingBaseQty()).isEqualByComparingTo("30");
+            }
+            org.assertj.core.api.Assertions.assertThatThrownBy(()->
+                    jdbc.update("UPDATE procurement_inspection_items SET quantity_tranche='UNKNOWN' WHERE id=?",inspection))
+                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         }
     }
 }

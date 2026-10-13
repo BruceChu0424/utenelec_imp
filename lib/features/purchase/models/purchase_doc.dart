@@ -69,6 +69,10 @@ String purchaseOrderDisplayLabel(
   if (status == kPurchaseStatusReversed || status == kPurchaseStatusCanceled) {
     return purchaseStatusLabel(status);
   }
+  if (status == kPurchaseStatusApproved) {
+    if (financeApproval?.isPending == true) return '改量待财务复核';
+    if (financeApproval?.isRejected == true) return '改量财务退回';
+  }
   return switch (financeApproval?.status) {
     'PENDING' => '等待财务审核',
     'REJECTED' => '财务退回',
@@ -108,6 +112,7 @@ class PurchaseDocListItem {
     this.supplierId,
     this.warehouseId,
     this.totalLocal,
+    this.totalLocalText,
     this.priceMasked = false,
     this.status,
     this.closed = false,
@@ -122,6 +127,7 @@ class PurchaseDocListItem {
   final String? supplierId;
   final String? warehouseId;
   final double? totalLocal;
+  final String? totalLocalText;
 
   /// 价格已对当前用户脱敏（金额族为 null；渲染 ***，V302 收货单价格脱敏）。
   final bool priceMasked;
@@ -139,6 +145,10 @@ class PurchaseDocListItem {
         supplierId: json['supplierId'] as String?,
         warehouseId: json['warehouseId'] as String?,
         totalLocal: (json['totalLocal'] as num?)?.toDouble(),
+        totalLocalText:
+            json['priceMasked'] == true || json['totalLocal'] == null
+            ? null
+            : receiptRecordedDecimal(json, 'totalLocal'),
         priceMasked: (json['priceMasked'] as bool?) ?? false,
         status: (json['status'] as num?)?.toInt(),
         closed: (json['closed'] as bool?) ?? false,
@@ -162,6 +172,7 @@ class PurchaseDocItem {
     this.unitId,
     this.unitRate,
     this.unitRateText,
+    this.unitRateExactText,
     this.qty,
     this.qtyText,
     this.rowVersion,
@@ -190,6 +201,10 @@ class PurchaseDocItem {
     this.giftReceivedQtyText,
     this.giftOrderedQtyText,
     this.physicalQtyText,
+    this.pendingGiftQtyText,
+    this.physicalOrderedQtyText,
+    this.physicalPendingQtyText,
+    this.physicalRemainingQtyText,
     this.quantitySemantics,
     this.giftQtyText,
     this.replacementIntent,
@@ -217,6 +232,7 @@ class PurchaseDocItem {
   final String? unitId;
   final double? unitRate;
   final String? unitRateText;
+  final String? unitRateExactText;
   final double? qty;
   final String? qtyText;
 
@@ -250,6 +266,10 @@ class PurchaseDocItem {
   final String? giftReceivedQtyText;
   final String? giftOrderedQtyText;
   final String? physicalQtyText;
+  final String? pendingGiftQtyText;
+  final String? physicalOrderedQtyText;
+  final String? physicalPendingQtyText;
+  final String? physicalRemainingQtyText;
   final String? quantitySemantics;
   final String? giftQtyText;
   final String? replacementIntent;
@@ -303,6 +323,9 @@ class PurchaseDocItem {
     unitId: json['unitId'] as String?,
     unitRate: (json['unitRate'] as num?)?.toDouble(),
     unitRateText: receiptRecordedDecimal(json, 'unitRate'),
+    unitRateExactText: json.containsKey('unitRateExact')
+        ? json['unitRateExact']?.toString() ?? ''
+        : null,
     qty: (json['qty'] as num?)?.toDouble(),
     qtyText: receiptRecordedDecimal(json, 'qty'),
     rowVersion: json['rowVersion'] is int && (json['rowVersion'] as int) >= 0
@@ -334,6 +357,13 @@ class PurchaseDocItem {
     giftReceivedQtyText: receiptRecordedDecimal(json, 'giftReceivedQty'),
     giftOrderedQtyText: receiptRecordedDecimal(json, 'giftOrderedQty'),
     physicalQtyText: receiptRecordedDecimal(json, 'physicalQty'),
+    pendingGiftQtyText: receiptRecordedDecimal(json, 'pendingGiftQty'),
+    physicalOrderedQtyText: receiptRecordedDecimal(json, 'physicalOrderedQty'),
+    physicalPendingQtyText: receiptRecordedDecimal(json, 'physicalPendingQty'),
+    physicalRemainingQtyText: receiptRecordedDecimal(
+      json,
+      'physicalRemainingQty',
+    ),
     giftQtyText: receiptRecordedDecimal(json, 'giftQty'),
     replacementIntent: json['replacementIntent'] as String?,
     giftReplacementIntent: json['giftReplacementIntent'] as String?,
@@ -581,6 +611,26 @@ class ProcurementDecompositionLine {
     this.needDate,
     this.warehouseId,
     this.sourcePlanNo,
+    this.requestedQtyText,
+    this.orderedQtyText,
+    this.pendingQtyText,
+    this.remainingQtyText,
+    this.unitRateText,
+    this.unitRateExactText,
+    this.quantitySemantics = procurementLegacyQuantity,
+    this.giftQty = 0,
+    this.giftOrderedQty = 0,
+    this.pendingGiftQty = 0,
+    this.remainingGiftQty = 0,
+    this.physicalRemainingQty,
+    this.giftQtyText,
+    this.giftOrderedQtyText,
+    this.pendingGiftQtyText,
+    this.remainingGiftQtyText,
+    this.physicalQtyText,
+    this.physicalOrderedQtyText,
+    this.physicalPendingQtyText,
+    this.physicalRemainingQtyText,
   });
 
   final String sourceDocumentId;
@@ -597,12 +647,49 @@ class ProcurementDecompositionLine {
   final String? needDate;
   final String? warehouseId;
   final String? sourcePlanNo;
+  final String? requestedQtyText;
+  final String? orderedQtyText;
+  final String? pendingQtyText;
+  final String? remainingQtyText;
+  final String? unitRateText;
+  final String? unitRateExactText;
+  final String? quantitySemantics;
+  final double giftQty;
+  final double giftOrderedQty;
+  final double pendingGiftQty;
+  final double remainingGiftQty;
+  final double? physicalRemainingQty;
+  final String? giftQtyText;
+  final String? giftOrderedQtyText;
+  final String? pendingGiftQtyText;
+  final String? remainingGiftQtyText;
+  final String? physicalQtyText;
+  final String? physicalOrderedQtyText;
+  final String? physicalPendingQtyText;
+  final String? physicalRemainingQtyText;
+
+  String get chargedRemainingQtyText =>
+      remainingQtyText ?? remainingQty.toString();
+
+  String? get defaultGiftQtyText =>
+      quantitySemantics == procurementChargedPlusGiftQuantity
+      ? remainingGiftQtyText
+      : quantitySemantics == null ||
+            quantitySemantics == procurementLegacyQuantity
+      ? '0'
+      : null;
+
+  String? get availablePhysicalQtyText =>
+      physicalRemainingQtyText ??
+      physicalRemainingQty?.toString() ??
+      (quantitySemantics == null ||
+              quantitySemantics == procurementLegacyQuantity
+          ? remainingQtyText ?? remainingQty.toString()
+          : null);
 
   factory ProcurementDecompositionLine.fromJson(Map<String, dynamic> json) {
     double number(String key) {
-      final value = json[key];
-      if (value is num) return value.toDouble();
-      return double.tryParse(value?.toString() ?? '') ?? 0;
+      return double.tryParse(receiptRecordedDecimal(json, key) ?? '') ?? 0;
     }
 
     return ProcurementDecompositionLine(
@@ -612,7 +699,9 @@ class ProcurementDecompositionLine {
       goodsId: json['goodsId'] as String,
       colorId: json['colorId'] as String?,
       unitId: json['unitId'] as String?,
-      unitRate: json['unitRate'] == null ? null : number('unitRate'),
+      unitRate: receiptRecordedDecimal(json, 'unitRate') == null
+          ? null
+          : number('unitRate'),
       requestedQty: number('requestedQty'),
       orderedQty: number('orderedQty'),
       pendingQty: number('pendingQty'),
@@ -620,6 +709,40 @@ class ProcurementDecompositionLine {
       needDate: json['needDate'] as String?,
       warehouseId: json['warehouseId'] as String?,
       sourcePlanNo: json['sourcePlanNo'] as String?,
+      requestedQtyText: receiptRecordedDecimal(json, 'requestedQty'),
+      orderedQtyText: receiptRecordedDecimal(json, 'orderedQty'),
+      pendingQtyText: receiptRecordedDecimal(json, 'pendingQty'),
+      remainingQtyText: receiptRecordedDecimal(json, 'remainingQty'),
+      unitRateText: receiptRecordedDecimal(json, 'unitRate'),
+      unitRateExactText: json.containsKey('unitRateExact')
+          ? json['unitRateExact']?.toString() ?? ''
+          : null,
+      quantitySemantics: json['quantitySemantics'] as String?,
+      giftQty: number('giftQty'),
+      giftOrderedQty: number('giftOrderedQty'),
+      pendingGiftQty: number('pendingGiftQty'),
+      remainingGiftQty: number('remainingGiftQty'),
+      physicalRemainingQty:
+          receiptRecordedDecimal(json, 'physicalRemainingQty') == null
+          ? null
+          : number('physicalRemainingQty'),
+      giftQtyText: receiptRecordedDecimal(json, 'giftQty'),
+      giftOrderedQtyText: receiptRecordedDecimal(json, 'giftOrderedQty'),
+      pendingGiftQtyText: receiptRecordedDecimal(json, 'pendingGiftQty'),
+      remainingGiftQtyText: receiptRecordedDecimal(json, 'remainingGiftQty'),
+      physicalQtyText: receiptRecordedDecimal(json, 'physicalQty'),
+      physicalOrderedQtyText: receiptRecordedDecimal(
+        json,
+        'physicalOrderedQty',
+      ),
+      physicalPendingQtyText: receiptRecordedDecimal(
+        json,
+        'physicalPendingQty',
+      ),
+      physicalRemainingQtyText: receiptRecordedDecimal(
+        json,
+        'physicalRemainingQty',
+      ),
     );
   }
 }

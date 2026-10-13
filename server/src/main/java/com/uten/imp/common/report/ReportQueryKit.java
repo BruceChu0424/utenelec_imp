@@ -28,6 +28,14 @@ import java.util.function.ToLongFunction;
  * 故 {@link #paginateAll} 用泛型 + 取数函数适配）。
  */
 public final class ReportQueryKit {
+    /** Preserve SQL decimal values across JavaScript JSON decoding without changing numeric columns. */
+    public static void includeDecimalTexts(Map<String, Object> row) {
+        var exact = new LinkedHashMap<String, Object>();
+        row.forEach((key, value) -> {
+            if (value instanceof java.math.BigDecimal decimal) exact.put(key + "Exact", decimal.toPlainString());
+        });
+        row.putAll(exact);
+    }
 
     private ReportQueryKit() {}
 

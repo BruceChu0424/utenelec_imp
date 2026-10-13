@@ -37,6 +37,7 @@ part 'material_analysis_policy_cases.dart';
 part 'material_analysis_quantity_presentation_cases.dart';
 part 'material_analysis_shared_source_cases.dart';
 part 'material_analysis_order_authority_cases.dart';
+part 'material_analysis_unified_handling_cases.dart';
 
 const _permissions = {
   Perm.productionMaterialAnalysisView,
@@ -227,6 +228,7 @@ bool _framedRed(WidgetTester tester, Finder field) {
 
 void main() {
   materialSharedSourceCases();
+  materialUnifiedHandlingCases();
   materialOrderAuthorityCases();
   materialQuantityPresentationCases();
   materialPolicyCases();
@@ -3514,6 +3516,40 @@ void main() {
     );
   });
 
+  for (final mismatchedField in [
+    'goodsId',
+    'colorId',
+    'unitId',
+    'analysisLineId',
+  ]) {
+    testWidgets('转交进度目标 $mismatchedField 不一致时保留同步警告', (tester) async {
+      await _pump(
+        tester,
+        mutate: (data) {
+          nestedDelegatedFixture(data);
+          _fixtureMaterial(data, 'm-6-shared')[mismatchedField] =
+              'foreign-identity';
+          return data;
+        },
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('material-table-row-m-6')),
+          matching: find.text('已下达，计划进度待同步'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('material-table-row-m-6')),
+          matching: find.textContaining('生产中 · 可报工'),
+        ),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // 已是共享批次来源的行(还有未撤回的 AGGREGATE_SUPPLY 引用)单独下达时也要走
   // 汇总通道——服务端会把这次的量并进那张还挂着的批次，而不是在按产品通道另起
   // 一条申请(2026-09-26)。
@@ -4784,7 +4820,7 @@ void main() {
     );
   });
 
-  testWidgets('整批撤回守门：无权限不给按钮；锚点没计划不给；没有计划包不发取消(2026-10-10)', (tester) async {
+  testWidgets('整计划撤回守门：包权限、计划身份和审批状态都不能冒充整计划权限', (tester) async {
     Map<String, dynamic> makeIssued(Map<String, dynamic> data) {
       (data['allowedActions'] as List).add('GENERATE_PLAN');
       final product = (data['products'] as List).single as Map;
@@ -4797,13 +4833,14 @@ void main() {
       return data;
     }
 
-    // 一、没有 production_planning_package:cancel 权限：不渲染按钮。
+    // 只有计划包取消权限不能撤回整张正式生产计划。
     await _pump(
       tester,
       permissions: {
         ..._permissions,
         Perm.productionPlanView,
         Perm.productionMaterialAnalysisGenerate,
+        Perm.productionPlanningPackageCancel,
       },
       mutate: (data) {
         makeIssued(data);
@@ -4811,6 +4848,9 @@ void main() {
                 as Map<String, dynamic>)['latestPlanId'] =
             'plan-1';
         _fixturePlanAssignment((data['products'] as List).single as Map);
+        ((data['products'] as List).single as Map)['planReferences'] = [
+          {'planId': 'plan-1', 'planNo': 'SJ-PLAN-001', 'status': 1},
+        ];
         return data;
       },
     );
@@ -4821,17 +4861,17 @@ void main() {
     expect(
       find.byKey(const ValueKey('material-top-level-cancel-plan')),
       findsNothing,
-      reason: '无取消计划包权限不得给整批撤回入口',
+      reason: '只有取消计划包权限不能获得整张生产计划的撤回入口',
     );
 
-    // 二、有权限但锚点没挂 latestPlanId：同样不给。
+    // 有整计划反审核权限但没有准确计划身份，不能猜一张计划撤回。
     await _pump(
       tester,
       permissions: {
         ..._permissions,
         Perm.productionPlanView,
         Perm.productionMaterialAnalysisGenerate,
-        Perm.productionPlanningPackageCancel,
+        Perm.productionPlanReverse,
       },
       mutate: (data) {
         makeIssued(data);
@@ -4849,15 +4889,14 @@ void main() {
       reason: '锚点没挂计划号时无从取消，不给入口',
     );
 
-    // 三、有权限有计划号，但计划没有任何已确认计划包：点按钮只警告，
-    // 不弹原因确认框、不发取消请求。
+    // 旧投影只有单号，没有审批状态；仍可查看，但不能猜反审核或删除。
     await _pump(
       tester,
       permissions: {
         ..._permissions,
         Perm.productionPlanView,
         Perm.productionMaterialAnalysisGenerate,
-        Perm.productionPlanningPackageCancel,
+        Perm.productionPlanReverse,
       },
       mutate: (data) {
         makeIssued(data);
@@ -4865,7 +4904,6 @@ void main() {
                 as Map<String, dynamic>)['latestPlanId'] =
             'plan-1';
         _fixturePlanAssignment((data['products'] as List).single as Map);
-        data['planningPackageResult'] = <Object>[];
         return data;
       },
     );
@@ -4876,26 +4914,16 @@ void main() {
     final cancelPlan = find.byKey(
       const ValueKey('material-top-level-cancel-plan'),
     );
-    expect(cancelPlan, findsOneWidget);
-    requests.clear();
-    await tester.tap(cancelPlan);
-    for (var i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-    }
-    await tester.pumpAndSettle();
+    expect(cancelPlan, findsNothing, reason: '缺审批状态的旧投影不给整计划撤回入口');
     expect(
       find.textContaining('整批撤回生产计划'),
       findsNothing,
-      reason: '读不到计划包时不得弹原因确认框',
+      reason: '缺审批状态时不得弹整计划确认框',
     );
     expect(
-      requests.any(
-        (r) =>
-            r.path.contains('/planning-packages/') &&
-            r.path.endsWith('/cancel'),
-      ),
+      requests.any((r) => r.path.endsWith('/withdraw')),
       isFalse,
-      reason: '读不到计划包时不得发取消请求',
+      reason: '缺审批状态时不得发整计划撤回请求',
     );
   });
 
@@ -4955,14 +4983,133 @@ void main() {
     );
   });
 
-  testWidgets('按物料汇总顶层自制已下计划：整批撤回取消计划包并静默重载(2026-10-10)', (tester) async {
+  for (final scenario in [
+    ('SJ20261012000001', true),
+    ('SJ20261012000001-LONG-PLAN-NUMBER', true),
+    ('SJ20261012000001-LONG-PLAN-NUMBER', false),
+  ]) {
+    final (planNo, canView) = scenario;
+    testWidgets('顶层已下计划办理单行显示且单号不重复：$planNo 查看=$canView', (tester) async {
+      await _pump(
+        tester,
+        permissions: {
+          ..._permissions,
+          if (canView) Perm.productionPlanView,
+          Perm.productionMaterialAnalysisGenerate,
+          Perm.productionPlanReverse,
+        },
+        mutate: (data) {
+          // 本回归只验证顶层已下计划的办理格，保留其根物料来源。
+          (data['flatMaterials'] as List).removeWhere(
+            (material) => (material as Map)['materialLineId'] != 'm-root',
+          );
+          (data['allowedActions'] as List).add('GENERATE_PLAN');
+          final product = (data['products'] as List).single as Map;
+          product.addAll(<String, dynamic>{
+            'issuedPlanQty': 2000,
+            'canSchedule': false,
+            'canIssueSurplus': true,
+            'remainingQty': 0,
+            'latestPlanId': 'plan-1',
+            'latestPlanNo': planNo,
+            'planReferences': [
+              {'planId': 'plan-1', 'planNo': planNo, 'status': 1},
+            ],
+          });
+          _fixturePlanAssignment(product);
+          return data;
+        },
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(const ValueKey('material-bom-product-product-1'));
+      final viewPlan = find.byKey(
+        const ValueKey('material-top-level-view-plan'),
+      );
+      final cancelPlan = find.byKey(
+        const ValueKey('material-top-level-cancel-plan'),
+      );
+      expect(
+        find.descendant(of: row, matching: find.textContaining(planNo)),
+        findsOneWidget,
+        reason: '同一计划号不能在查看与撤回入口各显示一遍',
+      );
+      expect(tester.getSize(row).height, lessThanOrEqualTo(64));
+      if (canView) {
+        expect(
+          tester.getCenter(viewPlan).dy,
+          closeTo(tester.getCenter(cancelPlan).dy, 0.1),
+          reason: '查看与撤回必须在同一行，不把顶层行撑成两行按钮',
+        );
+        expect(tester.widget<TextButton>(viewPlan).onPressed, isNotNull);
+        expect(tester.widget<IconButton>(cancelPlan).onPressed, isNotNull);
+        expect(
+          find.byTooltip('查看计划 $planNo'),
+          findsOneWidget,
+          reason: '长单号省略时仍可查看完整计划号',
+        );
+        expect(
+          tester.widget<IconButton>(cancelPlan).tooltip,
+          startsWith('整批撤回 $planNo'),
+        );
+      } else {
+        expect(viewPlan, findsNothing);
+        expect(tester.widget<IconButton>(cancelPlan).onPressed, isNotNull);
+        expect(
+          find.descendant(of: row, matching: find.text(planNo)),
+          findsOneWidget,
+          reason: '无查看权限时也只显示一次真实单号，撤回仍使用同一图标入口',
+        );
+        expect(find.text('整批撤回 $planNo'), findsNothing);
+      }
+      expect(tester.takeException(), isNull);
+      // 共享表格可拖到 48px：按钮也须受列宽约束，不能由固定尾部图标撑溢出。
+      final handleHeader = find
+          .ancestor(
+            of: find.text('物料办理'),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Container &&
+                  widget.constraints?.hasBoundedWidth == true,
+            ),
+          )
+          .first;
+      final grip = tester.widget<GestureDetector>(
+        find.descendant(
+          of: handleHeader,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is GestureDetector &&
+                widget.onHorizontalDragUpdate != null &&
+                widget.child is MouseRegion &&
+                (widget.child! as MouseRegion).cursor ==
+                    SystemMouseCursors.resizeColumn,
+          ),
+        ),
+      );
+      grip.onHorizontalDragUpdate!(
+        DragUpdateDetails(
+          delta: Offset(48 - tester.getSize(handleHeader).width, 0),
+          globalPosition: tester.getCenter(handleHeader),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getSize(handleHeader).width, 48);
+      expect(tester.getSize(row).height, lessThanOrEqualTo(64));
+      expect(tester.takeException(), isNull, reason: '最窄列也不横向溢出或折成两行');
+    });
+  }
+
+  testWidgets('按物料汇总顶层整计划撤回：CAS反向计划并恢复需求，下单及进度不残留', (tester) async {
     await _pump(
       tester,
       permissions: {
         ..._permissions,
         Perm.productionPlanView,
         Perm.productionMaterialAnalysisGenerate,
-        Perm.productionPlanningPackageCancel,
+        Perm.productionPlanReverse,
       },
       mutate: (data) {
         (data['allowedActions'] as List).add('GENERATE_PLAN');
@@ -4974,6 +5121,11 @@ void main() {
           'remainingQty': 0,
           'latestPlanId': 'plan-1',
           'latestPlanNo': 'PP-2026-001',
+          'planReferences': [
+            {'planId': 'plan-1', 'planNo': 'PP-2026-001', 'status': 1},
+          ],
+          'planExecutionStatus': 'RECEIVED',
+          'planExecutionPlannedQty': 2000,
         });
         _fixturePlanAssignment(product);
         return data;
@@ -4986,31 +5138,26 @@ void main() {
     final cancelPlan = find.byKey(
       const ValueKey('material-top-level-cancel-plan'),
     );
-    expect(cancelPlan, findsOneWidget, reason: '有取消计划包权限时顶层必须给整批撤回');
-    expect(tester.widget<TextButton>(cancelPlan).onPressed, isNotNull);
-    // 2026-10-10 二次修订：与子层级撤回按钮同一形态（默认色 TextButton +
-    // 计划号），且不再显示「已下达车间计划 N」文字行。
+    expect(cancelPlan, findsOneWidget, reason: '正式计划需有生成与反审核权限才能整批撤回');
+    expect(tester.widget<IconButton>(cancelPlan).onPressed, isNotNull);
+    // 查看链接只显示一次计划号，整批撤回入口与说明放在旁边图标的悬浮中。
     expect(
-      find.descendant(of: cancelPlan, matching: find.text('整批撤回 PP-2026-001')),
-      findsOneWidget,
+      tester.widget<IconButton>(cancelPlan).tooltip,
+      startsWith('整批撤回 PP-2026-001'),
     );
     expect(find.text('已下达车间计划 2000 个'), findsNothing);
     requests.clear();
     await tester.tap(cancelPlan);
     await tester.pumpAndSettle();
-    // 先读计划包，再弹必填原因的确认框；没确认前不许发取消请求。
+    // 直接确认整张计划；取消执行包不能替代正式计划及其来源链接的反向。
     expect(
       requests.any((r) => r.path.endsWith('/mrp/planning-package-result')),
-      isTrue,
-      reason: '整批撤回先取最新计划包拿 packageId',
+      isFalse,
+      reason: '整张计划撤回不能降级成读取并取消执行计划包',
     );
     expect(find.textContaining('整批撤回生产计划'), findsOneWidget);
     expect(
-      requests.any(
-        (r) =>
-            r.path.contains('/planning-packages/') &&
-            r.path.endsWith('/cancel'),
-      ),
+      requests.any((r) => r.path.endsWith('/withdraw')),
       isFalse,
       reason: '没确认前不许发取消请求',
     );
@@ -5022,11 +5169,7 @@ void main() {
     await tester.tap(find.text('确认整批撤回'));
     await tester.pumpAndSettle();
     expect(
-      requests.any(
-        (r) =>
-            r.path.contains('/planning-packages/') &&
-            r.path.endsWith('/cancel'),
-      ),
+      requests.any((r) => r.path.endsWith('/withdraw')),
       isFalse,
       reason: '空原因必须被拦下，不发取消请求',
     );
@@ -5044,23 +5187,40 @@ void main() {
     }
     await tester.pumpAndSettle();
     final cancelRequest = requests
-        .where(
-          (r) =>
-              r.path.contains('/planning-packages/') &&
-              r.path.endsWith('/cancel'),
-        )
+        .where((r) => r.path.endsWith('/withdraw'))
         .single;
     expect(
       cancelRequest.path,
-      '/production/plans/plan-1/mrp/planning-packages/pkg-1/cancel',
+      '/production/material-analyses/analysis-1/plans/plan-1/withdraw',
     );
     expect(cancelRequest.body?['reason'], '客户改单');
     expect(cancelRequest.body?['idempotencyKey'], isNotNull);
-    // 取消成功后分析静默重载（GET 详情再进一次）。
+    expect(cancelRequest.body?['version'], 3);
+    expect(cancelRequest.body?['fingerprint'], 'a' * 64);
     expect(
-      requests.any((r) => r.path == '/production/material-analyses/analysis-1'),
-      isTrue,
+      requests.any((r) => r.path.contains('/planning-packages/')),
+      isFalse,
     );
+    expect(cancelPlan, findsNothing, reason: '完整撤回后的回包不保留旧计划撤回入口');
+    expect(find.text('PP-2026-001'), findsNothing);
+    expect(find.textContaining('车间已收到'), findsNothing);
+    final row = find.byKey(const ValueKey('material-bom-product-product-1'));
+    final quantity = find.descendant(of: row, matching: find.byType(TextField));
+    expect(quantity, findsWidgets, reason: '需求恢复后顶层重新开放下单输入');
+    final table = tester.widget<MasterDataTableView<dynamic>>(
+      find.byKey(const Key('material-analysis-material-table')),
+    );
+    final top = table.items.firstWhere(
+      // The row type is private to the production page; read its public model.
+      // ignore: avoid_dynamic_calls
+      (dynamic item) => item.product?.analysisLineId == 'product-1',
+    );
+    final product =
+        // ignore: avoid_dynamic_calls
+        (top as dynamic).product as ProductionMaterialAnalysisProduct;
+    expect(product.issuedPlanQty, 0);
+    expect(product.remainingQty, 1000);
+    expect(product.planReferences, isEmpty);
   });
 
   testWidgets('有公共在途可认领时：还缺数量显示净数，下单数量预填毛量', (tester) async {
@@ -6943,6 +7103,12 @@ Future<void> _pump(
     Map<String, dynamic> data,
   )?
   aggregateCancel,
+  Map<String, dynamic> Function(
+    String planId,
+    Map<String, dynamic> body,
+    Map<String, dynamic> data,
+  )?
+  analysisPlanWithdraw,
   List<Map<String, dynamic>> defaultWorkshops = const [],
   // 真下达 / 通知在服务端要跑几秒; 给假后端一个延迟, 段间的 300ms 去抖才有机会露馅。
   int delayMs = 0,
@@ -7017,6 +7183,19 @@ Future<void> _pump(
           result = {
             'qtyByMaterialLineId': data['transferableByLineId'] ?? {'m-2': 120},
           };
+        } else if (request.path.contains('/material-analyses/') &&
+            request.path.contains('/plans/') &&
+            request.path.endsWith('/withdraw')) {
+          if (await _rejectIfConfigured(request, handler, failOn, delayMs)) {
+            return;
+          }
+          final segments = request.path.split('/');
+          result = (analysisPlanWithdraw ?? _withdrawAnalysisPlanFixture)(
+            segments[segments.length - 2],
+            (request.data as Map).cast<String, dynamic>(),
+            data,
+          );
+          data = Map<String, dynamic>.from(result as Map);
         } else if (request.path.endsWith('/mrp/planning-package-result')) {
           result =
               (data['planningPackageResult'] as Object?) ??

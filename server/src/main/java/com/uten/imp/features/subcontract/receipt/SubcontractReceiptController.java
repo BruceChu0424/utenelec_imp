@@ -119,19 +119,6 @@ public class SubcontractReceiptController {
         return service.update(id, req);
     }
 
-    @GetMapping("/{id}/review")
-    @PreAuthorize("hasAuthority('subcontract_receipt:view') and hasAuthority('subcontract_receipt:approve')")
-    public com.uten.imp.common.review.DocumentDraftReview.View<ReceiptDetail> review(@PathVariable UUID id) {
-        return service.review(id);
-    }
-
-    @PostMapping("/{id}/review")
-    @PreAuthorize("hasAuthority('subcontract_receipt:view') and hasAuthority('subcontract_receipt:approve')")
-    public ReceiptDetail saveReview(@PathVariable UUID id,
-            @Valid @RequestBody com.uten.imp.common.review.DocumentDraftReview.Save<ReceiptSaveRequest> request) {
-        return service.updateReviewed(id, request.document(), request.expectedSnapshot(), request.approveNow());
-    }
-
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('subcontract_receipt:delete')")
     public void delete(@PathVariable UUID id) {

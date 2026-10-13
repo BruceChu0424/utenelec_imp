@@ -23,6 +23,11 @@ public record ReportTableResponse(
         int totalPages,
         List<ReportTotal> totals) {
 
+    /** Internal identity/unit metadata stays available in rows, never as a visible/exported column. */
+    public ReportTableResponse {
+        if (columns != null) columns = columns.stream().filter(column -> !column.key().startsWith("__")).toList();
+    }
+
     /**
      * 兼容构造：不带合计的报表沿用原 7 参签名（{@code totals} 置空，前端整条合计条不渲染）。
      * 报表表格一律服务端分页，合计只能由服务端在整个结果集上算；没算就别显示，

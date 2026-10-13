@@ -26,7 +26,17 @@ final class InsightFacts {
             BigDecimal age0to30, BigDecimal age31to90, BigDecimal age91to180, BigDecimal age181to365,
             BigDecimal ageOver365, BigDecimal allocated, OffsetDateTime newestIn,
             BigDecimal out30, BigDecimal out90, BigDecimal out365, long picks90, OffsetDateTime lastOutAt,
-            long goodsPicks, long picksCumBefore, long picksTotal) {
+            long goodsPicks, long picksCumBefore, long picksTotal,UUID unitId) {
+        Health(UUID goodsId,UUID colorId,String code,String name,UUID categoryId,String model,
+               String colorName,String unitName,BigDecimal qty,BigDecimal weightKg,boolean weightEstimated,BigDecimal amountLocal,
+               OffsetDateTime lastMovementAt,long dims,long dimsWeighed,BigDecimal age0to30,BigDecimal age31to90,
+               BigDecimal age91to180,BigDecimal age181to365,BigDecimal ageOver365,BigDecimal allocated,OffsetDateTime newestIn,
+               BigDecimal out30,BigDecimal out90,BigDecimal out365,long picks90,OffsetDateTime lastOutAt,
+               long goodsPicks,long picksCumBefore,long picksTotal) {
+            this(goodsId,colorId,code,name,categoryId,model,colorName,unitName,qty,weightKg,weightEstimated,amountLocal,
+                    lastMovementAt,dims,dimsWeighed,age0to30,age31to90,age91to180,age181to365,ageOver365,allocated,newestIn,
+                    out30,out90,out365,picks90,lastOutAt,goodsPicks,picksCumBefore,picksTotal,null);
+        }
     }
 
     /** 仓库 × 货品 × 颜色的盘点建议原料。 */

@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/models/finance_procurement_workflow.dart';
 import 'package:uten_imp/features/finance/pages/finance_procurement_approval_tasks_page.dart';
@@ -16,12 +18,14 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/finance_claim_fixture.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/audit_screenshot_support.dart';
 
 class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
   @override
   Future<List<MasterFacetBucket>> approvalBillNoFacets({
     FinanceProcurementOrderType? orderType,
     String? keyword,
+    String status = 'PENDING',
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeWorkflowRepo(this.items);
 
@@ -41,20 +45,30 @@ class _FakeWorkflowRepo implements FinanceProcurementWorkflowRepository {
     String? sort,
     String? order,
     String? billNo,
+    String status = 'PENDING',
   }) async {
     lastKeyword = keyword;
     lastOrderType = orderType;
+    final filtered = items
+        .where(
+          (item) =>
+              (status == 'ALL' || item.status == status) &&
+              (orderType == null || item.orderType == orderType),
+        )
+        .toList();
     return FinanceProcurementApprovalPage(
-      items: items,
+      items: filtered,
       page: page,
       size: size,
-      total: items.length,
+      total: filtered.length,
       totalPages: 1,
     );
   }
 
   @override
-  Future<Map<String, int>> approvalTypeCounts() async => {
+  Future<Map<String, int>> approvalTypeCounts({
+    String status = 'PENDING',
+  }) async => {
     'PURCHASE': items
         .where((task) => task.orderType == FinanceProcurementOrderType.purchase)
         .length,
@@ -112,6 +126,7 @@ FinanceProcurementApprovalTask _task({
   required String billNo,
   List<String> allowedActions = const ['APPROVE', 'REJECT'],
   int changeCount = 0,
+  String status = 'PENDING',
 }) => FinanceProcurementApprovalTask.fromJson({
   'caseId': caseId,
   'orderId': orderId,
@@ -126,7 +141,7 @@ FinanceProcurementApprovalTask _task({
   'submittedAt': '2026-08-18T02:00:00+08:00',
   'expectedDate': '2026-09-01',
   'attempt': 1,
-  'status': 'PENDING',
+  'status': status,
   'version': 3,
   'allowedActions': allowedActions,
   'changeCount': changeCount,
@@ -137,6 +152,8 @@ Future<GoRouter> _pumpPage(
   _FakeWorkflowRepo repository, {
   Size size = const Size(1400, 1000),
   FinanceClaimFixture? claims,
+  ThemeData? theme,
+  GlobalKey? capture,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -192,6 +209,10 @@ Future<GoRouter> _pumpPage(
         ),
       ],
       child: MaterialApp.router(
+        theme: theme,
+        builder: (_, child) => capture == null
+            ? child!
+            : RepaintBoundary(key: capture, child: child!),
         routerConfig: router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
@@ -204,6 +225,121 @@ Future<GoRouter> _pumpPage(
 }
 
 void main() {
+  for (final scenario in const [
+    (width: 1440.0, dark: false),
+    (width: 1440.0, dark: true),
+    (width: 375.0, dark: false),
+    (width: 375.0, dark: true),
+  ]) {
+    testWidgets(
+      'combined approval status layout ${scenario.width} dark=${scenario.dark}',
+      (tester) async {
+        const captureUi = bool.fromEnvironment('UTEN_CAPTURE_UI');
+        final capture = captureUi ? GlobalKey() : null;
+        if (captureUi) await loadAuditScreenshotFonts(tester);
+        final theme = scenario.dark ? buildDarkTheme() : buildLightTheme();
+        final repository = _FakeWorkflowRepo([
+          _task(
+            caseId: 'purchase',
+            orderId: 'p1',
+            orderType: 'PURCHASE',
+            billNo: 'CD202610120001',
+          ),
+          _task(
+            caseId: 'subcontract',
+            orderId: 's1',
+            orderType: 'SUBCONTRACT',
+            billNo: 'WT202610120002',
+          ),
+          _task(
+            caseId: 'changed',
+            orderId: 'p2',
+            orderType: 'PURCHASE',
+            billNo: 'CD202610120003',
+            changeCount: 2,
+          ),
+        ]);
+        await _pumpPage(
+          tester,
+          repository,
+          size: Size(scenario.width, 1000),
+          theme: captureUi ? auditScreenshotTheme(theme) : theme,
+          capture: capture,
+        );
+        final tableFinder = find.byKey(
+          const Key('finance-approval-task-table'),
+        );
+        final table = tester
+            .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+              tableFinder,
+            );
+        final status = table.columns.first;
+        expect(table.items, hasLength(3));
+        expect(
+          find.byKey(const Key('finance-approval-type-segments')),
+          findsNothing,
+        );
+        final element = tester.element(tableFinder);
+        for (final task in table.items) {
+          final luminance = status.cellColor!(element, task)!
+              .computeLuminance();
+          expect(1.05 / (luminance + .05), greaterThanOrEqualTo(4.5));
+        }
+        expect(tester.takeException(), isNull);
+        if (scenario.width < 600) {
+          final approve = find.byKey(
+            const Key('finance-approval-batch-approve'),
+          );
+          await tester.ensureVisible(approve);
+          await tester.pumpAndSettle();
+          expect(tester.getRect(approve).bottom, lessThanOrEqualTo(1000));
+        }
+        if (capture != null) {
+          await saveAuditScreenshot(
+            tester,
+            capture,
+            'approval-status-${scenario.width.toInt()}-${scenario.dark ? 'dark' : 'light'}',
+          );
+        }
+      },
+    );
+  }
+
+  testWidgets('已批准审批记录可从财务打开且不带整批审批动作', (tester) async {
+    final repository = _FakeWorkflowRepo([
+      _task(
+        caseId: 'pending',
+        orderId: 'order-a',
+        orderType: 'PURCHASE',
+        billNo: 'PO-PENDING',
+      ),
+      _task(
+        caseId: 'approved',
+        orderId: 'order-b',
+        orderType: 'PURCHASE',
+        billNo: 'PO-APPROVED',
+        status: 'APPROVED',
+        allowedActions: const [],
+      ),
+    ]);
+    await _pumpPage(tester, repository);
+    await tester.tap(find.text('已批准'));
+    await tester.pumpAndSettle();
+    final table = tester
+        .widget<MasterDataTableView<FinanceProcurementApprovalTask>>(
+          find.byKey(const Key('finance-approval-task-table')),
+        );
+    expect(table.items.single.caseId, 'approved');
+    expect(table.selectable, isFalse);
+    expect(
+      find.byKey(const Key('finance-approval-batch-approve')),
+      findsNothing,
+    );
+    table.onRowTap!(table.items.single);
+    await tester.pumpAndSettle();
+    expect(find.text('审核详情 approved'), findsOneWidget);
+    expect(repository.approvedBatches, isEmpty);
+  });
   testWidgets('采购委外混合批量任一认领失败则全部不提交并释放已取得租约', (tester) async {
     final repository = _FakeWorkflowRepo([
       _task(
@@ -279,7 +415,7 @@ void main() {
       expect(
         columnKeys,
         containsAll(<String>[
-          'orderType',
+          'status',
           'billNo',
           'supplierName',
           'totalOriginal',
@@ -406,7 +542,7 @@ void main() {
 
     // 2026-10-06 状态列全站前置：窄屏下首列是状态格，点它选行（单号格可能已
     // 横向挤出 375 视口）。
-    await tester.tap(find.text('待财务复核'));
+    await tester.tap(find.text('采购待审批'));
     await tester.pump(const Duration(milliseconds: 50));
     expect(find.text('已选 1 项'), findsOneWidget);
     // 2026-10-02 用户口径：「共 N 笔」/操作说明提示文字退役。
@@ -496,14 +632,13 @@ void main() {
           find.byKey(const Key('finance-approval-task-table')),
         );
     expect(table.columns.map((column) => column.key), contains('status'));
-    expect(find.text('改后待复核 · 改量 2 处'), findsOneWidget);
-    expect(find.text('待财务复核'), findsOneWidget);
+    expect(find.text('采购 · 改后待复核 · 改量 2 处'), findsOneWidget);
+    expect(find.text('委外待审批'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  // 2026-10-02 用户口径：业务审核中心里点子分类（采购订货/委外订货）时，
-  // 宿主大类栏（externalHeader）任何瞬间都不得消失——嵌入态全链路锁定。
-  testWidgets('subcategory clicks keep the host category bar (embedded)', (
+  // 来源筛选移到状态表头；嵌入态宿主主类栏与整批选择边界保持稳定。
+  testWidgets('status header filters both order types and keeps the host bar', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1500, 1000);
@@ -561,6 +696,11 @@ void main() {
           }),
           sessionProvider.overrideWith(_FinanceReviewerSessionNotifier.new),
           taskClaimRepositoryProvider.overrideWithValue(FinanceClaimFixture()),
+          fixedBadgeSummaryOverride(
+            badgeSummaryFixture(
+              facts: {BadgeFact.procurementApproval: repository.items.length},
+            ),
+          ),
           financeProcurementWorkflowRepositoryProvider.overrideWithValue(
             repository,
           ),
@@ -576,22 +716,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('host-category-bar')), findsOneWidget);
 
-    Finder segment(String label) => find.descendant(
-      of: find.byKey(const Key('finance-approval-type-segments')),
-      matching: find.text(label),
+    MasterDataTableView<FinanceProcurementApprovalTask> table() =>
+        tester.widget(find.byKey(const Key('finance-approval-task-table')));
+    expect(
+      find.byKey(const Key('finance-approval-type-segments')),
+      findsNothing,
     );
-    await tester.tap(segment('采购订货'));
+    expect(table().items, hasLength(2));
+    final status = table().columns.singleWhere(
+      (column) => column.key == 'status',
+    );
+    expect(status.value(table().items.first), '采购待审批');
+    expect(status.value(table().items.last), '委外待审批');
+    final tableContext = tester.element(
+      find.byKey(const Key('finance-approval-task-table')),
+    );
+    expect(
+      status.cellColor!(tableContext, table().items.first),
+      isNot(status.cellColor!(tableContext, table().items.last)),
+    );
+    table().onSelectedIdsChanged!({'case-1', 'case-2'});
+    await tester.pumpAndSettle();
+    table().onFilterChanged('status', 'PURCHASE');
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('host-category-bar')), findsOneWidget);
-    expect(
-      find.byKey(const Key('finance-approval-type-segments')),
-      findsOneWidget,
-    );
-
-    await tester.tap(segment('委外订货'));
+    expect(repository.lastOrderType, FinanceProcurementOrderType.purchase);
+    expect(table().items.single.caseId, 'case-1');
+    expect(table().selectedIds, isEmpty);
+    table().onFilterChanged('status', 'SUBCONTRACT');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('host-category-bar')), findsOneWidget);
+    expect(repository.lastOrderType, FinanceProcurementOrderType.subcontract);
+    expect(table().items.single.caseId, 'case-2');
+    table().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(repository.lastOrderType, isNull);
+    expect(table().items, hasLength(2));
     expect(tester.takeException(), isNull);
   });
 }

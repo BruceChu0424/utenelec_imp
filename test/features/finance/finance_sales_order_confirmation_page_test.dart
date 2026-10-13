@@ -8,6 +8,7 @@ import 'package:uten_imp/features/finance/providers/finance_name_provider.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/shared/models/party_open_balance.dart';
 import 'package:uten_imp/shared/models/task_claim_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,6 +39,7 @@ class _FakeConfirmationRepository
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   _FakeConfirmationRepository(this.items, {this.reviewValue});
 
@@ -48,6 +50,13 @@ class _FakeConfirmationRepository
   final List<String?> batchRemarks = [];
   final List<int?> confirmedRevisions = [];
   final List<String> reviewedIds = [];
+  final List<
+    ({int page, int size, bool? rejected, bool? changes, bool confirmed})
+  >
+  pendingQueries = [];
+  final List<Map<String, int>> batchRevisions = [];
+  final List<Map<String, String>> batchClaimIds = [];
+  Completer<SalesOrderFinancePendingPage>? blockedChanges;
 
   @override
   Future<SalesOrderFinancePendingPage> pending({
@@ -56,14 +65,33 @@ class _FakeConfirmationRepository
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,
   }) async {
     keywords.add(keyword);
+    pendingQueries.add((
+      page: page,
+      size: size,
+      rejected: rejected,
+      changes: changesOnly,
+      confirmed: confirmed,
+    ));
+    if (size > 1 &&
+        rejected == false &&
+        changesOnly == true &&
+        blockedChanges != null) {
+      return blockedChanges!.future;
+    }
     final normalized = keyword?.toLowerCase().trim() ?? '';
     final filtered = items
+        .where((item) => item.financeConfirmed == confirmed)
         .where((item) => rejected == null || item.financeRejected == rejected)
+        .where(
+          (item) =>
+              changesOnly == null || (item.changeCount > 0) == changesOnly,
+        )
         .where(
           (item) =>
               normalized.isEmpty ||
@@ -82,8 +110,14 @@ class _FakeConfirmationRepository
   }
 
   @override
-  Future<int> pendingCount({bool? changesOnly}) async =>
-      items.where((item) => !item.financeRejected).length;
+  Future<int> pendingCount({bool? changesOnly}) async => items
+      .where(
+        (item) =>
+            !item.financeRejected &&
+            !item.financeConfirmed &&
+            (changesOnly == null || (item.changeCount > 0) == changesOnly),
+      )
+      .length;
 
   @override
   Future<SalesOrderFinanceReview> review(String orderId) async {
@@ -118,6 +152,8 @@ class _FakeConfirmationRepository
     final ids = orderIds.toList(growable: false);
     batchIds.add(ids);
     batchRemarks.add(remark);
+    batchRevisions.add(Map.of(expectedRevisions ?? const {}));
+    batchClaimIds.add(Map.of(expectedClaimIds ?? const {}));
     items.removeWhere((item) => ids.contains(item.orderId));
   }
 
@@ -145,7 +181,9 @@ SalesOrderFinancePendingItem _item({
   required String billNo,
   String client = '远硕智能',
   bool rejected = false,
+  bool confirmed = false,
   int changeCount = 0,
+  int financeReviewRevision = 0,
   PartyOpenBalance balance = const PartyOpenBalance(
     currencyName: '美金',
     openOriginal: '12000.00',
@@ -165,8 +203,10 @@ SalesOrderFinancePendingItem _item({
   currencyName: '美金',
   clientBalance: balance,
   financeRejected: rejected,
+  financeConfirmed: confirmed,
   financeRejectedReason: rejected ? '客户额度待核对' : null,
   changeCount: changeCount,
+  financeReviewRevision: financeReviewRevision,
 );
 
 Future<GoRouter> _pumpPage(
@@ -175,6 +215,8 @@ Future<GoRouter> _pumpPage(
   required Size size,
   bool canConfirm = true,
   FinanceClaimFixture? claims,
+  String? initialState,
+  bool changesOnly = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -182,16 +224,29 @@ Future<GoRouter> _pumpPage(
   addTearDown(tester.view.resetDevicePixelRatio);
 
   final router = GoRouter(
-    initialLocation: '/finance/sales-order-confirmations',
+    initialLocation: Uri(
+      path: '/finance/sales-order-confirmations',
+      queryParameters: initialState == null ? null : {'state': initialState},
+    ).toString(),
     routes: [
       GoRoute(
         path: '/finance/sales-order-confirmations',
-        builder: (_, _) => const FinanceSalesOrderConfirmationPage(),
+        builder: (_, state) => FinanceSalesOrderConfirmationPage(
+          initialState: state.uri.queryParameters['state'],
+          changesOnly: changesOnly,
+        ),
         routes: [
           GoRoute(
             path: ':id',
-            builder: (_, state) =>
-                Scaffold(body: Text('detail-${state.pathParameters['id']}')),
+            builder: (_, state) => Scaffold(
+              body: Column(
+                children: [
+                  Text('detail-${state.pathParameters['id']}'),
+                  if (state.uri.queryParameters['returnTo'] != null)
+                    Text(state.uri.queryParameters['returnTo']!),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -306,23 +361,32 @@ void main() {
         final repository = _FakeConfirmationRepository([
           _item(id: 'one', billNo: 'XD-ONE'),
           _item(id: 'two', billNo: 'XD-TWO'),
+          _item(id: 'changed', billNo: 'XD-CHANGED', changeCount: 1),
           _item(id: 'rejected', billNo: 'XD-REJECTED', rejected: true),
         ]);
         await _pumpPage(tester, repository, size: size);
-        UtenSegmentBadgeLabel pendingBadge() =>
-            tester.widget<UtenSegmentBadgeLabel>(
+        UtenFilterToolbar<String> toolbar() =>
+            tester.widget<UtenFilterToolbar<String>>(
               find.byWidgetPredicate(
                 (widget) =>
-                    widget is UtenSegmentBadgeLabel && widget.label == '待确认',
+                    widget is UtenFilterToolbar<String> &&
+                    widget.segmentsKey == const Key('sales-order-finance-tabs'),
                 skipOffstage: false,
               ),
             );
+        UtenFilterSegment<String> pendingBadge() => toolbar().segments
+            .firstWhere((segment) => segment.value == 'pending');
         expect(
           find.byKey(const Key('sales-order-finance-summary')),
           findsNothing,
         );
         expect(find.textContaining('待财务放行'), findsNothing);
-        expect(pendingBadge().count, 2);
+        expect(pendingBadge().count, 3);
+        expect(toolbar().segments.map((segment) => segment.value), [
+          'pending',
+          'confirmed',
+          'rejected',
+        ]);
         final search = find.descendant(
           of: find.byKey(const Key('sales-order-finance-search')),
           matching: find.byType(TextField),
@@ -330,30 +394,17 @@ void main() {
         await tester.enterText(search, 'XD-ONE');
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pumpAndSettle();
-        // Searching may scroll the collapsible filter header out of view.
-        await tester.ensureVisible(
-          find.byWidgetPredicate(
-            (widget) =>
-                widget is UtenSegmentBadgeLabel && widget.label == '待确认',
-            skipOffstage: false,
-          ),
-        );
-        await tester.pumpAndSettle();
         expect(
           pendingBadge().count,
-          2,
+          3,
           reason:
               'Badge follows the full queue, not the filtered visible row count.',
         );
-        await tester.tap(find.text('已驳回'));
+        toolbar().onSelectionChanged?.call('rejected');
         await tester.pumpAndSettle();
-        expect(pendingBadge().count, 2);
-        final rejected = tester.widget<UtenSegmentBadgeLabel>(
-          find.byWidgetPredicate(
-            (widget) =>
-                widget is UtenSegmentBadgeLabel && widget.label == '已驳回',
-            skipOffstage: false,
-          ),
+        expect(pendingBadge().count, 3);
+        final rejected = toolbar().segments.firstWhere(
+          (segment) => segment.value == 'rejected',
         );
         // 2026-09-21 用户口径: 父分类有红徽章, 子分类也要有数; ADR-100 起已驳回段
         // 挂黄色进行中徽章(单子退回销售手上、还会再回到本页, 既非终态也不用财务
@@ -525,10 +576,20 @@ void main() {
     expect(find.byKey(const Key('finance-review-confirm')), findsNothing);
     expect(repository.confirmedRevisions, isEmpty);
   });
-  testWidgets('桌面端使用自研多选表格，单击选择后可原子批量确认', (tester) async {
+  testWidgets('首次与修改订单共用认领和版本边界，原子批量确认', (tester) async {
     final repository = _FakeConfirmationRepository([
-      _item(id: 'order-1', billNo: 'XD20260829000003'),
-      _item(id: 'order-2', billNo: 'XD20260829000004', client: '测试客户'),
+      _item(
+        id: 'order-1',
+        billNo: 'XD20260829000003',
+        financeReviewRevision: 7,
+      ),
+      _item(
+        id: 'order-2',
+        billNo: 'XD20260829000004',
+        client: '测试客户',
+        changeCount: 2,
+        financeReviewRevision: 9,
+      ),
     ]);
     await _pumpPage(tester, repository, size: const Size(1440, 1000));
 
@@ -544,14 +605,14 @@ void main() {
     expect(find.text('订单金额'), findsOneWidget);
     expect(find.text('客户应收'), findsOneWidget);
 
-    await tester.tap(find.text('XD20260829000003'));
+    table.onSelectedIdsChanged!({'order-1', 'order-2'});
     await tester.pump();
     await tester.tap(
       find.byKey(const Key('sales-order-finance-batch-confirm')),
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('批量确认 1 笔销售订单'), findsOneWidget);
+    expect(find.text('批量确认 2 笔销售订单'), findsOneWidget);
     expect(find.textContaining('有一笔订单有问题，整批都不会通过'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('sales-order-finance-batch-remark')),
@@ -561,24 +622,175 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.batchIds, [
-      ['order-1'],
+      ['order-1', 'order-2'],
     ]);
     expect(repository.batchRemarks, ['已逐笔核对']);
+    expect(repository.batchRevisions.single, {'order-1': 7, 'order-2': 9});
+    expect(repository.batchClaimIds.single.keys.toSet(), {
+      'order-1',
+      'order-2',
+    });
     expect(find.text('XD20260829000003'), findsNothing);
   });
 
-  testWidgets('修改后的订单在队列标注变更次数', (tester) async {
+  testWidgets('待确认合并首次与修改，状态表头完整筛选并清除', (tester) async {
+    final repository = _FakeConfirmationRepository([
+      _item(id: 'ord-1', billNo: 'XD-001', changeCount: 2),
+      _item(id: 'ord-2', billNo: 'XD-002'),
+    ]);
+    await _pumpPage(tester, repository, size: const Size(1400, 900));
+
+    expect(find.text('待财务确认'), findsOneWidget);
+    expect(find.text('XD-001'), findsOneWidget);
+    expect(find.text('XD-002'), findsOneWidget);
+    MasterDataTableView<SalesOrderFinancePendingItem> table() => tester.widget(
+      find.byKey(const Key('sales-order-finance-desktop-table')),
+    );
+    expect(table().facets['status']!.map((bucket) => bucket.value), [
+      'initial',
+      'changes',
+    ]);
+    table().onSelectedIdsChanged!({'ord-2'});
+    await tester.pump();
+    table().onFilterChanged('status', 'changes');
+    await tester.pumpAndSettle();
+    expect(find.text('订单修改待确认 · 2 次变更'), findsOneWidget);
+    expect(find.text('XD-002'), findsNothing);
+    expect(repository.pendingQueries.last.changes, isTrue);
+    expect(repository.pendingQueries.last.page, 1);
+    expect(table().selectedIds, isEmpty);
+    table().onFilterChanged('status', 'initial');
+    await tester.pumpAndSettle();
+    expect(repository.pendingQueries.last.changes, isFalse);
+    expect(find.text('XD-001'), findsNothing);
+    expect(find.text('XD-002'), findsOneWidget);
+    table().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(repository.pendingQueries.last.changes, isNull);
+    expect(find.text('XD-001'), findsOneWidget);
+    expect(find.text('XD-002'), findsOneWidget);
+    expect(table().filters['status'], isNull);
+    table().onFilterChanged('status', 'changes');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('已批准'));
+    await tester.pumpAndSettle();
+    expect(repository.pendingQueries.last.confirmed, isTrue);
+    expect(repository.pendingQueries.last.changes, isNull);
+  });
+
+  testWidgets('state=changes 深链落待确认且详情返回保留修改筛选', (tester) async {
+    final repository = _FakeConfirmationRepository([
+      _item(id: 'changed', billNo: 'XD-CHANGED', changeCount: 2),
+      _item(id: 'initial', billNo: 'XD-INITIAL'),
+    ]);
     await _pumpPage(
       tester,
-      _FakeConfirmationRepository([
-        _item(id: 'ord-1', billNo: 'XD-001', changeCount: 2),
-        _item(id: 'ord-2', billNo: 'XD-002'),
-      ]),
+      repository,
       size: const Size(1400, 900),
+      initialState: 'changes',
     );
+    final table = tester
+        .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+          find.byKey(const Key('sales-order-finance-desktop-table')),
+        );
+    expect(table.filters['status'], 'changes');
+    expect(repository.pendingQueries.last.changes, isTrue);
+    expect(find.text('XD-INITIAL'), findsNothing);
+    table.onRowTap!(table.items.single);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('/finance/sales-order-confirmations?state=changes'),
+      findsOneWidget,
+    );
+  });
 
-    expect(find.text('修改后待确认 · 2 次变更'), findsOneWidget);
-    expect(find.text('待财务确认'), findsOneWidget);
+  testWidgets('旧changesOnly入口仍查询修改待确认而非整个队列', (tester) async {
+    final repository = _FakeConfirmationRepository([
+      _item(id: 'changed', billNo: 'XD-CHANGED', changeCount: 2),
+      _item(id: 'initial', billNo: 'XD-INITIAL'),
+    ]);
+    await _pumpPage(
+      tester,
+      repository,
+      size: const Size(1400, 900),
+      changesOnly: true,
+    );
+    final table = tester
+        .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+          find.byKey(const Key('sales-order-finance-desktop-table')),
+        );
+    expect(table.filters['status'], 'changes');
+    expect(repository.pendingQueries.last.changes, isTrue);
+    expect(find.text('XD-INITIAL'), findsNothing);
+  });
+
+  testWidgets('类型切换后的旧修改响应不能覆盖最新首次筛选', (tester) async {
+    final changed = _item(id: 'changed', billNo: 'XD-CHANGED', changeCount: 2);
+    final repository = _FakeConfirmationRepository([
+      changed,
+      _item(id: 'initial', billNo: 'XD-INITIAL'),
+    ]);
+    await _pumpPage(tester, repository, size: const Size(1400, 900));
+    final table = tester
+        .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+          find.byKey(const Key('sales-order-finance-desktop-table')),
+        );
+    repository.blockedChanges = Completer<SalesOrderFinancePendingPage>();
+    table.onFilterChanged('status', 'changes');
+    await tester.pump();
+    table.onFilterChanged('status', 'initial');
+    await tester.pumpAndSettle();
+    expect(repository.pendingQueries.last.changes, isFalse);
+    repository.blockedChanges!.complete(
+      SalesOrderFinancePendingPage(
+        items: [changed],
+        page: 1,
+        size: 20,
+        total: 1,
+        totalPages: 1,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('XD-INITIAL'), findsOneWidget);
+    expect(find.text('XD-CHANGED'), findsNothing);
+    expect(
+      tester
+          .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+            find.byKey(const Key('sales-order-finance-desktop-table')),
+          )
+          .filters['status'],
+      'initial',
+    );
+  });
+
+  testWidgets('已批准订单从财务历史可进入详情且不能重复批量确认', (tester) async {
+    final repository = _FakeConfirmationRepository([
+      _item(id: 'pending', billNo: 'XD-PENDING'),
+      _item(id: 'approved', billNo: 'XD-APPROVED', confirmed: true),
+    ]);
+    await _pumpPage(tester, repository, size: const Size(1400, 900));
+    expect(find.text('XD-APPROVED'), findsNothing);
+    await tester.tap(find.text('已批准'));
+    await tester.pumpAndSettle();
+    expect(find.text('XD-APPROVED'), findsOneWidget);
+    expect(find.text('XD-PENDING'), findsNothing);
+    final table = tester
+        .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+          find.byKey(const Key('sales-order-finance-desktop-table')),
+        );
+    expect(table.selectable, isFalse);
+    expect(
+      find.byKey(const Key('sales-order-finance-batch-confirm')),
+      findsNothing,
+    );
+    table.onRowTap!(table.items.single);
+    await tester.pumpAndSettle();
+    expect(find.text('detail-approved'), findsOneWidget);
+    expect(
+      find.text('/finance/sales-order-confirmations?state=confirmed'),
+      findsOneWidget,
+    );
+    expect(repository.batchIds, isEmpty);
   });
 
   testWidgets('桌面同行 350ms 内双击进入现有审核详情', (tester) async {

@@ -37,8 +37,13 @@ public interface InventoryPositionPort {
     /** Exact withdrawal of an unused, most-recent qualified inbound and its original custody slices. */
     record ReverseStore(EventContext context,UUID movementId,PoolKey pool,BigDecimal expectedQtyBefore,
                         UUID originalMovementId) {}
-    /** Read-only withdrawal facts, in the same order used by the physical reversal. */
-    record StoreWithdrawal(PoolKey pool, UUID originalMovementId, boolean materialReturn) {}
+    /** Read-only withdrawal facts; financial document withdrawal also waits for its own cost work. */
+    record StoreWithdrawal(PoolKey pool, UUID originalMovementId, boolean materialReturn,
+                           boolean requireStableCost) {
+        public StoreWithdrawal(PoolKey pool, UUID originalMovementId, boolean materialReturn) {
+            this(pool, originalMovementId, materialReturn, false);
+        }
+    }
     record PositionValue(UUID eventId, UUID positionRootId, UUID fundingSourceNodeId,
                          BigDecimal qtyBase, BigDecimal knownValueLocal,
                          State state, boolean replayed) {}

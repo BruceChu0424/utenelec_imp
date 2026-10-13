@@ -142,8 +142,8 @@ class FulfillmentWorkbenchQueryServiceTest {
         // 红徽章只数「等本部门动手」的两档（2026-09-11）：等待财务审核 / 财务已通过
         // 下一步在财务和供应商手上，是监控数，混进合计会让工作台卡片数字对不上
         // 页面里各红色分段之和。
-        assertTrue(captured.contains(
-                "task_status IN ('WAITING_ORDER', 'FINANCE_REJECTED')"));
+        assertTrue(captured.contains("decomposition.task_status = 'FINANCE_REJECTED'"));
+        assertTrue(captured.contains("decomposition.task_status = 'WAITING_ORDER' AND decomposition.open_qty > 0"));
         assertFalse(captured.contains("FINANCE_APPROVED"));
         assertFalse(captured.contains("ORDER_PENDING_APPROVAL"));
         verify(countQuery).setParameter("department", "PURCHASE");
@@ -270,7 +270,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertFalse(statusSql.contains("WAITING_COMPONENT_STOCK"));
     }
 
-    /** 采购列表的状态列就是 task_status, 不拼委外的领料片段。 */
+    /** 采购按任务状态展示；已生效单据的改量复核有明确文案，不拼委外领料片段。 */
     @Test
     void purchaseRowsUseTaskStatusAsDisplayStage() {
         EntityManager em = mock(EntityManager.class);
@@ -293,7 +293,9 @@ class FulfillmentWorkbenchQueryServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em, times(5)).createNativeQuery(sql.capture());
         String rowsSql = sql.getAllValues().getFirst();
-        assertTrue(rowsSql.contains("base.task_status AS display_stage"));
+        assertTrue(rowsSql.contains("THEN 'FINANCE_REVIEW_PENDING'"));
+        assertTrue(rowsSql.contains("THEN 'FINANCE_REVIEW_REJECTED'"));
+        assertTrue(rowsSql.contains("ELSE base.task_status END"));
         assertFalse(rowsSql.contains("fn_subcontract_draw_summary"));
         assertFalse(rowsSql.contains("component"));
         assertTrue(rowsSql.contains("OR (:status NOT IN ('OPEN_ANY', 'IN_PROGRESS') AND task_status = :status)"));

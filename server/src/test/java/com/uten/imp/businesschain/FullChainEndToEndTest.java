@@ -135,6 +135,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         })
 class FullChainEndToEndTest {
 
+    // One database owns one bootstrap employee and one set of encryption keys.
+    // Dynamic properties override per-class annotations for every context reusing it.
+    static final String SHARED_ADMIN_LOGIN = "full-chain-bootstrap-admin-test";
+    static final String SHARED_ADMIN_PASSWORD = "HarnessAdminPass-1!"; // gitleaks:allow synthetic shared Testcontainers bootstrap password.
+    static final String SHARED_JWT_SECRET = "full-chain-harness-jwt-secret-0123456789-test-only"; // gitleaks:allow synthetic shared Testcontainers JWT key.
+    static final String SHARED_PGP_KEY = "full-chain-harness-pgp-master-key-test-only-0123456789"; // gitleaks:allow synthetic shared Testcontainers encryption key.
+    static final String SHARED_HMAC_KEY = "full-chain-harness-hmac-key-test-only"; // gitleaks:allow synthetic shared Testcontainers HMAC key.
+
     // 73 个 E2E 类经 registerDataSource 共享本容器, 各自的 Spring 上下文(缓存上限 32)
     // 各持一个 Hikari 池同连此库——默认 max_connections=100 会被瞬时冲爆
     // (CI 全链 job 实测 FATAL: too many clients), 提容到 400 并配测试侧小池。
@@ -160,6 +168,11 @@ class FullChainEndToEndTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("uten.bootstrap.admin-login", () -> SHARED_ADMIN_LOGIN);
+        registry.add("uten.bootstrap.admin-password", () -> SHARED_ADMIN_PASSWORD);
+        registry.add("uten.jwt.secret", () -> SHARED_JWT_SECRET);
+        registry.add("uten.crypto.pgp-master-key", () -> SHARED_PGP_KEY);
+        registry.add("uten.crypto.hmac-key", () -> SHARED_HMAC_KEY);
     }
 
     /** Monotonic legacy ids remain useful for migration-shaped fixtures, while all current
@@ -219,6 +232,7 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.features.production.execution.ProductionDrawRequestService workshopDrawRequests;
     @Autowired private SalesShipmentService shipmentService;
     @Autowired private GlPostingService glPostingService;
+    @Autowired private com.uten.imp.features.finance.gl.SystemPostingStyleService postingStyles;
     @Autowired private com.uten.imp.features.admin.UserAccountAdminService userAccountAdmin;
     @Autowired private com.uten.imp.features.admin.PermissionOverrideAdminService permissionOverrideAdmin;
     @Autowired private com.uten.imp.features.production.mrp.BottomUpPlanOrchestrator orchestrator;
@@ -6223,6 +6237,26 @@ class FullChainEndToEndTest {
             assertEquals(0,completedRoot.allocatedAvailableQty().compareTo(new BigDecimal("10")));
             assertTrue(completedRoot.downstreamReferences().stream()
                     .anyMatch(ref -> "ROOT_OUTPUT_FULFILLMENT".equals(ref.documentType())));
+            // This fixture disables polling: IQC stores the output before its real
+            // material-cost tasks run. Formal withdrawal must wait for this source.
+            assertTrue(count("""
+                    SELECT count(*) FROM stock_value_production_cost_tasks task
+                    JOIN stock_value_events event ON event.result_node_id=task.output_source_node_id
+                    WHERE event.operation='POSITION_STORE' AND event.source_doc_type='SUBCONTRACT_RECEIPT'
+                        AND event.source_doc_id=? AND task.status='PENDING'
+                    """,receiptId)>0);
+            int movementsBefore=count("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",receiptId);
+            int eventsBefore=count("SELECT count(*) FROM stock_value_events WHERE source_doc_id=?",receiptId);
+            ApiException pendingCost=assertThrows(ApiException.class,()->subcontractReceiptService.reverse(receiptId));
+            assertTrue(pendingCost.getMessage().contains("本单成本来源仍在核对或传播"));
+            assertEquals(1,count("SELECT count(*) FROM subcontract_receipts WHERE id=? AND status=1",receiptId));
+            assertEquals(movementsBefore,count("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",receiptId));
+            assertEquals(eventsBefore,count("SELECT count(*) FROM stock_value_events WHERE source_doc_id=?",receiptId));
+            assertEquals(0,bigDecimalFor("SELECT root_fulfilled_qty FROM production_material_analysis_items WHERE id=?",targetAnalysisItemId).compareTo(BigDecimal.TEN));
+            assertEquals(0,bigDecimalFor("SELECT reserved_qty FROM sales_order_items WHERE id=?",orderItemId(orderA)).compareTo(BigDecimal.TEN));
+            assertEquals(0,stockBalance(w.warehouseId(),subcontracted).compareTo(BigDecimal.TEN));
+            InventoryValueWorkTestSupport.drain(inventoryValueWork,jdbc,
+                    List.of(subcontracted,suppliedMaterial,secondSuppliedMaterial));
             subcontractReceiptService.reverse(receiptId);
             assertEquals(0,bigDecimalFor("select root_fulfilled_qty from production_material_analysis_items where id=?",targetAnalysisItemId).compareTo(BigDecimal.ZERO));
             assertEquals(0,bigDecimalFor("select reserved_qty from sales_order_items where id=?",orderItemId(orderA)).compareTo(BigDecimal.ZERO));
@@ -8967,6 +9001,23 @@ class FullChainEndToEndTest {
         // These chart-of-accounts nodes are loaded via data bootstrap, not Flyway — absent in the
         // test container — so seed them here as fixture data before generating GL.
         seedChartOfAccounts();
+        // This period-wide scenario may include supplier returns from another
+        // fixture world. Their commercial credit and actual inventory cost stay
+        // separate; explicitly approve the independent expense role they require.
+        var varianceRole = postingStyles.list().stream()
+                .filter(role -> role.roleKey().equals("PROCUREMENT_RETURN_VARIANCE")).findFirst().orElseThrow();
+        assertEquals("EXPENSE", varianceRole.requiredCategory());
+        if (!varianceRole.usable()) {
+            UUID varianceStyle = UUID.randomUUID();
+            jdbc.update("""
+                    INSERT INTO payment_styles(id,code,name,category,level,status)
+                    VALUES(?,?,?,'EXPENSE',0,'使用')
+                    """, varianceStyle, "GL-RVAR-" + varianceStyle, "测试采购退货价差损益");
+            varianceRole = postingStyles.configure(varianceRole.roleKey(),
+                    new com.uten.imp.features.finance.gl.SystemPostingStyleService.Configure(
+                            varianceStyle, varianceRole.updatedAt()));
+        }
+        assertTrue(varianceRole.usable(), "退货实际成本价差必须先核定独立有效的损益科目");
         // Shipping commits inventory-value work. The loss-value projection also
         // requires its durable job queue to be settled before period-wide GL
         // generation; a shared database can already contain valid loss cases.

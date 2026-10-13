@@ -63,6 +63,17 @@ class DocumentPlatformColumnAdapterTest {
             assertThat(adapter.authorizeCreated(Set.of(line)).get(line).canWrite()).isTrue();
         }
     }
+    @Test void approvalAuthorityDoesNotGrantDocumentOrExtensionWrites(){
+        permissions("test:view","test:approve","test:price");
+        var adapter=adapter(header(0,false));
+        assertThat(adapter.canWrite()).isFalse();
+        var readable=adapter.authorize(Set.of(line),false).get(line);
+        assertThat(readable.canWrite()).isFalse();
+        assertThat(readable.priceVisible()).isTrue();
+        assertThatThrownBy(()->adapter.requireDocumentSaveAccess(false)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->adapter.requireDocumentFieldWrite(doc)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->adapter.authorize(Set.of(line),true)).isInstanceOf(ApiException.class);
+    }
     @Test void emptyDocumentStillLocksAndAuthorizesParentBeforeFindingRows(){
         permissions("test:view");
         var adapter=adapter(header(1,false)).documentRows("SELECT id FROM test_items WHERE parent_id=:document");

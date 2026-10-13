@@ -101,6 +101,150 @@ class InventoryAndBalanceTests(unittest.TestCase):
                 runner.validate_maven_discovery(path)
 
 
+class MavenResolutionRecoveryTests(unittest.TestCase):
+    # Exact error family from bb1155610 partition 2: clean never began, no XML.
+    MISSING_PLUGIN = """[INFO] Scanning for projects...
+[WARNING] The POM for org.apache.maven.plugins:maven-clean-plugin:jar:3.4.1 is missing, no dependency information available
+[ERROR] BUILD FAILURE
+[ERROR] Plugin org.apache.maven.plugins:maven-clean-plugin:3.4.1 or one of its dependencies could not be resolved:
+[ERROR] Could not find artifact org.apache.maven.plugins:maven-clean-plugin:jar:3.4.1 in central (https://repo.maven.apache.org/maven2)
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/PluginResolutionException
+"""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        (self.root / "server").mkdir()
+        self.addCleanup(patch.stopall)
+        patch.object(runner, "ROOT", self.root).start()
+        patch.object(runner, "source_identity", return_value=SOURCE).start()
+        patch.dict(runner.os.environ, {}, clear=True).start()
+
+    def execute(self, outcomes, xml_on_attempt=None, xml_status="passed"):
+        calls = []
+
+        def process(command, cwd, logfile, environment):
+            number = len(calls) + 1
+            calls.append(list(command))
+            self.assertIn("-U", command)
+            target = Path(next(arg.split("=", 1)[1] for arg in command if arg.startswith("-Duten.build.directory=")))
+            Path(logfile).write_bytes(outcomes[number - 1][1].encode())
+            if xml_on_attempt == number:
+                save_xml(target, [testcase(status=xml_status)])
+            return outcomes[number - 1][0]
+
+        with patch.object(runner, "command_log", side_effect=process), contextlib.redirect_stdout(io.StringIO()):
+            complete = runner.run_one(plan(), 0, self.root / "reports", "mvn")
+        directory = self.root / "reports/shard-0"
+        return complete, runner.read_json(directory / "report.json"), calls, directory
+
+    def test_real_missing_clean_plugin_gets_one_source_identical_recovery_and_keeps_both_logs(self):
+        success = "[INFO] --- compiler:3.14.1:compile\n[INFO] --- surefire:3.5.6:test\n[INFO] BUILD SUCCESS\n"
+        complete, report, calls, directory = self.execute([(1, self.MISSING_PLUGIN), (0, success)], xml_on_attempt=2)
+        self.assertTrue(complete)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(calls[0], calls[1])
+        self.assertEqual(0, report["maven_exit_code"])
+        self.assertEqual([1, 0], [item["exit_code"] for item in report["maven_attempts"]])
+        self.assertEqual(self.MISSING_PLUGIN.encode(), (directory / "maven-attempt-1.log").read_bytes())
+        self.assertEqual(success.encode(), (directory / "maven-attempt-2.log").read_bytes())
+        self.assertEqual(success.encode(), (directory / "maven.log").read_bytes())
+        for attempt in report["maven_attempts"]:
+            self.assertEqual(SOURCE, attempt["source"])
+            self.assertEqual(runner.hashlib.sha256((directory / attempt["logfile"]).read_bytes()).hexdigest(), attempt["log_sha256"])
+        self.assertEqual(report["maven_attempts"], runner.read_json(directory / "maven-attempts.json")["attempts"])
+        self.assertEqual(1, report["testcase_count"])
+
+    def test_second_resolution_failure_stops_and_reports_the_actual_final_exit(self):
+        complete, report, calls, directory = self.execute([(1, self.MISSING_PLUGIN), (9, self.MISSING_PLUGIN)])
+        self.assertFalse(complete)
+        self.assertEqual(2, len(calls))
+        self.assertEqual(9, report["maven_exit_code"])
+        self.assertEqual([1, 9], [item["exit_code"] for item in report["maven_attempts"]])
+        self.assertTrue((directory / "maven-attempt-1.log").is_file())
+        self.assertTrue((directory / "maven-attempt-2.log").is_file())
+
+    def test_compilation_and_test_start_or_failure_never_recover_even_with_resolution_text(self):
+        markers = ["[INFO] --- compiler:3.14.1:compile (default-compile)",
+                   "[INFO] --- maven-compiler-plugin:3.14.1:testCompile",
+                   "[INFO] Compiling 2 source files", "[INFO] Recompiling the module",
+                   "[ERROR] COMPILATION ERROR", "Compilation failure",
+                   "[INFO] --- surefire:3.5.6:test", "[INFO] --- maven-failsafe-plugin:3.5.6:integration-test",
+                   "[INFO] Running example.AtestTest", "[ERROR] Tests run: 1, Failures: 1",
+                   "There are test failures", "MojoFailureException"]
+        for index, marker in enumerate(markers):
+            with self.subTest(marker=marker), tempfile.TemporaryDirectory() as temp:
+                target = Path(temp)
+                log = target / "maven.log"
+                log.write_text(self.MISSING_PLUGIN + marker, encoding="utf-8")
+                self.assertFalse(runner.dependency_resolution_before_work(log, target))
+
+    def test_existing_failed_test_xml_prevents_recovery_and_keeps_the_test_failure(self):
+        complete, report, calls, _ = self.execute([(1, self.MISSING_PLUGIN)], xml_on_attempt=1, xml_status="failed")
+        self.assertFalse(complete)
+        self.assertEqual(1, len(calls))
+        self.assertEqual(1, report["maven_exit_code"])
+        self.assertEqual(1, report["testcase_count"])
+        self.assertTrue(any("Failed test:" in error for error in report["errors"]))
+
+    def test_malformed_or_non_test_summary_xml_in_either_phase_also_blocks_recovery(self):
+        for phase in ("surefire", "failsafe"):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as temp:
+                target = Path(temp)
+                log = target / "maven.log"
+                log.write_text(self.MISSING_PLUGIN, encoding="utf-8")
+                reports = target / (phase + "-reports")
+                reports.mkdir()
+                (reports / "summary.xml").write_text("not even valid XML", encoding="utf-8")
+                self.assertFalse(runner.dependency_resolution_before_work(log, target))
+
+    def test_source_change_after_resolution_failure_cannot_launch_another_attempt(self):
+        changed = {**SOURCE, "fingerprint": "c" * 64}
+        with patch.object(runner, "source_identity", side_effect=[SOURCE, changed, changed]):
+            complete, report, calls, _ = self.execute([(1, self.MISSING_PLUGIN)])
+        self.assertFalse(complete)
+        self.assertEqual(1, len(calls))
+        self.assertEqual("SOURCE_CHANGED", report["maven_attempts"][0]["recovery_blocked"])
+        self.assertIn("Sources changed while tests were running", report["errors"])
+
+    def test_success_and_unclassified_failures_do_not_retry(self):
+        for status, log in ((0, "[INFO] BUILD SUCCESS"), (4, "[ERROR] Unknown execution failure")):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temp:
+                path = Path(temp)
+                calls = []
+                def process(command, cwd, logfile, env):
+                    calls.append(command)
+                    Path(logfile).write_text(log, encoding="utf-8")
+                    return status
+                with patch.object(runner, "command_log", side_effect=process), contextlib.redirect_stdout(io.StringIO()):
+                    actual = runner.maven_with_resolution_recovery(["mvn", "-U"], path, path / "maven.log", path / "target")
+                self.assertEqual(status, actual)
+                self.assertEqual(1, len(calls))
+
+    def test_discovery_compilation_also_refreshes_missing_releases_without_changing_junit_execution(self):
+        output = self.root / "discovery"
+        output.mkdir()
+        calls = []
+        def process(command, cwd, logfile, env=None):
+            calls.append(command)
+            Path(logfile).write_text("[INFO] BUILD SUCCESS\n", encoding="utf-8")
+            if command[0] == "mvn":
+                self.assertIn("-U", command)
+                self.assertIn("clean", command)
+                self.assertIn("test-compile", command)
+                (output / "classpath.txt").write_text("fake.jar", encoding="utf-8")
+                (output / "effective-pom.xml").write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"/>', encoding="utf-8")
+            else:
+                runner.write_json(output / "inventory.json", {"classes": [test_class()]})
+            return 0
+        with patch.dict(runner.os.environ, {"JAVA_HOME": "fixture-jdk"}), \
+                patch.object(runner, "command_log", side_effect=process), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual([test_class()], runner.discover(output, "mvn"))
+        self.assertEqual(2, len(calls))
+        self.assertNotIn("-U", calls[1], "The option is for Maven, not the JUnit Java process")
+
+
 class HeapOptionsTests(unittest.TestCase):
     def test_java_heap_size_accepts_only_positive_integer_and_optional_binary_unit(self):
         for value in ("4g", "3g", "3G", "1536m", "512M", "2048k", "2048K", "268435456", "004g"):

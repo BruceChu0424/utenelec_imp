@@ -26,6 +26,11 @@ import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
+import '../models/quality_task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
+import '../../../shared/drafts/form_draft_category.dart';
+import '../../../shared/drafts/task_form_draft_recovery_notice.dart';
 import '../repositories/production_fqc_repository.dart';
 import '../widgets/production_fqc_dialogs.dart';
 import 'quality_batch_approval_page.dart';
@@ -140,6 +145,16 @@ class _ProductionFqcInspectionsPageState
     ProductionFqcInspection inspection, {
     required bool canApprove,
   }) async {
+    final drafts = qualityTaskDrafts(
+      ref.read(formDraftsProvider),
+      sheetId: inspection.sheetId,
+      inspectionId: inspection.id,
+    );
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+      if (mounted) await _load(page: _result?.page ?? 1);
+      return;
+    }
     // 页面决定成功后带结果返回：先本地落位（刷新失败也保得住「已决定」事实），
     // 再重拉列表与角标。
     final decided = await context.push<ProductionFqcInspection>(
@@ -253,6 +268,7 @@ class _ProductionFqcInspectionsPageState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(formDraftsProvider);
     ref.onPageResume(RouteName.productionFqcInspections, _load);
     final permissions = ref.watch(currentPermissionsProvider);
     final canApprove =
@@ -308,6 +324,9 @@ class _ProductionFqcInspectionsPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const TaskDraftRecoveryNotice(
+              scope: FormDraftCategoryScope(module: BadgeModule.quality),
+            ),
             _buildToolbar(result, canBatchPass: canBatchPass),
             const SizedBox(height: UtenSpacing.s8),
             const _FqcProcessHint(),
@@ -422,12 +441,28 @@ class _ProductionFqcInspectionsPageState
       key: 'status',
       label: '状态',
       width: 72,
-      value: fqcStatusLabel,
+      value: (inspection) {
+        final drafts = qualityTaskDrafts(
+          ref.read(formDraftsProvider),
+          sheetId: inspection.sheetId,
+          inspectionId: inspection.id,
+        );
+        return drafts.isEmpty
+            ? fqcStatusLabel(inspection)
+            : taskDraftStatus(drafts);
+      },
       // 状态整格底色（ADR-169 逐页显式映射）：待检=黄——实物已送检、等品质
       // 检验，属「等检查」锚定家族（「待处理」段的行动性已由分段红计数徽章
       // 表达；且待检取绿会与已全部决定撞色）/ 部分已决定=橙（部分完成、
       // 余量待判——风险中间态）/ 已全部决定=绿（完成）/ 已取消=灰（中性终态）。
       cellColor: (context, inspection) {
+        if (qualityTaskDrafts(
+          ref.read(formDraftsProvider),
+          sheetId: inspection.sheetId,
+          inspectionId: inspection.id,
+        ).isNotEmpty) {
+          return utenStatusBadgeCellColor(UtenStatusBadgeType.neutral);
+        }
         final type = switch (inspection.status) {
           'PENDING' => UtenStatusBadgeType.warning,
           'PARTIAL' => UtenStatusBadgeType.orange,

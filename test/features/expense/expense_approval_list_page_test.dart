@@ -18,6 +18,32 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 class _FakeExpenseRepository extends Fake implements ExpenseRepository {
   final List<Map<String, dynamic>> pendingCalls = [];
   final List<Map<String, dynamic>> historyCalls = [];
+  final List<int> payableCalls = [];
+
+  @override
+  Future<PagedResult<ExpenseClaim>> listPayable({
+    int page = 1,
+    int size = 24,
+    int? year,
+    int? month,
+    String? departmentId,
+    String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
+  }) async {
+    payableCalls.add(page);
+    return PagedResult(
+      items: [
+        _claim('payable-1').copyWith(status: ExpenseClaimStatus.approved),
+      ],
+      page: page,
+      size: size,
+      total: 1,
+      totalPages: 1,
+    );
+  }
+
   final List<Map<String, int>> batchVersions = [];
   final List<List<String>> rejectBatchCalls = [];
 
@@ -134,19 +160,23 @@ ExpenseClaim _claim(String id) => ExpenseClaim(
   submittedAt: DateTime(2026, 9, 9, 11),
 );
 
-Widget _app(_FakeExpenseRepository repo, SharedPreferences preferences) =>
-    ProviderScope(
-      overrides: [
-        expenseRepositoryProvider.overrideWithValue(repo),
-        sharedPreferencesProvider.overrideWithValue(preferences),
-        currentPermissionsProvider.overrideWithValue({Perm.expenseApprove}),
-      ],
-      child: const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: ExpenseApprovalListPage(),
-      ),
-    );
+Widget _app(
+  _FakeExpenseRepository repo,
+  SharedPreferences preferences, {
+  ApprovalQueue? initialQueue,
+  Set<String> permissions = const {Perm.expenseApprove},
+}) => ProviderScope(
+  overrides: [
+    expenseRepositoryProvider.overrideWithValue(repo),
+    sharedPreferencesProvider.overrideWithValue(preferences),
+    currentPermissionsProvider.overrideWithValue(permissions),
+  ],
+  child: MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: ExpenseApprovalListPage(initialQueue: initialQueue),
+  ),
+);
 
 MasterDataTableView<ExpenseClaim> _table(WidgetTester tester) =>
     tester.widget<MasterDataTableView<ExpenseClaim>>(
@@ -154,6 +184,80 @@ MasterDataTableView<ExpenseClaim> _table(WidgetTester tester) =>
     );
 
 void main() {
+  for (final queue in [ApprovalQueue.payable, ApprovalQueue.history]) {
+    testWidgets('明确队列入口只读请求所选队列，不先加载待审批：$queue', (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final repo = _FakeExpenseRepository();
+      await tester.pumpWidget(
+        _app(
+          repo,
+          preferences,
+          initialQueue: queue,
+          permissions: const {Perm.expenseApprove, Perm.expensePay},
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repo.pendingCalls, isEmpty);
+      expect(
+        queue == ApprovalQueue.payable ? repo.payableCalls : repo.historyCalls,
+        hasLength(1),
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ExpenseApprovalListPage)),
+      );
+      expect(container.read(approvalQueueProvider), queue);
+      expect(
+        _table(tester).items.single.status,
+        queue == ApprovalQueue.payable
+            ? ExpenseClaimStatus.approved
+            : ExpenseClaimStatus.paid,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets('无付款权限的待付款深链不能调用付款队列', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeExpenseRepository();
+    await tester.pumpWidget(
+      _app(repo, preferences, initialQueue: ApprovalQueue.payable),
+    );
+    await tester.pumpAndSettle();
+    expect(repo.pendingCalls, hasLength(1));
+    expect(repo.payableCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('同一报销页切换深链队列时清除旧勾选，重新加载正确队列', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeExpenseRepository();
+    await tester.pumpWidget(
+      _app(
+        repo,
+        preferences,
+        initialQueue: ApprovalQueue.pending,
+        permissions: const {Perm.expenseApprove, Perm.expensePay},
+      ),
+    );
+    await tester.pumpAndSettle();
+    _table(tester).onSelectedIdsChanged!({'c-1'});
+    await tester.pump();
+    await tester.pumpWidget(
+      _app(
+        repo,
+        preferences,
+        initialQueue: ApprovalQueue.payable,
+        permissions: const {Perm.expenseApprove, Perm.expensePay},
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repo.payableCalls, hasLength(1));
+    expect(_table(tester).items.single.status, ExpenseClaimStatus.approved);
+    expect(_table(tester).selectedIds, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'processed finance history remains readable with category filters and no actions',
     (tester) async {

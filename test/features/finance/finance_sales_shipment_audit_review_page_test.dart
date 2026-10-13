@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -456,7 +457,7 @@ void main() {
         'contentHash': 'master-rate-content',
         'financeAudit': 0,
         'clientName': '美金客户',
-        'currencyName': '美金',
+        'currencyName': 'USD',
         'financeRate': '7.000000',
         'financeRateReady': true,
         'baseCurrency': false,
@@ -546,7 +547,7 @@ void main() {
         'contentHash': 'frozen-content',
         'financeAudit': 1,
         'clientName': '美金客户',
-        'currencyName': '美金',
+        'currencyName': 'USD',
         'financeRate': '8.000000',
         'financeRateReady': true,
         'baseCurrency': false,
@@ -558,6 +559,8 @@ void main() {
     final frozen = find.byKey(const Key('finance-audit-rate-frozen'));
     expect(frozen, findsOneWidget);
     expect(tester.widget<Text>(frozen).data, contains('已冻结记账汇率 7.25'));
+    expect(tester.widget<Text>(frozen).data, contains('1 美金 = 7.25'));
+    expect(tester.widget<Text>(frozen).data, isNot(contains('USD')));
   });
 
   testWidgets('reject requires reason and posts finance-audit-reject', (
@@ -786,6 +789,7 @@ Future<_ReviewApi> _pumpReviewPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('http://localhost:8080/api'),
         apiClientProvider.overrideWithValue(api),
         salesMasterNameServiceProvider.overrideWithValue(
           SalesMasterNameService(api),

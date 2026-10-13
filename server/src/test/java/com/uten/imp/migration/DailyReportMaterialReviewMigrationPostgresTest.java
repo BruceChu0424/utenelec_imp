@@ -9,9 +9,11 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Nonempty pre-V840 upgrade: the baseline includes V839 when available; legacy command xmin and reset/index sets stay unchanged. */
+/** V840 preserves legacy commands and exact schema sets; later V852 deltas are explicit and bounded. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class DailyReportMaterialReviewMigrationPostgresTest {
     private static final PostgreSQLContainer<?> pg=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("material_review_upgrade");
@@ -19,6 +21,21 @@ class DailyReportMaterialReviewMigrationPostgresTest {
     private static UUID actor;
     private static Map<String,Object> old;
     private static List<String> tables,indexes,resetPolicy;
+    private static Map<String,Object> afterV840;
+    private static Object oldMaterialSnapshotAfterV840;
+    private static List<String> tablesAfterV840,indexesAfterV840,resetPolicyAfterV840;
+    private static final Map<String,String> V852_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("document_unapprovals_draft_unique","CREATE UNIQUE INDEX document_unapprovals_draft_unique ON public.document_unapprovals USING btree (family, draft_id)"),
+            Map.entry("document_unapprovals_original_unique","CREATE UNIQUE INDEX document_unapprovals_original_unique ON public.document_unapprovals USING btree (family, original_id)"),
+            Map.entry("document_unapprovals_pkey","CREATE UNIQUE INDEX document_unapprovals_pkey ON public.document_unapprovals USING btree (id)"),
+            Map.entry("document_unapprovals_request_unique","CREATE UNIQUE INDEX document_unapprovals_request_unique ON public.document_unapprovals USING btree (created_by, family, request_key)"),
+            Map.entry("procurement_inspection_items_item_tranche_uk","CREATE UNIQUE INDEX procurement_inspection_items_item_tranche_uk ON public.procurement_inspection_items USING btree (receipt_type, receipt_item_id, quantity_tranche)"),
+            Map.entry("idx_purchase_receipt_item_finance_case","CREATE INDEX idx_purchase_receipt_item_finance_case ON public.purchase_receipt_items USING btree (finance_approval_case_id)"),
+            Map.entry("idx_subcontract_receipt_item_finance_case","CREATE INDEX idx_subcontract_receipt_item_finance_case ON public.subcontract_receipt_items USING btree (finance_approval_case_id)"),
+            Map.entry("idx_purchase_request_qty_revision_document","CREATE INDEX idx_purchase_request_qty_revision_document ON public.purchase_request_qty_revisions USING btree (request_id, request_item_id, expected_version)"),
+            Map.entry("purchase_request_qty_revision_request_item_id_expected_vers_key","CREATE UNIQUE INDEX purchase_request_qty_revision_request_item_id_expected_vers_key ON public.purchase_request_qty_revisions USING btree (request_item_id, expected_version)"),
+            Map.entry("purchase_request_qty_revisions_created_txid_request_item_id_key","CREATE UNIQUE INDEX purchase_request_qty_revisions_created_txid_request_item_id_key ON public.purchase_request_qty_revisions USING btree (created_txid, request_item_id)"),
+            Map.entry("purchase_request_qty_revisions_pkey","CREATE UNIQUE INDEX purchase_request_qty_revisions_pkey ON public.purchase_request_qty_revisions USING btree (id)"));
     @BeforeAll static void migrate() {
         pg.start();Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target("839").load().migrate();
         db=new JdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
@@ -30,13 +47,37 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         db.update("INSERT INTO production_daily_report_commands(actor_user_id,idempotency_key,request_hash,report_id,created_by,command_kind,approval_protocol_version,reviewed_row_version) VALUES(?,? ,repeat('a',64),?,?,'APPROVE',2,0)",actor,"old-reviewed-material-key",report,actor);
         old=db.queryForMap("SELECT report_id,request_hash,approval_protocol_version,reviewed_row_version,xmin::text row_xmin FROM production_daily_report_commands WHERE actor_user_id=?",actor);
         tables=tables();indexes=indexes();resetPolicy=resetPolicy();
+        Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").target("840").load().migrate();
+        afterV840=oldCommand();
+        oldMaterialSnapshotAfterV840=db.queryForObject("SELECT material_review_snapshot FROM production_daily_report_commands WHERE actor_user_id=?",Object.class,actor);
+        tablesAfterV840=tables();indexesAfterV840=indexes();resetPolicyAfterV840=resetPolicy();
         Flyway.configure().dataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()).locations("classpath:db/migration").load().migrate();
     }
     @AfterAll static void stop(){pg.stop();}
     @Test void oldApprovalBytesAndReviewMeaningStayExactlyTheSame() {
-        assertEquals(old,db.queryForMap("SELECT report_id,request_hash,approval_protocol_version,reviewed_row_version,xmin::text row_xmin FROM production_daily_report_commands WHERE actor_user_id=?",actor));
+        assertEquals(old,afterV840);
+        assertNull(oldMaterialSnapshotAfterV840);
+        assertEquals(old,oldCommand());
         assertNull(db.queryForObject("SELECT material_review_snapshot FROM production_daily_report_commands WHERE actor_user_id=?",Object.class,actor));
-        assertEquals(tables,tables());assertEquals(indexes,indexes());assertEquals(resetPolicy,resetPolicy());
+        assertEquals(tables,tablesAfterV840);assertEquals(indexes,indexesAfterV840);assertEquals(resetPolicy,resetPolicyAfterV840);
+    }
+    @Test void laterForwardMigrationsHaveOnlyTheExactDeclaredV852SchemaDelta() {
+        TreeSet<String> expectedTables=new TreeSet<>(tablesAfterV840);
+        assertTrue(expectedTables.add("document_unapprovals"));
+        assertTrue(expectedTables.add("purchase_request_qty_revisions"));
+        assertEquals(expectedTables.stream().toList(),tables());
+        TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
+        assertEquals("CREATE UNIQUE INDEX procurement_inspection_items_item_uk ON public.procurement_inspection_items USING btree (receipt_type, receipt_item_id)",
+                expectedIndexes.remove("procurement_inspection_items_item_uk"));
+        V852_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A declared new index must not replace an existing index: "+name));
+        assertEquals(expectedIndexes,catalogMap(indexes()));
+        TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
+        assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
+        assertNull(expectedPolicy.put("purchase_request_qty_revisions","CLEAR"));
+        assertEquals(expectedPolicy,catalogMap(resetPolicy()));
+        assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,
+                db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));
     }
     @Test void incompleteV3ProofOrForeignReportSnapshotCannotBeRecorded() {
         UUID report=newReport("SR20200101000002");
@@ -54,6 +95,8 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(resetPolicy().stream().anyMatch(row->row.startsWith("production_daily_report_commands|")));
     }
     private static UUID newReport(String billNo){UUID report=UUID.randomUUID();UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,actor);db.update("INSERT INTO production_daily_reports(id,bill_no,bill_date,status,maker_id) VALUES(?,?,DATE '2020-01-01',0,?)",report,billNo,employee);return report;}
+    private static Map<String,Object> oldCommand(){return db.queryForMap("SELECT report_id,request_hash,approval_protocol_version,reviewed_row_version,xmin::text row_xmin FROM production_daily_report_commands WHERE actor_user_id=?",actor);}
+    private static TreeMap<String,String> catalogMap(List<String> rows){TreeMap<String,String> result=new TreeMap<>();for(String row:rows){int separator=row.indexOf('|');assertTrue(separator>0);assertNull(result.put(row.substring(0,separator),row.substring(separator+1)));}return result;}
     private static void insertV3(UUID report,String snapshot,String decisions){db.update("INSERT INTO production_daily_report_commands(actor_user_id,idempotency_key,request_hash,report_id,created_by,command_kind,approval_protocol_version,reviewed_row_version,material_review_fingerprint,material_review_snapshot,material_decisions) VALUES(?,?,repeat('b',64),?,?,'APPROVE',3,0,repeat('b',64),CAST(? AS jsonb),CAST(? AS jsonb))",actor,"new-v3-migration-"+UUID.randomUUID(),report,actor,snapshot,decisions);}
     private static List<String> tables(){return db.queryForList("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename",String.class);}
     private static List<String> indexes(){return db.queryForList("SELECT indexname||'|'||indexdef FROM pg_indexes WHERE schemaname='public' ORDER BY indexname",String.class);}

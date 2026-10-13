@@ -66,6 +66,18 @@ class InventoryDerivedNodeLegacyPostgresTest {
                 // textual rendering of equivalent 0.0000 and 0.
                 for(var prior:original)assertThat(db.queryForObject("SELECT (to_jsonb(n)-ARRAY['value_model','source_initial_amount_exact','source_amount_exact','initial_bound_lower','initial_bound_upper','bound_lower','bound_upper','initial_bound_scale','bound_scale','bound_revision','distributed_value_local','creation_txid'])=CAST(? AS jsonb) FROM stock_value_nodes n WHERE id=?",Boolean.class,prior.get("body"),prior.get("id"))).isTrue();
                 var current=new InventoryValuationService(named,mutex);
+                var oldSource=current.node(receipt.valueNodeId(),false);
+                assertThat(oldSource.sourceFinal()).isTrue();assertThat(oldSource.pending()).isZero();
+                assertThat(current.sourceClosureState(oldSource)).isEqualTo(State.PENDING);
+                // A new precise source must execute the full closure query on V517,
+                // before business-refresh and withdrawal metadata columns existed.
+                UUID preciseGoods=UUID.randomUUID();db.update("INSERT INTO goods VALUES (?)",preciseGoods);
+                PoolKey preciseKey=new PoolKey(warehouse,preciseGoods,null);EventContext preciseEvent=context(user,employee);
+                MovementValue precise=tx.execute(status->{mutex.lock(new InventoryKey(preciseGoods,null));
+                    var result=current.receive(new Receive(preciseEvent,UUID.randomUUID(),preciseKey,BigDecimal.ONE,BigDecimal.ZERO,BigDecimal.ONE,true));
+                    physical(db,result,preciseEvent,preciseKey,BigDecimal.ONE,1);return result;});
+                assertThat(precise).isNotNull();
+                assertThat(current.sourceClosureState(current.node(precise.valueNodeId(),false))).isEqualTo(State.FINAL);
                 for(String quantity:List.of("1","2")){
                     BigDecimal amount=new BigDecimal(quantity);EventContext issue=context(user,employee);
                     MovementValue moved=tx.execute(status->{mutex.lock(new InventoryKey(goods,null));

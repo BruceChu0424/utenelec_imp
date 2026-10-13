@@ -30,7 +30,6 @@ enum QuoteFinanceLineError {
 
   /// Existing extra terms produce an invalid amount after repricing.
   extraAmount,
-  quantity,
 }
 
 class QuoteFinanceLineDraft {
@@ -48,17 +47,14 @@ class QuoteFinanceLineDraft {
     );
     _initialDiscount = normalizeQuoteDiscount(line.discount) ?? '1.0000';
     directPricing = line.isFinancePriced && !sameDecimal(_initialDiscount, '1');
-    qty.text = line.qty ?? '';
-    price.text = line.storedPrice ?? '';
     deal.text = _initialDeal;
     discount.text = financeTrim(_initialDiscount);
   }
 
   final SalesQuoteFinanceLine line;
-  final TextEditingController qty = TextEditingController();
-  final TextEditingController price = TextEditingController();
+  // Compatibility for existing finance-priced lines with a stored discount.
+  // The submitted base price stays fixed; only the original pricing actions apply.
   bool directPricing = false;
-  bool removed = false;
   final TextEditingController deal = TextEditingController();
   final TextEditingController discount = TextEditingController();
 
@@ -66,9 +62,7 @@ class QuoteFinanceLineDraft {
   String source;
   QuoteFinanceLineError? _error;
   QuoteFinanceLineError? get error {
-    if (removed) return null;
-    if (!isPositiveDecimal(qty.text)) return QuoteFinanceLineError.quantity;
-    if (directPricing && !isValidFinancePrice(price.text)) {
+    if (directPricing && !isValidFinancePrice(line.storedPrice)) {
       return QuoteFinanceLineError.financePrice;
     }
     if (directPricing && !isValidQuoteDiscount(discount.text)) {
@@ -77,7 +71,7 @@ class QuoteFinanceLineDraft {
     if (_error != null) return _error;
     if (line.extraColumns.isEmpty) return null;
     final base = quoteLineAmountPreview(
-      qty: qty.text,
+      qty: line.qty,
       price: effectivePrice,
       discount: effectiveDiscount,
     );
@@ -111,7 +105,7 @@ class QuoteFinanceLineDraft {
       hasListPrice;
 
   /// 成交单价 / 折扣输入框可编辑(刷新标价后要先保存)。
-  bool get priceEditable => !refreshing && !removed;
+  bool get priceEditable => !refreshing;
 
   /// 折扣框可编辑(按标价打折且有标价)。
   bool get discountEditable =>
@@ -130,7 +124,7 @@ class QuoteFinanceLineDraft {
 
   /// 生效单价：按标价打折 = 标价；财务定价 = 成交单价。
   String? get effectivePrice => directPricing
-      ? _nonEmpty(price.text)
+      ? line.storedPrice
       : isMaster
       ? listPrice
       : _nonEmpty(deal.text);
@@ -144,12 +138,10 @@ class QuoteFinanceLineDraft {
   bool get unpriced => dirty ? effectivePrice == null : line.needsFinancePrice;
 
   /// 金额预览(数量 × 单价 × 折扣，精确)；没改的行直接用服务端金额。
-  String? get amountPreview => removed
-      ? '0'
-      : dirty
+  String? get amountPreview => dirty
       ? businessColumnAmount(
           quoteLineAmountPreview(
-            qty: qty.text,
+            qty: line.qty,
             price: effectivePrice,
             discount: effectiveDiscount,
           ),
@@ -161,13 +153,13 @@ class QuoteFinanceLineDraft {
   String? get fileDifference => dirty
       ? quoteFileDifference(
           lineAmount: amountPreview,
-          qty: qty.text,
+          qty: line.qty,
           filePriceLocal: line.clientPriceLocal,
         )
       : (line.diffToFile ??
             quoteFileDifference(
               lineAmount: line.amount,
-              qty: qty.text,
+              qty: line.qty,
               filePriceLocal: line.clientPriceLocal,
             ));
 
@@ -180,11 +172,10 @@ class QuoteFinanceLineDraft {
 
   /// 本行有要处理的内容: 填错了(不能悄悄丢掉)、选了刷新标价、或值与服务端不同。
   bool get dirty {
-    if (removed || !sameDecimal(qty.text, line.qty)) return true;
     if (error != null) return true;
     if (directPricing) {
-      return !sameDecimal(price.text, line.storedPrice) ||
-          !sameDecimal(discount.text, _initialDiscount);
+      return !sameDecimal(discount.text, _initialDiscount) ||
+          !_sameDeal(deal.text, _initialDeal);
     }
     if (refreshing) return true;
     if (source != _initialSource) return true;
@@ -202,11 +193,10 @@ class QuoteFinanceLineDraft {
   }
 
   bool get valid {
-    if (removed) return true;
     if (error != null) return false;
     if (refreshing) return true;
     if (directPricing) {
-      return isValidFinancePrice(price.text) &&
+      return isValidFinancePrice(line.storedPrice) &&
           isValidQuoteDiscount(discount.text);
     }
     if (isMaster) return isValidQuoteDiscount(discount.text);
@@ -217,22 +207,19 @@ class QuoteFinanceLineDraft {
   void onDealChanged(String text) {
     if (!priceEditable) return;
     final trimmed = text.trim();
-    // While an independent base price is being edited, changing the deal price
-    // must derive against that visible price, not silently restore the old one.
     if (directPricing) {
-      final result = quoteDiscountFromDealPrice(trimmed, price.text);
+      final result = quoteDiscountFromDealPrice(trimmed, line.storedPrice);
       if (isZeroDecimal(trimmed) ||
           result.flag == QuoteDiscountFlag.aboveList) {
-        price.text = trimmed;
-        discount.text = '1';
-        error = null;
+        directPricing = false;
       } else if (result.hasDiscount) {
         discount.text = financeTrim(result.discount);
         error = null;
+        return;
       } else {
         error = QuoteFinanceLineError.dealPrice;
+        return;
       }
-      return;
     }
     directPricing = false;
     // 本来就没有单价的行又清空了：回到原样(不算填错，也不挡保存别的行)。
@@ -278,7 +265,7 @@ class QuoteFinanceLineDraft {
     }
     deal.text =
         quoteDealPriceFromDiscount(
-          directPricing ? price.text : listPrice,
+          directPricing ? line.storedPrice : listPrice,
           text.trim(),
         ) ??
         '';
@@ -289,7 +276,6 @@ class QuoteFinanceLineDraft {
   void useMasterPricing() {
     if (!hasListPrice) return;
     directPricing = false;
-    price.text = listPrice ?? '';
     source = QuotePriceSource.master;
     final derived = quoteDiscountFromDealPrice(deal.text, listPrice);
     final rate = derived.hasDiscount
@@ -305,7 +291,6 @@ class QuoteFinanceLineDraft {
   /// 设为赠品/0价(财务定价 0)。
   void markGiveaway() {
     directPricing = false;
-    price.text = '0';
     refreshing = false;
     source = QuotePriceSource.finance;
     deal.text = '0';
@@ -317,7 +302,6 @@ class QuoteFinanceLineDraft {
   void refreshFromMaster() {
     if (!line.canRefreshFromMaster) return;
     directPricing = false;
-    price.text = line.currentMasterPrice ?? '';
     refreshing = true;
     source = QuotePriceSource.master;
     discount.text = financeTrim(_initialDiscount);
@@ -329,10 +313,7 @@ class QuoteFinanceLineDraft {
 
   /// 撤销本行修改。
   void restore() {
-    removed = false;
     directPricing = line.isFinancePriced && !sameDecimal(_initialDiscount, '1');
-    qty.text = line.qty ?? '';
-    price.text = line.storedPrice ?? '';
     refreshing = false;
     source = _initialSource;
     deal.text = _initialDeal;
@@ -341,40 +322,16 @@ class QuoteFinanceLineDraft {
   }
 
   /// 保存请求的一行；没改或不合法时返回 null(页面先挡不合法行)。
-  void onPriceChanged(String text) {
-    if (!priceEditable) return;
-    directPricing = true;
-    error = null;
-    deal.text = quoteDealPriceFromDiscount(text, discount.text) ?? '';
-  }
-
   SalesQuoteFinanceLineEdit? toEdit() {
     if (!dirty || !valid) return null;
-    if (removed) return SalesQuoteFinanceLineEdit.remove(itemId: itemId);
-    final quantity = sameDecimal(qty.text, line.qty) ? null : qty.text.trim();
     if (directPricing) {
-      return SalesQuoteFinanceLineEdit.commercial(
+      return SalesQuoteFinanceLineEdit.discount(
         itemId: itemId,
-        qty: quantity,
-        price: price.text.trim(),
-        discount: normalizeQuoteDiscount(discount.text),
-      );
-    }
-    if (quantity != null &&
-        _sameDeal(deal.text, _initialDeal) &&
-        sameDecimal(discount.text, _initialDiscount) &&
-        source == _initialSource &&
-        !refreshing) {
-      return SalesQuoteFinanceLineEdit.commercial(
-        itemId: itemId,
-        qty: quantity,
+        discount: normalizeQuoteDiscount(discount.text)!,
       );
     }
     if (refreshing) {
-      return SalesQuoteFinanceLineEdit.useMasterPrice(
-        itemId: itemId,
-        qty: quantity,
-      );
+      return SalesQuoteFinanceLineEdit.useMasterPrice(itemId: itemId);
     }
     if (isMaster) {
       // 冻结标价在用: 直接核定折扣; 否则(没单价 / 原为财务定价)提交成交单价,
@@ -382,32 +339,24 @@ class QuoteFinanceLineDraft {
       if (line.pricedFromFrozenList) {
         return SalesQuoteFinanceLineEdit.discount(
           itemId: itemId,
-          qty: quantity,
           discount: normalizeQuoteDiscount(discount.text)!,
         );
       }
       return SalesQuoteFinanceLineEdit.dealPrice(
         itemId: itemId,
-        qty: quantity,
         dealPrice: financeTrim(deal.text),
       );
     }
     if (isZeroDecimal(deal.text)) {
-      return SalesQuoteFinanceLineEdit.giftZeroPrice(
-        itemId: itemId,
-        qty: quantity,
-      );
+      return SalesQuoteFinanceLineEdit.giftZeroPrice(itemId: itemId);
     }
     return SalesQuoteFinanceLineEdit.dealPrice(
       itemId: itemId,
-      qty: quantity,
       dealPrice: financeTrim(deal.text),
     );
   }
 
   void dispose() {
-    qty.dispose();
-    price.dispose();
     deal.dispose();
     discount.dispose();
   }

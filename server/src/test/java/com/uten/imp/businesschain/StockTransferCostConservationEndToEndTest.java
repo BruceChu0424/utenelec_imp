@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.*;
  "uten.jwt.secret=stock-review-test-isolated-jwt-0123456789-abcdef",
  "uten.crypto.pgp-master-key=stock-review-test-isolated-pgp-0123456789-abcdef",
  "uten.crypto.hmac-key=stock-review-test-isolated-hmac-0123456789-abcdef",
- "uten.bootstrap.admin-login=stock-review-regression","uten.bootstrap.admin-password=StockReviewRegression-1!"})
+ "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!"})
 class StockTransferCostConservationEndToEndTest {
  @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
  @Autowired com.uten.imp.application.port.InventoryValuationPort values;
@@ -66,15 +66,13 @@ class StockTransferCostConservationEndToEndTest {
   var transfer=transfer(w,b,"5");stock.approve(transfer.getId());balances(w,b,"5","50","10","200");assertThat(probe(w,b,transfer)).hasSize(64);
   unapproval.unapprove("stockDocument",transfer.getId(),new DocumentUnapprovalService.UnapproveRequest("transfer-prior-"+transfer.getId(),"B原有150不能按混价误退100"));balances(w,b,"10","100","5","150");
  }
- @Test void legacyStoredNegativeGiftCannotPostOrEscapeThroughReviewedApproval(){
+ @Test void legacyStoredNegativeGiftCannotPost(){
   var w=world();var old=create(w,"OTHER_IN","1",null);
   // Reconstruct the actually observed R5 accepted malformed draft; normal current API already refuses this input.
   db.update("UPDATE stock_document_items SET gift_qty=-1 WHERE doc_id=?",old.getId());
   BigDecimal eventCount=number("SELECT COUNT(*) FROM stock_value_events");
   assertThatThrownBy(()->stock.approve(old.getId())).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
   assertThat(quantity(w)).isZero();assertThat(value(w)).isZero();assertThat(stock.detail(old.getId()).getStatus()).isZero();
-  var review=stock.reviewDraft(old.getId());
-  assertThatThrownBy(()->stock.updateReviewed(old.getId(),input(old,"2",null),review.snapshot(),true)).isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
   assertThat(number("SELECT qty FROM stock_document_items WHERE doc_id=?",old.getId())).isEqualByComparingTo("1");
   assertThat(number("SELECT gift_qty FROM stock_document_items WHERE doc_id=?",old.getId())).isEqualByComparingTo("-1");
   assertThat(number("SELECT COUNT(*) FROM stock_value_events")).isEqualByComparingTo(eventCount);

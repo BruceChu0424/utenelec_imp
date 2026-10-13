@@ -86,8 +86,6 @@ public class FinanceBankTransferService {
     private final DocNumberService docNumberService;
     private final EntityManager em;
     private final FinanceDocumentAccessPolicy access;
-    @org.springframework.beans.factory.annotation.Autowired
-    private org.springframework.beans.factory.ObjectProvider<FinanceBankTransferService> reviewedDraftProxy;
     private final GlPostingService glPosting;
     private final AccountFlowLedgerService accountFlowLedger;
 
@@ -195,49 +193,9 @@ public class FinanceBankTransferService {
     @PreAuthorize("hasAuthority('finance_bank_transfer:edit')")
     @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_bank_transfer_item", requestArgument=1, documentIdArgument=0)
     public FinanceBankTransferDetail update(UUID id, FinanceBankTransferSaveRequest req) {
-        return updateDraft(id, req, false, null);
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_bank_transfer:view') and hasAuthority('finance_bank_transfer:approve')")
-    public com.uten.imp.features.finance.FinanceDraftReview.View<FinanceBankTransferDetail> review(UUID id) {
         tx.bind();
         FinanceBankTransfer t = lockActive(id);
-        com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, t.getMakerId(), "finance_bank_transfer");
-        com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
-        if (t.getStatus() != STATUS_DRAFT) throw new ApiException(ErrorCode.CONFLICT, "仅草稿单据可修改后审核");
-        return new com.uten.imp.features.finance.FinanceDraftReview.View<>(
-                com.uten.imp.features.finance.FinanceDraftReview.snapshot(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.TRANSFER, id), detail(id));
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_bank_transfer:view') and hasAuthority('finance_bank_transfer:approve')")
-    public FinanceBankTransferDetail updateReviewed(UUID id, FinanceBankTransferSaveRequest req, String expectedSnapshot, boolean approveNow) {
-        var review = review(id);
-        com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.TRANSFER, id, expectedSnapshot);
-        FinanceBankTransferDetail saved;
-        try (var scope = com.uten.imp.common.platformcolumns.PlatformColumnReviewedSave.begin("finance_bank_transfer_item", id, currentUser.requireId())) {
-            saved = reviewedDraftProxy.getObject().saveReviewedDraft(id, req, expectedSnapshot);
-        }
-        return approveNow ? approve(id) : saved;
-    }
-
-    @Transactional
-    @PreAuthorize("hasAuthority('finance_bank_transfer:view') and hasAuthority('finance_bank_transfer:approve')")
-    @com.uten.imp.common.platformcolumns.PlatformColumnDocumentSave(scope="finance_bank_transfer_item", requestArgument=1, documentIdArgument=0)
-    public FinanceBankTransferDetail saveReviewedDraft(UUID id, FinanceBankTransferSaveRequest req, String expectedSnapshot) {
-        FinanceBankTransferDetail saved = updateDraft(id, req, true, expectedSnapshot);
-        em.flush();
-        return saved;
-    }
-
-    private FinanceBankTransferDetail updateDraft(UUID id, FinanceBankTransferSaveRequest req, boolean review, String expectedSnapshot) {
-        tx.bind();
-        FinanceBankTransfer t = lockActive(id);
-        if (review) {
-            com.uten.imp.features.finance.FinanceDraftReview.requireReviewer(access, currentUser, t.getMakerId(), "finance_bank_transfer");
-            com.uten.imp.features.finance.FinanceDraftReview.requireCurrent(em, com.uten.imp.features.finance.FinanceDraftReview.Kind.TRANSFER, id, expectedSnapshot);
-        } else access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
+        access.requireWritable(t.getMakerId(), "只能操作本人负责或已授权的银行存取款单");
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(t.getLegacyId());
         if (t.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可编辑");

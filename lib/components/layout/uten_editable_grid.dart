@@ -3213,18 +3213,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
           children: [
             content,
             // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的命中区。
-            Positioned(
-              right: -_gripHalf,
+            PositionedDirectional(
+              end: -_gripHalf,
               top: 0,
               bottom: 0,
               width: _gripHalf * 2,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragUpdate: (d) => _resizeColumn(i, d.delta.dx),
-                child: const MouseRegion(
-                  cursor: SystemMouseCursors.resizeColumn,
-                  child: SizedBox.expand(),
-                ),
+              child: UtenColumnResizeHandle(
+                label: _columns[i].label,
+                onResize: (delta) => _resizeColumn(i, delta),
               ),
             ),
           ],

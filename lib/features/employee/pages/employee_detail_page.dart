@@ -33,6 +33,9 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_store.dart';
+import '../../../shared/drafts/form_draft.dart';
+import '../../../shared/drafts/task_form_drafts.dart';
 import '../../../shared/attachments/attachment.dart';
 import '../../../shared/attachments/attachment_section.dart';
 import '../../../shared/attachments/employee_avatar.dart';
@@ -420,10 +423,16 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       );
     }
     if (!resigned && perms.contains(Perm.employeeOffboard)) {
+      ref.watch(formDraftsProvider);
+      final drafts = _offboardingDrafts;
       actions.add(
         FilledButton.tonalIcon(
           icon: const Icon(Icons.logout_rounded, size: 18),
-          label: Text(l10n.employeeActionOffboard),
+          label: Text(
+            drafts.isEmpty
+                ? l10n.employeeActionOffboard
+                : '继续离职办理 · ${taskDraftStatus(drafts)}',
+          ),
           onPressed: _onOffboard,
         ),
       );
@@ -1331,9 +1340,21 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   Future<void> _onOffboard() async {
-    await context.push('/employee/${widget.employeeId}/offboarding');
-    _load();
+    final drafts = _offboardingDrafts;
+    if (drafts.isNotEmpty) {
+      await resumeTaskFormDraft(context, ref, drafts);
+    } else {
+      await context.push('/employee/${widget.employeeId}/offboarding');
+    }
+    if (mounted) _load();
   }
+
+  List<FormDraft> get _offboardingDrafts => taskDraftsFor(
+    ref.read(formDraftsProvider),
+    matches: (draft) =>
+        Uri.parse(draft.route).path ==
+        '/employee/${widget.employeeId}/offboarding',
+  );
 
   Future<void> _onConfirm() async {
     final l10n = AppLocalizations.of(context);

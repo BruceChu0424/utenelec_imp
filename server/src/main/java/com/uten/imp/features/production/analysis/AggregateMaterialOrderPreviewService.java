@@ -175,15 +175,11 @@ public class AggregateMaterialOrderPreviewService {
         }
         // ADR-143：委外汇总永远建外部批次(委外申请)，只有自制才是制造批次。
         boolean manufacture="MAKE".equals(input.route());
+        UUID department=input.departmentId(),worker=input.workerId();
+        String assignmentBlock=null;
         LocalDate bill=input.billDate()==null?request.billDate():input.billDate();
         LocalDate delivery=input.deliveryDate()==null?request.deliveryDate():input.deliveryDate();
         if(delivery!=null&&bill!=null&&delivery.isBefore(bill))reason="计划完成日期不能早于下单日期";
-        if(number(input.qty()).signum()>0||number(input.safetyQty()).signum()>0) {
-            if(manufacture&&(input.departmentId()==null||input.workerId()==null))reason="请为汇总批次填写生产车间和负责人";
-            String permission=manufacture?"production_material_analysis:generate":"production_material_analysis:notify";
-            if(!access.hasAuthority(permission))reason=manufacture?"缺少下达车间权限":"缺少下达采购或委外权限";
-            if(manufacture&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))reason="生成并审核需要生产计划审核权限";
-        }
         BigDecimal rate=manufacture?(input.allowedOverproductionRate()==null
                 ?defaultOverproductionRate(rateDefaults,first.goodsId()):input.allowedOverproductionRate()):null;
         if(rate!=null&&(rate.signum()<0||rate.compareTo(new BigDecimal("1000"))>=0||rate.stripTrailingZeros().scale()>6))throw invalid("允许超产比例不正确");
@@ -214,6 +210,28 @@ public class AggregateMaterialOrderPreviewService {
                     flow.byTarget().getOrDefault(capacity.sourceId(),Map.of()).values().stream().reduce(BigDecimal.ZERO,BigDecimal::add))).toList();
         }
         var allocation=AggregateQuantityAllocator.allocate(input.qty(),allocationCaps,true);
+        // Remaining source demand can start a separately configured batch. An
+        // extra-output append cannot use a small remaining share to change the
+        // existing task's assignment. The full compatibility key below still
+        // binds every matched append to its own department and responsible person.
+        boolean independentSourceBatch=number(input.qty()).signum()>0
+                &&allocation.publicExtraQty().signum()==0&&department!=null&&worker!=null;
+        if(manufacture&&!independentSourceBatch) {
+            var issued=issuedAssignment(members,products);
+            if(issued!=null) {
+                assignmentBlock=issued.blockedReason();
+                if(assignmentBlock==null&&(department!=null&&!department.equals(issued.department())
+                        ||worker!=null&&!worker.equals(issued.worker())))
+                    assignmentBlock="原任务的生产车间或负责人已固定，请刷新后按原任务追加";
+                department=issued.department();worker=issued.worker();
+            }
+        }
+        if(number(input.qty()).signum()>0||number(input.safetyQty()).signum()>0) {
+            if(manufacture&&(department==null||worker==null))reason="请为汇总批次填写生产车间和负责人";
+            String permission=manufacture?"production_material_analysis:generate":"production_material_analysis:notify";
+            if(!access.hasAuthority(permission))reason=manufacture?"缺少下达车间权限":"缺少下达采购或委外权限";
+            if(manufacture&&request.approveNow()&&!access.hasAuthority("production_plan:approve"))reason="生成并审核需要生产计划审核权限";
+        }
         if(allocation.publicExtraQty().signum()>0 && !input.allowPublicExtra())reason="本次超出待安排需求，请明确核对公共备货量";
         if(allocation.publicExtraQty().signum()>0 && !manufacture && !access.hasAuthority("production_material_analysis:over_supply"))reason="公共超量备货需要超量下达权限";
         if(number(input.safetyQty()).signum()>0) {
@@ -236,7 +254,7 @@ public class AggregateMaterialOrderPreviewService {
         }
         List<String> keyParts=new ArrayList<>();
         add(keyParts,request.warehouseId(),first.goodsId(),first.colorId(),first.unitId(),input.route(),
-                input.departmentId(),input.workerId(),input.teamDepartmentId(),bill,delivery,input.productNo(),rate);
+                department,worker,input.teamDepartmentId(),bill,delivery,input.productNo(),rate);
         keyParts.addAll(recipe);
         String compatibility=CanonicalFingerprint.sha256(keyParts);
         boolean anyExisting=products.values().stream().anyMatch(product->"AGGREGATE_MAKE".equals(product.sourceType()))
@@ -273,6 +291,7 @@ public class AggregateMaterialOrderPreviewService {
         }
         BigDecimal actualNewOutput=number(input.qty()).subtract(adoptableMake);
         if(actualNewOutput.signum()==0&&"请为汇总批次填写生产车间和负责人".equals(reason))reason=null;
+        if(actualNewOutput.signum()>0&&assignmentBlock!=null)reason=assignmentBlock;
         // ADR-143 §二.3：缺 BOM 的委外件不能汇总下达委外(研发正在完善)，这个原因优先显示。
         // 与提交时的拦截同一判定(按货品现查)，不看只标真有需求节点的「缺 BOM」角标。
         if("SUBCONTRACT".equals(input.route())) {
@@ -286,8 +305,26 @@ public class AggregateMaterialOrderPreviewService {
                         .map(AggregateMaterialOrderPreviewService::number).reduce(BigDecimal.ZERO,BigDecimal::add),
                 MoneyPolicy.quantity(ordered.values().stream().reduce(BigDecimal.ZERO,BigDecimal::add).add(publicOrdered(members,products,actions))),
                 capacities.stream().map(AggregateQuantityAllocator.SourceCapacity::remainingQty).reduce(BigDecimal.ZERO,BigDecimal::add),
-                number(input.qty()),allocation.publicExtraQty(),number(input.safetyQty()),input.departmentId(),input.workerId(),
+                number(input.qty()),allocation.publicExtraQty(),number(input.safetyQty()),department,worker,
                 input.teamDepartmentId(),bill,delivery,input.productNo(),rate,sourceRows,childRows,reason,existing==null?null:existing.batchId(),prior);
+    }
+
+    private record IssuedAssignment(UUID department,UUID worker,String blockedReason) { }
+    private static IssuedAssignment issuedAssignment(List<MaterialView> members,Map<UUID,ProductView> products) {
+        Set<UUID> seen=new HashSet<>(),departments=new HashSet<>(),workers=new HashSet<>();
+        for(MaterialView member:members) {
+            ProductView product=products.get(member.planAnchorAnalysisLineId());
+            if(product==null||product.latestPlanId()==null||!seen.add(product.analysisLineId()))continue;
+            // These UUIDs come from the material/alias proof. Validate its dimension,
+            // rather than interpreting the delegated parent's task as this component's task.
+            if(!Objects.equals(member.goodsId(),product.goodsId())||!Objects.equals(member.colorId(),product.colorId())
+                    ||!Objects.equals(member.unitId(),product.unitId()))continue;
+            departments.add(product.planExecutionWorkshopId());workers.add(product.planExecutionResponsibleId());
+        }
+        if(departments.isEmpty())return null;
+        if(departments.size()!=1||workers.size()!=1||departments.contains(null)||workers.contains(null))
+            return new IssuedAssignment(null,null,"原任务的生产车间或负责人不唯一，请核对实际任务后按来源分组追加");
+        return new IssuedAssignment(departments.iterator().next(),workers.iterator().next(),null);
     }
 
     static BigDecimal orderedQuantity(MaterialView material,Map<UUID,ProductView> products,Map<UUID,SupplyActionView> actions) {
@@ -297,7 +334,11 @@ public class AggregateMaterialOrderPreviewService {
         });
         ProductView anchor=material.level()==0?products.get(material.analysisLineId()):
                 material.planAnchorAnalysisLineId()==null?null:products.get(material.planAnchorAnalysisLineId());
-        if(!shared&&anchor!=null&&"MAKE".equals(material.sourceConfirmed())) {
+        // An original alias can inherit its own task's workshop identity, but its
+        // quantity still comes from the proved source share, not the full aggregate batch.
+        boolean inheritedAggregateAnchor=anchor!=null&&"AGGREGATE_MAKE".equals(anchor.sourceType())
+                &&!Objects.equals(material.analysisLineId(),anchor.analysisLineId());
+        if(!shared&&anchor!=null&&"MAKE".equals(material.sourceConfirmed())&&!inheritedAggregateAnchor) {
             return number(anchor.issuedPlanQty()).multiply(material.level()==0&&anchor.unitRate()!=null?anchor.unitRate():BigDecimal.ONE);
         }
         boolean legacyManufacturing=anchor!=null&&!"AGGREGATE_MAKE".equals(anchor.sourceType())

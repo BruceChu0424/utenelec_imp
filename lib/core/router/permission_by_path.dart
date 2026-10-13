@@ -326,6 +326,9 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       routePath.startsWith('${RouteName.warehouseSalesOutbound}/')) {
     return const [Perm.warehouseSalesOutboundView];
   }
+  if (routePath == '/warehouse/material-returns/batch-receive') {
+    return const [Perm.stockDocView];
+  }
   // 待检处置任务中心 + 单据处置页：IQC 或 FQC 任一查看权限即可进入
   //（2026-09-01 FQC 并入待检处置；处置/决定动作仍由页面内各自动作权限把关）。
   if (location == RouteName.warehouseInspections ||
@@ -412,6 +415,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [
       Perm.warehouseSalesOutboundView,
       Perm.subcontractOutboundView,
+      Perm.warehouseSubcontractOutboundHistoryView,
       Perm.stockDocView,
     ];
   }
@@ -422,6 +426,8 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       Perm.stockDocView,
       Perm.warehousePurchaseReceiptHistoryView,
       Perm.warehouseSubcontractReceiptHistoryView,
+      Perm.warehouseIqcStockInView,
+      Perm.warehouseIqcReturnView,
     ];
   }
   if (location == RouteName.warehouseDrawTasks ||
@@ -437,6 +443,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       Perm.stockCountWarehouseReview,
       Perm.warehouseSalesOutboundView,
       Perm.subcontractOutboundView,
+      Perm.warehouseSubcontractOutboundHistoryView,
       Perm.stockDocView,
       Perm.warehouseInboundView,
       Perm.warehousePurchaseReceiptHistoryView,
@@ -444,7 +451,6 @@ List<String>? requiredAnyPermFor(String rawLocation) {
       Perm.warehouseIqcStockInView,
       Perm.warehouseIqcReturnView,
       Perm.warehouseSubcontractFinishedReturnHistoryView,
-      Perm.warehouseSubcontractWasteHistoryView,
     ];
   }
   if (location.startsWith('/warehouse/')) {

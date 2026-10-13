@@ -6,6 +6,9 @@ import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -84,7 +87,11 @@ class GlPostingServiceReceiptAccountingTest {
             when(query.getSingleResult()).thenReturn(0L);
             when(query.executeUpdate()).thenReturn(
                     sql.contains("INSERT INTO gl_entries") ? 4 : 1);
-            if(sql.contains("SELECT voucher.id,receipt.bill_no")){
+            if(sql.contains("SELECT COUNT(*) FROM finance_receipts receipt JOIN gl_vouchers voucher")){
+                // The read-only preflight proves exactly one unreversed original;
+                // the locked row read below then supplies that exact identity.
+                when(query.getSingleResult()).thenReturn(1L);
+            }else if(sql.contains("SELECT voucher.id,receipt.bill_no")){
                 when(query.getResultList()).thenReturn(List.<Object[]>of(
                         new Object[]{originalId,"XS-REV"}));
             }else if(sql.contains("(SELECT COUNT(*) FROM gl_entries")){
@@ -105,12 +112,80 @@ class GlPostingServiceReceiptAccountingTest {
         assertThat(statements).anySatisfy(sql->assertThat(sql)
                 .contains("INSERT INTO gl_entries")
                 .contains("-entry.direction")
+                .contains("entry.line_no,entry.style_id")
+                .contains("entry.amount,:reversalDate,:reversalPeriod")
+                .contains("WHERE entry.voucher_id=:originalId")
                 .contains("'RECEIPT_REV'"));
         assertThat(statements).anySatisfy(sql->assertThat(sql)
                 .contains("UPDATE gl_vouchers")
                 .contains("reversed_by_voucher_id"));
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("voucher.reversed_by_voucher_id IS NULL")
+                .contains("voucher.source_type='RECEIPT'")
+                .contains("receipt.id=:id"));
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("voucher.reversed_by_voucher_id IS NULL")
+                .contains("FOR UPDATE OF voucher"));
         assertThat(statements).noneMatch(sql -> sql.contains("DELETE FROM gl_vouchers"));
         verify(tx).bind();
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs={0,2})
+    void missingOrDuplicateOriginalCannotCreateAMirror(long originalCount) {
+        EntityManager em=mock(EntityManager.class);
+        List<String> statements=new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation->{
+            String sql=invocation.getArgument(0);statements.add(sql);
+            Query query=queryReturning(sql.contains(
+                    "SELECT COUNT(*) FROM finance_receipts receipt JOIN gl_vouchers voucher") ? originalCount : 0L);
+            return query;
+        });
+
+        assertThatThrownBy(()->new GlPostingService(em,mock(TxSessionVars.class))
+                .reverseReceiptDoc(UUID.randomUUID(),BusinessTime.startOfDay(BusinessTime.today()).plusHours(12)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("原始总账凭证缺失、重复或已反审");
+        assertThat(statements.getLast())
+                .contains("voucher.source_doc_id=receipt.id")
+                .contains("receipt.id=:id")
+                .contains("voucher.source_type='RECEIPT'")
+                .contains("voucher.reversed_by_voucher_id IS NULL");
+        assertThat(statements).noneMatch(sql->sql.contains("INSERT INTO gl_")
+                || sql.contains("UPDATE gl_") || sql.contains("DELETE FROM gl_"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"3,0","4,0.000001"})
+    void partialOrUnbalancedMirrorCannotFinalizeOrLinkTheOriginal(int mirrorCount,String imbalance) {
+        EntityManager em=mock(EntityManager.class);
+        List<String> statements=new ArrayList<>();
+        UUID originalId=UUID.randomUUID();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation->{
+            String sql=invocation.getArgument(0);statements.add(sql);
+            Query query=queryReturning(sql.contains(
+                    "SELECT COUNT(*) FROM finance_receipts receipt JOIN gl_vouchers voucher") ? 1L : 0L);
+            when(query.executeUpdate()).thenReturn(sql.contains("INSERT INTO gl_entries") ? mirrorCount : 1);
+            if(sql.contains("SELECT voucher.id,receipt.bill_no")) {
+                when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[]{originalId,"XS-PROOF"}));
+            }else if(sql.contains("(SELECT COUNT(*) FROM gl_entries")) {
+                when(query.getResultList()).thenReturn(List.<Object[]>of(
+                        new Object[]{4L,(long)mirrorCount,new BigDecimal(imbalance)}));
+            }
+            return query;
+        });
+
+        assertThatThrownBy(()->new GlPostingService(em,mock(TxSessionVars.class))
+                .reverseReceiptDoc(UUID.randomUUID(),BusinessTime.startOfDay(BusinessTime.today()).plusHours(12)))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("反向凭证不完整或借贷不平");
+        assertThat(statements).anySatisfy(sql->assertThat(sql)
+                .contains("INSERT INTO gl_entries")
+                .contains("-entry.direction")
+                .contains("entry.amount,:reversalDate,:reversalPeriod")
+                .contains("WHERE entry.voucher_id=:originalId"));
+        assertThat(statements).noneMatch(sql->sql.contains("UPDATE gl_vouchers")
+                || sql.contains("DELETE FROM gl_vouchers"));
     }
 
     @Test

@@ -33,6 +33,20 @@ final class AggregateDelegationProjection {
     private record Pair(UUID source, UUID target) { }
     private AggregateDelegationProjection() { }
 
+    /** A delegated component uses its own target's task anchor, never its parent's product task. */
+    static Map<UUID,UUID> planAnchors(Map<UUID,UUID> direct,Map<UUID,Delegation> delegations) {
+        Map<UUID,UUID> result=new LinkedHashMap<>(direct);
+        delegations.forEach((source,delegation)->{
+            if(result.containsKey(source))return;
+            Set<UUID> anchors=new HashSet<>();
+            for(UUID target:delegation.targetMaterialLineIds()) {
+                UUID anchor=direct.get(target);if(anchor!=null)anchors.add(anchor);
+            }
+            if(anchors.size()==1)result.put(source,anchors.iterator().next());
+        });
+        return Map.copyOf(result);
+    }
+
     static Map<UUID,Delegation> project(List<Node> nodes,List<Member> members,List<Alias> aliases) {
         Map<UUID,Node> byId=new HashMap<>();
         Map<String,Node> byNode=new HashMap<>();

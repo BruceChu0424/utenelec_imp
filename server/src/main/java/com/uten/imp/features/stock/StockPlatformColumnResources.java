@@ -36,8 +36,7 @@ public class StockPlatformColumnResources {
                         new FactDefinition("countQty", "实盘数量", false), new FactDefinition("countWeight", "实盘重量(kg)", false),
                         new FactDefinition("bookWeight", "账面重量(kg)", false)))
                 .documentCreateAuthorities(Set.of("stock_doc:create"))
-                .reviewedSaveAuthorities(Set.of("stock_doc:approve"),(id,header)->DocumentPlatformColumnAdapter.draft(header)
-                    && header.path("canEdit").asBoolean(false) && !header.path("productionLinked").asBoolean(false))
+
                 .documentSaveLocks(com.uten.imp.features.stock.dto.StockDocSaveRequest.class,documents::lockDraftInputsForPlatform)
                 .history(documents::history, lines ? historicalParent() : null);
     }

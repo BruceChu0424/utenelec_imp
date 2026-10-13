@@ -63,7 +63,12 @@ class PurchaseGridRow extends EditableGridRow
       extraColumnsChanged: extraColumnsChanged,
       canCalculatePrice: () => supportsTotalInput || upstreamItemId == null,
       canCalculateQuantity: () => supportsTotalInput || upstreamItemId == null,
+      allowZeroQuantity: () =>
+          hasExtraGift &&
+          (financeExactDecimalUnits(giftQty.text) ?? BigInt.zero) > BigInt.zero,
     )..addListener(_recalc);
+    giftQty.addListener(pricing.refresh);
+    giftSemanticsConfirmed.addListener(pricing.refresh);
     // 查重标红（保存前查重被拦回时标记）：改动货品/数量/单价/供应商即消除，
     // 下次保存重新判定。
     goodsNotifier.addListener(_clearFlagged);
@@ -87,7 +92,10 @@ class PurchaseGridRow extends EditableGridRow
     null,
   );
   GoodsOption? get goods => goodsNotifier.value;
-  set goods(GoodsOption? v) => goodsNotifier.value = v;
+  set goods(GoodsOption? v) {
+    if (goods?.id != v?.id) _unitRateText = null;
+    goodsNotifier.value = v;
+  }
 
   final TextEditingController qty = TextEditingController();
   final TextEditingController giftQty = TextEditingController(text: '0');
@@ -192,8 +200,36 @@ class PurchaseGridRow extends EditableGridRow
   String? sourceRequestNo;
   String? sourceRequestId;
   String? colorId;
-  String? unitId;
-  double? unitRate;
+  String? _unitId;
+  String? get unitId => _unitId;
+  set unitId(String? value) {
+    if (_unitId != value) _unitRateText = null;
+    _unitId = value;
+  }
+
+  double? _unitRate;
+  double? get unitRate => _unitRate;
+  set unitRate(double? value) {
+    _unitRate = value;
+    _unitRateText = null;
+  }
+
+  String? _unitRateText;
+  String? get unitRateText => _unitRateText;
+  set unitRateText(String? value) {
+    _unitRateText = value?.trim();
+    if (value != null) _unitRate = double.tryParse(value);
+  }
+
+  String? get recordedUnitRateText =>
+      financeExactTrimmed(unitRateText ?? unitRate?.toString());
+  bool get unitRateInputValid {
+    if (unitRateText == null && unitRate == null) return !sourceLocked;
+    final units = financeRateUnits(recordedUnitRateText);
+    return units != null &&
+        units > BigInt.zero &&
+        units < BigInt.from(10).pow(18);
+  }
 
   /// 明细级供应商（订货单可逐行选不同供应商，保存时按供应商自动拆单；为空回落表头）。
   /// ValueNotifier：多选统一设供应商/记忆预填后单元格与必填红框即时刷新。
@@ -219,7 +255,8 @@ class PurchaseGridRow extends EditableGridRow
           ..maxQty = li.maxQty
           ..colorId = li.colorId
           ..unitId = li.unitId
-          ..unitRate = li.unitRate;
+          ..unitRate = li.unitRate
+          ..unitRateText = li.unitRateText;
     r.upstreamItemIds = [
       if (li.upstreamItemId != null && li.upstreamItemId!.isNotEmpty)
         li.upstreamItemId!,
@@ -314,6 +351,7 @@ class PurchaseGridRow extends EditableGridRow
     'goods': draftGoods(goods),
     'stockPlace': stockPlaceNotifier.value,
     'unitRate': unitRate,
+    'unitRateText': unitRateText,
     'upstreamItemId': upstreamItemId,
     'sourceDocNo': sourceDocNo,
     'sourceRequestNo': sourceRequestNo,
@@ -357,13 +395,15 @@ class PurchaseGridRow extends EditableGridRow
           ..goods = restoreDraftGoods(data['goods'])
           ..stockPlaceNotifier.value = data['stockPlace'] as String?
           ..unitRate = (data['unitRate'] as num?)?.toDouble()
+          ..unitRateText = data['unitRateText'] as String?
           ..upstreamItemId = data['upstreamItemId'] as String?
           ..sourceDocNo = data['sourceDocNo'] as String?
           ..sourceRequestNo = data['sourceRequestNo'] as String?
           ..sourceRequestId = data['sourceRequestId'] as String?
           ..colorId = data['colorId'] as String?
           ..unitId = data['unitId'] as String?
-          ..supplierId = data['supplierId'] as String?;
+          ..supplierId = data['supplierId'] as String?
+          ..unitRateText = data['unitRateText'] as String?;
     restoreDraftTextValues(row._draftTextControllers, draftMap(data['text']));
     row.restoreExtraColumns(data['extraColumns']);
     row.maxQty = (data['maxQty'] as num?)?.toDouble();
@@ -403,6 +443,7 @@ class PurchaseGridRow extends EditableGridRow
       ..colorId = colorId
       ..unitId = unitId
       ..unitRate = unitRate
+      ..unitRateText = unitRateText
       ..supplierId = supplierId;
     copyExtraColumnsTo(c);
     c.qty.text = qty.text;
@@ -428,6 +469,8 @@ class PurchaseGridRow extends EditableGridRow
 
   @override
   void dispose() {
+    giftQty.removeListener(pricing.refresh);
+    giftSemanticsConfirmed.removeListener(pricing.refresh);
     pricing.dispose();
     goodsNotifier.dispose();
     amountExactNotifier.dispose();

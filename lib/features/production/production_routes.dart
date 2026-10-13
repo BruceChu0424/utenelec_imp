@@ -206,10 +206,11 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: '/production/plans/:id/edit',
     name: 'production-plan-edit',
-    builder: (_, state) => ProductionPlanEditPage(
-      id: state.pathParameters['id'],
-      reviewMode: state.uri.queryParameters['review'] == '1',
-    ),
+    redirect: (_, state) => state.uri.queryParameters['review'] == '1'
+        ? '/production/plans/${state.pathParameters['id']}'
+        : null,
+    builder: (_, state) =>
+        ProductionPlanEditPage(id: state.pathParameters['id']),
   ),
   DraftAwareGoRoute(
     path: '/production/plans/:id',
@@ -269,9 +270,11 @@ final List<RouteBase> productionRoutes = [
   DraftAwareGoRoute(
     path: '/production/daily-reports/:id/edit',
     name: 'production-daily-report-edit',
+    redirect: (_, state) => state.uri.queryParameters['review'] == '1'
+        ? '/production/daily-reports/${state.pathParameters['id']}'
+        : null,
     builder: (_, state) => ProductionDailyReportEditPage(
       id: state.pathParameters['id'],
-      reviewMode: state.uri.queryParameters['review'] == '1',
       returnToWorkshopTasks:
           state.uri.queryParameters['from'] == 'workshop-tasks',
     ),

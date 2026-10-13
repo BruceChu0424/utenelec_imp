@@ -160,7 +160,9 @@ public class WorkbenchBadgeService implements WorkbenchBadgeReadPort {
                     sum(entry.todoFacts(), facts), sum(entry.inProgressFacts(), facts));
             entries.put(entry.name(), counts);
             if (anyFailed) stale.add(entry.name());
-            moduleSums.merge(entry.module(), counts, WorkbenchBadgeSummary.Counts::plus);
+            if (entry.contributesToModule()) {
+                moduleSums.merge(entry.module(), counts, WorkbenchBadgeSummary.Counts::plus);
+            }
         }
         Map<String, WorkbenchBadgeSummary.Counts> modules = new LinkedHashMap<>();
         WorkbenchBadgeSummary.Counts total = WorkbenchBadgeSummary.Counts.ZERO;

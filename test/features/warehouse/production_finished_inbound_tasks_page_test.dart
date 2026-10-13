@@ -7,16 +7,135 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_batch_stock_in_page.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/production_finished_inbound_task.dart';
 import 'package:uten_imp/features/warehouse/pages/production_finished_inbound_tasks_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/features/warehouse/widgets/production_finished_inbound_tasks_view.dart';
 
 const _stockInFirstBatchKey = Key('inbound-route-batch-stockInFirst');
 const _inspectFirstBatchKey = Key('inbound-route-batch-inspectFirst');
+final _liveTaskPermissions = StateProvider<Set<String>>(
+  (ref) => const {
+    Perm.stockDocView,
+    Perm.stockDocApprove,
+    Perm.productionFinishedInBeforeInspection,
+  },
+);
+final _liveTaskScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
+  for (final readOnly in [false, true]) {
+    testWidgets(
+      'finished queue stale shelf action observes current authority or readonly ($readOnly)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1400, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        var navigations = 0;
+        final router = GoRouter(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (_, _) => const ProductionFinishedInboundTasksPage(),
+            ),
+            GoRoute(
+              path: RouteName.warehouseProductionFinishedArrivalRegistration,
+              builder: (_, _) {
+                navigations++;
+                return const Scaffold(body: Text('finished shelf'));
+              },
+            ),
+          ],
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(_FinishedInboundApi()),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              isSuperAdminProvider.overrideWithValue(true),
+              currentPermissionsProvider.overrideWith(
+                (ref) => ref.watch(_liveTaskPermissions),
+              ),
+              authenticatedScopeProvider.overrideWith(
+                (ref) => ref.watch(_liveTaskScope),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(Checkbox).at(1));
+        await tester.pump();
+        final stale = tester
+            .widget<UtenButton>(find.byKey(_stockInFirstBatchKey))
+            .onPressed;
+        expect(stale, isNotNull);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ProductionFinishedInboundTasksView)),
+        );
+        if (readOnly) {
+          container
+              .read(_liveTaskScope.notifier)
+              .state = const AuthenticatedScope(
+            userId: 'finished-reader',
+            actorId: 'actor',
+            readOnly: true,
+          );
+        } else {
+          container.read(_liveTaskPermissions.notifier).state = const {
+            Perm.stockDocView,
+            Perm.stockDocApprove,
+          };
+        }
+        await tester.pump();
+        stale!();
+        await tester.pumpAndSettle();
+        expect(navigations, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final withExtra in [false, true]) {
+    testWidgets(
+      'sparse superadmin finished queue requires explicit extra ($withExtra)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1400, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(_FinishedInboundApi()),
+              isSuperAdminProvider.overrideWithValue(true),
+              currentPermissionsProvider.overrideWithValue({
+                Perm.stockDocView,
+                Perm.stockDocApprove,
+                if (withExtra) Perm.productionFinishedInBeforeInspection,
+              }),
+            ],
+            child: const MaterialApp(
+              home: ProductionFinishedInboundTasksPage(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(_stockInFirstBatchKey),
+          withExtra ? findsOneWidget : findsNothing,
+        );
+        expect(find.byKey(_inspectFirstBatchKey), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets('finished inbound queue uses the multi-select table at 375px', (
     tester,
   ) async {
@@ -46,6 +165,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiBaseUrlProvider.overrideWithValue(
+            'https://finished-task-test.example/api',
+          ),
           apiClientProvider.overrideWithValue(api),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.stockDocView,
@@ -172,6 +294,9 @@ void main() {
       ProviderScope(
         overrides: [
           apiClientProvider.overrideWithValue(_FinishedInboundApi()),
+          apiBaseUrlProvider.overrideWithValue(
+            'https://finished-task-test.example/api',
+          ),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.stockDocView,
           }),

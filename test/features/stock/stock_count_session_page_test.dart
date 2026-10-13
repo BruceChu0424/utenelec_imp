@@ -6,6 +6,8 @@
 // - 盘点说明在「保存并送审」确认弹窗里选填；送审走 stock_count_requests；
 // - 切换仓库按仓保留未送审输入（内存暂存，随本机草稿落盘由 FormDraftMixin 负责，
 //   测试环境无登录身份，草稿通道自然关闭，只验业务流）。
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -216,6 +218,60 @@ Future<void> _confirmSubmit(WidgetTester tester, {String? reason}) async {
 }
 
 void main() {
+  for (final oldFails in [false, true]) {
+    testWidgets('同仓慢旧筛选不能覆盖快新筛选或输入，旧请求失败=$oldFails', (tester) async {
+      final repo = _DelayedFilterRepo();
+      await _mount(tester, repo, warehouseId: 'leaf-a');
+      await tester.tap(find.text('有库存'));
+      await tester.pump();
+      await tester.tap(find.text('全部物料'));
+      await tester.pump();
+      repo.newer.complete(_candidatePage([_row(_nut)], page: 1));
+      await tester.pumpAndSettle();
+      final qty = find.byKey(const ValueKey('stock-count-qty-$_nut|'));
+      await tester.enterText(qty, '9');
+      await tester.pump();
+
+      if (oldFails) {
+        repo.older.completeError(StateError('旧筛选响应失败'));
+      } else {
+        repo.older.complete(_candidatePage([_row(_screw, qty: '10')], page: 2));
+      }
+      await tester.pumpAndSettle();
+      final table = tester.widget<MasterDataTableView<CountStockRow>>(
+        find.byType(MasterDataTableView<CountStockRow>),
+      );
+      expect(table.items.map((row) => row.goodsId), [_nut]);
+      expect(table.currentPage, 1);
+      expect(table.error, isNull);
+      expect(tester.widget<TextField>(qty).controller!.text, '9');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('同仓旧请求先完成仍保留当前请求加载态', (tester) async {
+    final repo = _DelayedFilterRepo();
+    await _mount(tester, repo, warehouseId: 'leaf-a');
+    await tester.tap(find.text('有库存'));
+    await tester.pump();
+    await tester.tap(find.text('全部物料'));
+    await tester.pump();
+    repo.older.complete(_candidatePage([_row(_screw, qty: '10')], page: 2));
+    await tester.pump();
+    final waiting = tester.widget<MasterDataTableView<CountStockRow>>(
+      find.byType(MasterDataTableView<CountStockRow>),
+    );
+    expect(waiting.loadingMore, isTrue);
+    repo.newer.complete(_candidatePage([_row(_nut)], page: 1));
+    await tester.pumpAndSettle();
+    final finished = tester.widget<MasterDataTableView<CountStockRow>>(
+      find.byType(MasterDataTableView<CountStockRow>),
+    );
+    expect(finished.loadingMore, isFalse);
+    expect(finished.items.map((row) => row.goodsId), [_nut]);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('进入即选仓，盘点单口径列出全部物料(账面为 0 也要盘)', (tester) async {
     final repo = _SessionRepo({
       'leaf-a': [_row(_screw, qty: '10', weight: '1.5'), _row(_nut)],
@@ -412,4 +468,45 @@ void main() {
     expect(find.text('当前没有提交盘点的权限'), findsOneWidget);
     expect(find.byKey(const Key('stock-count-save')), findsNothing);
   });
+}
+
+PagedResult<CountStockRow> _candidatePage(
+  List<CountStockRow> rows, {
+  required int page,
+}) => PagedResult(items: rows, page: page, size: 50, total: 100, totalPages: 2);
+
+class _DelayedFilterRepo extends _SessionRepo {
+  _DelayedFilterRepo()
+    : super({
+        'leaf-a': [_row(_screw, qty: '10'), _row(_nut)],
+      });
+  int calls = 0;
+  final older = Completer<PagedResult<CountStockRow>>();
+  final newer = Completer<PagedResult<CountStockRow>>();
+
+  @override
+  Future<PagedResult<CountStockRow>> candidates({
+    required String warehouseId,
+    String? keyword,
+    String? categoryId,
+    List<String> goodsIds = const [],
+    bool stockedOnly = false,
+    bool sheet = false,
+    int page = 1,
+    int size = 50,
+  }) {
+    calls++;
+    if (calls == 2) return older.future;
+    if (calls == 3) return newer.future;
+    return super.candidates(
+      warehouseId: warehouseId,
+      keyword: keyword,
+      categoryId: categoryId,
+      goodsIds: goodsIds,
+      stockedOnly: stockedOnly,
+      sheet: sheet,
+      page: page,
+      size: size,
+    );
+  }
 }

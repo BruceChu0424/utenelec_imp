@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,7 @@ import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_return_re
 import 'package:uten_imp/features/warehouse/repositories/warehouse_iqc_stock_in_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_quality_result_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -26,6 +28,115 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 // - 到货登记结果：STOCKED_PENDING_INSPECTION 解析为已上架待检。
 
 void main() {
+  for (final withExtra in [false, true]) {
+    testWidgets(
+      'sparse superadmin pending shelf form requires explicit extra ($withExtra)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final quality = _QualityGateway(_detailJson());
+        final stockIn = _StockInGateway();
+        await tester.pumpWidget(
+          await _app(
+            const WarehouseQualityPreStockInPage(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-1',
+            ),
+            quality: quality,
+            stockIn: stockIn,
+            superAdmin: true,
+            permissions: {
+              Perm.warehouseIqcStockInView,
+              if (withExtra) Perm.warehouseIqcStockInBeforeInspection,
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+        final place = find.byKey(
+          const Key('pre-stock-place-inspection-pending'),
+        );
+        if (place.evaluate().isNotEmpty) await tester.enterText(place, 'D-08');
+        await tester.pumpAndSettle();
+        final confirm = find.byKey(
+          const Key('warehouse-quality-pre-stock-confirm'),
+        );
+        final submit = confirm.evaluate().isEmpty
+            ? null
+            : tester.widget<UtenButton>(confirm).onPressed;
+        if (withExtra) {
+          expect(submit, isNotNull);
+        } else {
+          expect(submit, isNull);
+        }
+        if (submit != null) {
+          submit();
+          await tester.pumpAndSettle();
+        }
+        expect(stockIn.preStockCalls, withExtra ? 1 : 0);
+        if (withExtra) {
+          expect(
+            stockIn.lastPreStock!.items.single.inspectionItemId,
+            'inspection-pending',
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final readOnly in [false, true]) {
+    testWidgets(
+      'pending shelf stale submit observes current authority or readonly ($readOnly)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final quality = _QualityGateway(_detailJson());
+        final stockIn = _StockInGateway();
+        await tester.pumpWidget(
+          await _app(
+            const WarehouseQualityPreStockInPage(
+              receiptType: 'PURCHASE',
+              receiptId: 'receipt-1',
+            ),
+            quality: quality,
+            stockIn: stockIn,
+            superAdmin: true,
+            permissions: const {
+              Perm.warehouseIqcStockInView,
+              Perm.warehouseIqcStockInBeforeInspection,
+            },
+            livePermissions: true,
+            liveScope: true,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final stale = tester
+            .widget<UtenButton>(
+              find.byKey(const Key('warehouse-quality-pre-stock-confirm')),
+            )
+            .onPressed;
+        expect(stale, isNotNull);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(WarehouseQualityPreStockInPage)),
+        );
+        if (readOnly) {
+          container.read(_liveScope.notifier).state = const AuthenticatedScope(
+            userId: 'quality-reader',
+            actorId: 'actor',
+            readOnly: true,
+          );
+        } else {
+          container.read(_livePermissions.notifier).state = const {
+            Perm.warehouseIqcStockInView,
+          };
+        }
+        await tester.pumpAndSettle();
+        stale!();
+        await tester.pumpAndSettle();
+        expect(stockIn.preStockCalls, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test('models parse pre-stock location, counts, origin and gates', () {
@@ -257,6 +368,9 @@ Future<Widget> _app(
   required WarehouseQualityResultGateway quality,
   required WarehouseIqcStockInGateway stockIn,
   required Set<String> permissions,
+  bool superAdmin = false,
+  bool livePermissions = false,
+  bool liveScope = false,
 }) async {
   final preferences = await SharedPreferences.getInstance();
   return ProviderScope(
@@ -267,8 +381,15 @@ Future<Widget> _app(
         _FailingReturnGateway(),
       ),
       sharedPreferencesProvider.overrideWithValue(preferences),
-      currentPermissionsProvider.overrideWithValue(permissions),
-      isSuperAdminProvider.overrideWithValue(false),
+      if (livePermissions)
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_livePermissions),
+        )
+      else
+        currentPermissionsProvider.overrideWithValue(permissions),
+      if (liveScope)
+        authenticatedScopeProvider.overrideWith((ref) => ref.watch(_liveScope)),
+      isSuperAdminProvider.overrideWithValue(superAdmin),
     ],
     // 带 GoRouter 壳：页面成功后走 context.canPop()/pop(go_router 扩展)，无路由会抛错。
     child: MaterialApp.router(
@@ -278,6 +399,14 @@ Future<Widget> _app(
     ),
   );
 }
+
+final _livePermissions = StateProvider<Set<String>>(
+  (ref) => const {
+    Perm.warehouseIqcStockInView,
+    Perm.warehouseIqcStockInBeforeInspection,
+  },
+);
+final _liveScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 class _QualityGateway implements WarehouseQualityResultGateway {
   _QualityGateway(this.detailJson);

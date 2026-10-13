@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -55,8 +57,20 @@ void main() {
     expect(find.textContaining('物料下单保留完整精度'), findsNothing);
   });
 
-  test('the default client version is 2.5.6', () {
-    expect(const AppVersionTile().version, '2.5.11');
+  test('the default client version matches the package release version', () {
+    final packageVersion = RegExp(
+      r'^version:\s+([0-9]+\.[0-9]+\.[0-9]+)(?:\+[0-9]+)?\s*$',
+      multiLine: true,
+    ).firstMatch(File('pubspec.yaml').readAsStringSync());
+    expect(
+      packageVersion,
+      isNotNull,
+      reason: 'The package needs a release version',
+    );
+    final expected = const bool.hasEnvironment('APP_VERSION')
+        ? const String.fromEnvironment('APP_VERSION')
+        : packageVersion!.group(1);
+    expect(const AppVersionTile().version, expected);
   });
 
   testWidgets('2.5.3 retains its own notes without later release fixes', (

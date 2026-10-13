@@ -20,6 +20,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 
@@ -31,6 +32,8 @@ class _Repo implements StockCountRequestRepository {
   final String? setupBasis;
   final int lineCount;
   final queries = <({String? reviewRoute, String? status, int page})>[];
+  String? lastScopeWarehouseId;
+  String? lastKeyword;
   final List<String> actions = const ['APPROVE', 'REJECT'];
   int reads = 0;
   int approvals = 0;
@@ -86,6 +89,8 @@ class _Repo implements StockCountRequestRepository {
   }) async {
     reads++;
     queries.add((reviewRoute: reviewRoute, status: status, page: page));
+    lastScopeWarehouseId = scopeWarehouseId;
+    lastKeyword = keyword;
     return PagedResult(
       items: approvals == 0 ? [request] : [],
       page: page,
@@ -189,6 +194,9 @@ Future<void> _pump(
   double textScale = 1,
   VoidCallback? onChanged,
   bool settle = true,
+  bool embedded = false,
+  WarehouseTaskScope warehouseScope = const WarehouseTaskScope.all(),
+  String? keyword,
   List<Override> extraOverrides = const [],
 }) async {
   await tester.binding.setSurfaceSize(size);
@@ -223,6 +231,9 @@ Future<void> _pump(
           reviewRoute: reviewRoute,
           requestId: requestId,
           onChanged: onChanged,
+          embedded: embedded,
+          warehouseScope: warehouseScope,
+          keyword: keyword,
         ),
       ),
     ),
@@ -241,6 +252,42 @@ const _materialReviewPermissions = {
 };
 
 void main() {
+  testWidgets('嵌入审核只用状态表头，服务器过滤并清选择，保留仓库范围', (tester) async {
+    final repo = _Repo();
+    await _pump(
+      tester,
+      repo,
+      requestId: null,
+      reviewRoute: 'WAREHOUSE',
+      embedded: true,
+      permissions: {Perm.stockCountWarehouseReview},
+      warehouseScope: const WarehouseTaskScope.warehouse('warehouse-1'),
+      keyword: 'PD01',
+    );
+    expect(find.byKey(const Key('stock-count-status-segments')), findsNothing);
+    MasterDataTableView<StockCountRequest> table() =>
+        tester.widget(find.byType(MasterDataTableView<StockCountRequest>));
+    expect(table().requiredLeadingColumnKeys, ['status']);
+    expect(table().singleSelection, isTrue);
+    expect(table().showSelectionColumn, isTrue);
+    table().onSelectedIdsChanged!({'count-1'});
+    await tester.pumpAndSettle();
+    table().onFilterChanged('status', 'REJECTED');
+    await tester.pumpAndSettle();
+    expect(repo.queries.last, (
+      reviewRoute: 'WAREHOUSE',
+      status: 'REJECTED',
+      page: 1,
+    ));
+    expect(table().selectedIds, isEmpty);
+    table().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(repo.queries.last.status, isNull);
+    expect(repo.lastScopeWarehouseId, 'warehouse-1');
+    expect(repo.lastKeyword, 'PD01');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('审核列表使用顶部状态分类栏，切换后按状态重新取第一页', (tester) async {
     final repo = _Repo();
     await _pump(tester, repo, requestId: null);

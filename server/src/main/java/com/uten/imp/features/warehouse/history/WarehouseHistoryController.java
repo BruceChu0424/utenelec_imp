@@ -40,16 +40,18 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
-            @RequestParam(required = false) String sourceDocNo) {
+            @RequestParam(required = false) String sourceDocNo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 单据号/来源单据号表头值筛选。
         return service.list(WarehouseHistoryType.PURCHASE_RECEIPT, keyword, status, dateFrom, dateTo, page, size,
-                sort, order, billNo, sourceDocNo);
+                sort, order, billNo, sourceDocNo, scopeWarehouseId);
     }
 
     @GetMapping("/purchase-receipts/{id}")
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.PURCHASE_RECEIPT_VIEW + "')")
-    public WarehouseHistoryDetail purchaseReceipt(@PathVariable UUID id) {
-        WarehouseHistoryDetail result = service.detail(WarehouseHistoryType.PURCHASE_RECEIPT, id);
+    public WarehouseHistoryDetail purchaseReceipt(@PathVariable UUID id,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        WarehouseHistoryDetail result = service.detail(WarehouseHistoryType.PURCHASE_RECEIPT, id, scopeWarehouseId);
         auditViews.record(
                 "view_purchase_receipt_detail",
                 "purchase_receipts",
@@ -72,16 +74,18 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
-            @RequestParam(required = false) String sourceDocNo) {
+            @RequestParam(required = false) String sourceDocNo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 单据号/来源单据号表头值筛选。
         return service.list(WarehouseHistoryType.SUBCONTRACT_RECEIPT, keyword, status, dateFrom, dateTo, page, size,
-                sort, order, billNo, sourceDocNo);
+                sort, order, billNo, sourceDocNo, scopeWarehouseId);
     }
 
     @GetMapping("/subcontract-receipts/{id}")
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_RECEIPT_VIEW + "')")
-    public WarehouseHistoryDetail subcontractReceipt(@PathVariable UUID id) {
-        WarehouseHistoryDetail result = service.detail(WarehouseHistoryType.SUBCONTRACT_RECEIPT, id);
+    public WarehouseHistoryDetail subcontractReceipt(@PathVariable UUID id,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        WarehouseHistoryDetail result = service.detail(WarehouseHistoryType.SUBCONTRACT_RECEIPT, id, scopeWarehouseId);
         auditViews.record(
                 "view_subcontract_receipt_detail",
                 "subcontract_receipts",
@@ -104,17 +108,19 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
-            @RequestParam(required = false) String sourceDocNo) {
+            @RequestParam(required = false) String sourceDocNo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 单据号/来源单据号表头值筛选。
         return service.list(WarehouseHistoryType.SUBCONTRACT_MATERIAL_ISSUE, keyword, status, dateFrom, dateTo, page, size,
-                sort, order, billNo, sourceDocNo);
+                sort, order, billNo, sourceDocNo, scopeWarehouseId);
     }
 
     @GetMapping("/subcontract-material-issues/{id}")
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_MATERIAL_ISSUE_VIEW + "')")
-    public WarehouseHistoryDetail subcontractMaterialIssue(@PathVariable UUID id) {
+    public WarehouseHistoryDetail subcontractMaterialIssue(@PathVariable UUID id,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         WarehouseHistoryDetail result = service.detail(
-                WarehouseHistoryType.SUBCONTRACT_MATERIAL_ISSUE, id);
+                WarehouseHistoryType.SUBCONTRACT_MATERIAL_ISSUE, id, scopeWarehouseId);
         auditViews.record(
                 "view_subcontract_material_issue_detail",
                 "subcontract_material_issues",
@@ -137,16 +143,18 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
-            @RequestParam(required = false) String sourceDocNo) {
+            @RequestParam(required = false) String sourceDocNo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 单据号/来源单据号表头值筛选。
         return service.list(WarehouseHistoryType.SUBCONTRACT_RETURN, keyword, status, dateFrom, dateTo, page, size,
-                sort, order, billNo, sourceDocNo);
+                sort, order, billNo, sourceDocNo, scopeWarehouseId);
     }
 
     @GetMapping("/subcontract-returns/{id}")
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_RETURN_VIEW + "')")
-    public WarehouseHistoryDetail subcontractReturn(@PathVariable UUID id) {
-        WarehouseHistoryDetail result = service.detail(WarehouseHistoryType.SUBCONTRACT_RETURN, id);
+    public WarehouseHistoryDetail subcontractReturn(@PathVariable UUID id,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        WarehouseHistoryDetail result = service.detail(WarehouseHistoryType.SUBCONTRACT_RETURN, id, scopeWarehouseId);
         auditViews.record(
                 "view_subcontract_return_detail",
                 "subcontract_returns",
@@ -169,17 +177,19 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
-            @RequestParam(required = false) String sourceDocNo) {
+            @RequestParam(required = false) String sourceDocNo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 单据号/来源单据号表头值筛选。
         return service.list(WarehouseHistoryType.SUBCONTRACT_MATERIAL_RETURN, keyword, status, dateFrom, dateTo, page, size,
-                sort, order, billNo, sourceDocNo);
+                sort, order, billNo, sourceDocNo, scopeWarehouseId);
     }
 
     @GetMapping("/subcontract-material-returns/{id}")
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_MATERIAL_RETURN_VIEW + "')")
-    public WarehouseHistoryDetail subcontractMaterialReturn(@PathVariable UUID id) {
+    public WarehouseHistoryDetail subcontractMaterialReturn(@PathVariable UUID id,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         WarehouseHistoryDetail result = service.detail(
-                WarehouseHistoryType.SUBCONTRACT_MATERIAL_RETURN, id);
+                WarehouseHistoryType.SUBCONTRACT_MATERIAL_RETURN, id, scopeWarehouseId);
         auditViews.record(
                 "view_subcontract_material_return_detail",
                 "subcontract_material_returns",
@@ -202,16 +212,18 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @RequestParam(required = false) String billNo,
-            @RequestParam(required = false) String sourceDocNo) {
+            @RequestParam(required = false) String sourceDocNo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 单据号/来源单据号表头值筛选。
         return service.list(WarehouseHistoryType.SUBCONTRACT_WASTE, keyword, status, dateFrom, dateTo, page, size,
-                sort, order, billNo, sourceDocNo);
+                sort, order, billNo, sourceDocNo, scopeWarehouseId);
     }
 
     @GetMapping("/subcontract-wastes/{id}")
     @PreAuthorize("hasAuthority('" + WarehouseHistoryPermissions.SUBCONTRACT_WASTE_VIEW + "')")
-    public WarehouseHistoryDetail subcontractWaste(@PathVariable UUID id) {
-        WarehouseHistoryDetail result = service.detail(WarehouseHistoryType.SUBCONTRACT_WASTE, id);
+    public WarehouseHistoryDetail subcontractWaste(@PathVariable UUID id,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        WarehouseHistoryDetail result = service.detail(WarehouseHistoryType.SUBCONTRACT_WASTE, id, scopeWarehouseId);
         auditViews.record(
                 "view_subcontract_waste_detail",
                 "subcontract_wastes",
@@ -230,8 +242,9 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(WarehouseHistoryType.PURCHASE_RECEIPT, keyword, status, dateFrom, dateTo);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.facets(WarehouseHistoryType.PURCHASE_RECEIPT, keyword, status, dateFrom, dateTo, scopeWarehouseId);
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
@@ -241,8 +254,9 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(WarehouseHistoryType.SUBCONTRACT_RECEIPT, keyword, status, dateFrom, dateTo);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.facets(WarehouseHistoryType.SUBCONTRACT_RECEIPT, keyword, status, dateFrom, dateTo, scopeWarehouseId);
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
@@ -252,8 +266,9 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(WarehouseHistoryType.SUBCONTRACT_MATERIAL_ISSUE, keyword, status, dateFrom, dateTo);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.facets(WarehouseHistoryType.SUBCONTRACT_MATERIAL_ISSUE, keyword, status, dateFrom, dateTo, scopeWarehouseId);
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
@@ -263,8 +278,9 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(WarehouseHistoryType.SUBCONTRACT_RETURN, keyword, status, dateFrom, dateTo);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.facets(WarehouseHistoryType.SUBCONTRACT_RETURN, keyword, status, dateFrom, dateTo, scopeWarehouseId);
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
@@ -274,8 +290,9 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(WarehouseHistoryType.SUBCONTRACT_MATERIAL_RETURN, keyword, status, dateFrom, dateTo);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.facets(WarehouseHistoryType.SUBCONTRACT_MATERIAL_RETURN, keyword, status, dateFrom, dateTo, scopeWarehouseId);
     }
 
     /** 单号 facets（2026-09-25 单号列统一）：{billNo/sourceDocNo:[各单号]}。 */
@@ -285,7 +302,8 @@ public class WarehouseHistoryController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo) {
-        return service.facets(WarehouseHistoryType.SUBCONTRACT_WASTE, keyword, status, dateFrom, dateTo);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) UUID scopeWarehouseId) {
+        return service.facets(WarehouseHistoryType.SUBCONTRACT_WASTE, keyword, status, dateFrom, dateTo, scopeWarehouseId);
     }
 }

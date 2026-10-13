@@ -106,6 +106,7 @@ abstract interface class ProcurementInboundRepository {
   Future<PagedResult<ProcurementArrivalException>> financeTasks({
     int page = 1,
     int size = 20,
+    String? status,
   });
 
   Future<ProcurementArrivalException> financeTaskDetail(String id);
@@ -399,10 +400,11 @@ class DioProcurementInboundRepository implements ProcurementInboundRepository {
   Future<PagedResult<ProcurementArrivalException>> financeTasks({
     int page = 1,
     int size = 20,
+    String? status,
   }) async {
     final json = await api.get(
       ApiEndpoints.financeArrivalExceptionTasks,
-      query: {'page': page, 'size': size},
+      query: {'page': page, 'size': size, 'status': ?status},
     );
     return PagedResult.fromJson(json, ProcurementArrivalException.fromJson);
   }

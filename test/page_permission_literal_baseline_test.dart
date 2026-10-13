@@ -44,11 +44,100 @@ import 'package:flutter_test/flutter_test.dart';
 const _baseline = 677;
 
 final _permReference = RegExp(r'\bPerm\.[a-zA-Z]');
+final _fullPermReference = RegExp(r'\bPerm\.[a-zA-Z]\w*');
+
+// 2026-10-12 合并主目录快照的 20 处已逐项审核：财审决定发送前复核当前
+// 权限、HR 核对记录/应用沿原 employee 权限、仓库异步续接停止失去确认权
+// 的批次。对象范围与最终动作仍由服务端 allowedActions / capability 及
+// @PreAuthorize 裁决。保留旧基线 677，只减去这些精确来源的已审增量；
+// 同样次数改成另一权限、复制到其他文件或再加引用均不享受这份登记。
+const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> tokens})>{
+  'lib/features/finance/pages/finance_procurement_approval_review_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.financeOrderApprovalApprove': 2,
+      'Perm.financeOrderApprovalReject': 2,
+      'Perm.financeOrderApprovalView': 2,
+    },
+  ),
+  'lib/features/finance/pages/finance_quote_review_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.attachmentView': 1,
+      'Perm.salesQuoteFinanceConfirm': 2,
+      'Perm.salesQuoteFinanceView': 2,
+    },
+  ),
+  'lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart': (
+    legacyCount: 2,
+    tokens: {
+      'Perm.salesShipmentFinanceApprove': 1,
+      'Perm.salesShipmentFinanceReject': 1,
+      'Perm.salesShipmentFinanceView': 1,
+      'Perm.salesShipmentView': 1,
+    },
+  ),
+  'lib/features/hr_task/pages/hr_reconcile_page.dart': (
+    legacyCount: 0,
+    tokens: {
+      'Perm.employeeEdit': 3,
+      'Perm.employeePiiEdit': 1,
+      'Perm.employeeView': 4,
+    },
+  ),
+  'lib/features/hr_task/pages/hr_task_list_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.employeeConfirm': 2,
+      'Perm.employeeEdit': 1,
+      'Perm.employeeTaskTakeover': 1,
+      'Perm.employeeView': 1,
+      'Perm.noticePublish': 1,
+    },
+  ),
+  'lib/features/hr_task/pages/hr_workbench_page.dart': (
+    legacyCount: 1,
+    tokens: {
+      'Perm.employeeEdit': 1,
+      'Perm.employeeView': 1,
+      'Perm.noticePublish': 1,
+    },
+  ),
+  'lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart': (
+    legacyCount: 2,
+    tokens: {'Perm.stockDocApprove': 3},
+  ),
+  'lib/features/warehouse/pages/warehouse_material_return_batch_receive_page.dart':
+      (legacyCount: 1, tokens: {'Perm.stockDocApprove': 3}),
+};
+
+Map<String, int> _permissionTokens(String source) {
+  final tokens = <String, int>{};
+  for (final match in _fullPermReference.allMatches(source)) {
+    final token = match.group(0)!;
+    tokens.update(token, (count) => count + 1, ifAbsent: () => 1);
+  }
+  return tokens;
+}
+
+int _reviewedIncrementFor(String path, Map<String, int> tokens) {
+  final reviewed = _reviewedSourceGuards[path];
+  if (reviewed == null) return 0;
+  if (tokens.length != reviewed.tokens.length ||
+      reviewed.tokens.entries.any(
+        (entry) => tokens[entry.key] != entry.value,
+      )) {
+    throw StateError('$path 的已审权限来源已漂移：$tokens ≠ ${reviewed.tokens}');
+  }
+  return tokens.values.fold(0, (sum, count) => sum + count) -
+      reviewed.legacyCount;
+}
 
 void main() {
   test('pages and widgets never add new local permission checks', () {
     var total = 0;
     final perFile = <String, int>{};
+    final reviewedFilesSeen = <String>{};
     for (final entity in Directory('lib/features').listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       final normalized = entity.path.replaceAll(r'\', '/');
@@ -56,11 +145,24 @@ void main() {
           !normalized.contains('/widgets/')) {
         continue;
       }
-      final count = _permReference.allMatches(entity.readAsStringSync()).length;
+      final source = entity.readAsStringSync();
+      final count = _permReference.allMatches(source).length;
       if (count == 0) continue;
-      total += count;
+      final reviewedIncrement = _reviewedIncrementFor(
+        normalized,
+        _permissionTokens(source),
+      );
+      if (_reviewedSourceGuards.containsKey(normalized)) {
+        reviewedFilesSeen.add(normalized);
+      }
+      total += count - reviewedIncrement;
       perFile[normalized] = count;
     }
+    expect(
+      reviewedFilesSeen,
+      _reviewedSourceGuards.keys.toSet(),
+      reason: '已审来源移除或迁移后必须清理对应精确登记，不能保留空额度',
+    );
     final top =
         (perFile.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
             .take(5)
@@ -70,7 +172,7 @@ void main() {
       total,
       lessThanOrEqualTo(_baseline),
       reason:
-          '页面 / 组件里本地拼权限的次数从 $_baseline 涨到了 $total。按钮显隐请改用服务端'
+          '页面 / 组件未经逐项登记的本地权限引用从 $_baseline 涨到了 $total。按钮显隐请改用服务端'
           '下发的动作集合(如 allowedActions)，不要再在页面里引用 Perm.x。\n'
           '当前最多的文件：\n$top',
     );
@@ -82,5 +184,30 @@ bool _has(String code) => permissions.contains(code);
 bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
 ''';
     expect(_permReference.allMatches(wrapped).length, 1);
+  });
+
+  test('reviewed guards lock exact permission identities and multiplicity', () {
+    final path = _reviewedSourceGuards.keys.first;
+    final tokens = Map<String, int>.from(_reviewedSourceGuards[path]!.tokens);
+    expect(_reviewedIncrementFor(path, tokens), 2);
+    tokens.remove('Perm.financeOrderApprovalView');
+    tokens['Perm.authorizationManage'] = 2;
+    expect(() => _reviewedIncrementFor(path, tokens), throwsStateError);
+  });
+
+  test('new references and copied files cannot reuse reviewed allowances', () {
+    final path = _reviewedSourceGuards.keys.first;
+    final tokens = Map<String, int>.from(_reviewedSourceGuards[path]!.tokens);
+    tokens.update('Perm.financeOrderApprovalApprove', (count) => count + 1);
+    expect(() => _reviewedIncrementFor(path, tokens), throwsStateError);
+    expect(_reviewedIncrementFor('lib/features/new/pages/new.dart', tokens), 0);
+    expect(
+      _reviewedSourceGuards.entries.fold(
+        0,
+        (sum, entry) =>
+            sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
+      ),
+      20,
+    );
   });
 }

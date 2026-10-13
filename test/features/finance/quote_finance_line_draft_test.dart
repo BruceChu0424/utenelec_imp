@@ -16,8 +16,8 @@ SalesQuoteFinanceLine _line({
   String? lastConfirmed,
   String? blockingReason,
 }) {
-  // 服务端: dealPrice = 单价 × 折扣, amount = 数量 × 单价 × 折扣(财务定价行折扣 1)。
-  final rate = priceSource == QuotePriceSource.finance ? '1' : discount ?? '1';
+  // 历史财务定价可能带折扣，服务端仍按已存单价 × 已存折扣派生。
+  final rate = discount ?? '1';
   final deal = quoteDealPriceFromDiscount(stored, rate);
   final amount = quoteLineAmountPreview(
     qty: '3',
@@ -41,84 +41,69 @@ SalesQuoteFinanceLine _line({
 }
 
 void main() {
-  test(
-    'an invalid deal price is never clean merely because the base price matches its original value',
-    () {
-      final draft = QuoteFinanceLineDraft(_line());
-      addTearDown(draft.dispose);
-      draft.price.text = '100';
-      draft.onPriceChanged('100');
-      draft.deal.text = '';
-      draft.onDealChanged('');
-      expect(draft.dirty, isTrue);
-      expect(draft.valid, isFalse);
-      expect(draft.toEdit(), isNull);
-    },
-  );
+  test('invalid finance pricing cannot be saved', () {
+    final draft = QuoteFinanceLineDraft(_line());
+    addTearDown(draft.dispose);
+    draft.deal.text = '';
+    draft.onDealChanged('');
+    expect(draft.dirty, isTrue);
+    expect(draft.valid, isFalse);
+    expect(draft.toEdit(), isNull);
+  });
+
+  test('deal-price review preserves the submitted quantity and base price', () {
+    final draft = QuoteFinanceLineDraft(_line());
+    addTearDown(draft.dispose);
+    draft.deal.text = '72';
+    draft.onDealChanged('72');
+    expect(draft.line.storedPrice, '100');
+    expect(draft.line.qty, '3');
+    expect(draft.discount.text, '0.72');
+    expect(draft.amountPreview, '216');
+    expect(draft.toEdit()!.toJson(), {
+      'itemId': 'line-1',
+      'discount': '0.7200',
+    });
+  });
+
+  test('discount pricing changes only the allowed pricing action', () {
+    final draft = QuoteFinanceLineDraft(
+      _line(priceSource: QuotePriceSource.sales),
+    );
+    addTearDown(draft.dispose);
+    draft.discount.text = '0.9';
+    draft.onDiscountChanged('0.9');
+    expect(draft.line.currentMasterPrice, '100');
+    expect(draft.amountPreview, '270');
+    expect(draft.toEdit()!.toJson(), {
+      'itemId': 'line-1',
+      'discount': '0.9000',
+    });
+    draft.restore();
+    expect(draft.line.qty, '3');
+    expect(draft.line.storedPrice, '100');
+    expect(draft.dirty, isFalse);
+  });
 
   test(
-    'editing deal price keeps the newly negotiated base price and quantity',
-    () {
-      final draft = QuoteFinanceLineDraft(_line());
-      addTearDown(draft.dispose);
-      draft.price.text = '80';
-      draft.onPriceChanged('80');
-      draft.qty.text = '7';
-      draft.deal.text = '72';
-      draft.onDealChanged('72');
-      expect(draft.price.text, '80');
-      expect(draft.discount.text, '0.9');
-      expect(draft.amountPreview, '504');
-      expect(draft.toEdit()!.toJson(), {
-        'itemId': 'line-1',
-        'price': '80',
-        'discount': '0.9000',
-        'qty': '7',
-      });
-    },
-  );
-
-  test(
-    'finance can change base price, quantity and discount without mutating master reference',
+    'existing finance-priced discounts stay readable and use the original discount command',
     () {
       final draft = QuoteFinanceLineDraft(
-        _line(priceSource: QuotePriceSource.sales),
+        _line(discount: '0.85', priceSource: QuotePriceSource.finance),
       );
       addTearDown(draft.dispose);
-      draft.price.text = '80.25';
-      draft.onPriceChanged('80.25');
-      draft.qty.text = '4';
-      draft.discount.text = '0.9';
-      draft.onDiscountChanged('0.9');
-      expect(draft.line.currentMasterPrice, '100');
-      expect(draft.amountPreview, '288.9');
+      expect(draft.deal.text, '85');
+      expect(draft.amountPreview, '255');
+      expect(draft.directPricing, isTrue);
+      expect(draft.dirty, isFalse);
+      draft.discount.text = '0.8';
+      draft.onDiscountChanged('0.8');
       expect(draft.toEdit()!.toJson(), {
         'itemId': 'line-1',
-        'qty': '4',
-        'price': '80.25',
-        'discount': '0.9000',
+        'discount': '0.8000',
       });
-      draft.removed = true;
-      expect(draft.amountPreview, '0');
-      expect(draft.toEdit()!.toJson(), {'itemId': 'line-1', 'removed': true});
-      draft.restore();
-      expect(draft.qty.text, '3');
-      expect(draft.price.text, '100');
-      expect(draft.dirty, isFalse);
-    },
-  );
-
-  test(
-    'quantity-only edits preserve server prices; zero quantity never masquerades as deletion',
-    () {
-      final draft = QuoteFinanceLineDraft(_line(discount: '0.85'));
-      addTearDown(draft.dispose);
-      draft.qty.text = '4';
-      expect(draft.toEdit()!.toJson(), {'itemId': 'line-1', 'qty': '4'});
-      draft.qty.text = '0';
-      expect(draft.valid, isFalse);
-      expect(draft.error, QuoteFinanceLineError.quantity);
-      expect(draft.toEdit(), isNull);
+      expect(draft.line.qty, '3');
+      expect(draft.line.storedPrice, '100');
     },
   );
 

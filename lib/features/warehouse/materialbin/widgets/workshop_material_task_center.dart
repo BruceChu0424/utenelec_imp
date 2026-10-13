@@ -23,6 +23,7 @@ import '../../../../shared/models/paged_result.dart';
 import '../../../../shared/warehouse/warehouse_task_badges.dart';
 import '../../../../shared/warehouse/warehouse_task_scope.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
+import '../../../basic_data/models/master_facet.dart';
 import '../../../stock/counts/pages/stock_count_review_page.dart';
 import '../../providers/warehouse_count_refresh.dart';
 import '../../widgets/warehouse_task_center_scaffold.dart';
@@ -195,10 +196,14 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
   bool _loading = false;
   String? _error;
   int _seq = 0;
+  String? _statusFilter;
+  String? _kindFilter;
 
   @override
   void initState() {
     super.initState();
+    _statusFilter = widget.status;
+    _kindFilter = widget.kind;
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
   }
 
@@ -206,7 +211,14 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
   void didUpdateWidget(covariant WmRequisitionSegment oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.keyword != widget.keyword ||
-        oldWidget.refreshTick != widget.refreshTick) {
+        oldWidget.refreshTick != widget.refreshTick ||
+        oldWidget.status != widget.status ||
+        oldWidget.kind != widget.kind) {
+      if (oldWidget.status != widget.status || oldWidget.kind != widget.kind) {
+        _statusFilter = widget.status;
+        _kindFilter = widget.kind;
+        _result = null;
+      }
       _load(1);
     }
   }
@@ -221,8 +233,8 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
       final result = await ref
           .read(workshopMaterialRepositoryProvider)
           .requisitions(
-            status: widget.status,
-            kind: widget.kind,
+            status: _statusFilter,
+            kind: _kindFilter,
             keyword: widget.keyword,
             page: page,
             scope: WarehouseListScope.of(context).queryParameters,
@@ -257,11 +269,51 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
     }
   }
 
+  void _onHeaderFilter(String key, String? value) {
+    if (key != 'status' && key != 'kind') return;
+    final allowed = key == 'status'
+        ? const {'PENDING', 'DONE', 'CANCELLED'}
+        : const {'ISSUE', 'RETURN'};
+    final next = allowed.contains(value) ? value : null;
+    if ((key == 'status' ? _statusFilter : _kindFilter) == next) return;
+    setState(() {
+      if (key == 'status') {
+        _statusFilter = next;
+      } else {
+        _kindFilter = next;
+      }
+      _result = null;
+    });
+    _load(1);
+  }
+
+  String _statusText(WmRequisition row) {
+    final source = switch (row.kind) {
+      'ISSUE' => '领料',
+      'RETURN' => '退料',
+      _ => '内料仓',
+    };
+    return switch (row.status) {
+      'PENDING' => switch (row.kind) {
+        'RETURN' => '退料待收',
+        'ISSUE' => '领料待发',
+        _ => '内料仓待处理',
+      },
+      'DONE' => switch (row.kind) {
+        'RETURN' => '退料已收',
+        'ISSUE' => '领料已发',
+        _ => '内料仓已完成',
+      },
+      'CANCELLED' => '$source已取消',
+      _ => '$source · ${row.status.isEmpty ? '状态未知' : row.status}',
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final items = _result?.items ?? const <WmRequisition>[];
-    final pending = widget.status == 'PENDING';
+    final pending = _statusFilter == 'PENDING';
     return UtenCollapsingHeaderScrollView(
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -277,16 +329,20 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
           'wm-requisitions-${widget.kind ?? 'all'}-${widget.status ?? 'all'}',
         ),
         primary: true,
+        requiredLeadingColumnKeys: const ['status'],
         columns: [
           MasterColumnDef(
             key: 'status',
             label: '状态',
-            width: 72,
-            value: (r) => wmRequisitionStatusLabel(r.status),
+            width: 112,
+            value: _statusText,
             // 任务分段（待发料/待收退回）里 PENDING=轮到仓库动手 → 绿；
             // 记录分段混排 PENDING/DONE/CANCELLED，沿用黄/绿/灰互区分。
             cellColor: (context, r) => utenStatusBadgeCellColor(
-              wmRequisitionStatusBadgeType(r.status, taskView: pending),
+              wmRequisitionStatusBadgeType(
+                r.status,
+                taskView: widget.status == 'PENDING',
+              ),
             ),
           ),
           MasterColumnDef(
@@ -301,13 +357,14 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
             width: 130,
             value: (r) => r.workshopName,
           ),
-          if (widget.kind == null)
-            MasterColumnDef(
-              key: 'kind',
-              label: '类型',
-              width: 90,
-              value: (r) => wmRequisitionKindLabel(l10n, r.kind),
-            ),
+          MasterColumnDef(
+            key: 'kind',
+            label: '类型',
+            width: 90,
+            value: (r) => const {'ISSUE', 'RETURN'}.contains(r.kind)
+                ? wmRequisitionKindLabel(l10n, r.kind)
+                : (r.kind.isEmpty ? '未知类型' : r.kind),
+          ),
           MasterColumnDef(
             key: 'material',
             label: '料',
@@ -361,10 +418,26 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
           ],
         ],
         items: items,
-        facets: const {},
+        facets: const {
+          'status': [
+            MasterFacetBucket(value: 'PENDING', label: '待处理', count: 0),
+            MasterFacetBucket(value: 'DONE', label: '已完成', count: 0),
+            MasterFacetBucket(value: 'CANCELLED', label: '已取消', count: 0),
+          ],
+          'kind': [
+            MasterFacetBucket(value: 'ISSUE', label: '领料', count: 0),
+            MasterFacetBucket(value: 'RETURN', label: '退料', count: 0),
+          ],
+        },
         nullCounts: const {},
-        filters: const {},
-        onFilterChanged: (_, _) {},
+        filters: {'status': _statusFilter, 'kind': _kindFilter},
+        // These initial task dimensions belong to the parent entry. A saved
+        // history query must not silently turn pending returns into issue rows.
+        externalFilterKeys: {
+          if (widget.status != null) 'status',
+          if (widget.kind != null) 'kind',
+        },
+        onFilterChanged: _onHeaderFilter,
         rowKeyOf: (r) => r.id,
         onRowTap: _open,
         rowMenuBuilder: (r) => [
@@ -388,11 +461,17 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
           widget.status,
           widget.kind,
           widget.keyword,
+          _statusFilter,
+          _kindFilter,
           WarehouseListScope.of(context),
         ),
         onPageChange: _load,
         emptyMessage: pending
-            ? (widget.kind == 'RETURN' ? '没有待收的退回' : '没有待发的领料申请')
+            ? (_kindFilter == 'RETURN'
+                  ? '没有待收的退回'
+                  : _kindFilter == 'ISSUE'
+                  ? '没有待发的领料申请'
+                  : '没有待处理的内料仓申请')
             : '还没有记录',
       ),
     );
@@ -527,11 +606,13 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
             'features.warehouse.materialbin.widgets.workshop_material_task_center.WmBinStatusSegmentState.build.1',
         key: const Key('wm-bin-status-table'),
         primary: true,
+        requiredLeadingColumnKeys: const ['status', 'close'],
         columns: [
           MasterColumnDef(
             key: 'status',
             label: '盘点',
             width: 72,
+            filterFromRows: true,
             value: (r) =>
                 r.period == null ? null : wmPeriodStatusLabel(r.period!.status),
             // 2026-10-01 口径「不同状态不同颜色」：开着绿 / 盘点中蓝 /
@@ -546,6 +627,7 @@ class _WmBinStatusSegmentState extends ConsumerState<WmBinStatusSegment> {
             key: 'close',
             label: '结算',
             width: 72,
+            filterFromRows: true,
             value: (r) => r.period == null
                 ? null
                 : wmCloseStateLabel(r.period!.closeState),

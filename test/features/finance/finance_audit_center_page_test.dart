@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/finance/models/sales_order_finance_confirmation.dart';
@@ -34,7 +35,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('销售订单确认'), findsOneWidget);
-    expect(find.text('订单修改确认'), findsOneWidget);
+    expect(find.text('订单修改确认'), findsNothing);
     expect(find.text('出货审核'), findsOneWidget);
     // 无权限的队列不出现。
     expect(find.text('订货审批'), findsNothing);
@@ -56,6 +57,30 @@ void main() {
     expect(find.text('销售订单确认'), findsNothing);
   });
 
+  testWidgets(
+    'old salesChanges deep link selects the unified modification status',
+    (tester) async {
+      final repository = _EmptyConfirmationRepository();
+      await tester.pumpWidget(
+        _app(
+          const FinanceAuditCenterPage(initialSegment: 'salesChanges'),
+          const {Perm.salesOrderFinanceView},
+          repository: repository,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('订单修改确认'), findsNothing);
+      expect(find.text('待确认'), findsOneWidget);
+      final table = tester
+          .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+            find.byKey(const Key('sales-order-finance-desktop-table')),
+          );
+      expect(table.filters['status'], 'changes');
+      expect(repository.changesFilters.last, isTrue);
+      expect(find.text('目前没有订单修改待确认的销售订单'), findsOneWidget);
+    },
+  );
+
   testWidgets('initialSegment deep link embeds the sales confirm queue', (
     tester,
   ) async {
@@ -72,6 +97,16 @@ void main() {
     expect(find.text('在上方选择分类后开始审核'), findsNothing);
     expect(find.text('待确认'), findsOneWidget);
     expect(find.text('已驳回'), findsOneWidget);
+    expect(find.text('已批准'), findsOneWidget);
+    final table = tester
+        .widget<MasterDataTableView<SalesOrderFinancePendingItem>>(
+          find.byKey(const Key('sales-order-finance-desktop-table')),
+        );
+    expect(table.filters['status'], isNull);
+    expect(table.facets['status']!.map((bucket) => bucket.value), [
+      'initial',
+      'changes',
+    ]);
     // 嵌入形态不渲染队列页自己的 AppBar（只有审核中心一个标题）。
     expect(find.text('销售订单财务确认'), findsNothing);
   });
@@ -87,7 +122,7 @@ Widget _app(
       sharedPreferencesProvider.overrideWithValue(_preferences),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
-      salesOrderFinanceQueueCountProvider(false).overrideWith((ref) async => 3),
+      salesOrderFinanceQueueCountProvider(false).overrideWith((ref) async => 2),
       salesOrderFinanceQueueCountProvider(true).overrideWith((ref) async => 1),
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(
@@ -115,11 +150,13 @@ Widget _app(
 
 class _EmptyConfirmationRepository
     implements SalesOrderFinanceConfirmationRepository {
+  final List<bool?> changesFilters = [];
   @override
   Future<List<MasterFacetBucket>> billNoFacets({
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   @override
   Future<SalesOrderFinancePendingPage> pending({
@@ -128,16 +165,20 @@ class _EmptyConfirmationRepository
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,
-  }) async => const SalesOrderFinancePendingPage(
-    items: [],
-    page: 1,
-    size: 20,
-    total: 0,
-    totalPages: 1,
-  );
+  }) async {
+    changesFilters.add(changesOnly);
+    return const SalesOrderFinancePendingPage(
+      items: [],
+      page: 1,
+      size: 20,
+      total: 0,
+      totalPages: 1,
+    );
+  }
 
   @override
   Future<int> pendingCount({bool? changesOnly}) async => 0;

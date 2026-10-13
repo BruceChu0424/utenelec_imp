@@ -33,4 +33,6 @@ public class ReturnListItem extends com.uten.imp.common.history.DocumentHistoryM
     @Override public void disableHistoryActions() {
         writable = false;
     }
+
+    public String getTotalLocalExact() { return com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

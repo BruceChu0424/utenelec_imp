@@ -15,6 +15,7 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,
@@ -25,6 +26,7 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   });
 
   Future<int> pendingCount({bool? changesOnly});
@@ -57,61 +59,11 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
   });
 }
 
-abstract interface class SalesOrderFinanceAmendmentRepository {
-  Future<SalesOrderFinanceReview> amendReview(
-    String orderId, {
-    required int expectedRevision,
-    required String expectedClaimId,
-    required List<Map<String, dynamic>> lines,
-  });
-}
-
-extension SalesFinanceAmendmentAccess
-    on SalesOrderFinanceConfirmationRepository {
-  Future<SalesOrderFinanceReview> amendReview(
-    String orderId, {
-    required int expectedRevision,
-    required String expectedClaimId,
-    required List<Map<String, dynamic>> lines,
-  }) {
-    final repository = this;
-    if (repository is SalesOrderFinanceAmendmentRepository) {
-      return (repository as SalesOrderFinanceAmendmentRepository).amendReview(
-        orderId,
-        expectedRevision: expectedRevision,
-        expectedClaimId: expectedClaimId,
-        lines: lines,
-      );
-    }
-    throw UnsupportedError('当前连接不支持审核修改');
-  }
-}
-
 class DioSalesOrderFinanceConfirmationRepository
-    implements
-        SalesOrderFinanceConfirmationRepository,
-        SalesOrderFinanceAmendmentRepository {
+    implements SalesOrderFinanceConfirmationRepository {
   const DioSalesOrderFinanceConfirmationRepository(this.api);
 
   final ApiClient api;
-
-  @override
-  Future<SalesOrderFinanceReview> amendReview(
-    String orderId, {
-    required int expectedRevision,
-    required String expectedClaimId,
-    required List<Map<String, dynamic>> lines,
-  }) async {
-    final json = await api.post(
-      '${ApiEndpoints.salesOrderFinanceReview(Uri.encodeComponent(orderId)).replaceFirst('/review', '')}/amend',
-      body: {
-        'expectedRevision': expectedRevision,
-        'expectedClaimId': expectedClaimId,
-        'lines': lines,
-      },
-    );
-    return SalesOrderFinanceReview.fromJson(json);
-  }
 
   @override
   Future<SalesOrderFinancePendingPage> pending({
@@ -120,6 +72,7 @@ class DioSalesOrderFinanceConfirmationRepository
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
     String? sort,
     String? order,
     String? billNo,
@@ -132,6 +85,7 @@ class DioSalesOrderFinanceConfirmationRepository
         'size': size,
         'rejected': ?rejected,
         'changesOnly': ?changesOnly,
+        if (confirmed) 'confirmed': true,
         if (normalizedKeyword != null && normalizedKeyword.isNotEmpty)
           'keyword': normalizedKeyword,
         // 2026-09-25 单号列统一：表头排序 + 销售单号表头值筛选。
@@ -148,6 +102,7 @@ class DioSalesOrderFinanceConfirmationRepository
     bool? rejected,
     String? keyword,
     bool? changesOnly,
+    bool confirmed = false,
   }) async {
     final normalizedKeyword = keyword?.trim();
     final json = await api.get(
@@ -155,6 +110,7 @@ class DioSalesOrderFinanceConfirmationRepository
       query: <String, dynamic>{
         'rejected': ?rejected,
         'changesOnly': ?changesOnly,
+        if (confirmed) 'confirmed': true,
         if (normalizedKeyword != null && normalizedKeyword.isNotEmpty)
           'keyword': normalizedKeyword,
       },

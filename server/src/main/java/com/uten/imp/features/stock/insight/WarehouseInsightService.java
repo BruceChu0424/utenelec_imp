@@ -97,6 +97,8 @@ public class WarehouseInsightService {
                 (rs, i) -> healthFact(rs));
         List<HealthRow> rows = facts.stream()
                 .map(f -> WarehouseInsightDefinitions.healthRow(f, asOf, canViewCost)).toList();
+        Map<HealthRow,UUID> unitByRow=new java.util.IdentityHashMap<>();
+        for(int i=0;i<facts.size();i++)unitByRow.put(rows.get(i),facts.get(i).unitId());
         HealthOverview overview = overview(scope, params, facts, rows, canViewCost);
 
         WarehouseInsightDefinitions.HealthFilter filter = new WarehouseInsightDefinitions.HealthFilter(
@@ -109,7 +111,7 @@ public class WarehouseInsightService {
         }
         filtered.sort(WarehouseInsightDefinitions.healthOrder(sort, order));
         List<ReportTotal> totals = ReportTotalsCalculator.computeFromRows(
-                filtered.stream().map(WarehouseInsightDefinitions::totalsRow).toList(),
+                filtered.stream().map(row->WarehouseInsightDefinitions.totalsRow(row,unitByRow.get(row))).toList(),
                 WarehouseInsightDefinitions.healthTotalSpecs(canViewCost));
         return new WarehouseHealthPage(WarehouseInsightDefinitions.page(filtered, page, size), totals, overview);
     }
@@ -310,7 +312,7 @@ public class WarehouseInsightService {
                 rs.getObject("newest_in", OffsetDateTime.class),
                 rs.getBigDecimal("out_30"), rs.getBigDecimal("out_90"), rs.getBigDecimal("out_365"),
                 rs.getLong("picks_90"), rs.getObject("last_out_at", OffsetDateTime.class),
-                rs.getLong("goods_picks"), rs.getLong("picks_cum_before"), rs.getLong("picks_total"));
+                rs.getLong("goods_picks"), rs.getLong("picks_cum_before"), rs.getLong("picks_total"),rs.getObject("unit_id",UUID.class));
     }
 
     private static InsightFacts.Cycle cycleFact(ResultSet rs) throws SQLException {

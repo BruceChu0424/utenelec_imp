@@ -30,4 +30,6 @@ public class OrderListItem extends com.uten.imp.common.history.DocumentHistoryMe
     @Override public void disableHistoryActions() {
         if(financeApproval!=null)financeApproval=financeApproval.readOnly();
     }
+
+    public String getTotalLocalExact() { return priceMasked ? null : com.uten.imp.common.util.DecimalText.of(totalLocal); }
 }

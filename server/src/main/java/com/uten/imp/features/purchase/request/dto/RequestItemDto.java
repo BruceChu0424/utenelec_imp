@@ -13,6 +13,8 @@ public class RequestItemDto {
     @lombok.Setter private String quantitySemantics = "LEGACY_RECORDED";
     @lombok.Setter private BigDecimal giftOrderedQty = BigDecimal.ZERO;
     @lombok.Setter private BigDecimal remainingGiftQty = BigDecimal.ZERO;
+    @lombok.Setter private BigDecimal pendingGiftQty = BigDecimal.ZERO;
+    @lombok.Setter private BigDecimal physicalRemainingQty = BigDecimal.ZERO;
 
     public RequestItemDto(UUID id, Integer lineNo, UUID goodsId, String goodsCodeSnapshot, String goodsNameSnapshot, String goodsSnapshotSource, OffsetDateTime goodsSnapshotLockedAt, UUID colorId, UUID unitId, BigDecimal unitRate, BigDecimal qty, BigDecimal price, BigDecimal amountOriginal, BigDecimal amountLocal, BigDecimal orderedQty, BigDecimal giftQty, BigDecimal weight, String sourceDocNo, LocalDate deliverDate, String productionPlanNo, String salesOrderNo, String remark, BigDecimal pendingQty, BigDecimal remainingQty, long rowVersion) {
         this.id = id;
@@ -39,11 +41,19 @@ public class RequestItemDto {
         this.remark = remark;
         this.pendingQty = pendingQty;
         this.remainingQty = remainingQty;
+        this.physicalRemainingQty = remainingQty;
         this.rowVersion = rowVersion;
     }
     public String getGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftQty);}
+    public String getUnitRateExact(){return com.uten.imp.common.util.DecimalText.of(unitRate);}
     public String getPhysicalQtyExact(){return com.uten.imp.common.finance.ProcurementQuantities.physicalText(quantitySemantics,qty,giftQty);}
     public String getGiftOrderedQtyExact(){return com.uten.imp.common.util.DecimalText.of(giftOrderedQty);}
+    public String getPendingGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingGiftQty);}
+    public BigDecimal getPhysicalOrderedQty(){return (orderedQty==null?BigDecimal.ZERO:orderedQty).add(giftOrderedQty==null?BigDecimal.ZERO:giftOrderedQty);}
+    public BigDecimal getPhysicalPendingQty(){return (pendingQty==null?BigDecimal.ZERO:pendingQty).add(pendingGiftQty==null?BigDecimal.ZERO:pendingGiftQty);}
+    public String getPhysicalOrderedQtyExact(){return com.uten.imp.common.util.DecimalText.of(getPhysicalOrderedQty());}
+    public String getPhysicalPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(getPhysicalPendingQty());}
+    public String getPhysicalRemainingQtyExact(){return com.uten.imp.common.util.DecimalText.of(physicalRemainingQty);}
     public String getRemainingGiftQtyExact(){return com.uten.imp.common.util.DecimalText.of(remainingGiftQty);}
 
     private UUID id;

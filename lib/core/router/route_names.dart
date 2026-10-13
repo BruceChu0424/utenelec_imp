@@ -411,8 +411,8 @@ abstract final class RouteName {
   static const String warehouseSalesOutbound = '/warehouse/sales-outbound';
 
   // —— 仓库任务中心（2026-09-24 四卡合并页；静态段 tasks 须先于 /warehouse/:code）——
-  /// 仓库任务中心：出库 / 入库 / 生产领料 / 品质检查结果 / 委外成品退货 /
-  /// 委外损耗 六个大类的一站式入口（?group= 深链预设大类）。
+  /// 仓库任务中心：出库 / 入库 / 品质检查结果 / 车间内料仓 / 委外成品退货。
+  /// 生产领料、退料分别属于出库、入库来源；委外损耗在委外/财务业务办理。
   static const String warehouseTasks = '/warehouse/tasks';
 
   /// 出库任务中心：销售出库（待出库/已出库历史）+ 委外出仓（任务/出仓

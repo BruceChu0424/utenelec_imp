@@ -46,6 +46,8 @@ import '../../features/employee/pages/employee_offboarding_workflow_page.dart';
 import '../../features/employee/pages/employee_onboarding_page.dart';
 import '../../features/expense/pages/expense_approval_detail_page.dart';
 import '../../features/expense/pages/expense_approval_list_page.dart';
+import '../../features/expense/providers/expense_providers.dart'
+    show expenseApprovalQueueFromRoute;
 import '../../features/expense/pages/expense_detail_page.dart';
 import '../../features/expense/pages/expense_list_page.dart';
 import '../../features/expense/pages/expense_claim_edit_page.dart';
@@ -112,6 +114,10 @@ import '../../features/warehouse/pages/warehouse_quality_batch_stock_in_page.dar
 import '../../features/warehouse/pages/warehouse_quality_pre_stock_in_page.dart';
 import '../../features/warehouse/pages/warehouse_quality_result_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_sales_outbound_detail_page.dart';
+import '../../features/warehouse/pages/warehouse_sales_outbound_batch_page.dart';
+import '../../features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart';
+import '../../features/warehouse/pages/warehouse_material_return_batch_receive_page.dart';
+import '../../features/warehouse/models/warehouse_sales_outbound.dart';
 import '../../features/warehouse/pages/warehouse_document_history_detail_page.dart';
 import '../../features/warehouse/pages/warehouse_document_history_list_page.dart';
 import '../../features/warehouse/pages/production_finished_arrival_registration_page.dart';
@@ -497,7 +503,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: '/expense/approval',
             name: 'expense-approval-list',
-            builder: (_, _) => const ExpenseApprovalListPage(),
+            builder: (_, s) => ExpenseApprovalListPage(
+              initialQueue: expenseApprovalQueueFromRoute(
+                s.uri.queryParameters['queue'],
+              ),
+            ),
           ),
           DraftAwareGoRoute(
             path: '/expense/approval/:id',
@@ -1049,6 +1059,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               targets: s.extra is List<WarehouseQualityResultTask>
                   ? s.extra! as List<WarehouseQualityResultTask>
                   : const [],
+              receipts: [
+                for (final item
+                    in (s.uri.queryParameters['receipts'] ?? '').split(','))
+                  if (item.split(':') case [
+                    final type,
+                    final id,
+                  ] when type.isNotEmpty && id.isNotEmpty)
+                    (receiptType: type, receiptId: id),
+              ],
             ),
           ),
           // 先入库后质检(V596)：逐行上架页(静态前缀段，须先于 :receiptType/:receiptId)。
@@ -1203,6 +1222,27 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const WarehouseSubcontractOutboundPage(),
           ),
           DraftAwareGoRoute(
+            path: '/warehouse/material-returns/batch-receive',
+            name: 'warehouse-material-returns-batch-receive',
+            builder: (_, state) => WarehouseMaterialReturnBatchReceivePage(
+              documentIds: (state.uri.queryParameters['documentIds'] ?? '')
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/warehouse/sales-outbound/batch',
+            name: 'warehouse-sales-outbound-batch',
+            builder: (_, state) => WarehouseSalesOutboundBatchPage(
+              shipmentIds: (state.uri.queryParameters['shipmentIds'] ?? '')
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
+              action: WarehouseSalesOutboundAction.confirmShipment,
+            ),
+          ),
+          DraftAwareGoRoute(
             path: '/warehouse/sales-outbound/:id',
             name: 'warehouse-sales-outbound-detail',
             builder: (_, state) => WarehouseSalesOutboundDetailPage(
@@ -1228,6 +1268,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const WarehouseSalesOutboundPage(),
           ),
           // 拣货出仓页：一张委外人员已提交、仓库未发出的领料出仓草稿(ADR-143 §4.3)。
+          DraftAwareGoRoute(
+            path: '/warehouse/subcontract-outbound/batch',
+            name: 'warehouse-subcontract-outbound-batch',
+            builder: (_, state) => WarehouseSubcontractOutboundBatchPage(
+              issueIds: (state.uri.queryParameters['issueIds'] ?? '')
+                  .split(',')
+                  .where((id) => id.isNotEmpty)
+                  .toList(),
+            ),
+          ),
           DraftAwareGoRoute(
             path: '/warehouse/subcontract-outbound/:issueId',
             name: 'warehouse-subcontract-outbound-edit',
@@ -1281,14 +1331,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: RouteName.warehouseInboundTasks,
             name: 'warehouse-inbound-tasks',
-            builder: (_, _) =>
-                const WarehouseTaskCenterPage(initialGroup: 'inbound'),
+            builder: (_, state) => WarehouseTaskCenterPage(
+              initialGroup: 'inbound',
+              initialSection: state.uri.queryParameters['section'],
+            ),
           ),
           DraftAwareGoRoute(
             path: RouteName.warehouseDrawTasks,
             name: 'warehouse-draw-tasks',
-            builder: (_, _) =>
-                const WarehouseTaskCenterPage(initialGroup: 'draw'),
+            builder: (_, state) => WarehouseTaskCenterPage(
+              initialGroup: 'draw',
+              initialSection: state.uri.queryParameters['section'],
+            ),
           ),
           // 车间内料仓设置 (ADR-131; 静态段须先于 /warehouse/:code/:id, 否则被单据详情吞掉)。
           // ?tab=enable|machines|prep 直达页签。
@@ -1625,6 +1679,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: 'finance-audit-center',
             builder: (_, state) => FinanceAuditCenterPage(
               initialSegment: state.uri.queryParameters['segment'],
+              initialSalesState: state.uri.queryParameters['state'],
+              initialProcurementStatus: state.uri.queryParameters['status'],
             ),
           ),
           DraftAwareGoRoute(
@@ -1635,7 +1691,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: '/finance/procurement-approvals',
             name: 'finance-procurement-approvals',
-            builder: (_, _) => const FinanceProcurementApprovalTasksPage(),
+            builder: (_, state) => FinanceProcurementApprovalTasksPage(
+              initialStatus: state.uri.queryParameters['status'],
+            ),
           ),
           DraftAwareGoRoute(
             path: '/finance/procurement-approvals/:caseId',
@@ -1647,7 +1705,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           DraftAwareGoRoute(
             path: '/finance/sales-order-confirmations',
             name: 'finance-sales-order-confirmations',
-            builder: (_, _) => const FinanceSalesOrderConfirmationPage(),
+            builder: (_, state) => FinanceSalesOrderConfirmationPage(
+              initialState: state.uri.queryParameters['state'],
+            ),
           ),
           DraftAwareGoRoute(
             path: '/finance/sales-order-changes',

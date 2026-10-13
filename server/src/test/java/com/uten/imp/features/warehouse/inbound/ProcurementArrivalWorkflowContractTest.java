@@ -41,6 +41,19 @@ import static org.mockito.Mockito.mock;
 class ProcurementArrivalWorkflowContractTest {
 
     @Test
+    void financeListKeepsPendingAndProcessedSeparateAndRejectsUnknownStages() {
+        assertThat(ProcurementArrivalControlService.financeTaskPredicate(null))
+                .isEqualTo("exception.status = 'PENDING_FINANCE'");
+        assertThat(ProcurementArrivalControlService.financeTaskPredicate("PENDING_FINANCE"))
+                .isEqualTo("exception.status = 'PENDING_FINANCE'");
+        assertThat(ProcurementArrivalControlService.financeTaskPredicate("PROCESSED"))
+                .isEqualTo("exception.status <> 'PENDING_FINANCE'");
+        ApiException failure = assertThrows(ApiException.class,
+                () -> ProcurementArrivalControlService.financeTaskPredicate("PENDING_FINANCE' OR TRUE"));
+        assertThat(failure.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+    }
+
+    @Test
     void ownerSurfaceIsReturnOnlyAndUsesNarrowPermission() throws Exception {
         RequestMapping mapping = ProcurementArrivalExceptionController.class
                 .getAnnotation(RequestMapping.class);
@@ -91,7 +104,7 @@ class ProcurementArrivalWorkflowContractTest {
 
         Method tasks =
                 FinanceProcurementArrivalExceptionController.class
-                        .getDeclaredMethod("tasks", int.class, int.class);
+                        .getDeclaredMethod("tasks", int.class, int.class, String.class);
         assertThat(tasks.getAnnotation(GetMapping.class).value())
                 .containsExactly("/tasks");
     }

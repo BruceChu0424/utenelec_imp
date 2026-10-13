@@ -140,6 +140,64 @@ def command_log(command, cwd, logfile, env=None):
     return code
 
 
+def dependency_resolution_before_work(logfile, target):
+    """Only Maven resolution failures before compilation/tests can be recovered."""
+    logfile = Path(logfile)
+    if not logfile.is_file():
+        return False
+    # Include malformed and non-TEST XML, not just successfully parsed cases.
+    if any(next((Path(target) / f"{phase}-reports").rglob("*.xml"), None) is not None
+           for phase in ("surefire", "failsafe")):
+        return False
+    log = re.sub(r"\x1b\[[0-9;]*m", "", logfile.read_text(encoding=locale.getpreferredencoding(False), errors="replace"))
+    if re.search(r"\[INFO\]\s+---\s+(?:maven-compiler-plugin|compiler|maven-surefire-plugin|surefire|maven-failsafe-plugin|failsafe):", log):
+        return False
+    if re.search(r"\[(?:INFO|ERROR)\]\s+(?:Running |Tests run:|Compiling |Recompiling |COMPILATION ERROR)", log):
+        return False
+    if re.search(r"Compilation failure|There are test failures|MojoFailureException", log, re.IGNORECASE):
+        return False
+    return bool(re.search(r"PluginResolutionException|DependencyResolutionException", log)
+                and re.search(r"\[ERROR\]\s+(?:Plugin [^\n]+could not be resolved|Could not resolve dependencies for project)", log))
+
+
+def maven_with_resolution_recovery(command, cwd, logfile, target, env=None, expected_source=None, attempts=None):
+    """At most one dependency-only recovery; never rerun compiled or tested work.
+
+    Every attempt keeps its complete raw log. The usual logfile is a copy of
+    the final attempt, and the report records original and final exit codes.
+    """
+    logfile = Path(logfile)
+    attempts = [] if attempts is None else attempts
+    identity = source_identity() if expected_source is None else expected_source
+    if source_identity() != identity:
+        raise ValueError("Sources changed before Maven execution; generate a fresh plan")
+    ledger = logfile.with_name(logfile.stem + "-attempts.json")
+    for number in (1, 2):
+        attempt_log = logfile.with_name(f"{logfile.stem}-attempt-{number}{logfile.suffix}")
+        code = -1
+        try:
+            code = command_log(command, cwd, attempt_log, env)
+        finally:
+            if attempt_log.is_file():
+                shutil.copyfile(attempt_log, logfile)
+            attempts.append({"attempt": number, "exit_code": code, "source": identity,
+                             "logfile": attempt_log.name,
+                             "log_sha256": hashlib.sha256(attempt_log.read_bytes()).hexdigest()
+                             if attempt_log.is_file() else None})
+            write_json(ledger, {"source": identity, "attempts": attempts})
+        if code == 0 or number == 2 or not dependency_resolution_before_work(attempt_log, target):
+            return code
+        if source_identity() != identity:
+            attempts[-1]["recovery_blocked"] = "SOURCE_CHANGED"
+            write_json(ledger, {"source": identity, "attempts": attempts})
+            return code
+        attempts[-1]["recovery_reason"] = "DEPENDENCY_RESOLUTION_BEFORE_COMPILATION_AND_TESTS"
+        write_json(ledger, {"source": identity, "attempts": attempts})
+        print("Maven dependency resolution failed before compilation/tests; one recovery attempt. "
+              f"Original log retained: {attempt_log}", flush=True)
+    raise AssertionError("Unreachable Maven recovery state")
+
+
 def maven_executable(value):
     found = value or shutil.which("mvn") or shutil.which("mvn.cmd")
     if not found:
@@ -152,10 +210,10 @@ def discover(output, maven):
     classpath = output / "classpath.txt"
     effective_pom = output / "effective-pom.xml"
     (output / "tmp").mkdir(exist_ok=True)
-    command = [maven, "-B", "-ntp", "clean", "test-compile", "dependency:build-classpath", "help:effective-pom",
+    command = [maven, "-B", "-ntp", "-U", "clean", "test-compile", "dependency:build-classpath", "help:effective-pom",
                f"-Duten.build.directory={target}", "-DincludeScope=test", f"-Dmdep.outputFile={classpath}",
                f"-Doutput={effective_pom}", f"-Duten.test.tmpdir={output / 'tmp'}", "-DskipTests=false", "-Dmaven.test.skip=false"]
-    if command_log(command, ROOT / "server", output / "discovery-maven.log"):
+    if maven_with_resolution_recovery(command, ROOT / "server", output / "discovery-maven.log", target):
         raise ValueError("JUnit discovery compilation failed; see discovery-maven.log")
     validate_maven_discovery(effective_pom)
     cp = os.pathsep.join([str(target / "test-classes"), str(target / "classes"), classpath.read_text(encoding="utf-8").strip()])
@@ -463,7 +521,7 @@ def run_one(plan, shard_id, output, maven, unfiltered=False, jvm_max_heap=None, 
     for name in OPTIONAL_GATES:
         if env.get(name, "").lower() == "true":
             raise ValueError(f"{name}=true belongs to its dedicated workflow, not this ordinary full-suite runner")
-    command = [maven, "-B", "-ntp", "clean", "verify", f"-Duten.build.directory={target}",
+    command = [maven, "-B", "-ntp", "-U", "clean", "verify", f"-Duten.build.directory={target}",
                "-DskipTests=false", "-Dmaven.test.skip=false", "-DskipITs=false", "-Dmaven.test.failure.ignore=false",
                "-DforkCount=1", "-DreuseForks=true", "-Djunit.jupiter.execution.parallel.enabled=false",
                f"-Duten.test.tmpdir={temp}",
@@ -472,9 +530,11 @@ def run_one(plan, shard_id, output, maven, unfiltered=False, jvm_max_heap=None, 
     started = time.monotonic()
     exit_code = -1
     infrastructure_error = None
+    attempts = []
     try:
         with maven_parent_environment(env, temp, directory, ROOT / "server") as launch_env:
-            exit_code = command_log(command, ROOT / "server", directory / "maven.log", launch_env)
+            exit_code = maven_with_resolution_recovery(command, ROOT / "server", directory / "maven.log", target,
+                                                       launch_env, plan["source"], attempts)
     except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
         infrastructure_error = f"Maven could not run: {exc}"
     finally:
@@ -492,6 +552,7 @@ def run_one(plan, shard_id, output, maven, unfiltered=False, jvm_max_heap=None, 
         audit["complete"] = not audit["errors"]
         report = {"schema_version": VERSION, "plan_hash": plan["plan_hash"], "source": plan["source"],
                   "shard": shard_id, "coverage": plan["coverage"], "maven_exit_code": exit_code,
+                  "maven_attempts": attempts,
                   "unfiltered": unfiltered,
                   "heap_limits": {"test_jvm_max_heap": jvm_max_heap, "maven_max_heap": maven_max_heap},
                   "maven_parent_arguments": {"file": str(directory / "maven-parent-jvm.args"), "encoding": locale.getencoding(),

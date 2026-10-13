@@ -1,5 +1,4 @@
 import '../../../shared/documents/document_unapproval_action.dart';
-import 'purchase_doc_edit_page.dart';
 import '../../../shared/models/procurement_quantity.dart';
 import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
@@ -130,10 +129,50 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
         : financeExactTrimmed(financeExactDecimalFromUnits(units));
   }
 
+  BigInt? _remainingPhysicalRequestUnits(PurchaseDocItem item) {
+    final recorded = financeExactDecimalUnits(item.physicalRemainingQtyText);
+    if (recorded != null) return recorded.isNegative ? BigInt.zero : recorded;
+    if (item.quantitySemantics != null &&
+            item.quantitySemantics != procurementLegacyQuantity ||
+        (financeExactDecimalUnits(item.giftOrderedQtyText) ?? BigInt.zero) >
+            BigInt.zero ||
+        (financeExactDecimalUnits(item.pendingGiftQtyText) ?? BigInt.zero) >
+            BigInt.zero) {
+      return null;
+    }
+    return _remainingRequestUnits(item);
+  }
+
+  String? _physicalRequestCommitmentText(
+    PurchaseDocItem item, {
+    required bool pending,
+  }) {
+    final recorded = pending
+        ? item.physicalPendingQtyText
+        : item.physicalOrderedQtyText;
+    if (recorded != null) return recorded;
+    if (item.quantitySemantics != null &&
+        item.quantitySemantics != procurementLegacyQuantity) {
+      return null;
+    }
+    final paid = pending
+        ? item.pendingQtyText ?? item.pendingQty?.toString()
+        : item.orderedQtyText ?? item.orderedQty?.toString();
+    final gift = pending ? item.pendingGiftQtyText : item.giftOrderedQtyText;
+    return financeExactSumTexts([paid ?? '0', gift ?? '0']);
+  }
+
+  String? _remainingPhysicalRequestText(PurchaseDocItem item) {
+    final units = _remainingPhysicalRequestUnits(item);
+    return units == null
+        ? null
+        : financeExactTrimmed(financeExactDecimalFromUnits(units));
+  }
+
   bool _canSelectRequestItem(PurchaseDocItem item) =>
       !_busy &&
       item.id?.isNotEmpty == true &&
-      (_remainingRequestUnits(item) ?? BigInt.zero) > BigInt.zero;
+      (_remainingPhysicalRequestUnits(item) ?? BigInt.zero) > BigInt.zero;
 
   static String _requestQtyText(String? exact, double? value) =>
       financeExactTrimmed(exact ?? value?.toString()) ?? '—';
@@ -204,8 +243,16 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   _qtyInputBase(PurchaseDocItem item) => (
     qty: _requestQtyText(item.qtyText, item.qty),
     version: item.rowVersion,
-    ordered: _requestQtyText(item.orderedQtyText, item.orderedQty),
-    pending: _requestQtyText(item.pendingQtyText, item.pendingQty),
+    ordered:
+        financeExactTrimmed(
+          _physicalRequestCommitmentText(item, pending: false),
+        ) ??
+        '—',
+    pending:
+        financeExactTrimmed(
+          _physicalRequestCommitmentText(item, pending: true),
+        ) ??
+        '—',
     source:
         '${item.goodsId}/${item.colorId}/${item.unitId}/${item.sourceDocNo}/${item.productionPlanNo}/${item.salesOrderNo}',
   );
@@ -245,8 +292,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
       !_qtyInputConflicts.contains(item.id) &&
       item.rowVersion != null &&
       item.rowVersion! >= 0 &&
-      (item.orderedQty ?? 0) <= 0 &&
-      (item.pendingQty ?? 0) <= 0 &&
+      financeExactDecimalUnits(
+            _physicalRequestCommitmentText(item, pending: false),
+          ) ==
+          BigInt.zero &&
+      financeExactDecimalUnits(
+            _physicalRequestCommitmentText(item, pending: true),
+          ) ==
+          BigInt.zero &&
       item.id != null;
 
   TextEditingController _qtyControllerOf(PurchaseDocItem item) {
@@ -482,30 +535,6 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   bool get _canEdit => _ordinaryWritable && _hasPermission(_cfg.editPerm);
   bool get _canDelete => _ordinaryWritable && _hasPermission(_cfg.deletePerm);
   bool get _canApprove => _ordinaryWritable && _hasPermission(_cfg.approvePerm);
-  bool get _canReviewPhysical =>
-      nativeReadCanWrite &&
-      !(_detail?.legacyImported ?? false) &&
-      const {
-        PurchaseDocType.receipt,
-        PurchaseDocType.returnDoc,
-      }.contains(widget.docType) &&
-      _detail?.status == 0 &&
-      _hasPermission(_cfg.approvePerm);
-  Future<void> _openPhysicalReview() async {
-    if (!_canReviewPhysical) return;
-    final owns = captureNativeOwnership();
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => PurchaseDocEditPage(
-          docType: widget.docType,
-          id: widget.id,
-          reviewMode: true,
-        ),
-      ),
-    );
-    if (mounted && owns()) await _load();
-  }
-
   bool get _canReverse => _ordinaryWritable && _hasPermission(_cfg.reversePerm);
 
   bool get _financeReviewOnly =>
@@ -1045,6 +1074,9 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                             ),
                             _headerCard(theme, names),
                             if (widget.docType == PurchaseDocType.order &&
+                                (_detail!.status == kPurchaseStatusDraft ||
+                                    _detail!.status ==
+                                        kPurchaseStatusApproved) &&
                                 (_detail!.financeApproval?.isPending == true ||
                                     _detail!.financeApproval?.isRejected ==
                                         true)) ...[
@@ -1571,7 +1603,8 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     ),
                     MasterColumnDef(
                       key: 'pendingOrderQty',
-                      label: '待财务确认',
+                      label: '在审/退回占用',
+                      info: '已提交财务审核或财务退回待修订的原订货单仍占用这部分来源；取消、删除或修订减量后才释放对应份额。',
                       width: 115,
                       type: 'number',
                       value: (it) => formatExactQtyWithUnit(
@@ -1581,13 +1614,55 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
                     ),
                     MasterColumnDef(
                       key: 'remainingOrderQty',
-                      label: '可继续采购',
+                      label: '可继续采购(收费)',
                       width: 115,
                       type: 'number',
                       value: (it) => formatExactQtyWithUnit(
                         _remainingRequestQtyText(it),
                         unitOf(it),
                       ),
+                    ),
+                    MasterColumnDef(
+                      key: 'remainingGiftOrderQty',
+                      label: '待补赠品',
+                      width: 115,
+                      type: 'number',
+                      value: (it) => formatExactQtyWithUnit(
+                        it.hasExtraGift ? it.remainingGiftQtyText : '0',
+                        unitOf(it),
+                      ),
+                    ),
+                    MasterColumnDef(
+                      key: 'physicalApprovedOrderQty',
+                      label: '已批准实物',
+                      width: 120,
+                      type: 'number',
+                      value: (it) => formatExactQtyWithUnit(
+                        _physicalRequestCommitmentText(it, pending: false),
+                        unitOf(it),
+                      ),
+                    ),
+                    MasterColumnDef(
+                      key: 'physicalPendingOrderQty',
+                      label: '待财审实物',
+                      width: 120,
+                      type: 'number',
+                      value: (it) => formatExactQtyWithUnit(
+                        _physicalRequestCommitmentText(it, pending: true),
+                        unitOf(it),
+                      ),
+                    ),
+                    MasterColumnDef(
+                      key: 'physicalRemainingOrderQty',
+                      label: '待补实物',
+                      width: 120,
+                      type: 'number',
+                      value: (it) {
+                        final text = _remainingPhysicalRequestText(it);
+                        return text == null
+                            ? '实物剩余未核定'
+                            : formatExactQtyWithUnit(text, unitOf(it));
+                      },
                     ),
                   ],
                   MasterColumnDef(
@@ -1862,6 +1937,14 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
   String _financeApprovalLabel() {
     final approval = _detail!.financeApproval;
     if (approval == null) return '未获取审批状态';
+    if (_detail!.status == kPurchaseStatusCanceled ||
+        _detail!.status == kPurchaseStatusReversed) {
+      return switch (approval.status) {
+        'REJECTED' => '历史审批：财务已退回',
+        'APPROVED' => '历史审批：财务已通过',
+        _ => '原审批已结束',
+      };
+    }
     return switch (approval.status) {
       'DRAFT' => '未提交财务',
       'PENDING' => '等待财务审核组审核',
@@ -1883,7 +1966,10 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
     final foreground = rejected
         ? theme.colorScheme.onErrorContainer
         : theme.colorScheme.onSecondaryContainer;
-    final title = rejected ? '财务已退回，请修改后重新提交' : '等待财务审核组处理';
+    final reviewing = _detail!.status == kPurchaseStatusApproved;
+    final title = reviewing
+        ? (rejected ? '改量财务已退回，请修订后重新提交' : '改量等待财务复核')
+        : (rejected ? '财务已退回，请修改后重新提交' : '等待财务审核组处理');
     final detail = rejected
         ? (approval.rejectionReason ?? '财务未填写退回原因')
         : '审核期间仅可查看，财务将在订货审批中处理。';
@@ -2100,20 +2186,6 @@ class _PurchaseDocDetailPageState extends ConsumerState<PurchaseDocDetailPage>
               RoutePath.purchaseDocEdit(_cfg.type.pathSegment, widget.id),
             ),
             child: const Text('编辑'),
-          ),
-        );
-      }
-      if (_canReviewPhysical) {
-        if (children.isNotEmpty) {
-          children.add(const SizedBox(width: UtenSpacing.s8));
-        }
-        children.add(
-          UtenButton(
-            type: UtenButtonType.secondary,
-            size: UtenButtonSize.large,
-            icon: Icons.edit_note_outlined,
-            onPressed: _openPhysicalReview,
-            child: const Text('修改后审核'),
           ),
         );
       }

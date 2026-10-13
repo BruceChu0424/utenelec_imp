@@ -6,6 +6,7 @@ import 'warehouse_iqc_stock_in.dart'
     show
         WarehouseInboundAllocation,
         WarehouseIqcStockInConfirmItem,
+        WarehouseIqcStockInConfirmCommand,
         WarehouseIqcStockInReceiptType;
 import 'warehouse_pre_stocked_location.dart';
 
@@ -738,9 +739,33 @@ class WarehouseQualityBatchConfirmCommand {
 
   final List<WarehouseQualityBatchConfirmEntry> batches;
 
+  factory WarehouseQualityBatchConfirmCommand.fromDraft(
+    Map<String, dynamic> data,
+  ) => WarehouseQualityBatchConfirmCommand(
+    batches: [
+      for (final batch in _requiredDraftBatches(data['batches']))
+        WarehouseQualityBatchConfirmEntry(
+          receiptType: batch['receiptType'] as String,
+          receiptId: batch['receiptId'] as String,
+          idempotencyKey: batch['idempotencyKey'] as String,
+          items: WarehouseIqcStockInConfirmCommand.fromDraft({
+            'idempotencyKey': batch['idempotencyKey'],
+            'items': batch['items'],
+          }).items,
+        ),
+    ],
+  );
+
   Map<String, dynamic> toJson() => {
     'batches': [for (final entry in batches) entry.toJson()],
   };
+}
+
+List<Map<Object?, Object?>> _requiredDraftBatches(Object? raw) {
+  if (raw is! List || raw.isEmpty || raw.any((batch) => batch is! Map)) {
+    throw const FormatException('原批量提交缺少来源明细，请保留本机记录并核对');
+  }
+  return raw.cast<Map<Object?, Object?>>();
 }
 
 class WarehouseQualityBatchConfirmEntry {

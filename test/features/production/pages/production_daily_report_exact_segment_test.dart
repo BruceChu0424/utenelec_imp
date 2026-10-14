@@ -68,6 +68,7 @@ part 'production_daily_report_precision_cases.dart';
 part 'production_daily_report_session_boundary_cases.dart';
 part 'production_daily_report_product_card_cases.dart';
 part 'production_daily_report_manual_destination_cases.dart';
+part 'production_daily_report_partial_quantity_cases.dart';
 
 class _ExactSegmentSession extends SessionNotifier {
   int intentEpoch = 0;
@@ -96,6 +97,7 @@ class _ExactSegmentSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  registerDailyReportPartialQuantityTests();
   registerDailyReportProductCardTests();
   registerDailyReportManualDestinationTests();
   registerDailyReportSessionBoundaryTests();

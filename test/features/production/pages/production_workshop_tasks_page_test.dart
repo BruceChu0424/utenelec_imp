@@ -36,6 +36,55 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 late SharedPreferences _preferences;
 
 void main() {
+  testWidgets('partial 800 output stays separate from the 1000 plan', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final router = _router();
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(_preferences),
+          isSuperAdminProvider.overrideWithValue(false),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.productionExecutionView,
+            Perm.productionDailyReportView,
+            Perm.productionDailyReportCreate,
+          }),
+          productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+            _repository(
+              aStatus: 'IN_PROGRESS',
+              aDiscovery: {
+                'plannedQty': 1000,
+                'reportedQty': 800,
+                'remainingReportQty': 200,
+                'inboundQty': 0,
+              },
+            ),
+          ),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await selectFilterSegment(tester, '生产中');
+    await tester.pumpAndSettle();
+    expect(find.text('报工 800'), findsOneWidget);
+    expect(find.text('报工 1000'), findsNothing);
+    await _selectRow(tester, '产品 A');
+    expect(find.text('批量报工(1)'), findsOneWidget);
+    await tester.tap(find.text('批量报工(1)'));
+    await tester.pumpAndSettle();
+    expect(find.text('单项来源 segment-a'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();

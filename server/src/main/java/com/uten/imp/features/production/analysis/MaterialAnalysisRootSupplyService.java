@@ -88,14 +88,24 @@ public class MaterialAnalysisRootSupplyService implements PreplanOriginEntitleme
                   0,0,0,GREATEST(COALESCE(goods.min_qty,0),0),0,
                   CEIL(GREATEST(item.requested_qty,0)
                     *COALESCE(sales.unit_rate,1)*10000)/10000,
-                  'MAKE',TRUE,'START','PER_UNIT',1,TRUE,TRUE,
+                  CASE btrim(COALESCE(goods.source_type,''))
+                    WHEN '采购' THEN 'BUY' WHEN '自制' THEN 'MAKE' WHEN '委外' THEN 'SUBCONTRACT'
+                    ELSE CASE WHEN EXISTS (
+                      SELECT 1 FROM goods_bom_items bom JOIN goods child ON child.id=bom.component_goods_id
+                      WHERE bom.goods_id=goods.id AND NOT bom.is_deleted AND NOT child.is_deleted
+                        AND NOT COALESCE(child.auto_created,FALSE) AND child.issue_method<>'PERIODIC'
+                    ) THEN 'MAKE' ELSE 'REVIEW' END END,
+                  TRUE,'START','PER_UNIT',1,TRUE,TRUE,
                   COALESCE(sales.unit_rate,1),1,'EDGE_RULE','ROOT_SUPPLY',0,0,0,:actorId,:actorId
                 FROM production_material_analysis_items item
                 JOIN goods ON goods.id=item.goods_id
                 LEFT JOIN sales_order_items sales ON sales.id=item.sales_order_item_id
                 WHERE item.analysis_id=:analysisId AND item.root_material_id IS NOT NULL
                   AND item.is_deleted=FALSE
-                ON CONFLICT (id) DO NOTHING
+                ON CONFLICT (id) DO UPDATE
+                SET source_suggestion=EXCLUDED.source_suggestion,updated_at=now(),updated_by=:actorId
+                WHERE production_material_analysis_materials.source_suggestion
+                  IS DISTINCT FROM EXCLUDED.source_suggestion
                 """).setParameter("analysisId", analysisId)
                 .setParameter("actorId", currentUser.requireId()).executeUpdate();
     }

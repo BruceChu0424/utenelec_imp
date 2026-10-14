@@ -102,6 +102,7 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         assertThat(plan.cte()).contains("d.doc_type='DRAW' AND ((d.maker_id IN (:stockOwners) OR fn_is_production_linked_stock_document(d.id)))",
                 "d.doc_type='OTHER_OUT' AND (d.maker_id IN (:stockOwners))",
                 "d.doc_type='FINISHED_OUT' AND (d.maker_id IN (:stockOwners))", "fn_production_draw_requested(d.id)");
+        assertThat(plan.cte()).contains("AND NOT COALESCE(warehouse.is_line_side,FALSE)");
         assertThat(plan.parameters().get("stockOwners")).isEqualTo(Set.of(ACTOR));
         assertThat(plan.parameters().get("warehouseScope")).isEqualTo(scope.idsCsv());
         assertThat(plan.cte()).doesNotContain("d.doc_type='WDRAW'", "total_original", "amount_local");

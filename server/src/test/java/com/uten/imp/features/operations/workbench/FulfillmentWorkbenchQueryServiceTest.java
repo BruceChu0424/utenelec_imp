@@ -360,6 +360,7 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertTrue(sql.getValue().contains("draw_doc.warehouse_id AS warehouse_id"));
         assertTrue(sql.getValue().contains("open_line_count > 0"));
         assertTrue(sql.getValue().contains("fn_production_draw_requested(draw_doc.id)"));
+        assertTrue(sql.getValue().contains("AND NOT COALESCE(actual_warehouse.is_line_side,FALSE)"));
         assertTrue(sql.getValue().contains("production_material_discovery_requests"));
         assertTrue(sql.getValue().contains("request.status='PENDING'"));
         verify(countQuery).setParameter("department", "WAREHOUSE");

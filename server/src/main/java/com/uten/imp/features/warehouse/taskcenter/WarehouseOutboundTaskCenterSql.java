@@ -205,6 +205,10 @@ final class WarehouseOutboundTaskCenterSql {
                      WHEN d.status=1 THEN '%s_APPROVED' ELSE '%s_DRAFT' END
                 """.formatted(source,source,source,source);
         String requested = draw ? """
+                -- Line-side DRAW records prove workshop custody and cost lineage. They are
+                -- handled by production commands and never become ordinary warehouse tasks,
+                -- including their fully issued or reversed history.
+                AND NOT COALESCE(warehouse.is_line_side,FALSE)
                 AND (fn_production_draw_requested(d.id) OR (d.status=-1 AND EXISTS (
                   SELECT 1 FROM production_planning_package_document_items provenance
                   WHERE provenance.document_type='DRAW' AND provenance.document_id=d.id)))

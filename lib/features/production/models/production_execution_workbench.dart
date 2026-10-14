@@ -101,7 +101,7 @@ class ProductionExecutionWorkbenchGroup {
         unfinished < 0) {
       return '产品状态待核对';
     }
-    if (completed + unfinished == 0) return '暂无有效工单';
+    if (completed + unfinished == 0) return '暂无有效产品';
     return '已完成 $completed 个 · 未完成 $unfinished 个';
   }
 

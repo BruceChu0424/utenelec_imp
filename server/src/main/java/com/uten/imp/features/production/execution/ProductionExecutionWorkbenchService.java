@@ -1057,18 +1057,30 @@ public class ProductionExecutionWorkbenchService {
         return """
                 WITH selected_roots AS MATERIALIZED (
                 %s
-                ), product_completion_states AS (
+                ), product_completion_facts AS (
                     SELECT task.root_type, task.root_id,
                            segment.product_goods_id, segment.product_color_id, segment.product_unit_id,
-                           bool_and(task.segment_status = 'COMPLETED') AS completed
+                           task.segment_status = 'COMPLETED' AS completed
                     FROM selected_roots root
                     JOIN v_production_execution_workbench_segments task
                       ON task.root_type = root.root_type AND task.root_id = root.root_id
                     JOIN production_execution_segments segment ON segment.id = task.segment_id
                     WHERE task.segment_status NOT IN ('CANCELLED', 'REVERSED')
                       AND segment.product_goods_id IS NOT NULL
-                    GROUP BY task.root_type, task.root_id,
-                             segment.product_goods_id, segment.product_color_id, segment.product_unit_id
+                    UNION ALL
+                    SELECT root.root_type, root.root_id,
+                           source.goods_id, source.color_id, source.unit_id,
+                           source.remaining_fulfillment_qty <= 0 AS completed
+                    FROM selected_roots root
+                    JOIN v_production_analysis_workbench_item_progress source
+                      ON root.root_type = 'ANALYSIS' AND source.analysis_id = root.root_id
+                ), product_completion_states AS (
+                    SELECT root_type, root_id,
+                           product_goods_id, product_color_id, product_unit_id,
+                           bool_and(completed) AS completed
+                    FROM product_completion_facts
+                    GROUP BY root_type, root_id,
+                             product_goods_id, product_color_id, product_unit_id
                 ), product_completion_counts AS (
                     SELECT root_type, root_id,
                            COUNT(*) FILTER (WHERE completed)::integer AS completed_product_count,

@@ -604,18 +604,30 @@ public class MaterialAnalysisService {
 
     /**
      * 按货品档案自动确认供应方式 (ADR-102, 2026-09-27 从页面挪到服务端): 页面发起的新建/刷新
-     * 与人工改路线在重算写完快照、换指纹之前执行, 与重算同一事务、只算一次. 判据唯一一份在
+     * 与人工改路线在同一重算事务、换指纹之前执行. 顶层先确认再展开 BOM, 子件按分配后的快照确认.
+     * 判据唯一一份在
      * {@link MaterialAnalysisRouteAutoConfirm}; 写入复用人工确认的
      * {@link MaterialAnalysisRouteBatchWriter} (同一套行级校验与主档回写), 只是不为不改主档的
-     * 货品去加锁. 自动确认的值就是本行重算时已经生效的路线 (未确认行按建议算; 顶层行未确认时
-     * 按自制算, 历史计划证明的也是自制), 所以不需要再重算一遍.
+     * 货品去加锁. 子件自动确认的值就是本行重算时已经生效的建议路线, 所以不需要再重算一遍.
+     * 顶层建议来自货品档案, 有历史生产计划时由计划证明自制; 提前确认使本轮 BOM 与供给路线一致.
      *
      * @return 本次自动确认的操作组数
      */
     private int autoConfirmDecisiveRoutes(UUID analysisId, List<SourceLine> sources) {
         if (!access.hasAuthority("production_material_analysis:view")
                 || !access.hasAuthority("production_material_analysis:route")) return 0;
-        List<MaterialRow> rows = loadMaterialRows(analysisId);
+        return autoConfirmDecisiveRoutes(analysisId, sources, loadMaterialRows(analysisId));
+    }
+
+    private int autoConfirmDecisiveRootRoutes(UUID analysisId) {
+        if (!access.hasAuthority("production_material_analysis:view")
+                || !access.hasAuthority("production_material_analysis:route")) return 0;
+        List<MaterialRow> roots = loadStoredMaterialRows(analysisId, true);
+        if (roots.isEmpty()) return 0;
+        return autoConfirmDecisiveRoutes(analysisId, loadSourceLines(analysisId, false), roots);
+    }
+
+    private int autoConfirmDecisiveRoutes(UUID analysisId, List<SourceLine> sources, List<MaterialRow> rows) {
         Map<UUID, String> planningBlocks = planningBlockedReasons(sources);
         if (!MaterialAnalysisRouteAutoConfirm.hasCandidates(rows, planningBlocks)) return 0;
         if (!canConfirmRoutes(readHeader(analysisId), fqcRecoveryAuthorizationId(analysisId) != null)) return 0;
@@ -1529,6 +1541,11 @@ public class MaterialAnalysisService {
         stockEntitlement.restoreAllMakeDelegations(analysisId);
         reconcileSupplyActionStatuses(analysisId);
         if (rootSupply != null) rootSupply.ensureRootNodes(analysisId);
+        // Root routes determine whether their children need manufacturing preparation.
+        // Confirm decisive master routes before expanding/allocating the BOM, using the
+        // same authority, issued-plan and downstream guards as the later component pass.
+        int autoConfirmedRoots = autoConfirmRoutes
+                ? autoConfirmDecisiveRootRoutes(analysisId) : 0;
         RefreshTree tree = refreshTree(analysisId, true, typedOutputByMaterialLine,
                 MaterialAnalysisIssuePreviewOverlay.NONE);
         List<BomNode> nodes = tree.nodes();
@@ -1625,7 +1642,7 @@ public class MaterialAnalysisService {
         // Root refresh needs direct promises only, including original-root public claims.
         if (rootSupply != null) rootSupply.refreshRootNodes(analysisId,activeFutureCoverageByMaterial(analysisId,false));
         // 快照 (含顶层行) 写完之后、换指纹之前: 自动确认只看本次重算的结果, 版本只涨一次.
-        int autoConfirmed = firstConfirm.groupCount()
+        int autoConfirmed = autoConfirmedRoots + firstConfirm.groupCount()
                 + (autoConfirmRoutes ? autoConfirmDecisiveRoutes(analysisId, sources) : 0);
         // 被清掉又在上面按货品档案马上重新确认的不算「需重新确认」: 刷新提示只数真要人补选的
         // (与以前页面补发 PUT /routes、套用新快照后这条提示随之消失的结果相同).
@@ -6926,6 +6943,10 @@ public class MaterialAnalysisService {
     }
 
     private List<MaterialRow> loadStoredMaterialRows(UUID analysisId) {
+        return loadStoredMaterialRows(analysisId, false);
+    }
+
+    private List<MaterialRow> loadStoredMaterialRows(UUID analysisId, boolean unconfirmedRootsOnly) {
         return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT m.id, m.analysis_item_id, m.node_key,
                        m.goods_id, g.code, g.name, g.spec,
@@ -6959,8 +6980,11 @@ public class MaterialAnalysisService {
                   ON parent_material.analysis_item_id = m.analysis_item_id
                  AND parent_material.node_key = m.parent_node_key
                 WHERE m.analysis_id = :id AND m.active = TRUE
+                %s
                 ORDER BY m.analysis_item_id, m.path, m.id
-                """).setParameter("id", analysisId)).stream()
+                """.formatted(unconfirmedRootsOnly
+                        ? "AND m.node_role = 'ROOT_SUPPLY' AND m.confirmed_route IS NULL" : ""))
+                .setParameter("id", analysisId)).stream()
                 .map(MaterialRow::from).toList();
     }
 

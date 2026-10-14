@@ -53,6 +53,87 @@ class MaterialRouteAutoConfirmEndToEndTest {
     @BeforeEach void prepare(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
+    @Test void manualPlanWithTwoLeafProductsConfirmsTheirMasterRoutesWithoutAnotherSelection(){
+        var w=fixture.seedWorld("manual-leaf-routes");
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID();
+        fixture.insertGoods(first,"LEAF-MAKE-1","手工计划自制料1","自制",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(second,"LEAF-MAKE-2","手工计划自制料2","自制",w.unitId(),w.unitLegacy());
+        fixture.loginAs(fixture.createUserWithPerms(w,"manual-leaf-planner",
+                "production_material_analysis:view","production_material_analysis:manage","production_material_analysis:route"));
+        List<PreviewItem> sources=List.of(manualSource(w,first,"manual-leaf"),manualSource(w,second,"manual-leaf"));
+
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"manual-leaf-preview",sources));
+
+        assertEquals(2,view.autoConfirmedRouteCount());
+        assertEquals(0,view.pendingAutoConfirmRouteCount());
+        assertEquals(2,view.flatMaterials().size());
+        assertTrue(view.flatMaterials().stream().allMatch(row->"MAKE".equals(row.sourceConfirmed())));
+        assertTrue(view.products().stream().allMatch(ProductView::canSchedule));
+        assertEquals(List.of("PREVIEW"),operations(view.analysisId()));
+    }
+
+    @Test void manualPlanInheritsPurchaseAndSubcontractProductRoutesFromTheGoodsMaster(){
+        var w=fixture.seedWorld("manual-external-routes");
+        UUID buy=UUID.randomUUID(),subcontract=UUID.randomUUID(),buyChild=UUID.randomUUID();
+        fixture.insertGoods(buy,"ROOT-BUY-MASTER","手工计划采购产品","采购",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(subcontract,"ROOT-SUB-MASTER","手工计划委外产品","委外",w.unitId(),w.unitLegacy());
+        fixture.insertGoods(buyChild,"ROOT-BUY-CHILD","采购产品的参考BOM物料","采购",w.unitId(),w.unitLegacy());
+        fixture.insertBom(buy,buyChild,"2");
+        fixture.insertBom(subcontract,w.goodsC(),"1");
+        fixture.loginAs(fixture.createUserWithPerms(w,"manual-external-planner",
+                "production_material_analysis:view","production_material_analysis:manage","production_material_analysis:route"));
+        List<PreviewItem> sources=List.of(manualSource(w,buy,"manual-external"),manualSource(w,subcontract,"manual-external"));
+
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"manual-external-preview",sources));
+
+        assertEquals("BUY",rootByGoods(view,buy).sourceConfirmed());
+        assertEquals("SUBCONTRACT",rootByGoods(view,subcontract).sourceConfirmed());
+        assertEquals("采购",sourceType(buy));
+        assertEquals("委外",sourceType(subcontract));
+        assertTrue(view.flatMaterials().stream().noneMatch(row->buyChild.equals(row.goodsId())),
+                "采购根在本轮确认后就不展开制造备料");
+        MaterialView subcontractMaterial=byGoods(view,w.goodsC());
+        assertEquals(0,new BigDecimal("100").compareTo(subcontractMaterial.requiredQty()));
+        assertEquals("DESIGN",subcontractMaterial.usageBasis());
+        assertEquals("SUBCONTRACT_OUTBOUND",subcontractMaterial.usageReason());
+        assertEquals(0,view.pendingAutoConfirmRouteCount());
+        assertTrue(view.products().stream().noneMatch(ProductView::canSchedule));
+        assertEquals(List.of("PREVIEW"),operations(view.analysisId()));
+
+        db.update("UPDATE goods SET source_type='自制' WHERE id=?",buy);
+        AnalysisView refreshed=analyses.preview(new PreviewRequest(view.analysisId(),view.version(),view.fingerprint(),
+                w.warehouseId(),"manual-external-refresh",sources));
+        assertEquals("BUY",rootByGoods(refreshed,buy).sourceConfirmed(),"已确认路线不会被档案后续变化替换");
+        assertEquals("MAKE",rootByGoods(refreshed,buy).sourceSuggestion(),"刷新只更新档案建议");
+        assertEquals("SUBCONTRACT",rootByGoods(refreshed,subcontract).sourceConfirmed());
+        assertEquals(0,refreshed.autoConfirmedRouteCount());
+    }
+
+    @Test void manualPlanWithoutAMasterRouteOrBomRequiresAnExplicitChoice(){
+        var w=fixture.seedWorld("manual-unknown-route");
+        UUID goods=UUID.randomUUID();
+        fixture.insertGoods(goods,"ROOT-UNKNOWN-MASTER","未维护供应方式产品","",w.unitId(),w.unitLegacy());
+        fixture.loginAs(fixture.createUserWithPerms(w,"manual-unknown-planner",
+                "production_material_analysis:view","production_material_analysis:manage","production_material_analysis:route"));
+        AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"manual-unknown-preview",
+                List.of(manualSource(w,goods,"manual-unknown"))));
+        assertEquals("REVIEW",rootByGoods(view,goods).sourceSuggestion());
+        assertNull(rootByGoods(view,goods).sourceConfirmed());
+        assertEquals(0,view.autoConfirmedRouteCount());
+        assertFalse(view.products().getFirst().canSchedule());
+        assertEquals("",sourceType(goods),"没有档案或BOM依据时不擅自补写为自制");
+    }
+
+    private static PreviewItem manualSource(FullChainEndToEndTest.World w,UUID goods,String ref){
+        return new PreviewItem("STOCK",null,goods,null,w.unitId(),ref,"手工计划供应方式回归",
+                BusinessTime.today().plusDays(10),new BigDecimal("100"));
+    }
+
+    private static MaterialView rootByGoods(AnalysisView view,UUID goods){
+        return view.flatMaterials().stream().filter(row->goods.equals(row.goodsId())&&"ROOT_SUPPLY".equals(row.nodeRole()))
+                .findFirst().orElseThrow();
+    }
+
     /**
      * 新建分析一次请求就把「定了的」供应方式全部确认: 顶层自制、采购件、空来源但有 BOM 的组件
      * (按自制, 同事务回写主档)、它下面的采购件; 空来源又无下层的 (REVIEW) 留给人补选.

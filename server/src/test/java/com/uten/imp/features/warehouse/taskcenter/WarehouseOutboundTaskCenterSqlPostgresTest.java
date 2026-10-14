@@ -157,6 +157,47 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
     }
 
     @Test
+    void workshopCustodyDrawsStayOutOfEveryTaskProjectionWhileTheirDocumentsRemainIntact() {
+        // Warehouse names do not establish custody: the explicit business flag does.
+        jdbc.update("UPDATE warehouses SET name='同名仓',is_line_side=(id=:lineSide)", Map.of("lineSide", WAREHOUSE_A));
+        UUID pending = UUID.randomUUID(), partial = UUID.randomUUID(), issued = UUID.randomUUID(), reversed = UUID.randomUUID();
+        stock(pending, "DRAW", "INTERNAL-PENDING", ACTOR, WAREHOUSE_A, 1, 0);
+        stock(partial, "DRAW", "INTERNAL-PARTIAL", ACTOR, WAREHOUSE_A, 1, 1);
+        UUID issuedItem = stock(issued, "DRAW", "INTERNAL-ISSUED", OTHER, WAREHOUSE_A, 1, 2);
+        UUID reversedItem = stock(reversed, "DRAW", "INTERNAL-REVERSED", ACTOR, WAREHOUSE_A, -1, 2);
+        // Include real execution provenance, so neither a requested DRAW nor retained reversal
+        // can re-enter through production access or the historical provenance exception.
+        executionDraw(issued, issuedItem, discovery("CONFIGURED"), UUID.randomUUID(), true);
+        executionDraw(reversed, reversedItem, discovery("CONFIGURED"), UUID.randomUUID(), true);
+        stock(UUID.randomUUID(), "DRAW", "ORDINARY-PENDING", ACTOR, WAREHOUSE_B, 1, 0);
+        stock(UUID.randomUUID(), "DRAW", "ORDINARY-ISSUED", OTHER, WAREHOUSE_B, 1, 2);
+        stock(UUID.randomUUID(), "OTHER_OUT", "OTHER-INTERNAL-LOCATION", ACTOR, WAREHOUSE_A, 1, 0);
+
+        assertThat(jdbc.queryForObject("SELECT fn_production_draw_requested(:id)", Map.of("id", issued), Boolean.class)).isTrue();
+        var draw = plan("DRAW", null, null, null, null, full(), WarehouseTaskScope.ALL, "");
+        assertThat(count(draw)).isEqualTo(2);
+        assertThat(rows(draw, 1, 20)).extracting(row -> row.get("bill_no"))
+                .containsExactlyInAnyOrder("ORDINARY-PENDING", "ORDINARY-ISSUED");
+        assertThat(jdbc.queryForList(draw.facetsSql(), parameters(draw))).extracting(row -> row.get("status"))
+                .containsExactlyInAnyOrder("DRAW_PENDING", "DRAW_SHIPPED");
+        assertThat(jdbc.queryForList(draw.billNoFacetsSql(), parameters(draw))).extracting(row -> row.get("bill_no"))
+                .containsExactlyInAnyOrder("ORDINARY-PENDING", "ORDINARY-ISSUED");
+        assertThat(count(plan("DRAW", "DRAW_REVERSED", "INTERNAL-REVERSED", null, null, full(), WarehouseTaskScope.ALL, ""))).isZero();
+        assertThat(count(plan("DRAW", null, null, null, null, full(),
+                new WarehouseTaskScope(true, List.of(WAREHOUSE_A), false), ""))).isZero();
+        assertThat(count(plan("ALL", null, null, null, null, full(), WarehouseTaskScope.ALL, ""))).isEqualTo(3);
+        assertThat(count(plan("DRAW", null, null, null, null,
+                new WarehouseOutboundTaskCenterSql.Access(false, false, false, true, false, new OwnerScope(false, Set.of(ACTOR))),
+                WarehouseTaskScope.ALL, ""))).isEqualTo(1);
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM stock_documents WHERE id IN (:ids)",
+                Map.of("ids", List.of(pending, partial, issued, reversed)), Long.class)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("SELECT SUM(issued_qty) FROM stock_document_items WHERE doc_id IN (:ids)",
+                Map.of("ids", List.of(pending, partial, issued, reversed)), java.math.BigDecimal.class)).isEqualByComparingTo("5");
+        assertThat(functionDefinitions()).isEqualTo(authoritativeFunctions);
+    }
+
+    @Test
     void taskOnlySubcontractGrantCannotReadTerminalOrWithdrawnHistory() {
         subcontract(UUID.randomUUID(), "PENDING", WAREHOUSE_A, 0, false, true);
         subcontract(UUID.randomUUID(), "SHIPPED", WAREHOUSE_A, 1, false, true);
@@ -308,7 +349,8 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
         assertThat(rows(plan, 1, 20).getFirst().get("actionable")).isEqualTo(true);
         jdbc.update("UPDATE warehouses SET is_line_side=TRUE WHERE id=:id", Map.of("id", WAREHOUSE_A));
         assertThat(jdbc.queryForObject("SELECT fn_production_draw_pending(:id)", Map.of("id", document), Boolean.class)).isFalse();
-        assertThat(rows(plan, 1, 20).getFirst().get("actionable")).isEqualTo(false);
+        assertThat(count(plan)).isZero();
+        assertThat(rows(plan, 1, 20)).isEmpty();
         jdbc.update("UPDATE warehouses SET is_line_side=FALSE WHERE id=:id", Map.of("id", WAREHOUSE_A));
         jdbc.update("UPDATE stock_document_items SET issued_qty=qty WHERE id=:id", Map.of("id", item));
         jdbc.update("UPDATE stock_documents SET issue_status=2 WHERE id=:id", Map.of("id", document));

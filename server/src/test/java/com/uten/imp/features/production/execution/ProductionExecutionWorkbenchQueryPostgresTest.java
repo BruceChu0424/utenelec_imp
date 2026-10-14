@@ -59,7 +59,8 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,
                 "goods", "production_execution_segments", "production_fqc_recovery_authorizations",
                 "production_material_demands", "production_material_discovery_requests",
-                "production_overproduction_rate_requests", "production_over_limit_dispositions", "v_production_fqc_recovery_balance");
+                "production_overproduction_rate_requests", "production_over_limit_dispositions", "v_production_fqc_recovery_balance",
+                "v_production_analysis_workbench_item_progress");
         jdbc.execute("ALTER TABLE production_execution_segments ALTER COLUMN start_route SET DEFAULT 'FULL_KIT', ALTER COLUMN continuous_supply SET DEFAULT FALSE");
         jdbc.execute("ALTER TABLE v_production_fqc_recovery_balance ALTER COLUMN cancelled SET DEFAULT FALSE");
         jdbc.execute("CREATE TABLE workbench_execution_policy_facts(segment_id uuid PRIMARY KEY, overproduction_policy_applies boolean DEFAULT TRUE, actual_supplement_material_ready boolean DEFAULT FALSE)");
@@ -832,6 +833,42 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
             assertThat(detail.completedProductCount()).isEqualTo(2);
             assertThat(detail.unfinishedProductCount()).isEqualTo(2);
         } finally {
+            removeCompletionSegments(root, segments);
+        }
+    }
+
+    @Test
+    void analysisCompletionIncludesQualifiedSupplyWithoutWorkOrdersAndKeepsRealRemainders() {
+        UUID root = UUID.randomUUID(), stockGoods = UUID.randomUUID(), makeGoods = UUID.randomUUID();
+        UUID purchaseGoods = UUID.randomUUID(), color = UUID.randomUUID(), unit = UUID.randomUUID();
+        List<UUID> segments = new java.util.ArrayList<>();
+        jdbc.update("INSERT INTO v_production_execution_workbench_roots(root_type,root_id,owner_employee_id) VALUES ('ANALYSIS',?,?)", root, EMPLOYEE);
+        try {
+            addCompletionSegment(segments, root, makeGoods, color, unit, "COMPLETED");
+            jdbc.update("UPDATE v_production_execution_workbench_segments SET root_type='ANALYSIS' WHERE root_id=?", root);
+            // Stock handoff, completed manufacture and partially received purchase are
+            // three product identities. Absence of a work order never implies completion.
+            for (Object[] source : List.of(new Object[]{stockGoods, 0}, new Object[]{makeGoods, 0}, new Object[]{purchaseGoods, 20})) {
+                jdbc.update("INSERT INTO v_production_analysis_workbench_item_progress(analysis_id,analysis_item_id,goods_id,color_id,unit_id,remaining_schedule_qty,remaining_fulfillment_qty) VALUES (?,?,?,?,?,0,?)",
+                        root, UUID.randomUUID(), source[0], color, unit, source[1]);
+            }
+            var partial = service.group("ANALYSIS", root);
+            assertThat(partial.completedProductCount()).isEqualTo(2);
+            assertThat(partial.unfinishedProductCount()).isEqualTo(1);
+
+            jdbc.update("UPDATE v_production_analysis_workbench_item_progress SET remaining_fulfillment_qty=0 WHERE analysis_id=?", root);
+            var completed = service.group("ANALYSIS", root);
+            assertThat(completed.completedProductCount()).isEqualTo(3);
+            assertThat(completed.unfinishedProductCount()).isZero();
+
+            // A new real unmet remainder on a product already represented by a
+            // completed work order invalidates its aggregate completion.
+            jdbc.update("UPDATE v_production_analysis_workbench_item_progress SET remaining_schedule_qty=10,remaining_fulfillment_qty=10 WHERE analysis_id=? AND goods_id=?", root, makeGoods);
+            var reopened = service.group("ANALYSIS", root);
+            assertThat(reopened.completedProductCount()).isEqualTo(2);
+            assertThat(reopened.unfinishedProductCount()).isEqualTo(1);
+        } finally {
+            jdbc.update("DELETE FROM v_production_analysis_workbench_item_progress WHERE analysis_id=?", root);
             removeCompletionSegments(root, segments);
         }
     }

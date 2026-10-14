@@ -177,6 +177,8 @@ public class FulfillmentWorkbenchQueryService {
                GREATEST(fn_production_draw_item_requested_qty(draw_item.id)-COALESCE(draw_item.issued_qty,0),0)
                  *COALESCE(draw_item.unit_rate,1) AS open_qty) request
              WHERE v.department = 'WAREHOUSE'
+               -- Technical workshop custody is handled by production, including DONE rows.
+               AND NOT COALESCE(actual_warehouse.is_line_side,FALSE)
                AND fn_production_draw_requested(draw_doc.id)
                AND fn_production_draw_item_requested_qty(draw_item.id)>0
              GROUP BY v.department,draw_doc.id,draw_doc.warehouse_id,draw_doc.bill_no,draw_doc.status

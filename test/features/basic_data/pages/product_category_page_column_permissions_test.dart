@@ -11,6 +11,7 @@ import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/product_category_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/platform_tables_host.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -26,6 +27,20 @@ const _newColumnKey = Key('platform-column-new');
 const _createColumnKey = Key('platform-column-create');
 const _columnNameKey = Key('platform-column-name');
 
+// Exercise the goods table's authority, never the first global match or the
+// frozen/flowing copies before their scroll-driven visibility has settled.
+Finder _goodsColumns() => find
+    .descendant(
+      of: find.byType(MasterDataTableView<GoodsListItem>),
+      matching: find.byKey(_addColumnKey),
+    )
+    .hitTestable();
+
+Finder _goodsColumnTooltip(String message) => find.descendant(
+  of: find.byType(MasterDataTableView<GoodsListItem>),
+  matching: find.byTooltip(message),
+);
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -38,14 +53,12 @@ void main() {
         Perm.goodsEdit,
       });
 
-      final button = tester.widget<IconButton>(
-        find.byKey(_addColumnKey).hitTestable(),
-      );
+      final button = tester.widget<IconButton>(_goodsColumns());
       expect(button.tooltip, '添加列');
       expect((button.icon as Icon).icon, Icons.add_rounded);
-      expect(find.byTooltip('显示列'), findsNothing);
+      expect(_goodsColumnTooltip('显示列'), findsNothing);
 
-      await _tap(tester, find.byKey(_addColumnKey).hitTestable());
+      await _tap(tester, _goodsColumns());
       expect(find.text('添加列'), findsOneWidget);
       expect(repository.searchScopes, contains('master_goods'));
       await _tap(tester, find.byKey(_newColumnKey));
@@ -79,13 +92,11 @@ void main() {
       final repository = _FakePlatformTableRepository();
       await _pumpPage(tester, repository, permissionCase.$2);
 
-      final button = tester.widget<IconButton>(
-        find.byKey(_addColumnKey).hitTestable(),
-      );
+      final button = tester.widget<IconButton>(_goodsColumns());
       expect(button.tooltip, '显示列');
       expect((button.icon as Icon).icon, Icons.view_column_outlined);
-      expect(find.byTooltip('添加列'), findsNothing);
-      await _tap(tester, find.byKey(_addColumnKey).hitTestable());
+      expect(_goodsColumnTooltip('添加列'), findsNothing);
+      await _tap(tester, _goodsColumns());
 
       expect(find.text('显示列'), findsOneWidget);
       expect(find.byKey(_newColumnKey), findsNothing);
@@ -106,7 +117,7 @@ void main() {
         Perm.goodsView,
         Perm.goodsEdit,
       });
-      await _tap(tester, find.byKey(_addColumnKey).hitTestable());
+      await _tap(tester, _goodsColumns());
       await _tap(tester, find.byKey(_newColumnKey));
       await tester.enterText(find.byKey(_columnNameKey), '待创建说明');
       await tester.pumpAndSettle();
@@ -129,8 +140,8 @@ void main() {
       expect(repository.used, isEmpty);
 
       await _tap(tester, find.text('取消'));
-      expect(find.byTooltip('显示列').hitTestable(), findsOneWidget);
-      expect(find.byTooltip('添加列'), findsNothing);
+      expect(_goodsColumnTooltip('显示列').hitTestable(), findsOneWidget);
+      expect(_goodsColumnTooltip('添加列'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -192,6 +203,10 @@ Future<ProviderContainer> _pumpPage(
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
+  // Revealing a frozen column action can move its horizontal viewport. Render
+  // that jump so the frozen copy retires before resolving the action again.
+  await tester.pumpAndSettle();
+  expect(finder, findsOneWidget);
   await tester.tap(finder);
   await tester.pumpAndSettle();
 }

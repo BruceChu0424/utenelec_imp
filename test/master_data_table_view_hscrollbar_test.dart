@@ -64,18 +64,27 @@ RenderBox _hBarBox(WidgetTester tester) {
   return bars[0].findRenderObject() as RenderBox;
 }
 
-/// 最后一行底边：末行末格文本向上找最宽的祖先 DecoratedBox（= 整行，含底边线）。
+/// 最后一行底边：末行末格文本的仅带底分隔线祖先才是真实业务行。
+/// 整表 surface 也可能是更宽的 DecoratedBox，不能拿它的底边当作末行。
 /// 纯展示行不挂 InkWell，锚点用末行最后一列的单元格文本。
 RenderBox _lastRowBox(WidgetTester tester, {String text = 'b-7'}) {
-  final rowAncestors = find
-      .ancestor(of: find.text(text), matching: find.byType(DecoratedBox))
-      .evaluate();
-  var rowBox = rowAncestors.first.findRenderObject() as RenderBox;
-  for (final el in rowAncestors) {
-    final b = el.findRenderObject() as RenderBox;
-    if (b.size.width > rowBox.size.width) rowBox = b;
-  }
-  return rowBox;
+  final row = find.ancestor(
+    of: find.text(text),
+    matching: find.byWidgetPredicate((widget) {
+      if (widget is! DecoratedBox || widget.decoration is! BoxDecoration) {
+        return false;
+      }
+      final border = (widget.decoration as BoxDecoration).border;
+      return border is Border &&
+          border.bottom.style == BorderStyle.solid &&
+          border.bottom.width > 0 &&
+          border.top == BorderSide.none &&
+          border.left == BorderSide.none &&
+          border.right == BorderSide.none;
+    }),
+  );
+  expect(row, findsOneWidget, reason: '末格应只属于一条带行分隔线的业务行');
+  return tester.renderObject<RenderBox>(row);
 }
 
 void main() {

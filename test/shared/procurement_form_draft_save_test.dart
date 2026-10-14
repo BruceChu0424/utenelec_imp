@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
@@ -80,6 +81,7 @@ void main() {
         expect(line['totalAmountInput'], '100');
         expect(line.containsKey('amountOriginal'), isFalse);
         expect(line.containsKey('amountLocal'), isFalse);
+        _expectSavedDestination(env.router, module);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         env.router.dispose();
@@ -128,7 +130,7 @@ void main() {
           await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
           await tester.pumpAndSettle();
           expect(api.creates, 1);
-          expect(find.text('created-document'), findsOneWidget);
+          _expectSavedDestination(env.router, module);
           expect(
             find.byKey(const ValueKey('pending-attachment-retry-notice')),
             findsNothing,
@@ -172,7 +174,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
         await tester.pumpAndSettle();
         expect(api.creates, 0);
-        expect(find.text('created-document'), findsOneWidget);
+        _expectSavedDestination(env.router, module);
         expect(env.container.read(formDraftsProvider), isEmpty);
         await tester.pumpWidget(const SizedBox());
         env.router.dispose();
@@ -180,6 +182,21 @@ void main() {
       },
     );
   }
+}
+
+void _expectSavedDestination(GoRouter router, String module) {
+  expect(
+    router.routeInformationProvider.value.uri.path,
+    module == 'purchase'
+        ? RouteName.operationsPurchaseWorkbench
+        : '/$module/orders/created-order',
+  );
+  expect(
+    find.text(
+      module == 'purchase' ? 'purchase-task-center' : 'created-document',
+    ),
+    findsOneWidget,
+  );
 }
 
 Future<void> _seed(
@@ -275,6 +292,11 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
         path: '/$module/orders/created-order',
         builder: (_, _) => const Scaffold(body: Text('created-document')),
       ),
+      if (module == 'purchase')
+        GoRoute(
+          path: RouteName.operationsPurchaseWorkbench,
+          builder: (_, _) => const Scaffold(body: Text('purchase-task-center')),
+        ),
     ],
   );
   await tester.pumpWidget(

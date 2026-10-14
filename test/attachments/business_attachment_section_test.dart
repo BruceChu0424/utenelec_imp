@@ -16,6 +16,8 @@ import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import 'attachment_test_actions.dart';
+
 class _Files extends AttachmentService {
   _Files() : super(ApiClient(Dio()));
   final calls = <BusinessAttachmentOwner>[];
@@ -116,7 +118,7 @@ void main() {
       files.pending.single.complete([_file('客户确认.pdf')]);
       await tester.pumpAndSettle();
       expect(find.text('客户确认.pdf'), findsOneWidget);
-      expect(find.text('上传'), findsNothing);
+      expectAttachmentUploadAvailable(tester, available: false);
       final section = tester.widget<AttachmentSection>(
         find.byType(AttachmentSection),
       );
@@ -162,7 +164,7 @@ void main() {
       await tester.pump();
       files.pending[2].complete([]);
       await tester.pumpAndSettle();
-      expect(find.text('上传'), findsOneWidget);
+      expectAttachmentUploadAvailable(tester, available: true);
     },
   );
 

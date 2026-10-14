@@ -17,6 +17,8 @@ import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import 'attachment_test_actions.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Uint8List originalPng;
@@ -100,7 +102,8 @@ void main() {
           onChanged: () => refreshes++,
         );
 
-        await tester.tap(find.text('上传'));
+        expectAttachmentUploadAvailable(tester, available: true);
+        await tester.tap(attachmentAddFilesButton());
         await tester.pumpAndSettle();
 
         expect(picker.allowCompression, isFalse);
@@ -145,7 +148,8 @@ void main() {
       onChanged: () => refreshes++,
     );
 
-    await tester.tap(find.text('上传'));
+    expectAttachmentUploadAvailable(tester, available: true);
+    await tester.tap(attachmentAddFilesButton());
     await tester.pumpAndSettle();
 
     expect(service.uploads.single.fileName, '成功的发票.pdf');
@@ -174,7 +178,8 @@ void main() {
         ownerType: 'EMPLOYEE',
         onChanged: () => refreshes++,
       );
-      await tester.tap(find.text('上传'));
+      expectAttachmentUploadAvailable(tester, available: true);
+      await tester.tap(attachmentAddFilesButton());
       await tester.pump();
       expect(picker.calls, 1);
       expect(

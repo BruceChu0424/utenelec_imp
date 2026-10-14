@@ -177,7 +177,19 @@ void main() {
                 )
                 .first,
           );
+          // An already-built cached row can trigger ensureVisible's immediate
+          // jump without a drag/pump. Check the rendered frame after that jump.
+          await tester.pumpAndSettle();
           expect(find.text('最后一行').hitTestable(), findsOneWidget);
+          final lastRowRect = tester.getRect(find.text('最后一行'));
+          final viewportRect = tester.getRect(find.byType(ListView));
+          final footerRect = tester.getRect(
+            find.byKey(const Key('layout-action')),
+          );
+          expect(lastRowRect.top, greaterThanOrEqualTo(viewportRect.top));
+          expect(lastRowRect.bottom, lessThanOrEqualTo(viewportRect.bottom));
+          expect(viewportRect.bottom, lessThanOrEqualTo(footerRect.top));
+          expect(lastRowRect.overlaps(footerRect), isFalse);
           expect(tester.takeException(), isNull);
         },
       );

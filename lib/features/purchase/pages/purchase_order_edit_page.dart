@@ -1657,9 +1657,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
           return;
         }
       }
-      final returnTo = GoRouterState.of(
+      final returnTo = goRouterPageStateOrNull(
         context,
-      ).uri.queryParameters['returnTo'];
+      )?.uri.queryParameters['returnTo'];
       final source = returnTo == null ? null : Uri.tryParse(returnTo);
       final destination =
           source?.path == RouteName.operationsPurchaseWorkbench &&

@@ -15,6 +15,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -1158,9 +1159,9 @@ void main() {
       await tester.pump();
       expect(repository.pendingTables, hasLength(1));
       tester
-          .widget<IconButton>(
+          .widget<UtenAppBarActionButton>(
             find.byWidgetPredicate(
-              (w) => w is IconButton && w.tooltip == '重新加载',
+              (w) => w is UtenAppBarActionButton && w.tooltip == '重新加载',
             ),
           )
           .onPressed!();

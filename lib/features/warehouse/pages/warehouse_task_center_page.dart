@@ -16,6 +16,7 @@ import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/document_permission_set.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/drafts/form_draft_category.dart';
@@ -152,7 +153,10 @@ class _WarehouseTaskCenterPageState
     final canMasterDrafts = canOpen(RouteName.basicinfoWarehouse);
     final canDocumentDrafts =
         superAdmin ||
-        permissions.contains(Perm.stockDocView) ||
+        DocumentPermissionCatalog.stockDocument.allows(
+          permissions,
+          DocumentPermissionAction.view,
+        ) ||
         ref.watch(formDraftsPageCountProvider('warehouse')) > 0;
     final canReviewCounts = canOpen(RouteName.warehouseStockCountReview);
     // 独立授权的盘点审核人也从同一分类办理，不要求仓库发料权限。

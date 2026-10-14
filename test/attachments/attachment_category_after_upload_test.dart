@@ -17,6 +17,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import '../support/filter_segment_tap.dart';
+import 'attachment_test_actions.dart';
 
 /// 分类改成「上传之后在文件旁边可选设置」：
 /// 上传本身不带分类，也没有任何决定上传归类的芯片；每个文件旁边一个安静的入口。
@@ -107,7 +108,8 @@ void main() {
       expect(find.text(c), findsNothing);
     }
 
-    await tester.tap(find.text('上传'));
+    expectAttachmentUploadAvailable(tester, available: true);
+    await tester.tap(attachmentAddFilesButton());
     await tester.pumpAndSettle();
     expect(service.uploaded, [('销售合同.pdf', null)]);
   });

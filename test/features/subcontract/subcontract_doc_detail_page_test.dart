@@ -13,6 +13,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/pages/subcontract_doc_detail_page.dart';
+import 'package:uten_imp/features/subcontract/widgets/subcontract_order_progress.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/user.dart';
@@ -249,8 +250,9 @@ void main() {
     expect(find.text('单据号'), findsNothing);
     expect(find.text('等待财务审核组审核'), findsOneWidget);
 
-    // 财务审批横幅
-    expect(find.text('等待财务审核组处理'), findsOneWidget);
+    // 有完整订货进度权限时，审批状态在表头和进度区呈现，避免重复横幅。
+    expect(find.byType(SubcontractOrderProgressSection), findsOneWidget);
+    expect(find.text('等待财务审核组处理'), findsNothing);
 
     // 明细表（2026-09-25 起纯计数「明细 (N)」标题退役）
     // 2026-10-10 数量+单位口径：数量内联单位并去尾零；本夹具字典为空（无单位名），
@@ -271,7 +273,7 @@ void main() {
     expect(find.text('编辑订货单'), findsNothing);
     expect(find.text('提交财务审核'), findsNothing);
     expect(find.text('返回订货单列表'), findsOneWidget);
-    expect(find.text('审核期间仅可查看，财务将在订货审批中处理。'), findsOneWidget);
+    expect(find.text('审核期间仅可查看，财务将在订货审批中处理。'), findsNothing);
   });
 
   testWidgets('finance-only 委外核单不显示业务历史并返回财务任务中心', (tester) async {

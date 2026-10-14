@@ -13,6 +13,7 @@ import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
@@ -45,6 +46,10 @@ void main() {
           GoRoute(
             path: '/purchase/orders/:id',
             builder: (_, _) => const Scaffold(body: Text('已保存来源订单')),
+          ),
+          GoRoute(
+            path: RouteName.operationsPurchaseWorkbench,
+            builder: (_, _) => const Scaffold(body: Text('采购任务中心')),
           ),
         ],
       );
@@ -103,7 +108,12 @@ void main() {
         'alternate-unit',
       ]);
       expect(lines.map((line) => line['qty']), ['0.0001', '0.0001']);
-      expect(find.text('已保存来源订单'), findsOneWidget);
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        RouteName.operationsPurchaseWorkbench,
+      );
+      expect(find.text('采购任务中心'), findsOneWidget);
+      expect(find.text('已保存来源订单'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

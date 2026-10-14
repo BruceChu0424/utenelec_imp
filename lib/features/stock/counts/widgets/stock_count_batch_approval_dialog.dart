@@ -6,6 +6,7 @@ import '../../../../components/feedback/uten_dialog.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../shared/auth/permissions.dart';
+import '../../../../shared/auth/document_permission_set.dart';
 import '../../../../shared/warehouse/workshop_material_first_use_impact.dart';
 import '../../../basic_data/models/goods_issue_method.dart';
 import '../../../basic_data/repositories/goods_issue_method_repository.dart';
@@ -31,6 +32,10 @@ class StockCountBatchApprovalDialog extends ConsumerStatefulWidget {
 
 class _StockCountBatchApprovalDialogState
     extends ConsumerState<StockCountBatchApprovalDialog> {
+  StockCountReviewAccess get _reviewAccess => StockCountReviewAccess(
+    ref.read(currentPermissionsProvider),
+    superAdmin: ref.read(isSuperAdminProvider),
+  );
   List<StockCountRequest>? _requests;
   String? _error;
   final _previews = <String, GoodsIssueMethodPreview>{};
@@ -78,11 +83,7 @@ class _StockCountBatchApprovalDialogState
       }
       if (!mounted || sequence != _sequence) return;
       setState(() => _requests = requests);
-      if (!ref.read(isSuperAdminProvider) &&
-          !ref.read(currentPermissionsProvider).containsAll({
-            Perm.goodsEdit,
-            Perm.goodsBomEdit,
-          })) {
+      if (!_reviewAccess.canConfigureMaterial) {
         return;
       }
       var next = 0;
@@ -116,11 +117,7 @@ class _StockCountBatchApprovalDialogState
     if (!mounted || sequence != _sequence || _previewLoading.contains(key)) {
       return;
     }
-    if (!ref.read(isSuperAdminProvider) &&
-        !ref.read(currentPermissionsProvider).containsAll({
-          Perm.goodsEdit,
-          Perm.goodsBomEdit,
-        })) {
+    if (!_reviewAccess.canConfigureMaterial) {
       return;
     }
     setState(() {
@@ -165,15 +162,9 @@ class _StockCountBatchApprovalDialogState
     final requests = _requests;
     final permissions = ref.watch(currentPermissionsProvider);
     final admin = ref.watch(isSuperAdminProvider);
-    final canReview =
-        admin ||
-        permissions.contains(
-          widget.reviewRoute == 'WAREHOUSE'
-              ? Perm.stockCountWarehouseReview
-              : Perm.stockCountFinanceReview,
-        );
-    final canConfigure =
-        admin || permissions.containsAll({Perm.goodsEdit, Perm.goodsBomEdit});
+    final access = StockCountReviewAccess(permissions, superAdmin: admin);
+    final canReview = access.canReview(widget.reviewRoute);
+    final canConfigure = access.canConfigureMaterial;
     final setups = _setups;
     final ready =
         requests != null &&

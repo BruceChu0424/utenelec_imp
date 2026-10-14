@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -423,9 +424,10 @@ void main() {
       );
       expect(
         tester
-            .widget<IconButton>(
+            .widget<UtenAppBarActionButton>(
               find.byWidgetPredicate(
-                (widget) => widget is IconButton && widget.tooltip == '刷新',
+                (widget) =>
+                    widget is UtenAppBarActionButton && widget.tooltip == '刷新',
               ),
             )
             .onPressed,

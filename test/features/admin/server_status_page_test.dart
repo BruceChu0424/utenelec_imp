@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:clock/clock.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -274,7 +275,7 @@ void main() {
         expect(repository.calls, 1);
         expect(
           tester
-              .widget<IconButton>(
+              .widget<UtenAppBarActionButton>(
                 find.byKey(const Key('server-status-refresh')),
               )
               .onPressed,

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -409,9 +410,11 @@ void main() {
       expect(find.byType(UtenDropdownField), findsNothing);
       expect(
         tester
-            .widget<IconButton>(
+            .widget<UtenAppBarActionButton>(
               find.byWidgetPredicate(
-                (widget) => widget is IconButton && widget.tooltip == '刷新记录',
+                (widget) =>
+                    widget is UtenAppBarActionButton &&
+                    widget.tooltip == '刷新记录',
               ),
             )
             .onPressed,

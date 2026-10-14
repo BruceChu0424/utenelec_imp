@@ -12,6 +12,8 @@ import 'package:uten_imp/features/finance/payables/widgets/subcontract_loss_clai
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 
+import '../../attachments/attachment_test_actions.dart';
+
 void main() {
   for (final scenario in [
     (
@@ -79,10 +81,7 @@ void main() {
           find.text('损耗和责任凭证'),
           scenario.visible ? findsOneWidget : findsNothing,
         );
-        expect(
-          find.text('上传'),
-          scenario.writable ? findsOneWidget : findsNothing,
-        );
+        expectAttachmentUploadAvailable(tester, available: scenario.writable);
         if (scenario.visible) {
           final section = tester.widget<BusinessAttachmentSection>(
             find.byType(BusinessAttachmentSection),

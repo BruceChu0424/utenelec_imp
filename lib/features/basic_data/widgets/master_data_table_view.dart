@@ -2414,8 +2414,27 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   double _minimumColumnWidth(BuildContext context, MasterColumnDef<T> column) {
     final minimum = column.minimumWidthOf?.call(context) ?? _minColWidth;
     assert(minimum.isFinite && minimum >= 0);
-    return math.max(_minColWidth, minimum);
+    // Fixed header controls must also fit after a manual resize. In particular,
+    // locally sorted server pages add guidance even without column.info.
+    final headerControls =
+        _cellPadX * 2 +
+        _headerIconAllowance +
+        (_headerInfo(column) != null ? _headerInfoWidth(context) : 0) +
+        (_pinnedKeys.contains(column.key) ? _pinIconAllowance : 0);
+    return math.max(math.max(_minColWidth, minimum), headerControls);
   }
+
+  String? _headerInfo(MasterColumnDef<T> column) =>
+      _serverPaged && widget.onSortChange == null && column.sortable
+      ? [
+          if (column.info != null) column.info!,
+          '排序仅影响当前已加载的数据；继续加载或更改查询会改变此范围。',
+        ].join('\n')
+      : column.info;
+
+  double _headerInfoWidth(BuildContext context) =>
+      UtenControlMetrics.minimumHitExtent(context, desktop: 32) +
+      UtenSpacing.s4;
 
   double _columnHorizontalPadding(
     BuildContext context,
@@ -2431,11 +2450,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   static const double _cellPadX = UtenSpacing.s12; // 单元格左右内边距（表头/表体一致）
   static const double _headerIconAllowance = 24; // 表头统一菜单图标 + 富余
-
-  /// 列头 ⓘ 说明图标命中区（UtenColumnHintIcon → UtenFieldHintIcon dense = 28）。
-  /// 不计入就会挤掉标签：声明宽偏窄又带说明的列（下达采购的「缺口」）一进页面
-  /// 只剩一个 ⓘ，标签被省略号吃光（2026-09-11 用户反馈）。
-  static const double _headerInfoIconAllowance = 28;
 
   /// 固定列标签前的图钉占宽（18 图标 + 4 间距，2026-09-25）。
   static const double _pinIconAllowance = 22;
@@ -2943,7 +2957,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final header =
         measure.header +
         _headerIconAllowance +
-        (def.info != null ? _headerInfoIconAllowance : 0) +
+        (_headerInfo(def) != null ? _headerInfoWidth(context) : 0) +
         (_pinnedKeys.contains(def.key) ? _pinIconAllowance : 0);
     final text = math.max(header, measure.body);
     final measured = (text + padding * 2 + _autoFitBuffer).clamp(
@@ -4504,18 +4518,38 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                     const SizedBox(width: UtenSpacing.s8),
-                    Text('正在加载', style: theme.textTheme.labelLarge),
+                    Flexible(
+                      child: Text(
+                        '正在加载',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelLarge,
+                      ),
+                    ),
                   ] else if (expanded && hasError)
-                    Tooltip(
-                      message: error,
-                      child: TextButton.icon(
-                        onPressed: group.onRetry ?? group.onExpand,
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: const Text('加载失败，重试'),
+                    Flexible(
+                      child: Tooltip(
+                        message: error,
+                        child: TextButton.icon(
+                          onPressed: group.onRetry ?? group.onExpand,
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text(
+                            '加载失败，重试',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
                     )
                   else
-                    Text(group.detailLabel, style: detailStyle),
+                    Flexible(
+                      child: Text(
+                        group.detailLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: detailStyle,
+                      ),
+                    ),
                   AnimatedRotation(
                     turns: expanded ? 0.5 : 0,
                     duration: expansionDuration,
@@ -4699,12 +4733,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 sortChanged: true,
               );
             }),
-      info: _serverPaged && !serverSort && _columns[i].sortable
-          ? [
-              if (_columns[i].info != null) _columns[i].info!,
-              '排序仅影响当前已加载的数据；继续加载或更改查询会改变此范围。',
-            ].join('\n')
-          : _columns[i].info,
+      info: _headerInfo(_columns[i]),
       leading: pinned
           ? Icon(
               Icons.push_pin_rounded,
@@ -5575,7 +5604,7 @@ class _FilterCellState extends State<_FilterCell> {
             // 列头说明 ⓘ 与可筛选/可排序列同款（2026-09-27 用户口径「提示
             // icon 统一放表头」）：非交互列此前静默丢弃 MasterColumnDef.info，
             // 领料汇总「应领数量」等列的列头说明一直没渲染。列宽量法已计入
-            // _headerInfoIconAllowance，这里只补渲染，不占额外量宽。
+            // _headerInfoWidth，这里只补渲染，不占额外量宽。
             if (widget.info != null) ...[
               const SizedBox(width: UtenSpacing.s4),
               UtenColumnHintIcon(message: widget.info!),

@@ -16,6 +16,8 @@ import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
+import 'attachment_test_actions.dart';
+
 class _Fqc extends ProductionFqcRepository {
   _Fqc(this.status) : super(ApiClient(Dio()));
   final String status;
@@ -118,7 +120,7 @@ void main() {
       expect(files.ownerType, 'GOODS');
       expect(files.ownerId, 'goods-a');
       expect(files.categories, ['产品图片', '图纸', '规格资料']);
-      expect(find.text('上传'), findsOneWidget);
+      expectAttachmentUploadAvailable(tester, available: true);
       expect(find.textContaining('请不要放入价格、成本'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -139,7 +141,7 @@ void main() {
     await tester.tap(find.text('图片和文件'));
     await tester.pumpAndSettle();
     expect(find.byType(AttachmentSection), findsOneWidget);
-    expect(find.text('上传'), findsNothing);
+    expectAttachmentUploadAvailable(tester, available: false);
   });
 
   testWidgets('without file permission goods hides the entire file tab', (
@@ -159,7 +161,7 @@ void main() {
       await tester.tap(find.text('图片和文件'));
       await tester.pumpAndSettle();
       expect(find.byType(AttachmentSection), findsOneWidget);
-      expect(find.text('上传'), findsNothing);
+      expectAttachmentUploadAvailable(tester, available: false);
       expect(GoodsDetail.fromJson({'id': 'legacy-goods'}).writable, isFalse);
     },
   );
@@ -180,10 +182,7 @@ void main() {
       expect(files.ownerId, 'inspection-a');
       expect(files.ownerCanUpload, status == 'PENDING');
       expect(files.ownerCanDelete, status == 'PENDING');
-      expect(
-        find.text('上传'),
-        status == 'PENDING' ? findsOneWidget : findsNothing,
-      );
+      expectAttachmentUploadAvailable(tester, available: status == 'PENDING');
       expect(find.textContaining('登记结果后（包括部分检验）'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -203,7 +202,7 @@ void main() {
       },
     );
     expect(find.byType(AttachmentSection), findsOneWidget);
-    expect(find.text('上传'), findsNothing);
+    expectAttachmentUploadAvailable(tester, available: false);
   });
 
   testWidgets('current action permissions override earlier edit capabilities', (
@@ -220,13 +219,13 @@ void main() {
     await pump(tester, goods(), permissions: permissions);
     await tester.tap(find.text('图片和文件'));
     await tester.pumpAndSettle();
-    expect(find.text('上传'), findsNothing);
+    expectAttachmentUploadAvailable(tester, available: false);
     await pump(
       tester,
       const ProductionFqcInspectionPage(inspectionId: 'inspection-a'),
       permissions: permissions,
       status: 'RESOLVED',
     );
-    expect(find.text('上传'), findsNothing);
+    expectAttachmentUploadAvailable(tester, available: false);
   });
 }

@@ -47,6 +47,30 @@ final class DocumentPermissionSet {
   }
 }
 
+/// Stable review-route and first-use material permissions for stock-count commands.
+/// Object state, owner scope, versions and allowedActions remain server authority.
+final class StockCountReviewAccess {
+  const StockCountReviewAccess(this.permissions, {required this.superAdmin});
+
+  final Iterable<String> permissions;
+  final bool superAdmin;
+
+  bool canReview(String reviewRoute) {
+    final permission = switch (reviewRoute) {
+      'WAREHOUSE' => Perm.stockCountWarehouseReview,
+      'FINANCE' => Perm.stockCountFinanceReview,
+      _ => null,
+    };
+    return permission != null &&
+        (superAdmin || permissions.contains(permission));
+  }
+
+  bool get canConfigureMaterial =>
+      superAdmin ||
+      (permissions.contains(Perm.goodsEdit) &&
+          permissions.contains(Perm.goodsBomEdit));
+}
+
 /// Single Dart source for stable document action-code mappings.
 ///
 /// Names, descriptions, action labels and page membership come from the

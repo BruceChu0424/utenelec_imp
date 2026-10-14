@@ -40,6 +40,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/document_permission_set.dart';
 import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
@@ -164,7 +165,10 @@ class WarehouseHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
-          if (perms.contains(Perm.stockDocView) ||
+          if (DocumentPermissionCatalog.stockDocument.allows(
+                perms,
+                DocumentPermissionAction.view,
+              ) ||
               isSuperAdmin ||
               ref.watch(formDraftsPageCountProvider('warehouse')) > 0)
             const FormDraftsAppBarButton(

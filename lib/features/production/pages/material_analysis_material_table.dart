@@ -8135,11 +8135,11 @@ class _MaterialAnalysisIssuedRateFieldState
             isDense: true,
             suffixText: '%',
             hintText: '多个比例',
-            errorText:
+            error:
                 _controller.text.trim().isNotEmpty &&
                     parseProductionOverproductionPercent(_controller.text) ==
                         null
-                ? '请输入非负百分比，最多4位小数'
+                ? const UtenFieldMessage.error('请输入非负百分比，最多4位小数')
                 : null,
             suffixIcon: _saving || _loading
                 ? const Padding(

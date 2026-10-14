@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../data_display/master_data_table_rows_controller.dart';
+import '../inputs/uten_input_decoration.dart';
+import '../inputs/uten_field_message.dart';
 
 /// Selection, paging, and confirmation share one footer on wide panels.
 /// Narrow panels wrap without shrinking text or touch targets.
@@ -145,6 +147,7 @@ class _PickerPageInputState extends State<_PickerPageInput> {
 
   @override
   Widget build(BuildContext context) => TextFormField(
+    errorBuilder: utenTextFieldErrorBuilder,
     controller: _text,
     focusNode: _focus,
     enabled: !widget.page.busy,
@@ -152,12 +155,14 @@ class _PickerPageInputState extends State<_PickerPageInput> {
     textAlign: TextAlign.center,
     textAlignVertical: TextAlignVertical.center,
     style: Theme.of(context).textTheme.bodyMedium,
-    decoration: InputDecoration(
-      isDense: true,
-      constraints: BoxConstraints(minHeight: widget.height),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-      border: const OutlineInputBorder(
-        borderRadius: UtenFilterRow.borderRadius,
+    decoration: UtenInputDecoration(
+      InputDecoration(
+        isDense: true,
+        constraints: BoxConstraints(minHeight: widget.height),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        border: const OutlineInputBorder(
+          borderRadius: UtenFilterRow.borderRadius,
+        ),
       ),
     ),
     onFieldSubmitted: (value) {

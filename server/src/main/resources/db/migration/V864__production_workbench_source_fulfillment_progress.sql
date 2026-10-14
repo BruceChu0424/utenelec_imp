@@ -5,80 +5,90 @@
 -- Exact ownership is accounted before the ordinary formal-reservation pool.
 -- FORMALIZE transfers the same quantity out of the beneficiary balance: these
 -- two states are disjoint. Retain consumed formal material, and net RESTORE.
-CREATE VIEW v_production_workbench_material_owned_coverage AS
-WITH raw AS (
-    SELECT balance.beneficiary_analysis_id AS analysis_id,
-           balance.beneficiary_analysis_material_id AS material_id,
-           reservation.id AS reservation_id, NULL::uuid AS demand_id,
-           COALESCE(exact.make_source_analysis_item_id,
-             CASE WHEN action.external_document_type='PREPLAN_MAKE_TASK'
-                  THEN action.external_document_id END) AS source_child_id,
-           LEAST(balance.effective_qty,
-             GREATEST(reservation.qty-reservation.consumed_qty-reservation.released_qty,0)) AS qty,
-           GREATEST(reservation.qty-reservation.consumed_qty-reservation.released_qty,0) AS capacity
-    FROM v_preplan_stock_entitlement_beneficiary_balance balance
-    JOIN stock_reservations reservation ON reservation.id=balance.stock_reservation_id
-      AND reservation.status=0 AND NOT reservation.is_deleted
-    JOIN preplan_analysis_stock_exact_pegs exact ON exact.stock_reservation_id=reservation.id
-    LEFT JOIN preplan_supply_action_allocations allocation ON allocation.id=exact.supply_action_allocation_id
-    LEFT JOIN preplan_supply_actions action ON action.id=allocation.action_id
-    JOIN production_material_analysis_materials material ON material.id=balance.beneficiary_analysis_material_id
-      AND material.analysis_id=balance.beneficiary_analysis_id AND material.active
-      AND material.goods_id=reservation.goods_id
-      AND material.color_id IS NOT DISTINCT FROM reservation.color_id
-    WHERE fn_preplan_reservation_has_qualified_origin(reservation.id)
-    UNION ALL
-    SELECT formal.analysis_id, formal.material_id, target.id, target.demand_id,
-           formal.source_child_id, formal.qty, GREATEST(target.qty-target.released_qty,0)
-    FROM (
-      SELECT event.beneficiary_analysis_id AS analysis_id,
-             event.beneficiary_analysis_material_id AS material_id,
-             event.target_stock_reservation_id,
-             COALESCE(exact.make_source_analysis_item_id,
-               CASE WHEN action.external_document_type='PREPLAN_MAKE_TASK'
-                    THEN action.external_document_id END) AS source_child_id,
-             SUM(GREATEST(event.qty-COALESCE((SELECT SUM(counter.qty)
-                 FROM preplan_stock_entitlement_events counter
-                 WHERE counter.event_type='RESTORE' AND counter.counter_event_id=event.id),0),0)) AS qty
-      FROM preplan_stock_entitlement_events event
-      JOIN preplan_analysis_stock_exact_pegs exact ON exact.stock_reservation_id=event.stock_reservation_id
-      LEFT JOIN preplan_supply_action_allocations allocation ON allocation.id=exact.supply_action_allocation_id
-      LEFT JOIN preplan_supply_actions action ON action.id=allocation.action_id
-      WHERE event.event_type='FORMALIZE' AND fn_preplan_reservation_has_qualified_origin(event.stock_reservation_id)
-      GROUP BY event.beneficiary_analysis_id,event.beneficiary_analysis_material_id,
-               event.target_stock_reservation_id,exact.make_source_analysis_item_id,
-               action.external_document_type,action.external_document_id
-    ) formal
-    JOIN stock_reservations target ON target.id=formal.target_stock_reservation_id AND NOT target.is_deleted
-    JOIN production_material_demands demand ON demand.id=target.demand_id AND NOT demand.is_deleted
-      AND demand.status NOT IN ('RELEASED','REVERSED')
-    JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1
-      AND NOT plan.is_deleted AND NOT plan.is_canceled AND plan.material_analysis_id=formal.analysis_id
-    JOIN production_material_analysis_items source ON source.id=plan.material_analysis_item_id AND NOT source.is_deleted
-    JOIN production_material_analysis_materials material ON material.id=formal.material_id AND material.active
-      AND material.analysis_id=formal.analysis_id
-      AND (material.goods_id,material.color_id,material.unit_id)
-          IS NOT DISTINCT FROM (demand.goods_id,demand.color_id,demand.unit_id)
-      AND fn_analysis_plan_material_matches(source.id,material.id)
-), sliced AS (
-    SELECT raw.*, COALESCE(SUM(qty) OVER (PARTITION BY reservation_id
-        ORDER BY material_id,source_child_id NULLS FIRST
-        ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS prior_qty
-    FROM raw
-)
-SELECT analysis_id,material_id,reservation_id,demand_id,source_child_id,
-       LEAST(qty,GREATEST(capacity-prior_qty,0))::numeric AS qty
-FROM sliced WHERE qty>0;
+CREATE FUNCTION fn_production_workbench_material_owned_coverage(p_analysis UUID)
+RETURNS TABLE(analysis_id UUID,material_id UUID,reservation_id UUID,demand_id UUID,
+              source_child_id UUID,qty numeric)
+LANGUAGE sql STABLE AS $$
+    WITH raw AS (
+        SELECT balance.beneficiary_analysis_id AS analysis_id,
+               balance.beneficiary_analysis_material_id AS material_id,
+               reservation.id AS reservation_id, NULL::uuid AS demand_id,
+               COALESCE(exact.make_source_analysis_item_id,
+                 CASE WHEN action.external_document_type='PREPLAN_MAKE_TASK'
+                      THEN action.external_document_id END) AS source_child_id,
+               LEAST(balance.effective_qty,
+                 GREATEST(reservation.qty-reservation.consumed_qty-reservation.released_qty,0)) AS qty,
+               GREATEST(reservation.qty-reservation.consumed_qty-reservation.released_qty,0) AS capacity
+        FROM v_preplan_stock_entitlement_beneficiary_balance balance
+        JOIN stock_reservations reservation ON reservation.id=balance.stock_reservation_id
+          AND reservation.status=0 AND NOT reservation.is_deleted
+        JOIN preplan_analysis_stock_exact_pegs exact ON exact.stock_reservation_id=reservation.id
+        LEFT JOIN preplan_supply_action_allocations allocation ON allocation.id=exact.supply_action_allocation_id
+        LEFT JOIN preplan_supply_actions action ON action.id=allocation.action_id
+        JOIN production_material_analysis_materials material ON material.id=balance.beneficiary_analysis_material_id
+          AND material.analysis_id=balance.beneficiary_analysis_id AND material.active
+          AND material.goods_id=reservation.goods_id
+          AND material.color_id IS NOT DISTINCT FROM reservation.color_id
+        WHERE balance.beneficiary_analysis_id=p_analysis
+          AND fn_preplan_reservation_has_qualified_origin(reservation.id)
+        UNION ALL
+        SELECT formal.analysis_id, formal.material_id, target.id, target.demand_id,
+               formal.source_child_id, formal.qty, GREATEST(target.qty-target.released_qty,0)
+        FROM (
+          SELECT event.beneficiary_analysis_id AS analysis_id,
+                 event.beneficiary_analysis_material_id AS material_id,
+                 event.target_stock_reservation_id,
+                 COALESCE(exact.make_source_analysis_item_id,
+                   CASE WHEN action.external_document_type='PREPLAN_MAKE_TASK'
+                        THEN action.external_document_id END) AS source_child_id,
+                 SUM(GREATEST(event.qty-COALESCE((SELECT SUM(counter.qty)
+                     FROM preplan_stock_entitlement_events counter
+                     WHERE counter.event_type='RESTORE' AND counter.counter_event_id=event.id),0),0)) AS qty
+          FROM preplan_stock_entitlement_events event
+          JOIN preplan_analysis_stock_exact_pegs exact ON exact.stock_reservation_id=event.stock_reservation_id
+          LEFT JOIN preplan_supply_action_allocations allocation ON allocation.id=exact.supply_action_allocation_id
+          LEFT JOIN preplan_supply_actions action ON action.id=allocation.action_id
+          WHERE event.event_type='FORMALIZE' AND event.beneficiary_analysis_id=p_analysis
+            AND fn_preplan_reservation_has_qualified_origin(event.stock_reservation_id)
+          GROUP BY event.beneficiary_analysis_id,event.beneficiary_analysis_material_id,
+                   event.target_stock_reservation_id,exact.make_source_analysis_item_id,
+                   action.external_document_type,action.external_document_id
+        ) formal
+        JOIN stock_reservations target ON target.id=formal.target_stock_reservation_id AND NOT target.is_deleted
+        JOIN production_material_demands demand ON demand.id=target.demand_id AND NOT demand.is_deleted
+          AND demand.status NOT IN ('RELEASED','REVERSED')
+        JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1
+          AND NOT plan.is_deleted AND NOT plan.is_canceled AND plan.material_analysis_id=formal.analysis_id
+        JOIN production_material_analysis_items source ON source.id=plan.material_analysis_item_id AND NOT source.is_deleted
+        JOIN production_material_analysis_materials material ON material.id=formal.material_id AND material.active
+          AND material.analysis_id=formal.analysis_id
+          AND (material.goods_id,material.color_id,material.unit_id)
+              IS NOT DISTINCT FROM (demand.goods_id,demand.color_id,demand.unit_id)
+          AND fn_analysis_plan_material_matches(source.id,material.id)
+    ), sliced AS (
+        SELECT raw.*, COALESCE(SUM(qty) OVER (PARTITION BY reservation_id
+            ORDER BY material_id,source_child_id NULLS FIRST
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS prior_qty
+        FROM raw
+    )
+    SELECT analysis_id,material_id,reservation_id,demand_id,source_child_id,
+           LEAST(qty,GREATEST(capacity-prior_qty,0))::numeric AS qty
+    FROM sliced WHERE qty>0;
+$$;
 
 -- One frozen demand can represent several distinct BOM paths of the same SKU.
 -- Slice its retained gross responsibility once, in the service's stable path
 -- order. Completed batches remain responsibility; retired split parents do not.
+-- The view body is mirrored by fn_production_workbench_frozen_material_scopes
+-- below with the analysis predicate folded to the driving plan scan; keep the
+-- two in sync. Window functions block predicate pushdown, so the credits
+-- trigger path must call the function, not filter this view.
 CREATE VIEW v_production_workbench_frozen_material_scopes AS
 WITH candidates AS (
     SELECT plan.material_analysis_id AS analysis_id,demand.id AS demand_id,
            material.id AS material_id,material.path,material.node_key,
            GREATEST(COALESCE(demand.required_qty,0)-COALESCE(demand.released_qty,0),0) AS retained_qty,
-           COALESCE((SELECT SUM(owned.qty) FROM v_production_workbench_material_owned_coverage owned
+           COALESCE((SELECT SUM(owned.qty) FROM fn_production_workbench_material_owned_coverage(plan.material_analysis_id) owned
              WHERE owned.demand_id=demand.id AND owned.material_id=material.id),0) AS pinned_qty,
            COUNT(*) OVER (PARTITION BY demand.id) AS member_count,
            fn_material_analysis_edge_required(
@@ -132,69 +142,196 @@ SELECT analysis_id,demand_id,material_id,path,node_key,
          GREATEST(retained_qty-pinned_total-prior_capacity,0)))::numeric AS qty
 FROM slots;
 
+CREATE FUNCTION fn_production_workbench_frozen_material_scopes(p_analysis UUID)
+RETURNS TABLE(analysis_id UUID,demand_id UUID,material_id UUID,path TEXT,node_key TEXT,qty numeric)
+LANGUAGE sql STABLE AS $$
+    WITH candidates AS (
+        SELECT plan.material_analysis_id AS analysis_id,demand.id AS demand_id,
+               material.id AS material_id,material.path,material.node_key,
+               GREATEST(COALESCE(demand.required_qty,0)-COALESCE(demand.released_qty,0),0) AS retained_qty,
+               COALESCE((SELECT SUM(owned.qty) FROM fn_production_workbench_material_owned_coverage(p_analysis) owned
+                 WHERE owned.demand_id=demand.id AND owned.material_id=material.id),0) AS pinned_qty,
+               COUNT(*) OVER (PARTITION BY demand.id) AS member_count,
+               fn_material_analysis_edge_required(
+                 (COALESCE(demand.required_for_product_qty,segment.planned_qty,output.qty,0)
+                   +CASE WHEN segment.split_root_segment_id IS NOT NULL THEN segment.split_start_qty ELSE 0 END)
+                   * COALESCE((demand.consumption_snapshot->>'productUnitRate')::numeric,segment.product_unit_rate,output.unit_rate,1)
+                   * COALESCE(material.parent_per_product_qty,1)
+                   / COALESCE(NULLIF(parent.per_product_qty,0),NULLIF(root.per_product_qty,0),1),
+                 material.bom_qty,material.consumption_basis,material.basis_output_qty,material.allow_partial_package)
+                 -fn_material_analysis_edge_required(
+                   (CASE WHEN segment.split_root_segment_id IS NOT NULL THEN segment.split_start_qty ELSE 0 END)
+                     * COALESCE((demand.consumption_snapshot->>'productUnitRate')::numeric,segment.product_unit_rate,output.unit_rate,1)
+                     * COALESCE(material.parent_per_product_qty,1)
+                     / COALESCE(NULLIF(parent.per_product_qty,0),NULLIF(root.per_product_qty,0),1),
+                   material.bom_qty,material.consumption_basis,material.basis_output_qty,material.allow_partial_package) AS curve_qty,
+               fn_preplan_aggregate_source_capacity(material.id) AS live_qty
+        FROM production_material_demands demand
+        JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1
+          AND NOT plan.is_deleted AND NOT plan.is_canceled
+          AND plan.material_analysis_id=p_analysis
+        JOIN production_material_analysis_items source ON source.id=plan.material_analysis_item_id
+          AND source.analysis_id=plan.material_analysis_id AND NOT source.is_deleted
+        LEFT JOIN production_material_analysis_materials parent ON parent.id=source.parent_analysis_material_id
+        LEFT JOIN production_material_analysis_materials root ON root.id=source.root_material_id
+        LEFT JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
+        LEFT JOIN LATERAL (
+          SELECT SUM(item.qty) AS qty,MAX(item.unit_rate) AS unit_rate
+          FROM production_plan_items item WHERE item.plan_id=plan.id AND NOT item.is_deleted
+            AND (demand.source_plan_item_id IS NULL OR item.id=demand.source_plan_item_id)
+        ) output ON TRUE
+        JOIN production_material_analysis_materials material ON material.analysis_id=plan.material_analysis_id AND material.active
+          AND (material.goods_id,material.color_id,material.unit_id)
+              IS NOT DISTINCT FROM (demand.goods_id,demand.color_id,demand.unit_id)
+          AND fn_analysis_plan_material_matches(source.id,material.id)
+        WHERE NOT demand.is_deleted AND demand.status NOT IN ('RELEASED','REVERSED')
+          AND (demand.execution_segment_id IS NULL OR (segment.id IS NOT NULL AND NOT segment.is_deleted
+               AND segment.status NOT IN ('CANCELLED','REVERSED')))
+    ), caps AS (
+        SELECT candidates.*,
+               CASE WHEN member_count=1 THEN retained_qty
+                    ELSE GREATEST(COALESCE(curve_qty,live_qty,0),pinned_qty) END AS capacity,
+               SUM(pinned_qty) OVER (PARTITION BY demand_id) AS pinned_total
+        FROM candidates
+    ), slots AS (
+        SELECT caps.*,COALESCE(SUM(GREATEST(capacity-pinned_qty,0)) OVER (PARTITION BY demand_id
+            ORDER BY path,node_key,material_id
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS prior_capacity
+        FROM caps
+    )
+    SELECT analysis_id,demand_id,material_id,path,node_key,
+           (pinned_qty+LEAST(GREATEST(capacity-pinned_qty,0),
+             GREATEST(retained_qty-pinned_total-prior_capacity,0)))::numeric AS qty
+    FROM slots;
+$$;
+
 -- A warehouse custody successor retains its direct source allocation. It does
 -- not create another FORMALIZE event. Keep that source identity when allocating
 -- the retained material, including pending custody whose demand is owner_id.
-CREATE VIEW v_production_workbench_formal_stock_pools AS
-WITH custody AS (
-    SELECT demand.id AS demand_id,plan.material_analysis_id AS analysis_id,
-           held.id AS reservation_id,allocation.id AS allocation_id,
-           origin.material_analysis_item_id AS source_child_id,
-           CASE WHEN source.analysis_id=plan.material_analysis_id
-                  AND fn_analysis_plan_material_matches(target.id,source.parent_analysis_material_id)
-                THEN source.parent_analysis_material_id END AS material_id,
-           allocation.effective_qty AS qty,GREATEST(held.qty-held.released_qty,0) AS capacity,
-           COALESCE(SUM(allocation.effective_qty) OVER (PARTITION BY held.id
-             ORDER BY allocation.allocation_no ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS prior_qty
-    FROM stock_reservations held
-    JOIN production_material_demands demand ON demand.id=COALESCE(held.demand_id,
-      CASE WHEN held.owner_type='WORKSHOP_CUSTODY' THEN held.owner_id END)
-      AND NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')
-    JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1
-      AND NOT plan.is_deleted AND NOT plan.is_canceled
-    JOIN production_material_analysis_items target ON target.id=plan.material_analysis_item_id AND NOT target.is_deleted
-    JOIN v_workshop_direct_source_allocations allocation ON allocation.stock_reservation_id=held.id AND allocation.effective_qty>0
-    JOIN production_workshop_direct_transfer_items transfer ON transfer.id=allocation.transfer_item_id
-    JOIN production_daily_report_items report ON report.id=transfer.source_report_item_id
-    JOIN production_plan_items item ON item.id=report.plan_item_id AND NOT item.is_deleted
-    JOIN production_plans origin ON origin.id=item.plan_id
-    LEFT JOIN production_material_analysis_items source ON source.id=origin.material_analysis_item_id
-    WHERE held.source_doc_type='WORKSHOP_RETURN_CUSTODY' AND NOT held.is_deleted
-      AND held.owner_type IN('PRODUCTION_MATERIAL_DEMAND','WORKSHOP_CUSTODY')
-      AND EXISTS(SELECT 1 FROM stock_document_items receipt JOIN stock_documents document ON document.id=receipt.doc_id
-        WHERE receipt.source_daily_report_item_id=report.id AND receipt.bill_type='FINISHED_IN'
-          AND document.doc_type='FINISHED_IN' AND document.status=1 AND NOT document.is_deleted AND NOT receipt.is_deleted)
-)
-SELECT demand_id,analysis_id,source_child_id,material_id,
-       LEAST(qty,GREATEST(capacity-prior_qty,0))::numeric AS qty FROM custody
-UNION ALL
-SELECT demand.id,plan.material_analysis_id,NULL::uuid,NULL::uuid,
-       SUM(GREATEST(reservation.qty-reservation.released_qty-COALESCE((
-         SELECT SUM(GREATEST(formal.qty-COALESCE((SELECT SUM(restored.qty)
-           FROM preplan_stock_entitlement_events restored WHERE restored.event_type='RESTORE'
-             AND restored.counter_event_id=formal.id),0),0))
-         FROM preplan_stock_entitlement_events formal WHERE formal.event_type='FORMALIZE'
-           AND formal.target_stock_reservation_id=reservation.id),0),0))
-FROM production_material_demands demand
-JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_canceled
-JOIN production_material_analysis_items source ON source.id=plan.material_analysis_item_id AND NOT source.is_deleted
-JOIN stock_reservations reservation ON reservation.demand_id=demand.id
-  AND reservation.owner_type='PRODUCTION_MATERIAL_DEMAND' AND NOT reservation.requires_qualified_origin
-  AND NOT reservation.is_deleted AND reservation.source_doc_type IS DISTINCT FROM 'WORKSHOP_RETURN_CUSTODY'
-WHERE NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')
-GROUP BY demand.id,plan.material_analysis_id;
+CREATE FUNCTION fn_production_workbench_formal_stock_pools(p_analysis UUID)
+RETURNS TABLE(demand_id UUID,analysis_id UUID,source_child_id UUID,material_id UUID,qty numeric)
+LANGUAGE sql STABLE AS $$
+    WITH custody AS (
+        SELECT demand.id AS demand_id,plan.material_analysis_id AS analysis_id,
+               held.id AS reservation_id,allocation.id AS allocation_id,
+               origin.material_analysis_item_id AS source_child_id,
+               CASE WHEN source.analysis_id=plan.material_analysis_id
+                      AND fn_analysis_plan_material_matches(target.id,source.parent_analysis_material_id)
+                    THEN source.parent_analysis_material_id END AS material_id,
+               allocation.effective_qty AS qty,GREATEST(held.qty-held.released_qty,0) AS capacity,
+               COALESCE(SUM(allocation.effective_qty) OVER (PARTITION BY held.id
+                 ORDER BY allocation.allocation_no ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) AS prior_qty
+        FROM stock_reservations held
+        JOIN production_material_demands demand ON demand.id=COALESCE(held.demand_id,
+          CASE WHEN held.owner_type='WORKSHOP_CUSTODY' THEN held.owner_id END)
+          AND NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')
+        JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1
+          AND NOT plan.is_deleted AND NOT plan.is_canceled
+          AND plan.material_analysis_id=p_analysis
+        JOIN production_material_analysis_items target ON target.id=plan.material_analysis_item_id AND NOT target.is_deleted
+        JOIN v_workshop_direct_source_allocations allocation ON allocation.stock_reservation_id=held.id AND allocation.effective_qty>0
+        JOIN production_workshop_direct_transfer_items transfer ON transfer.id=allocation.transfer_item_id
+        JOIN production_daily_report_items report ON report.id=transfer.source_report_item_id
+        JOIN production_plan_items item ON item.id=report.plan_item_id AND NOT item.is_deleted
+        JOIN production_plans origin ON origin.id=item.plan_id
+        LEFT JOIN production_material_analysis_items source ON source.id=origin.material_analysis_item_id
+        WHERE held.source_doc_type='WORKSHOP_RETURN_CUSTODY' AND NOT held.is_deleted
+          AND held.owner_type IN('PRODUCTION_MATERIAL_DEMAND','WORKSHOP_CUSTODY')
+          AND EXISTS(SELECT 1 FROM stock_document_items receipt JOIN stock_documents document ON document.id=receipt.doc_id
+            WHERE receipt.source_daily_report_item_id=report.id AND receipt.bill_type='FINISHED_IN'
+              AND document.doc_type='FINISHED_IN' AND document.status=1 AND NOT document.is_deleted AND NOT receipt.is_deleted)
+    )
+    SELECT demand_id,analysis_id,source_child_id,material_id,
+           LEAST(qty,GREATEST(capacity-prior_qty,0))::numeric AS qty FROM custody
+    UNION ALL
+    SELECT demand.id,plan.material_analysis_id,NULL::uuid,NULL::uuid,
+           SUM(GREATEST(reservation.qty-reservation.released_qty-COALESCE((
+             SELECT SUM(GREATEST(formal.qty-COALESCE((SELECT SUM(restored.qty)
+               FROM preplan_stock_entitlement_events restored WHERE restored.event_type='RESTORE'
+                 AND restored.counter_event_id=formal.id),0),0))
+             FROM preplan_stock_entitlement_events formal WHERE formal.event_type='FORMALIZE'
+               AND formal.target_stock_reservation_id=reservation.id),0),0))
+    FROM production_material_demands demand
+    JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1 AND NOT plan.is_deleted AND NOT plan.is_canceled
+      AND plan.material_analysis_id=p_analysis
+    JOIN production_material_analysis_items source ON source.id=plan.material_analysis_item_id AND NOT source.is_deleted
+    JOIN stock_reservations reservation ON reservation.demand_id=demand.id
+      AND reservation.owner_type='PRODUCTION_MATERIAL_DEMAND' AND NOT reservation.requires_qualified_origin
+      AND NOT reservation.is_deleted AND reservation.source_doc_type IS DISTINCT FROM 'WORKSHOP_RETURN_CUSTODY'
+    WHERE NOT demand.is_deleted AND demand.status NOT IN('RELEASED','REVERSED')
+    GROUP BY demand.id,plan.material_analysis_id;
+$$;
 
+-- Row triggers (plan-link insert, plan lifecycle) recompute analysis status
+-- synchronously, so this function must stay single-pass: the frozen scopes,
+-- owned coverage and pending supply views are materialized once per call into
+-- JSONB snapshots and every loop below reads only those snapshots. Re-querying
+-- the views per material, per demand or per component child turned one trigger
+-- fire into seconds of repeated fn_analysis_plan_material_matches calls.
 CREATE FUNCTION fn_production_workbench_component_credits(p_analysis UUID)
 RETURNS TABLE(analysis_item_id UUID,fulfillment_credit numeric,schedule_credit numeric)
 LANGUAGE plpgsql STABLE AS $$
-DECLARE row RECORD; child RECORD; pool NUMERIC; headroom NUMERIC; take NUMERIC;
+DECLARE row RECORD; child RECORD; rec RECORD; pool NUMERIC; headroom NUMERIC; take NUMERIC;
         gross JSONB:='{}'; used JSONB:='{}'; source_used JSONB:='{}';
+        scopes_by_demand JSONB:='{}'; scope_sum_by_material JSONB:='{}';
+        owned_by_material JSONB:='{}'; owned_by_demand_material JSONB:='{}';
+        owned_by_material_child JSONB:='{}'; pending_by_material JSONB:='{}';
+        demand_key TEXT; material_key TEXT; child_key TEXT;
         actual NUMERIC; pending NUMERIC; responsibility NUMERIC;
 BEGIN
+    FOR rec IN
+      SELECT scope.demand_id,scope.material_id,scope.qty
+      FROM fn_production_workbench_frozen_material_scopes(p_analysis) scope
+      WHERE scope.analysis_id=p_analysis
+      ORDER BY scope.demand_id,scope.path,scope.node_key,scope.material_id
+    LOOP
+      demand_key:=rec.demand_id::text; material_key:=rec.material_id::text;
+      scopes_by_demand:=jsonb_set(scopes_by_demand,ARRAY[demand_key],
+        COALESCE(scopes_by_demand->demand_key,'[]'::jsonb)||jsonb_build_array(
+          jsonb_build_object('material_id',material_key,'qty',rec.qty)));
+      scope_sum_by_material:=jsonb_set(scope_sum_by_material,ARRAY[material_key],
+        to_jsonb(COALESCE((scope_sum_by_material->>material_key)::numeric,0)+rec.qty));
+    END LOOP;
+    FOR rec IN
+      SELECT owned.demand_id,owned.material_id,owned.source_child_id,owned.qty
+      FROM fn_production_workbench_material_owned_coverage(p_analysis) owned
+      WHERE owned.analysis_id=p_analysis
+    LOOP
+      material_key:=rec.material_id::text;
+      owned_by_material:=jsonb_set(owned_by_material,ARRAY[material_key],
+        to_jsonb(COALESCE((owned_by_material->>material_key)::numeric,0)+rec.qty));
+      IF rec.demand_id IS NOT NULL THEN
+        demand_key:=rec.demand_id::text||':'||material_key;
+        owned_by_demand_material:=jsonb_set(owned_by_demand_material,ARRAY[demand_key],
+          to_jsonb(COALESCE((owned_by_demand_material->>demand_key)::numeric,0)+rec.qty));
+      END IF;
+      child_key:=COALESCE(rec.source_child_id::text,'');
+      owned_by_material_child:=jsonb_set(owned_by_material_child,ARRAY[material_key,child_key],
+        to_jsonb(COALESCE((owned_by_material_child->material_key->>child_key)::numeric,0)+rec.qty));
+    END LOOP;
+    FOR rec IN
+      SELECT supply.material_id,SUM(supply.qty) AS qty FROM (
+        SELECT allocation.analysis_material_id AS material_id,GREATEST(CASE
+          WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id)
+            THEN fn_preplan_future_allocation_pending_qty(allocation.id)
+          WHEN action.operation_type='SHARED_FUTURE_CLAIM' THEN fn_preplan_shared_allocation_pending_qty(allocation.id)
+          ELSE fn_preplan_allocation_admitted_qty(allocation.id)-fn_preplan_allocation_effective_exact_qty(allocation.id)
+            -COALESCE((SELECT SUM(CASE WHEN output.event_kind='FULFILL' THEN output.qty_base ELSE -output.qty_base END)
+                FROM preplan_root_output_events output JOIN preplan_analysis_stock_exact_pegs exact
+                ON exact.stock_reservation_id=output.source_reservation_id WHERE exact.supply_action_allocation_id=allocation.id),0)
+          END,0) AS qty
+        FROM preplan_supply_action_allocations allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id
+        WHERE allocation.analysis_id=p_analysis AND action.status IN('OPEN','CREATED','IN_PROGRESS')
+          AND action.external_document_type<>'PREPLAN_MAKE_TASK'
+        UNION ALL SELECT claim.target_material_id,fn_preplan_make_public_claim_pending_qty(claim.id)
+        FROM preplan_make_public_claims claim WHERE claim.target_analysis_id=p_analysis
+      ) supply GROUP BY supply.material_id
+    LOOP
+      pending_by_material:=jsonb_set(pending_by_material,ARRAY[rec.material_id::text],to_jsonb(rec.qty));
+    END LOOP;
     FOR row IN
       SELECT material.id,GREATEST(fn_preplan_aggregate_source_capacity(material.id),
-        COALESCE((SELECT SUM(scope.qty) FROM v_production_workbench_frozen_material_scopes scope
-          WHERE scope.analysis_id=p_analysis AND scope.material_id=material.id),0)) AS qty
+        COALESCE((scope_sum_by_material->>material.id::text)::numeric,0)) AS qty
       FROM production_material_analysis_materials material WHERE material.analysis_id=p_analysis AND material.active
     LOOP
       gross:=jsonb_set(gross,ARRAY[row.id::text],to_jsonb(row.qty));
@@ -203,29 +340,28 @@ BEGIN
     -- slots first. The ordinary remainder then consumes each demand only once.
     FOR row IN
       SELECT stock.demand_id AS id,stock.source_child_id,stock.material_id,SUM(stock.qty) AS qty
-      FROM v_production_workbench_formal_stock_pools stock WHERE stock.analysis_id=p_analysis
+      FROM fn_production_workbench_formal_stock_pools(p_analysis) stock WHERE stock.analysis_id=p_analysis
       GROUP BY stock.demand_id,stock.source_child_id,stock.material_id
       ORDER BY stock.demand_id,stock.source_child_id NULLS LAST,stock.material_id
     LOOP
       pool:=row.qty;
-      FOR child IN SELECT scope.* FROM v_production_workbench_frozen_material_scopes scope
-        WHERE scope.analysis_id=p_analysis AND scope.demand_id=row.id
-          AND (row.material_id IS NULL OR scope.material_id=row.material_id)
-        ORDER BY scope.path,scope.node_key,scope.material_id
+      FOR child IN SELECT * FROM jsonb_to_recordset(COALESCE(scopes_by_demand->row.id::text,'[]'::jsonb))
+          AS scope(material_id text,qty numeric)
       LOOP
-        headroom:=GREATEST(COALESCE((gross->>child.material_id::text)::numeric,0)
-          -COALESCE((used->>child.material_id::text)::numeric,0)
-          -COALESCE((SELECT SUM(owned.qty) FROM v_production_workbench_material_owned_coverage owned
-            WHERE owned.analysis_id=p_analysis AND owned.material_id=child.material_id),0),0);
+        IF row.material_id IS NOT NULL AND child.material_id IS DISTINCT FROM row.material_id::text THEN
+          CONTINUE;
+        END IF;
+        headroom:=GREATEST(COALESCE((gross->>child.material_id)::numeric,0)
+          -COALESCE((used->>child.material_id)::numeric,0)
+          -COALESCE((owned_by_material->>child.material_id)::numeric,0),0);
         take:=LEAST(pool,headroom,GREATEST(child.qty-COALESCE((
-          SELECT SUM(owned.qty) FROM v_production_workbench_material_owned_coverage owned
-          WHERE owned.demand_id=child.demand_id AND owned.material_id=child.material_id),0),0));
+          owned_by_demand_material->>(row.id::text||':'||child.material_id))::numeric,0),0));
         IF take>0 THEN
-          used:=jsonb_set(used,ARRAY[child.material_id::text],to_jsonb(
-            COALESCE((used->>child.material_id::text)::numeric,0)+take));
+          used:=jsonb_set(used,ARRAY[child.material_id],to_jsonb(
+            COALESCE((used->>child.material_id)::numeric,0)+take));
           IF row.source_child_id IS NOT NULL THEN
-            source_used:=jsonb_set(source_used,ARRAY[child.material_id::text||':'||row.source_child_id::text],to_jsonb(
-              COALESCE((source_used->>(child.material_id::text||':'||row.source_child_id::text))::numeric,0)+take));
+            source_used:=jsonb_set(source_used,ARRAY[child.material_id||':'||row.source_child_id::text],to_jsonb(
+              COALESCE((source_used->>(child.material_id||':'||row.source_child_id::text))::numeric,0)+take));
           END IF;
           pool:=pool-take;
         END IF;
@@ -271,27 +407,10 @@ BEGIN
         +COALESCE((SELECT SUM(LEAST(supplements.qty,yielded.qty)) FROM supplements
           JOIN yielded_own_output yielded ON yielded.reallocation_id=supplements.reallocation_id),0),
         COALESCE(SUM(GREATEST(COALESCE((used->>eligible.id::text)::numeric,0)
-          -COALESCE((source_used->>(eligible.id::text||':'||child.id::text))::numeric,0),0)+COALESCE((
-          SELECT SUM(owned.qty) FROM v_production_workbench_material_owned_coverage owned
-          WHERE owned.analysis_id=p_analysis AND owned.material_id=eligible.id
-            AND owned.source_child_id IS DISTINCT FROM child.id),0)),0),
-        COALESCE(SUM(COALESCE((
-          SELECT SUM(supply.qty) FROM (
-            SELECT GREATEST(CASE
-              WHEN fn_preplan_action_has_future_transfer(action.id) OR fn_preplan_action_has_shared_claim_history(action.id)
-                THEN fn_preplan_future_allocation_pending_qty(allocation.id)
-              WHEN action.operation_type='SHARED_FUTURE_CLAIM' THEN fn_preplan_shared_allocation_pending_qty(allocation.id)
-              ELSE fn_preplan_allocation_admitted_qty(allocation.id)-fn_preplan_allocation_effective_exact_qty(allocation.id)
-                -COALESCE((SELECT SUM(CASE WHEN output.event_kind='FULFILL' THEN output.qty_base ELSE -output.qty_base END)
-                    FROM preplan_root_output_events output JOIN preplan_analysis_stock_exact_pegs exact
-                    ON exact.stock_reservation_id=output.source_reservation_id WHERE exact.supply_action_allocation_id=allocation.id),0)
-              END,0) AS qty
-            FROM preplan_supply_action_allocations allocation JOIN preplan_supply_actions action ON action.id=allocation.action_id
-            WHERE allocation.analysis_id=p_analysis AND allocation.analysis_material_id=eligible.id
-              AND action.status IN('OPEN','CREATED','IN_PROGRESS') AND action.external_document_type<>'PREPLAN_MAKE_TASK'
-            UNION ALL SELECT fn_preplan_make_public_claim_pending_qty(claim.id)
-            FROM preplan_make_public_claims claim WHERE claim.target_analysis_id=p_analysis AND claim.target_material_id=eligible.id
-          ) supply),0)),0)
+          -COALESCE((source_used->>(eligible.id::text||':'||child.id::text))::numeric,0),0)+GREATEST(
+          COALESCE((owned_by_material->>eligible.id::text)::numeric,0)
+          -COALESCE((owned_by_material_child->eligible.id::text->>child.id::text)::numeric,0),0)),0),
+        COALESCE(SUM(COALESCE((pending_by_material->>eligible.id::text)::numeric,0)),0)
       INTO responsibility,actual,pending FROM eligible;
       analysis_item_id:=child.id;
       -- Q is already net of original stock/pending. Only coverage beyond the
@@ -401,19 +520,60 @@ COMMENT ON VIEW v_production_analysis_workbench_item_progress IS
 
 -- Use the same actual fulfillment facts for analysis history and root discovery.
 -- Issuing plans, announcing procurement and public stock candidates remain open.
+-- This runs inside row triggers, so it calls fn_production_workbench_component_credits
+-- directly with the one analysis id instead of joining the all-analyses progress
+-- view (whose DISTINCT + LATERAL shape cannot be narrowed to a single analysis).
 CREATE OR REPLACE FUNCTION fn_material_analysis_fulfillment_status(p_analysis_id UUID)
 RETURNS TEXT LANGUAGE sql STABLE AS $$
+    WITH credit AS (
+        SELECT c.analysis_item_id,c.fulfillment_credit
+        FROM fn_production_workbench_component_credits(p_analysis_id) c
+    )
     SELECT CASE
       WHEN analysis.status = 'CANCELLED' THEN 'CANCELLED'
       WHEN NOT EXISTS (
-          SELECT 1 FROM v_production_analysis_workbench_item_progress item
-          WHERE item.analysis_id = analysis.id AND item.remaining_fulfillment_qty > 0)
+          SELECT 1
+          FROM production_material_analysis_items item
+          LEFT JOIN credit ON credit.analysis_item_id = item.id
+          LEFT JOIN LATERAL (
+              SELECT SUM(GREATEST(LEAST(link.submitted_qty,
+                     GREATEST(plan_item.qty - COALESCE(batch_action.public_surplus_qty
+                         / COALESCE(plan_item.unit_rate, 1), link.public_surplus_qty, 0), 0),
+                     COALESCE(received.qty, 0) / COALESCE(plan_item.unit_rate, 1)), 0)) AS qty
+              FROM production_plans plan
+              JOIN production_plan_items plan_item
+                ON plan_item.plan_id = plan.id AND NOT plan_item.is_deleted
+              JOIN production_material_analysis_plan_links link
+                ON link.plan_id = plan.id AND link.analysis_id = item.analysis_id
+                 AND link.analysis_item_id = item.id AND link.allocation_status = 'APPROVED'
+              LEFT JOIN preplan_aggregate_batches batch ON batch.plan_id = plan.id AND batch.route = 'MAKE'
+              LEFT JOIN preplan_supply_actions batch_action
+                ON batch_action.id = batch.action_id AND batch_action.status <> 'CANCELLED'
+              LEFT JOIN LATERAL (
+                  SELECT SUM(output.base_qty) AS qty
+                  FROM stock_document_items output
+                  JOIN stock_documents document ON document.id = output.doc_id
+                   AND document.doc_type = 'FINISHED_IN' AND document.status = 1 AND NOT document.is_deleted
+                  WHERE output.upstream_item_id = plan_item.id AND output.bill_type = 'FINISHED_IN'
+                    AND NOT output.is_deleted AND NOT fn_finished_in_is_public_output(output.id)
+              ) received ON TRUE
+              WHERE plan.material_analysis_id = item.analysis_id
+                AND plan.material_analysis_item_id = item.id
+                AND plan.status = 1 AND NOT plan.is_deleted AND NOT plan.is_canceled
+                AND COALESCE(plan_item.unit_rate, 1) > 0
+          ) finished ON TRUE
+          WHERE item.analysis_id = analysis.id
+            AND NOT item.is_deleted AND item.requested_qty > 0
+            AND GREATEST(item.requested_qty - item.root_fulfilled_qty
+                     - COALESCE(finished.qty, 0)
+                     - CASE WHEN item.source_type = 'MAKE_COMPONENT'
+                            THEN COALESCE(credit.fulfillment_credit, 0) ELSE 0 END, 0) > 0)
         AND NOT EXISTS (
-          SELECT 1 FROM preplan_supply_actions action
-          WHERE action.analysis_id = analysis.id AND action.status IN ('OPEN', 'CREATED', 'IN_PROGRESS'))
+            SELECT 1 FROM preplan_supply_actions action
+            WHERE action.analysis_id = analysis.id AND action.status IN ('OPEN', 'CREATED', 'IN_PROGRESS'))
         AND NOT EXISTS (
-          SELECT 1 FROM preplan_make_public_claims claim
-          WHERE claim.target_analysis_id = analysis.id AND fn_preplan_make_public_claim_pending_qty(claim.id) > 0)
+            SELECT 1 FROM preplan_make_public_claims claim
+            WHERE claim.target_analysis_id = analysis.id AND fn_preplan_make_public_claim_pending_qty(claim.id) > 0)
         THEN 'COMPLETED'
       WHEN EXISTS (
           SELECT 1 FROM production_material_analysis_items item

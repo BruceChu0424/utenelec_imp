@@ -292,9 +292,15 @@ class _PriceCheckInherited extends InheritedWidget {
 /// The original input remains intact, including source locking, exact amount
 /// entry and its own required-field validation. This adds advisory decoration.
 class PriceCheckCell extends StatelessWidget {
-  const PriceCheckCell({super.key, required this.row, required this.child});
+  const PriceCheckCell({
+    super.key,
+    required this.row,
+    required this.child,
+    this.showUnavailableInfo = true,
+  });
   final Object row;
   final Widget child;
+  final bool showUnavailableInfo;
 
   /// 实际证据按钮与采购/委外列装饰估宽同源；不推导任何价格判断。
   static double evidenceExtentOf(BuildContext context) =>
@@ -310,6 +316,7 @@ class PriceCheckCell extends StatelessWidget {
         final result = scope.batch.result(scope.keys[row] ?? '');
         if (result == null) return child;
         final warning = result.warning;
+        if (!warning && !showUnavailableInfo) return child;
         if (!warning && result.available) return child;
         final color = warning
             ? Theme.of(context).brightness == Brightness.dark

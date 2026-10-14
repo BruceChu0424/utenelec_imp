@@ -27,6 +27,7 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_paged_picker_list.dart';
+import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
@@ -384,6 +385,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   final Map<String, GoodsListItem> _selected = {};
 
   /// 多选模式：底部「已选 N 项」滑层是否展开。
+  final _pickerRows = MasterDataTableRowsController<GoodsListItem>();
   bool _selectedPanelOpen = false;
 
   /// 左树自然宽度缓存（见 [_treeNaturalWidth]）。
@@ -798,6 +800,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     final single = _selected.isEmpty ? null : _selected.values.first;
     return UtenPickerConfirmBar(
       selectedCount: _selected.length,
+      pagination: UtenPickerPageControls(controller: _pickerRows),
       selectedLabel: single == null ? null : _goodsLabel(single),
       onConfirm: () => Navigator.of(context).pop(single),
     );
@@ -871,20 +874,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       ),
     ];
     return UtenBottomActionBar(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 520) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Align(alignment: Alignment.centerLeft, child: summary),
-                Wrap(alignment: WrapAlignment.end, children: actions),
-              ],
-            );
-          }
-          return Row(children: [summary, const Spacer(), ...actions]);
-        },
+      child: UtenPickerFooterLayout(
+        summary: summary,
+        pagination: UtenPickerPageControls(controller: _pickerRows),
+        actions: Wrap(
+          alignment: WrapAlignment.end,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: actions,
+        ),
       ),
     );
   }
@@ -1053,6 +1050,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   Widget _buildGoodsList(ThemeData theme) {
     return UtenPagedPickerList<GoodsListItem>(
       key: const Key('goods-picker-paged-list'),
+      rowsController: _pickerRows,
+      showPaginationControls: !widget.multiSelect && !widget.requireConfirm,
       items: _paged?.items ?? const [],
       idOf: (goods) => goods.id,
       currentPage: _paged?.page ?? 1,

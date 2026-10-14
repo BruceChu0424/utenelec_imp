@@ -984,6 +984,40 @@ extension ProductionMaterialAnalysisBatchSuggestion
 }
 
 /// 原 BOM 行的办理投影。目标身份由服务端精确来源关系解析，命令仍提交原行。
+class MaterialAnalysisIssuedRate {
+  const MaterialAnalysisIssuedRate({
+    this.segmentId,
+    this.planItemId,
+    required this.rateVersion,
+    required this.effectiveRate,
+    required this.canEdit,
+    this.blockingReason,
+  });
+
+  final String? segmentId, planItemId;
+  String get targetId => segmentId ?? planItemId!;
+  final int rateVersion;
+  final double effectiveRate;
+  final bool canEdit;
+  final String? blockingReason;
+
+  factory MaterialAnalysisIssuedRate.fromJson(Map<String, dynamic> json) =>
+      MaterialAnalysisIssuedRate(
+        segmentId: json['segmentId'] as String?,
+        planItemId: json['planItemId'] as String?,
+        rateVersion: (json['rateVersion'] as num).toInt(),
+        effectiveRate: _double(json['effectiveRate']) ?? 0,
+        canEdit: json['canEdit'] == true,
+        blockingReason: json['blockingReason'] as String?,
+      );
+
+  Map<String, dynamic> get versionJson => {
+    if (segmentId != null) 'segmentId': segmentId,
+    if (planItemId != null) 'planItemId': planItemId,
+    'rateVersion': rateVersion,
+  };
+}
+
 class MaterialAggregatePreparation {
   const MaterialAggregatePreparation({
     this.quantityFactsExact = const {},

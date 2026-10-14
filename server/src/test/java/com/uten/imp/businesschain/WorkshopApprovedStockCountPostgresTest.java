@@ -9,6 +9,7 @@ import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialCountService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialPeriodService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialSettingsService;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialRequisitionService;
+import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialOtherIssueService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.count.StockCountDtos;
 import com.uten.imp.features.stock.count.StockCountRequestController;
@@ -61,6 +62,7 @@ class WorkshopApprovedStockCountPostgresTest {
     @Autowired WorkshopMaterialPeriodService periods;
     @Autowired WorkshopMaterialCountService counts;
     @Autowired WorkshopMaterialRequisitionService requisitions;
+    @Autowired WorkshopMaterialOtherIssueService otherIssues;
     @Autowired StockDocService stockDocuments;
     @Autowired StockCountRequestController stockCountRequests;
     FullChainEndToEndTest fixture;
@@ -122,6 +124,127 @@ class WorkshopApprovedStockCountPostgresTest {
         assertEquals(1,db.queryForObject("SELECT count(*) FROM workshop_material_commands WHERE command_kind='COUNT_WITHDRAW' AND idempotency_key=?",
                 Integer.class,"COUNT-APPROVAL-RECOVER:"+initial.event()),"正式撤回命令留下审核人、请求键和结果证据");
         assertEquals(shop.period(),db.queryForObject("SELECT period_id FROM workshop_material_count_adjustment_postings WHERE line_id=?",UUID.class,initial.line()));
+    }
+
+    @Test void warehouseBatchApprovalPrelocksEveryMaterialAndReplaysWithoutExtraOpeningPostings() {
+        Shop shop=shop(false);
+        UUID secondGoods=UUID.randomUUID();
+        db.update("""
+                INSERT INTO goods(id,code,name,source_type,status,unit_id,unit_legacy_id,price,code_sequence,issue_method,periodic_cost_basis,min_qty)
+                SELECT ?,?,'另一种批量期初颗粒',source_type,status,unit_id,unit_legacy_id,price,
+                       (SELECT coalesce(max(code_sequence),0)+1 FROM goods),issue_method,periodic_cost_basis,min_qty
+                FROM goods WHERE id=?
+                """,secondGoods,"COUNTB-"+secondGoods.toString().substring(0,8),shop.goods());
+        java.util.function.Function<UUID,Long> version=goods->((Number)stockCountRequests.candidates(shop.bin(),"",List.of(goods),1,50)
+                .getItems().getFirst().get("goodsVersion")).longValue();
+        var first=stockCountRequests.submit(new StockCountDtos.Submit(shop.bin(),"",key(),List.of(
+                new StockCountDtos.LineInput(shop.goods(),null,shop.unit(),BigDecimal.ZERO,null,false,
+                        new BigDecimal("1000"),new BigDecimal("1000"),true,null,version.apply(shop.goods())))));
+        var second=stockCountRequests.submit(new StockCountDtos.Submit(shop.bin(),"",key(),List.of(
+                new StockCountDtos.LineInput(secondGoods,null,shop.unit(),BigDecimal.ZERO,null,false,
+                        new BigDecimal("1111"),new BigDecimal("1111"),true,null,version.apply(secondGoods)))));
+        UUID firstId=(UUID)first.get("id"),secondId=(UUID)second.get("id");
+        var batch=new StockCountDtos.BatchApproval("WAREHOUSE",List.of(
+                new StockCountDtos.BatchApprovalItem(firstId,new StockCountDtos.Decision(0L,key(),null)),
+                new StockCountDtos.BatchApprovalItem(secondId,new StockCountDtos.Decision(0L,key(),null))));
+        stockCountRequests.approveBatch(batch);stockCountRequests.approveBatch(batch);
+        equal("1000",qty(shop));
+        equal("1111",db.queryForObject("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",
+                BigDecimal.class,shop.bin(),secondGoods));
+        for(UUID id:List.of(firstId,secondId)) {
+            assertEquals("APPROVED",stockCountRequests.detail(id).get("status"));
+            assertEquals(1,db.queryForObject("SELECT count(*) FROM workshop_material_count_adjustment_postings WHERE request_id=? AND kind='OPENING'",
+                    Integer.class,id));
+            assertEquals(1,db.queryForObject("SELECT count(*) FROM stock_count_request_events WHERE request_id=? AND action='APPROVE'",Integer.class,id));
+        }
+    }
+
+    @Test void warehouseBatchRejectsConflictingFirstUseIntentsAcrossColorsBeforeAnyPosting() {
+        Shop shop=shop(true);
+        UUID color=UUID.randomUUID();
+        db.update("INSERT INTO colors(id,code,name,status) VALUES (?,?,'批量盘点颜色','使用')",color,"COUNT-COLOR-"+color);
+        Request first=request(shop,"0",null,"100","100","OWN");
+        Request second=request(shop,"0",null,"200","200","EXPENSE",color);
+        var batch=new StockCountDtos.BatchApproval("WAREHOUSE",List.of(
+                new StockCountDtos.BatchApprovalItem(first.id(),new StockCountDtos.Decision(0L,key(),null)),
+                new StockCountDtos.BatchApprovalItem(second.id(),new StockCountDtos.Decision(0L,key(),null))));
+        assertTrue(assertThrows(ApiException.class,()->stockCountRequests.approveBatch(batch)).getMessage().contains("同一材料的首次用途或版本不一致"));
+        assertEquals("ORDER",db.queryForObject("SELECT issue_method FROM goods WHERE id=?",String.class,shop.goods()));
+        equal("0",qty(shop));
+        for(UUID id:List.of(first.id(),second.id())) {
+            assertEquals("PENDING",stockCountRequests.detail(id).get("status"));
+            assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_count_request_events WHERE request_id=? AND action='APPROVE'",Integer.class,id));
+            assertEquals(0,db.queryForObject("SELECT count(*) FROM workshop_material_count_adjustment_postings WHERE request_id=?",Integer.class,id));
+        }
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={false,true})
+    void warehouseApprovalAndOtherIssueUseSettingsBeforeInventoryWithoutDeadlock(boolean batch) throws Exception {
+        Shop shop=shop(false);
+        approve(shop,request(shop,"0",null,"100","100",null));
+        Request selected=request(shop,"100","100","120","120",null);
+        var held=new java.util.concurrent.CountDownLatch(1);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        var waiterPid=new java.util.concurrent.atomic.AtomicInteger();
+        var workers=java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var issued=workers.submit(()->{
+                fixture.loginAs(shop.world().superAdminUserId());
+                try {
+                    return new TransactionTemplate(transactions).execute(status->{
+                        tx.bind();
+                        db.execute("SET LOCAL lock_timeout='8s'");
+                        db.queryForObject("SELECT workshop_department_id FROM workshop_material_settings WHERE workshop_department_id=? FOR SHARE",
+                                UUID.class,shop.workshop());
+                        held.countDown();
+                        try { if(!release.await(10,java.util.concurrent.TimeUnit.SECONDS))throw new IllegalStateException("耗用测试等待超时"); }
+                        catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new IllegalStateException(interrupted);}
+                        return otherIssues.create(new OtherIssueRequest(shop.workshop(),shop.goods(),null,
+                                new BigDecimal("5"),"TRIAL_MOULD",null,key()));
+                    });
+                } finally {SecurityContextHolder.clearContext();}
+            });
+            assertTrue(held.await(10,java.util.concurrent.TimeUnit.SECONDS));
+            var approved=workers.submit(()->{
+                fixture.loginAs(shop.world().superAdminUserId());
+                try {
+                    new TransactionTemplate(transactions).execute(status->{
+                        tx.bind();
+                        db.execute("SET LOCAL lock_timeout='8s'");
+                        waiterPid.set(db.queryForObject("SELECT pg_backend_pid()",Integer.class));
+                        var decision=new StockCountDtos.Decision(0L,key(),null);
+                        if(batch)stockCountRequests.approveBatch(new StockCountDtos.BatchApproval("WAREHOUSE",List.of(
+                                new StockCountDtos.BatchApprovalItem(selected.id(),decision))));
+                        else stockCountRequests.approve(selected.id(),decision);
+                        return null;
+                    });
+                    return (Throwable)null;
+                } catch(Throwable failure){return failure;}
+                finally {SecurityContextHolder.clearContext();}
+            });
+            boolean waiting=false;
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+            while(System.nanoTime()<deadline&&!waiting) {
+                if(waiterPid.get()!=0)waiting=Boolean.TRUE.equals(db.queryForObject(
+                        "SELECT wait_event_type='Lock' FROM pg_stat_activity WHERE pid=?",Boolean.class,waiterPid.get()));
+                if(!waiting)Thread.sleep(20);
+            }
+            assertTrue(waiting,"审核应在耗用已持有的settings锁处等待，尚未占用库存锁");
+            release.countDown();
+            assertNotNull(issued.get(15,java.util.concurrent.TimeUnit.SECONDS),"耗用先取得settings，应能继续取得库存并完成");
+            var conflict=approved.get(15,java.util.concurrent.TimeUnit.SECONDS);
+            assertInstanceOf(ApiException.class,conflict);
+            assertTrue(conflict.getMessage().contains("库存数量或重量在提交后已变化"),
+                    "耗用成功后审核只报告真实快照过期，不能出现死锁或等锁错误: "+conflict);
+            equal("95",qty(shop));
+            assertEquals("PENDING",stockCountRequests.detail(selected.id()).get("status"));
+            assertEquals(0,db.queryForObject("SELECT count(*) FROM stock_count_request_events WHERE request_id=? AND action='APPROVE'",
+                    Integer.class,selected.id()));
+        } finally {
+            release.countDown();workers.shutdownNow();
+            assertTrue(workers.awaitTermination(10,java.util.concurrent.TimeUnit.SECONDS));
+        }
     }
 
     @Test void untouchedCountStillRecoversTheInitialPeriodAfterTheBusinessDateRollsOver() {
@@ -288,6 +411,10 @@ class WorkshopApprovedStockCountPostgresTest {
     }
 
     private Request request(Shop shop,String expected,String expectedWeight,String target,String targetWeight,String basis) {
+        return request(shop,expected,expectedWeight,target,targetWeight,basis,null);
+    }
+
+    private Request request(Shop shop,String expected,String expectedWeight,String target,String targetWeight,String basis,UUID color) {
         return new TransactionTemplate(transactions).execute(status->{
             tx.bind(); UUID request=UUID.randomUUID(),line=UUID.randomUUID(),event=UUID.randomUUID();
             db.update("""
@@ -295,11 +422,11 @@ class WorkshopApprovedStockCountPostgresTest {
                     VALUES (?,?,?,'WAREHOUSE',?,'核对现存实物',?,'test')
                     """,request,numbers.nextNumber(DocNumberPrefix.STOCK_COUNT_REQUEST),shop.bin(),shop.world().superAdminUserId(),key());
             db.update("""
-                    INSERT INTO stock_count_request_lines(id,request_id,line_no,goods_id,unit_id,expected_qty,expected_weight_kg,
+                    INSERT INTO stock_count_request_lines(id,request_id,line_no,goods_id,color_id,unit_id,expected_qty,expected_weight_kg,
                         expected_weight_estimated,target_qty,target_weight_kg,weight_changed,material_setup_basis,goods_version,
                         goods_name,unit_name,kg_per_base_unit)
-                    VALUES (?,?,1,?,?,?,?,FALSE,?,?,TRUE,?,(SELECT version FROM goods WHERE id=?),'颗粒','千克',1)
-                    """,line,request,shop.goods(),shop.unit(),new BigDecimal(expected),expectedWeight==null?null:new BigDecimal(expectedWeight),
+                    VALUES (?,?,1,?,?,?,?,?,FALSE,?,?,TRUE,?,(SELECT version FROM goods WHERE id=?),'颗粒','千克',1)
+                    """,line,request,shop.goods(),color,shop.unit(),new BigDecimal(expected),expectedWeight==null?null:new BigDecimal(expectedWeight),
                     new BigDecimal(target),new BigDecimal(targetWeight),basis,shop.goods());
             return new Request(request,line,event);
         });

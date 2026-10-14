@@ -141,19 +141,10 @@ class _PendingAttachmentSectionState
                     children: [
                       if (widget.headerExtra != null) widget.headerExtra!,
                       if (canAdd && !widget.selectionMode)
-                        FilledButton.tonalIcon(
+                        FilledButton.tonal(
                           key: const ValueKey('pending-attachment-add'),
                           onPressed: busy ? null : _pick,
-                          icon: widget.controller.isFlushing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.attach_file_rounded, size: 18),
-                          label: Text(
+                          child: Text(
                             widget.controller.isFlushing ? '上传中…' : '添加文件',
                           ),
                         ),
@@ -162,7 +153,11 @@ class _PendingAttachmentSectionState
                   if (constraints.maxWidth < 480) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [heading, const SizedBox(height: 8), actions],
+                      children: [
+                        heading,
+                        const SizedBox(height: 8),
+                        Align(alignment: Alignment.centerRight, child: actions),
+                      ],
                     );
                   }
                   return Row(
@@ -197,7 +192,7 @@ class _PendingAttachmentSectionState
     );
   }
 
-  /// 卡片陈列：文件卡一路横排（排满换行），队尾挂一张虚线「添加」卡。
+  /// 文件卡按行排满换行；添加入口保留在标题右侧。
   Widget _cardArea(
     ThemeData theme,
     List<PendingAttachment> items, {
@@ -233,8 +228,6 @@ class _PendingAttachmentSectionState
                     ? () => widget.onToggleSelection!(items[i])
                     : null,
               ),
-            if (canAdd && !busy && !widget.selectionMode)
-              _AddTile(width: cardWidth, onTap: _pick),
           ],
         );
       },
@@ -686,77 +679,5 @@ class _ActionButton extends StatelessWidget {
     );
     final tooltip = spec.tooltip;
     return tooltip == null ? button : Tooltip(message: tooltip, child: button);
-  }
-}
-
-/// 队尾的虚线「添加」卡：与文件卡同尺寸同圆角，轻轻一层主色晕染，
-/// 像火车最后挂一节空车厢。
-class _AddTile extends StatelessWidget {
-  const _AddTile({required this.width, required this.onTap});
-
-  final VoidCallback onTap;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SizedBox(
-      width: width,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minHeight: _kCardSize.height),
-        child: Material(
-          color: theme.colorScheme.primary.withValues(alpha: 0.03),
-          clipBehavior: Clip.antiAlias,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(UtenRadius.xl),
-          ),
-          child: InkWell(
-            onTap: onTap,
-            child: DashedContainer(
-              borderRadius: UtenRadius.xl,
-              child: Padding(
-                padding: const EdgeInsets.all(UtenSpacing.s12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(
-                          alpha: 0.08,
-                        ),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.add_rounded,
-                        size: 24,
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      '添加文件',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '点击或拖入',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }

@@ -437,11 +437,7 @@ class _WarehouseDrawTaskSegmentState
             const SizedBox(height: UtenFilterRow.rowGap),
           ],
           Padding(
-            padding: const EdgeInsets.only(
-              bottom: UtenSpacing.s8,
-              left: UtenSpacing.s4,
-              right: UtenSpacing.s4,
-            ),
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
             child: UtenFilterToolbar<String>(
               segmentsKey: const Key('warehouse-draw-task-status'),
               // 子分类计数：与列表同源的单据归组口径（待完成=READY+PARTIAL；

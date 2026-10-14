@@ -83,7 +83,9 @@ class StockCountReviewWarehouseScopePostgresTest {
         doCallRealMethod().when(workshop).accessibleWarehouses(any());
         var tx=mock(TxSessionVars.class);
         service=new StockCountRequestService(new NamedParameterJdbcTemplate(db),user,workshop,mock(StockDocService.class),
-                mock(DocNumberService.class),mock(BusinessEventPublisher.class),tx,new ObjectMapper(),mock(Validator.class));
+                mock(DocNumberService.class),mock(BusinessEventPublisher.class),tx,new ObjectMapper(),mock(Validator.class),
+                mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
         var scopes=mock(WarehouseTaskScopePort.class);
         when(scopes.current(any())).thenAnswer(call->{
             UUID requested=call.getArgument(0);

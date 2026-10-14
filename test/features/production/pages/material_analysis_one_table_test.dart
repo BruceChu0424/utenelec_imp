@@ -3511,7 +3511,7 @@ void main() {
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is Tooltip &&
-              (widget.message ?? '').contains('允许超产比例随工单锁定'),
+              (widget.message ?? '').contains('当前任务不能修改允许超产比例'),
         ),
       ),
       findsOneWidget,
@@ -5965,9 +5965,7 @@ void main() {
       );
       Finder locked() => find.descendant(
         of: find.byWidgetPredicate(
-          (widget) =>
-              widget is Tooltip &&
-              widget.message?.startsWith('这一行已下达，允许超产比例随工单锁定') == true,
+          (widget) => widget is Tooltip && widget.message == '当前任务不能修改允许超产比例',
         ),
         matching: find.byType(Text),
       );
@@ -7295,6 +7293,12 @@ Future<void> _pump(
   )?
   analysisPlanWithdraw,
   List<Map<String, dynamic>> defaultWorkshops = const [],
+  List<Map<String, dynamic>> issuedRates = const [],
+  FutureOr<List<Map<String, dynamic>>> Function(
+    int count,
+    List<Map<String, dynamic>> current,
+  )?
+  issuedRateRead,
   // 真下达 / 通知在服务端要跑几秒; 给假后端一个延迟, 段间的 300ms 去抖才有机会露馅。
   int delayMs = 0,
   // 路径后缀 → 状态码: 命中的请求直接拒绝, 用来验分段编排「失败即停」。
@@ -7320,6 +7324,8 @@ Future<void> _pump(
           as Map<String, dynamic>;
   if (mutate != null) data = mutate(data);
   var detailReads = 0;
+  var currentIssuedRates = issuedRates.map(Map<String, dynamic>.from).toList();
+  var issuedRateReads = 0;
   // 真下达 / 通知之后服务端会换版本与指纹；夹具照样推一版，否则页面把
   // 「版本没动」当成「这次一条都没下」。
   Map<String, dynamic> bumped() {
@@ -7388,6 +7394,21 @@ Future<void> _pump(
         } else if (request.path.contains('/mrp/planning-packages/') &&
             request.path.endsWith('/cancel')) {
           result = <String, dynamic>{};
+        } else if (request.path.endsWith('/overproduction-rates')) {
+          if (request.method == 'PUT') {
+            final body = request.data as Map;
+            currentIssuedRates = [
+              for (final row in currentIssuedRates)
+                {
+                  ...row,
+                  'effectiveRate': body['rate'],
+                  'rateVersion': (row['rateVersion'] as int) + 1,
+                },
+            ];
+          }
+          result = request.method == 'GET' && issuedRateRead != null
+              ? await issuedRateRead(++issuedRateReads, currentIssuedRates)
+              : currentIssuedRates;
         } else if (request.path.endsWith('/default-workshops')) {
           result = defaultWorkshops;
         } else if (departmentTree != null &&

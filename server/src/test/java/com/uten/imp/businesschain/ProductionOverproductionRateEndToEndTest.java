@@ -38,15 +38,108 @@ class ProductionOverproductionRateEndToEndTest {
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired ProductionOverproductionRateService rates;
+    @Autowired com.uten.imp.features.production.analysis.MaterialAnalysisOverproductionRateService planningRates;
+    @Autowired com.uten.imp.features.production.dailyreport.ProductionDailyReportService reports;
+    private WorkshopPublicSurplusEndToEndTest fixture;
+    private Object task;
     private UUID segment;
 
     @BeforeEach void prepare(){
-        var fixture=new WorkshopPublicSurplusEndToEndTest();
+        fixture=new WorkshopPublicSurplusEndToEndTest();
         beans.autowireBean(fixture);fixture.prepare();
-        Object task=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","rate-review-"+UUID.randomUUID(),false);
+        task=ReflectionTestUtils.invokeMethod(fixture,"createStartedTask","rate-review-"+UUID.randomUUID(),false);
         segment=ReflectionTestUtils.invokeMethod(task,"segment");
     }
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
+
+    @Test void planningEditChangesStartedTaskAndReportSplitImmediatelyThenLocksAfterFirstReport() {
+        UUID plan=rates.context(segment).planId();
+        var source=db.queryForMap("SELECT material_analysis_id,material_analysis_item_id FROM production_plans WHERE id=?",plan);
+        UUID analysis=(UUID)source.get("material_analysis_id"),item=(UUID)source.get("material_analysis_item_id");
+        var before=planningRates.context(analysis,Set.of(item));
+        assertEquals(1,before.size());assertTrue(before.getFirst().canEdit());
+        assertEquals("IN_PROGRESS",db.queryForObject("SELECT status FROM production_execution_segments WHERE id=?",String.class,segment));
+        var expected=before.stream().map(rate->new ProductionOverproductionRateService.PlanningRateVersion(rate.segmentId(),rate.rateVersion())).toList();
+        String key="planning-rate-"+UUID.randomUUID();
+        var changed=planningRates.change(analysis,Set.of(item),expected,new BigDecimal(".20"),key);
+        assertEquals(0,new BigDecimal(".20").compareTo(changed.getFirst().effectiveRate()));
+        assertEquals(1,changed.getFirst().rateVersion());assertRate(".20");
+        planningRates.change(analysis,Set.of(item),expected,new BigDecimal(".20"),key);
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_overproduction_rate_decisions decision JOIN production_overproduction_rate_requests request ON request.id=decision.request_id WHERE request.execution_segment_id=?",Integer.class,segment));
+        assertThrows(ApiException.class,()->planningRates.change(analysis,Set.of(item),expected,new BigDecimal(".30"),"stale-planning-"+UUID.randomUUID()));
+        assertThrows(ApiException.class,()->planningRates.context(analysis,Set.of(UUID.randomUUID())));
+
+        java.util.List<com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine> reportSources=ReflectionTestUtils.invokeMethod(fixture,"sources",task);
+        var request=(com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest)ReflectionTestUtils.invokeMethod(fixture,
+                "reportRequest",task,reportSources.getFirst(),"2300","2000");
+        UUID report=reports.create(request).getId();
+        assertEquals(0,new BigDecimal("300").compareTo(db.queryForObject("SELECT SUM(qty) FROM production_daily_report_items WHERE report_id=? AND is_actual_surplus AND NOT is_over_limit AND NOT is_deleted",BigDecimal.class,report)),
+                "the new rate must be used by the authoritative report split");
+        var locked=planningRates.context(analysis,Set.of(item));
+        assertFalse(locked.getFirst().canEdit());assertTrue(locked.getFirst().blockingReason().contains("报工"));
+        var current=locked.stream().map(rate->new ProductionOverproductionRateService.PlanningRateVersion(rate.segmentId(),rate.rateVersion())).toList();
+        assertThrows(ApiException.class,()->planningRates.change(analysis,Set.of(item),current,new BigDecimal(".30"),"reported-planning-"+UUID.randomUUID()));
+        assertRate(".20");
+    }
+
+    @Test void concurrentReportWaitsForPlanningRateAndCannotPersistOldAllowanceSplit() throws Exception {
+        UUID plan=rates.context(segment).planId();
+        var context=rates.planningRates(Set.of(plan));
+        var expected=context.stream().map(rate->new ProductionOverproductionRateService.PlanningRateVersion(rate.segmentId(),rate.rateVersion())).toList();
+        var actor=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        java.util.List<com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine> sources=ReflectionTestUtils.invokeMethod(fixture,"sources",task);
+        var request=(com.uten.imp.features.production.dailyreport.dto.DailyReportSaveRequest)ReflectionTestUtils.invokeMethod(fixture,
+                "reportRequest",task,sources.getFirst(),"2300","2000");
+        var locked=new java.util.concurrent.CountDownLatch(1);
+        var release=new java.util.concurrent.CountDownLatch(1);
+        var reportStarted=new java.util.concurrent.CountDownLatch(1);
+        try(var workers=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var edit=workers.submit(()->{
+                SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(actor,null,actor.getAuthorities()));
+                try {
+                    return rates.changePlanningRates(Set.of(plan),expected,new BigDecimal(".20"),"parallel-rate-"+UUID.randomUUID(),()->{
+                        locked.countDown();
+                        try { assertTrue(release.await(20,java.util.concurrent.TimeUnit.SECONDS)); }
+                        catch(InterruptedException error) { Thread.currentThread().interrupt();throw new RuntimeException(error); }
+                    });
+                } finally { SecurityContextHolder.clearContext(); }
+            });
+            assertTrue(locked.await(20,java.util.concurrent.TimeUnit.SECONDS));
+            var report=workers.submit(()->{
+                SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(actor,null,actor.getAuthorities()));
+                try { reportStarted.countDown();return reports.create(request).getId(); }
+                finally { SecurityContextHolder.clearContext(); }
+            });
+            try {
+                assertTrue(reportStarted.await(10,java.util.concurrent.TimeUnit.SECONDS));
+                assertThrows(java.util.concurrent.TimeoutException.class,()->report.get(150,java.util.concurrent.TimeUnit.MILLISECONDS));
+            } finally { release.countDown(); }
+            edit.get(30,java.util.concurrent.TimeUnit.SECONDS);
+            UUID reportId=report.get(30,java.util.concurrent.TimeUnit.SECONDS);
+            assertRate(".20");
+            assertEquals(0,new BigDecimal("300").compareTo(db.queryForObject("""
+                    SELECT SUM(qty) FROM production_daily_report_items
+                    WHERE report_id=? AND is_actual_surplus AND NOT is_over_limit AND NOT is_deleted
+                    """,BigDecimal.class,reportId)));
+            assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_daily_report_items WHERE report_id=? AND is_over_limit AND NOT is_deleted",Integer.class,reportId));
+            assertFalse(rates.planningRates(Set.of(plan)).getFirst().canEdit());
+        } finally { release.countDown(); }
+    }
+
+    @Test void planningEditRequiresItsOwnPermissionAndRejectsPendingWorkshopReview() {
+        UUID plan=rates.context(segment).planId();
+        var context=rates.planningRates(Set.of(plan));
+        var expected=context.stream().map(rate->new ProductionOverproductionRateService.PlanningRateVersion(rate.segmentId(),rate.rateVersion())).toList();
+        var administrator=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var limited=new AuthUser(administrator.getId(),administrator.getEmployeeId(),administrator.getUsername(),Set.of("production_material_analysis:view"),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(limited,null,limited.getAuthorities()));
+        assertThrows(ApiException.class,()->rates.changePlanningRates(Set.of(plan),expected,new BigDecimal(".2"),"planning-denied-"+UUID.randomUUID()));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(administrator,null,administrator.getAuthorities()));
+        rates.submit(new SubmitRequest(segment,0L,new BigDecimal(".15"),"车间待审核调整","pending-planning-"+UUID.randomUUID()));
+        assertFalse(rates.planningRates(Set.of(plan)).getFirst().canEdit());
+        assertThrows(ApiException.class,()->rates.changePlanningRates(Set.of(plan),expected,new BigDecimal(".2"),"planning-pending-"+UUID.randomUUID()));
+        assertRate(".10");
+    }
 
     @Test void requestKeepsOldRateUntilApprovalAndEveryReplayIsSideEffectFree(){
         assertRate(".10");

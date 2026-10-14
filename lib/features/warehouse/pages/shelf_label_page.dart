@@ -496,11 +496,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
     int unparsed,
   ) {
     return Padding(
-      padding: const EdgeInsets.only(
-        left: UtenSpacing.s4,
-        right: UtenSpacing.s4,
-        bottom: UtenSpacing.s8,
-      ),
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
       child: UtenFilterToolbar<String>(
         searchKey: const Key('shelf-label-search'),
         // 2026-09-29 用户口径：左上角库行分段退役（库行越积越多放不下）；

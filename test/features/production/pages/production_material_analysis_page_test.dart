@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
@@ -1662,8 +1663,9 @@ void main() {
       );
       expect(
         tester
-            .widget<IconButton>(
-              find.widgetWithIcon(IconButton, Icons.refresh_rounded),
+            .widget<UtenAppBarActionButton>(
+              find.byWidgetPredicate((widget) =>
+                widget is UtenAppBarActionButton && widget.label == '刷新'),
             )
             .onPressed,
         isNull,
@@ -3907,8 +3909,9 @@ void main() {
       );
       expect(
         tester
-            .widget<IconButton>(
-              find.widgetWithIcon(IconButton, Icons.refresh_rounded),
+            .widget<UtenAppBarActionButton>(
+              find.byWidgetPredicate((widget) =>
+                widget is UtenAppBarActionButton && widget.label == '刷新'),
             )
             .onPressed,
         isNull,
@@ -8393,6 +8396,19 @@ void main() {
         },
         analysisJson: json,
       );
+
+      final search = find.byKey(const Key('material-bom-search'));
+      final warehouse = find.byKey(const Key('material-analysis-warehouse'));
+      final searchHeight = tester.getSize(search).height;
+      expect(tester.getSize(warehouse).height, closeTo(searchHeight, 0.5));
+      final facts = find.descendant(
+        of: find.byKey(const Key('material-analysis-header-facts')),
+        matching: find.byWidgetPredicate((widget) => widget is Container &&
+          widget.constraints?.maxWidth == 280),
+      );
+      for (final fact in facts.evaluate()) {
+        expect(tester.getSize(find.byWidget(fact.widget)).height, closeTo(searchHeight, 0.5));
+      }
 
       // Both real category groups use the shared outline and desktop36 role.
       // The preserved legacy item keys now identify their complete labels.

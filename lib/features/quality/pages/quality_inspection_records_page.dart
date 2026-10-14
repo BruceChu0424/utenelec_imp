@@ -434,7 +434,7 @@ class _QualityInspectionRecordsPageState
           initialSearchValue: _keyword,
           onSearchChanged: _applyKeyword,
           trailing: Text(
-            '共 ${_data?.total ?? 0} 条 · 双击查看完整证据',
+            '共 ${_data?.total ?? 0} 条',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -447,9 +447,19 @@ class _QualityInspectionRecordsPageState
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 48),
+              constraints: BoxConstraints(
+                minHeight: UtenFilterRow.heightOf(context),
+              ),
               child: OutlinedButton.icon(
                 key: const Key('quality-inspection-record-date-filter'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: Size(0, UtenFilterRow.heightOf(context)),
+                  padding: UtenFilterRow.contentPadding,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: UtenFilterRow.borderRadius,
+                  ),
+                ),
                 onPressed: _pickDateRange,
                 icon: const Icon(Icons.date_range_outlined),
                 label: Text(dateLabel),
@@ -457,8 +467,15 @@ class _QualityInspectionRecordsPageState
             ),
             if (range != null)
               ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48),
+                constraints: BoxConstraints(
+                  minHeight: UtenFilterRow.heightOf(context),
+                ),
                 child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    minimumSize: Size(0, UtenFilterRow.heightOf(context)),
+                    padding: UtenFilterRow.contentPadding,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                   onPressed: _clearDateRange,
                   icon: const Icon(Icons.close_rounded),
                   label: const Text('清除日期'),

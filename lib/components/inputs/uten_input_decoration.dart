@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 
+import '../../core/theme/uten_tokens.dart';
+
 import 'uten_field_hint_icon.dart';
 import 'uten_field_label.dart';
 import 'uten_field_message.dart';
@@ -119,6 +121,7 @@ class UtenInputDecoration extends InputDecoration {
     return Builder(
       builder: (context) {
         final inCell = UtenTableCellHints.contains(context);
+        final height = UtenPageField.heightOf(context);
         final content = original == null
             ? hint
             : Row(
@@ -133,9 +136,9 @@ class UtenInputDecoration extends InputDecoration {
                         base.suffixIconConstraints ??
                         (inCell
                             ? const BoxConstraints()
-                            : const BoxConstraints(
-                                minWidth: 48,
-                                minHeight: 48,
+                            : BoxConstraints(
+                                minWidth: height,
+                                minHeight: height,
                               )),
                     child: original,
                   ),
@@ -144,7 +147,10 @@ class UtenInputDecoration extends InputDecoration {
         return inCell
             ? content
             : ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                constraints: BoxConstraints(
+                  minWidth: height,
+                  minHeight: height,
+                ),
                 child: content,
               );
       },

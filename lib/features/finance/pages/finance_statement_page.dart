@@ -343,7 +343,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
 
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+      padding: EdgeInsets.zero,
       child: SingleChildScrollView(
         // primary:false：筛选区是页面局部滚动件，不与外层折叠联动争抢
         // PrimaryScrollController（避免与表体 primary 列表形成多 ScrollPosition 冲突）。

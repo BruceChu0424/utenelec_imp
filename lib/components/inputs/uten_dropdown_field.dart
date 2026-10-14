@@ -557,7 +557,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                   // 共享紧凑内边距（2026-10-08 起与实盘格/编辑表同源，见
                   // UtenEditableGridCellSpec），收起时与同行文本格等高；非 dense
                   // 走主题默认。
-                  isDense: widget.dense,
+                  isDense: true,
                   contentPadding: widget.dense
                       ? UtenEditableGridCellSpec.contentPadding
                       : null,

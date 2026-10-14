@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/inputs/uten_employee_picker.dart';
 import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_picker_confirm_bar.dart';
+import '../../components/layout/uten_picker_footer_layout.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/responsive/breakpoint.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -107,6 +108,7 @@ class _SalesOrderPickerSheet extends ConsumerStatefulWidget {
 class _SalesOrderPickerSheetState
     extends ConsumerState<_SalesOrderPickerSheet> {
   PagedResult<SalesDocListItem>? _page;
+  final _pickerRows = MasterDataTableRowsController<SalesDocListItem>();
   bool _loading = false;
   int _loadGeneration = 0;
   String? _error;
@@ -299,6 +301,8 @@ class _SalesOrderPickerSheetState
             ),
             Expanded(
               child: MasterDataTableView<SalesDocListItem>(
+                rowsController: _pickerRows,
+                showPaginationControls: false,
                 tableKey:
                     'shared.widgets.sales_order_picker.SalesOrderPickerSheetState.build.1',
                 columns: _columns(),
@@ -324,6 +328,7 @@ class _SalesOrderPickerSheetState
               ),
             ),
             UtenPickerConfirmBar(
+              pagination: UtenPickerPageControls(controller: _pickerRows),
               selectedCount: _picked == null ? 0 : 1,
               selectedLabel: _picked?.billNo,
               onConfirm: () => Navigator.of(context).pop(_picked),

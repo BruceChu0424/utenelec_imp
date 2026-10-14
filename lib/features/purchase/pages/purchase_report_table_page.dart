@@ -295,11 +295,7 @@ class _PurchaseReportTablePageState
             child: UtenCollapsingHeaderScrollView(
               // 页面头：Icon + 标题 + 计数（内联 Icon+Text，勿换 UtenSectionHeader）
               collapsingHeader: Padding(
-                padding: const EdgeInsets.only(
-                  bottom: UtenSpacing.s8,
-                  left: UtenSpacing.s4,
-                  right: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                 child: Row(
                   children: [
                     Icon(
@@ -338,7 +334,7 @@ class _PurchaseReportTablePageState
 
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

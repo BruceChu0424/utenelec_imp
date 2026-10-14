@@ -2611,7 +2611,6 @@ class _UtenEditableGridState<T extends EditableGridRow>
                       c.maxWidth >= _footerSingleRowMinWidth;
                   return Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s12,
                       vertical: UtenSpacing.s8,
                     ),
                     child: sideBySide

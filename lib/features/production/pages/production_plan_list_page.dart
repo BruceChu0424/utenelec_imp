@@ -408,11 +408,7 @@ class _ProductionPlanListPageState
                 return UtenCollapsingHeaderScrollView(
                   // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
                   collapsingHeader: Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                     child: Row(
                       children: [
                         Icon(
@@ -472,9 +468,7 @@ class _ProductionPlanListPageState
                   body: UtenListTwoPane(
                     // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
                     filterPane: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s4,
-                      ),
+                      padding: EdgeInsets.zero,
                       child: UtenFilterToolbar<int?>(
                         // 2026-09-21 用户口径: hub 卡有草稿红徽章, 子分类也要有数——
                         // 草稿红徽章(与卡面同源同数), 已审 / 红冲中性括号, 「全部」不挂。

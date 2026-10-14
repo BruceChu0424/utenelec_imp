@@ -27,10 +27,19 @@ import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import '../../helpers/badge_summary_fixture.dart';
 
 class _Repo implements StockCountRequestRepository {
-  _Repo({this.stale = false, this.setupBasis, this.lineCount = 1});
+  _Repo({
+    this.stale = false,
+    this.setupBasis,
+    this.lineCount = 1,
+    this.requestCount = 1,
+    this.reviewRoute = 'FINANCE',
+  });
   final bool stale;
   final String? setupBasis;
   final int lineCount;
+  final int requestCount;
+  final String reviewRoute;
+  final batchCalls = <List<Map<String, dynamic>>>[];
   final queries = <({String? reviewRoute, String? status, int page})>[];
   String? lastScopeWarehouseId;
   String? lastKeyword;
@@ -45,7 +54,7 @@ class _Repo implements StockCountRequestRepository {
     requestNo: 'PD01',
     warehouseId: 'w',
     warehouseName: '原料仓',
-    reviewRoute: 'FINANCE',
+    reviewRoute: reviewRoute,
     status: 'PENDING',
     version: 7,
     submittedByName: '张三',
@@ -73,7 +82,35 @@ class _Repo implements StockCountRequestRepository {
   Future<StockCountRequest> detail(String id) async {
     reads++;
     await detailGate?.future;
-    return request;
+    return requestFor(id);
+  }
+
+  StockCountRequest requestFor(String id) => StockCountRequest(
+    id: id,
+    requestNo: id == 'count-1' ? 'PD01' : 'PD02',
+    warehouseId: request.warehouseId,
+    warehouseName: request.warehouseName,
+    reviewRoute: reviewRoute,
+    status: request.status,
+    version: request.version,
+    allowedActions: request.allowedActions,
+    lines: request.lines,
+  );
+
+  @override
+  Future<List<StockCountRequest>> approveBatch({
+    required String reviewRoute,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    expect(reviewRoute, this.reviewRoute);
+    for (final item in items) {
+      final decision = item['decision'] as Map;
+      expect(decision['expectedVersion'], 7);
+      expect(decision['idempotencyKey'], isNotEmpty);
+    }
+    batchCalls.add(items);
+    approvals += items.length;
+    return [for (final item in items) requestFor(item['id'] as String)];
   }
 
   @override
@@ -92,10 +129,12 @@ class _Repo implements StockCountRequestRepository {
     lastScopeWarehouseId = scopeWarehouseId;
     lastKeyword = keyword;
     return PagedResult(
-      items: approvals == 0 ? [request] : [],
+      items: approvals == 0
+          ? [for (var i = 1; i <= requestCount; i++) requestFor('count-$i')]
+          : [],
       page: page,
       size: size,
-      total: approvals == 0 ? 1 : 0,
+      total: approvals == 0 ? requestCount : 0,
       totalPages: 1,
     );
   }
@@ -252,6 +291,85 @@ const _materialReviewPermissions = {
 };
 
 void main() {
+  testWidgets('仓库盘点多选先核对明细，取消不写库，确认后整批审批并清空选择', (tester) async {
+    final repo = _Repo(requestCount: 2, reviewRoute: 'WAREHOUSE');
+    await _pump(
+      tester,
+      repo,
+      requestId: null,
+      reviewRoute: 'WAREHOUSE',
+      embedded: true,
+      permissions: {Perm.stockCountWarehouseReview},
+    );
+    MasterDataTableView<StockCountRequest> table() =>
+        tester.widget(find.byType(MasterDataTableView<StockCountRequest>));
+    expect(table().singleSelection, isFalse);
+    table().onSelectedIdsChanged!({'count-1', 'count-2'});
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('stock-count-batch-approve')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('stock-count-batch-dialog')), findsOneWidget);
+    expect(find.text('9007199254740993.0000 kg'), findsNWidgets(2));
+    expect(repo.batchCalls, isEmpty);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(repo.batchCalls, isEmpty);
+    expect(table().selectedIds, {'count-1', 'count-2'});
+    await tester.tap(find.byKey(const Key('stock-count-batch-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('stock-count-batch-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.batchCalls.single.map((item) => item['id']), [
+      'count-1',
+      'count-2',
+    ]);
+    expect(repo.approvals, 2);
+    expect(table().selectedIds, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('批量核对发现库存过期时不能通过，不发审批请求', (tester) async {
+    final repo = _Repo(stale: true);
+    await _pump(tester, repo, requestId: null);
+    final table = tester.widget<MasterDataTableView<StockCountRequest>>(
+      find.byType(MasterDataTableView<StockCountRequest>),
+    );
+    table.onSelectedIdsChanged!({'count-1'});
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('stock-count-batch-approve')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('库存变化'), findsOneWidget);
+    final confirm = tester.widget<UtenButton>(
+      find.byKey(const Key('stock-count-batch-confirm')),
+    );
+    expect(confirm.onPressed, isNull);
+    expect(repo.batchCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('批量盘点自动核对首次材料用途与BOM后一次确认通过', (tester) async {
+    final repo = _Repo(setupBasis: 'OWN');
+    await _pump(
+      tester,
+      repo,
+      requestId: null,
+      permissions: _materialReviewPermissions,
+    );
+    final table = tester.widget<MasterDataTableView<StockCountRequest>>(
+      find.byType(MasterDataTableView<StockCountRequest>),
+    );
+    table.onSelectedIdsChanged!({'count-1'});
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('stock-count-batch-approve')));
+    await tester.pumpAndSettle();
+    UtenButton confirm() =>
+        tester.widget(find.byKey(const Key('stock-count-batch-confirm')));
+    expect(find.byKey(const ValueKey('wm-first-use-confirm-g')), findsNothing);
+    expect(confirm().onPressed, isNotNull);
+    expect(repo.batchCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('嵌入审核只用状态表头，服务器过滤并清选择，保留仓库范围', (tester) async {
     final repo = _Repo();
     await _pump(
@@ -268,7 +386,7 @@ void main() {
     MasterDataTableView<StockCountRequest> table() =>
         tester.widget(find.byType(MasterDataTableView<StockCountRequest>));
     expect(table().requiredLeadingColumnKeys, ['status']);
-    expect(table().singleSelection, isTrue);
+    expect(table().singleSelection, isFalse);
     expect(table().showSelectionColumn, isTrue);
     table().onSelectedIdsChanged!({'count-1'});
     await tester.pumpAndSettle();

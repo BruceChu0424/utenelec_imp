@@ -2945,11 +2945,7 @@ class _ProductionWorkshopTasksPageState
                 if (_isHistory) ...[
                   // 历史任务时间门控（ADR-066 §1.3）：时间段/全部，未选不加载。
                   Padding(
-                    padding: const EdgeInsets.only(
-                      top: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
+                    padding: const EdgeInsets.only(top: UtenSpacing.s8),
                     child: UtenHistoryTimeFilter(
                       key: const Key('workshop-history-time'),
                       value: _historyTime,

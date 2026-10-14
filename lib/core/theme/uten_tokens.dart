@@ -136,7 +136,7 @@ abstract final class UtenControlMetrics {
   static const double compactHeight = 36;
   static const double standardHeight = 40;
   static const double primaryHeight = 48;
-  static const double inputHeight = 44;
+  static const double inputHeight = compactHeight;
   static const double cellHeight = 32;
   static const double touchExtent = 48;
 
@@ -180,6 +180,23 @@ abstract final class UtenFilterRow {
 
   static double minimumWidthOf(BuildContext context) =>
       UtenControlMetrics.minimumHitExtent(context, desktop: 24);
+}
+
+/// Page fields share the search control's outline and height. Table cells keep
+/// their separate compact specification in UtenTableCellInputTheme.
+abstract final class UtenPageField {
+  static const BorderRadius borderRadius = UtenFilterRow.borderRadius;
+  static const EdgeInsets contentPadding = EdgeInsets.symmetric(
+    horizontal: UtenFilterRow.cellHorizontalPadding,
+    vertical: 6,
+  );
+  static const BoxConstraints iconConstraints = BoxConstraints(
+    minWidth: UtenFilterRow.minHeight,
+    minHeight: UtenFilterRow.minHeight,
+  );
+
+  static double heightOf(BuildContext context) =>
+      UtenFilterRow.heightOf(context);
 }
 
 /// 自研表格共用的表头文字样式，渲染与列宽测量使用同一入口。

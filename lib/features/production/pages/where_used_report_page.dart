@@ -379,7 +379,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     // 避免与表体 primary 列表争抢 PrimaryScrollController（多 ScrollPosition 冲突）。
     return SingleChildScrollView(
       primary: false,
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

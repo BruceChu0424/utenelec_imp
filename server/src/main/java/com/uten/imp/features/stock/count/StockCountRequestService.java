@@ -4,6 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.WorkshopStockCountPostingPort;
+import com.uten.imp.application.port.ProductionMutationFootprintPort;
+import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
+import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
@@ -38,12 +41,16 @@ public class StockCountRequestService {
     private final TxSessionVars tx;
     private final ObjectMapper json;
     private final Validator validator;
+    private final FulfillmentMutationLocks mutationLocks;
+    private final ProductionMutationFootprintPort mutationFootprints;
 
     public StockCountRequestService(NamedParameterJdbcTemplate db,SecurityContextCurrentUser user,
             WorkshopStockCountPostingPort workshop,StockDocService stockDocs,DocNumberService numbers,
-            BusinessEventPublisher events,TxSessionVars tx,ObjectMapper json,Validator validator) {
+            BusinessEventPublisher events,TxSessionVars tx,ObjectMapper json,Validator validator,
+            FulfillmentMutationLocks mutationLocks,ProductionMutationFootprintPort mutationFootprints) {
         this.db=db;this.user=user;this.workshop=workshop;this.stockDocs=stockDocs;
         this.numbers=numbers;this.events=events;this.tx=tx;this.json=json;this.validator=validator;
+        this.mutationLocks=mutationLocks;this.mutationFootprints=mutationFootprints;
     }
     private boolean has(String code) { return user.get().map(u->u.isSuperAdmin()||u.getPermissions().contains(code)).orElse(false); }
     private void require(String code) { if(!has(code)) throw new ApiException(ErrorCode.FORBIDDEN,"没有此项盘点操作权限"); }
@@ -410,6 +417,67 @@ public class StockCountRequestService {
         out.put("submittedAt",time(h.get("submitted_at")));out.put("reviewedAt",time(h.get("reviewed_at")));return out;
     }
 
+    /** Same decision authority and posting chain as single approval; any failure rolls back the batch. */
+    @Transactional
+    public List<Map<String,Object>> approveBatch(StockCountDtos.BatchApproval request) {
+        if(request==null||!validator.validate(request).isEmpty())throw invalid("请选择1至50笔盘点并提供当前审核版本");
+        require("WAREHOUSE".equals(request.reviewRoute())?WAREHOUSE:FINANCE);
+        var ids=new HashSet<UUID>();var keys=new HashSet<String>();
+        for(var item:request.items()) {
+            if(!ids.add(item.id())||!keys.add(item.decision().idempotencyKey()))throw invalid("同一批盘点或操作编号不能重复");
+        }
+        var items=request.items().stream().sorted(Comparator.comparing(StockCountDtos.BatchApprovalItem::id)).toList();
+        tx.bind();
+        // Acquire command locks before row locks, using a stable order for overlapping batches.
+        items.stream().map(item->item.decision().idempotencyKey()).sorted().forEach(this::commandLock);
+        var pendingWarehouses=new ArrayList<UUID>();
+        for(var item:items) {
+            var h=header(item.id(),true);readAllowed(h);
+            if(!request.reviewRoute().equals(h.get("review_route")))throw invalid("请分开办理财务和仓库审核队列");
+            if("PENDING".equals(h.get("status")))pendingWarehouses.add((UUID)h.get("warehouse_id"));
+        }
+        if("WAREHOUSE".equals(request.reviewRoute()))workshop.prelockApprovalWarehouses(pendingWarehouses);
+        validateBatchSetupIntents(items.stream().map(StockCountDtos.BatchApprovalItem::id).toList());
+        // One transaction owns one complete source/inventory prefix. Discover
+        // every request before the first decision writes or posts any stock.
+        var guard=mutationLocks.acquireAll(items.stream().map(item->approvalFootprint(item.id())).toList());
+        guard.verifyUnchanged();
+        var approved=new ArrayList<Map<String,Object>>();
+        for(var item:items)approved.add(decide(item.id(),"APPROVE",item.decision()));
+        return approved;
+    }
+
+    private void validateBatchSetupIntents(List<UUID> ids) {
+        record SetupIntent(long version,String basis) {}
+        var intents=new HashMap<UUID,SetupIntent>();
+        for(var line:db.queryForList("""
+                SELECT goods_id,goods_version,material_setup_basis FROM stock_count_request_lines
+                WHERE request_id IN (:ids) AND material_setup_basis IS NOT NULL
+                """,Map.of("ids",ids))) {
+            var intent=new SetupIntent(((Number)line.get("goods_version")).longValue(),line.get("material_setup_basis").toString());
+            var previous=intents.putIfAbsent((UUID)line.get("goods_id"),intent);
+            if(previous!=null&&!previous.equals(intent))throw conflict("同一材料的首次用途或版本不一致，请退回冲突申请重新核对");
+        }
+    }
+
+    private List<ProductionMutationFootprintPort.WarehouseDimension> approvalDimensions(UUID id) {
+        return db.query("""
+                SELECT request.warehouse_id,line.goods_id,line.color_id
+                FROM stock_count_requests request JOIN stock_count_request_lines line ON line.request_id=request.id
+                WHERE request.id=:id ORDER BY line.goods_id,line.color_id NULLS FIRST
+                """,Map.of("id",id),(rs,n)->new ProductionMutationFootprintPort.WarehouseDimension(
+                rs.getObject(1,UUID.class),rs.getObject(2,UUID.class),rs.getObject(3,UUID.class)));
+    }
+
+    /** Single and batch approval use exactly the same inventory/callback discovery. */
+    private FulfillmentMutationLocks.Footprint approvalFootprint(UUID id) {
+        var dimensions=approvalDimensions(id);
+        var declared=FulfillmentMutationLockPlan.declared(List.of(),dimensions.stream()
+                .map(d->new FulfillmentMutationLockPlan.InventoryDimension(d.goodsId(),d.colorId())).toList(),List.of());
+        return new FulfillmentMutationLocks.Footprint(declared,
+                ()->mutationFootprints.forInventoryChange(approvalDimensions(id),List.of()));
+    }
+
     @Transactional
     public Map<String,Object> decide(UUID id,String action,StockCountDtos.Decision request) {
         if(request==null||!validator.validate(request).isEmpty())throw invalid("请提供当前审核版本和有效的操作编号");
@@ -429,6 +497,9 @@ public class StockCountRequestService {
         if(!"PENDING".equals(h.get("status"))||((Number)h.get("row_version")).longValue()!=request.expectedVersion())throw conflict("申请已被办理或版本变化，请刷新");
         if("APPROVE".equals(action)) {
             var w=warehouse((UUID)h.get("warehouse_id"));if(!w.get("review_route").equals(h.get("review_route")))throw conflict("仓库类型已变化，请重新盘点");
+            if("WAREHOUSE".equals(h.get("review_route")))workshop.prelockApprovalWarehouses(List.of((UUID)h.get("warehouse_id")));
+            var footprint=approvalFootprint(id);
+            mutationLocks.acquire(footprint.declared(),footprint.discovery()).verifyUnchanged();
         }
         long version=request.expectedVersion()+1;UUID event=insertEvent(id,action,version,request.idempotencyKey(),reason);
         String status=switch(action){case "APPROVE"->"APPROVED";case "REJECT"->"REJECTED";case "CANCEL"->"CANCELLED";default->throw invalid("审核动作不正确");};

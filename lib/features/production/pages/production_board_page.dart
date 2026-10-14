@@ -157,9 +157,9 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(
+                  0,
                   UtenSpacing.s12,
-                  UtenSpacing.s12,
-                  UtenSpacing.s12,
+                  0,
                   UtenSpacing.s8,
                 ),
                 child: Column(
@@ -230,9 +230,7 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
               Expanded(
                 child: switch (segment) {
                   'drafts' => Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: UtenSpacing.s12,
-                    ),
+                    padding: EdgeInsets.zero,
                     child: _BoardDraftsPanel(
                       key: const Key('production-board-drafts'),
                       search: _keyword,

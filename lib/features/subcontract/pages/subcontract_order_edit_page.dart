@@ -1746,34 +1746,6 @@ class _SubcontractOrderEditPageState
                           const SizedBox(height: UtenSpacing.s12),
                           // 「明细 (N)」标题行 2026-09-11 撤除；同日「从上游引入」也并入
                           // 明细表工具条，与「表头设置」同排同高（不再单独占一行）。
-                          // 2026-09-14：与采购订货单同改——「统一设置条款」只挂行右键菜单，
-                          // 而条款格是输入框/下拉，右键会被输入框自带菜单吃掉，等于零可见
-                          // 入口。补这行常驻提示指明入口；不加窄屏门控（宽屏桌面同样看不见）。
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              bottom: UtenSpacing.s8,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.info_outline_rounded,
-                                  size: 18,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: UtenSpacing.s8),
-                                Expanded(
-                                  child: Text(
-                                    '勾选多行后在选中行上右键（触屏长按）可「统一设置条款」，'
-                                    '一次写全套委外商、结算方式、币种、汇率、税率（留空的保持原值）；'
-                                    '右键请点在非输入框的位置，例如行首复选框或货品名称一列。',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                           _bomMissingHint(theme),
                           // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
                           Builder(

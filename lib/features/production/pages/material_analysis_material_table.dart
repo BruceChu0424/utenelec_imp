@@ -1559,6 +1559,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'status',
       label: _l10n.materialProgress,
       width: 230,
+      minimumWidthOf: (_) => 72,
       info:
           '这行物料现在走到哪一步（等待下单 → 下单 → 财务审批 → 收货 → 检验 → '
           '入库)；点击状态可看全程明细。还没确认供应方式的行显示「待选供应方式」。',
@@ -1598,6 +1599,7 @@ abstract class _MaterialAnalysisMaterialTableState
           ? _l10n.materialIdentityByMaterial
           : _l10n.materialIdentityByProduct,
       width: 360 + UtenTreeTableCell.toggleExtentOf(context) - 48,
+      minimumWidthOf: _materialTableIdentityMinimumWidth,
       value: _materialTableIdentityText,
       cellBuilderHandlesSemantics: true,
       // 树列自己吃满整行高度：同一行里只要别的列换了两行，这一格若被竖向
@@ -1625,6 +1627,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'route',
       label: _l10n.materialRoute,
       width: 140,
+      minimumWidthOf: (_) => 116,
       value: _materialTableRouteText,
       info:
           '这批物料怎么准备：采购 = 向供应商买；委外 = 发给加工商加工；'
@@ -1639,6 +1642,7 @@ abstract class _MaterialAnalysisMaterialTableState
       label: _l10n.materialRequired,
       // 2026-10-10 T9：单位列退役，数量内联单位（宽度 +35 容下「N 个」）。
       width: 135,
+      minimumWidthOf: (_) => 72,
       type: 'number',
       value: (row) => _qtyTextWithUnit(
         _materialTableRequiredText(row),
@@ -1679,6 +1683,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'publicAvailableQty',
       label: _l10n.materialPublicAvailable,
       width: 135,
+      minimumWidthOf: (_) => 72,
       type: 'number',
       value: (row) => _qtyTextWithUnit(
         _materialTablePublicAvailableText(row),
@@ -1733,6 +1738,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'netShortageQty',
       label: _l10n.materialShortage,
       width: 145,
+      minimumWidthOf: (_) => 72,
       type: 'number',
       value: (row) => _qtyTextWithUnit(
         _materialTableNetShortageText(row),
@@ -1754,6 +1760,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'orderQty',
       label: _l10n.materialToSupply,
       width: 165,
+      minimumWidthOf: (_) => 96,
       type: 'number',
       value: (row) => _materialTableOrderQtyText(row) ?? '—',
       exactValueOf: (row) => _materialTableOrderRaw(row, append: false),
@@ -1765,9 +1772,10 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'allowedOverproductionRate',
       label: '允许超产比例',
       width: 152,
+      minimumWidthOf: (_) => 96,
       info:
           '本次下达允许的超产比例：制造底层默认 10%，上层 0%；改过的按最近一次确认的比例记住。'
-          '已下达工单的比例修改仍须计划部审批。',
+          '下单后、首次报工前仍可修改，生产中的车间任务同步生效；已有报工后锁定。',
       value: (row) {
         if (row.aggregate case final aggregate?) {
           return _aggregateTable.rateText(aggregate);
@@ -1792,14 +1800,11 @@ abstract class _MaterialAnalysisMaterialTableState
             '${_overproductionPercentController(materialLineId: group.representative.materialLineId).text}%',
           );
         }
-        // 已下达比例随工单锁定，新增来源尚未下达时仍可设置；快照刷新不改它的显示值。
+        // 已下达比例读取实际执行段，首次报工前使用带版本的即时修改入口。
         if (_tableGroupIssued(group)) {
-          return Tooltip(
-            message: '这一行已下达，允许超产比例随工单锁定；要改已下达工单的比例须计划部审批。',
-            child: Text(
-              '${_overproductionPercentController(materialLineId: group.representative.materialLineId, issued: true).text}%',
-            ),
-          );
+          return _issuedRateCell([
+            group,
+          ], key: 'material-analysis-overproduction-rate-${group.key}');
         }
         return ProductionOverproductionRateField(
           key: ValueKey('material-analysis-overproduction-rate-${group.key}'),
@@ -1814,6 +1819,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'appendQty',
       label: _l10n.materialAdditionalOrder,
       width: 158,
+      minimumWidthOf: (_) => 96,
       type: 'number',
       info:
           '已经下达过的行要再下多少。默认 0 = 本次不动它，填成正数才追加。'
@@ -1834,6 +1840,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'owningWarehouse',
       label: '所属仓库',
       width: 132,
+      minimumWidthOf: (_) => 72,
       value: _materialTableOwningWarehouseText,
       info:
           '这个货品归哪个仓管。任何入库都会自动把它更新为最新入库仓（与即时库存'
@@ -1848,6 +1855,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'productionWorkshop',
       label: _l10n.materialProductionWorkshop,
       width: 156,
+      minimumWidthOf: (_) => 72,
       value: _materialTableProductionWorkshopText,
       cellBuilderHandlesSemantics: true,
       info:
@@ -1864,6 +1872,7 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'responsible',
       label: _l10n.materialResponsible,
       width: 140,
+      minimumWidthOf: (_) => 72,
       value: _materialTableResponsibleText,
       cellBuilderHandlesSemantics: true,
       info:
@@ -1951,6 +1960,58 @@ abstract class _MaterialAnalysisMaterialTableState
         ? null
         : _aggregateTable.issuedBreakdown(row.aggregate!);
     return breakdown == null ? name : '$name · $breakdown';
+  }
+
+  Object? _identityWidthScope;
+  List<_MaterialTableRow>? _identityWidthRows;
+  double _identityWidth = 72;
+  final Map<String, double> _identityTextWidths = {};
+
+  double _materialTableIdentityMinimumWidth(BuildContext context) {
+    final analysis = _analysis;
+    if (analysis == null) return 72;
+    final style = Theme.of(
+      context,
+    ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final scope = (
+      analysis.analysisId,
+      _sessionScopeKey(),
+      style,
+      scaler,
+      direction,
+    );
+    final rows = _materialTableRows(analysis);
+    if (_identityWidthScope == scope && identical(_identityWidthRows, rows)) {
+      return _identityWidth;
+    }
+    if (_identityWidthScope != scope) {
+      _identityTextWidths.clear();
+    }
+    _identityWidthScope = scope;
+    _identityWidthRows = rows;
+    var widest = 72.0;
+    final painter = TextPainter(textDirection: direction, textScaler: scaler);
+    for (final row in rows) {
+      final text = _materialTableIdentityText(row) ?? '';
+      final textWidth = _identityTextWidths.putIfAbsent(text, () {
+        painter.text = TextSpan(text: text, style: style);
+        painter.layout();
+        return painter.width;
+      });
+      final prefix = UtenTreeTableCell.prefixWidthOf(
+        context,
+        depth: row.depth,
+        indent: 24,
+      );
+      widest = math.max(
+        widest,
+        textWidth + prefix + UtenSpacing.s24 + UtenSpacing.s8,
+      );
+    }
+    painter.dispose();
+    return _identityWidth = math.min(widest, 480);
   }
 
   // 取值优先级沿用 2026-09-14 身份格副行的口径：编号/颜色以产品行自身为准
@@ -4383,6 +4444,9 @@ abstract class _MaterialAnalysisMaterialTableState
         autofilled: false,
       );
     }
+    if (_tableAssignmentLocked(group)) {
+      return (id: null, name: '以已下达工单为准', autofilled: false);
+    }
     final draft = _tableWorkshopDraft[group.key];
     if (draft != null) {
       return (id: draft.id, name: draft.name, autofilled: false);
@@ -4420,6 +4484,9 @@ abstract class _MaterialAnalysisMaterialTableState
         autofilled: false,
       );
     }
+    if (_tableAssignmentLocked(group)) {
+      return (id: null, name: '以已下达工单为准', autofilled: false);
+    }
     final draft = _tableWorkerDraft[group.key];
     if (draft != null) {
       return (id: draft.id, name: draft.name, autofilled: false);
@@ -4440,7 +4507,7 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   Future<void> _pickTableWorkshop(_MaterialGroup group) async {
-    if (_tableIssuedAssignmentOf(group) != null) return;
+    if (_tableAssignmentLocked(group)) return;
     final tree = _tableWorkshopTree.isNotEmpty
         ? _tableWorkshopTree
         : await _tableWorkshopTreeOrEmpty();
@@ -4463,9 +4530,7 @@ abstract class _MaterialAnalysisMaterialTableState
             ],
     );
     final selection = picked == null || picked.isEmpty ? null : picked.first;
-    if (selection == null ||
-        !mounted ||
-        _tableIssuedAssignmentOf(group) != null) {
+    if (selection == null || !mounted || _tableAssignmentLocked(group)) {
       return;
     }
     setState(() {
@@ -4477,7 +4542,7 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   Future<void> _pickTableWorker(_MaterialGroup group) async {
-    if (_tableIssuedAssignmentOf(group) != null) return;
+    if (_tableAssignmentLocked(group)) return;
     final workshop = _tableWorkshopFor(group);
     final current = _tableWorkerFor(group);
     final picked = await showUtenEmployeePickerPanel(
@@ -4510,7 +4575,7 @@ abstract class _MaterialAnalysisMaterialTableState
     );
     if (picked == null ||
         !mounted ||
-        _tableIssuedAssignmentOf(group) != null ||
+        _tableAssignmentLocked(group) ||
         _tableWorkshopFor(group).id != workshop.id ||
         _tableWorkerFor(group).id != current.id) {
       return;
@@ -5275,6 +5340,111 @@ abstract class _MaterialAnalysisMaterialTableState
   bool _tableAssignable(_MaterialGroup? group) =>
       group != null && _tableIssueTarget(group).viaWorkshop;
 
+  bool _tableAssignmentLocked(_MaterialGroup group) =>
+      _tableGroupIssued(group) || _tableIssuedAssignmentOf(group) != null;
+
+  Set<String> _issuedRateSourceIds(Iterable<_MaterialGroup> groups) {
+    final analysis = _analysis;
+    if (analysis == null) return const {};
+    final indexes = _analysisIndexes(analysis);
+    final result = <String>{};
+    final visited = <String>{};
+    void collect(_MaterialGroup group) {
+      if (!visited.add(group.key)) return;
+      final material = group.representative;
+      final anchor =
+          _tableMakeAnchorOf(group, authoritative: true) ??
+          _taskChildProductOf(material);
+      if (anchor != null &&
+          (anchor.latestPlanId?.isNotEmpty == true ||
+              anchor.issuedPlanQty > 0)) {
+        result.add(anchor.analysisLineId);
+      }
+      for (final target
+          in material.aggregatePreparation?.targetMaterialLineIds ??
+              const <String>[]) {
+        final targetGroup = indexes.groupsByLine[target];
+        if (targetGroup != null) collect(targetGroup);
+      }
+    }
+
+    for (final group in groups) {
+      collect(group);
+    }
+    return result;
+  }
+
+  Widget _issuedRateCell(
+    Iterable<_MaterialGroup> sourceGroups, {
+    required String key,
+  }) {
+    final groups = sourceGroups.toList(growable: false);
+    final sourceIds = _issuedRateSourceIds(groups);
+    final fallback = _aggregateTable.uniformRateText(groups) ?? '';
+    if (sourceIds.isEmpty || _analysis == null) {
+      return Tooltip(
+        key: ValueKey(key),
+        message: '已下达来源正在同步，刷新后可核对允许超产比例',
+        child: Text(fallback.isEmpty ? '—' : '$fallback%'),
+      );
+    }
+    return _MaterialAnalysisIssuedRateField(
+      key: ValueKey(key),
+      scope: _sessionScopeKey(),
+      analysisId: _analysis!.analysisId,
+      sourceIds: sourceIds,
+      revision: materialDetailRevision.value,
+      repository: ref.read(productionPlanRepositoryProvider),
+      fallbackText: fallback,
+      enabled: _canGenerate && !_busy && !_tableSubmitting,
+      onSynced: (rate) => _synchronizeIssuedRateInputs(groups, rate),
+      onApplied: (rate) {
+        if (!mounted) return;
+        _synchronizeIssuedRateInputs(groups, rate, includeUnissued: true);
+        refreshAfterProductionPlanGenerated(ref);
+        refreshBadges(ref);
+      },
+    );
+  }
+
+  void _synchronizeIssuedRateInputs(
+    Iterable<_MaterialGroup> groups,
+    double rate, {
+    bool includeUnissued = false,
+  }) {
+    if (!mounted) return;
+    final text = productionOverproductionPercentText(rate);
+    final changed = <_MaterialGroup>[];
+    for (final group in groups) {
+      if (!includeUnissued && !_tableGroupIssued(group)) continue;
+      final controller = _overproductionPercentController(
+        materialLineId: group.representative.materialLineId,
+        issued: _tableGroupIssued(group),
+      );
+      if (controller.text == text &&
+          (!includeUnissued ||
+              _prefilledOverproductionRates.isExplicit(controller))) {
+        continue;
+      }
+      if (includeUnissued ||
+          _prefilledOverproductionRates.isExplicit(controller)) {
+        _prefilledOverproductionRates.forget(controller);
+        controller.text = text;
+      } else {
+        _prefilledOverproductionRates.fill(
+          controller,
+          rate,
+          goodsId: group.representative.goodsId,
+        );
+      }
+      changed.add(group);
+    }
+    if (changed.isEmpty) return;
+    _mutateAggregateTable(
+      () => _aggregateTable.synchronizeIssuedRates(changed, text),
+    );
+  }
+
   String? _materialTableProductionWorkshopText(_MaterialTableRow row) {
     if (row.aggregate case final aggregate?) {
       return _aggregateTable.workshopText(aggregate);
@@ -5304,13 +5474,13 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     // 已下达行展示其实际工单指派；追加仍使用同一来源身份。
     final sharedBatch = _tableIssuedAssignmentOf(group);
-    if (sharedBatch != null) {
+    if (sharedBatch != null || _tableAssignmentLocked(group)) {
       return Tooltip(
         key: ValueKey('material-analysis-workshop-${group.key}'),
-        message: sharedBatch.planExecutionWorkshopName == null
+        message: sharedBatch?.planExecutionWorkshopName == null
             ? '生产车间以已下达工单为准'
-            : '生产车间：${sharedBatch.planExecutionWorkshopName}',
-        child: Text(sharedBatch.planExecutionWorkshopName ?? '—'),
+            : '生产车间：${sharedBatch!.planExecutionWorkshopName}',
+        child: Text(sharedBatch?.planExecutionWorkshopName ?? '以已下达工单为准'),
       );
     }
     final current = _tableWorkshopFor(group);
@@ -5361,13 +5531,13 @@ abstract class _MaterialAnalysisMaterialTableState
     }
     // 已下达行展示其实际工单负责人。
     final sharedBatch = _tableIssuedAssignmentOf(group);
-    if (sharedBatch != null) {
+    if (sharedBatch != null || _tableAssignmentLocked(group)) {
       return Tooltip(
         key: ValueKey('material-analysis-worker-${group.key}'),
-        message: sharedBatch.planExecutionResponsibleName == null
+        message: sharedBatch?.planExecutionResponsibleName == null
             ? '负责人以已下达工单为准'
-            : '负责人：${sharedBatch.planExecutionResponsibleName}',
-        child: Text(sharedBatch.planExecutionResponsibleName ?? '—'),
+            : '负责人：${sharedBatch!.planExecutionResponsibleName}',
+        child: Text(sharedBatch?.planExecutionResponsibleName ?? '以已下达工单为准'),
       );
     }
     final current = _tableWorkerFor(group);
@@ -7752,5 +7922,238 @@ abstract class _MaterialAnalysisMaterialTableState
       );
       return false;
     }
+  }
+}
+
+/// Issued values are execution facts. Editing them sends the exact task versions;
+/// the server commits the new allowance before this field accepts its result.
+class _MaterialAnalysisIssuedRateField extends StatefulWidget {
+  const _MaterialAnalysisIssuedRateField({
+    super.key,
+    required this.analysisId,
+    required this.sourceIds,
+    required this.scope,
+    required this.revision,
+    required this.repository,
+    required this.fallbackText,
+    required this.enabled,
+    required this.onApplied,
+    required this.onSynced,
+  });
+  final String analysisId, scope, fallbackText;
+  final Set<String> sourceIds;
+  final int revision;
+  final ProductionPlanRepository repository;
+  final bool enabled;
+  final ValueChanged<double> onApplied;
+  final ValueChanged<double> onSynced;
+
+  @override
+  State<_MaterialAnalysisIssuedRateField> createState() =>
+      _MaterialAnalysisIssuedRateFieldState();
+}
+
+class _MaterialAnalysisIssuedRateFieldState
+    extends State<_MaterialAnalysisIssuedRateField> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.fallbackText,
+  );
+  final FocusNode _focus = FocusNode();
+  List<MaterialAnalysisIssuedRate> _rates = const [];
+  Timer? _debounce;
+  bool _saving = false, _loading = true;
+  String? _error;
+  int _generation = 0;
+  int _readGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_focusChanged);
+    unawaited(_read());
+  }
+
+  @override
+  void didUpdateWidget(covariant _MaterialAnalysisIssuedRateField old) {
+    super.didUpdateWidget(old);
+    if (old.analysisId != widget.analysisId ||
+        old.scope != widget.scope ||
+        !setEquals(old.sourceIds, widget.sourceIds)) {
+      _debounce?.cancel();
+      _rates = const [];
+      _loading = true;
+      _saving = false;
+      _generation++;
+      unawaited(_read());
+    } else if (old.revision != widget.revision &&
+        !_focus.hasFocus &&
+        !_saving) {
+      unawaited(_read());
+    }
+  }
+
+  void _apply(List<MaterialAnalysisIssuedRate> rates) {
+    _rates = rates;
+    final values = rates.map((row) => row.effectiveRate).toSet();
+    _controller.text = values.length == 1
+        ? productionOverproductionPercentText(values.single)
+        : values.isEmpty
+        ? widget.fallbackText
+        : '';
+  }
+
+  Future<void> _read({bool force = false}) async {
+    final generation = ++_readGeneration;
+    final scopeGeneration = _generation;
+    if (force) setState(() => _loading = true);
+    try {
+      final rates = await widget.repository.materialAnalysisIssuedRates(
+        widget.analysisId,
+        widget.sourceIds,
+      );
+      if (!mounted ||
+          generation != _readGeneration ||
+          scopeGeneration != _generation ||
+          (!force && _focus.hasFocus)) {
+        return;
+      }
+      setState(() {
+        _apply(rates);
+        _loading = false;
+        _error = null;
+      });
+      final values = rates.map((row) => row.effectiveRate).toSet();
+      if (values.length == 1) widget.onSynced(values.single);
+    } catch (error) {
+      if (!mounted ||
+          generation != _readGeneration ||
+          scopeGeneration != _generation) {
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _error = productionErrorMessage(error, fallback: '比例读取失败，刷新后重试');
+      });
+    }
+  }
+
+  bool get _editable =>
+      widget.enabled &&
+      !_loading &&
+      !_saving &&
+      _rates.isNotEmpty &&
+      _rates.every((row) => row.canEdit);
+
+  void _focusChanged() {
+    if (_focus.hasFocus) {
+      _readGeneration++;
+    } else {
+      _debounce?.cancel();
+      unawaited(_save());
+    }
+  }
+
+  Future<void> _save() async {
+    final rate = parseProductionOverproductionPercent(_controller.text);
+    if (!_editable ||
+        rate == null ||
+        _rates.every((row) => row.effectiveRate == rate)) {
+      return;
+    }
+    final generation = _generation;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final rates = await widget.repository.updateMaterialAnalysisIssuedRates(
+        analysisId: widget.analysisId,
+        sourceIds: widget.sourceIds,
+        expected: _rates,
+        rate: rate,
+      );
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _apply(rates);
+        _saving = false;
+      });
+      widget.onApplied(rate);
+    } catch (error) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _saving = false;
+        _error = productionErrorMessage(error, fallback: '比例修改失败，请核对最新任务');
+      });
+      context.appWarning(_error!);
+      // A racing report or edit must replace the old editable projection.
+      await _read(force: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    _readGeneration++;
+    _debounce?.cancel();
+    _focus.removeListener(_focusChanged);
+    _focus.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reason =
+        _error ??
+        _rates.map((row) => row.blockingReason).whereType<String>().firstOrNull;
+    if (!_loading && !_saving && !_editable) {
+      final text = _controller.text.isEmpty ? '多个比例' : '${_controller.text}%';
+      return Tooltip(message: reason ?? '当前任务不能修改允许超产比例', child: Text(text));
+    }
+    return Tooltip(
+      message: reason ?? '首次报工前可修改，修改后车间任务立即生效',
+      child: TextField(
+        controller: _controller,
+        focusNode: _focus,
+        enabled: _editable,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (_) {
+          _readGeneration++;
+          setState(() {});
+          _debounce?.cancel();
+          _debounce = Timer(
+            const Duration(milliseconds: 600),
+            () => unawaited(_save()),
+          );
+        },
+        onSubmitted: (_) {
+          _debounce?.cancel();
+          unawaited(_save());
+        },
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            isDense: true,
+            suffixText: '%',
+            hintText: '多个比例',
+            errorText:
+                _controller.text.trim().isNotEmpty &&
+                    parseProductionOverproductionPercent(_controller.text) ==
+                        null
+                ? '请输入非负百分比，最多4位小数'
+                : null,
+            suffixIcon: _saving || _loading
+                ? const Padding(
+                    padding: EdgeInsets.all(10),
+                    child: SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : null,
+          ),
+        ),
+      ),
+    );
   }
 }

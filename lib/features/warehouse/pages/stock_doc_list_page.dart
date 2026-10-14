@@ -511,11 +511,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                       ),
                       // 页面头：Icon + 标题 + 计数 + 新建（2026-09-24 移入滚走区）。
                       Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: UtenSpacing.s8,
-                          left: UtenSpacing.s4,
-                          right: UtenSpacing.s4,
-                        ),
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                         child: Row(
                           children: [
                             Icon(
@@ -548,8 +544,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                         Padding(
                           padding: const EdgeInsets.only(
                             bottom: UtenSpacing.s8,
-                            left: UtenSpacing.s4,
-                            right: UtenSpacing.s4,
                           ),
                           child: UtenHistoryTimeFilter(
                             key: Key(

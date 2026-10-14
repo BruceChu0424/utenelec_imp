@@ -457,7 +457,6 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
     if (_loading && _grid.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -479,14 +478,6 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '${widget.workshopName}: 共 ${_grid.length} 台机。盘点时每台机一张卡, 每个容器点 满 / 半 / 空。'
-                '勾选多行后改任一勾选行的型号、吨位、容量或启用, 会对全部勾选行生效。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
               if (_grid.isEmpty)
                 const UtenEmpty(
                   icon: Icons.precision_manufacturing_outlined,

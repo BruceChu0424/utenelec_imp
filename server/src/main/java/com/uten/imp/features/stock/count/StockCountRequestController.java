@@ -73,6 +73,11 @@ public class StockCountRequestController {
     @PostMapping("/{id}/approve") public Map<String,Object> approve(@PathVariable UUID id,@Valid @RequestBody StockCountDtos.Decision request) {
         return service.decide(id,"APPROVE",request);
     }
+    @PostMapping("/approve-batch")
+    @PreAuthorize("hasAnyAuthority('stock:count:finance_review','stock:count:warehouse_review')")
+    public Map<String,Object> approveBatch(@Valid @RequestBody StockCountDtos.BatchApproval request) {
+        return Map.of("items",service.approveBatch(request));
+    }
     @PostMapping("/{id}/reject") public Map<String,Object> reject(@PathVariable UUID id,@Valid @RequestBody StockCountDtos.Decision request) {
         return service.decide(id,"REJECT",request);
     }

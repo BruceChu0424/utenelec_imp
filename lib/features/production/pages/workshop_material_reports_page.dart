@@ -546,22 +546,12 @@ class _WorkshopMaterialReportsPageState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s12,
-              UtenSpacing.s12,
-              UtenSpacing.s12,
-              0,
-            ),
+            padding: const EdgeInsets.fromLTRB(0, UtenSpacing.s12, 0, 0),
             child: _selectors(l10n),
           ),
           if (_statusPeriod != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                UtenSpacing.s12,
-                UtenSpacing.s12,
-                UtenSpacing.s12,
-                0,
-              ),
+              padding: const EdgeInsets.fromLTRB(0, UtenSpacing.s12, 0, 0),
               child: _CloseStatusCard(
                 period: _statusPeriod!,
                 status: _closeStatus,
@@ -572,10 +562,7 @@ class _WorkshopMaterialReportsPageState
               ),
             ),
           Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: UtenSpacing.s12,
-              vertical: UtenSpacing.s8,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
             child: UtenFilterToolbar<WmReportView>(
               segmentsKey: const Key('wm-report-view-segments'),
               segments: [
@@ -606,7 +593,7 @@ class _WorkshopMaterialReportsPageState
           ),
           if (_view == WmReportView.usage || _view == WmReportView.product)
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
+              padding: EdgeInsets.zero,
               child: UtenInlineNotice(
                 message:
                     '耗用由期初和期末盘点推算；含容器估盘时只能作为估算。'

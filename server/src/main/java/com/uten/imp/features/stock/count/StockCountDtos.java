@@ -27,4 +27,7 @@ public final class StockCountDtos {
     public record Decision(@NotNull @PositiveOrZero Long expectedVersion,
             @NotBlank @Pattern(regexp="[A-Za-z0-9._:-]{8,128}") String idempotencyKey,
             @Size(max=500) String reason) {}
+    public record BatchApprovalItem(@NotNull UUID id, @NotNull @Valid Decision decision) {}
+    public record BatchApproval(@NotBlank @Pattern(regexp="FINANCE|WAREHOUSE") String reviewRoute,
+            @NotEmpty @Size(max=50) List<@NotNull @Valid BatchApprovalItem> items) {}
 }

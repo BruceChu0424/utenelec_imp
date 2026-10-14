@@ -223,7 +223,7 @@ void materialPolicyCases() {
 
   for (final issued in [false, true]) {
     testWidgets(
-      'material policy: aggregate ratio is ${issued ? 'locked after issued 4000' : 'editable before issue'}',
+      'material policy: aggregate ratio is ${issued ? 'read only while issued source mapping is unavailable' : 'editable before issue'}',
       (tester) async {
         await _pump(
           tester,
@@ -273,7 +273,7 @@ void materialPolicyCases() {
             editor.evaluate().isEmpty ||
                 !tester.widget<TextField>(editor).enabled!,
             isTrue,
-            reason: '汇总行与按产品行同样冻结已下达工单的比例，不能在追加界面直接改',
+            reason: '来源工单映射缺失时不凭默认值解锁已下达比例',
           );
         } else {
           expect(tester.widget<TextField>(editor).enabled, isTrue);
@@ -281,6 +281,252 @@ void materialPolicyCases() {
       },
     );
   }
+
+  for (final draft in [false, true]) {
+    testWidgets(
+      'material policy: issued rate uses live ${draft ? 'pending-plan' : 'execution'} versions and commits after editing',
+      (tester) async {
+        await _pump(
+          tester,
+          permissions: {
+            ..._overSupplyPermissions,
+            Perm.productionMaterialAnalysisGenerate,
+          },
+          overSupply: true,
+          mutate: (data) {
+            _withIssuedMakeRow(data);
+            (data['allowedActions'] as List).add('GENERATE_PLAN');
+            return data;
+          },
+          issuedRates: [
+            {
+              if (draft)
+                'planItemId': 'pending-item-7'
+              else
+                'segmentId': 'execution-7',
+              'rateVersion': 3,
+              'effectiveRate': 0.15,
+              'canEdit': true,
+            },
+          ],
+          defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
+        );
+        expect(_rateText(tester, 'm-7'), '15');
+        await tester.enterText(_rateField('m-7'), '22.5');
+        await tester.pump(const Duration(milliseconds: 650));
+        await tester.pumpAndSettle();
+        final write = requests.singleWhere(
+          (request) =>
+              request.method == 'PUT' &&
+              request.path.endsWith('/overproduction-rates'),
+        );
+        expect(write.body!['sourceIds'], ['anchor-7']);
+        expect(write.body!['expected'], [
+          {
+            if (draft)
+              'planItemId': 'pending-item-7'
+            else
+              'segmentId': 'execution-7',
+            'rateVersion': 3,
+          },
+        ]);
+        expect(write.body!['rate'], 0.225);
+        expect(_rateText(tester, 'm-7'), '22.5');
+      },
+    );
+  }
+
+  testWidgets(
+    'material policy: issued aggregate assignment is locked and reported rate is read only',
+    (tester) async {
+      await _pump(
+        tester,
+        permissions: {
+          ..._overSupplyPermissions,
+          Perm.productionMaterialAnalysisGenerate,
+        },
+        overSupply: true,
+        mutate: (data) {
+          _withIssuedMakeRow(data);
+          (data['allowedActions'] as List).add('GENERATE_PLAN');
+          return data;
+        },
+        issuedRates: [
+          {
+            'segmentId': 'execution-7',
+            'rateVersion': 2,
+            'effectiveRate': 0.12,
+            'canEdit': false,
+            'blockingReason': '已有报工记录，允许超产比例已锁定',
+          },
+        ],
+        defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      const aggregate = 'g-m-7|本色|unit-1';
+      for (final kind in ['workshop', 'worker']) {
+        final cell = find.byKey(
+          ValueKey('material-aggregate-$kind-$aggregate'),
+        );
+        expect(cell, findsOneWidget);
+        expect(
+          find.descendant(of: cell, matching: find.byType(InkWell)),
+          findsNothing,
+        );
+      }
+      final rate = find.byKey(
+        const ValueKey('material-aggregate-rate-$aggregate'),
+      );
+      expect(
+        find.descendant(of: rate, matching: find.byType(TextField)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: rate, matching: find.text('12%')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'material policy: quantity draft uses effective rate and cancelling cannot undo committed rate',
+    (tester) async {
+      await _pump(
+        tester,
+        permissions: {
+          ..._overSupplyPermissions,
+          Perm.productionMaterialAnalysisGenerate,
+        },
+        overSupply: true,
+        mutate: (data) {
+          _withIssuedMakeRow(data);
+          (data['overproductionDefaults'] as Map)['g-m-7'] = 0.15;
+          return data;
+        },
+        issuedRates: [
+          {
+            'segmentId': 'execution-7',
+            'rateVersion': 3,
+            'effectiveRate': 0.15,
+            'canEdit': true,
+          },
+        ],
+        defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
+      );
+      const aggregate = 'g-m-7|本色|unit-1';
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('material-aggregate-qty-$aggregate')),
+        '100',
+      );
+      await _settlePreview(tester);
+      Map<String, dynamic> latestPreviewGroup() => _records(
+        requests
+            .lastWhere(
+              (request) => request.path.endsWith('/aggregate-orders/preview'),
+            )
+            .body!['groups'],
+      ).single;
+      expect(
+        latestPreviewGroup().containsKey('allowedOverproductionRate'),
+        isFalse,
+        reason: '读取有效比例不能把系统预填伪装成人工确认',
+      );
+      final editor = find.descendant(
+        of: find.byKey(const ValueKey('material-aggregate-rate-$aggregate')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(editor, '22.5');
+      await tester.pump(const Duration(milliseconds: 650));
+      await _settlePreview(tester);
+      expect(latestPreviewGroup()['allowedOverproductionRate'], 0.225);
+      await tester.tap(
+        find.byKey(const Key('material-aggregate-cancel-drafts')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('撤销草稿'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-product')),
+      );
+      await tester.pumpAndSettle();
+      expect(_rateText(tester, 'm-7'), '22.5');
+      expect(_qtyText(tester, _appendQty('m-7')), '0');
+    },
+  );
+
+  testWidgets(
+    'material policy: delayed rate read cannot overwrite focused input or its CAS baseline',
+    (tester) async {
+      final lateRead = Completer<List<Map<String, dynamic>>>();
+      var readStarted = false;
+      await _pump(
+        tester,
+        permissions: {
+          ..._overSupplyPermissions,
+          Perm.productionMaterialAnalysisGenerate,
+        },
+        overSupply: true,
+        mutate: _withIssuedMakeRow,
+        issuedRates: [
+          {
+            'segmentId': 'execution-7',
+            'rateVersion': 3,
+            'effectiveRate': 0.15,
+            'canEdit': true,
+          },
+        ],
+        issuedRateRead: (count, current) {
+          if (count == 1) return current;
+          readStarted = true;
+          return lateRead.future;
+        },
+        detailResponse: (data, count) {
+          if (count > 1) {
+            (data['overproductionDefaults'] as Map)['g-m-7'] = 0.18;
+          }
+          return data;
+        },
+        defaultWorkshops: _workshopDefaultsFor(const ['g-m-7']),
+      );
+      await tester.pump(const Duration(seconds: 46));
+      await tester.pumpAndSettle();
+      expect(readStarted, isTrue);
+      await tester.enterText(_rateField('m-7'), '20');
+      lateRead.complete([
+        {
+          'segmentId': 'execution-7',
+          'rateVersion': 99,
+          'effectiveRate': 0.15,
+          'canEdit': true,
+        },
+      ]);
+      await tester.pump(const Duration(milliseconds: 10));
+      expect(_rateText(tester, 'm-7'), '20');
+      await tester.pump(const Duration(milliseconds: 650));
+      await tester.pumpAndSettle();
+      final saved = requests.singleWhere(
+        (request) =>
+            request.method == 'PUT' &&
+            request.path.endsWith('/overproduction-rates'),
+      );
+      expect(saved.body!['expected'], [
+        {'segmentId': 'execution-7', 'rateVersion': 3},
+      ]);
+      expect(_rateText(tester, 'm-7'), '20');
+    },
+  );
 }
 
 void materialBoundaryCases() {

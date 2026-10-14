@@ -83,6 +83,28 @@ public class WorkshopStockCountPostingAdapter implements WorkshopStockCountPosti
     @Override
     @Transactional(propagation=Propagation.MANDATORY)
     @PreAuthorize("hasAuthority('stock:count:warehouse_review')")
+    public void prelockApprovalWarehouses(List<UUID> warehouseIds) {
+        var ids=warehouseIds.stream().distinct().toList();
+        if(ids.isEmpty())return;
+        var settings=db.queryForList("""
+                SELECT workshop_department_id,periodic_bin_warehouse_id FROM workshop_material_settings
+                WHERE periodic_bin_warehouse_id IN (:ids) ORDER BY workshop_department_id
+                """,Map.of("ids",ids));
+        if(settings.size()!=ids.size())throw conflict("所选内料仓设置已变化，请刷新后重新核对");
+        // All workshop mutations use settings -> periods -> inventory. Hold
+        // every selected setting before the batch's complete inventory prefix.
+        for(var setting:settings) {
+            UUID workshop=(UUID)setting.get("workshop_department_id");
+            scope.requireWorkshop(workshop);
+            var locked=bins.enabledSettingsForUpdate(workshop);
+            if(!Objects.equals(locked.binWarehouseId(),setting.get("periodic_bin_warehouse_id")))
+                throw conflict("所选内料仓设置已变化，请刷新后重新核对");
+        }
+    }
+
+    @Override
+    @Transactional(propagation=Propagation.MANDATORY)
+    @PreAuthorize("hasAuthority('stock:count:warehouse_review')")
     public PostingResult postApproved(UUID requestId, UUID approvalEventId) {
         List<Map<String,Object>> requests=db.queryForList("""
                 SELECT request.warehouse_id, request.reviewed_by, request.reason, request.row_version,

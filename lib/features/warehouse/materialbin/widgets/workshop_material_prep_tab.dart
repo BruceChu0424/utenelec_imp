@@ -564,14 +564,6 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                     ),
                   ),
                 ),
-              const SizedBox(height: UtenSpacing.s4),
-              Text(
-                '单个重量填件重 (不含水口)。勾选多行后改任一勾选行的颗粒或单重, 会对全部勾选行生效。'
-                '只选了料、没填单重的产品也能先保存, 车间照常开工, 结算前补上单重即可。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
               const SizedBox(height: UtenSpacing.s8),
               if (_grid.isEmpty)
                 const UtenEmpty(

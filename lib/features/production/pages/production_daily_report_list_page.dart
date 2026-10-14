@@ -276,11 +276,7 @@ class _ProductionDailyReportListPageState
                 return Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: UtenSpacing.s8,
-                        left: UtenSpacing.s4,
-                        right: UtenSpacing.s4,
-                      ),
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                       child: Row(
                         children: [
                           Icon(
@@ -322,10 +318,7 @@ class _ProductionDailyReportListPageState
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: UtenSpacing.s8,
-                        left: UtenSpacing.s4,
-                      ),
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                       // 全平台统一筛选工具条：状态分段（搜索框在上方标题行，不在此收口）。
                       child: UtenFilterToolbar<int?>(
                         // 2026-09-21 用户口径: hub 卡有草稿红徽章, 子分类也要有数——

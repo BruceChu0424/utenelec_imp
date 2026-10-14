@@ -15,6 +15,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -375,9 +376,9 @@ class _MaterialReturnRequestState
     PopScope(
       canPop: !_locked,
       child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: const Text('核对余料退仓'),
+        appBar: UtenAppBar(
+          showPagePermissionAction: false,
+          title: '核对余料退仓',
           actions: [
             IconButton(
               tooltip: '刷新可退明细',

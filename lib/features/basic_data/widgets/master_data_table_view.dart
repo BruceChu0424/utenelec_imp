@@ -39,6 +39,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_scrollbar.dart';
 import '../../../components/layout/uten_sticky_header.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
+import '../../../components/layout/uten_table_horizontal_scroll_controller.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -74,7 +75,7 @@ class MasterDataTableCellScope extends InheritedWidget {
 }
 
 /// 一列定义：[key](筛选键，与后端 query 参数对齐)、[label](列头)、
-/// [width](固定列宽，列对齐用)、[value](文本值)、[cellBuilder](可选自定义内容)。
+/// [width](富内容默认下限)、[value](文本值)、[cellBuilder](可选自定义内容)。
 class MasterColumnDef<T> {
   const MasterColumnDef({
     required this.key,
@@ -117,6 +118,9 @@ class MasterColumnDef<T> {
   /// Unformatted decimal source for display calculations; never inferred from a money/quantity label.
   final String? Function(T row)? exactValueOf;
   final Listenable? Function(T row)? exactListenableOf;
+  /// Rich cells retain this fallback minimum unless [minimumWidthOf] describes
+  /// their actual control geometry. Plain text columns fit their loaded values.
+  /// User-resized widths always take precedence.
   final double width;
 
   /// Optional presentation minimum for interactive cells. The ordinary
@@ -308,6 +312,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.currentPage = 1,
     this.scrollToEndRequest = 0,
     this.totalPages = 1,
+    this.showPaginationControls = true,
     this.onPageChange,
     this.paginationScope,
     this.paginationRevision,
@@ -657,6 +662,8 @@ class MasterDataTableView<T> extends StatefulWidget {
 
   final int currentPage;
   final int totalPages;
+  /// Pickers may place the controls alongside their bottom confirmation bar.
+  final bool showPaginationControls;
   final FutureOr<void> Function(int page)? onPageChange;
 
   /// Stable query identity (category, search, status, dates, etc.), excluding
@@ -885,6 +892,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     this,
     _loadNextFromController,
     _busy,
+    currentPage: _currentPage,
+    totalPages: widget.totalPages,
+    goToPage: _gotoPage,
     loadPrevious: _loadPreviousFromController,
     updateVisiblePage: (viewport) {
       _externalPageViewport = viewport;
@@ -2417,9 +2427,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 列宽自动适配上限：超长文本（如备注）默认按此截断+省略号，用户可再拖宽。
   static const double _maxColWidth = 480;
 
-  /// 自动适配取样行数：量前 N 行最宽值即可(全量量算大表偏重，最宽值通常在前段出现；
-  /// 此后每次数据刷新再各取前 N 行里没量过的值补量，列只会加宽)。
-  static const int _autoFitSampleSize = 30;
   static const double _cellPadX = UtenSpacing.s12; // 单元格左右内边距（表头/表体一致）
   static const double _headerIconAllowance = 24; // 表头统一菜单图标 + 富余
 
@@ -2449,13 +2456,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       !widget.primary || !widget.embedded,
       'MasterDataTableView: primary 不能与 embedded 同用(embedded 场景无 NestedScrollView 祖先)。',
     );
-    _headerH = ScrollController();
+    _headerH = UtenTableHorizontalScrollController(
+      leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleIndices),
+      trailingInset: () => widget.showColumnChooser ? 48 : 0,
+    );
     _columnOrder = _columns.map((c) => c.key).toList();
     _hiddenKeys.addAll(
       _columns.where((c) => !c.defaultVisible).map((c) => c.key),
     );
     _normalizeRequiredLeadingColumns();
-    _bodyH = ScrollController();
+    _bodyH = UtenTableHorizontalScrollController(
+      leadingInset: () => _pinnedLeadingWidth(_pinnedVisibleIndices),
+      trailingInset: () => widget.showColumnChooser ? 48 : 0,
+    );
     _bodyV = ScrollController();
     if (widget.scrollToEndRequest != 0) {
       _pendingScrollToEnd = widget.scrollToEndRequest;
@@ -2904,12 +2917,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final measureStyle = utenIsStatusOrProgressColumn(def.key, def.label)
         ? bodyStyle.copyWith(fontWeight: FontWeight.w700)
         : bodyStyle;
-    final sampleCount = pool.length < _autoFitSampleSize
-        ? pool.length
-        : _autoFitSampleSize;
     // 去重集合只防重复量同一串；过大时清掉(最大宽度已记下，不影响结果)。
     if (measure.seen.length > 4000) measure.seen.clear();
-    for (var r = 0; r < sampleCount; r++) {
+    for (var r = 0; r < pool.length; r++) {
       final text = def.value(pool[r]) ?? '';
       if (text.isEmpty || !measure.seen.add(text)) continue;
       final width = _measureText(text, measureStyle, textScaler);
@@ -2918,7 +2928,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     return measure;
   }
 
-  /// 量宽结果 → 列宽(加内边距/图标富余，夹在上下限之间；声明宽度作下限)。
+  /// Fit the widest loaded value and the complete header independently. Header
+  /// icons do not add empty room to a body value that is already wider.
   double _fitColumnWidth(
     BuildContext context,
     MasterColumnDef<T> def,
@@ -2927,21 +2938,20 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final minimum = _minimumColumnWidth(context, def);
     final maximum = math.max(minimum, _maxColWidth);
     final padding = math.max(_cellPadX, _columnHorizontalPadding(context, def));
-    final text = measure.header > measure.body ? measure.header : measure.body;
+    final header = measure.header +
+        _headerIconAllowance +
+        (def.info != null ? _headerInfoIconAllowance : 0) +
+        (_pinnedKeys.contains(def.key) ? _pinIconAllowance : 0);
+    final text = math.max(header, measure.body);
     final measured =
         (text +
                 padding * 2 +
-                _headerIconAllowance +
-                (def.info != null ? _headerInfoIconAllowance : 0) +
-                // 固定列标签前的图钉（18 图标 + 4 间距）也占标签行宽度。
-                (_pinnedKeys.contains(def.key) ? _pinIconAllowance : 0) +
                 _autoFitBuffer)
             .clamp(minimum, maximum);
-    final declared = def.width.clamp(minimum, maximum);
-    // Rich cells may contain buttons/progress/two-line guidance whose width
-    // cannot be inferred from [value]. Treat the declared width as a minimum;
-    // plain text columns can still auto-grow beyond it.
-    return measured < declared ? declared : measured;
+    if (def.cellBuilder == null || def.minimumWidthOf != null) return measured;
+    // A custom cell may contain multiple controls beyond its textual value.
+    // Preserve its declared fallback until it supplies an actual minimum.
+    return math.max(measured, def.width.clamp(minimum, maximum));
   }
 
   /// 数据刷新后的增量量宽：挪到本帧之后执行，只量新出现的值；有列需要加宽才重建一次。
@@ -3354,6 +3364,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   @override
   Widget build(BuildContext context) {
+    _bindPagination();
     _publishProjection();
     // 吸顶表：每帧 post-frame 复核量位（数据/布局变化后刷新锚点）。
     if (_sticky != null) _scheduleStickyMeasure();
@@ -3371,7 +3382,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           _buildTable(context),
           if (widget.summaryBar != null && !widget.summaryBarInline)
             _buildSummaryBar(context),
-          if (widget.totalPages > 1) _buildPager(context),
+          if (widget.showPaginationControls && widget.totalPages > 1)
+            _buildPager(context),
           if (_hasFloatingBatchActions)
             Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
@@ -3410,7 +3422,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final footer = [
       if (widget.summaryBar != null && !widget.summaryBarInline)
         _buildSummaryBar(context),
-      if (widget.totalPages > 1) _buildPager(context),
+      if (widget.showPaginationControls && widget.totalPages > 1)
+        _buildPager(context),
     ];
     return _wrapPresentation(
       LayoutBuilder(
@@ -5335,6 +5348,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                         enabled: !_busy,
                         keyboardType: TextInputType.number,
                         textAlign: TextAlign.center,
+                        textAlignVertical: TextAlignVertical.center,
                         style: theme.textTheme.bodyMedium,
                         decoration: UtenInputDecoration(
                           InputDecoration(

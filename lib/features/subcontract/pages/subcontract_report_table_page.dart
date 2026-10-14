@@ -301,11 +301,7 @@ class _SubcontractReportTablePageState
             // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
             child: UtenCollapsingHeaderScrollView(
               collapsingHeader: Padding(
-                padding: const EdgeInsets.only(
-                  bottom: UtenSpacing.s8,
-                  left: UtenSpacing.s4,
-                  right: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                 child: Row(
                   children: [
                     Icon(
@@ -349,7 +345,7 @@ class _SubcontractReportTablePageState
 
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

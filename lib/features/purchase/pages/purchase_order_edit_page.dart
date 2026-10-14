@@ -1645,13 +1645,29 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
       notifySavedPriceAssessment(context, ref, assessments.values);
       await completeFormDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
-      if (created.length == 1) {
-        context.replace(
-          RoutePath.purchaseDocDetail(_cfg.type.pathSegment, created.first.id),
-        );
-      } else {
-        context.go('/purchase/${_cfg.type.pathSegment}');
+      // 新建完成回任务中心：单张与拆单使用同一去向，继续办理采购队列。
+      // 携带的任务中心查询参数保留；来源申请详情不能成为保存后的落点。
+      final router = GoRouter.of(context);
+      final configuration = router.routerDelegate.currentConfiguration;
+      if (router.canPop() && configuration.isNotEmpty) {
+        final previous = configuration.remove(configuration.last).lastOrNull;
+        if (previous?.matchedLocation ==
+            RouteName.operationsPurchaseWorkbench) {
+          router.pop();
+          return;
+        }
       }
+      final returnTo = GoRouterState.of(
+        context,
+      ).uri.queryParameters['returnTo'];
+      final source = returnTo == null ? null : Uri.tryParse(returnTo);
+      final destination =
+          source?.path == RouteName.operationsPurchaseWorkbench &&
+              !source!.hasScheme &&
+              !source.hasAuthority
+          ? returnTo!
+          : RouteName.operationsPurchaseWorkbench;
+      context.go(destination);
     } on ApiException catch (e) {
       if (mounted && formDraftIdentityIsCurrent) context.appError(e.message);
     } catch (_) {
@@ -1867,36 +1883,6 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
                           const SizedBox(height: UtenSpacing.s12),
                           // 「明细 (N)」标题行 2026-09-11 撤除；同日「从上游引入」也并入
                           // 明细表工具条，与「表头设置」同排同高（不再单独占一行）。
-                          // 2026-09-14：「统一设置条款」是本页唯一的批量条款入口，却只挂在
-                          // 行右键菜单上——条款格是 TextField/下拉，用户最自然的右键位置被
-                          // 输入框自带菜单吃掉，等于零可见入口（报错文案还在指路一个看不见
-                          // 的按钮）。补这行常驻提示说明入口在哪；不加窄屏门控，宽屏桌面才是
-                          // 看不见右键的重灾区。
-                          Padding(
-                            padding: const EdgeInsets.only(
-                              bottom: UtenSpacing.s8,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.info_outline_rounded,
-                                  size: 18,
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: UtenSpacing.s8),
-                                Expanded(
-                                  child: Text(
-                                    '勾选多行后在选中行上右键（触屏长按）可「统一设置条款」，'
-                                    '一次写全套供应商、结账方式、币种、税率（留空的保持原值）；'
-                                    '右键请点在非输入框的位置，例如行首复选框或货品名称一列。',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                           _giftSemanticsConfirmation,
                           // 列显隐/排序持久化（本页固定订货模式，单桶即可；账号级）。
                           Builder(

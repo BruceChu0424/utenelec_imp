@@ -398,7 +398,7 @@ class _SalesReportPageState extends ConsumerState<SalesReportPage> {
 
   Widget _buildFilterPane(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

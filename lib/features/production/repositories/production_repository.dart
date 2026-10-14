@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../../shared/documents/document_unapproval.dart';
 // 生产模块仓库（生产管理 / production）。
 //
@@ -94,6 +96,62 @@ class ProductionPlanRepository {
   static const _materialAnalysisProjection = {
     'projection': materialAnalysisProjectionVersion,
   };
+
+  Future<List<MaterialAnalysisIssuedRate>> materialAnalysisIssuedRates(
+    String analysisId,
+    Set<String> sourceIds,
+  ) async {
+    final ids = sourceIds.toList()..sort();
+    final reads = <Future<List<Map<String, dynamic>>> Function()>[];
+    for (var start = 0; start < ids.length; start += 100) {
+      final end = start + 100 < ids.length ? start + 100 : ids.length;
+      final batch = ids.sublist(start, end).join(',');
+      reads.add(
+        () => api.getList(
+          '$_materialAnalysesBase/$analysisId/overproduction-rates',
+          query: {'sourceIds': batch},
+        ),
+      );
+    }
+    final rates = <String, MaterialAnalysisIssuedRate>{};
+    for (final batch in await _runBounded(reads)) {
+      for (final row in batch) {
+        final rate = MaterialAnalysisIssuedRate.fromJson(row);
+        rates[rate.targetId] = rate;
+      }
+    }
+    return rates.values.toList(growable: false);
+  }
+
+  Future<List<MaterialAnalysisIssuedRate>> updateMaterialAnalysisIssuedRates({
+    required String analysisId,
+    required Set<String> sourceIds,
+    required List<MaterialAnalysisIssuedRate> expected,
+    required double rate,
+  }) async {
+    final sources = sourceIds.toList()..sort();
+    final versions = expected.map((row) => row.versionJson).toList()
+      ..sort(
+        (a, b) => ((a['segmentId'] ?? a['planItemId']) as String).compareTo(
+          (b['segmentId'] ?? b['planItemId']) as String,
+        ),
+      );
+    return [
+      for (final row in await api.putList(
+        '$_materialAnalysesBase/$analysisId/overproduction-rates',
+        body: {
+          'sourceIds': sources,
+          'expected': versions,
+          'rate': rate,
+          'idempotencyKey': businessIdempotencyKey(
+            'material-analysis-live-rate',
+            '$analysisId|${sources.join(',')}|${jsonEncode(versions)}|$rate',
+          ),
+        },
+      ))
+        MaterialAnalysisIssuedRate.fromJson(row),
+    ];
+  }
 
   Future<PagedResult<ProductionPlanListItem>> list({
     int page = 1,

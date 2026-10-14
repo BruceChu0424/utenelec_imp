@@ -352,7 +352,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         .watch(effectiveDocumentStatusCountsProvider(_statusScope))
         .valueOrNull;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

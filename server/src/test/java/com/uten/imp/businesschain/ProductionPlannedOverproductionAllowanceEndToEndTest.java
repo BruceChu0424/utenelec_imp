@@ -44,6 +44,7 @@ class ProductionPlannedOverproductionAllowanceEndToEndTest {
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired ProductionPlanService plans;
     @Autowired com.uten.imp.features.production.execution.ProductionOverproductionRateService rates;
+    @Autowired com.uten.imp.features.production.analysis.MaterialAnalysisOverproductionRateService liveRates;
     @Autowired com.uten.imp.features.production.mrp.ProductionExecutionBatchService batches;
     private FullChainEndToEndTest fixture;
     private FullChainEndToEndTest.World world;
@@ -57,6 +58,74 @@ class ProductionPlannedOverproductionAllowanceEndToEndTest {
         workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId");worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
     }
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    @Test void issuedPendingApprovalRateIsEditableReplayedAndInheritedByApprovedTasks() {
+        var analysis=analysis();UUID source=analysis.products().getFirst().analysisLineId();
+        var original=request(analysis,source,"10",".10");
+        var pending=new IssueWorkshopPlansRequest(original.version(),original.fingerprint(),original.idempotencyKey(),
+                original.warehouseId(),original.billDate(),original.deliveryDate(),false,original.lines());
+        UUID plan=commands.issueWorkshopPlans(analysis.analysisId(),pending).plans().getFirst().planId();
+        UUID draft=db.queryForObject("SELECT id FROM production_planning_drafts WHERE plan_id=? AND status='ACTIVE'",UUID.class,plan);
+        String payload=db.queryForObject("SELECT payload::text FROM production_planning_drafts WHERE id=?",String.class,draft);
+        var before=liveRates.context(analysis.analysisId(),java.util.Set.of(source));
+        assertEquals(1,before.size());assertNull(before.getFirst().segmentId());assertNotNull(before.getFirst().planItemId());assertTrue(before.getFirst().canEdit());
+        var expected=before.stream().map(rate->new com.uten.imp.features.production.execution.ProductionOverproductionRateService.PlanningRateVersion(
+                rate.segmentId(),rate.planItemId(),rate.rateVersion())).toList();
+        String key="pending-plan-live-rate-"+UUID.randomUUID();
+        liveRates.change(analysis.analysisId(),java.util.Set.of(source),expected,new BigDecimal(".30"),key);
+        assertAllowance(plans.detail(plan).getItems().getFirst(),".30","EXPLICIT");
+        liveRates.change(analysis.analysisId(),java.util.Set.of(source),expected,new BigDecimal(".30"),key);
+        assertThrows(ApiException.class,()->liveRates.change(analysis.analysisId(),java.util.Set.of(source),expected,new BigDecimal(".40"),key));
+        assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM production_material_analysis_commands WHERE analysis_id=? AND operation='OVERPRODUCTION_RATE'",Integer.class,analysis.analysisId()));
+        assertEquals("SUPERSEDED",db.queryForObject("SELECT status FROM production_planning_drafts WHERE id=?",String.class,draft));
+        assertEquals(allowancePayload(payload),allowancePayload(db.queryForObject("SELECT payload::text FROM production_planning_drafts WHERE plan_id=? AND status='ACTIVE'",String.class,plan)));
+        plans.approve(plan);
+        assertPlanAndSegments(plan,".30");
+        assertDecimal("10",db.queryForObject("SELECT qty FROM production_plan_items WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,plan));
+        assertEquals(workshop,db.queryForObject("SELECT workshop_department_id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,plan));
+        assertEquals(worker,db.queryForObject("SELECT responsible_employee_id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,plan));
+    }
+
+    @Test void sharedReadScopeWithGeneratePermissionCannotChangeAnotherOwnersRate() {
+        var analysis=analysis();UUID source=analysis.products().getFirst().analysisLineId();
+        UUID plan=commands.issueWorkshopPlans(analysis.analysisId(),request(analysis,source,"10",".10")).plans().getFirst().planId();
+        var before=liveRates.context(analysis.analysisId(),java.util.Set.of(source));
+        var expected=before.stream().map(rate->new com.uten.imp.features.production.execution.ProductionOverproductionRateService.PlanningRateVersion(
+                rate.segmentId(),rate.planItemId(),rate.rateVersion())).toList();
+        var viewer=fixture.seedWorld("read-only-live-rate-"+UUID.randomUUID());
+        UUID owner=db.queryForObject("SELECT maker_id FROM production_material_analyses WHERE id=?",UUID.class,analysis.analysisId());
+        db.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id) VALUES (?,'production_plan',?)",viewer.superAdminUserId(),owner);
+        var principal=new com.uten.imp.security.AuthUser(viewer.superAdminUserId(),viewer.employeeId(),"shared-rate-viewer",
+                java.util.Set.of("production_material_analysis:view","production_material_analysis:generate"),false,true,false);
+        SecurityContextHolder.getContext().setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(principal,null,principal.getAuthorities()));
+        assertFalse(liveRates.context(analysis.analysisId(),java.util.Set.of(source)).getFirst().canEdit());
+        assertThrows(ApiException.class,()->liveRates.change(analysis.analysisId(),java.util.Set.of(source),expected,new BigDecimal(".20"),"readonly-owner-rate-"+UUID.randomUUID()));
+        assertDecimal(".10",db.queryForObject("SELECT allowed_overproduction_rate FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",BigDecimal.class,plan));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_analysis_commands WHERE analysis_id=? AND operation='OVERPRODUCTION_RATE'",Integer.class,analysis.analysisId()));
+    }
+
+    @Test void blockedExecutionRateRollsBackTheWholeMixedDraftAndIssuedSourceChange() {
+        var analysis=analysis();UUID source=analysis.products().getFirst().analysisLineId();
+        var original=request(analysis,source,"5",".10");
+        var pending=new IssueWorkshopPlansRequest(original.version(),original.fingerprint(),original.idempotencyKey(),
+                original.warehouseId(),original.billDate(),original.deliveryDate(),false,original.lines());
+        UUID draftPlan=commands.issueWorkshopPlans(analysis.analysisId(),pending).plans().getFirst().planId();
+        UUID draft=db.queryForObject("SELECT id FROM production_planning_drafts WHERE plan_id=? AND status='ACTIVE'",UUID.class,draftPlan);
+        UUID activePlan=commands.issueWorkshopPlans(analysis.analysisId(),request(analyses.detail(analysis.analysisId()),source,"5",".20")).plans().getFirst().planId();
+        assertNotEquals(draftPlan,activePlan);
+        UUID segment=db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted",UUID.class,activePlan);
+        rates.submit(new com.uten.imp.features.production.execution.ProductionOverproductionRateContracts.SubmitRequest(
+                segment,0L,new BigDecimal(".25"),"车间原申请正在审核","mixed-source-pending-"+UUID.randomUUID()));
+        var before=liveRates.context(analysis.analysisId(),java.util.Set.of(source));
+        assertEquals(2,before.size());
+        var expected=before.stream().map(rate->new com.uten.imp.features.production.execution.ProductionOverproductionRateService.PlanningRateVersion(
+                rate.segmentId(),rate.planItemId(),rate.rateVersion())).toList();
+        assertThrows(ApiException.class,()->liveRates.change(analysis.analysisId(),java.util.Set.of(source),expected,new BigDecimal(".30"),"mixed-source-rate-"+UUID.randomUUID()));
+        assertAllowance(plans.detail(draftPlan).getItems().getFirst(),".10","EXPLICIT");
+        assertPlanAndSegments(activePlan,".20");
+        assertEquals("ACTIVE",db.queryForObject("SELECT status FROM production_planning_drafts WHERE id=?",String.class,draft));
+        assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM production_material_analysis_commands WHERE analysis_id=? AND operation='OVERPRODUCTION_RATE'",Integer.class,analysis.analysisId()));
+    }
 
     @Test void structuralDefaultsAndOnlyRatesAPersonConfirmedAreRemembered() {
         var defaults=rates.defaults(java.util.Set.of(world.goodsA(),world.goodsB(),world.goodsC(),world.goodsD(),world.goodsE()));
@@ -325,4 +394,13 @@ class ProductionPlannedOverproductionAllowanceEndToEndTest {
         assertFalse(rates.isEmpty());rates.forEach(rate->assertDecimal(expected,rate));
     }
     private static void assertDecimal(String expected,BigDecimal actual) { assertEquals(0,new BigDecimal(expected).compareTo(actual)); }
+
+    private static com.fasterxml.jackson.databind.JsonNode allowancePayload(String raw) {
+        try {
+            var payload=(com.fasterxml.jackson.databind.node.ObjectNode)new com.fasterxml.jackson.databind.ObjectMapper().readTree(raw);
+            payload.remove("previewFingerprint");
+            for(var segment:payload.path("segments"))((com.fasterxml.jackson.databind.node.ObjectNode)segment).remove("bomFingerprint");
+            return payload;
+        } catch(java.io.IOException error) { throw new AssertionError(error); }
+    }
 }

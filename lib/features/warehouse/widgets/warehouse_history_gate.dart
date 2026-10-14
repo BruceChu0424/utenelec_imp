@@ -45,10 +45,7 @@ class _WarehouseHistoryGateState extends State<WarehouseHistoryGate> {
           const SizedBox(height: UtenFilterRow.rowGap),
         ],
         Padding(
-          padding: const EdgeInsets.only(
-            left: UtenSpacing.s4,
-            right: UtenSpacing.s4,
-          ),
+          padding: EdgeInsets.zero,
           child: UtenHistoryTimeFilter(
             key: widget.timeKey,
             value: _time,

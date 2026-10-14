@@ -803,11 +803,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     // 宽屏在右栏内联动，紧凑态在内容容器内联动）。
     return UtenCollapsingHeaderScrollView(
       collapsingHeader: Padding(
-        padding: const EdgeInsets.only(
-          left: UtenSpacing.s4,
-          right: UtenSpacing.s4,
-          bottom: UtenSpacing.s8,
-        ),
+        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
         child: UtenFilterToolbar<String?>(
           // 分类树常驻左侧，右栏显示当前范围；Wrap 支持分栏拖窄与手机。
           trailing: Wrap(

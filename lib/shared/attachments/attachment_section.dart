@@ -131,16 +131,9 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
               ),
               if (canUpload) ...[
                 const SizedBox(width: UtenSpacing.s8),
-                FilledButton.tonalIcon(
+                FilledButton.tonal(
                   onPressed: _busy ? null : _pickAndUpload,
-                  icon: _busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.upload_file_outlined, size: 18),
-                  label: Text(_busy ? '上传中…' : '上传'),
+                  child: Text(_busy ? '上传中…' : '添加文件'),
                 ),
               ],
             ],

@@ -563,15 +563,11 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           ],
           Padding(
             padding: widget.embedded
-                ? const EdgeInsets.only(
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                    bottom: UtenSpacing.s8,
-                  )
+                ? const EdgeInsets.only(bottom: UtenSpacing.s8)
                 : const EdgeInsets.fromLTRB(
+                    0,
                     UtenSpacing.s12,
-                    UtenSpacing.s12,
-                    UtenSpacing.s12,
+                    0,
                     UtenSpacing.s8,
                   ),
             child: Column(

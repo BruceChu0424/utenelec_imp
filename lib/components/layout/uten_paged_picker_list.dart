@@ -26,6 +26,7 @@ class UtenPagedPickerList<T> extends StatelessWidget {
     this.separatorBuilder,
     this.padding = EdgeInsets.zero,
     this.rowsController,
+    this.showPaginationControls = true,
   });
 
   final List<T> items;
@@ -43,6 +44,7 @@ class UtenPagedPickerList<T> extends StatelessWidget {
   final String emptyMessage;
   final EdgeInsetsGeometry padding;
   final MasterDataTableRowsController<T>? rowsController;
+  final bool showPaginationControls;
 
   @override
   Widget build(BuildContext context) => MasterDataTableView<T>(
@@ -54,6 +56,7 @@ class UtenPagedPickerList<T> extends StatelessWidget {
     onFilterChanged: (_, _) {},
     rowKeyOf: idOf,
     rowsController: rowsController,
+    showPaginationControls: showPaginationControls,
     listItemBuilder: itemBuilder,
     listSeparatorBuilder: separatorBuilder,
     listPadding: padding,

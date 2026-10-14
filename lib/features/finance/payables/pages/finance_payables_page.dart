@@ -1169,7 +1169,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage> {
     final applyFilter = changeFilter ?? _changeFilter;
     final applyReset = resetFilters ?? _resetFilters;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

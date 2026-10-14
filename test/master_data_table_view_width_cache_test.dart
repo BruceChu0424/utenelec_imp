@@ -8,6 +8,9 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 Widget _table(
   List<String> items, {
   String columnKey = 'name',
+  double declaredWidth = 60,
+  double Function(BuildContext)? minimumWidthOf,
+  Widget Function(BuildContext, String)? cellBuilder,
   TextScaler textScaler = TextScaler.noScaling,
 }) => MaterialApp(
   builder: (context, child) => MediaQuery(
@@ -23,7 +26,9 @@ Widget _table(
           MasterColumnDef<String>(
             key: columnKey,
             label: '名称',
-            width: 60,
+            width: declaredWidth,
+            minimumWidthOf: minimumWidthOf,
+            cellBuilder: cellBuilder,
             value: (item) => item,
           ),
         ],
@@ -39,6 +44,49 @@ Widget _table(
 );
 
 void main() {
+  testWidgets(
+    'plain columns fit all loaded values rather than declared width',
+    (tester) async {
+      await tester.pumpWidget(_table(['短'], declaredWidth: 400));
+      await tester.pumpAndSettle();
+      final narrow = _columnWidth(tester);
+      expect(narrow, lessThan(150));
+
+      const long = 'the widest loaded value is beyond the first thirty rows';
+      await tester.pumpWidget(
+        _table([...List.filled(30, '短'), long], declaredWidth: 400),
+      );
+      await tester.pumpAndSettle();
+      expect(_columnWidth(tester), greaterThan(narrow));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'rich controls retain their fallback or explicit actual minimum',
+    (tester) async {
+      Widget cell(BuildContext context, String value) => Text(value);
+      await tester.pumpWidget(
+        _table(['短'], declaredWidth: 240, cellBuilder: cell),
+      );
+      await tester.pumpAndSettle();
+      expect(_columnWidth(tester), 240);
+
+      await tester.pumpWidget(
+        _table(
+          ['短'],
+          columnKey: 'compact',
+          declaredWidth: 240,
+          cellBuilder: cell,
+          minimumWidthOf: (_) => 100,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_columnWidth(tester), 100);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'nonlinear scaling invalidates widths even when scale(1) is unchanged',
     (tester) async {

@@ -81,7 +81,9 @@ class StockCountCandidateCategoriesPostgresTest {
         doCallRealMethod().when(workshop).accessibleWarehouses(any());
         service=new StockCountRequestService(new NamedParameterJdbcTemplate(db),user,workshop,
                 mock(StockDocService.class),mock(DocNumberService.class),mock(BusinessEventPublisher.class),
-                mock(TxSessionVars.class),new ObjectMapper(),mock(Validator.class));
+                mock(TxSessionVars.class),new ObjectMapper(),mock(Validator.class),
+                mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class),
+                mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
     }
 
     @Test void treeKeepsDisabledGoodsCountableAndPrunesStubOnlyCategories() {

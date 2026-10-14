@@ -8,6 +8,7 @@ import '../../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
+import '../../../../components/layout/uten_app_bar.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../../core/network/api_exception.dart';
@@ -265,8 +266,9 @@ class _SubcontractLossClaimDetailPanelState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('委外超耗责任详情'),
+      appBar: UtenAppBar(
+        title: '委外超耗责任详情',
+        showPagePermissionAction: false,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
           tooltip: '关闭',

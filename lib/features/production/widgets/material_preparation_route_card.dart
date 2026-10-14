@@ -50,7 +50,9 @@ class MaterialPreparationRouteCard extends StatelessWidget {
         key: Key('material-analysis-entry-$routeId'),
         onTap: onOpen,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
+          constraints: BoxConstraints(
+            minHeight: UtenPageField.heightOf(context),
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),
             child: Row(
@@ -96,6 +98,7 @@ class MaterialPreparationRouteCard extends StatelessWidget {
                     children: [
                       if (inProgressCount > 0)
                         _badgeAction(
+                          context: context,
                           status: 'in-progress',
                           label: inProgressLabel,
                           count: inProgressCount,
@@ -110,6 +113,7 @@ class MaterialPreparationRouteCard extends StatelessWidget {
                         const SizedBox(width: UtenSpacing.s4),
                       if (pendingCount > 0)
                         _badgeAction(
+                          context: context,
                           status: 'pending',
                           label: pendingLabel,
                           count: pendingCount,
@@ -132,6 +136,7 @@ class MaterialPreparationRouteCard extends StatelessWidget {
   }
 
   Widget _badgeAction({
+    required BuildContext context,
     required String status,
     required String label,
     required int count,
@@ -153,7 +158,10 @@ class MaterialPreparationRouteCard extends StatelessWidget {
           borderRadius: UtenRadius.controlAll,
           child: ExcludeSemantics(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 44),
+              constraints: BoxConstraints(
+                minWidth: 32,
+                minHeight: UtenPageField.heightOf(context),
+              ),
               child: Center(widthFactor: 1, heightFactor: 1, child: child),
             ),
           ),

@@ -100,6 +100,66 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
       if (showPagePermissionAction)
         PagePermissionAction(scope: pagePermissionScopeFromContext(context)),
     ];
+    Widget textAction(Widget source) {
+      if (source is Padding) {
+        return Padding(
+          key: source.key,
+          padding: source.padding,
+          child: source.child == null ? null : textAction(source.child!),
+        );
+      }
+      if (source is SizedBox) {
+        return SizedBox(
+          key: source.key,
+          width: source.width,
+          height: source.height,
+          child: source.child == null ? null : textAction(source.child!),
+        );
+      }
+      if (source is Align) {
+        return Align(
+          key: source.key,
+          alignment: source.alignment,
+          widthFactor: source.widthFactor,
+          heightFactor: source.heightFactor,
+          child: source.child == null ? null : textAction(source.child!),
+        );
+      }
+      if (source is IconButton) {
+        final icon = source.icon;
+        final label =
+            (icon is Icon &&
+                (icon.icon == Icons.refresh ||
+                    icon.icon == Icons.refresh_rounded)
+            ? '刷新'
+            : icon is Icon &&
+                  (icon.icon == Icons.close || icon.icon == Icons.close_rounded)
+            ? '关闭'
+            : source.tooltip ?? '操作');
+        return UtenAppBarActionButton(
+          key: source.key,
+          label: label,
+          tooltip: source.tooltip,
+          onPressed: source.onPressed,
+          onLongPress: source.onLongPress,
+        );
+      }
+      if (source is ButtonStyleButton) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: UtenAppBarNativeActionButton(
+            source: source,
+            onPressed: source.onPressed,
+            onLongPress: source.onLongPress,
+          ),
+        );
+      }
+      return source;
+    }
+
+    final presentedActions = [
+      for (final action in pageActions) textAction(action),
+    ];
     final appBar = LayoutBuilder(
       builder: (context, constraints) {
         final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
@@ -125,14 +185,18 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
           leadingWidth: leading == null && !showBackButton ? 0 : null,
           actions: compactActions
               ? [
-                  IconButton(
-                    key: const Key('uten-app-bar-more-actions'),
-                    tooltip: '更多操作',
-                    onPressed: () => _showActions(context, pageActions),
-                    icon: const Icon(Icons.more_horiz_rounded),
+                  UtenAppBarActionPresentation(
+                    child: UtenAppBarActionButton(
+                      key: const Key('uten-app-bar-more-actions'),
+                      label: '更多操作',
+                      onPressed: () => _showActions(context, presentedActions),
+                    ),
                   ),
                 ]
-              : pageActions,
+              : [
+                  for (final action in presentedActions)
+                    UtenAppBarActionPresentation(child: action),
+                ],
           centerTitle: centerTitle,
           backgroundColor: blurred
               ? baseColor.withValues(alpha: 0.8)
@@ -206,6 +270,27 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
               : present(source.child!, panelContext),
         );
       }
+      if (source is SizedBox) {
+        return SizedBox(
+          key: source.key,
+          width: source.width,
+          height: source.height,
+          child: source.child == null
+              ? null
+              : present(source.child!, panelContext),
+        );
+      }
+      if (source is Align) {
+        return Align(
+          key: source.key,
+          alignment: source.alignment,
+          widthFactor: source.widthFactor,
+          heightFactor: source.heightFactor,
+          child: source.child == null
+              ? null
+              : present(source.child!, panelContext),
+        );
+      }
       if (source is IconButton) {
         return IconButton(
           key: source.key,
@@ -246,12 +331,14 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
         );
       }
       if (source is UtenButton || source is UtenAppBarActionButton) {
-        return UtenAppBarActionScope(
-          actionContext: context,
-          claimAction: claim,
-          dismiss: dismiss,
-          closeBeforeAction: true,
-          child: source,
+        return UtenAppBarActionPresentation(
+          child: UtenAppBarActionScope(
+            actionContext: context,
+            claimAction: claim,
+            dismiss: dismiss,
+            closeBeforeAction: true,
+            child: source,
+          ),
         );
       }
       return source;
@@ -291,13 +378,15 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 12,
-                    children: [
-                      for (final action in pageActions)
-                        present(action, panelContext),
-                    ],
+                  child: UtenAppBarActionPresentation(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 12,
+                      children: [
+                        for (final action in pageActions)
+                          present(action, panelContext),
+                      ],
+                    ),
                   ),
                 ),
               ),

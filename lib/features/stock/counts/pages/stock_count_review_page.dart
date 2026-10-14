@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../components/buttons/uten_back_button.dart';
 import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_badge.dart';
+import '../../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_inline_notice.dart';
 import '../../../../components/feedback/uten_segment_badge_label.dart';
@@ -33,6 +34,7 @@ import '../../../basic_data/models/master_facet.dart';
 import '../../../../shared/warehouse/workshop_material_first_use_impact.dart';
 import '../models/stock_count_request.dart';
 import '../repositories/stock_count_request_repository.dart';
+import '../widgets/stock_count_batch_approval_dialog.dart';
 
 /// A submitted stock count changes stock only after its designated reviewer approves.
 class StockCountReviewPage extends ConsumerStatefulWidget {
@@ -75,8 +77,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
   final _setupErrors = <String, String>{};
   final _setupLoading = <String>{};
 
-  /// 行勾选集（2026-10-10 审核页防看岔行口径：纯阅读辅助，无行级批量动作，
-  /// 审核仍整单通过/驳回）。
+  /// 审核队列可选多张整单；详情行勾选只用于阅读辅助。
   final Set<String> _selectedRequestIds = <String>{};
   final Set<String> _selectedLineIds = <String>{};
 
@@ -142,7 +143,13 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             keyword: widget.keyword,
             page: page,
           );
-      if (mounted && sequence == _sequence) setState(() => _page = result);
+      if (mounted && sequence == _sequence) {
+        setState(() {
+          _page = result;
+          final visible = result.items.map((row) => row.id).toSet();
+          _selectedRequestIds.removeWhere((id) => !visible.contains(id));
+        });
+      }
     } catch (error) {
       if (mounted && sequence == _sequence) {
         setState(() => _error = _message(error));
@@ -374,6 +381,99 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     }
   }
 
+  bool _batchSelectable(StockCountRequest request) =>
+      request.status == 'PENDING' && request.reviewRoute == widget.reviewRoute;
+
+  Future<void> _approveSelected() async {
+    if (!_authorized ||
+        _working ||
+        _loading ||
+        _confirming ||
+        widget.reviewRoute == null) {
+      return;
+    }
+    final ids = _selectedRequestIds.toList()..sort();
+    if (ids.isEmpty) return;
+    if (ids.length > 50) {
+      context.appWarning('每次最多办理50笔盘点，请分批选择');
+      return;
+    }
+    final sequence = _sequence;
+    _confirming = true;
+    List<StockCountRequest>? requests;
+    try {
+      requests = await UtenDialog.showAndWaitForExit<List<StockCountRequest>>(
+        context,
+        builder: (_) => StockCountBatchApprovalDialog(
+          ids: ids,
+          reviewRoute: widget.reviewRoute!,
+        ),
+      );
+    } finally {
+      _confirming = false;
+    }
+    if (requests == null || !mounted || !_authorized || sequence != _sequence) {
+      return;
+    }
+    setState(() {
+      _working = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(stockCountRequestRepositoryProvider)
+          .approveBatch(
+            reviewRoute: widget.reviewRoute!,
+            items: [
+              for (final request in requests)
+                {
+                  'id': request.id,
+                  'decision': {
+                    'expectedVersion': request.version,
+                    'idempotencyKey': _keys.putIfAbsent(
+                      '${request.id}:${request.version}:approve:',
+                      const Uuid().v4,
+                    ),
+                  },
+                },
+            ],
+          );
+      if (!mounted) return;
+      _selectedRequestIds.clear();
+      refreshBadges(ref);
+      widget.onChanged?.call();
+      context.appSuccess('已批量通过 ${requests.length} 笔盘点，库存已更新');
+      await _load(_page?.page ?? 1);
+    } catch (error) {
+      if (mounted && sequence == _sequence) {
+        setState(() => _error = _message(error));
+      }
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Widget _batchFloatingActions() => UtenFloatingActionGroup(
+    children: [
+      UtenSelectionSummaryPill(
+        count: _selectedRequestIds.length,
+        onClear: _working || _loading || _selectedRequestIds.isEmpty
+            ? null
+            : () => setState(_selectedRequestIds.clear),
+      ),
+      UtenButton(
+        key: const Key('stock-count-batch-approve'),
+        type: UtenButtonType.success,
+        size: UtenButtonSize.large,
+        isLoading: _working,
+        onPressed: _working || _loading || _selectedRequestIds.isEmpty
+            ? null
+            : _approveSelected,
+        child: Text('批量通过(${_selectedRequestIds.length})'),
+      ),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     ref.watch(currentPermissionsProvider);
@@ -450,8 +550,12 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
       body: widget.embedded ? content : UtenContentContainer(child: content),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: allowed && _detail != null
+      floatingActionButton: !allowed
+          ? null
+          : _detail != null
           ? _floatingActions(_detail!)
+          : widget.reviewRoute != null
+          ? _batchFloatingActions()
           : null,
     );
   }
@@ -603,20 +707,32 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             onFilterChanged: (key, value) {
               if (widget.embedded && key == 'status') _selectStatus(value);
             },
-            // 行勾选（2026-10-10 审核页防看岔行口径）：纯阅读辅助，单选互斥
-            // （点其他行自动换选、再点取消）。嵌入任务中心显示勾选框，独立审核
-            // 页仍只高亮；两种模式都不提供行级批量动作或「已选」胶囊。
             selectable: true,
-            showSelectionColumn: widget.embedded,
-            singleSelection: true,
+            showSelectionColumn: widget.embedded || widget.reviewRoute != null,
+            singleSelection: widget.reviewRoute == null,
             showSelectionSummary: false,
-            idOf: (r) => r.id.isEmpty ? null : r.id,
+            bottomContentPadding: widget.reviewRoute == null
+                ? 0
+                : UtenFloatingActionGroup.scrollClearance,
+            idOf: (r) =>
+                r.id.isEmpty ||
+                    (widget.reviewRoute != null && !_batchSelectable(r))
+                ? null
+                : r.id,
             selectedIds: _selectedRequestIds,
-            onSelectedIdsChanged: (next) => setState(() {
-              _selectedRequestIds
-                ..clear()
-                ..addAll(next);
-            }),
+            onSelectedIdsChanged: (next) {
+              if (_working || _confirming || _loading) return;
+              final eligible = {
+                for (final row in _page?.items ?? const <StockCountRequest>[])
+                  if (widget.reviewRoute == null || _batchSelectable(row))
+                    row.id,
+              };
+              setState(() {
+                _selectedRequestIds
+                  ..clear()
+                  ..addAll(next.intersection(eligible));
+              });
+            },
             onRowTap: (r) => _open(r.id),
             isLoading: _loading && _page == null,
             emptyMessage: '暂无盘点申请',

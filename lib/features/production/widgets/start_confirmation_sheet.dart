@@ -26,6 +26,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -613,9 +614,9 @@ class _StartConfirmationSheetState
         if (!didPop && !_busy) _close();
       },
       child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text(l10n.wmStartSheetTitle),
+        appBar: UtenAppBar(
+          showPagePermissionAction: false,
+          title: l10n.wmStartSheetTitle,
           actions: [
             IconButton(
               key: const Key('start-confirmation-close'),
@@ -652,8 +653,10 @@ class _StartConfirmationSheetState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _notice(theme),
-                        const SizedBox(height: UtenSpacing.s12),
+                        if (_extraStart.isNotEmpty) ...[
+                          _notice(theme),
+                          const SizedBox(height: UtenSpacing.s12),
+                        ],
                         if (_rows.isNotEmpty)
                           UtenEditableGrid<_StartRow>(
                             tableKey:
@@ -724,9 +727,7 @@ class _StartConfirmationSheetState
           const SizedBox(width: UtenSpacing.s8),
           Expanded(
             child: Text(
-              '每个产品只要选一次用料，以后同一产品开工自动带出。'
-              '勾选多行后在任一勾选行里选，会对全部勾选行一起生效。'
-              '${extra > 0 ? '另有 $extra 个工单不用确认，会一起开工。' : ''}',
+              '另有 $extra 个工单无需确认用料，将一起开工。',
               style: theme.textTheme.bodySmall,
             ),
           ),

@@ -151,6 +151,42 @@ Future<void> _open(
 }
 
 void main() {
+  testWidgets('宽屏分页与已选清空确定共用底栏，页码垂直居中', (tester) async {
+    final repo = _Repo();
+    await _open(
+      tester,
+      repo,
+      <List<CountStockRow>>[],
+      size: const Size(1920, 1000),
+    );
+    final paging = find.byKey(const Key('picker-footer-pagination'));
+    final confirm = find.byKey(const Key('goods-picker-multi-confirm'));
+    expect(paging, findsOneWidget);
+    expect(
+      tester.getCenter(paging).dy,
+      closeTo(tester.getCenter(confirm).dy, 1),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('goods-picker-paged-list')),
+        matching: find.text('下一页'),
+      ),
+      findsNothing,
+    );
+    final input = find.descendant(
+      of: paging,
+      matching: find.byType(TextFormField),
+    );
+    expect(
+      tester.getCenter(input).dy,
+      closeTo(tester.getCenter(find.text('/ 2')).dy, 1),
+    );
+    await tester.tap(find.text('下一页'));
+    await tester.pumpAndSettle();
+    expect(repo.requests.last, endsWith('|2'));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('盘点物料到底滚轮续页，确认保留两页的货品颜色快照', (tester) async {
     final repo = _Repo();
     final results = <List<CountStockRow>>[];

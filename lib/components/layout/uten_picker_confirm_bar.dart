@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 
 import 'uten_bottom_action_bar.dart';
+import 'uten_picker_footer_layout.dart';
 
 class UtenPickerConfirmBar extends StatelessWidget {
   const UtenPickerConfirmBar({
@@ -18,6 +19,7 @@ class UtenPickerConfirmBar extends StatelessWidget {
     this.onClear,
     this.confirmLabel = '确定',
     this.hint,
+    this.pagination,
   });
 
   /// 已选条数；0 时「确定」禁用、左侧显示引导文案。
@@ -40,6 +42,7 @@ class UtenPickerConfirmBar extends StatelessWidget {
 
   /// 左侧提示文案覆盖（默认按选中状态自动生成）。
   final String? hint;
+  final Widget? pagination;
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +51,7 @@ class UtenPickerConfirmBar extends StatelessWidget {
     final label =
         hint ??
         (selectedCount == 0
-            ? '请选择后点「确定」'
+            ? '未选择'
             : selectedLabel != null
             ? '已选择：$selectedLabel'
             : '已选择 $selectedCount 项');
@@ -85,20 +88,10 @@ class UtenPickerConfirmBar extends StatelessWidget {
               ),
             ],
           );
-          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-          if (constraints.maxWidth < 560 * textScale) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [summary, const SizedBox(height: 8), actions],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: summary),
-              const SizedBox(width: 12),
-              actions,
-            ],
+          return UtenPickerFooterLayout(
+            summary: summary,
+            pagination: pagination,
+            actions: actions,
           );
         },
       ),

@@ -274,11 +274,7 @@ class _FinanceReconciliationPageState
             child: UtenCollapsingHeaderScrollView(
               // 页面头：Icon + 标题 + 计数（搜索挪到下方筛选区/侧栏）
               collapsingHeader: Padding(
-                padding: const EdgeInsets.only(
-                  bottom: UtenSpacing.s8,
-                  left: UtenSpacing.s4,
-                  right: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                 child: Row(
                   children: [
                     Icon(
@@ -299,9 +295,7 @@ class _FinanceReconciliationPageState
               // 桌面：左筛选侧栏（搜索 + 账户）+ 右表格；手机：垂直堆叠
               body: UtenListTwoPane(
                 filterPane: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s4,
-                  ),
+                  padding: EdgeInsets.zero,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

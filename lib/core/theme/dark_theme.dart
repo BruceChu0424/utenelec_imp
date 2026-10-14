@@ -235,7 +235,11 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
         borderRadius: BorderRadius.circular(UtenRadius.control),
         borderSide: const BorderSide(color: UtenColors.darkBorder),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      isDense: true,
+      constraints: const BoxConstraints(minHeight: UtenFilterRow.minHeight),
+      contentPadding: UtenPageField.contentPadding,
+      prefixIconConstraints: UtenPageField.iconConstraints,
+      suffixIconConstraints: UtenPageField.iconConstraints,
       hintStyle: TextStyle(
         fontFamily: 'NotoSansSC',
         color: UtenColors.darkTextTertiary.withValues(alpha: 0.7),

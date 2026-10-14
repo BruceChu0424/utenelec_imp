@@ -92,12 +92,16 @@ class UtenButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final inAppBar = UtenAppBarActionPresentation.contains(context);
     final enabled = onPressed != null && !isLoading;
     final effectiveOnTap = enabled
         ? UtenAppBarActionScope.wrap(context, onPressed)
         : onDisabledTap;
+    final effectiveLongPress = enabled
+        ? UtenAppBarActionScope.wrap(context, onLongPress)
+        : null;
     final (enabledBackground, enabledForeground, enabledBorder) =
-        _resolveColors(colorScheme);
+        _resolveColors(colorScheme, inAppBar: inAppBar);
 
     // 禁用态刻意比 M3 默认（12% 底 + 38% 字）浓：默认那套在浅色底上几乎透明，
     // 用户在物料分析/下达采购等页反馈「不选的时候根本不知道这里可以点」。
@@ -113,11 +117,15 @@ class UtenButton extends StatelessWidget {
     final radius = BorderRadius.circular(UtenRadius.control);
     final minimumWidth = UtenControlMetrics.minimumHitExtent(
       context,
-      desktop: context.scaled(_minimumExtent),
+      desktop: context.scaled(
+        inAppBar ? UtenFilterRow.minHeight : _minimumExtent,
+      ),
     );
     final minimumHeight = UtenControlMetrics.minimumHitExtent(
       context,
-      desktop: context.scaled(height ?? _minimumExtent),
+      desktop: context.scaled(
+        inAppBar ? UtenFilterRow.minHeight : (height ?? _minimumExtent),
+      ),
     );
     final iconSize = context.scaled(_iconSize);
     final shape = RoundedRectangleBorder(
@@ -130,7 +138,7 @@ class UtenButton extends StatelessWidget {
         button: true,
         enabled: enabled,
         onTap: effectiveOnTap,
-        onLongPress: enabled ? onLongPress : null,
+        onLongPress: effectiveLongPress,
         child: Material(
           color: background,
           shape: shape,
@@ -138,7 +146,7 @@ class UtenButton extends StatelessWidget {
           child: InkWell(
             onTap: effectiveOnTap,
             onLongPress: enabled
-                ? onLongPress
+                ? effectiveLongPress
                 : effectiveOnTap == null
                 ? null
                 : _ignoreLongPress,
@@ -159,9 +167,19 @@ class UtenButton extends StatelessWidget {
                 minHeight: minimumHeight,
               ),
               child: Padding(
-                padding: _padding,
+                padding: inAppBar
+                    ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
+                    : _padding,
                 child: DefaultTextStyle.merge(
-                  style: _textStyle.copyWith(color: foreground),
+                  style:
+                      (inAppBar
+                              ? const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.2,
+                                )
+                              : _textStyle)
+                          .copyWith(color: foreground),
                   child: Row(
                     mainAxisSize: isExpanded
                         ? MainAxisSize.max
@@ -182,7 +200,7 @@ class UtenButton extends StatelessWidget {
                             ),
                           ),
                         )
-                      else if (icon != null)
+                      else if (icon != null && !inAppBar)
                         Padding(
                           padding: const EdgeInsets.only(right: 6),
                           child: Icon(icon, size: iconSize, color: foreground),
@@ -201,11 +219,20 @@ class UtenButton extends StatelessWidget {
     if (isExpanded) {
       button = SizedBox(width: double.infinity, child: button);
     }
+    if (inAppBar) {
+      button = Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: button,
+      );
+    }
     return button;
   }
 
-  (Color, Color, Color?) _resolveColors(ColorScheme colorScheme) {
-    return switch (type) {
+  (Color, Color, Color?) _resolveColors(
+    ColorScheme colorScheme, {
+    bool inAppBar = false,
+  }) {
+    return switch (inAppBar ? UtenButtonType.primary : type) {
       UtenButtonType.primary => (
         colorScheme.primary,
         colorScheme.onPrimary,

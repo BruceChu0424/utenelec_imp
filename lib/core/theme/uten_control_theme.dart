@@ -14,6 +14,7 @@ class UtenControlTheme extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final extent = UtenControlMetrics.minimumHitExtent(context);
+    final fieldHeight = UtenPageField.heightOf(context);
     ButtonStyle control(ButtonStyle? style) =>
         (style ?? const ButtonStyle()).copyWith(
           minimumSize: WidgetStatePropertyAll(Size.square(extent)),
@@ -21,6 +22,24 @@ class UtenControlTheme extends StatelessWidget {
         );
     return Theme(
       data: theme.copyWith(
+        inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+          isDense: true,
+          constraints: BoxConstraints(minHeight: fieldHeight),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: UtenFilterRow.cellHorizontalPadding,
+            // A plain field has no icon slot to establish its painted outline.
+            // Keep its content tall enough for the touch target as well.
+            vertical: (fieldHeight - 24) / 2,
+          ),
+          prefixIconConstraints: BoxConstraints(
+            minWidth: fieldHeight,
+            minHeight: fieldHeight,
+          ),
+          suffixIconConstraints: BoxConstraints(
+            minWidth: fieldHeight,
+            minHeight: fieldHeight,
+          ),
+        ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: control(theme.elevatedButtonTheme.style),
         ),

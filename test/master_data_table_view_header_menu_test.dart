@@ -19,7 +19,8 @@ class _Row {
 void main() {
   const rows = [_Row('a'), _Row('b')];
 
-  // 8 列 × 150 = 1248 (+48 勾选框) —— 700 宽视口装不下，横滚才有意义；
+  // Explicit wide-column fixture: 8 × 150 plus edge actions exceed the 700px
+  // viewport. Ordinary text columns now fit their actual content by default.
   // 列0~列3 的中心都在视口内，可直接右击。
   Widget host({bool selectable = true}) => MaterialApp(
     home: Scaffold(
@@ -33,6 +34,7 @@ void main() {
                 key: 'c$i',
                 label: '列$i',
                 width: 150,
+                minimumWidthOf: (_) => 150,
                 value: (item) => '${item.id}-$i',
               ),
           ],

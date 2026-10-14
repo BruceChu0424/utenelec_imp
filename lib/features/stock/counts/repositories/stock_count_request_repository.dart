@@ -104,6 +104,20 @@ class StockCountRequestRepository {
     required String idempotencyKey,
     String? reason,
   }) => _review(id, 'approve', expectedVersion, idempotencyKey, reason);
+  Future<List<StockCountRequest>> approveBatch({
+    required String reviewRoute,
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final result = await api.post(
+      '$base/approve-batch',
+      body: {'reviewRoute': reviewRoute, 'items': items},
+    );
+    return [
+      for (final item in result['items'] as List)
+        StockCountRequest.fromJson(Map<String, dynamic>.from(item as Map)),
+    ];
+  }
+
   Future<StockCountRequest> reject(
     String id, {
     required int expectedVersion,

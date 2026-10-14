@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_paged_picker_list.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
@@ -72,9 +73,9 @@ class _RequestMaterialPickerState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      automaticallyImplyLeading: false,
-      title: const Text('选择申请物料'),
+    appBar: UtenAppBar(
+      showPagePermissionAction: false,
+      title: '选择申请物料',
       actions: [
         IconButton(
           tooltip: '关闭',

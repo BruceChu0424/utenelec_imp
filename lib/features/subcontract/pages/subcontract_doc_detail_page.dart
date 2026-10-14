@@ -673,7 +673,9 @@ class _SubcontractDocDetailPageState
                               const SizedBox(height: UtenSpacing.s12),
                               _materialIssueSafetyBanner(theme),
                             ],
-                            if (_detail!.productionLinked ||
+                            if ((_detail!.productionLinked &&
+                                    widget.docType !=
+                                        SubcontractDocType.order) ||
                                 widget.docType ==
                                     SubcontractDocType.application) ...[
                               const SizedBox(height: UtenSpacing.s12),
@@ -681,7 +683,9 @@ class _SubcontractDocDetailPageState
                             ],
                             if (widget.docType == SubcontractDocType.order) ...[
                               const SizedBox(height: UtenSpacing.s12),
-                              _financeApprovalBanner(theme),
+                              if (!canViewOrderProgress ||
+                                  _detail!.financeApproval?.isRejected == true)
+                                _financeApprovalBanner(theme),
                               if (_detail!.shortDeliveryHold != null) ...[
                                 const SizedBox(height: UtenSpacing.s12),
                                 _shortDeliveryHoldBanner(theme),

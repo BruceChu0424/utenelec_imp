@@ -7,6 +7,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -244,6 +245,7 @@ class _ReportablePlanLineSheetState
             const Divider(height: 1),
             Expanded(child: _body(theme)),
             UtenPickerConfirmBar(
+              pagination: UtenPickerPageControls(controller: _tableRows),
               selectedCount: _picked.length,
               selectedLabel: _picked.isEmpty
                   ? null
@@ -253,7 +255,7 @@ class _ReportablePlanLineSheetState
                               picked.executionSegmentCode ?? picked.planNo,
                         )
                         .join('、'),
-              hint: _picked.isEmpty ? '共 $_total 条报工/恢复任务；可勾选多条，一条一行' : null,
+              hint: _picked.isEmpty ? '共 $_total 条任务' : null,
               onConfirm: () => Navigator.of(
                 context,
               ).pop(List<ReportablePlanLine>.unmodifiable(_picked)),
@@ -269,6 +271,7 @@ class _ReportablePlanLineSheetState
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: MasterDataTableView<ReportablePlanLine>(
+        showPaginationControls: false,
         tableKey:
             'features.production.widgets.reportable_plan_line_picker.ReportablePlanLineSheetState._body.1',
         virtualized: true,

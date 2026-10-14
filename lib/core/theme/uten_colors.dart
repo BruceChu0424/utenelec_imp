@@ -137,10 +137,10 @@ abstract final class UtenColors {
   /// [utenTableSelectedRowColor]）。2026-09-22 用户两轮口径：先是「都看不清是否选中」
   /// ——原 primaryContainer 35%（teal100 @ 35% ≈ #EEFEFA）在白底上几乎看不出来；改成
   /// teal200 实底后又「太亮，晃眼睛」。定稿为**低饱和青灰绿**：teal700 叠 20% 到白底
-  /// （#CFE4E2，与白底明度差约 Excel 选中行那一档，黑 87% 字对比约 10:1），一眼看得出
+  /// （原 #CFE4E2，2026-10-13 再稍加深为 #BEDAD7），一眼看得出
   /// 选中、又不刺眼。深色主题用 primaryContainer 同款 teal900 实底（白字对比够）。
   /// 要再调深浅只改这两个常量。
-  static const Color tableSelectedRow = Color(0xFFCFE4E2);
+  static const Color tableSelectedRow = Color(0xFFBEDAD7);
   static const Color tableSelectedRowDark = teal900;
 
   // ===== 分类树层级行底色（选择器滑窗 flatLevelColors 模式，2026-09-24）=====

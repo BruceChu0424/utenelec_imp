@@ -4634,6 +4634,16 @@ public class MaterialAnalysisService {
         access.requireReadable(header.makerId(), "物料分析不存在", scopeForAnalysis(header));
     }
 
+    boolean canWriteAnalysis(UUID analysisId) {
+        AnalysisHeader header=readHeader(analysisId);
+        return access.canWrite(header.makerId(),scopeForAnalysis(header));
+    }
+
+    void requireWritableAnalysis(UUID analysisId) {
+        AnalysisHeader header=readHeader(analysisId);
+        access.requireWritable(header.makerId(),"只能修改本人负责的物料分析",scopeForAnalysis(header));
+    }
+
     private static Map<UUID, BigDecimal> sourceRequiredQuantities(
             List<SourceLine> sources, List<MaterialRow> materials) {
         try {

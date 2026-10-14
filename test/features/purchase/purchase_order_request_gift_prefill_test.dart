@@ -8,6 +8,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_order_edit_page.dart';
 import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -41,12 +42,18 @@ Map<String, dynamic> preview(
 
 Future<_PreviewApi> _pumpPreview(
   WidgetTester tester,
-  List<Map<String, dynamic>> rows,
-) async {
+  List<Map<String, dynamic>> rows, {
+  int createdCount = 0,
+  String? returnTo,
+  bool pushFromTask = false,
+}) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1100));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  final api = _PreviewApi(rows);
+  final api = _PreviewApi(rows, createdCount: createdCount);
   final router = GoRouter(
+    initialLocation: pushFromTask
+        ? returnTo!
+        : Uri(path: '/', queryParameters: {'returnTo': ?returnTo}).toString(),
     routes: [
       GoRoute(
         path: '/',
@@ -60,8 +67,21 @@ Future<_PreviewApi> _pumpPreview(
         path: '/purchase/orders/:id',
         builder: (_, _) => const SizedBox(),
       ),
+      GoRoute(
+        path: RouteName.operationsPurchaseWorkbench,
+        builder: (context, _) => Column(
+          children: [
+            const Text('采购任务中心'),
+            TextButton(
+              onPressed: () => context.push('/'),
+              child: const Text('生成采购订货单'),
+            ),
+          ],
+        ),
+      ),
     ],
   );
+  api.router = router;
   addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
@@ -82,6 +102,10 @@ Future<_PreviewApi> _pumpPreview(
     ),
   );
   await tester.pumpAndSettle();
+  if (pushFromTask) {
+    await tester.tap(find.text('生成采购订货单'));
+    await tester.pumpAndSettle();
+  }
   return api;
 }
 
@@ -102,6 +126,45 @@ Future<void> save(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('从采购任务中心push新建，保存后回原任务查询，不需要额外returnTo', (tester) async {
+    final destination = Uri(
+      path: RouteName.operationsPurchaseWorkbench,
+      queryParameters: {'stage': 'requests', 'keyword': '保留原查询'},
+    ).toString();
+    final api = await _pumpPreview(
+      tester,
+      [preview('push-route', '10', '0', '10')],
+      createdCount: 1,
+      returnTo: destination,
+      pushFromTask: true,
+    );
+    await save(tester);
+    expect(api.saved, isNotNull);
+    expect(api.router.state.uri.toString(), destination);
+    expect(find.text('采购任务中心'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final count in [1, 2]) {
+    testWidgets('新建$count张采购订货单保存后回采购任务中心并保留任务查询', (tester) async {
+      final destination = Uri(
+        path: RouteName.operationsPurchaseWorkbench,
+        queryParameters: {'stage': 'ordered', 'keyword': 'CS-001'},
+      ).toString();
+      final api = await _pumpPreview(
+        tester,
+        [preview('route', '10', '0', '10')],
+        createdCount: count,
+        returnTo: destination,
+      );
+      await save(tester);
+      expect(api.saved, isNotNull);
+      expect(api.router.state.uri.toString(), destination);
+      expect(find.text('采购任务中心'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('legacy numeric source rate keeps its numeric payload fallback', (
     tester,
   ) async {
@@ -222,8 +285,10 @@ class _Session extends SessionNotifier {
 }
 
 class _PreviewApi extends ApiClient {
-  _PreviewApi(this.rows) : super(Dio());
+  _PreviewApi(this.rows, {this.createdCount = 0}) : super(Dio());
   final List<Map<String, dynamic>> rows;
+  final int createdCount;
+  late GoRouter router;
   Map<String, dynamic>? saved;
   @override
   Future<List<Map<String, dynamic>>> postList(
@@ -239,7 +304,18 @@ class _PreviewApi extends ApiClient {
   }) async {
     if (path.endsWith('/orders/batch')) {
       saved = Map<String, dynamic>.from(body as Map);
-      return {'items': <Map<String, dynamic>>[]};
+      return {
+        'items': [
+          for (var i = 1; i <= createdCount; i++)
+            {
+              'id': 'order-$i',
+              'billNo': 'PO-$i',
+              'billDate': '2026-10-13',
+              'status': 0,
+              'items': <Map<String, dynamic>>[],
+            },
+        ],
+      };
     }
     return {};
   }

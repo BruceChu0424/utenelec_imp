@@ -422,7 +422,7 @@ class _WarehouseSalesOutboundWorkbenchState
           if (_seg?.history == true) ...[
             const SizedBox(height: UtenFilterRow.rowGap),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+              padding: EdgeInsets.zero,
               child: UtenHistoryTimeFilter(
                 key: const Key('warehouse-sales-outbound-history-time'),
                 value: _historyTime,

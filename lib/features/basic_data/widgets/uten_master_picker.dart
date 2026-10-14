@@ -22,6 +22,7 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_paged_picker_list.dart';
+import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
@@ -139,6 +140,7 @@ class _MasterPickerSheetState<TItem>
 
   /// 已点选(高亮)的记录；点底部「确定」才 pop 返回，取消/关闭则放弃(二次操作契约)。
   TItem? _picked;
+  final _pickerRows = MasterDataTableRowsController<TItem>();
 
   /// 左树自然宽度缓存（与货品选择滑窗同款量宽）。
   double? _naturalTreeWidth;
@@ -487,6 +489,7 @@ class _MasterPickerSheetState<TItem>
         const Divider(height: 1),
         Expanded(child: body),
         UtenPickerConfirmBar(
+          pagination: UtenPickerPageControls(controller: _pickerRows),
           selectedCount: picked == null ? 0 : 1,
           selectedLabel: picked == null ? null : _spec.labelOf(picked),
           onConfirm: () => Navigator.of(context).pop(_picked),
@@ -496,6 +499,8 @@ class _MasterPickerSheetState<TItem>
   }
 
   Widget _buildRightPane(ThemeData theme) => UtenPagedPickerList<TItem>(
+    rowsController: _pickerRows,
+    showPaginationControls: false,
     items: _items ?? <TItem>[],
     idOf: _spec.idOf,
     itemBuilder: (context, item) => _buildItem(context, theme, item),

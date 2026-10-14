@@ -9,6 +9,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -292,9 +293,9 @@ class _CustomerPrepaymentApplyPanelState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('应用客户预收'),
-        automaticallyImplyLeading: false,
+      appBar: UtenAppBar(
+        title: '应用客户预收',
+        showPagePermissionAction: false,
         actions: [
           IconButton(
             tooltip: '关闭',

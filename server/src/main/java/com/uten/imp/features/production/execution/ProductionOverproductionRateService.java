@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Collection;
 
 import static com.uten.imp.features.production.execution.ProductionOverproductionRateContracts.*;
 
@@ -36,6 +37,7 @@ import static com.uten.imp.features.production.execution.ProductionOverproductio
 @RequiredArgsConstructor
 @Transactional(readOnly=true)
 public class ProductionOverproductionRateService {
+    public static final String PLANNING_EDIT_PERMISSION="production_material_analysis:generate";
     public static final String REQUEST_PERMISSION="production_execution:request_overproduction_rate";
     public static final String APPROVE_PERMISSION="production_plan:approve";
     public static final String SUBMITTED="PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED";
@@ -49,9 +51,172 @@ public class ProductionOverproductionRateService {
     private final ObjectMapper mapper;
     private final BusinessEventPublisher events;
     private final ProductionPlanMutationFootprintService planFootprints;
+    private final com.uten.imp.features.production.mrp.ProductionPlanningDraftService planningDrafts;
 
     public Map<UUID, BigDecimal> defaults(Set<UUID> goodsIds) {
         return com.uten.imp.features.production.plan.ProductionOverproductionAllowance.defaults(em, goodsIds);
+    }
+
+    /** Planning can revise a current allowance until the first report, including started work.
+     * The immutable request/decision ledger remains the sole effective-rate writer. */
+    public record PlanningRate(UUID segmentId, UUID planItemId, UUID planId, BigDecimal effectiveRate,
+                               long rateVersion, boolean canEdit, String blockingReason) {
+        public PlanningRate(UUID segmentId,UUID planId,BigDecimal effectiveRate,long rateVersion,boolean canEdit,String blockingReason) {
+            this(segmentId,null,planId,effectiveRate,rateVersion,canEdit,blockingReason);
+        }
+    }
+    public record PlanningRateVersion(UUID segmentId, UUID planItemId, long rateVersion) {
+        public PlanningRateVersion(UUID segmentId,long rateVersion) { this(segmentId,null,rateVersion); }
+        public UUID targetId() { return segmentId==null?planItemId:segmentId; }
+    }
+
+    public List<PlanningRate> planningRates(Collection<UUID> planIds) {
+        requirePermission("production_material_analysis:view");
+        var result=new java.util.ArrayList<PlanningRate>(planningSegmentIds(planIds).stream().map(id -> {
+            Segment task=segment(id,false);
+            String blocked=planningRateBlock(task);
+            return new PlanningRate(task.id(),task.planId(),task.rate(),task.version(),
+                    blocked==null && access.hasAuthority(PLANNING_EDIT_PERMISSION),blocked);
+        }).toList());
+        for(var draft:planningDraftItems(planIds,false))result.add(new PlanningRate(null,draft.id(),draft.planId(),draft.rate(),draft.version(),
+                draft.open() && access.hasAuthority(PLANNING_EDIT_PERMISSION),draft.open()?null:"生产计划已停止或已取消，不能修改比例"));
+        return List.copyOf(result);
+    }
+
+    @Transactional
+    public List<PlanningRate> changePlanningRates(Collection<UUID> planIds,
+            List<PlanningRateVersion> expected, BigDecimal requestedRate, String idempotencyKey) {
+        return changePlanningRates(planIds,expected,requestedRate,idempotencyKey,()->{});
+    }
+
+    /** The source owner rechecks its exact plan set after the shared analysis locks are held. */
+    @Transactional
+    public List<PlanningRate> changePlanningRates(Collection<UUID> planIds,
+            List<PlanningRateVersion> expected, BigDecimal requestedRate, String idempotencyKey,
+            Runnable verifySourcePlans) {
+        tx.bind();
+        requirePermission("production_material_analysis:view");
+        requirePermission(PLANNING_EDIT_PERMISSION);
+        membership.requireActiveOperator();
+        BigDecimal requested=rate(requestedRate);
+        String commandKey=key(idempotencyKey);
+        UUID actor=currentUser.requireId();
+        commandLock("PLANNING",actor,commandKey);
+        var footprint=planFootprints.beginPlans(planIds);
+        List<UUID> ids=planningSegmentIds(planIds);
+        List<DraftRate> drafts=planningDraftItems(planIds,true);
+        var targetIds=new java.util.LinkedHashSet<>(ids);
+        drafts.stream().map(DraftRate::id).forEach(targetIds::add);
+        if(targetIds.isEmpty() || expected==null || expected.size()!=targetIds.size()
+                || expected.stream().map(PlanningRateVersion::targetId).distinct().count()!=targetIds.size()
+                || !targetIds.equals(expected.stream().map(PlanningRateVersion::targetId)
+                        .collect(java.util.stream.Collectors.toSet())))
+            throw conflict("生产任务已变化，请刷新比例后重新修改");
+        Map<UUID,Long> versions=expected.stream().collect(java.util.stream.Collectors.toMap(
+                PlanningRateVersion::targetId,PlanningRateVersion::rateVersion));
+        List<Segment> tasks=ids.stream().map(id->segment(id,true)).toList();
+        footprint.verifyUnchanged();
+        verifySourcePlans.run();
+        String name=operatorName();
+        UUID employee=currentUser.requireEmployeeId();
+        var draftPlans=new java.util.LinkedHashSet<UUID>();
+        var draftBaselines=new java.util.LinkedHashMap<UUID,com.uten.imp.features.production.mrp.ProductionPlanningDraftService.AllowanceDraftBaseline>();
+        for(var draft:drafts) {
+            if(draft.rate().compareTo(requested)!=0 && !draftBaselines.containsKey(draft.planId()))
+                draftBaselines.put(draft.planId(),planningDrafts.allowanceChangeBaseline(draft.planId()));
+        }
+        for(var draft:drafts) {
+            if(!draft.open())throw conflict("生产计划已停止或已取消，不能修改允许超产比例");
+            if(draft.version()!=versions.get(draft.id()))throw conflict("待审核计划已变化，请刷新后重新修改比例");
+            if(draft.rate().compareTo(requested)==0)continue;
+            em.createNativeQuery("""
+                    UPDATE production_plan_items SET allowed_overproduction_rate=:rate,
+                        allowed_overproduction_rate_source='EXPLICIT',updated_at=now(),updated_by=:actor
+                    WHERE id=:id
+                    """).setParameter("rate",requested).setParameter("actor",actor).setParameter("id",draft.id()).executeUpdate();
+            draftPlans.add(draft.planId());
+        }
+        for(UUID draftPlan:draftPlans)planningDrafts.rebaseAfterAllowanceChange(draftPlan,draftBaselines.get(draftPlan));
+        for(Segment task:tasks) {
+            String ledgerKey="planning-rate:"+CanonicalFingerprint.sha256(List.of(commandKey,task.id().toString()));
+            String hash=CanonicalFingerprint.sha256(List.of("PLANNING-RATE-V1",task.id().toString(),
+                    versions.get(task.id()).toString(),requested.stripTrailingZeros().toPlainString()));
+            List<Object[]> replay=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                    SELECT request_hash,status FROM production_overproduction_rate_requests
+                    WHERE submitted_by=:actor AND idempotency_key=:key
+                    """).setParameter("actor",actor).setParameter("key",ledgerKey));
+            if(!replay.isEmpty()) {
+                if(!hash.equals(replay.getFirst()[0]) || !"APPROVED".equals(replay.getFirst()[1]))
+                    throw conflict("同一防重复标识已用于另一项比例修改");
+                continue;
+            }
+            String blocked=planningRateBlock(task);
+            if(blocked!=null)throw conflict(blocked);
+            if(task.version()!=versions.get(task.id()))throw conflict("允许超产比例已变化，请刷新后重新修改");
+            if(task.rate().compareTo(requested)==0)continue;
+            UUID requestId=UUID.randomUUID();
+            String reason="计划部在首次报工前修改允许超产比例";
+            em.createNativeQuery("""
+                    INSERT INTO production_overproduction_rate_requests(id,execution_segment_id,before_rate,requested_rate,
+                        expected_rate_version,planned_qty,before_snapshot,after_snapshot,reason,idempotency_key,
+                        request_hash,submitted_by,submitted_by_employee_id,submitted_by_name)
+                    VALUES(:id,:segment,:before,:requested,:version,:planned,CAST(:beforeSnapshot AS jsonb),
+                        CAST(:afterSnapshot AS jsonb),:reason,:key,:hash,:actor,:employee,:name)
+                    """).setParameter("id",requestId).setParameter("segment",task.id()).setParameter("before",task.rate())
+                    .setParameter("requested",requested).setParameter("version",task.version()).setParameter("planned",task.planned())
+                    .setParameter("beforeSnapshot",snapshot(task,task.rate()).toString())
+                    .setParameter("afterSnapshot",snapshot(task,requested).toString()).setParameter("reason",reason)
+                    .setParameter("key",ledgerKey).setParameter("hash",hash).setParameter("actor",actor)
+                    .setParameter("employee",employee).setParameter("name",name).executeUpdate();
+            em.createNativeQuery("""
+                    INSERT INTO production_overproduction_rate_decisions(id,request_id,decision,reason,expected_version,
+                        decided_by,decided_by_employee_id,decided_by_name,idempotency_key,request_hash)
+                    VALUES(:id,:request,'APPROVED',:reason,0,:actor,:employee,:name,:key,:hash)
+                    """).setParameter("id",UUID.randomUUID()).setParameter("request",requestId).setParameter("reason",reason)
+                    .setParameter("actor",actor).setParameter("employee",employee).setParameter("name",name)
+                    .setParameter("key",ledgerKey).setParameter("hash",hash).executeUpdate();
+            // Direct planning edits are already confirmed in this transaction.
+            // The approval event only feeds the workshop-request notice workflow,
+            // whose detail route is not available to every material-analysis planner.
+        }
+        return planningRates(planIds);
+    }
+
+    private List<UUID> planningSegmentIds(Collection<UUID> plans) {
+        if(plans==null || plans.isEmpty())return List.of();
+        return NativeQueryResults.typedRows(em.createNativeQuery("""
+                SELECT id FROM production_execution_segments
+                WHERE plan_id IN (:plans) AND NOT is_deleted AND status NOT IN('CANCELLED','REVERSED') ORDER BY id
+                """).setParameter("plans",plans),UUID.class);
+    }
+
+    private record DraftRate(UUID id,UUID planId,BigDecimal rate,long version,boolean open) {}
+    private List<DraftRate> planningDraftItems(Collection<UUID> plans,boolean lock) {
+        if(plans==null || plans.isEmpty())return List.of();
+        return NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                SELECT item.id,plan.id,item.allowed_overproduction_rate,item.xmin::text::bigint,
+                    (NOT plan.is_closed AND NOT plan.is_stopped AND NOT plan.is_canceled
+                     AND plan.actual_output_supplement_request_id IS NULL)
+                FROM production_plan_items item JOIN production_plans plan ON plan.id=item.plan_id
+                WHERE plan.id IN (:plans) AND plan.status=0 AND NOT plan.is_deleted AND NOT item.is_deleted
+                    AND NOT EXISTS(SELECT 1 FROM production_execution_segments segment WHERE segment.source_plan_item_id=item.id)
+                ORDER BY item.id
+                """+(lock?" FOR UPDATE OF item":"")).setParameter("plans",plans)).stream().map(row ->
+                new DraftRate((UUID)row[0],(UUID)row[1],decimal(row[2]),((Number)row[3]).longValue(),Boolean.TRUE.equals(row[4]))).toList();
+    }
+
+    private String planningRateBlock(Segment task) {
+        if(!task.open())return "任务已结束或计划已停止，不能修改允许超产比例";
+        if(!task.policyApplies())return "固定实产追加任务不能再次修改允许超产比例";
+        if(countPending(task.id())>0)return "此任务已有待审批的比例调整，请先处理原申请";
+        // A saved report already binds its output split to the current allowance.
+        // Reporting takes the same plan/segment locks, so the check cannot race its save.
+        if(Boolean.TRUE.equals(em.createNativeQuery("""
+                SELECT EXISTS(SELECT 1 FROM production_daily_report_items item
+                    JOIN production_daily_reports report ON report.id=item.report_id
+                    WHERE item.execution_segment_id=:id AND NOT item.is_deleted AND NOT report.is_deleted)
+                """).setParameter("id",task.id()).getSingleResult()))return "已有报工记录，允许超产比例已锁定";
+        return null;
     }
 
     public RateContext context(UUID id) {

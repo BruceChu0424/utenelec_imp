@@ -136,6 +136,55 @@ class StockCountApprovalPostgresTest {
         qty("10");assertEquals("PENDING",controller.detail((UUID)request.get("id")).get("status"));
     }
 
+    @Test void batchApprovalPostsEverySelectedRequestOnceAndReplaysWithoutDuplicateStockDocuments(){
+        fixture.loginAs(world.superAdminUserId());inbound(world.goodsB(),"5");
+        fixture.loginAs(maker);
+        var first=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"A实盘",key(),
+                List.of(input(world.goodsA(),"14",null,false))));
+        var second=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"B实盘",key(),
+                List.of(input(world.goodsB(),"8",null,false))));
+        UUID firstId=(UUID)first.get("id"),secondId=(UUID)second.get("id");
+        var batch=new StockCountDtos.BatchApproval("FINANCE",List.of(
+                new StockCountDtos.BatchApprovalItem(firstId,new StockCountDtos.Decision(0L,key(),null)),
+                new StockCountDtos.BatchApprovalItem(secondId,new StockCountDtos.Decision(0L,key(),null))));
+        fixture.loginAs(warehouseReviewer);
+        assertThrows(ApiException.class,()->controller.approveBatch(batch));qty("10");
+        fixture.loginAs(finance);
+        controller.approveBatch(batch);controller.approveBatch(batch);
+        qty("14");
+        assertEquals(0,new BigDecimal("8").compareTo(db.queryForObject(
+                "SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=? AND color_id IS NULL",
+                BigDecimal.class,world.warehouseId(),world.goodsB())));
+        for(UUID id:List.of(firstId,secondId)) {
+            assertEquals("APPROVED",controller.detail(id).get("status"));
+            assertEquals(1,db.queryForObject(
+                    "SELECT count(*) FROM stock_count_request_events WHERE request_id=? AND action='APPROVE'",Integer.class,id));
+        }
+    }
+
+    @Test void batchApprovalRollsBackEarlierRequestsWhenALaterRequestVersionChanged(){
+        fixture.loginAs(world.superAdminUserId());inbound(world.goodsB(),"5");
+        fixture.loginAs(maker);
+        var first=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"A实盘",key(),
+                List.of(input(world.goodsA(),"14",null,false))));
+        var second=controller.submit(new StockCountDtos.Submit(world.warehouseId(),"B实盘",key(),
+                List.of(input(world.goodsB(),"8",null,false))));
+        var ids=new ArrayList<>(List.of((UUID)first.get("id"),(UUID)second.get("id")));ids.sort(Comparator.naturalOrder());
+        fixture.loginAs(finance);
+        var batch=new StockCountDtos.BatchApproval("FINANCE",List.of(
+                new StockCountDtos.BatchApprovalItem(ids.getFirst(),new StockCountDtos.Decision(0L,key(),null)),
+                new StockCountDtos.BatchApprovalItem(ids.getLast(),new StockCountDtos.Decision(99L,key(),null))));
+        assertThrows(ApiException.class,()->controller.approveBatch(batch));qty("10");
+        for(UUID id:ids) {
+            assertEquals("PENDING",controller.detail(id).get("status"));
+            assertNull(controller.detail(id).get("stockDocumentId"));
+            assertEquals(0,db.queryForObject(
+                    "SELECT count(*) FROM stock_count_request_events WHERE request_id=? AND action='APPROVE'",Integer.class,id));
+        }
+        var duplicate=new StockCountDtos.BatchApproval("FINANCE",List.of(batch.items().getFirst(),batch.items().getFirst()));
+        assertThrows(ApiException.class,()->controller.approveBatch(duplicate));
+    }
+
     @Test void weightOnlyEditsAreReviewedAndStaleWeightsCannotBeOverwritten(){
         fixture.loginAs(maker);var before=input(world.goodsA(),"10","2.5000",true);
         var proposal=new StockCountDtos.Submit(world.warehouseId(),"实称净重",key(),List.of(before));

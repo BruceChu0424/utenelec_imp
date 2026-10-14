@@ -2,6 +2,22 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../core/theme/uten_tokens.dart';
+
+/// Page-header actions keep their labels visible and use a single button role.
+/// This also reaches action widgets that build their UtenButton internally.
+class UtenAppBarActionPresentation extends InheritedWidget {
+  const UtenAppBarActionPresentation({super.key, required super.child});
+
+  static bool contains(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<UtenAppBarActionPresentation>() !=
+      null;
+
+  @override
+  bool updateShouldNotify(UtenAppBarActionPresentation oldWidget) => false;
+}
+
 /// Presentation-only action ownership. It never supplies permissions or data.
 /// Stateful asynchronous controls may retain their lifetime until completion;
 /// navigation controls use the original page context and close before acting.
@@ -86,7 +102,7 @@ class UtenAppBarActionScope extends InheritedWidget {
       closeBeforeAction != oldWidget.closeBeforeAction;
 }
 
-/// Keep the native style button's defaults, including filled/tonal styles.
+/// Adapt native page actions while preserving their focus, state and callbacks.
 class UtenAppBarNativeActionButton extends ButtonStyleButton {
   UtenAppBarNativeActionButton({
     Key? key,
@@ -97,23 +113,80 @@ class UtenAppBarNativeActionButton extends ButtonStyleButton {
          key: key ?? source.key,
          onHover: source.onHover,
          onFocusChange: source.onFocusChange,
-         style: source.style,
+         style: null,
          focusNode: source.focusNode,
          autofocus: source.autofocus,
          clipBehavior: source.clipBehavior,
          statesController: source.statesController,
          isSemanticButton: source.isSemanticButton,
          tooltip: source.tooltip,
-         child: source.child,
+         child: _UtenAppBarActionLabel(source.child),
        );
 
   final ButtonStyleButton source;
 
   @override
-  ButtonStyle defaultStyleOf(BuildContext context) =>
-      source.defaultStyleOf(context);
+  ButtonStyle defaultStyleOf(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final height = UtenFilterRow.heightOf(context);
+    return source
+        .defaultStyleOf(context)
+        .merge(
+          FilledButton.styleFrom(
+            backgroundColor: colors.primary,
+            foregroundColor: colors.onPrimary,
+            disabledBackgroundColor: colors.surfaceContainerHigh,
+            disabledForegroundColor: colors.onSurfaceVariant,
+            elevation: 0,
+            side: BorderSide.none,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            minimumSize: Size(height, height),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.standard,
+            shape: const RoundedRectangleBorder(
+              borderRadius: UtenRadius.controlAll,
+            ),
+            textStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              height: 1.2,
+            ),
+          ),
+        );
+  }
 
   @override
-  ButtonStyle? themeStyleOf(BuildContext context) =>
-      source.themeStyleOf(context);
+  ButtonStyle? themeStyleOf(BuildContext context) => null;
+}
+
+/// Resolve Material .icon composition in a widget build context. The labels
+/// remain real widgets, so localization, badges and inherited styles survive.
+class _UtenAppBarActionLabel extends StatelessWidget {
+  const _UtenAppBarActionLabel(this.child);
+
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) =>
+      _textOnlyChild(child, context) ?? const SizedBox.shrink();
+
+  Widget? _textOnlyChild(Widget? child, BuildContext context) {
+    // Material's .icon factories compose a private StatelessWidget around the
+    // public label. Build that composition, then retain its public label tree.
+    // The action's state and callback still belong to the original button.
+    if (child is StatelessWidget &&
+        child.runtimeType.toString().endsWith('ButtonWithIconChild')) {
+      return _textOnlyChild(child.build(context), context);
+    }
+    if (child is Row && child.children.any((child) => child is Icon)) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final entry in child.children)
+            if (entry is! Icon && entry is! SizedBox) entry,
+        ],
+      );
+    }
+    return child;
+  }
 }

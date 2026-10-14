@@ -55,6 +55,16 @@ class UtenTableCellInputTheme extends StatelessWidget {
         inputDecorationTheme: theme.inputDecorationTheme.copyWith(
           isDense: true,
           contentPadding: UtenEditableGridCellSpec.contentPadding,
+          // Page controls use the search role. Preserve native icon defaults
+          // here; dense cell controls already supply their smaller slots.
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 48,
+            minHeight: 48,
+          ),
+          suffixIconConstraints: const BoxConstraints(
+            minWidth: 48,
+            minHeight: 48,
+          ),
           hintStyle: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),

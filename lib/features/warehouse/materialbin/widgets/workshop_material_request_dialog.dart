@@ -11,6 +11,7 @@ import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/feedback/uten_empty.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_editable_grid.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
@@ -242,9 +243,9 @@ class _WorkshopMaterialRequestPanelState
     return PopScope(
       canPop: !_saving,
       child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text('$title · ${widget.workshopName}'),
+        appBar: UtenAppBar(
+          showPagePermissionAction: false,
+          title: '$title · ${widget.workshopName}',
           actions: [
             IconButton(
               tooltip: '关闭',

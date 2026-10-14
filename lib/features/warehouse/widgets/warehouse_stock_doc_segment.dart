@@ -575,11 +575,7 @@ class _WarehouseStockDocSegmentState
               // 进页面不预选（未选不发请求，显示引导占位）。
               // 徽章口径：草稿不计入待办数，各段不挂。
               Padding(
-                padding: const EdgeInsets.only(
-                  bottom: UtenFilterRow.rowGap,
-                  left: UtenSpacing.s4,
-                  right: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.only(bottom: UtenFilterRow.rowGap),
                 child: UtenFilterToolbar<_StockSegSeg>(
                   segmentsKey: Key(
                     'stock-doc-segment-status-${widget.docType.code}',
@@ -611,11 +607,7 @@ class _WarehouseStockDocSegmentState
               // 历史单据段时间行。
               if (seg?.history == true)
                 Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                   child: UtenHistoryTimeFilter(
                     key: Key(
                       'stock-doc-segment-history-time-${widget.docType.code}',
@@ -626,11 +618,7 @@ class _WarehouseStockDocSegmentState
                 ),
               // 总结行：左「共 N 条」右「新建」。
               Padding(
-                padding: const EdgeInsets.only(
-                  bottom: UtenSpacing.s8,
-                  left: UtenSpacing.s4,
-                  right: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                 child: Row(
                   children: [
                     if (_shouldLoad)
@@ -638,7 +626,7 @@ class _WarehouseStockDocSegmentState
                         liveRegion: true,
                         label: '共 $total 张${widget.docType.label}',
                         child: Text(
-                          '共 $total 条 · 双击办理',
+                          '共 $total 条',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),

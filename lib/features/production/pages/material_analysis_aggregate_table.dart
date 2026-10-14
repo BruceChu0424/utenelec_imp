@@ -1567,8 +1567,18 @@ final class _MaterialAggregateTableController {
     _MaterialAggregate aggregate, {
     required bool worker,
   }) {
-    if (workshopGroups(aggregate).isEmpty) return const Text('—');
+    final groups = workshopGroups(aggregate);
+    if (groups.isEmpty) return const Text('—');
     final value = worker ? workerText(aggregate) : workshopText(aggregate);
+    if (groups.any(owner._tableAssignmentLocked)) {
+      return Tooltip(
+        key: ValueKey(
+          'material-aggregate-${worker ? 'worker' : 'workshop'}-${aggregate.key}',
+        ),
+        message: '已下达来源的生产车间与负责人以实际工单为准',
+        child: Text(value),
+      );
+    }
     return owner._materialTableAssignmentCell(
       theme,
       key:
@@ -1598,9 +1608,38 @@ final class _MaterialAggregateTableController {
     schedulePreview();
   }
 
+  void synchronizeIssuedRates(Iterable<_MaterialGroup> groups, String text) {
+    final byLine = {
+      for (final group in groups) group.representative.materialLineId: group,
+    };
+    var affected = false;
+    for (final draft in drafts.values) {
+      for (final line in draft.paths.keys.toList()) {
+        final group = byLine[line];
+        if (group == null) continue;
+        if (owner._tableGroupIssued(group)) {
+          draft.paths[line] = draft.paths[line]!.withCommittedRate(
+            text,
+            explicit: owner._prefilledOverproductionRates.isExplicit(
+              owner._overproductionPercentController(materialLineId: line),
+            ),
+          );
+        }
+        draft.previewGroups = const [];
+        affected = true;
+      }
+    }
+    if (!affected) return;
+    _revision++;
+    _preview = null;
+    _previewRequest = null;
+    error = null;
+    schedulePreview();
+  }
+
   Future<void> pickWorkshop(_MaterialAggregate aggregate) async {
     final groups = workshopGroups(aggregate);
-    if (groups.isEmpty) return;
+    if (groups.isEmpty || groups.any(owner._tableAssignmentLocked)) return;
     final tree = owner._tableWorkshopTree.isNotEmpty
         ? owner._tableWorkshopTree
         : await owner._tableWorkshopTreeOrEmpty();
@@ -1611,7 +1650,12 @@ final class _MaterialAggregateTableController {
       tree: tree,
       selectablePredicate: (node) => selectable.contains(node.id),
     );
-    if (!owner.mounted || picked == null || picked.isEmpty) return;
+    if (!owner.mounted ||
+        picked == null ||
+        picked.isEmpty ||
+        workshopGroups(aggregate).any(owner._tableAssignmentLocked)) {
+      return;
+    }
     owner._mutateAggregateTable(() {
       final draft = begin(aggregate);
       draft.mixedWorkshop = false;
@@ -1629,7 +1673,7 @@ final class _MaterialAggregateTableController {
 
   Future<void> pickWorker(_MaterialAggregate aggregate) async {
     final groups = workshopGroups(aggregate);
-    if (groups.isEmpty) return;
+    if (groups.isEmpty || groups.any(owner._tableAssignmentLocked)) return;
     final revision = _revision;
     final workshops = groups.map(owner._tableWorkshopFor).toList();
     if (workshops.map((item) => item.id).toSet().length != 1 ||
@@ -1667,7 +1711,8 @@ final class _MaterialAggregateTableController {
     );
     if (!owner.mounted || picked == null || revision != _revision) return;
     final currentGroups = workshopGroups(aggregate);
-    if (currentGroups.length != groups.length ||
+    if (currentGroups.any(owner._tableAssignmentLocked) ||
+        currentGroups.length != groups.length ||
         currentGroups.any(
           (group) =>
               !groups.any((original) => original.key == group.key) ||
@@ -1726,12 +1771,9 @@ final class _MaterialAggregateTableController {
     if (groups.isEmpty) return const Text('—');
     final uniform = uniformRateText(groups);
     if (groups.any(owner._tableGroupIssued)) {
-      return Tooltip(
-        message: '这一行已有下达记录，允许超产比例随工单锁定；要改已下达工单的比例须计划部审批。未下达来源可切换按产品分别设置。',
-        child: Text(
-          uniform == null ? '多个比例（已锁定）' : '$uniform%',
-          key: ValueKey('material-aggregate-rate-${aggregate.key}'),
-        ),
+      return owner._issuedRateCell(
+        groups,
+        key: 'material-aggregate-rate-${aggregate.key}',
       );
     }
     final initial = drafts[aggregate.key]?.mixedRate == true
@@ -2179,6 +2221,25 @@ final class _MaterialAggregatePathSnapshot {
     required this.rateExplicit,
   });
   final String groupKey, orderText, appendText, rate;
+
+  _MaterialAggregatePathSnapshot withCommittedRate(
+    String value, {
+    required bool explicit,
+  }) => _MaterialAggregatePathSnapshot(
+    groupKey: groupKey,
+    orderText: orderText,
+    appendText: appendText,
+    orderSeed: orderSeed,
+    appendSeed: appendSeed,
+    typedQty: typedQty,
+    selected: selected,
+    autoSelected: autoSelected,
+    deselected: deselected,
+    workshop: workshop,
+    worker: worker,
+    rate: value,
+    rateExplicit: explicit,
+  );
 
   /// 快照时比例是人定的(不再是系统预填值)。
   final bool rateExplicit;

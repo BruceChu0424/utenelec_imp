@@ -177,7 +177,7 @@ class _WorkshopMaterialSetupPageState
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+          padding: EdgeInsets.zero,
           child: UtenFilterToolbar<String>(
             segmentsKey: const Key('wm-setup-tabs'),
             segments: [
@@ -195,7 +195,7 @@ class _WorkshopMaterialSetupPageState
         const SizedBox(height: UtenSpacing.s8),
         // 车间与内料仓总览同一份清单。
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+          padding: EdgeInsets.zero,
           child: UtenFilterToolbar<String>(
             segmentsKey: const Key('wm-setup-workshop'),
             segments: [

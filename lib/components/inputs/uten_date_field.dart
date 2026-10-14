@@ -20,6 +20,7 @@ import '../../core/utils/china_datetime.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
+import 'uten_table_cell_hints.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
@@ -180,7 +181,9 @@ class _UtenDateFieldState extends State<UtenDateField> {
         widget.errorMessage == null;
     return InkWell(
       onTap: widget.enabled ? _pick : null,
-      borderRadius: BorderRadius.circular(UtenSpacing.s8),
+      borderRadius: UtenTableCellHints.contains(context)
+          ? UtenRadius.mdAll
+          : UtenPageField.borderRadius,
       child: InputDecorator(
         decoration: applyRequiredEmpty(
           applyAutofillHint(

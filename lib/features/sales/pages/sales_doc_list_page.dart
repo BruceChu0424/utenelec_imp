@@ -915,11 +915,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                   const SizedBox(height: UtenFilterRow.rowGap),
                 ],
                 Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: UtenSpacing.s8,
-                    left: UtenSpacing.s4,
-                    right: UtenSpacing.s4,
-                  ),
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -1103,8 +1099,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                         padding: const EdgeInsets.only(
                           top: UtenSpacing.s8,
                           bottom: UtenSpacing.s8,
-                          left: UtenSpacing.s4,
-                          right: UtenSpacing.s4,
                         ),
                         child: Row(
                           children: [

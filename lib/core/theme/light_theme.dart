@@ -246,7 +246,11 @@ ThemeData buildLightTheme({PlatformBranding? branding}) {
         borderRadius: BorderRadius.circular(UtenRadius.control),
         borderSide: const BorderSide(color: UtenColors.border),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      isDense: true,
+      constraints: const BoxConstraints(minHeight: UtenFilterRow.minHeight),
+      contentPadding: UtenPageField.contentPadding,
+      prefixIconConstraints: UtenPageField.iconConstraints,
+      suffixIconConstraints: UtenPageField.iconConstraints,
       hintStyle: const TextStyle(
         fontFamily: 'NotoSansSC',
         color: UtenColors.textTertiary,

@@ -653,6 +653,7 @@ List<EditableGridColumn<SubcontractGridRow>> subcontractGridColumns(
         chromeWidthOf: PriceCheckCell.evidenceExtentOf,
         cellBuilder: (context, row) => PriceCheckCell(
           row: row,
+          showUnavailableInfo: false,
           child: RequiredCellFrame(
             listenable: row.price,
             isEmpty: () =>

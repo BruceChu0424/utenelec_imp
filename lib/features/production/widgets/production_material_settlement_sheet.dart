@@ -10,6 +10,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -680,9 +681,9 @@ class _MaterialSettlementSheetState
     return PopScope(
       canPop: !_editingLocked,
       child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          title: Text(_canRegister ? '登记实际用料' : '用料记录'),
+        appBar: UtenAppBar(
+          showPagePermissionAction: false,
+          title: _canRegister ? '登记实际用料' : '用料记录',
           actions: [
             IconButton(
               tooltip: '刷新',

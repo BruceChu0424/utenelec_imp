@@ -36,6 +36,7 @@ public class ProductionPlanningDraftService {
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
     private final ObjectMapper objectMapper;
+    private final ProductionExecutionPlanningService planning;
 
     @Transactional
     public ProductionPlanningDraftView save(
@@ -98,6 +99,49 @@ public class ProductionPlanningDraftService {
         }
         supersede(active, currentUser.requireId(), reason);
         draftRepo.saveAndFlush(active);
+    }
+
+    public record AllowanceDraftBaseline(UUID draftId,com.fasterxml.jackson.databind.JsonNode sourceSnapshot) {}
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public AllowanceDraftBaseline allowanceChangeBaseline(UUID planId) {
+        lockDraftPlan(planId);
+        ProductionPlanningDraft active=draftRepo.lockActiveByPlanId(planId).orElse(null);
+        if(active==null)return null;
+        GeneratePlanningPackageRequest request=payload(active);
+        var snapshot=planning.preview(planId,request.getWarehouseId());
+        // Check the original per-segment source/BOM proof before changing the plan item.
+        validator.validateAgainstSnapshot(request,snapshot);
+        return new AllowanceDraftBaseline(active.getId(),allowanceSourceSnapshot(snapshot));
+    }
+
+    /** Only the allowance/audit timestamp may differ; all source, quantity, recipe and assignment facts stay exact. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void rebaseAfterAllowanceChange(UUID planId,AllowanceDraftBaseline baseline) {
+        if(baseline==null)return;
+        lockDraftPlan(planId);
+        ProductionPlanningDraft active=draftRepo.lockActiveByPlanId(planId).orElse(null);
+        if(active==null || !active.getId().equals(baseline.draftId()))
+            throw new ApiException(ErrorCode.CONFLICT,"预排草案已变化，请刷新后重试");
+        GeneratePlanningPackageRequest request=payload(active);
+        var snapshot=planning.preview(planId,request.getWarehouseId());
+        if(!baseline.sourceSnapshot().equals(allowanceSourceSnapshot(snapshot)))
+            throw new ApiException(ErrorCode.CONFLICT,"生产来源或物料规则已变化，不能只修改允许超产比例");
+        var fingerprints=snapshot.productLines().stream().collect(java.util.stream.Collectors.toMap(
+                CompleteKitAllocator.ProductLine::sourcePlanItemId,CompleteKitAllocator.ProductLine::bomFingerprint));
+        for(var segment:request.getSegments())segment.setBomFingerprint(fingerprints.get(segment.getSourcePlanItemId()));
+        request.setPreviewFingerprint(snapshot.fingerprint());
+        // Validate current source, material and assignment facts before replacing the immutable proposal.
+        validator.validateCurrent(planId,request);
+        supersede(active,currentUser.requireId(),"首次报工前修改允许超产比例，保留原预排分段");
+        draftRepo.saveAndFlush(active);
+        save(planId,request);
+    }
+
+    private com.fasterxml.jackson.databind.JsonNode allowanceSourceSnapshot(ProductionExecutionPlanningService.Snapshot snapshot) {
+        var lines=objectMapper.valueToTree(snapshot.productLines());
+        for(var line:lines)((com.fasterxml.jackson.databind.node.ObjectNode)line).remove("bomFingerprint");
+        return lines;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

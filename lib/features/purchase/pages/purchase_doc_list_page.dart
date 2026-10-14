@@ -714,11 +714,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                       ),
                       // 页面头：Icon + 标题 + 计数 + 新建按钮（随页滚走）。
                       Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: UtenSpacing.s8,
-                          left: UtenSpacing.s4,
-                          right: UtenSpacing.s4,
-                        ),
+                        padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                         child: Row(
                           children: [
                             Icon(
@@ -754,8 +750,6 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                         Padding(
                           padding: const EdgeInsets.only(
                             bottom: UtenSpacing.s8,
-                            left: UtenSpacing.s4,
-                            right: UtenSpacing.s4,
                           ),
                           child: UtenHistoryTimeFilter(
                             key: Key(

@@ -425,11 +425,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                 return UtenCollapsingHeaderScrollView(
                   // 页面头：Icon + 标题 + 计数 + 新建按钮（搜索条挪到下方筛选区/侧栏）
                   collapsingHeader: Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
+                    padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                     child: Row(
                       children: [
                         Icon(
@@ -460,9 +456,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                   // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
                   body: UtenListTwoPane(
                     filterPane: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s4,
-                      ),
+                      padding: EdgeInsets.zero,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

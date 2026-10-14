@@ -326,9 +326,9 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(
+                  0,
                   UtenSpacing.s12,
-                  UtenSpacing.s12,
-                  UtenSpacing.s12,
+                  0,
                   UtenSpacing.s8,
                 ),
                 child: UtenFilterToolbar<String>(

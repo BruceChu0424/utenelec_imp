@@ -48,7 +48,7 @@ void main() {
   ) async {
     await pumpSection(tester, const {});
 
-    expect(find.text('上传'), findsNothing);
+    expect(find.text('添加文件'), findsNothing);
     expect(find.byTooltip('删除'), findsNothing);
     expect(find.byTooltip('预览'), findsNothing);
   });
@@ -57,7 +57,7 @@ void main() {
     tester,
   ) async {
     await pumpSection(tester, const {Perm.attachmentUpload});
-    expect(find.text('上传'), findsOneWidget);
+    expect(find.text('添加文件'), findsOneWidget);
     expect(find.byTooltip('删除'), findsNothing);
     expect(find.byTooltip('预览'), findsNothing);
 
@@ -65,7 +65,7 @@ void main() {
       Perm.attachmentDelete,
       Perm.attachmentDownload,
     });
-    expect(find.text('上传'), findsNothing);
+    expect(find.text('添加文件'), findsNothing);
     expect(find.byTooltip('删除'), findsOneWidget);
     expect(find.byTooltip('预览'), findsOneWidget);
   });

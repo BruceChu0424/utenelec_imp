@@ -438,11 +438,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
             child: UtenCollapsingHeaderScrollView(
               // 页面头：Icon + 标题 + 计数（搜索挪到下方筛选区/侧栏）
               collapsingHeader: Padding(
-                padding: const EdgeInsets.only(
-                  bottom: UtenSpacing.s8,
-                  left: UtenSpacing.s4,
-                  right: UtenSpacing.s4,
-                ),
+                padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                 child: Row(
                   children: [
                     Icon(
@@ -463,9 +459,7 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage> {
               // 方向保留为主业务视图，清结状态由彩色状态列与表头承接。
               body: UtenListTwoPane(
                 filterPane: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s4,
-                  ),
+                  padding: EdgeInsets.zero,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

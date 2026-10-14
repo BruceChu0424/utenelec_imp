@@ -146,6 +146,7 @@ class _FinanceAssetWorkbenchPageState
     final tabBar = TabBar(
       controller: _tabs,
       isScrollable: true,
+      tabAlignment: TabAlignment.start,
       tabs: [
         const Tab(icon: Icon(Icons.apartment_outlined), text: '固定资产'),
         const Tab(icon: Icon(Icons.calendar_month_outlined), text: '长期待摊'),

@@ -5,6 +5,7 @@ import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/feedback/uten_busy_overlay.dart';
 import '../../../../components/inputs/uten_search_bar.dart';
 import '../../../../components/layout/uten_adaptive_panel.dart';
+import '../../../../components/layout/uten_app_bar.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import '../../../../components/layout/uten_segment_row.dart';
 import '../../../../shared/platform_tables/platform_table_binding.dart';
@@ -471,8 +472,9 @@ class _SupplierSettlementDetailPanelState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('供应商月结详情'),
+      appBar: UtenAppBar(
+        title: '供应商月结详情',
+        showPagePermissionAction: false,
         leading: IconButton(
           icon: const Icon(Icons.close_rounded),
           onPressed: _writing ? null : () => Navigator.of(context).pop(),

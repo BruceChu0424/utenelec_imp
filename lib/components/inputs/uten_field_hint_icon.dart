@@ -135,11 +135,11 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
               constraints: BoxConstraints.tightFor(
                 width: UtenControlMetrics.minimumHitExtent(
                   context,
-                  desktop: widget.dense ? 32 : 40,
+                  desktop: widget.dense ? 32 : UtenFilterRow.minHeight,
                 ),
                 height: UtenControlMetrics.minimumHitExtent(
                   context,
-                  desktop: widget.dense ? 32 : 40,
+                  desktop: widget.dense ? 32 : UtenFilterRow.minHeight,
                 ),
               ),
               style: const ButtonStyle(

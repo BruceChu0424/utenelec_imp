@@ -137,16 +137,20 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     );
 
     Widget body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s16),
-          child: UtenSegmentedFilter<String?>(
-            segments: _segments,
-            selected: _status,
-            onChanged: (v) => setState(() {
-              _status = v;
-              _page = 1; // 换筛选回到第 1 页
-            }),
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: UtenSegmentedFilter<String?>(
+              segments: _segments,
+              selected: _status,
+              onChanged: (v) => setState(() {
+                _status = v;
+                _page = 1; // 换筛选回到第 1 页
+              }),
+            ),
           ),
         ),
         Expanded(child: _buildBody(l10n, async)),

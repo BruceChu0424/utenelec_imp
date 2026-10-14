@@ -697,7 +697,7 @@ class _WorkshopMaterialBinPageState
         // 目标仓未启用或不可见时仍可主动切换到有权限的其它内料仓；不自动代选。
         if (enabled.length > 1 || (_current == null && enabled.isNotEmpty)) ...[
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+            padding: EdgeInsets.zero,
             child: UtenFilterToolbar<String>(
               segmentsKey: const Key('wm-bin-workshops'),
               segments: [
@@ -783,7 +783,7 @@ class _WorkshopMaterialBinPageState
           const SizedBox(height: UtenSpacing.s8),
         ],
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s4),
+          padding: EdgeInsets.zero,
           child: UtenFilterToolbar<String>(
             segmentsKey: const Key('wm-bin-view'),
             segments: [

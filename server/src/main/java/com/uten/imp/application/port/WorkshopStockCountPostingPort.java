@@ -13,5 +13,7 @@ public interface WorkshopStockCountPostingPort {
         return warehouseIds.stream().filter(this::canAccessWarehouse).collect(java.util.stream.Collectors.toSet());
     }
     boolean canAccessWarehouseForUser(UUID warehouseId, UUID userId);
+    /** Locks and revalidates workshop settings in stable order before the inventory prefix. */
+    void prelockApprovalWarehouses(List<UUID> warehouseIds);
     PostingResult postApproved(UUID requestId, UUID approvalEventId);
 }

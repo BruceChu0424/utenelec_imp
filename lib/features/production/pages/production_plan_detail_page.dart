@@ -1429,12 +1429,13 @@ class _ProductionPlanDetailPageState
     ProductionExecutionWorkbenchRelatedDocument doc,
   ) {
     final child = Container(
+      constraints: BoxConstraints(minHeight: UtenPageField.heightOf(context)),
       padding: const EdgeInsets.symmetric(
         horizontal: UtenSpacing.s8,
         vertical: UtenSpacing.s4,
       ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(UtenRadius.sm),
+        borderRadius: UtenPageField.borderRadius,
         border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
       child: Row(
@@ -1482,7 +1483,7 @@ class _ProductionPlanDetailPageState
     };
     if (path == null) return child;
     return InkWell(
-      borderRadius: BorderRadius.circular(UtenRadius.sm),
+      borderRadius: UtenPageField.borderRadius,
       onTap: () => _openLinkedPage(path),
       child: child,
     );

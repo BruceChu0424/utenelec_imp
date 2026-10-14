@@ -142,12 +142,7 @@ class _ProductionExecutionGroupPanelState
       if (!_opening) _load();
     });
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-      ),
+      padding: const EdgeInsets.fromLTRB(0, UtenSpacing.s8, 0, UtenSpacing.s8),
       child: MasterDataTableView<ProductionExecutionWorkbenchGroup>(
         tableKey:
             'features.production.widgets.production_execution_group_panel.ProductionExecutionGroupPanelState.build.1',

@@ -573,7 +573,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         ? widget.selectedCountLabel?.call(_selected.length) ??
               '已选 ${_selected.length} 人'
         : _selected.isEmpty
-        ? '请选择后点「确定」'
+        ? '未选择'
         : '已选择：${_selected.values.first.displayName}';
     final canConfirm =
         !_invalidated &&

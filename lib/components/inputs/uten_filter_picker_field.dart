@@ -8,7 +8,7 @@
 //
 // 形态：单行紧凑字段 = 标签 + 当前值 + 尾部 chevron；
 // - 圆角 UtenRadius.control（全平台唯一控件圆角）；
-// - 高度与 UtenSearchBar（内容驱动 ≈44）对齐：纵向内边距 11 + 20 图标 + 1px 边框；
+// - 高度与 UtenSearchBar 共用桌面36/触控48角色；
 //   字号放大时跟随内容自然增高，不写死高度；
 // - 已生效（[value] 非空）时边框/文字走 primary，一眼看出「这个筛选正开着」；
 //   未生效显示 [placeholder]（默认「全部」）与中性描边。
@@ -95,30 +95,35 @@ class UtenFilterPickerField extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: enabled ? onTap : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: UtenPageField.heightOf(context),
+          ),
+          child: Padding(
+            padding: UtenFilterRow.contentPadding,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: UtenSpacing.s8),
+                ],
+                Text(
+                  label,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(width: UtenSpacing.s8),
-              ],
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
+                if (width == null) valueText else Flexible(child: valueText),
+                const SizedBox(width: UtenSpacing.s4),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 20,
                   color: scheme.onSurfaceVariant,
                 ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              if (width == null) valueText else Flexible(child: valueText),
-              const SizedBox(width: UtenSpacing.s4),
-              Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 20,
-                color: scheme.onSurfaceVariant,
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

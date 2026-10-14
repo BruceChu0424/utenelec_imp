@@ -1,4 +1,13 @@
 import 'package:flutter/rendering.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+
+class MasterDataPagination {
+  const MasterDataPagination(this.currentPage, this.totalPages, this.busy);
+  final int currentPage;
+  final int totalPages;
+  final bool busy;
+}
 
 /// The rows currently available in a table, including pages appended by scrolling.
 ///
@@ -16,6 +25,9 @@ class MasterDataTableRowsController<T> {
     bool, {
     Future<void> Function()? loadPrevious,
     void Function(RenderBox)? updateVisiblePage,
+    required int currentPage,
+    required int totalPages,
+    void Function(int)? goToPage,
   })?
   _onBind;
   void Function(Object)? _onDetach;
@@ -25,6 +37,36 @@ class MasterDataTableRowsController<T> {
   void Function(RenderBox)? _updateVisiblePage;
   bool _isAppending = false;
   List<T> _items = const [];
+  final _pagination = ValueNotifier<MasterDataPagination?>(null);
+  MasterDataPagination? _pendingPagination;
+  bool _paginationScheduled = false;
+  void Function(int)? _goToPage;
+
+  ValueListenable<MasterDataPagination?> get pagination => _pagination;
+  void goToPage(int page) => _goToPage?.call(page);
+
+  void _publishPagination(MasterDataPagination? next) {
+    if (_pendingPagination?.currentPage == next?.currentPage &&
+        _pendingPagination?.totalPages == next?.totalPages &&
+        _pendingPagination?.busy == next?.busy) {
+      return;
+    }
+    _pendingPagination = next;
+    if (_paginationScheduled) return;
+    _paginationScheduled = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _paginationScheduled = false;
+      final value = _pendingPagination;
+      final previous = _pagination.value;
+      if (previous?.currentPage == value?.currentPage &&
+          previous?.totalPages == value?.totalPages &&
+          previous?.busy == value?.busy) {
+        return;
+      }
+      _pagination.value = value;
+    });
+    SchedulerBinding.instance.ensureVisualUpdate();
+  }
 
   List<T> get items => _items;
   bool get isAppending => _isAppending;
@@ -43,18 +85,26 @@ class MasterDataTableRowsController<T> {
     bool busy, {
     Future<void> Function()? loadPrevious,
     void Function(RenderBox)? updateVisiblePage,
+    int currentPage = 1,
+    int totalPages = 1,
+    void Function(int)? goToPage,
   }) {
     _owner = owner;
     _loadNextPage = load;
     _loadPreviousPage = loadPrevious;
     _updateVisiblePage = updateVisiblePage;
     _isAppending = busy;
+    _goToPage = goToPage;
+    _publishPagination(MasterDataPagination(currentPage, totalPages, busy));
     _onBind?.call(
       owner,
       load,
       busy,
       loadPrevious: loadPrevious,
       updateVisiblePage: updateVisiblePage,
+      currentPage: currentPage,
+      totalPages: totalPages,
+      goToPage: goToPage,
     );
   }
 
@@ -65,6 +115,8 @@ class MasterDataTableRowsController<T> {
     _loadPreviousPage = null;
     _updateVisiblePage = null;
     _isAppending = false;
+    _goToPage = null;
+    _publishPagination(null);
     _onDetach?.call(owner);
   }
 

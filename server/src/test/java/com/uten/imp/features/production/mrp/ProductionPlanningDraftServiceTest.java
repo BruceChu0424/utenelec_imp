@@ -46,7 +46,7 @@ class ProductionPlanningDraftServiceTest {
         objectMapper = new ObjectMapper();
         service = new ProductionPlanningDraftService(
                 draftRepo, validator, executionCommand, em, currentUser,
-                mock(TxSessionVars.class), objectMapper);
+                mock(TxSessionVars.class), objectMapper, mock(ProductionExecutionPlanningService.class));
     }
 
     @Test

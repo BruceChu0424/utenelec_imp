@@ -5,6 +5,8 @@ import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.execution.ProductionDrawRequest;
 import com.uten.imp.features.production.execution.ProductionDrawRequestService;
+import com.uten.imp.features.production.execution.ProductionExecutionSegmentService;
+import com.uten.imp.features.production.execution.SegmentTransitionRequest;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.dto.StockDocIssueRequest;
 import org.junit.jupiter.api.AfterEach;
@@ -42,11 +44,93 @@ class ProductionWorkbenchStockCoverageEndToEndTest {
     @Autowired MaterialAnalysisService analyses;
     @Autowired MaterialAnalysisCommandService commands;
     @Autowired ProductionDrawRequestService draws;
+    @Autowired ProductionExecutionSegmentService segments;
     @Autowired StockDocService stockDocuments;
     private FullChainEndToEndTest fixture;
 
     @BeforeEach void setup() { fixture = new FullChainEndToEndTest(); beans.autowireBean(fixture); }
     @AfterEach void logout() { SecurityContextHolder.clearContext(); }
+
+    @Test
+    void netNestedChildQuotaSurvivesParentBatchConsumptionAndOnlyCountsItsOwnRemainder() {
+        var world = fixture.seedWorld("workbench-net-child");
+        fixture.loginAs(world.superAdminUserId());
+        UUID product = UUID.randomUUID(), middle = UUID.randomUUID(), component = UUID.randomUUID(), raw = UUID.randomUUID();
+        fixture.insertGoods(product, "WB-NET-P-" + product, "净缺口总装", "自制", world.unitId(), world.unitLegacy());
+        fixture.insertGoods(middle, "WB-NET-B-" + middle, "可分批中间件", "自制", world.unitId(), world.unitLegacy());
+        fixture.insertGoods(component, "WB-NET-C-" + component, "已有八件库存的子件", "自制", world.unitId(), world.unitLegacy());
+        fixture.insertGoods(raw, "WB-NET-R-" + raw, "两件剩余子件的原料", "采购", world.unitId(), world.unitLegacy());
+        fixture.insertBom(product, middle, "1");
+        fixture.insertBom(middle, component, "1");
+        fixture.insertBom(component, raw, "1");
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES(?,?,8)", world.warehouseId(), component);
+        db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES(?,?,2)", world.warehouseId(), raw);
+        AnalysisView view = analyses.preview(new PreviewRequest(null, null, null, world.warehouseId(), "net-child-preview-" + product,
+                List.of(new PreviewItem("STOCK", null, product, null, world.unitId(), "net-child-source-" + product,
+                        "库存先净掉八件，子件仅负责两件", BusinessTime.today().plusDays(10), BigDecimal.TEN))));
+        var middleMaterial = view.flatMaterials().stream().filter(row -> row.goodsId().equals(middle)).findFirst().orElseThrow();
+        var componentMaterial = view.flatMaterials().stream().filter(row -> row.goodsId().equals(component)).findFirst().orElseThrow();
+        assertThat(componentMaterial.demandSupplyGapQty()).isEqualByComparingTo("2");
+        Object assignment = ReflectionTestUtils.invokeMethod(fixture, "productionAssignment", "workbench-net-child");
+        UUID workshop = (UUID) ReflectionTestUtils.getField(assignment, "workshopId");
+        UUID worker = (UUID) ReflectionTestUtils.getField(assignment, "workerId");
+        UUID analysis = view.analysisId();
+        commands.issueWorkshopPlans(analysis, new IssueWorkshopPlansRequest(view.version(), view.fingerprint(),
+                "net-child-issue-" + product, world.warehouseId(), BusinessTime.today(), BusinessTime.today().plusDays(10), true,
+                List.of(new IssueWorkshopPlansRequest.IssuePlanLine(middleMaterial.materialLineId(), null, BigDecimal.TEN,
+                                BusinessTime.today(), BusinessTime.today().plusDays(10), workshop, null, worker, null, null),
+                        new IssueWorkshopPlansRequest.IssuePlanLine(componentMaterial.materialLineId(), null, new BigDecimal("2"),
+                                BusinessTime.today(), BusinessTime.today().plusDays(10), workshop, null, worker, null, null))));
+        UUID middleSource = db.queryForObject("SELECT id FROM production_material_analysis_items WHERE analysis_id=? AND parent_analysis_material_id=? AND source_type='MAKE_COMPONENT' AND NOT is_deleted", UUID.class, analysis, middleMaterial.materialLineId());
+        UUID componentSource = db.queryForObject("SELECT id FROM production_material_analysis_items WHERE analysis_id=? AND parent_analysis_material_id=? AND source_type='MAKE_COMPONENT' AND NOT is_deleted", UUID.class, analysis, componentMaterial.materialLineId());
+        assertThat(db.queryForObject("SELECT requested_qty FROM production_material_analysis_items WHERE id=?", BigDecimal.class, componentSource)).isEqualByComparingTo("2");
+        UUID middlePlan = db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=? AND status=1 AND NOT is_deleted", UUID.class, middleSource);
+        // The real complete-kit planner already partitions the parent into
+        // an eight-piece ready batch and a two-piece waiting batch.
+        assertThat(db.queryForObject("SELECT SUM(planned_qty) FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted AND status NOT IN ('CANCELLED','REVERSED')", BigDecimal.class, middlePlan)).isEqualByComparingTo("10");
+        UUID readyBatch = db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND planned_qty=8 AND NOT is_deleted AND status NOT IN ('CANCELLED','REVERSED')", UUID.class, middlePlan);
+        fixture.confirmFullKitRoute(middlePlan, readyBatch);
+        var readyDrawItems = List.of(new ProductionDrawRequest.Item(readyBatch,
+                db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, readyBatch)));
+        var readyDrawPreview = draws.preview(new ProductionDrawRequest.PreviewRequest(readyDrawItems));
+        draws.submit(new ProductionDrawRequest.SubmitRequest(readyDrawItems, "net-child-ready-draw-" + product, readyDrawPreview.fingerprint()));
+        for (UUID draw : db.queryForList("SELECT document_id FROM production_planning_package_documents WHERE execution_segment_id=? AND document_type='DRAW'", UUID.class, readyBatch)) {
+            StockDocIssueRequest issue = ReflectionTestUtils.invokeMethod(fixture, "drawIssueRequest", draw, "net-child-out-" + draw, null, BigDecimal.ZERO);
+            stockDocuments.approveAndIssue(draw, issue);
+        }
+        assertComponentRemaining(componentSource, "2");
+        segments.start(middlePlan, readyBatch, new SegmentTransitionRequest(
+                db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, readyBatch),
+                "net-child-start-" + product));
+        UUID middlePlanItem = db.queryForObject("SELECT source_plan_item_id FROM production_execution_segments WHERE id=?", UUID.class, readyBatch);
+        UUID report = ReflectionTestUtils.invokeMethod(fixture, "reportAndApproveExecutionSegment", world, middlePlanItem, null, middle, readyBatch, null, "8");
+        UUID inbound = ReflectionTestUtils.invokeMethod(fixture, "finishedInDocForReport", report);
+        ReflectionTestUtils.invokeMethod(fixture, "confirmFinishedInboundFully", inbound);
+        fixture.loginAs(world.superAdminUserId());
+        assertThat(db.queryForObject("SELECT required_qty FROM production_material_analysis_materials WHERE id=?", BigDecimal.class, componentMaterial.materialLineId())).isEqualByComparingTo("2");
+        assertThat(db.queryForObject("SELECT SUM(required_qty-released_qty) FROM production_material_demands WHERE plan_id=? AND goods_id=? AND NOT is_deleted AND status NOT IN ('RELEASED','REVERSED')", BigDecimal.class, middlePlan, component)).isEqualByComparingTo("10");
+        assertComponentRemaining(componentSource, "2");
+
+        UUID componentPlan = db.queryForObject("SELECT id FROM production_plans WHERE material_analysis_item_id=? AND status=1 AND NOT is_deleted", UUID.class, componentSource);
+        fixture.confirmFullKitRoutes(componentPlan);
+        UUID componentSegment = db.queryForObject("SELECT id FROM production_execution_segments WHERE plan_id=? AND NOT is_deleted", UUID.class, componentPlan);
+        var drawItems = List.of(new ProductionDrawRequest.Item(componentSegment, db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?", Long.class, componentSegment)));
+        var drawPreview = draws.preview(new ProductionDrawRequest.PreviewRequest(drawItems));
+        draws.submit(new ProductionDrawRequest.SubmitRequest(drawItems, "net-child-draw-" + product, drawPreview.fingerprint()));
+        for (UUID draw : db.queryForList("SELECT document_id FROM production_planning_package_documents WHERE execution_segment_id=? AND document_type='DRAW'", UUID.class, componentSegment)) {
+            StockDocIssueRequest issue = ReflectionTestUtils.invokeMethod(fixture, "drawIssueRequest", draw, "net-child-raw-out-" + draw, null, BigDecimal.ZERO);
+            stockDocuments.approveAndIssue(draw, issue);
+        }
+        UUID componentPlanItem = db.queryForObject("SELECT id FROM production_plan_items WHERE plan_id=? AND NOT is_deleted", UUID.class, componentPlan);
+        ReflectionTestUtils.invokeMethod(fixture, "produceInternal", world, componentPlanItem, component, "2");
+        fixture.loginAs(world.superAdminUserId());
+        assertComponentRemaining(componentSource, "0");
+        assertThat(db.queryForObject("SELECT requested_qty FROM production_material_analysis_items WHERE id=?", BigDecimal.class, componentSource)).isEqualByComparingTo("2");
+    }
+
+    private void assertComponentRemaining(UUID source, String quantity) {
+        assertThat(db.queryForObject("SELECT remaining_fulfillment_qty FROM v_production_analysis_workbench_item_progress WHERE analysis_item_id=?", BigDecimal.class, source)).isEqualByComparingTo(quantity);
+    }
 
     @Test
     void stockedMakeBomComponentNeedsNoChildWorkOrderAndFinishedRootLeavesActiveWorkbench() {

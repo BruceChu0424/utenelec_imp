@@ -81,8 +81,8 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     SELECT allocation_status
                     FROM production_material_analysis_plan_links WHERE id=?
                     """, linkId, "APPROVED");
-            // 审批后仍需实际入库（iqty）才完工；存储状态由应用层刷新回写，
-            // 这里直接断言状态函数对实际入库事实的判定。
+            // 审批与计划计数不等于来源实际履约；存储状态由应用层刷新回写，
+            // 这里直接断言状态函数对非公共、已审核 FINISHED_IN 来源的判定。
             assertText(connection, """
                     SELECT status FROM production_material_analyses WHERE id=?
                     """, fixture.analysisId(), "PARTIALLY_PLANNED");
@@ -98,7 +98,24 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                     """, fixture.planId());
             assertText(connection,
                     "SELECT fn_material_analysis_fulfillment_status(?)",
+                    fixture.analysisId(), "PARTIALLY_PLANNED");
+            assertEquals(0, new BigDecimal("4").compareTo(scalarDecimal(connection,
+                    "SELECT remaining_fulfillment_qty FROM v_production_analysis_workbench_item_progress WHERE analysis_item_id=?",
+                    fixture.itemId())), "iqty alone cannot manufacture an approved private receipt");
+
+            UUID receipt = insertApprovedPrivateFinishedReceipt(connection, fixture, "4");
+            assertText(connection,
+                    "SELECT fn_material_analysis_fulfillment_status(?)",
                     fixture.analysisId(), "COMPLETED");
+            assertEquals(0, scalarDecimal(connection,
+                    "SELECT remaining_fulfillment_qty FROM v_production_analysis_workbench_item_progress WHERE analysis_item_id=?",
+                    fixture.itemId()).signum());
+
+            update(connection, "UPDATE stock_documents SET status=-1 WHERE id=?", receipt);
+            assertText(connection,
+                    "SELECT fn_material_analysis_fulfillment_status(?)",
+                    fixture.analysisId(), "PARTIALLY_PLANNED");
+            assertQuantities(connection, fixture.itemId(), "0.0000", "4.0000");
 
             update(connection, "UPDATE production_plans SET status=-1 WHERE id=?",
                     fixture.planId());
@@ -836,6 +853,34 @@ class ProductionMaterialAnalysisPersistencePostgresTest {
                 """, analysisId, itemId, planId);
         return new Fixture(analysisId, itemId, planId, userId,
                 warehouseId, goodsId, unitId);
+    }
+
+    /** Legacy-plan receipt fixture with all guards enabled and the frozen plan unit. */
+    private static UUID insertApprovedPrivateFinishedReceipt(
+            Connection connection, Fixture fixture, String quantity) throws Exception {
+        UUID documentId = UUID.randomUUID();
+        String billNo = businessIdentifier("CR", LocalDate.of(2026, 8, 8));
+        insert(connection, """
+                INSERT INTO stock_documents(
+                    id,doc_type,bill_no,bill_date,warehouse_id,status,created_by,updated_by)
+                VALUES(?,'FINISHED_IN',?,DATE '2026-08-08',?,1,?,?)
+                """, documentId, billNo, fixture.warehouseId(), fixture.userId(), fixture.userId());
+        insert(connection, """
+                INSERT INTO stock_document_items(
+                    id,doc_id,bill_type,bill_no,bill_date,line_no,goods_id,color_id,
+                    unit_id,unit_rate,qty,base_qty,upstream_item_id,goods_snapshot_source,
+                    created_by,updated_by)
+                SELECT ?,?,'FINISHED_IN',?,DATE '2026-08-08',1,plan_item.goods_id,plan_item.color_id,
+                       plan_item.unit_id,plan_item.unit_rate,?,round(?*plan_item.unit_rate,4),
+                       plan_item.id,'MASTER_AT_SAVE',?,?
+                FROM production_plan_items plan_item
+                WHERE plan_item.plan_id=? AND NOT plan_item.is_deleted
+                """, UUID.randomUUID(), documentId, billNo, new BigDecimal(quantity),
+                new BigDecimal(quantity), fixture.userId(), fixture.userId(), fixture.planId());
+        assertEquals(1, scalarLong(connection,
+                "SELECT COUNT(*) FROM stock_document_items WHERE doc_id=? AND NOT fn_finished_in_is_public_output(id)",
+                documentId));
+        return documentId;
     }
 
     private static void insertAnalysisMaterial(

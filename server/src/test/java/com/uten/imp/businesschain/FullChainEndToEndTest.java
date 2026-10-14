@@ -6027,9 +6027,10 @@ class FullChainEndToEndTest {
                         && material.actionable())
                 .findFirst().orElseThrow();
         // ADR-102 (2026-09-27): 新建分析时服务端已按货品档案自动确认 (以前由页面进页后补发
-        // PUT /routes 做同一件事): 顶层行按自制, 组件行按主档委外. 根模式下同一货品既是顶层又是
-        // 兄弟成品的委外组件, 属同批混合路线, 建议保留主档推导值; 下面人工把顶层改成委外的步骤不变.
-        assertEquals(rootSupplyMode ? "MAKE" : "SUBCONTRACT", subcontractRow.sourceConfirmed());
+        // PUT /routes 做同一件事): 没有历史自制计划的顶层和组件都继承本例主档的委外路线。
+        // 根模式下同一货品同时作为顶层与兄弟成品的组件, 仍保持相同的主档路线;
+        // 下面显式确认同一路线后继续验证完整委外发料、合格收回和销售来源链。
+        assertEquals("SUBCONTRACT", subcontractRow.sourceConfirmed());
         assertEquals("SUBCONTRACT", siblingSubcontractRow.sourceConfirmed());
         assertEquals(0, subcontractRow.availableQty().compareTo(BigDecimal.ZERO));
         assertEquals(0, subcontractRow.shortageQty().compareTo(new BigDecimal("10")));

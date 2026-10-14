@@ -267,10 +267,28 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
                 String.class,analysis.analysisId())).isEqualTo("PARTIALLY_PLANNED");
         jdbc.update("UPDATE production_plan_items SET iqty=10 WHERE id=?",plan.planItemId());
         assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
+                String.class,analysis.analysisId())).isEqualTo("PARTIALLY_PLANNED");
+        assertThat(jdbc.queryForObject("""
+                SELECT remaining_fulfillment_qty FROM v_production_analysis_workbench_item_progress
+                WHERE analysis_item_id=?
+                """,BigDecimal.class,analysis.analysisItemId())).isEqualByComparingTo("10");
+        // Plan counters alone are not physical source receipts. Establish two
+        // approved private receipts in the frozen plan unit, then reverse only
+        // the second receipt to preserve the original partial-inbound proof.
+        insertApprovedPrivateFinishedReceipt(plan,userId,warehouseId,"4");
+        assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
+                String.class,analysis.analysisId())).isEqualTo("PARTIALLY_PLANNED");
+        UUID finalReceipt=insertApprovedPrivateFinishedReceipt(plan,userId,warehouseId,"6");
+        assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
                 String.class,analysis.analysisId())).isEqualTo("COMPLETED");
+        jdbc.update("UPDATE stock_documents SET status=-1 WHERE id=?",finalReceipt);
         jdbc.update("UPDATE production_plan_items SET iqty=4 WHERE id=?",plan.planItemId());
         assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
                 String.class,analysis.analysisId())).isEqualTo("PARTIALLY_PLANNED");
+        assertThat(jdbc.queryForObject("""
+                SELECT remaining_fulfillment_qty FROM v_production_analysis_workbench_item_progress
+                WHERE analysis_item_id=?
+                """,BigDecimal.class,analysis.analysisItemId())).isEqualByComparingTo("6");
         jdbc.update("UPDATE production_plans SET is_canceled=TRUE WHERE id=?",plan.planId());
         assertThat(jdbc.queryForObject("SELECT fn_material_analysis_fulfillment_status(?)",
                 String.class,analysis.analysisId())).isNotEqualTo("COMPLETED");
@@ -504,6 +522,34 @@ class MaterialAnalysisProductChildrenProjectionPostgresTest {
                 analysis.childAnalysisItemId(), planId,
                 new BigDecimal(quantity), userId);
         return new PlanFixture(planId, planItemId);
+    }
+
+    /** Native legacy-plan receipt facts; schema guards and private plan-link caps stay enabled. */
+    private static UUID insertApprovedPrivateFinishedReceipt(
+            PlanFixture plan,UUID userId,UUID warehouseId,String quantity) {
+        UUID documentId=UUID.randomUUID();
+        String billNo="CR20260830%06d".formatted(PLAN_NO_SEQUENCE.incrementAndGet());
+        jdbc.update("""
+                INSERT INTO stock_documents(
+                    id,doc_type,bill_no,bill_date,warehouse_id,status,created_by,updated_by)
+                VALUES(?,'FINISHED_IN',?,DATE '2026-08-30',?,1,?,?)
+                """,documentId,billNo,warehouseId,userId,userId);
+        jdbc.update("""
+                INSERT INTO stock_document_items(
+                    id,doc_id,bill_type,bill_no,bill_date,line_no,goods_id,color_id,
+                    unit_id,unit_rate,qty,base_qty,upstream_item_id,goods_snapshot_source,
+                    created_by,updated_by)
+                SELECT ?,?,'FINISHED_IN',?,DATE '2026-08-30',1,plan_item.goods_id,plan_item.color_id,
+                       plan_item.unit_id,plan_item.unit_rate,?,round(?*plan_item.unit_rate,4),
+                       plan_item.id,'MASTER_AT_SAVE',?,?
+                FROM production_plan_items plan_item WHERE plan_item.id=? AND NOT plan_item.is_deleted
+                """,UUID.randomUUID(),documentId,billNo,new BigDecimal(quantity),
+                new BigDecimal(quantity),userId,userId,plan.planItemId());
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM stock_document_items
+                WHERE doc_id=? AND NOT fn_finished_in_is_public_output(id)
+                """,Integer.class,documentId)).isEqualTo(1);
+        return documentId;
     }
 
     private static void insertReadySegment(

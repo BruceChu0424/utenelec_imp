@@ -162,3 +162,34 @@ class WarehouseScopeSelector extends ConsumerWidget {
     );
   }
 }
+
+/// A restored narrow scope must stay visible beside the task categories.
+/// Independent drafts have their own explicitly labelled all-warehouse entry.
+class WarehouseScopeFilterNotice extends ConsumerWidget {
+  const WarehouseScopeFilterNotice({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scope = ref.watch(warehouseTaskScopeProvider);
+    if (scope.isAll) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+      child: Wrap(
+        key: const Key('warehouse-task-scope-filter-notice'),
+        spacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('任务筛选：${scope.warehouseName ?? '所选仓库'}'),
+          TextButton(
+            key: const Key('warehouse-task-clear-scope'),
+            onPressed: () => ref
+                .read(warehouseTaskScopePrefProvider.notifier)
+                .select(const WarehouseTaskScope.all()),
+            child: const Text('查看本人全部仓库'),
+          ),
+          const Text('仓库草稿按本人全部可见范围显示'),
+        ],
+      ),
+    );
+  }
+}

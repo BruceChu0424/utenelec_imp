@@ -236,7 +236,9 @@ fi
 
 expect_exact UTEN_PROFILE prod
 expect_exact UTEN_DEPLOYMENT_SITE local
-expect_exact UTEN_BUSINESS_DATA_RESET_ENABLED false
+# Only this prod/local installation may explicitly enable company LAN testing.
+# The key remains mandatory; templates default false and cloud is not this lane.
+expect_boolean UTEN_BUSINESS_DATA_RESET_ENABLED
 expect_exact SERVER_ADDRESS 127.0.0.1
 expect_exact SERVER_PORT 8080
 expect_exact UTEN_DB_URL jdbc:postgresql://127.0.0.1:5432/uten_imp

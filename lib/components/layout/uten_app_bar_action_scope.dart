@@ -109,6 +109,7 @@ class UtenAppBarNativeActionButton extends ButtonStyleButton {
     required this.source,
     required super.onPressed,
     required super.onLongPress,
+    Widget? label,
   }) : super(
          key: key ?? source.key,
          onHover: source.onHover,
@@ -120,73 +121,55 @@ class UtenAppBarNativeActionButton extends ButtonStyleButton {
          statesController: source.statesController,
          isSemanticButton: source.isSemanticButton,
          tooltip: source.tooltip,
-         child: _UtenAppBarActionLabel(source.child),
+         child: label ?? source.child,
        );
 
+  /// Native .icon factories keep their label inside private Flutter widgets.
+  /// Supply the public label explicitly when adapting one, or use a native
+  /// button with a plain child. Runtime type names are minified in release Web.
   final ButtonStyleButton source;
 
   @override
   ButtonStyle defaultStyleOf(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final height = UtenFilterRow.heightOf(context);
+    // Override the header role explicitly. merge only fills null fields, while
+    // a styleFrom mouse-cursor property may itself resolve to null; retain the
+    // native interaction defaults instead of replacing that state property.
+    final header = FilledButton.styleFrom(
+      backgroundColor: colors.primary,
+      foregroundColor: colors.onPrimary,
+      disabledBackgroundColor: colors.surfaceContainerHigh,
+      disabledForegroundColor: colors.onSurfaceVariant,
+      elevation: 0,
+      side: BorderSide.none,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      minimumSize: Size(height, height),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.standard,
+      shape: const RoundedRectangleBorder(borderRadius: UtenRadius.controlAll),
+      textStyle: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: 1.2,
+      ),
+    );
     return source
         .defaultStyleOf(context)
-        .merge(
-          FilledButton.styleFrom(
-            backgroundColor: colors.primary,
-            foregroundColor: colors.onPrimary,
-            disabledBackgroundColor: colors.surfaceContainerHigh,
-            disabledForegroundColor: colors.onSurfaceVariant,
-            elevation: 0,
-            side: BorderSide.none,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            minimumSize: Size(height, height),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.standard,
-            shape: const RoundedRectangleBorder(
-              borderRadius: UtenRadius.controlAll,
-            ),
-            textStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              height: 1.2,
-            ),
-          ),
+        .copyWith(
+          backgroundColor: header.backgroundColor,
+          foregroundColor: header.foregroundColor,
+          elevation: header.elevation,
+          side: header.side,
+          padding: header.padding,
+          minimumSize: header.minimumSize,
+          tapTargetSize: header.tapTargetSize,
+          visualDensity: header.visualDensity,
+          shape: header.shape,
+          textStyle: header.textStyle,
         );
   }
 
   @override
   ButtonStyle? themeStyleOf(BuildContext context) => null;
-}
-
-/// Resolve Material .icon composition in a widget build context. The labels
-/// remain real widgets, so localization, badges and inherited styles survive.
-class _UtenAppBarActionLabel extends StatelessWidget {
-  const _UtenAppBarActionLabel(this.child);
-
-  final Widget? child;
-
-  @override
-  Widget build(BuildContext context) =>
-      _textOnlyChild(child, context) ?? const SizedBox.shrink();
-
-  Widget? _textOnlyChild(Widget? child, BuildContext context) {
-    // Material's .icon factories compose a private StatelessWidget around the
-    // public label. Build that composition, then retain its public label tree.
-    // The action's state and callback still belong to the original button.
-    if (child is StatelessWidget &&
-        child.runtimeType.toString().endsWith('ButtonWithIconChild')) {
-      return _textOnlyChild(child.build(context), context);
-    }
-    if (child is Row && child.children.any((child) => child is Icon)) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final entry in child.children)
-            if (entry is! Icon && entry is! SizedBox) entry,
-        ],
-      );
-    }
-    return child;
-  }
 }

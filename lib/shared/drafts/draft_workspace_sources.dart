@@ -44,6 +44,7 @@ class DraftWorkspaceRow {
     this.deletable = false,
     this.stockType,
     this.local,
+    this.recoveryDrafts = const [],
     this.expectedRevision,
   });
   final DraftDocKind? kind;
@@ -57,21 +58,33 @@ class DraftWorkspaceRow {
   final bool deletable;
   final StockDocType? stockType;
   final FormDraft? local;
+
+  /// Multiple saved inputs may refer to the same formal document identity.
+  final List<FormDraft> recoveryDrafts;
   final int? expectedRevision;
   String get key => kind == null ? 'local:$id' : '${kind!.name}:$id';
 
-  DraftWorkspaceRow withRecovery(FormDraft draft) => DraftWorkspaceRow(
+  DraftWorkspaceRow withRecovery(
+    FormDraft draft, {
+    List<FormDraft> alternatives = const [],
+  }) => DraftWorkspaceRow(
     kind: kind,
     id: id,
     category: category,
-    location: draft.resumeLocation,
+    location: stockType?.isLegacyReadOnly == true
+        ? location
+        : draft.resumeLocation,
     billNo: billNo,
     billDate: billDate,
     party: party,
     amount: amount,
-    deletable: deletable && !draft.hasUnknownSubmission,
+    // Reconcile competing inputs through the existing recovery chooser before
+    // sending a formal delete; no saved input is silently discarded.
+    deletable:
+        deletable && !draft.hasUnknownSubmission && alternatives.length <= 1,
     stockType: stockType,
     local: draft,
+    recoveryDrafts: alternatives,
     expectedRevision: expectedRevision,
   );
 }
@@ -439,7 +452,7 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
             (page) => entry.value.list(
               page: page,
               size: 200,
-              filter: const StockDocFilter(status: 0),
+              filter: const StockDocFilter(status: 0, standaloneDrafts: true),
             ),
           ))
             DraftWorkspaceRow(

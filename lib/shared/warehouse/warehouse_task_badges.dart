@@ -1,7 +1,7 @@
 // 仓库任务中心的大类 / 分段计数(ADR-149)：与列表同一服务端范围谓词，只有一个来源。
 //
-// · 本人默认范围(没选仓)：直接读全站徽章汇总 badgeSummaryProvider——服务端已按本人仓库数据范围
-//   计数，hub 卡、工作台、导航与任务中心是同一份数字。
+// · 本人默认范围(没选仓)：读有效徽章汇总；服务端事实保持原样，独立填写草稿仅补入
+//   warehouseDrafts 入口。hub 卡、工作台、导航与任务中心沿用同一投影。
 // · 选了某个仓(主管或负责多个仓的人)：同一个汇总接口带 scopeWarehouseId，服务端只算仓库模块的
 //   入口、各来源都按所选仓计，与带同一参数的列表 total 逐条相等(不再用 list(size:1) 凑数,
 //   也不再单独请求 type-counts)。全站汇总每次轮询有变化时跟着重拉。
@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../badges/badge_registry.dart';
+import '../badges/effective_badge_summary_provider.dart';
 import '../providers/authenticated_scope_provider.dart';
 import 'warehouse_task_scope.dart';
 
@@ -35,7 +36,7 @@ final _selectedWarehouseBadgesProvider = FutureProvider.autoDispose
 final warehouseScopedBadgesProvider = Provider.autoDispose
     .family<BadgeSummary, WarehouseTaskScope>((ref, scope) {
       final warehouseId = scope.warehouseId;
-      if (warehouseId == null) return ref.watch(badgeSummaryProvider);
+      if (warehouseId == null) return ref.watch(effectiveBadgeSummaryProvider);
       return ref
               .watch(_selectedWarehouseBadgesProvider(warehouseId))
               .valueOrNull ??

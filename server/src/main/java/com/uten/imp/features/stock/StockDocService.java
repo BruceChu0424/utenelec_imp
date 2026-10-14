@@ -243,6 +243,13 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             List<Predicate> ps = new ArrayList<>();
             if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
             else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
+            // 草稿工作区与 stockDocument 徽章同口径；历史开关也不能把已删/已审/生产任务混回。
+            // 仅附加收敛条件，下面既有的归属、查看权限、生产请求与仓库范围判定全部保留。
+            if (Boolean.TRUE.equals(f.standaloneDrafts())) {
+                ps.add(cb.isFalse(root.get("deleted")));
+                ps.add(cb.equal(root.get("status"), (short) 0));
+                ps.add(cb.isFalse(cb.function("fn_is_production_linked_stock_document", Boolean.class, root.get("id"))));
+            }
             Predicate ownerReadable = access.readablePredicate(root, cb, "makerId", readScope);
             Predicate readable = returnTaskReadable ? cb.or(ownerReadable,
                     cb.and(cb.equal(root.get("docType"), "WDRAW"),

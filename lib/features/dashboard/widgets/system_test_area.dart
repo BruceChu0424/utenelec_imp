@@ -114,9 +114,31 @@ String _previewFilesLine(BusinessDataResetPreview preview) {
 }
 
 /// 预览被这些错误码拒绝时，清空会被服务端以同样原因拒绝：显示服务端原话并禁用确认。
+///   · UNAUTHORIZED：登录已失效，必须重新登录；
 ///   · FORBIDDEN：运行开关未开启、模拟他人身份、不是在职超管本人；
 ///   · RESET_SERVER_MISCONFIGURED：服务器数据库账号或清空程序配置有误，要开发人员处理。
-const _previewBlockingCodes = {'FORBIDDEN', 'RESET_SERVER_MISCONFIGURED'};
+const _previewBlockingCodes = {
+  'UNAUTHORIZED',
+  'FORBIDDEN',
+  'RESET_SERVER_MISCONFIGURED',
+};
+
+/// 网关未开放或旧服务器不支持清空入口时，不能把 404 当成文件预检的临时失败。
+/// 登录、权限和数据库配置错误仍使用各自原文，不改成「功能未开放」。
+String? _resetBlockingErrorMessage(ApiException error) {
+  if (_previewBlockingCodes.contains(error.code) ||
+      error.httpStatus == 401 ||
+      error.httpStatus == 403) {
+    return error.message;
+  }
+  if (error.code == 'NOT_FOUND' ||
+      error.code == 'METHOD_NOT_ALLOWED' ||
+      const {404, 405, 410}.contains(error.httpStatus)) {
+    return '这台服务器尚未开放业务数据清空功能，当前不能提交。'
+        '请联系维护人员确认服务器配置后，点「重新检查」。';
+  }
+  return null;
+}
 
 /// 处理失败、已停止重试的后台事件会随清空清除：按类别报条数。
 String _previewDeadEventsLine(BusinessDataResetPreview preview) {
@@ -358,9 +380,9 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
   /// 只认最近一次检查的结果：连点「重新检查」时，先发出的慢请求不能覆盖后来的结果。
   int _checkGeneration = 0;
 
-  /// 预览被 [_previewBlockingCodes] 拒绝：清空会被后端同样拒绝，显示后端原话并保持禁用。
-  /// 其它预览失败(503/超时/网络)不禁用——清空时服务端会在删除任何文件之前再检查一次。
-  bool _previewBlocked = false;
+  /// 已确认的入口/登录/权限/配置拒绝要保持到重新检查成功；一次超时不能证明它已恢复。
+  /// 首次预览的临时失败(503/超时/网络)仍沿用服务端清空前再次检查的流程。
+  String? _previewBlockReason;
   BusinessDataResetPreview? _preview;
   String? _previewError;
 
@@ -382,7 +404,6 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
     final generation = ++_checkGeneration;
     setState(() {
       _checking = true;
-      _previewBlocked = false;
       _previewError = null;
       _preview = null;
     });
@@ -391,12 +412,18 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
       final value = await ref
           .read(systemTestRepositoryProvider)
           .previewBusinessDataReset();
-      if (current()) setState(() => _preview = value);
+      if (current()) {
+        setState(() {
+          _previewBlockReason = null;
+          _preview = value;
+        });
+      }
     } on ApiException catch (error) {
       if (!current()) return;
       setState(() {
-        _previewBlocked = _previewBlockingCodes.contains(error.code);
-        _previewError = error.message;
+        final blockingMessage = _resetBlockingErrorMessage(error);
+        if (blockingMessage != null) _previewBlockReason = blockingMessage;
+        _previewError = blockingMessage ?? error.message;
       });
     } catch (_) {
       if (current()) setState(() => _previewError = '没有收到服务器的核对结果');
@@ -411,12 +438,12 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
     super.dispose();
   }
 
-  // 按钮亮灯：口令 + 检查已结束 + 预览没被拒绝(见 _previewBlockingCodes) + 预览没有列出拒绝原因。
-  // 预览失败或超时仍可提交：服务端排水前、删除任何文件之前都会用同一个检查再查一次。
+  // 按钮亮灯：口令 + 检查已结束 + 没有已确认的阻断 + 预览没有列出拒绝原因。
+  // 只有尚未确认阻断的临时预览失败可提交；服务端在删除任何文件之前会再次检查。
   bool get _confirmed =>
       _controller.text.trim() == _confirmPhrase &&
       !_checking &&
-      !_previewBlocked &&
+      _previewBlockReason == null &&
       !(_preview?.refused ?? false) &&
       !_awaitingConfirmation &&
       !ref.read(pendingBusinessDataResetProvider).isLoading &&
@@ -444,14 +471,22 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
         _showPending();
         return;
       }
-      // 先撤遮罩再提示：服务端原文留在弹窗里，随后按同一个检查刷新拒绝原因。
+      final blockingMessage = _resetBlockingErrorMessage(error);
+      final message = blockingMessage ?? error.message;
+      // 确定的入口/授权/配置拒绝不能被自动预览成功解除，须由用户明确重新检查。
+      // 其余确定的业务失败仍按同一个检查自动刷新拒绝原因。
       setState(() {
         _running = false;
-        _submitError = error.message;
+        _submitError = message;
+        if (blockingMessage != null) {
+          _previewBlockReason = blockingMessage;
+          _previewError = blockingMessage;
+          _preview = null;
+        }
       });
       ref.invalidate(pendingBusinessDataResetProvider);
-      widget.onError(error.message);
-      await _checkReset();
+      widget.onError(message);
+      if (blockingMessage == null) await _checkReset();
     } catch (_) {
       if (!mounted) return;
       _showPending();
@@ -510,11 +545,11 @@ class _ClearConfirmDialogState extends ConsumerState<_ClearConfirmDialog> {
     if (previewError != null) {
       return [
         Text(
-          _previewBlocked
-              ? previewError
-              : '无法预先核对测试文件($previewError)。清空时服务器会再次核对，仍可提交。',
+          _previewBlockReason ?? '无法预先核对测试文件($previewError)。清空时服务器会再次核对，仍可提交。',
           key: const Key('system-test-reset-preview-error'),
-          style: _previewBlocked ? small?.copyWith(color: error) : small,
+          style: _previewBlockReason != null
+              ? small?.copyWith(color: error)
+              : small,
         ),
       ];
     }

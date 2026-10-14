@@ -79,6 +79,7 @@ import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../models/stock_check_prefill.dart';
 import '../models/stock_doc.dart';
+import 'stock_doc_detail_page.dart';
 import '../models/warehouse_form_draft_codec.dart';
 import '../repositories/stock_doc_repository.dart';
 import '../repositories/warehouse_place_suggestion_repository.dart';
@@ -168,7 +169,10 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
   bool _loadingCheckBooks = false;
-  bool _loading = false;
+  late bool _loading = widget.id != null;
+  bool _legacyDetected = false;
+  bool get _isLegacyReadOnly =>
+      widget.docType.isLegacyReadOnly || _legacyDetected;
   bool _loadedCanEdit = false;
   String? _editRestrictionReason;
   // 制单信息（服务端权威，只读展示）
@@ -316,6 +320,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     StockDocType.wdraw => WeightCaptureMode.inbound,
     StockDocType.transfer ||
     StockDocType.otherOut ||
+    StockDocType.waste ||
     StockDocType.draw ||
     StockDocType.finishedOut => WeightCaptureMode.outbound,
   };
@@ -490,6 +495,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   }
 
   Future<void> _init() async {
+    if (_isLegacyReadOnly) return;
     setState(() => _loading = true);
     await ref.read(masterNameServiceProvider).ensureLoaded();
     if (!mounted) return;
@@ -518,6 +524,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         final repository = ref.read(stockDocRepositoryProvider(widget.docType));
         final d = await repository.detail(widget.id!);
         if (!mounted) return;
+        if (d.docType == StockDocType.waste.code) {
+          setState(() => _legacyDetected = true);
+          GoRouter.maybeOf(context)?.replace<void>(
+            RoutePath.stockDocDetail(StockDocType.waste.code, widget.id!),
+          );
+          return;
+        }
         final writable =
             !d.productionLinked &&
             d.canEdit &&
@@ -876,6 +889,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   }
 
   Future<void> _save() async {
+    if (_isLegacyReadOnly) return;
     if (_saving) return;
     if (_createdDocId case final createdId?) {
       await _finishCreatedDoc(createdId);
@@ -1073,6 +1087,16 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
 
   @override
   Widget build(BuildContext context) {
+    if (_isLegacyReadOnly) {
+      final id = widget.id;
+      if (id != null) {
+        return StockDocDetailPage(docType: StockDocType.waste, id: id);
+      }
+      return const Scaffold(
+        appBar: UtenAppBar(title: '旧损耗单', showBackButton: true),
+        body: Center(child: Text('旧损耗单仅可查看，不能新建或编辑。')),
+      );
+    }
     final theme = Theme.of(context);
     final l10n = warehouseL10n(context);
     final names = ref.watch(masterNameServiceProvider);

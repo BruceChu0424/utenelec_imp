@@ -203,6 +203,10 @@ server {
         proxy_read_timeout 120s;
     }
 
+    # Test reset is never a cloud capability, including future system-test routes.
+    location = /api/system-test { return 404; }
+    location ^~ /api/system-test/ { return 404; }
+
     location /api/ {
         limit_req zone=uten_cloud_api_ip burst=500 nodelay;
         proxy_pass http://uten_imp_cloud_backend;

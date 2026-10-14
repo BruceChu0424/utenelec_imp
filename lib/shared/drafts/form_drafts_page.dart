@@ -25,6 +25,7 @@ import '../../core/router/nav_helpers.dart';
 import '../../core/router/route_names.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../providers/draft_counts_provider.dart';
+import '../badges/badge_registry.dart';
 import 'draft_workspace_table.dart';
 import 'form_draft_category.dart';
 
@@ -124,6 +125,16 @@ const formDraftsPageCategories = <String, FormDraftsPageCategory>{
       routePrefix: '/basicinfo/warehouse',
     ),
   ),
+  'warehouse': FormDraftsPageCategory(
+    id: 'warehouse',
+    hubTitle: '仓库',
+    scope: FormDraftCategoryScope(
+      module: BadgeModule.warehouse,
+      routePrefixes: {'/warehouse/', RouteName.stockCountSession},
+      excludeTaskDrafts: true,
+    ),
+    kinds: [DraftDocKind.stockDocument],
+  ),
 };
 
 /// 业务计数已包含尚未提交的本机草稿，只补入不属于这些业务类型的资料草稿。
@@ -132,6 +143,12 @@ final formDraftsPageCountProvider = Provider.family<int, String>((ref, id) {
   if (category == null) return 0;
   final local = ref.watch(formDraftCategoryProvider(category.scope));
   if (category.kinds.isEmpty) return local.length;
+  if (id == 'warehouse') {
+    // Document drafts share this module/route and checkpoint rule with the
+    // workspace. Warehouse master drafts keep their own separate entry.
+    return ref.watch(badgeFactProvider(BadgeFact.draft('stockDocument'))) +
+        ref.watch(formDraftCategoryCountProvider(category.scope));
+  }
   final kinds = category.kinds.map((kind) => kind.name).toSet();
   return ref.watch(draftCountsProvider).sumOf(category.kinds) +
       local
@@ -199,10 +216,22 @@ class FormDraftsPage extends ConsumerWidget {
                 padding: const EdgeInsets.only(top: UtenSpacing.s12),
                 child: category.kinds.isEmpty
                     ? FormDraftCategoryList(scope: category.scope)
-                    : DraftWorkspaceTable(
-                        kinds: category.kinds,
-                        localScope: category.scope,
-                        tableKey: 'form-drafts.$categoryId',
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (categoryId == 'warehouse')
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: UtenSpacing.s8),
+                              child: Text('显示本人全部可见的仓库草稿，不受任务页的选仓筛选影响。'),
+                            ),
+                          Expanded(
+                            child: DraftWorkspaceTable(
+                              kinds: category.kinds,
+                              localScope: category.scope,
+                              tableKey: 'form-drafts.$categoryId',
+                            ),
+                          ),
+                        ],
                       ),
               ),
             ),

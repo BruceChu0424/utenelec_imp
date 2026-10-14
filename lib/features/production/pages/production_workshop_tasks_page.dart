@@ -2843,11 +2843,10 @@ class _ProductionWorkshopTasksPageState
             label: '新建草稿',
           ),
           if (canOpenMaterialBin)
-            TextButton.icon(
+            TextButton(
               key: const Key('workshop-material-bin-entry'),
               onPressed: _navigating ? null : _openMaterialBin,
-              icon: const Icon(Icons.inventory_2_outlined),
-              label: Text(AppLocalizations.of(context).workshopMaterialBin),
+              child: Text(AppLocalizations.of(context).workshopMaterialBin),
             ),
           IconButton(
             tooltip: '刷新',

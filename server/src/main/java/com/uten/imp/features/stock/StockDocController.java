@@ -72,13 +72,15 @@ public class StockDocController {
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam(required = false) String billNo,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(required = false) Boolean standaloneDrafts) {
         // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤(发出仓或调入仓)；scopeWarehouseId = 在可选范围内
         // 挑一个仓(含下级), 越界 403。与表头的 warehouseId(精确发出仓)是两件事，二者可同时生效。
         // 本人默认范围(没挑仓)时, 自己还没提交的草稿不论仓都列出(与草稿徽章、分段草稿数同一判定)。
+        // standaloneDrafts=true 仅取未删除的独立草稿；与 includeDeleted/onlyDeleted 相交，不放宽历史或权限。
         return service.list(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.current(scopeWarehouseId), billNo, scopeWarehouseId == null),
+                warehouseScopes.current(scopeWarehouseId), billNo, scopeWarehouseId == null, standaloneDrafts),
                 page, size, sort, order, includeDeleted, onlyDeleted);
     }
 
@@ -98,10 +100,11 @@ public class StockDocController {
             @RequestParam(required = false) UUID toWarehouseId,
             @RequestParam(required = false) UUID scopeWarehouseId,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
-            @RequestParam(defaultValue = "false") boolean onlyDeleted) {
+            @RequestParam(defaultValue = "false") boolean onlyDeleted,
+            @RequestParam(required = false) Boolean standaloneDrafts) {
         return service.facets(new StockDocQueryFilter(docType, keyword, warehouseId, status, dateFrom, dateTo,
                 departmentId, issueStatus, productionReturnRequests, toWarehouseId,
-                warehouseScopes.current(scopeWarehouseId), null, scopeWarehouseId == null), includeDeleted, onlyDeleted);
+                warehouseScopes.current(scopeWarehouseId), null, scopeWarehouseId == null, standaloneDrafts), includeDeleted, onlyDeleted);
     }
 
     @GetMapping("/{id}")

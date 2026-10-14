@@ -148,6 +148,12 @@ systemctl enable --now uten-imp.service uten-imp-updater.timer
 
 **因为连接串写死, 不要在服务器上拿它对副本库"演练"**(改 `UTEN_DB_URL` 无效, 会直接迁正式库; 2026-09-24 v2.0.0 发版踩过)。迁移演练在开发机克隆库上做: pg_dump 服务器库 → 本机恢复 → 用待发布 JAR 起实例指向克隆库。
 
+### 公司 LAN 测试阶段的业务清空入口
+
+源码支持与服务器实际配置分别核验，不能从模板推断运行环境已启用。首装模板继续使用 `UTEN_BUSINESS_DATA_RESET_ENABLED=false`。仅 `UTEN_PROFILE=prod`、`UTEN_DEPLOYMENT_SITE=local` 的公司测试环境可以显式设为 `true`；新装使用受保护的 `/etc/uten-imp/server.env` 并通过现行配置校验与服务启动流程应用，已有主机则先核对实际 unit、dropin 与环境文件的有效配置位置。启动时保留【测试期开关】WARN，作为已授权测试能力的准确提示。云站点始终关闭，公开 TLS 与云 Nginx 模板不转发整个 `/api/system-test/`。
+
+LAN 模板仅代理两个 GET（`/api/system-test/business-data/preview`、`/api/system-test/business-data/last-result`）和一个 POST（`/api/system-test/business-data/reset`）；只读路径也允许 HEAD，三个路径均转发 OPTIONS，由现有 Spring CORS 白名单决定合法来源、方法和请求头，不在 Nginx 增加通配许可。其它方法返回 405，其余 `system-test` 路径仍为 404。三处沿用普通 `/api/` 的 LAN 范围、安全头、请求限流、代理头和 2 MiB 请求体上限，只有清空路径的收发超时设为 600 秒，与客户端十分钟等待对齐；真正的清空动作仍只接受 POST。Nginx 只恢复正确转发，不能替代服务端超管本人、权限、再认证、逐字确认、文件核对和排水检查。不要使用已删除的停机清空脚本或手工截断表来绕过这些规则。
+
 ## 数据与附件备份
 
 日常备份统一使用[配套备份](../postgres/backup/PAIRED_INTERNAL_BACKUP.zh-CN.md)，以同一数据库快照和原件校验生成可恢复集合；数据库另有 pgBackRest 全量 + WAL。旧 `uten-backup-daily` 入口及 `uten-backup.{service,timer}` 已于 2026-10-06 从仓库删除，服务器上按整改计划同步删除。安装配套备份前必须配齐 `/usr/local/lib/uten-imp/paired_internal_backup.py`、系统依赖和 `/etc/uten-imp/paired-internal-backup.json`；配置保持 root:root、0600，备份集合保持私有权限。现役单元只来自 `deploy/simple/units/` (`uten-pgbackup.{service,timer}` 与 `uten-paired-internal-backup.{service,timer}`，整文件安装到 `/etc/systemd/system/` 后 `daemon-reload`、`enable --now` 两个 timer；用 `deploy/setup/phase2-postgres.sh` 新装的专用主机沿用它自己的备份单元，不混装)。修改前查实际 unit、最后成功时间与恢复结果，不能从脚本存在推断已生效。

@@ -27,9 +27,20 @@ public record StockDocQueryFilter(
         WarehouseTaskScope warehouseScope,
         /** 单据号表头值筛选（2026-09-25 单号列统一）：精确匹配，分页前服务端生效。 */
         String billNo,
-        boolean ownDraftsInScope) {
+        boolean ownDraftsInScope,
+        /** 仅 true 时收敛为未删除、status=0 且非生产自动来源的独立草稿；不放宽归属或仓库权限。 */
+        Boolean standaloneDrafts) {
     public StockDocQueryFilter {
         warehouseScope = warehouseScope == null ? WarehouseTaskScope.ALL : warehouseScope;
+    }
+
+    /** 兼容原列表/任务查询：省略独立草稿模式时维持全部旧过滤语义。 */
+    public StockDocQueryFilter(String docType, String keyword, UUID warehouseId, Short status,
+                              LocalDate dateFrom, LocalDate dateTo, UUID departmentId, Short issueStatus,
+                              Boolean productionReturnRequests, UUID toWarehouseId,
+                              WarehouseTaskScope warehouseScope, String billNo, boolean ownDraftsInScope) {
+        this(docType, keyword, warehouseId, status, dateFrom, dateTo, departmentId, issueStatus,
+                productionReturnRequests, toWarehouseId, warehouseScope, billNo, ownDraftsInScope, null);
     }
 
     /** 不带「本人草稿」例外(内部调用与旧测试)。 */

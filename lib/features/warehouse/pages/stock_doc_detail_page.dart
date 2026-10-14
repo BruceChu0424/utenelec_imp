@@ -109,19 +109,25 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   WeightParamsCache? _weightCache;
   final TextEditingController _issueRemark = TextEditingController();
   bool get _isOrdinaryOutbound =>
-      widget.docType == StockDocType.otherOut ||
-      widget.docType == StockDocType.finishedOut;
+      !_isLegacyReadOnly &&
+      (widget.docType == StockDocType.otherOut ||
+          widget.docType == StockDocType.finishedOut);
+
+  bool get _isLegacyReadOnly =>
+      widget.docType.isLegacyReadOnly || _d?.docType == StockDocType.waste.code;
 
   /// 行级仓库类型（V787，与编辑页同口径）：仓库在明细行上逐行展示；
   /// 调拨/盘点仍看表头。
-  bool get _usesLineWarehouse => switch (widget.docType) {
-    StockDocType.otherIn ||
-    StockDocType.otherOut ||
-    StockDocType.finishedIn ||
-    StockDocType.finishedOut ||
-    StockDocType.draw => true,
-    _ => false,
-  };
+  bool get _usesLineWarehouse =>
+      _isLegacyReadOnly ||
+      switch (widget.docType) {
+        StockDocType.otherIn ||
+        StockDocType.otherOut ||
+        StockDocType.finishedIn ||
+        StockDocType.finishedOut ||
+        StockDocType.draw => true,
+        _ => false,
+      };
 
   Iterable<OutboundWeightEntry> get _weightEntries => [
     ..._issueWeights.values,
@@ -164,9 +170,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     _returnWeights.clear();
   }
 
-  bool _allows(DocumentPermissionAction action) => DocumentPermissionCatalog
-      .stockDocument
-      .allows(ref.read(currentPermissionsProvider), action);
+  bool _allows(DocumentPermissionAction action) =>
+      (_isLegacyReadOnly
+              ? DocumentPermissionCatalog.legacyStockDocument
+              : DocumentPermissionCatalog.stockDocument)
+          .allows(ref.read(currentPermissionsProvider), action);
 
   bool get _ordinaryWritable => documentOwnerCanWrite(
     ref.read(documentScopeCapabilityProvider(DocumentDataScope.stockDocument)),
@@ -182,8 +190,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   bool get _canView =>
       ref.read(currentPermissionsProvider).contains(Perm.stockDocView);
   bool get _canIssue =>
+      !_isLegacyReadOnly &&
       ref.read(currentPermissionsProvider).contains(Perm.stockDocIssue);
   bool get _canReverseIssue =>
+      !_isLegacyReadOnly &&
       ref.read(currentPermissionsProvider).contains(Perm.stockDocReverseIssue);
 
   /// 「返回列表」显隐：与列表路由守卫同源（build 已 watch 权限快照）。
@@ -217,6 +227,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           _materialReturnLines = null;
         }
       });
+      if (_isLegacyReadOnly && widget.docType != StockDocType.waste) {
+        final router = GoRouter.maybeOf(context);
+        if (router != null) {
+          router.replace<void>(
+            RoutePath.stockDocDetail(StockDocType.waste.code, widget.id),
+          );
+          return;
+        }
+      }
       _rebuildIssueInputs();
       _rebuildReturnWeights();
       // 缓存在 build 里按需盯住: 下一帧再按行批量取单重参数。
@@ -1088,7 +1107,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       canPop: !_isOrdinaryOutbound || (!_busy && !_confirmingOutbound),
       child: Scaffold(
         appBar: UtenAppBar(
-          title: '${widget.docType.label}详情',
+          title:
+              '${_isLegacyReadOnly ? StockDocType.waste.label : widget.docType.label}详情',
           showBackButton: true,
           actions: [
             if (_isOrdinaryOutbound)

@@ -150,6 +150,10 @@ class _WarehouseTaskCenterPageState
       RouteName.warehouseSubcontractFinishedReturnHistory,
     );
     final canMasterDrafts = canOpen(RouteName.basicinfoWarehouse);
+    final canDocumentDrafts =
+        superAdmin ||
+        permissions.contains(Perm.stockDocView) ||
+        ref.watch(formDraftsPageCountProvider('warehouse')) > 0;
     final canReviewCounts = canOpen(RouteName.warehouseStockCountReview);
     // 独立授权的盘点审核人也从同一分类办理，不要求仓库发料权限。
     final canWorkshopMaterial = canOpen(RouteName.workshopMaterialIssue);
@@ -177,30 +181,19 @@ class _WarehouseTaskCenterPageState
         )?.workshopMaterialGroup ??
         '车间内料仓';
 
-    // 大类计数与原 hub 四张卡同源（徽章汇总一次带回；未到/无权为 null 不渲染）。
+    // 任务大类只数办理来源；独立单据/资料草稿从各自顶栏入口处理，不重复加进方向。
     final groups = <_GroupSpec>[
       if (canOutbound)
         _GroupSpec(
           value: 'outbound',
           label: '出库',
-          count:
-              todo(BadgeEntry.warehouseOutboundCenter) +
-              ref.watch<int>(
-                formDraftCategoryCountProvider(warehouseDrawAllDraftScope),
-              ) +
-              ref.watch<int>(
-                formDraftCategoryCountProvider(warehouseOutboundAllDraftScope),
-              ),
+          count: todo(BadgeEntry.warehouseOutboundCenter),
         ),
       if (canInbound)
         _GroupSpec(
           value: 'inbound',
           label: '入库',
-          count:
-              todo(BadgeEntry.warehouseInboundCenter) +
-              ref.watch<int>(
-                formDraftCategoryCountProvider(warehouseInboundAllDraftScope),
-              ),
+          count: todo(BadgeEntry.warehouseInboundCenter),
         ),
       if (canQuality)
         _GroupSpec(
@@ -228,6 +221,7 @@ class _WarehouseTaskCenterPageState
     final categoryBar = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const WarehouseScopeFilterNotice(),
         const TaskDraftRecoveryNotice(
           scope: FormDraftCategoryScope(module: BadgeModule.warehouse),
         ),
@@ -254,7 +248,10 @@ class _WarehouseTaskCenterPageState
       ],
     );
 
-    if (groups.isEmpty && !canMasterDrafts && !canReviewCounts) {
+    if (groups.isEmpty &&
+        !canMasterDrafts &&
+        !canDocumentDrafts &&
+        !canReviewCounts) {
       return Scaffold(
         appBar: AppBar(title: const Text('仓库任务中心')),
         body: Center(
@@ -274,7 +271,15 @@ class _WarehouseTaskCenterPageState
         ),
         actions: [
           if (canMasterDrafts)
-            const FormDraftsAppBarButton(categoryId: 'warehouse-master'),
+            const FormDraftsAppBarButton(
+              categoryId: 'warehouse-master',
+              label: '资料草稿',
+            ),
+          if (canDocumentDrafts)
+            const FormDraftsAppBarButton(
+              categoryId: 'warehouse',
+              label: '仓库草稿',
+            ),
           const WarehouseScopeSelector(),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),

@@ -3,7 +3,7 @@
 // · 确认弹窗口令门禁：逐字输入「清空业务数据」才可提交
 // · 清空前检查(与服务端清空时同一个检查)：有测试文件显示计数仍可清空；有拒绝原因逐条显示
 //   服务端原文并禁用，「重新检查」没有原因后放行；核对不完、全部不在只提醒不禁用；
-//   预览失败(非 FORBIDDEN)仍可提交；预览 FORBIDDEN / 服务器配置有误显示后端原话并保持禁用；
+//   临时预览失败仍可提交；入口未开放、登录/权限拒绝、服务器配置有误保持禁用；
 //   服务端没有核对存储时不显示「只核对了 c / n 个」，也不报 0 个还在存储里
 // · 失败路径：弹窗保持打开、原文留在弹窗里并自动重新检查(含带说明的 500，例如删了部分文件后
 //   数据库失败)；结果说不清的路径(超时、网关错误页、服务端明说未确认)：提示「可能仍在后台执行」、不登出
@@ -437,6 +437,97 @@ void main() {
     expect(repository.calls, 1);
   });
 
+  for (final error in [
+    ApiException('NOT_FOUND', '要查看的内容不存在', httpStatus: 404),
+    ApiException('UNKNOWN', '操作失败(404)', httpStatus: 404),
+    ApiException('METHOD_NOT_ALLOWED', '不支持这种请求方式', httpStatus: 405),
+    ApiException('UNKNOWN', '操作失败(410)', httpStatus: 410),
+  ]) {
+    testWidgets('预览入口不可用 ${error.code}/${error.httpStatus}：说明服务器未开放并阻止提交', (
+      tester,
+    ) async {
+      final repository = _FakeRepository(result: _okResult)
+        ..previewError = error;
+      await _pump(
+        tester,
+        superAdmin: true,
+        repository: repository,
+        notifier: _TestSessionNotifier(),
+      );
+      await _expandAndOpenDialog(tester);
+      expect(
+        _textOf(tester, const Key('system-test-reset-preview-error')),
+        '这台服务器尚未开放业务数据清空功能，当前不能提交。请联系维护人员确认服务器配置后，点「重新检查」。',
+      );
+      expect(find.textContaining('仍可提交'), findsNothing);
+      await _typePhraseAndSubmit(tester);
+      expect(repository.calls, 0);
+      expect(repository.pending, isNull);
+    });
+  }
+
+  testWidgets('预览入口未开放后重新检查超时仍禁用，确认入口恢复后才放行', (tester) async {
+    final repository = _FakeRepository(result: _okResult)
+      ..previewError = ApiException('NOT_FOUND', '要查看的内容不存在', httpStatus: 404);
+    await _pump(
+      tester,
+      superAdmin: true,
+      repository: repository,
+      notifier: _TestSessionNotifier(),
+    );
+    await _expandAndOpenDialog(tester);
+    repository.previewError = NetworkTimeoutException();
+    await tester.tap(find.byKey(const Key('system-test-reset-recheck')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('服务器尚未开放业务数据清空功能'), findsOneWidget);
+    expect(find.textContaining('仍可提交'), findsNothing);
+    await _typePhraseAndSubmit(tester);
+    expect(repository.calls, 0);
+
+    repository.previewError = null;
+    await tester.tap(find.byKey(const Key('system-test-reset-recheck')));
+    await tester.pumpAndSettle();
+    expect(repository.previewCalls, 3);
+    await _typePhraseAndSubmit(tester);
+    expect(repository.calls, 1);
+  });
+
+  testWidgets('预览401保留登录失效原文并禁止提交，不误报功能未开放', (tester) async {
+    const message = '登录已过期，请重新登录';
+    final repository = _FakeRepository(result: _okResult)
+      ..previewError = ApiException('UNAUTHORIZED', message, httpStatus: 401);
+    await _pump(
+      tester,
+      superAdmin: true,
+      repository: repository,
+      notifier: _TestSessionNotifier(),
+    );
+    await _expandAndOpenDialog(tester);
+    expect(
+      _textOf(tester, const Key('system-test-reset-preview-error')),
+      message,
+    );
+    expect(find.textContaining('尚未开放'), findsNothing);
+    expect(find.textContaining('仍可提交'), findsNothing);
+    await _typePhraseAndSubmit(tester);
+    expect(repository.calls, 0);
+  });
+
+  testWidgets('首次预览网络超时沿用临时失败流程，清空时由服务器重新核对', (tester) async {
+    final repository = _FakeRepository(result: _okResult)
+      ..previewError = NetworkTimeoutException();
+    await _pump(
+      tester,
+      superAdmin: true,
+      repository: repository,
+      notifier: _TestSessionNotifier(),
+    );
+    await _expandAndOpenDialog(tester);
+    expect(find.textContaining('仍可提交'), findsOneWidget);
+    await _typePhraseAndSubmit(tester);
+    expect(repository.calls, 1);
+  });
+
   testWidgets('预览说服务器配置有误：显示后端原话并保持禁用，不说「仍可提交」', (tester) async {
     const backendMessage =
         '服务器上清空程序的数据库账号配置有误，本次没有删除任何文件，也没有清空数据。'
@@ -546,6 +637,55 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.calls, 1);
   });
+
+  for (final error in [
+    ApiException('NOT_FOUND', '要查看的内容不存在', httpStatus: 404),
+    ApiException('UNAUTHORIZED', '请重新登录后操作', httpStatus: 401),
+    ApiException('FORBIDDEN', '当前环境未开启业务数据清空', httpStatus: 403),
+    ApiException(
+      'RESET_SERVER_MISCONFIGURED',
+      '服务器的数据库账号配置有误，本次没有删除任何文件，也没有清空数据',
+      httpStatus: 500,
+      hasResponseCode: true,
+    ),
+  ]) {
+    testWidgets('提交被明确阻断 ${error.code}：保留原因且重新检查通过前不允许重复提交', (tester) async {
+      final repository = _FakeRepository(error: error);
+      final notifier = _TestSessionNotifier();
+      await _pump(
+        tester,
+        superAdmin: true,
+        repository: repository,
+        notifier: notifier,
+      );
+      await _expandAndOpenDialog(tester);
+      await _typePhraseAndSubmit(tester);
+      final expected = error.code == 'NOT_FOUND'
+          ? '这台服务器尚未开放业务数据清空功能，当前不能提交。请联系维护人员确认服务器配置后，点「重新检查」。'
+          : error.message;
+      expect(
+        _textOf(tester, const Key('system-test-reset-preview-error')),
+        expected,
+      );
+      expect(repository.calls, 1);
+      expect(repository.previewCalls, 1, reason: '明确阻断不能被随后的自动预览成功悄悄解除');
+      expect(repository.pending, isNull);
+      expect(notifier.logouts, 0);
+      expect(find.textContaining('结果待确认'), findsNothing);
+      expect(find.textContaining('仍可提交'), findsNothing);
+      await _typePhraseAndSubmit(tester);
+      expect(repository.calls, 1);
+
+      repository.error = null;
+      await tester.tap(find.byKey(const Key('system-test-reset-recheck')));
+      await tester.pumpAndSettle();
+      expect(repository.previewCalls, 2);
+      expect(
+        find.byKey(const Key('system-test-reset-preview-error')),
+        findsNothing,
+      );
+    });
+  }
 
   testWidgets('删了部分文件后数据库失败(500 带说明)：原文照登，不当成待确认，可再次提交', (tester) async {
     const failure =

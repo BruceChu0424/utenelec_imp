@@ -60,19 +60,100 @@ die() { printf '%s\\n' 'Invalid synthetic environment syntax' >&2; exit 7; }
             with self.subTest(invalid="quoted value" if "REGEX='" in invalid else "duplicate key"):
                 self.assertNotEqual(0, self.validate_template_syntax(invalid).returncode)
 
-    def test_current_production_nginx_blocks_the_whole_test_surface(self):
+    @staticmethod
+    def nginx_locations(source):
+        locations = {}
+        for match in re.finditer(r"^\s*location\s+([^\n{]+)\s*\{", source, re.MULTILINE):
+            start = match.end()
+            depth = 1
+            cursor = start
+            while cursor < len(source) and depth:
+                depth += (source[cursor] == "{") - (source[cursor] == "}")
+                cursor += 1
+            locations[match.group(1).strip()] = source[start:cursor - 1].strip()
+        return locations
+
+    def test_public_and_cloud_nginx_block_the_whole_test_surface(self):
+        for path in ("deploy/nginx/uten-imp.conf.example", "deploy/cloud/nginx-cloud.conf.example"):
+            nginx = (ROOT / path).read_text(encoding="utf-8")
+            test_locations = {header: body for header, body in self.nginx_locations(nginx).items()
+                              if "/api/system-test" in header}
+            with self.subTest(path=path):
+                self.assertEqual({"= /api/system-test", "^~ /api/system-test/"}, set(test_locations))
+                self.assertTrue(all(body == "return 404;" for body in test_locations.values()))
+
+    def test_lan_only_forwards_three_exact_reset_actions_with_existing_api_guards(self):
         runbook = (ROOT / "deploy/simple/RUNBOOK.zh-CN.md").read_text(encoding="utf-8")
         self.assertIn("cp deploy/nginx/uten-imp-http-lan.conf /etc/nginx/sites-available/uten-imp", runbook)
-        for path in ("deploy/nginx/uten-imp-http-lan.conf", "deploy/nginx/uten-imp.conf.example"):
-            nginx = (ROOT / path).read_text(encoding="utf-8")
-            locations = re.findall(r"^\s*location\s+([^\n{]+)\s*\{([^{}]*)\}", nginx, re.MULTILINE)
-            test_locations = [(header.strip(), body.strip()) for header, body in locations
-                              if "/api/system-test" in header]
-            with self.subTest(path=path):
-                self.assertEqual({"= /api/system-test", "^~ /api/system-test/"},
-                                 {header for header, _ in test_locations})
-                self.assertEqual(2, len(test_locations))
-                self.assertTrue(all(body == "return 404;" for _, body in test_locations))
+        nginx = (ROOT / "deploy/nginx/uten-imp-http-lan.conf").read_text(encoding="utf-8")
+        locations = self.nginx_locations(nginx)
+        actions = {"preview": "GET|HEAD|OPTIONS", "last-result": "GET|HEAD|OPTIONS", "reset": "POST|OPTIONS"}
+        expected = {"= /api/system-test", "^~ /api/system-test/"} | {
+            "= /api/system-test/business-data/" + action for action in actions}
+        self.assertEqual(expected, {header for header in locations if "/api/system-test" in header})
+        self.assertEqual("return 404;", locations["= /api/system-test"])
+        self.assertEqual("return 404;", locations["^~ /api/system-test/"])
+        api_proxy = set(re.findall(r"^\s*(proxy_(?:pass|http_version|set_header)\s+[^;]+;)",
+                                   locations["/api/"], re.MULTILINE))
+        self.assertTrue(api_proxy)
+        for action, method in actions.items():
+            body = locations["= /api/system-test/business-data/" + action]
+            with self.subTest(action=action):
+                self.assertIn(f"if ($request_method !~ ^({method})$) {{ return 405; }}", body)
+                self.assertEqual(api_proxy, set(re.findall(
+                    r"^\s*(proxy_(?:pass|http_version|set_header)\s+[^;]+;)", body, re.MULTILINE)))
+                self.assertIn("limit_req zone=uten_api_ip burst=500 nodelay;", body)
+                # Inherit the same LAN ACL, security headers and 2 MiB body cap.
+                self.assertNotIn("add_header", body)
+                self.assertNotIn("allow ", body)
+                self.assertNotIn("client_max_body_size", body)
+                # Forward Origin/preflight to the existing Spring CORS allowlist;
+                # the edge must not create a wildcard or suppress credentials.
+                self.assertNotIn("Access-Control-Allow", body)
+                if action == "reset":
+                    self.assertIn("proxy_read_timeout 600s;", body)
+                    self.assertIn("proxy_send_timeout 600s;", body)
+                else:
+                    self.assertNotIn("proxy_read_timeout", body)
+                    self.assertNotIn("proxy_send_timeout", body)
+
+    def validate_reset_policy(self, values):
+        source = (ROOT / "deploy/setup/validate-server-env.sh").read_text(encoding="utf-8")
+        # Run the actual parser helpers and runtime policy, never privileged host preflights.
+        helpers = source[source.index("\ndie() {"):source.index("\nvalidate_pgp_configuration() {")]
+        start = source.index("expect_exact UTEN_PROFILE prod")
+        policy = source[start:source.index("expect_exact SERVER_ADDRESS", start)]
+        with tempfile.TemporaryDirectory() as directory:
+            env = Path(directory) / "reset-policy.env"
+            env.write_text("".join(f"{key}={value}\n" for key, value in values), encoding="utf-8")
+            return subprocess.run(["bash", "-c", 'set -euo pipefail\nENV_FILE="$1"\n' + helpers + policy,
+                                   "reset-policy", str(env)], capture_output=True, text=True)
+
+    def test_reset_requires_explicit_boolean_on_prod_local_only(self):
+        for enabled in ("false", "true"):
+            with self.subTest(enabled=enabled):
+                result = self.validate_reset_policy([
+                    ("UTEN_PROFILE", "prod"), ("UTEN_DEPLOYMENT_SITE", "local"),
+                    ("UTEN_BUSINESS_DATA_RESET_ENABLED", enabled)])
+                self.assertEqual(0, result.returncode, result.stderr)
+        for site, enabled in (("cloud", "true"), ("cloud", "false"), ("", "true"),
+                              ("local", "yes"), ("local", "TRUE"), ("local", "")):
+            with self.subTest(site=site, enabled=enabled):
+                result = self.validate_reset_policy([
+                    ("UTEN_PROFILE", "prod"), ("UTEN_DEPLOYMENT_SITE", site),
+                    ("UTEN_BUSINESS_DATA_RESET_ENABLED", enabled)])
+                self.assertNotEqual(0, result.returncode)
+                self.assertNotIn("UTEN_DB_PASSWORD", result.stdout + result.stderr)
+        for profile in ("dev", "internal-test", "cloud", ""):
+            with self.subTest(profile=profile):
+                self.assertNotEqual(0, self.validate_reset_policy([
+                    ("UTEN_PROFILE", profile), ("UTEN_DEPLOYMENT_SITE", "local"),
+                    ("UTEN_BUSINESS_DATA_RESET_ENABLED", "true")]).returncode)
+        for fields in ([('UTEN_PROFILE', 'prod'), ('UTEN_DEPLOYMENT_SITE', 'local')],
+                       [('UTEN_PROFILE', 'prod'), ('UTEN_DEPLOYMENT_SITE', 'local'),
+                        ('UTEN_BUSINESS_DATA_RESET_ENABLED', 'false'), ('UTEN_BUSINESS_DATA_RESET_ENABLED', 'true')]):
+            with self.subTest(missing_or_duplicate=fields):
+                self.assertNotEqual(0, self.validate_reset_policy(fields).returncode)
 
     def validate(self, **changes):
         values = {

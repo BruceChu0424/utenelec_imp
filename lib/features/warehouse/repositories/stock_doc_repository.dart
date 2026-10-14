@@ -25,6 +25,7 @@ class StockDocFilter {
     this.productionReturnRequests,
     this.warehouseScope = const WarehouseTaskScope.all(),
     this.billNo,
+    this.standaloneDrafts = false,
   });
   final String? keyword;
   final String? warehouseId;
@@ -49,6 +50,9 @@ class StockDocFilter {
 
   /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
+
+  /// Independent document drafts only; production tasks keep their own entries.
+  final bool standaloneDrafts;
 }
 
 class StockDocRepository {
@@ -74,6 +78,7 @@ class StockDocRepository {
         if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
         if (filter.toWarehouseId != null) 'toWarehouseId': filter.toWarehouseId,
         if (filter.status != null) 'status': filter.status,
+        if (filter.standaloneDrafts) 'standaloneDrafts': true,
         if (filter.departmentId != null) 'departmentId': filter.departmentId,
         if (filter.issueStatus != null) 'issueStatus': filter.issueStatus,
         if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
@@ -103,6 +108,7 @@ class StockDocRepository {
         if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
         if (filter.toWarehouseId != null) 'toWarehouseId': filter.toWarehouseId,
         if (filter.status != null) 'status': filter.status,
+        if (filter.standaloneDrafts) 'standaloneDrafts': true,
         if (filter.departmentId != null) 'departmentId': filter.departmentId,
         if (filter.issueStatus != null) 'issueStatus': filter.issueStatus,
         if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,

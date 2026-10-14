@@ -81,23 +81,16 @@ List<DraftWorkspaceRow> mergeDraftWorkspaceRows(
   final matched = <String>{};
   final rows = <DraftWorkspaceRow>[];
   for (final row in formal) {
-    FormDraft? checkpoint;
-    for (final draft in drafts) {
-      final sameKind =
-          formDraftBusinessKind(draft) == row.kind?.name ||
-          (formDraftBusinessKind(draft) == DraftDocKind.stockDocument.name &&
-              row.stockType != null) ||
-          (formDraftBusinessKind(draft) == DraftDocKind.stockCheck.name &&
-              row.stockType == StockDocType.check) ||
-          (formDraftBusinessKind(draft) == DraftDocKind.stockTransfer.name &&
-              row.stockType == StockDocType.transfer);
-      if (sameKind && formDraftConfirmedIds(draft).contains(row.id)) {
-        checkpoint = draft;
-        matched.add(draft.id);
-        break;
-      }
-    }
-    rows.add(checkpoint == null ? row : row.withRecovery(checkpoint));
+    final checkpoints = <String, FormDraft>{
+      for (final draft in drafts)
+        if (_checkpointMatches(row, draft)) draft.id: draft,
+    }.values.toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    matched.addAll(checkpoints.map((draft) => draft.id));
+    rows.add(
+      checkpoints.isEmpty
+          ? row
+          : row.withRecovery(checkpoints.first, alternatives: checkpoints),
+    );
   }
   return [
     for (final draft in drafts)
@@ -116,6 +109,23 @@ List<DraftWorkspaceRow> mergeDraftWorkspaceRows(
         ),
     ...rows,
   ];
+}
+
+bool _checkpointMatches(DraftWorkspaceRow row, FormDraft draft) {
+  if (!formDraftConfirmedIds(draft).contains(row.id)) return false;
+  final kind = formDraftBusinessKind(draft);
+  if (row.stockType != null) {
+    final type = switch (kind) {
+      'stockTransfer' => StockDocType.transfer,
+      'stockCheck' => StockDocType.check,
+      'stockDocument' => StockDocType.tryByCode(
+        Uri.parse(draft.route).pathSegments.elementAtOrNull(1) ?? '',
+      ),
+      _ => null,
+    };
+    return type == row.stockType;
+  }
+  return kind == row.kind?.name;
 }
 
 String? _localParty(FormDraft draft) {
@@ -314,7 +324,12 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
 
   Future<void> _open(DraftWorkspaceRow row) async {
     if (widget.selectionLocked || draftDeleteBusy) return;
-    await context.push(row.location);
+    if (row.stockType?.isLegacyReadOnly != true &&
+        row.recoveryDrafts.length > 1) {
+      await resumeTaskFormDraft(context, ref, row.recoveryDrafts);
+    } else {
+      await context.push(row.location);
+    }
     if (mounted) {
       try {
         await _refresh();
@@ -516,7 +531,9 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
             },
       rowMenuBuilder: (row) => [
         UtenMenuItem(
-          label: row.local?.hasUnknownSubmission == true
+          label: row.stockType?.isLegacyReadOnly == true
+              ? '查看旧单据'
+              : row.local?.hasUnknownSubmission == true
               ? '先核对提交'
               : row.local == null
               ? '查看草稿'

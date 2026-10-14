@@ -13,12 +13,12 @@ import org.springframework.stereotype.Component;
  *
  * <p>base/cloud 默认关闭（fail closed）；{@code dev} 与 {@code internal-test}
  * profile 显式开启。2026-09-12 用户拍板：测试阶段公司内网服务器（prod profile）
- * 同样放行（可用 {@code UTEN_BUSINESS_DATA_RESET_ENABLED=false} 临时停用），
+ * 可显式设置 {@code UTEN_BUSINESS_DATA_RESET_ENABLED=true} 放行（默认关闭），
  * 正式上线时整个 systemtest 功能随 ADR-067 一并删除。</p>
  *
  * <p>启动门禁 (ADR-110; security-06): prod profile 下开关打开时启动日志明确告警, 提醒这是测试期
  * 决定、上线前必须删除; 云端站点 (对公网开放) 不论开关如何一律视为关闭——{@code UTEN_PROFILE=cloud,prod}
- * 会继承 prod 的默认 true, 这里兜住「云端始终 fail closed」的承诺。</p>
+ * 即使显式误设为 true, 这里仍兜住「云端始终 fail closed」的承诺。</p>
  */
 @Slf4j
 @Component

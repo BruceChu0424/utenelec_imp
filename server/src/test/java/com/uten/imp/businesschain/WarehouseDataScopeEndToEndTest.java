@@ -203,7 +203,7 @@ class WarehouseDataScopeEndToEndTest {
         fixture.loginAs(keeperA);
         assertForbidden(() -> scopes.current(warehouseB));
         assertForbidden(() -> stockDocs.list("OTHER_OUT", null, null, null, null, null, null, null, null, null,
-                1, 20, null, null, warehouseB, null, false, false));
+                1, 20, null, null, warehouseB, null, false, false, null));
         assertForbidden(() -> badges.badges(warehouseB));
         MyWarehouseScope a = dataScope.myScope();
         assertThat(a.role()).isEqualTo("KEEPER");
@@ -412,7 +412,7 @@ class WarehouseDataScopeEndToEndTest {
                 fulfillment.warehouse("OPEN_ANY", "", "", null, null, 1, 1, "", "asc", selected, Map.of()).total());
         assertThat(facts.get("productionReturn.count")).as(label + " production return").isEqualTo(
                 stockDocs.list(null, null, null, (short) 0, null, null, null, null, true, null, 1, 1, null, null,
-                        selected, null, false, false).getTotal());
+                        selected, null, false, false, null).getTotal());
         assertThat(facts.get("workshopMaterial.pendingIssue")).as(label + " workshop issue").isEqualTo(
                 requisitions.list("PENDING", "ISSUE", null, selected, 1, 1).getTotal());
         assertThat(facts.get("workshopMaterial.pendingReturn")).as(label + " workshop return").isEqualTo(
@@ -435,13 +435,13 @@ class WarehouseDataScopeEndToEndTest {
                 documentCounts.statusCounts("stockDocument", null, null, selected).get("DRAFT"));
         assertThat(documentCounts.statusCounts("stockDocument", null, "OTHER_OUT", selected).get("DRAFT"))
                 .as(label + " other-out drafts").isEqualTo(stockDocs.list("OTHER_OUT", null, null, (short) 0, null,
-                        null, null, null, null, null, 1, 1, null, null, selected, null, false, false).getTotal());
+                        null, null, null, null, null, 1, 1, null, null, selected, null, false, false, null).getTotal());
     }
 
     private List<UUID> otherOutDrafts(UUID selected) {
         List<UUID> ids = new ArrayList<>();
         for (var item : stockDocs.list("OTHER_OUT", null, null, (short) 0, null, null, null, null, null, null,
-                1, 100, null, null, selected, null, false, false).getItems()) {
+                1, 100, null, null, selected, null, false, false, null).getItems()) {
             ids.add(item.getId());
         }
         return ids;

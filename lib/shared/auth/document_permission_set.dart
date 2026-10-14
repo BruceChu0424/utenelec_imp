@@ -258,6 +258,10 @@ abstract final class DocumentPermissionCatalog {
     approve: Perm.stockDocApprove,
     reverse: Perm.stockDocReverse,
   );
+  static const legacyStockDocument = DocumentPermissionSet(
+    view: Perm.stockDocView,
+    delete: Perm.stockDocDelete,
+  );
   static const stockBySegment = <String, DocumentPermissionSet>{
     'TRANSFER': stockDocument,
     'OTHER_IN': stockDocument,
@@ -267,6 +271,7 @@ abstract final class DocumentPermissionCatalog {
     'FINISHED_IN': stockDocument,
     'FINISHED_OUT': stockDocument,
     'CHECK': stockDocument,
+    'WASTE': legacyStockDocument,
   };
 
   static const productionDailyReport = DocumentPermissionSet(

@@ -257,7 +257,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('资料草稿放顶栏，红数只计仓库资料范围', (tester) async {
+    testWidgets('资料草稿与仓库单据草稿分别进入顶栏且不混数', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1500, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -273,7 +273,8 @@ void main() {
             widget.categoryId == 'warehouse-master',
       );
       expect(button, findsOneWidget);
-      expect(find.text('资料草稿'), findsNothing);
+      expect(find.text('资料草稿'), findsOneWidget);
+      expect(find.text('仓库草稿'), findsOneWidget);
       expect(
         tester
             .widget<UtenNotificationBadge>(

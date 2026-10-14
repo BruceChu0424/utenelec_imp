@@ -44,6 +44,7 @@ import '../config/warehouse_report_config.dart';
 import '../models/stock_doc.dart';
 import '../providers/warehouse_count_refresh.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/drafts/form_drafts_page.dart';
 
 class WarehouseHubPage extends ConsumerWidget {
   const WarehouseHubPage({super.key});
@@ -163,6 +164,18 @@ class WarehouseHubPage extends ConsumerWidget {
           onPressed: () => backTo(context, defaultPath: RouteName.dashboard),
         ),
         actions: [
+          if (perms.contains(Perm.stockDocView) ||
+              isSuperAdmin ||
+              ref.watch(formDraftsPageCountProvider('warehouse')) > 0)
+            const FormDraftsAppBarButton(
+              categoryId: 'warehouse',
+              label: '仓库草稿',
+            ),
+          if (ref.watch(formDraftsPageCountProvider('warehouse-master')) > 0)
+            const FormDraftsAppBarButton(
+              categoryId: 'warehouse-master',
+              label: '资料草稿',
+            ),
           // 与任务中心卡同取服务端仓库容器累计；公共组件统一黄左红右、零隐藏。
           if (!compact) const UtenModuleBadges(module: BadgeModule.warehouse),
         ],

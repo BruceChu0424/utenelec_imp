@@ -1,5 +1,4 @@
-// 仓库单据模型（8 类统一，对应后端 StockDocListItem/Detail/ItemDto，端点 /api/stock/docs）。
-// 8 类 doc_type：调拨/其它入/出/领料/退料/产成品进仓/出仓/盘点（损耗空，跳过）。
+// 仓库单据模型（8 类现行业务 + 旧损耗单只读兼容，对应后端 /api/stock/docs）。
 // 与采购单据模型同构（主从表 + 状态机）；UUID=String，金额/数量=(json as num?)，日期=ISO 串。
 
 import 'package:flutter/material.dart';
@@ -17,23 +16,28 @@ enum StockDocType {
   wdraw('WDRAW', '生产退料'),
   finishedIn('FINISHED_IN', '产成品进仓'),
   finishedOut('FINISHED_OUT', '产成品出仓'),
-  check('CHECK', '盘点');
+  check('CHECK', '盘点'),
+  waste('WASTE', '旧损耗单', isLegacyReadOnly: true);
 
-  const StockDocType(this.code, this.label);
+  const StockDocType(this.code, this.label, {this.isLegacyReadOnly = false});
   final String code;
   final String label;
+
+  /// Compatibility access to old documents; never resumes the retired workflow.
+  final bool isLegacyReadOnly;
 
   /// 表头仓库(调拨为调出仓)与行级仓库的选仓用途(ADR-146，与服务端
   /// StockDocService.headerWarehouseUse 同一张表)：入库类只落良品仓，其它出库/报废两类都可，
   /// 盘点两类都可，普通调拨两端同类，领料/成品出仓只从良品仓出。
   WarehouseUse get warehouseUse => switch (this) {
     otherIn || finishedIn || wdraw => WarehouseUse.goodIn,
-    otherOut => WarehouseUse.disposalOut,
+    otherOut || waste => WarehouseUse.disposalOut,
     check => WarehouseUse.count,
     transfer => WarehouseUse.transfer,
     draw || finishedOut => WarehouseUse.goodOut,
   };
-  bool get supportsManualDraft => this != StockDocType.wdraw;
+  bool get supportsManualDraft =>
+      !isLegacyReadOnly && this != StockDocType.wdraw;
 
   /// 列表刷新信号 key：列表页与其详情/编辑页共享，详情/编辑页操作成功后
   /// bump 此 key，列表页（即便被遮在栈下）收到即重拉，返回不再看到老数据。
@@ -511,4 +515,5 @@ IconData iconFor(StockDocType t) => {
   StockDocType.finishedIn: Icons.inbox_rounded,
   StockDocType.finishedOut: Icons.outbox_rounded,
   StockDocType.check: Icons.fact_check_outlined,
+  StockDocType.waste: Icons.history_rounded,
 }[t]!;

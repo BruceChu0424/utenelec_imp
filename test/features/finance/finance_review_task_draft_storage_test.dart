@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -37,6 +39,94 @@ class _Fixture {
   late final Directory directory;
   late final SharedPreferences preferences;
   late final ApiClient api;
+  Completer<FormDraft>? submissionJournalFlushed;
+  Completer<void>? _submissionJournalRelease;
+  int journalFlushes = 0;
+  final journalObservations = <Map<String, Object?>>[];
+
+  void holdSubmissionJournal() {
+    submissionJournalFlushed = Completer<FormDraft>();
+    _submissionJournalRelease = Completer<void>();
+  }
+
+  void releaseSubmissionJournal() {
+    final release = _submissionJournalRelease;
+    if (release != null && !release.isCompleted) release.complete();
+  }
+
+  NativeFormDraftStorage storage() => NativeFormDraftStorage(
+    directoryProvider: () async => directory,
+    afterJournalFlush: () async {
+      journalFlushes++;
+      final flushed = submissionJournalFlushed;
+      final release = _submissionJournalRelease;
+      if (flushed == null || release == null || flushed.isCompleted) return;
+      await for (final entity in directory.list(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('pending.json')) continue;
+        final journal = jsonDecode(await entity.readAsString()) as Map;
+        final payload = journal['payload'];
+        if (payload is! String) continue;
+        final draft = FormDraft.fromJson(
+          Map<String, dynamic>.from(jsonDecode(payload) as Map),
+        );
+        final command = draft.data['command'];
+        journalObservations.add({
+          'route': draft.route,
+          'unknown': draft.hasUnknownSubmission,
+          'action': command is Map ? command['action'] : null,
+        });
+        final location = Uri.parse(draft.route);
+        if (location.path != route ||
+            location.queryParameters.isNotEmpty ||
+            !draft.hasUnknownSubmission ||
+            command is! Map ||
+            command['action'] != 'approve') {
+          continue;
+        }
+        flushed.complete(draft);
+        await release.future;
+        return;
+      }
+    },
+  );
+
+  String submissionDiagnostics(ProviderContainer container) {
+    final drafts = container.read(formDraftsProvider);
+    return 'kind=${kind.name}, posts=$businessPosts, reads=$reviewsRead, '
+        'journalFlushed=${submissionJournalFlushed?.isCompleted}, '
+        'flushes=$journalFlushes, observed=$journalObservations, '
+        'drafts=${drafts.length}, unknown=${drafts.map((draft) => draft.hasUnknownSubmission).toList()}';
+  }
+
+  Future<void> waitForUnknownSubmission(
+    WidgetTester tester,
+    ProviderContainer container,
+  ) async {
+    await _waitForState(
+      tester,
+      () {
+        final drafts = container.read(formDraftsProvider);
+        return businessPosts == 1 &&
+            drafts.length == 1 &&
+            drafts.single.hasUnknownSubmission &&
+            !editor(tester).formDraftBusy;
+      },
+      phase: 'one POST, its unknown native checkpoint, and an idle editor',
+      diagnostics: () => submissionDiagnostics(container),
+    );
+    final prefix = container.read(formDraftsProvider.notifier).ownerKey!;
+    final stored = await tester.runAsync(
+      () => NativeFormDraftStorage(
+        directoryProvider: () async => directory,
+      ).readAll(prefix).timeout(const Duration(seconds: 10)),
+    );
+    final durable = FormDraft.fromJson(
+      Map<String, dynamic>.from(jsonDecode(stored!.values.single) as Map),
+    );
+    expect(durable.id, container.read(formDraftsProvider).single.id);
+    expect(durable.hasUnknownSubmission, isTrue);
+    expect(durable.data['command'], isA<Map<String, dynamic>>());
+  }
 
   String get id => '${kind.name}-subject';
   String get route =>
@@ -274,9 +364,7 @@ class _Fixture {
           ...nativeDetailReaderOverrides(),
           sharedPreferencesProvider.overrideWithValue(preferences),
           apiClientProvider.overrideWithValue(api),
-          formDraftStorageProvider.overrideWithValue(
-            NativeFormDraftStorage(directoryProvider: () async => directory),
-          ),
+          formDraftStorageProvider.overrideWithValue(storage()),
           isSuperAdminProvider.overrideWithValue(false),
           currentPermissionsProvider.overrideWithValue({
             Perm.salesOrderFinanceView,
@@ -300,10 +388,65 @@ class _Fixture {
         ),
       ),
     );
-    await _settle(tester);
-    return ProviderScope.containerOf(
+    final container = ProviderScope.containerOf(
       tester.element(find.byType(page.runtimeType)),
     );
+    final reviewEditor =
+        editor(tester) as ReviewTaskDraftMixin<ConsumerStatefulWidget>;
+    await _waitForState(
+      tester,
+      () =>
+          reviewEditor.reviewDraftSource['subjectId'] == id &&
+          reviewEditor.reviewDraftSource['version'] != null,
+      phase: 'the loaded review source before editing',
+      diagnostics: () =>
+          '${submissionDiagnostics(container)}, '
+          'source=${reviewEditor.reviewDraftSource}',
+    );
+    final storageReady = container.read(formDraftsProvider.notifier).ready;
+    var storageFinished = false;
+    Object? storageError;
+    StackTrace? storageStack;
+    unawaited(
+      storageReady.then<void>(
+        (_) => storageFinished = true,
+        onError: (Object error, StackTrace stack) {
+          storageError = error;
+          storageStack = stack;
+          storageFinished = true;
+        },
+      ),
+    );
+    // The native future also resumes fake-zone microtasks. Keep pumping while
+    // waiting instead of suspending the entire test inside runAsync.
+    await _waitForState(
+      tester,
+      () => storageFinished,
+      phase: 'the current native storage notifier to finish loading',
+      diagnostics: () => submissionDiagnostics(container),
+    );
+    if (storageError != null) {
+      Error.throwWithStackTrace(storageError!, storageStack!);
+    }
+    await storageReady;
+    // Source details become visible before the native draft binding finishes.
+    // Build the restoration layer before checking that it has really retired.
+    await tester.pump();
+    final resumeId = Uri.parse(location ?? route).queryParameters['draftId'];
+    await _waitForState(
+      tester,
+      () =>
+          find.text('正在准备草稿保护…').evaluate().isEmpty &&
+          (resumeId == null ||
+              reviewEditor.formDraftRecoveryId == resumeId ||
+              reviewEditor.formDraftRestorationBlocked),
+      phase: 'native draft binding and its restoration layer to finish',
+      diagnostics: () =>
+          '${submissionDiagnostics(container)}, '
+          'resume=$resumeId, bound=${reviewEditor.formDraftRecoveryId}, '
+          'restorationBlocked=${reviewEditor.formDraftRestorationBlocked}',
+    );
+    return container;
   }
 
   FormDraftMixin<ConsumerStatefulWidget> editor(WidgetTester tester) =>
@@ -351,6 +494,24 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
+Future<void> _waitForState(
+  WidgetTester tester,
+  bool Function() ready, {
+  required String phase,
+  required String Function() diagnostics,
+}) async {
+  final elapsed = Stopwatch()..start();
+  while (!ready()) {
+    if (elapsed.elapsed > const Duration(seconds: 10)) {
+      fail('Timed out waiting for $phase: ${diagnostics()}');
+    }
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+}
+
 void main() {
   testWidgets(
     'shipment different confirmed exchange rate preserves the original native checkpoint',
@@ -370,7 +531,7 @@ void main() {
       await tester.runAsync(
         () => tester.tap(find.byKey(ValueKey(fixture.confirmKey))),
       );
-      await _settle(tester);
+      await fixture.waitForUnknownSubmission(tester, container);
       expect(fixture.businessPosts, 1);
       final draft = container.read(formDraftsProvider).single;
       fixture.mismatchedShipmentRate = '2';
@@ -416,7 +577,7 @@ void main() {
         await tester.runAsync(
           () => tester.tap(find.byKey(ValueKey(fixture.confirmKey))),
         );
-        await _settle(tester);
+        await fixture.waitForUnknownSubmission(tester, container);
         expect(fixture.businessPosts, 1);
         final draft = container.read(formDraftsProvider).single;
         fixture.viewOnly = true;
@@ -433,7 +594,15 @@ void main() {
             find.byKey(const Key('review-task-draft-read-recovery')),
           ),
         );
-        await _settle(tester);
+        await _waitForState(
+          tester,
+          () =>
+              fixture.reviewsRead > before &&
+              reopened.read(formDraftsProvider).isEmpty &&
+              find.text('review queue').evaluate().length == 1,
+          phase: 'the GET-confirmed outcome to retire the native draft',
+          diagnostics: () => fixture.submissionDiagnostics(reopened),
+        );
         expect(fixture.reviewsRead, greaterThan(before));
         expect(fixture.businessPosts, 1);
         expect(reopened.read(formDraftsProvider), isEmpty);
@@ -521,12 +690,52 @@ void main() {
           () => tester.tap(find.byKey(ValueKey(fixture.approveKey))),
         );
         await _settle(tester);
+        if (kind == _Review.shipment) {
+          fixture.holdSubmissionJournal();
+          addTearDown(fixture.releaseSubmissionJournal);
+        }
         await tester.runAsync(
           () => tester.tap(find.byKey(ValueKey(fixture.confirmKey))),
         );
-        await _settle(tester);
+        if (kind == _Review.shipment) {
+          await _waitForState(
+            tester,
+            () => fixture.submissionJournalFlushed!.isCompleted,
+            phase: 'the real native pre-submit journal to flush',
+            diagnostics: () => fixture.submissionDiagnostics(container),
+          );
+        }
+        FormDraft? flushed;
+        if (kind == _Review.shipment) {
+          try {
+            // A flushed journal is durable, but the real native transaction is
+            // intentionally unfinished. The old fixed settling window cannot
+            // prove that this safe pre-submit boundary has completed.
+            await _settle(tester);
+            flushed = await fixture.submissionJournalFlushed!.future;
+            expect(fixture.businessPosts, 0);
+            expect(fixture.editor(tester).formDraftBusy, isTrue);
+            expect(flushed.hasUnknownSubmission, isTrue);
+            expect(flushed.data['command'], {
+              'action': 'approve',
+              'source': {
+                'subjectId': fixture.id,
+                'version': fixture.version,
+                'contentHash': 'commercial-${fixture.version}',
+                'lineIds': ['line'],
+              },
+              'request': {'exchangeRate': '1'},
+            });
+          } finally {
+            fixture.releaseSubmissionJournal();
+            await fixture.waitForUnknownSubmission(tester, container);
+          }
+        } else {
+          await fixture.waitForUnknownSubmission(tester, container);
+        }
         expect(fixture.businessPosts, 1);
         final draft = container.read(formDraftsProvider).single;
+        if (flushed != null) expect(draft.id, flushed.id);
         expect(draft.hasUnknownSubmission, isTrue);
         await tester.pumpWidget(const SizedBox.shrink());
         await _settle(tester);
@@ -534,13 +743,37 @@ void main() {
           tester,
           location: draft.resumeLocation,
         );
+        await _waitForState(
+          tester,
+          () =>
+              reopened
+                  .read(formDraftsProvider)
+                  .any(
+                    (row) => row.id == draft.id && row.hasUnknownSubmission,
+                  ) &&
+              find
+                  .byKey(const Key('review-task-draft-read-recovery'))
+                  .evaluate()
+                  .isNotEmpty,
+          phase: 'the reopened editor to expose the original native checkpoint',
+          diagnostics: () => fixture.submissionDiagnostics(reopened),
+        );
         final readBefore = fixture.reviewsRead;
         await tester.runAsync(
           () => tester.tap(
             find.byKey(const Key('review-task-draft-read-recovery')),
           ),
         );
-        await _settle(tester);
+        await _waitForState(
+          tester,
+          () =>
+              fixture.reviewsRead > readBefore &&
+              reopened.read(formDraftsProvider).isEmpty &&
+              find.text('review queue').evaluate().length == 1,
+          phase:
+              'GET recovery and durable checkpoint completion without replay',
+          diagnostics: () => fixture.submissionDiagnostics(reopened),
+        );
         expect(fixture.reviewsRead, greaterThan(readBefore));
         expect(fixture.businessPosts, 1);
         expect(reopened.read(formDraftsProvider), isEmpty);

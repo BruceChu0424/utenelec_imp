@@ -118,6 +118,7 @@ class MasterColumnDef<T> {
   /// Unformatted decimal source for display calculations; never inferred from a money/quantity label.
   final String? Function(T row)? exactValueOf;
   final Listenable? Function(T row)? exactListenableOf;
+
   /// Rich cells retain this fallback minimum unless [minimumWidthOf] describes
   /// their actual control geometry. Plain text columns fit their loaded values.
   /// User-resized widths always take precedence.
@@ -662,6 +663,7 @@ class MasterDataTableView<T> extends StatefulWidget {
 
   final int currentPage;
   final int totalPages;
+
   /// Pickers may place the controls alongside their bottom confirmation bar.
   final bool showPaginationControls;
   final FutureOr<void> Function(int page)? onPageChange;
@@ -2938,16 +2940,16 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final minimum = _minimumColumnWidth(context, def);
     final maximum = math.max(minimum, _maxColWidth);
     final padding = math.max(_cellPadX, _columnHorizontalPadding(context, def));
-    final header = measure.header +
+    final header =
+        measure.header +
         _headerIconAllowance +
         (def.info != null ? _headerInfoIconAllowance : 0) +
         (_pinnedKeys.contains(def.key) ? _pinIconAllowance : 0);
     final text = math.max(header, measure.body);
-    final measured =
-        (text +
-                padding * 2 +
-                _autoFitBuffer)
-            .clamp(minimum, maximum);
+    final measured = (text + padding * 2 + _autoFitBuffer).clamp(
+      minimum,
+      maximum,
+    );
     if (def.cellBuilder == null || def.minimumWidthOf != null) return measured;
     // A custom cell may contain multiple controls beyond its textual value.
     // Preserve its declared fallback until it supplies an actual minimum.

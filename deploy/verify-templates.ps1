@@ -156,6 +156,53 @@ function Assert-Regex {
     }
 }
 
+function Assert-NginxSystemTestBoundary {
+    param([string] $Value, [string] $Label, [bool] $AllowReset = $false)
+    # Only the company LAN template has reviewed exact exceptions. Compare full
+    # blocks, including nested method guards, so a route count cannot bless a
+    # broader location, extra directive, or a changed proxy/authorization boundary.
+    $Value = [regex]::Replace($Value, '(?m)^\s*#.*$', '')
+    $locations = @{}
+    $headers = [regex]::Matches($Value, '\blocation\s+([^{]*?/api/system-test[^{]*)\{')
+    foreach ($header in $headers) {
+        $name = [regex]::Replace($header.Groups[1].Value.Trim(), '\s+', ' ')
+        if ($locations.ContainsKey($name)) {
+            throw "Forbidden deployment contract: $Label duplicates test-surface location $name"
+        }
+        $start = $header.Index + $header.Length
+        $end = $start
+        $depth = 1
+        while ($end -lt $Value.Length -and $depth -gt 0) {
+            if ($Value[$end] -eq '{') { $depth++ }
+            if ($Value[$end] -eq '}') { $depth-- }
+            $end++
+        }
+        if ($depth -ne 0) {
+            throw "Forbidden deployment contract: $Label has an unclosed test-surface location"
+        }
+        $locations[$name] = [regex]::Replace($Value.Substring($start, $end - $start - 1).Trim(), '\s+', ' ')
+    }
+    $expected = @{
+        '= /api/system-test' = 'return 404;'
+        '^~ /api/system-test/' = 'return 404;'
+    }
+    if ($AllowReset) {
+        $proxy = 'limit_req zone=uten_api_ip burst=500 nodelay; proxy_pass http://uten_imp_backend; proxy_http_version 1.1; proxy_set_header Connection ""; proxy_set_header Host $host; proxy_set_header X-Forwarded-For $remote_addr; proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Request-Id $request_id;'
+        foreach ($action in @('preview', 'last-result')) {
+            $expected["= /api/system-test/business-data/$action"] = 'if ($request_method !~ ^(GET|HEAD|OPTIONS)$) { return 405; } ' + $proxy
+        }
+        $expected['= /api/system-test/business-data/reset'] = 'if ($request_method !~ ^(POST|OPTIONS)$) { return 405; } ' + $proxy + ' proxy_read_timeout 600s; proxy_send_timeout 600s;'
+    }
+    if ($locations.Count -ne $expected.Count) {
+        throw "Forbidden deployment contract: $Label test-surface location inventory differs from its exact allowlist"
+    }
+    foreach ($name in $locations.Keys) {
+        if (-not $expected.ContainsKey($name) -or $locations[$name] -cne $expected[$name]) {
+            throw "Forbidden deployment contract: $Label has an unreviewed test-surface block $name"
+        }
+    }
+}
+
 # Retired controlled internal-test chain: preserve its fixed closed-local storage
 # and network boundaries. Current Simple production uses internal media; historical
 # OSS reads, release downloads and deferred cloud contracts are checked separately.
@@ -283,15 +330,13 @@ foreach ($authTemplate in @(@{ Name = 'Simple LAN'; Text = $text.SimpleNginx }, 
     Assert-NotContains $authText 'https://$host' "$authName redirect reflects the caller Host header"
     Assert-Contains $authText 'location = /api/system-test { return 404; }' "$authName exact test-surface denial"
     Assert-Contains $authText 'location ^~ /api/system-test/ { return 404; }' "$authName test-subtree denial before API regex locations"
-    $testLocations = [regex]::Matches($authText, '(?m)^\s*location\s+[^\r\n{]*/api/system-test[^\r\n{]*\{')
-    if ($testLocations.Count -ne 2) {
-        throw "Forbidden deployment contract: $authName has an additional test-surface location"
-    }
+    Assert-NginxSystemTestBoundary $authText $authName ($authName -eq 'Simple LAN')
     if (([regex]::Matches($authText, [regex]::Escape('{'))).Count -ne
         ([regex]::Matches($authText, [regex]::Escape('}'))).Count) {
         throw "Nginx $authName template braces are unbalanced"
     }
 }
+Assert-NginxSystemTestBoundary $text.CloudNginx 'cloud reference'
 Assert-Contains $text.SimpleNginx 'return 308 https://__INTERNAL_DOMAIN__$request_uri;' 'LAN fixed-host HTTPS redirect'
 foreach ($locationBlock in [regex]::Matches($text.SimpleNginx, '(?ms)^\s*location\b[^{]*\{.*?^\s*\}')) {
     if ($locationBlock.Value.Contains('add_header')) {
@@ -745,7 +790,9 @@ Assert-Contains $text.EnvValidator 'require_value UTEN_OSS_REGION' 'historical O
 foreach ($productionProfile in @($text.BaseProfile, $text.ProdProfile)) {
     Assert-Contains $productionProfile 'business-data-reset-enabled: ${UTEN_BUSINESS_DATA_RESET_ENABLED:false}' 'production business reset defaults closed'
 }
-Assert-Contains $text.EnvValidator 'expect_exact UTEN_BUSINESS_DATA_RESET_ENABLED false' 'production deployment refuses an enabled test reset'
+Assert-Contains $text.EnvValidator 'expect_exact UTEN_PROFILE prod' 'reset activation validator requires the production profile'
+Assert-Contains $text.EnvValidator 'expect_exact UTEN_DEPLOYMENT_SITE local' 'reset activation validator excludes cloud deployments'
+Assert-Contains $text.EnvValidator 'expect_boolean UTEN_BUSINESS_DATA_RESET_ENABLED' 'local reset activation requires an explicit boolean'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_STORAGE_PROVIDER local' 'retired internal-test validator still requires its fixed local provider'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_ATTACHMENT_UPLOADS_ENABLED false' 'retired internal-test intake remains closed'
 Assert-Contains $text.InternalTestEnvValidator 'expect_exact UTEN_ATTACHMENT_SCANNER_PROVIDER disabled' 'retired internal-test scanner remains explicitly disabled'

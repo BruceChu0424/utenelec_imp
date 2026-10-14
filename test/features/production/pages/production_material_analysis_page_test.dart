@@ -1664,8 +1664,10 @@ void main() {
       expect(
         tester
             .widget<UtenAppBarActionButton>(
-              find.byWidgetPredicate((widget) =>
-                widget is UtenAppBarActionButton && widget.label == '刷新'),
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is UtenAppBarActionButton && widget.label == '刷新',
+              ),
             )
             .onPressed,
         isNull,
@@ -3910,8 +3912,10 @@ void main() {
       expect(
         tester
             .widget<UtenAppBarActionButton>(
-              find.byWidgetPredicate((widget) =>
-                widget is UtenAppBarActionButton && widget.label == '刷新'),
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is UtenAppBarActionButton && widget.label == '刷新',
+              ),
             )
             .onPressed,
         isNull,
@@ -8403,11 +8407,16 @@ void main() {
       expect(tester.getSize(warehouse).height, closeTo(searchHeight, 0.5));
       final facts = find.descendant(
         of: find.byKey(const Key('material-analysis-header-facts')),
-        matching: find.byWidgetPredicate((widget) => widget is Container &&
-          widget.constraints?.maxWidth == 280),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Container && widget.constraints?.maxWidth == 280,
+        ),
       );
       for (final fact in facts.evaluate()) {
-        expect(tester.getSize(find.byWidget(fact.widget)).height, closeTo(searchHeight, 0.5));
+        expect(
+          tester.getSize(find.byWidget(fact.widget)).height,
+          closeTo(searchHeight, 0.5),
+        );
       }
 
       // Both real category groups use the shared outline and desktop36 role.

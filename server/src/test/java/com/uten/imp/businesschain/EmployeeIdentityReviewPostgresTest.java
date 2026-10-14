@@ -389,15 +389,9 @@ class EmployeeIdentityReviewPostgresTest extends AuthSessionPostgresTestSupport 
         return ids;
     }
 
-    /** 去掉 UUID 后，响应里不能出现完整号码、前 17 位或后四位。断言消息里不带号码。 */
+    /** 全局禁止完整号码/前17位；后四位仅可巧合出现在精确路径上类型有效的 DTO 元数据。 */
     private static void assertNoIdentityDigits(String body, String... identities) {
-        String withoutIds = body.replaceAll(
-                "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "<id>");
-        for (String identity : identities) {
-            assertTrue(!withoutIds.contains(identity.substring(0, 17))
-                            && !withoutIds.contains(identity.substring(14)),
-                    "response must not carry identity digits");
-        }
+        com.uten.imp.testsupport.IdentityResponseAssertions.assertNoIdentityDigits(body, identities);
     }
 
     private static String withChecksum(String firstSeventeen) {

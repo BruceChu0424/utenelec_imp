@@ -173,10 +173,10 @@ class _WarehouseSubcontractOutboundBatchPageState
     'goodsId': row.item.goodsId ?? row.line.goodsId,
     'colorId': row.item.colorId,
     'unitId': row.item.unitId,
-    'unitRate': row.item.unitRate,
+    'unitRate': row.item.unitRateText,
     'orderItemId': row.item.orderItemId,
     'planItemId': row.line.planItemId,
-    'requestedQty': row.line.requestedQty,
+    'requestedQty': row.line.requestedQtyText,
   };
 
   Map<String, dynamic> _captureInput(_BatchDraft draft) => {
@@ -237,8 +237,10 @@ class _WarehouseSubcontractOutboundBatchPageState
           ...saved,
           'state': SubcontractOutboundExecutionState.needsVerification.name,
         };
-      } else if (saved['serverFingerprint'] !=
-          subcontractOutboundDraftFingerprint(draft.document)) {
+      } else if (!subcontractOutboundSnapshotMatches(
+        saved['serverFingerprint'],
+        subcontractOutboundDraftFingerprint(draft.document),
+      )) {
         throw const FormatException('领料单被其他人修改过，原填写草稿继续保留；请核对最新领料单');
       }
       final savedRows = draftMaps(saved['rows']);
@@ -252,7 +254,7 @@ class _WarehouseSubcontractOutboundBatchPageState
             final row = rows[value['planItemId']];
             return row != null &&
                 value['sourceIdentity'] is Map &&
-                mapEquals(
+                subcontractOutboundSnapshotMatches(
                   (value['sourceIdentity'] as Map).cast<String, dynamic>(),
                   _sourceIdentity(row),
                 );
@@ -610,7 +612,10 @@ class _WarehouseSubcontractOutboundBatchPageState
             'supplierId': document.supplierId,
             'warehouseId': draft.warehouseId,
             'workerId': draft.workerId,
-            'deliverDate': _date(draft.deliveryDate ?? ChinaDateTime.today()),
+            // Automatic dates freeze only when the server commits approval.
+            'deliverDate': draft.deliveryDate == null
+                ? null
+                : _date(draft.deliveryDate!),
             'remark': draft.remark.text.trim().isEmpty
                 ? null
                 : draft.remark.text.trim(),

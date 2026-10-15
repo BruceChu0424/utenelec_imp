@@ -143,7 +143,9 @@ class SessionSnapshotNotifier extends AsyncNotifier<SessionSnapshot?> {
     ref.listen<List<String>?>(
       sessionProvider.select((state) => state.user?.permissions),
       (previous, next) {
-        if (previous != null && next != null && !listEquals(previous, next)) {
+        if (previous != null &&
+            next != null &&
+            !setEquals(previous.toSet(), next.toSet())) {
           ref.invalidateSelf();
         }
       },

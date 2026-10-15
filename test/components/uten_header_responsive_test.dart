@@ -7,6 +7,45 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_detail_tab_bar.dart';
 
 void main() {
+  testWidgets(
+    'enlarged text in a narrow logical viewport keeps actions usable',
+    (tester) async {
+      tester.view.physicalSize = const Size(160, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      var calls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: Scaffold(
+            appBar: UtenAppBar(
+              title: '小屏幕放大后的工作台',
+              showBackButton: true,
+              showPagePermissionAction: false,
+              actions: [
+                UtenAppBarActionButton(label: '刷新', onPressed: () => calls++),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byKey(const Key('uten-app-bar-more-actions')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('刷新'));
+      await tester.pumpAndSettle();
+      expect(calls, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('phone groups refresh and permissions behind one action', (
     tester,
   ) async {

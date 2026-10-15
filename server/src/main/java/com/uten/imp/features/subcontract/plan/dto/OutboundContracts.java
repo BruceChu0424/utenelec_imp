@@ -69,6 +69,17 @@ public final class OutboundContracts {
             BigDecimal qty,
             BigDecimal stockAvailableQty,
             String locationHint) {
+        public String getRequestedQtyExact() {
+            return com.uten.imp.common.util.DecimalText.of(requestedQty);
+        }
+
+        public String getQtyExact() {
+            return com.uten.imp.common.util.DecimalText.of(qty);
+        }
+
+        public String getStockAvailableQtyExact() {
+            return com.uten.imp.common.util.DecimalText.of(stockAvailableQty);
+        }
     }
 
     /** 仓库整张退回一张领料草稿(本次不发)。reason 必填, 不超过 200 字, 会告诉提交领料的委外人员。 */

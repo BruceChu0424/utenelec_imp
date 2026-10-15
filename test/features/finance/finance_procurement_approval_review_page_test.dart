@@ -278,6 +278,106 @@ Future<GoRouter> _pumpReviewPage(
 }
 
 void main() {
+  testWidgets('未留存税率保持未知并阻止审批，不默认为零', (tester) async {
+    final review = FinanceProcurementApprovalReview.fromJson({
+      ..._pendingReviewJson(),
+      'taxRate': null,
+      'financeTaxRate': null,
+      'referenceFinanceTaxRate': null,
+    });
+    final repository = _ExactWorkflowRepo(review);
+    await _pumpReviewPage(tester, repository);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('finance-order-review-tax-field')),
+          )
+          .controller!
+          .text,
+      isEmpty,
+    );
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('finance-order-review-approve-submit')),
+      findsNothing,
+    );
+    expect(repository.exactRates, isEmpty);
+    expect(repository.exactTaxes, isEmpty);
+  });
+  testWidgets('当前待审批带前次税汇参考并联动金额，历史驳回只展示本轮事实', (tester) async {
+    final pending = FinanceProcurementApprovalReview.fromJson({
+      ..._pendingReviewJson(),
+      'financeTaxRate': null,
+      'referenceFinanceTaxRate': '13.1234',
+      'financeExchangeRate': null,
+      'exchangeRate': '1',
+      'referenceFinanceExchangeRate': '6.85',
+    });
+    final repository = _ExactWorkflowRepo(pending);
+    await _pumpReviewPage(tester, repository);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('finance-order-review-tax-field')),
+          )
+          .controller!
+          .text,
+      '13.1234',
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('finance-order-review-rate-field')),
+          )
+          .controller!
+          .text,
+      '6.85',
+    );
+    final table = tester
+        .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
+          find.byType(UtenRevisionTable<FinanceProcurementReviewLine>),
+        );
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'amountLocal')
+          .value(table.rows.single.value),
+      '68500.00 元',
+    );
+    await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('finance-order-review-approve-submit')),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.exactRates, ['6.85']);
+    final rejected = FinanceProcurementApprovalReview.fromJson({
+      ..._pendingReviewJson(),
+      'status': 'REJECTED',
+      'allowedActions': const <String>[],
+      'financeTaxRate': null,
+      'referenceFinanceTaxRate': '9',
+      'financeExchangeRate': null,
+      'referenceFinanceExchangeRate': '9.5',
+    });
+    await _pumpReviewPage(tester, _FakeWorkflowRepo(rejected));
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const Key('finance-order-review-tax-readonly')),
+          )
+          .data,
+      '13',
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const Key('finance-order-review-rate-readonly')),
+          )
+          .data,
+      '7.1',
+    );
+  });
   testWidgets('巨大合法汇率从审核输入到提交保持全部12+6位原文', (tester) async {
     final repository = _ExactWorkflowRepo(_pendingReview());
     await _pumpReviewPage(tester, repository);

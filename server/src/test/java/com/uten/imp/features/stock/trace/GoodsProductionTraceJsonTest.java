@@ -15,7 +15,7 @@ class GoodsProductionTraceJsonTest {
     private static final List<Class<?>> RESPONSES=List.of(TraceRow.class,ProductionReport.class,ReceiptSource.class);
 
     @ParameterizedTest
-    @ValueSource(strings={"12345678901234.0001","0.00001","1E-7","1E+3","0.0000"})
+    @ValueSource(strings={"12345678901234.0001","0.00001","1E-7","1E+3","0.0000","-0.0001","-12345678901234.0001"})
     void everyQuantityCrossesJsonAsExactPlainDecimalText(String original) throws Exception {
         BigDecimal value=new BigDecimal(original);
         String expected=value.stripTrailingZeros().toPlainString();

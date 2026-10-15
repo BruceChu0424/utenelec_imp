@@ -217,8 +217,10 @@ class _WarehouseSubcontractOutboundEditPageState
         (!_requestUncertain &&
             data['serverFingerprint'] != null &&
             (_document == null ||
-                data['serverFingerprint'] !=
-                    subcontractOutboundDraftFingerprint(_document!))) ||
+                !subcontractOutboundSnapshotMatches(
+                  data['serverFingerprint'],
+                  subcontractOutboundDraftFingerprint(_document!),
+                ))) ||
         bySource.length != _lines.length ||
         savedSourceIds.length != saved.length ||
         saved.length != _lines.length ||
@@ -226,7 +228,10 @@ class _WarehouseSubcontractOutboundEditPageState
           final row = bySource[item['planItemId']];
           return row == null ||
               (item['sourceIdentity'] != null &&
-                  item['sourceIdentity'] != _draftSourceIdentity(row));
+                  !subcontractOutboundSnapshotMatches(
+                    item['sourceIdentity'],
+                    _draftSourceIdentity(row),
+                  ));
         })) {
       throw const FormatException('领料单来源或服务器单据已变化，填写草稿保留；请先核对最新领料单');
     }
@@ -263,10 +268,10 @@ class _WarehouseSubcontractOutboundEditPageState
     row.item.goodsId,
     row.item.colorId,
     row.item.unitId,
-    row.item.unitRate,
+    row.item.unitRateText,
     row.item.parentGoodsId,
     row.item.parentColorId,
-    row.line.requestedQty,
+    row.line.requestedQtyText,
   ].join('|');
 
   AppLocalizations get _l10n =>
@@ -455,7 +460,7 @@ class _WarehouseSubcontractOutboundEditPageState
   /// 保存拣货修改(只改数量/重量/备注与表头)；返回是否已写入。
   /// 数量校验：0 ≤ 数量 ≤ 委外提交的领料数量；填 0 的行不回传(服务端删行退库存)，
   /// 至少要有一行大于 0——整单不发走「退回委外(不发)」。
-  Future<bool> _saveDraft({bool forApproval = false}) async {
+  Future<bool> _saveDraft() async {
     final document = _document;
     if (document == null) return false;
     if (_warehouseId == null ||
@@ -474,19 +479,18 @@ class _WarehouseSubcontractOutboundEditPageState
     final badWeight = <String>[];
     for (var index = 0; index < _lines.length; index++) {
       final e = _lines[index];
-      final qty = double.tryParse(e.qty.text.trim()) ?? -1;
       final name = e.line.goodsName ?? e.line.goodsCode ?? '该物料';
       final label = '第 ${index + 1} 行（$name）';
-      if (!qty.isFinite || qty < 0) {
+      if (e.quantityInvalid || e.quantitySourceUnknown) {
         badQty.add(label);
         continue;
       }
-      if (qty - e.maxEditableQty > 0.0000001) {
+      if (e.exceedsMaximum) {
         overMaxQty.add(label);
         continue;
       }
       // 填 0 = 这条物料本次不发：不回传这一行。
-      if (qty == 0) continue;
+      if (e.skipped) continue;
       if (e.weight.weight.hasError) {
         badWeight.add(label);
         continue;
@@ -524,14 +528,9 @@ class _WarehouseSubcontractOutboundEditPageState
       'supplierId': document.supplierId,
       'warehouseId': _warehouseId,
       if (_workerId != null) 'workerId': _workerId,
-      // null is the automatic-day policy in a saved draft. The actual day is
-      // frozen only for the confirmed outbound command; reopening an untouched
-      // draft on another day therefore keeps following today's date.
-      'deliverDate': _deliverDate != null
-          ? _date(_deliverDate!)
-          : forApproval
-          ? _date(ChinaDateTime.today())
-          : null,
+      // Keep the automatic policy through save and failed approval. The server
+      // freezes today's date in the same transaction as the actual outbound.
+      'deliverDate': _deliverDate == null ? null : _date(_deliverDate!),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       'items': items,
     };
@@ -609,7 +608,7 @@ class _WarehouseSubcontractOutboundEditPageState
       _saving = true;
     });
     try {
-      final saved = await _saveDraft(forApproval: true);
+      final saved = await _saveDraft();
       if (!saved) {
         if (mounted) setState(() => _saving = false);
         return;

@@ -2980,6 +2980,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       final textScaler = MediaQuery.textScalerOf(context);
       if (_lastScale != textScaler || _widths.length != _columns.length) {
         setState(() => _widthsDirty = true);
+        if (_fullscreen) _fsTick.value++;
         return;
       }
       final pool = _widthSamplePool();
@@ -2998,7 +2999,12 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           grown = true;
         }
       }
-      if (grown) setState(() => _widths = next);
+      if (grown) {
+        setState(() => _widths = next);
+        // The fullscreen route retains the table stage. Its total width must
+        // advance with the column widths used by newly mounted lazy rows.
+        if (_fullscreen) _fsTick.value++;
+      }
     });
   }
 

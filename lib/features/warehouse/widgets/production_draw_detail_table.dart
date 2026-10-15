@@ -16,6 +16,7 @@ import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/outbound_weight_entry.dart';
 import '../models/stock_doc.dart';
@@ -54,7 +55,7 @@ class ProductionDrawDetailRow {
     if (discovery != null) return discovery.id;
     if (isMergedGroup) {
       final first = group!.first;
-      return 'merged:${first.document!.drawBatchNo}|${first.item!.goodsId}|${first.item!.colorId}';
+      return 'merged:${first.document!.drawBatchNo}|${first.item!.goodsId}|${first.item!.colorId}|${first.item!.unitId}|${first.item!.unitRateText}';
     }
     return '${document!.id}:${item!.id}';
   }
@@ -62,12 +63,29 @@ class ProductionDrawDetailRow {
 
 /// 一行待出库行的校验结果（页面提交前逐行核对）。
 String? drawIssueQtyError(ProductionDrawDetailRow row, String input) {
-  final value = double.tryParse(input.trim());
-  if (value == null || !value.isFinite) return '请输入有效数量';
-  if (value < 0) return '数量不能为负';
-  if (value == 0) return '出库数量需大于 0';
-  if (row.item != null && value > row.item!.remainingQty + 1e-9) {
-    return '不能超过待出库 ${row.item!.remainingQty}';
+  final text = nonNegativeDocumentQuantityText(input.trim());
+  if (text == null) return '请输入有效数量（最多 14 位整数、4 位小数）';
+  if (text == '0') return '出库数量需大于 0';
+  final maximum = row.item?.remainingQtyText;
+  if (row.item != null && financeExactDecimalUnits(maximum) == null) {
+    return '待出库数量原文缺失，请刷新核对后再出库';
+  }
+  if (maximum != null &&
+      financeExactDecimalUnits(text)! > financeExactDecimalUnits(maximum)!) {
+    return '不能超过待出库 ${financeExactTrimmed(maximum)}';
+  }
+  return null;
+}
+
+/// Reverse and forward issue commands share the same decimal precision and
+/// upper-bound rules; zero means this line is not reversed this time.
+String? drawCancelIssueQtyError(StockDocItem item, String input) {
+  final text = nonNegativeDocumentQuantityText(input.trim());
+  if (text == null) return '请输入有效数量（最多 14 位整数、4 位小数）';
+  final maximum = financeExactDecimalUnits(item.issuedQtyText);
+  if (maximum == null) return '已出库数量原文缺失，请刷新核对后再取消';
+  if (financeExactDecimalUnits(text)! > maximum) {
+    return '不能超过已出库 ${financeExactTrimmed(item.issuedQtyText!)}';
   }
   return null;
 }
@@ -98,7 +116,7 @@ OutboundWeightEntry drawRemainingWeightEntry(
   goodsId: item.goodsId,
   colorId: item.colorId,
   warehouseId: warehouseId,
-  qtyOf: () => item.remainingQty,
+  qtyOf: () => double.tryParse(item.remainingQtyText ?? ''),
   unitRate: item.unitRate ?? 1,
   unit: unit,
 );
@@ -177,9 +195,16 @@ class ProductionDrawDetailTable extends StatelessWidget {
       final doc = row.document;
       final item = row.item;
       final batch = doc?.drawBatchNo ?? '';
-      if (batch.isEmpty || item == null) continue;
+      if (batch.isEmpty ||
+          item == null ||
+          item.unitId?.trim().isNotEmpty != true) {
+        continue;
+      }
       byKey
-          .putIfAbsent('$batch|${item.goodsId}|${item.colorId}', () => [])
+          .putIfAbsent(
+            '$batch|${item.goodsId}|${item.colorId}|${item.unitId}|${item.unitRateText}',
+            () => [],
+          )
           .add(row);
     }
     final result = <ProductionDrawDetailRow>[];
@@ -188,9 +213,12 @@ class ProductionDrawDetailTable extends StatelessWidget {
       final doc = row.document;
       final item = row.item;
       final batch = doc?.drawBatchNo ?? '';
-      final key = batch.isEmpty || item == null
+      final key =
+          batch.isEmpty ||
+              item == null ||
+              item.unitId?.trim().isNotEmpty != true
           ? ''
-          : '$batch|${item.goodsId}|${item.colorId}';
+          : '$batch|${item.goodsId}|${item.colorId}|${item.unitId}|${item.unitRateText}';
       if (key.isEmpty) {
         result.add(row);
         continue;
@@ -241,7 +269,10 @@ class ProductionDrawDetailTable extends StatelessWidget {
               params: weightParams,
               enabledOf: (row) =>
                   !issueSaving &&
-                  (row.discovery != null || (row.item?.remainingQty ?? 0) > 0),
+                  (row.discovery != null ||
+                      (financeExactDecimalUnits(row.item?.remainingQtyText) ??
+                              BigInt.zero) >
+                          BigInt.zero),
               baseUnitNameOf: (entry) => _baseUnitName(entry.goodsId),
               onWeighCount: (context, entry) {
                 final row = rowOfEntry[entry];
@@ -302,9 +333,8 @@ class ProductionDrawDetailTable extends StatelessWidget {
                         row.discovery?.quantity.text ??
                         issueQtyControllers?[row.item?.id]?.text ??
                         (_capturesWeight
-                            ? row.item?.remainingQtyText ??
-                                  row.item?.remainingQty.toString()
-                            : row.item?.qtyText ?? row.item?.qty?.toString()),
+                            ? row.item?.remainingQtyText
+                            : row.item?.qtyText),
                     unitId:
                         row.discovery?.values['unitId'] as String? ??
                         row.item?.unitId,
@@ -464,30 +494,20 @@ class ProductionDrawDetailTable extends StatelessWidget {
           width: discoveryRows.isEmpty ? 140 : 215,
           type: 'number',
           value: (row) => row.isMergedGroup
-              ? _mergedQty(row.group!, (item) => item.qty ?? 0, _unitOf(row))
+              ? _mergedQty(row.group!, (item) => item.qtyText, _unitOf(row))
               : row.discovery == null
-              ? formatQtyWithUnit(
-                  row.item!.qty ?? 0,
-                  _unitOf(row),
-                  maxDecimals: 4,
-                )
+              ? formatExactQtyWithUnit(row.item!.qtyText, _unitOf(row))
               : row.discovery!.quantity.text,
           exactValueOf: (row) => row.isMergedGroup
-              ? _mergedExactQty(row.group!, (item) => item.qty)
-              : row.discovery?.quantity.text ?? row.item?.qty?.toString(),
+              ? _mergedExactQty(row.group!, (item) => item.qtyText)
+              : row.discovery?.quantity.text ?? row.item?.qtyText,
           exactListenableOf: (row) => row.discovery?.quantity,
           cellBuilder: (context, row) => row.isMergedGroup
               ? Text(
-                  _mergedQty(row.group!, (item) => item.qty ?? 0, _unitOf(row)),
+                  _mergedQty(row.group!, (item) => item.qtyText, _unitOf(row)),
                 )
               : row.discovery == null
-              ? Text(
-                  formatQtyWithUnit(
-                    row.item!.qty ?? 0,
-                    _unitOf(row),
-                    maxDecimals: 4,
-                  ),
-                )
+              ? Text(formatExactQtyWithUnit(row.item!.qtyText, _unitOf(row)))
               : _discoveryQuantityCell(context, row.discovery!),
         ),
         MasterColumnDef(
@@ -498,20 +518,16 @@ class ProductionDrawDetailTable extends StatelessWidget {
           value: (row) => row.isMergedGroup
               ? _mergedQty(
                   row.group!,
-                  (item) => item.issuedQty ?? 0,
+                  (item) => item.issuedQtyText,
                   _unitOf(row),
                 )
               : row.discovery == null
-              ? formatQtyWithUnit(
-                  row.item!.issuedQty ?? 0,
-                  _unitOf(row),
-                  maxDecimals: 4,
-                )
+              ? formatExactQtyWithUnit(row.item!.issuedQtyText, _unitOf(row))
               : formatQtyWithUnit(0, _unitOf(row)),
           exactValueOf: (row) => row.isMergedGroup
-              ? _mergedExactQty(row.group!, (item) => item.issuedQty)
+              ? _mergedExactQty(row.group!, (item) => item.issuedQtyText)
               : row.discovery == null
-              ? row.item?.issuedQty?.toString()
+              ? row.item?.issuedQtyText
               : '0',
         ),
         // 已出库重量 = 本行各轮出库流水重量合计 (服务端按流水算, 估算带「≈」)。
@@ -544,20 +560,16 @@ class ProductionDrawDetailTable extends StatelessWidget {
           value: (row) => row.isMergedGroup
               ? _mergedQty(
                   row.group!,
-                  (item) => item.remainingQty,
+                  (item) => item.remainingQtyText,
                   _unitOf(row),
                 )
               : row.discovery == null
-              ? formatQtyWithUnit(
-                  row.item!.remainingQty,
-                  _unitOf(row),
-                  maxDecimals: 4,
-                )
+              ? formatExactQtyWithUnit(row.item!.remainingQtyText, _unitOf(row))
               : '待确认',
           exactValueOf: (row) => row.isMergedGroup
-              ? _mergedExactQty(row.group!, (item) => item.remainingQty)
+              ? _mergedExactQty(row.group!, (item) => item.remainingQtyText)
               : row.discovery == null
-              ? row.item?.remainingQty.toString()
+              ? row.item?.remainingQtyText
               : null,
         ),
         // 批量整单出库没有「本次出库」列: 本次重量紧跟「待出库」(本次 = 待出库)。
@@ -584,7 +596,11 @@ class ProductionDrawDetailTable extends StatelessWidget {
                   key: ValueKey('draw-issue-qty-${row.item?.id}'),
                   controller: controller,
                   weight: _weightOf(row),
-                  enabled: !issueSaving && (row.item?.remainingQty ?? 0) > 0,
+                  enabled:
+                      !issueSaving &&
+                      (financeExactDecimalUnits(row.item?.remainingQtyText) ??
+                              BigInt.zero) >
+                          BigInt.zero,
                   unitName: _unitOf(row),
                 ),
               );
@@ -607,7 +623,11 @@ class ProductionDrawDetailTable extends StatelessWidget {
                 child: TextField(
                   key: ValueKey('draw-issue-remark-${row.item?.id}'),
                   controller: controller,
-                  enabled: !issueSaving && (row.item?.remainingQty ?? 0) > 0,
+                  enabled:
+                      !issueSaving &&
+                      (financeExactDecimalUnits(row.item?.remainingQtyText) ??
+                              BigInt.zero) >
+                          BigInt.zero,
                   maxLength: 60,
                   decoration: const InputDecoration(
                     isDense: true,
@@ -916,24 +936,16 @@ class ProductionDrawDetailTable extends StatelessWidget {
   /// 合并行数量合计（组员逐行取数相加），单位随数量内联 (2026-10-10 口径)。
   static String? _mergedExactQty(
     List<ProductionDrawDetailRow> group,
-    double? Function(StockDocItem) pick,
+    String? Function(StockDocItem) pick,
   ) => financeExactSumTexts([
-    for (final row in group)
-      row.item == null ? null : pick(row.item!)?.toString(),
+    for (final row in group) row.item == null ? null : pick(row.item!),
   ]);
 
   static String _mergedQty(
     List<ProductionDrawDetailRow> group,
-    double Function(StockDocItem) pick,
+    String? Function(StockDocItem) pick,
     String? unit,
-  ) => formatQtyWithUnit(
-    group.fold<double>(
-      0,
-      (acc, row) => acc + (row.item == null ? 0 : pick(row.item!)),
-    ),
-    unit,
-    maxDecimals: 4,
-  );
+  ) => formatExactQtyWithUnit(_mergedExactQty(group, pick), unit);
 
   /// 合并行多值摘要：单值原样、多值「N 个」、空「—」。
   static String _joinedOrDash(Iterable<String> values) {

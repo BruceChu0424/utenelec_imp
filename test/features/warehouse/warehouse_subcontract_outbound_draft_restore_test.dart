@@ -99,7 +99,7 @@ void main() {
               as Map<String, dynamic>;
       expect(payload['id'], 'current-item-1');
       expect(payload['planItemId'], 'plan-item-1');
-      expect(payload['qty'], 500);
+      expect(payload['qty'], '500');
       expect(payload['weight'], 10);
       expect(jsonEncode(payload), isNot(contains('old-local-item')));
       expect(api.approvals, approve ? ['issue-1'] : isEmpty);
@@ -148,7 +148,7 @@ void main() {
       'plan-item-1',
       'plan-item-2',
     ]);
-    expect(rows.map((row) => row['qty']), [500, 300]);
+    expect(rows.map((row) => row['qty']), ['500', '300']);
     expect(rows.map((row) => row['weight']), [10, 6]);
     expect(tester.takeException(), isNull);
   });
@@ -209,8 +209,12 @@ void main() {
       final original = _sourceIdentity(api.pickLines.single, api.items.single);
       if (change.key == 'requestedQty') {
         api.pickLines.single[change.key] = change.value;
+        api.pickLines.single['requestedQtyExact'] = change.value.toString();
       } else {
         api.items.single[change.key] = change.value;
+        if (change.key == 'unitRate') {
+          api.items.single['unitRateExact'] = change.value.toString();
+        }
       }
       final harness = await _pumpDraft(
         tester,
@@ -222,7 +226,10 @@ void main() {
         final payload =
             (api.savedBodies.single['items'] as List).first
                 as Map<String, dynamic>;
-        expect(payload[change.key], change.value);
+        expect(
+          payload[change.key],
+          change.key == 'unitRate' ? change.value.toString() : change.value,
+        );
       }
     });
   }
@@ -256,7 +263,7 @@ Future<void> _expectBlockedThenReloadAndApprove(
   final savedRows = (api.savedBodies.single['items'] as List)
       .cast<Map<String, dynamic>>();
   expect(savedRows.map((row) => row['id']), api.items.map((row) => row['id']));
-  expect(savedRows.first['qty'], 1000);
+  expect(savedRows.first['qty'], '1000');
   expect(savedRows.first['weight'], 20);
   expect(harness.storage.records[harness.storageKey], originalRecord);
   expect(harness.container.read(formDraftsProvider).single.id, 'local-draft');
@@ -477,7 +484,9 @@ class _DraftApi extends ApiClient {
     'goodsId': 'goods-1',
     'unitId': 'unit-1',
     'unitRate': 1.0,
+    'unitRateExact': '1.0',
     'qty': 1000,
+    'qtyExact': '1000',
     'weight': 20,
   };
 
@@ -522,6 +531,11 @@ class _DraftApi extends ApiClient {
               'qty': items.firstWhere(
                 (item) => item['id'] == line['issueItemId'],
               )['qty'],
+              'qtyExact': items
+                  .firstWhere(
+                    (item) => item['id'] == line['issueItemId'],
+                  )['qty']
+                  .toString(),
             },
         ],
       };
@@ -546,6 +560,8 @@ class _DraftApi extends ApiClient {
         throw StateError('Client submitted a stale item ID');
       }
       existing.addAll(Map<String, dynamic>.from(row));
+      existing['qtyExact'] = row['qty'];
+      existing['unitRateExact'] = row['unitRate'];
     }
     savedHeader = {...payload}..remove('items');
     if (lostSaveReceipt) {

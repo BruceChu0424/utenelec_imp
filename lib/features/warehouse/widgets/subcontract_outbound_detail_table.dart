@@ -13,6 +13,8 @@ import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -58,7 +60,7 @@ class SubcontractOutboundLineDraft {
     this.item, {
     WeightUnit weightUnit = WeightUnit.kg,
   }) : qty = UtenAutofillTextController(
-         text: subcontractOutboundQuantity(item.qty ?? line.qty),
+         text: item.qtyText ?? line.qtyText ?? '',
          autofilled: false,
        ),
        remarkController = TextEditingController(text: item.remark ?? '') {
@@ -99,42 +101,56 @@ class SubcontractOutboundLineDraft {
 
   /// 本次最多 = 委外提交的领料数量; 只能改少不能改多。
   double get maxEditableQty => line.requestedQty;
+  String? get maxEditableQtyText => line.requestedQtyText;
+
+  String? get quantityText => nonNegativeDocumentQuantityText(qty.text.trim());
+  bool get quantityInvalid => quantityText == null;
+  bool get quantitySourceUnknown =>
+      nonNegativeDocumentQuantityText(maxEditableQtyText ?? '') == null ||
+      item.unitRateText == null;
+  bool get exceedsMaximum {
+    final amount = financeExactDecimalUnits(quantityText);
+    final maximum = financeExactDecimalUnits(maxEditableQtyText);
+    return amount != null && maximum != null && amount > maximum;
+  }
 
   /// 填了 0 = 本次不发这条物料(保存时不回传这一行)。
-  bool get skipped => double.tryParse(qty.text.trim()) == 0;
+  bool get skipped => quantityText == '0';
 
   String? validate() {
     if (!selected) return null;
-    final quantity = double.tryParse(qty.text.trim());
-    if (quantity == null ||
-        !quantity.isFinite ||
-        quantity < 0 ||
-        quantity - maxEditableQty > 0.0000001) {
+    if (quantitySourceUnknown) return '领料数量或单位换算原文缺失，请刷新核对后再出库';
+    if (quantityInvalid || exceedsMaximum) {
       return subcontractOutboundQuantityInvalid;
     }
-    if (quantity == 0) return null;
+    if (skipped) return null;
     if (weight.weight.hasError) return subcontractOutboundWeightInvalid;
     return null;
   }
 
   /// 按出仓单草稿原行回传: 货品/颜色/单位/来源链 UUID 不由客户端重选, 只改数量、
   /// 实称重量和行备注。
-  Map<String, dynamic> toPayload() => {
-    'id': draftItemId,
-    if (item.lineNo != null) 'lineNo': item.lineNo,
-    'goodsId': item.goodsId ?? line.goodsId,
-    'colorId': item.colorId,
-    'unitId': item.unitId,
-    'unitRate': item.unitRate ?? 1,
-    'qty': double.parse(qty.text.trim()),
-    'weight': ?weight.kg,
-    'qtyFromWeight': weight.qtyFromWeight,
-    'orderItemId': item.orderItemId,
-    'planItemId': line.planItemId,
-    if (item.parentGoodsId != null) 'parentGoodsId': item.parentGoodsId,
-    if (item.parentColorId != null) 'parentColorId': item.parentColorId,
-    'remark': remark,
-  };
+  Map<String, dynamic> toPayload() {
+    if (quantityInvalid || quantitySourceUnknown || exceedsMaximum) {
+      throw const FormatException(subcontractOutboundQuantityInvalid);
+    }
+    return {
+      'id': draftItemId,
+      if (item.lineNo != null) 'lineNo': item.lineNo,
+      'goodsId': item.goodsId ?? line.goodsId,
+      'colorId': item.colorId,
+      'unitId': item.unitId,
+      'unitRate': item.unitRateText,
+      'qty': quantityText!,
+      'weight': ?weight.kg,
+      'qtyFromWeight': weight.qtyFromWeight,
+      'orderItemId': item.orderItemId,
+      'planItemId': line.planItemId,
+      if (item.parentGoodsId != null) 'parentGoodsId': item.parentGoodsId,
+      if (item.parentColorId != null) 'parentColorId': item.parentColorId,
+      'remark': remark,
+    };
+  }
 
   void dispose() {
     weight.dispose();
@@ -333,7 +349,7 @@ class _SubcontractOutboundDetailTableState
     EditableGridColumn<SubcontractOutboundTableRow> quantityColumn(
       String key,
       String label,
-      double? Function(SubcontractOutboundTableRow) value, {
+      String? Function(SubcontractOutboundTableRow) value, {
       String? info,
     }) => textColumn(
       key,
@@ -344,11 +360,11 @@ class _SubcontractOutboundDetailTableState
         final quantity = value(row);
         return quantity == null
             ? '—'
-            : formatQtyWithUnit(quantity, row.draft.line.unitName);
+            : formatExactQtyWithUnit(quantity, row.draft.line.unitName);
       },
       numeric: true,
       info: info,
-      exactValue: (row) => value(row)?.toString(),
+      exactValue: value,
     );
     final grid = UtenEditableGrid<SubcontractOutboundTableRow>(
       tableKey:
@@ -508,7 +524,7 @@ class _SubcontractOutboundDetailTableState
         quantityColumn(
           'requested',
           '领料数量',
-          (row) => row.draft.line.requestedQty,
+          (row) => row.draft.line.requestedQtyText,
           info:
               '委外人员提交的领料数量。本次出库只能小于或等于它, 填 0 表示这次不发; '
               '少发、不发的部分, 委外下次领料时系统会自动补齐。',
@@ -516,7 +532,7 @@ class _SubcontractOutboundDetailTableState
         quantityColumn(
           'stockAvailable',
           l10n.warehouseSubcontractOutboundStockAvailable,
-          (row) => row.draft.line.stockAvailableQty,
+          (row) => row.draft.line.stockAvailableQtyText,
           info: '领料单所在仓里这条物料当前可动用的合格数量, 用于核对实物。',
         ),
         EditableGridColumn(
@@ -533,12 +549,10 @@ class _SubcontractOutboundDetailTableState
           cellBuilder: (context, row) => RequiredCellFrame(
             listenable: row.draft.qty,
             isEmpty: () {
-              final value = double.tryParse(row.draft.qty.text.trim());
               return row.draft.selected &&
-                  (value == null ||
-                      !value.isFinite ||
-                      value < 0 ||
-                      value - row.draft.maxEditableQty > 0.0000001);
+                  (row.draft.quantityInvalid ||
+                      row.draft.quantitySourceUnknown ||
+                      row.draft.exceedsMaximum);
             },
             child: _quantityField(
               row,

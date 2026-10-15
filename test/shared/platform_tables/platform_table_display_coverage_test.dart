@@ -411,7 +411,7 @@ void main() {
   testWidgets(
     'merged draw quantities use decimal operands rather than rounded display or binary sums',
     (tester) async {
-      StockDocDetail document(String id, double quantity) => StockDocDetail(
+      StockDocDetail document(String id, String quantity) => StockDocDetail(
         id: id,
         docType: 'DRAW',
         status: 1,
@@ -421,12 +421,16 @@ void main() {
             id: '$id-line',
             goodsId: 'goods',
             unitId: 'kg',
-            qty: quantity,
+            qty: double.parse(quantity),
+            qtyText: quantity,
+            requestedQty: double.parse(quantity),
+            requestedQtyText: quantity,
             issuedQty: 0,
+            issuedQtyText: '0',
           ),
         ],
       );
-      final documents = [document('a', 0.1), document('b', 0.2)];
+      final documents = [document('a', '0.1'), document('b', '0.2')];
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -452,6 +456,7 @@ void main() {
       );
       expect(remaining.exactValueOf!(row), '0.3');
       expect(documents.map((doc) => doc.items.single.qty), [0.1, 0.2]);
+      expect(documents.map((doc) => doc.items.single.qtyText), ['0.1', '0.2']);
     },
   );
 

@@ -2733,9 +2733,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     private String subcontractApplicationKitSentence(UUID applicationId) {
         Map<String, Object> kit = one("""
                 SELECT COUNT(*) AS line_count,
-                       COUNT(*) FILTER (WHERE fn_subcontract_application_orderable_qty(item.id) > 0) AS orderable_lines
-                FROM subcontract_application_items item
-                WHERE item.application_id = ? AND item.is_deleted = FALSE
+                       COUNT(*) FILTER (WHERE quantity.orderable_qty > 0) AS orderable_lines
+                FROM fn_subcontract_application_orderable_batch(ARRAY(
+                    SELECT item.id FROM subcontract_application_items item
+                    WHERE item.application_id = ? AND item.is_deleted = FALSE)) quantity
                 """, applicationId);
         long lines = kit == null || kit.get("line_count") == null ? 0 : ((Number) kit.get("line_count")).longValue();
         long orderable = kit == null || kit.get("orderable_lines") == null
@@ -2887,23 +2888,37 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
     @Override
     public BigDecimal refreshSubcontractOrderKitReady(UUID applicationItemId) {
         if (applicationItemId == null) return BigDecimal.ZERO;
-        requireOutboxDelivery();
-        lockSubcontractDrawNotices();
-        return publishSubcontractOrderKitReady(applicationItemId);
+        return refreshSubcontractOrderKitReadyBatch(List.of(applicationItemId)).get(applicationItemId);
     }
 
-    private BigDecimal publishSubcontractOrderKitReady(UUID applicationItemId) {
-        Map<String, Object> task = one("""
-                SELECT application.bill_no, goods.code AS goods_code, goods.name AS goods_name,
-                       unit.name AS unit_name,
-                       fn_subcontract_application_open_qty(item.id) AS open_qty,
-                       fn_subcontract_application_orderable_qty(item.id) AS orderable_qty
-                FROM subcontract_application_items item
+    @Override
+    public Map<UUID, BigDecimal> refreshSubcontractOrderKitReadyBatch(Collection<UUID> applicationItemIds) {
+        if (applicationItemIds == null || applicationItemIds.isEmpty()) return Map.of();
+        List<UUID> ids = applicationItemIds.stream().filter(Objects::nonNull).distinct().sorted().toList();
+        if (ids.isEmpty()) return Map.of();
+        requireOutboxDelivery();
+        lockSubcontractDrawNotices();
+        String idList = ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        Map<UUID, Map<String, Object>> tasks = new LinkedHashMap<>();
+        for (Map<String, Object> task : jdbc.queryForList("""
+                SELECT item.id, application.bill_no, goods.code AS goods_code, goods.name AS goods_name,
+                       unit.name AS unit_name, quantity.open_qty, quantity.orderable_qty
+                FROM fn_subcontract_application_orderable_batch(
+                    CAST(string_to_array(CAST(? AS text), ',') AS uuid[])) quantity
+                JOIN subcontract_application_items item ON item.id = quantity.application_item_id AND NOT item.is_deleted
                 JOIN subcontract_applications application ON application.id = item.application_id
                 JOIN goods ON goods.id = item.goods_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
-                WHERE item.id = ? AND item.is_deleted = FALSE
-                """, applicationItemId);
+                ORDER BY item.id
+                """, idList)) tasks.put((UUID) task.get("id"), task);
+        List<UUID> recipients = subcontractOrderKitRecipients();
+        Map<UUID, BigDecimal> shown = new LinkedHashMap<>();
+        for (UUID id : ids) shown.put(id, publishSubcontractOrderKitReady(id, tasks.get(id), recipients));
+        return shown;
+    }
+
+    private BigDecimal publishSubcontractOrderKitReady(UUID applicationItemId, Map<String, Object> task,
+                                                       List<UUID> recipients) {
         BigDecimal orderable = task == null ? BigDecimal.ZERO : bd(task.get("orderable_qty"));
         resolveReviewNotices(AGGREGATE_SUBCONTRACT_APPLICATION_ITEM, applicationItemId,
                 orderable.signum() > 0 ? "STATE_CHANGED" : "NOT_ORDERABLE");
@@ -2922,7 +2937,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 + "物料被别的委外单先占走时会变少。";
         String route = SUBCONTRACT_PENDING_SEGMENT_ROUTE + java.net.URLEncoder.encode(
                 billNo, java.nio.charset.StandardCharsets.UTF_8);
-        for (UUID recipient : subcontractOrderKitRecipients()) {
+        for (UUID recipient : recipients) {
             sendToUser(recipient, TYPE_TASK, title, content, route,
                     EVENT_SUBCONTRACT_ORDER_KIT_READY, "important", applicationItemId);
         }

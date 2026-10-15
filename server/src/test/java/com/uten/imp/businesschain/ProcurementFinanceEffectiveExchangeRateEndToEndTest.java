@@ -217,6 +217,10 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
         else subcontractOrders.changeQty(f.order(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(f.item(),new BigDecimal("4.125")))));
         harness.loginAs(f.reviewer());
         var repeat=pending(f);
+        assertThat(finance.review(repeat.caseId()).financeTaxRate()).isNull();
+        assertThat(finance.review(repeat.caseId()).referenceFinanceTaxRate()).isEqualByComparingTo("13.1234");
+        assertThat(finance.review(repeat.caseId()).referenceFinanceExchangeRate()).isEqualByComparingTo(RATE);
+        assertThat(finance.review(decision.caseId()).referenceFinanceTaxRate()).isNull();
         assertThatThrownBy(()->finance.approveBatch(List.of(repeat),null,RATE,new BigDecimal("9"))).isInstanceOf(ApiException.class);
         assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?",String.class,repeat.caseId())).isEqualTo("PENDING");
         finance.approveBatch(List.of(repeat),null,RATE);

@@ -121,7 +121,12 @@ class WarehouseSalesPickingDraft {
     }
     for (final line in detail.lines) {
       final row = byId[line.id]!;
-      warehouses[line.id] = row['warehouseId'] as String?;
+      // Only explicit input may replace the latest source suggestion. A known
+      // automatic value belongs to the old read snapshot, not to this draft.
+      // Legacy drafts without provenance remain visible for manual checking.
+      if (row['warehouseConfirmed'] != false) {
+        warehouses[line.id] = row['warehouseId'] as String?;
+      }
       if (row['warehouseConfirmed'] == true) {
         confirmedWarehouses.add(line.id);
       } else {

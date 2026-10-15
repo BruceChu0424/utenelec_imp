@@ -18,11 +18,16 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/authenticated_request_scope.dart';
+import '../../../core/router/nav_helpers.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../core/theme/uten_colors.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/widgets/editor_identity_notice.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -130,7 +135,13 @@ class _RequestState
   final _submittedItems = <String, List<Map<String, dynamic>>>{};
   final _keys = <String, String>{};
   int _nextRow = 0;
+  int _sourceEpoch = 0;
+  late final SensitiveReadBoundary _sourceBoundary;
   String? _error;
+
+  bool get _scopeIsCurrent =>
+      formDraftIdentityIsCurrent &&
+      ref.read(sensitiveReadBoundaryProvider) == _sourceBoundary;
 
   @override
   bool get formDraftBusy => _saving || _uncertain;
@@ -241,13 +252,14 @@ class _RequestState
   }
 
   bool get _canWrite =>
-      ref.read(isSuperAdminProvider) ||
-      (ref
-              .read(currentPermissionsProvider)
-              .contains(Perm.productionExecutionView) &&
-          ref
-              .read(currentPermissionsProvider)
-              .contains(Perm.productionExecutionStart));
+      _scopeIsCurrent &&
+      (ref.read(isSuperAdminProvider) ||
+          (ref
+                  .read(currentPermissionsProvider)
+                  .contains(Perm.productionExecutionView) &&
+              ref
+                  .read(currentPermissionsProvider)
+                  .contains(Perm.productionExecutionStart)));
 
   bool _editable(DiscoveryRequestMaterialRow row) =>
       _canWrite &&
@@ -259,6 +271,25 @@ class _RequestState
   @override
   void initState() {
     super.initState();
+    startFormDraftIdentityGuard();
+    _sourceBoundary = ref.read(sensitiveReadBoundaryProvider);
+    ref.listenManual(sensitiveReadBoundaryProvider, (old, next) {
+      if (old == next || !mounted) return;
+      invalidateFormDraftIdentity();
+      ++_sourceEpoch;
+      for (final row in _rows) {
+        row.dispose();
+      }
+      setState(() {
+        _rows.clear();
+        _tasks = const [];
+        _submittedItems.clear();
+        _keys.clear();
+        _completed.clear();
+        _loadingSources = false;
+        _sourceChanged = true;
+      });
+    });
     _tasks = widget.tasks;
     _loadingSources = _tasks.isNotEmpty || widget.segmentIds.isNotEmpty;
     for (final task in widget.tasks) {
@@ -268,6 +299,9 @@ class _RequestState
   }
 
   Future<void> _initializeSources() async {
+    final epoch = ++_sourceEpoch;
+    bool current() => mounted && epoch == _sourceEpoch && _scopeIsCurrent;
+    if (!current()) return;
     if (_tasks.isEmpty && widget.segmentIds.isNotEmpty) {
       setState(() => _loadingSources = true);
       try {
@@ -284,6 +318,7 @@ class _RequestState
             segmentCode: widget.segmentCodes[index],
             size: 200,
           );
+          if (!current()) return;
           final task = page.items
               .where((row) => row.segmentId == widget.segmentIds[index])
               .firstOrNull;
@@ -292,13 +327,13 @@ class _RequestState
           }
           loaded.add(task);
         }
-        if (!mounted) return;
+        if (!current()) return;
         _tasks = loaded;
         for (final task in loaded) {
           _rows.add(_newRow(task));
         }
       } catch (e) {
-        if (mounted) {
+        if (current()) {
           setState(() {
             _sourceChanged = true;
             // 服务端拒绝(如任务已变化/无权限)给的是中文原因，能看就如实展示。
@@ -306,10 +341,10 @@ class _RequestState
           });
         }
       } finally {
-        if (mounted) setState(() => _loadingSources = false);
+        if (current()) setState(() => _loadingSources = false);
       }
     }
-    if (mounted && !_sourceChanged) {
+    if (current() && !_sourceChanged) {
       setState(() => _loadingSources = true);
       try {
         final repository = ref.read(
@@ -321,7 +356,7 @@ class _RequestState
           final contexts = await Future.wait(
             tasks.map((task) => repository.context(task.segmentId)),
           );
-          if (!mounted) return;
+          if (!current()) return;
           for (var index = 0; index < tasks.length; index++) {
             final task = tasks[index];
             final context = contexts[index];
@@ -350,15 +385,15 @@ class _RequestState
           }
         }
       } catch (error) {
-        if (mounted) {
+        if (current()) {
           _sourceChanged = true;
           _error = humanErrorMessage(error) ?? '领料信息没有加载出来，请返回任务中心重试';
         }
       } finally {
-        if (mounted) setState(() => _loadingSources = false);
+        if (current()) setState(() => _loadingSources = false);
       }
     }
-    if (mounted) await initializeFormDraft();
+    if (current()) await initializeFormDraft();
   }
 
   DiscoveryRequestMaterialRow _newRow(
@@ -465,23 +500,38 @@ class _RequestState
       _error = null;
     });
     try {
-      _submissionPending = true;
-      await saveFormDraftNow();
-      for (final task in _tasks) {
-        if (_completed.contains(task.segmentId)) continue;
-        await ref
-            .read(productionMaterialDiscoveryRequestRepositoryProvider)
-            .request(
-              task.segmentId,
-              task.lockVersion,
-              _keys[task.segmentId]!,
-              items: _submittedItems[task.segmentId]!,
-            );
-        _completed.add(task.segmentId);
+      final scopeFuture = captureFormDraftRequestScope();
+      final repository = ref.read(
+        productionMaterialDiscoveryRequestRepositoryProvider,
+      );
+      final scope = await scopeFuture;
+      await scope.run(() async {
+        if (!_scopeIsCurrent || !_canWrite) {
+          throw AuthenticatedRequestScope.changed();
+        }
+        _submissionPending = true;
         await saveFormDraftNow();
-      }
-      await completeFormDraft();
-      if (!mounted) return;
+        for (final task in List.of(_tasks)) {
+          await scope.verify();
+          if (!_scopeIsCurrent || !_canWrite) {
+            throw AuthenticatedRequestScope.changed();
+          }
+          if (_completed.contains(task.segmentId)) continue;
+          await repository.request(
+            task.segmentId,
+            task.lockVersion,
+            _keys[task.segmentId]!,
+            items: _submittedItems[task.segmentId]!,
+          );
+          await scope.verify();
+          if (!_scopeIsCurrent) return;
+          _completed.add(task.segmentId);
+          await saveFormDraftNow();
+        }
+        await scope.verify();
+        if (_scopeIsCurrent) await completeFormDraft();
+      });
+      if (!mounted || !_scopeIsCurrent) return;
       context.appSuccess(
         AppLocalizations.of(context).materialDiscoveryRequestSent,
       );
@@ -491,7 +541,7 @@ class _RequestState
         context.go(RouteName.productionWorkshopTasks);
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && _scopeIsCurrent) {
         final rejected =
             e is ApiException &&
             e.httpStatus != null &&
@@ -587,7 +637,7 @@ class _RequestState
                 decoration: BoxDecoration(
                   color: UtenColors.warning.withValues(alpha: .10),
                   border: Border.all(color: UtenColors.warning),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: UtenRadius.controlAll,
                 ),
                 child: action,
               );
@@ -695,6 +745,16 @@ class _RequestState
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    if (!_scopeIsCurrent) {
+      return EditorIdentityNotice(
+        title: l10n.materialDiscoveryRequestTitle,
+        documentChanged: false,
+        onBack: () => popOrBackTo(
+          context,
+          defaultPath: RouteName.productionWorkshopTasks,
+        ),
+      );
+    }
     return withFormDraft(
       PopScope(
         canPop: !_loadingSources && !_saving && !_uncertain,

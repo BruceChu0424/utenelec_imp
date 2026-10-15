@@ -223,9 +223,13 @@ class _UtenAppBarState extends State<UtenAppBar> {
           140 * textScale,
           360 * textScale,
         );
+        final availableActionWidth =
+            (constraints.maxWidth -
+                    (leading != null || showBackButton ? kToolbarHeight : 0))
+                .clamp(0.0, constraints.maxWidth);
         final actionBudget = (constraints.maxWidth - titleBudget - 80).clamp(
-          112 * textScale,
-          constraints.maxWidth,
+          (112 * textScale).clamp(0.0, availableActionWidth),
+          availableActionWidth,
         );
         final expandedActions = Row(
           mainAxisSize: MainAxisSize.min,
@@ -237,7 +241,8 @@ class _UtenAppBarState extends State<UtenAppBar> {
         final compactAction = UtenAppBarActionPresentation(
           child: UtenAppBarActionButton(
             key: const Key('uten-app-bar-more-actions'),
-            label: '更多操作',
+            label: actionBudget < 112 * textScale ? '操作' : '更多操作',
+            tooltip: '更多操作',
             onPressed: () => _showActions(context, presentedActions, revision),
           ),
         );

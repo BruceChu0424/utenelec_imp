@@ -45,6 +45,42 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
+    void historicalUndecidedTaxNeverInheritsAnotherRoundsDecision() throws Exception {
+        try(var postgres=new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("procurement_tax_history").withUsername("uten").withPassword("uten-test-only")) {
+            postgres.start();
+            var jdbc=new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()));
+            schema(jdbc);applyV835(jdbc);
+            for(String kind:List.of("PURCHASE","SUBCONTRACT")) {
+                Harness harness=harness(jdbc,kind);UUID first=submit(jdbc,harness);
+                harness.service.approveBatch(List.of(new ProcurementApprovalContracts.BatchDecisionItem(first,1L)),null,new BigDecimal("6.85"),new BigDecimal("13.1234"));
+                assertThat(harness.service.review(first).financeTaxRate()).isEqualByComparingTo("13.1234");
+                harness.service.submit(kind,harness.orderId());
+                UUID second=jdbc.queryForObject("SELECT id FROM procurement_order_approval_cases WHERE order_id=? AND attempt=2",UUID.class,harness.orderId());
+                var pending=harness.service.review(second);
+                assertThat(pending.financeTaxRate()).isNull();
+                assertThat(pending.referenceFinanceTaxRate()).isEqualByComparingTo("13.1234");
+                assertThat(pending.exchangeRate()).isEqualByComparingTo("1");
+                assertThat(pending.financeExchangeRate()).isNull();
+                assertThat(pending.referenceFinanceExchangeRate()).isEqualByComparingTo("6.85");
+                harness.service.rejectBatch(List.of(new ProcurementApprovalContracts.BatchDecisionItem(second,1L)),"退回补充数量");
+                var rejected=harness.service.review(second);
+                assertThat(rejected.financeTaxRate()).isNull();assertThat(rejected.referenceFinanceTaxRate()).isNull();
+                assertThat(rejected.financeExchangeRate()).isNull();assertThat(rejected.referenceFinanceExchangeRate()).isNull();
+                harness.service.submit(kind,harness.orderId());
+                UUID third=jdbc.queryForObject("SELECT id FROM procurement_order_approval_cases WHERE order_id=? AND attempt=3",UUID.class,harness.orderId());
+                jdbc.update("UPDATE procurement_order_approval_cases SET status='CANCELED',version=version+1 WHERE id=?",third);
+                var canceled=harness.service.review(third);
+                assertThat(canceled.financeTaxRate()).isNull();assertThat(canceled.referenceFinanceTaxRate()).isNull();
+                assertThat(canceled.referenceFinanceExchangeRate()).isNull();
+                assertThat(harness.service.review(first).financeTaxRate()).isEqualByComparingTo("13.1234");
+                assertThat(harness.service.review(first).financeExchangeRate()).isEqualByComparingTo("6.85");
+                assertThat(harness.service.review(first).referenceFinanceExchangeRate()).isNull();
+            }
+        }
+    }
+
+    @Test
     void approvedHistoryQueriesUseDecisionRateAndFrozenSupplier() throws Exception {
         // Real SQL must keep approved snapshots independent from current master-data renames.
         try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")

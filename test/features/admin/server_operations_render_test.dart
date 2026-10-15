@@ -87,16 +87,21 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('storage-category-LOGS')));
       await tester.pumpAndSettle();
+      tester.view.physicalSize = const Size(375, 900);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('uten-app-bar-more-actions')));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('关闭操作面板'), findsOneWidget);
       tester.view.physicalSize = const Size(260, 900);
       scale.value = 2;
       await tester.pumpAndSettle();
-      await tester.tap(find.text('更多操作'));
-      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      expect(find.byTooltip('关闭操作面板'), findsOneWidget);
       tester.view.physicalSize = const Size(1440, 1100);
       scale.value = 1;
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      expect(find.byTooltip('关闭操作面板'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('storage-category-LOGS')),
         findsOneWidget,

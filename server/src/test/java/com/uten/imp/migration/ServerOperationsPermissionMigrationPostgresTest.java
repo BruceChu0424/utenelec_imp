@@ -153,6 +153,46 @@ class ServerOperationsPermissionMigrationPostgresTest {
         }
     }
 
+    @Test void exactV864UpgradeAppliesFourForwardMigrationsIncludingSharedKitAuthorityWithoutChangingPriorHistory() {
+        try(var upgrade=new PostgreSQLContainer<>("postgres:16-alpine")) {
+            upgrade.start();
+            var source=new DriverManagerDataSource(upgrade.getJdbcUrl(),upgrade.getUsername(),upgrade.getPassword());
+            Flyway.configure().dataSource(source).locations("classpath:db/migration").target("864").load().migrate();
+            var current=new JdbcTemplate(source);
+            assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success",Long.class)).isEqualTo(790);
+            current.update("UPDATE system_settings SET value='17' WHERE key='sms_code_ttl_minutes'");
+            String existingGrants=current.queryForObject("""
+                    SELECT string_agg(row_to_json(grants)::text,'|' ORDER BY department_id,permission_id)
+                    FROM department_permissions grants
+                    """,String.class);
+            assertThat(existingGrants).isNotBlank();
+            String existingHistory=current.queryForObject("""
+                    SELECT string_agg(version||':'||checksum::text,'|' ORDER BY installed_rank)
+                    FROM flyway_schema_history WHERE success
+                    """,String.class);
+            var result=Flyway.configure().dataSource(source).locations("classpath:db/migration").target("868").load().migrate();
+            assertThat(result.migrationsExecuted).isEqualTo(4);
+            assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success",Long.class)).isEqualTo(794);
+            assertThat(current.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success",Long.class)).isZero();
+            assertThat(current.queryForObject("SELECT to_regprocedure('fn_subcontract_application_orderable_batch(uuid[])') IS NOT NULL",Boolean.class)).isTrue();
+            assertThat(current.queryForObject("SELECT count(*) FROM fn_subcontract_application_orderable_batch(ARRAY[]::uuid[])",Long.class)).isZero();
+            assertThat(current.queryForObject("SELECT fn_subcontract_application_orderable_qty(gen_random_uuid())",java.math.BigDecimal.class)).isZero();
+            assertThat(current.queryForObject("SELECT value FROM system_settings WHERE key='sms_code_ttl_minutes'",String.class)).isEqualTo("17");
+            assertThat(current.queryForObject("""
+                    SELECT string_agg(row_to_json(grants)::text,'|' ORDER BY department_id,permission_id)
+                    FROM department_permissions grants
+                    """,String.class)).isEqualTo(existingGrants);
+            assertThat(current.queryForObject("""
+                    SELECT string_agg(version||':'||checksum::text,'|' ORDER BY installed_rank)
+                    FROM flyway_schema_history WHERE success AND version::int<=864
+                    """,String.class)).isEqualTo(existingHistory);
+            assertThat(current.queryForObject("""
+                    SELECT mode='ENV' AND version=0 AND access_key_id_cipher IS NULL AND access_key_secret_cipher IS NULL
+                    FROM sms_gateway_settings
+                    """,Boolean.class)).isTrue();
+        }
+    }
+
     private UUID account(boolean superAdmin) {
         UUID id=UUID.randomUUID();
         jdbc.update("""

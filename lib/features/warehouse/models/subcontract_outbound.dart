@@ -5,6 +5,8 @@
 // 委外件(回厂交回的委外件)的直属物料。仓库只能把数量改少(≤ 提交的领料数量)，
 // 不能改多、不能加行；少发的部分委外下次领料时自动补齐。
 
+import '../../../shared/measurement/document_quantity.dart';
+
 /// 待发料列表行(GET /warehouse/subcontract-outbound/tasks)。
 class OutboundTask {
   const OutboundTask({
@@ -70,6 +72,9 @@ class OutboundPickLine {
     required this.qty,
     required this.stockAvailableQty,
     required this.locationHint,
+    this.requestedQtyText,
+    this.qtyText,
+    this.stockAvailableQtyText,
   });
 
   final String issueItemId;
@@ -87,33 +92,42 @@ class OutboundPickLine {
 
   /// 委外人员提交的领料数量：仓库本次出库数量的上限，提交后不可变。
   final double requestedQty;
+  final String? requestedQtyText;
 
   /// 当前草稿里的本次出库数量(仓库保存过拣货修改则是改后的量)。
   final double qty;
+  final String? qtyText;
 
   /// 领料单所在仓里这条物料当前可动用的合格量(服务端口径，仅供核对)。
   final double? stockAvailableQty;
+  final String? stockAvailableQtyText;
 
   /// 库位提示。
   final String? locationHint;
 
-  factory OutboundPickLine.fromJson(Map<String, dynamic> json) =>
-      OutboundPickLine(
-        issueItemId: json['issueItemId'] as String,
-        planItemId: json['planItemId'] as String,
-        lineNo: (json['lineNo'] as num?)?.toInt(),
-        parentGoodsName: json['parentGoodsName'] as String?,
-        parentGoodsCode: json['parentGoodsCode'] as String?,
-        goodsId: json['goodsId'] as String,
-        goodsCode: json['goodsCode'] as String?,
-        goodsName: json['goodsName'] as String?,
-        colorName: json['colorName'] as String?,
-        unitName: json['unitName'] as String?,
-        requestedQty: (json['requestedQty'] as num?)?.toDouble() ?? 0,
-        qty: (json['qty'] as num?)?.toDouble() ?? 0,
-        stockAvailableQty: (json['stockAvailableQty'] as num?)?.toDouble(),
-        locationHint: json['locationHint'] as String?,
-      );
+  factory OutboundPickLine.fromJson(
+    Map<String, dynamic> json,
+  ) => OutboundPickLine(
+    issueItemId: json['issueItemId'] as String,
+    planItemId: json['planItemId'] as String,
+    lineNo: (json['lineNo'] as num?)?.toInt(),
+    parentGoodsName: json['parentGoodsName'] as String?,
+    parentGoodsCode: json['parentGoodsCode'] as String?,
+    goodsId: json['goodsId'] as String,
+    goodsCode: json['goodsCode'] as String?,
+    goodsName: json['goodsName'] as String?,
+    colorName: json['colorName'] as String?,
+    unitName: json['unitName'] as String?,
+    requestedQty: double.tryParse(json['requestedQty']?.toString() ?? '') ?? 0,
+    requestedQtyText: recordedDocumentDecimal(json, 'requestedQty'),
+    qty: double.tryParse(json['qty']?.toString() ?? '') ?? 0,
+    qtyText: recordedDocumentDecimal(json, 'qty'),
+    stockAvailableQty: double.tryParse(
+      json['stockAvailableQty']?.toString() ?? '',
+    ),
+    stockAvailableQtyText: recordedDocumentDecimal(json, 'stockAvailableQty'),
+    locationHint: json['locationHint'] as String?,
+  );
 }
 
 /// 领料单拣货详情(GET /warehouse/subcontract-outbound/tasks/{issueId})。

@@ -207,6 +207,7 @@ class WarehouseDataScopeEndToEndTest {
         assertForbidden(() -> badges.badges(warehouseB));
         MyWarehouseScope a = dataScope.myScope();
         assertThat(a.role()).isEqualTo("KEEPER");
+        assertThat(a.warehouseParticipant()).isTrue();
         assertThat(a.canSelectAll()).isFalse();
         assertThat(a.selectable()).extracting(MyWarehouseScope.Option::id).containsExactly(warehouseA);
         assertThat(a.defaultWarehouseId()).isEqualTo(warehouseA);
@@ -221,6 +222,12 @@ class WarehouseDataScopeEndToEndTest {
         fixture.loginAs(member);
         assertForbidden(() -> scopes.current(warehouseC));
         assertThat(dataScope.myScope().selectable()).isEmpty();
+        assertThat(dataScope.myScope().role()).isEqualTo("OTHER");
+        assertThat(dataScope.myScope().warehouseParticipant()).isTrue();
+
+        fixture.loginAs(outsider);
+        assertThat(dataScope.myScope().role()).isEqualTo("OTHER");
+        assertThat(dataScope.myScope().warehouseParticipant()).isFalse();
 
         fixture.loginAs(manager);
         assertThat(scopes.current(warehouseC).warehouseIds()).containsExactly(warehouseC);
@@ -228,6 +235,7 @@ class WarehouseDataScopeEndToEndTest {
         assertForbidden(() -> scopes.current(UUID.randomUUID()));
         MyWarehouseScope supervisor = dataScope.myScope();
         assertThat(supervisor.role()).isEqualTo("SUPERVISOR");
+        assertThat(supervisor.warehouseParticipant()).isTrue();
         assertThat(supervisor.canSelectAll()).isTrue();
         assertThat(supervisor.selectable()).extracting(MyWarehouseScope.Option::id)
                 .contains(root, warehouseA, warehouseB, warehouseC);

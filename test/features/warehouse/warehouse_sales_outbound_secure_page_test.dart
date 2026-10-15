@@ -35,6 +35,35 @@ void main() {
   final detail = WarehouseSalesOutboundDetail.fromJson(_detailJson);
 
   test(
+    'restoring an automatic warehouse follows fresh source advice while manual choices remain input',
+    () {
+      final original = WarehouseSalesPickingDraft(detail);
+      final automatic = original.captureInput();
+      final updated = WarehouseSalesOutboundDetail.fromJson({
+        ..._detailJson,
+        'lines': [
+          {
+            ...(_detailJson['lines'] as List).single as Map<String, dynamic>,
+            'suggestedWarehouseId': 'leaf-2',
+          },
+        ],
+      });
+      final refreshed = WarehouseSalesPickingDraft(updated)
+        ..restoreInput(automatic);
+      expect(refreshed.lineWarehouses['line-1'], 'leaf-2');
+      expect(refreshed.confirmedWarehouses, isEmpty);
+      original.changeWarehouse('line-1', 'leaf-1');
+      final manual = WarehouseSalesPickingDraft(updated)
+        ..restoreInput(original.captureInput());
+      expect(manual.lineWarehouses['line-1'], 'leaf-1');
+      expect(manual.confirmedWarehouses, {'line-1'});
+      original.dispose();
+      refreshed.dispose();
+      manual.dispose();
+    },
+  );
+
+  test(
     'draft prefills the suggested warehouse per line and the master stock place, keeping confirmed facts first',
     () {
       // V631 用户口径：实际库位先按主档建议库位预填；发出仓按行预填服务端建议仓。

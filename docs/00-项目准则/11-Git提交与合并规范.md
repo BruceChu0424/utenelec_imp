@@ -3,7 +3,7 @@
 > **2026-09-01 起（ADR-060）**：主仓库为 `BruceChu0424/utenelec_imp`（本地 `origin`），旧组织库仅为
 > 归档备份（本地 `old-origin`，push 已禁用）。发版 = 在 `main` 上打语义化版本 `vMAJOR.MINOR.PATCH`
 > tag 并推送（2026-09-18 起启用，此前为日期号 `vYYYY.MM.DD-N`，规则见 README「版本号规则」），
-> `simple-release.yml` 自动构建签名上传 OSS，服务器自动/受控激活。详见
+> `simple-release.yml` 自动构建签名上传 OSS，有权人员在系统设置检查后立即或预约更新服务器。详见
 > [ADR-60](../99-决策记录-ADR/ADR-060-单维护者简化发布链与旧发布链退役.md)。
 
 > 本文规定 Uten IMP 的日常代码提交、远端推送、Pull Request（PR）和合并流程。

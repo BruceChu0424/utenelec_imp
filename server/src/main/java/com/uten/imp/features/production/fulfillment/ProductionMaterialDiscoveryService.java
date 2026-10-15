@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.application.port.BusinessEventPublisher;
+import com.uten.imp.application.port.WarehouseTaskScopePort;
+import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
@@ -29,7 +31,7 @@ import static com.uten.imp.features.production.fulfillment.ProductionMaterialDis
 /** Unknown BOM materials become ordinary immutable demands before any inventory issue. */
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly=true)
+@Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
 public class ProductionMaterialDiscoveryService {
     private final EntityManager em;
     private final SecurityContextCurrentUser currentUser;
@@ -37,12 +39,30 @@ public class ProductionMaterialDiscoveryService {
     private final ProductionDocumentAccessPolicy access;
     private final ProductionWorkshopMembership membership;
     private final ProductionStockTaskAccessPolicy warehouseAccess;
+    private final WarehouseTaskScopePort warehouseScopes;
     private final ProductionPlanMutationFootprintService footprints;
     private final ProductionExecutionReadinessService readiness;
     private final ChainNoticeService notices;
     private final BusinessEventPublisher events;
     private final ObjectMapper mapper;
     private final DocNumberService numbers;
+
+    // Before confirmation there is no physical source warehouse, exactly like the
+    // MATERIAL_DISCOVERY workbench row. Confirmed source warehouses are immutable.
+    private static final String REQUEST_WAREHOUSES = """
+            ARRAY(SELECT DISTINCT scope_line.warehouse_id
+                  FROM production_material_discovery_lines scope_line
+                  WHERE scope_line.request_id=request.id)
+            """;
+
+    /** One eligibility rule for remembered identities, workshop proposals and warehouse confirmation. */
+    private static String usableMaterialMaster(String colorExpression) {
+        return """
+                NOT goods.is_deleted AND NOT goods.auto_created AND goods.status IS DISTINCT FROM '禁用'
+                AND NOT unit.is_deleted AND unit.status IS DISTINCT FROM '禁用'
+                AND (%s IS NULL OR (NOT color.is_deleted AND color.status IS DISTINCT FROM '禁用'))
+                """.formatted(colorExpression);
+    }
 
     public Context context(UUID segmentId) {
         Segment segment=segment(segmentId,false); requireWorkshop(segment,false);
@@ -92,10 +112,8 @@ public class ProductionMaterialDiscoveryService {
                 )
                 SELECT identity.goods_id,goods.code,goods.name,identity.color_id,color.name,identity.unit_id,
                        unit.name,goods.spec,goods.stock_place,
-                       COALESCE(NOT goods.is_deleted AND NOT goods.auto_created AND goods.status IS DISTINCT FROM '禁用'
+                       COALESCE((%s)
                          AND goods.unit_id=identity.unit_id AND goods.issue_method<>'PERIODIC'
-                         AND NOT unit.is_deleted AND unit.status IS DISTINCT FROM '禁用'
-                         AND (identity.color_id IS NULL OR (NOT color.is_deleted AND color.status IS DISTINCT FROM '禁用'))
                          AND NOT EXISTS (
                              WITH RECURSIVE descendants(id) AS (
                                  SELECT identity.goods_id
@@ -106,7 +124,7 @@ public class ProductionMaterialDiscoveryService {
                 FROM identities identity LEFT JOIN goods ON goods.id=identity.goods_id
                 LEFT JOIN units unit ON unit.id=identity.unit_id LEFT JOIN colors color ON color.id=identity.color_id
                 ORDER BY goods.code,identity.goods_id,identity.color_id NULLS FIRST
-                """).setParameter("request",source[0]).setParameter("confirmed","CONFIGURED".equals(source[1]))
+                """.formatted(usableMaterialMaster("identity.color_id"))).setParameter("request",source[0]).setParameter("confirmed","CONFIGURED".equals(source[1]))
                 .setParameter("segment",segmentId));
         // Never carry a partial recipe after one of its identities was disabled, removed or reclassified.
         if(materials.isEmpty()||materials.size()>100||materials.stream().anyMatch(row->!Boolean.TRUE.equals(row[9])))
@@ -170,6 +188,8 @@ public class ProductionMaterialDiscoveryService {
         requireWarehouse(true);tx.bind();
         if(command==null)throw validation("请填写实际领用物料");validate(new Request(command.expectedVersion(),command.idempotencyKey()));
         List<Material> items=normalize(command.items());
+        requireWarehouseRequest(id);
+        requireWarehouseSources(items);
         List<String> parts=new ArrayList<>(List.of("DISCOVERY-CONFIGURE",id.toString(),command.expectedVersion().toString()));
         items.forEach(item->parts.add(item.goodsId()+"|"+Objects.toString(item.colorId(),"")+"|"+item.unitId()+"|"+item.warehouseId()+"|"+item.qty().stripTrailingZeros().toPlainString()));
         String hash=hash(parts);lockCommand(command.idempotencyKey());Detail before=detail(id);
@@ -180,6 +200,10 @@ public class ProductionMaterialDiscoveryService {
         var footprint=footprints.beginPlan(discovered.plan(),items.stream()
                 .map(item->new ProductionPlanMutationFootprintService.RequestedLine(item.goodsId(),item.colorId(),null)).distinct().toList());
         Segment segment=segment(discovered.id(),true);Object[] request=requestRow(id,true);footprint.verifyUnchanged();
+        // Organization/keeper changes are checked after waiting for plan/request locks too.
+        requireWarehouse(true);
+        requireWarehouseRequest(id);
+        requireWarehouseSources(items);
         if("CONFIGURED".equals(request[0])) {
             if(Objects.equals(request[2],command.idempotencyKey())&&Objects.equals(request[3],hash)&&Objects.equals(request[6],currentUser.requireId()))return detail(id);
             throw conflict("仓库已登记此申请，请查看正式领料单");
@@ -244,7 +268,13 @@ public class ProductionMaterialDiscoveryService {
                 WHERE request.id=:id
                 """,id);
         if(rows.isEmpty())throw notFound();Object[] r=rows.getFirst();
-        if(!(access.hasAuthority("stock_doc:view")&&warehouseAccess.canAccessWarehouseTasks()))requireWorkshop(segment((UUID)r[1],false),false);
+        if(!(access.hasAuthority("stock_doc:view")&&warehouseAccess.canAccessWarehouseTasks()&&warehouseRequestReadable(id))) {
+            try {requireWorkshop(segment((UUID)r[1],false),false);}
+            catch(ApiException denied) {
+                if(denied.getCode()==ErrorCode.FORBIDDEN||denied.getCode()==ErrorCode.NOT_FOUND)throw notFound();
+                throw denied;
+            }
+        }
         List<Item> items=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT line.id,line.demand_id,line.goods_id,goods.code,goods.name,line.color_id,color.name,line.unit_id,unit.name,line.warehouse_id,warehouse.name,line.qty,
                        goods.spec,goods.stock_place
@@ -273,10 +303,47 @@ public class ProductionMaterialDiscoveryService {
         requireWarehouse(false);String filter=status==null?"PENDING":status;
         if(!List.of("PENDING","CONFIGURED","CANCELLED").contains(filter))throw validation("申请状态不正确");
         int p=Math.max(1,page),s=Math.max(1,Math.min(100,size));
+        WarehouseTaskScope scope=warehouseScopes.current(null);
         String predicate=" FROM production_material_discovery_requests request JOIN production_execution_segments segment ON segment.id=request.execution_segment_id JOIN production_plans plan ON plan.id=segment.plan_id WHERE request.status=:status AND NOT segment.is_deleted AND segment.status NOT IN('CANCELLED','REVERSED') AND NOT plan.is_deleted AND NOT plan.is_canceled AND NOT plan.is_closed";
-        long total=((Number)em.createNativeQuery("SELECT count(*)"+predicate).setParameter("status",filter).getSingleResult()).longValue();
-        List<UUID> ids=NativeQueryResults.typedRows(em.createNativeQuery("SELECT request.id"+predicate+" ORDER BY request.created_at,request.id LIMIT :size OFFSET :offset").setParameter("status",filter).setParameter("size",s).setParameter("offset",(long)(p-1)*s),UUID.class);
+        if("PENDING".equals(filter))predicate+=" AND segment.status IN('WAITING','READY','DISPATCHED') AND plan.status=1 AND NOT plan.is_stopped";
+        predicate+=" AND "+warehouseRequestPredicate(scope);
+        var count=em.createNativeQuery("SELECT count(*)"+predicate).setParameter("status",filter);
+        bindWarehouseScope(count,scope);
+        long total=((Number)count.getSingleResult()).longValue();
+        var pageQuery=em.createNativeQuery("SELECT request.id"+predicate+" ORDER BY request.created_at,request.id LIMIT :size OFFSET :offset")
+                .setParameter("status",filter).setParameter("size",s).setParameter("offset",(long)(p-1)*s);
+        bindWarehouseScope(pageQuery,scope);
+        List<UUID> ids=NativeQueryResults.typedRows(pageQuery,UUID.class);
         return new PageResponse<>(ids.stream().map(this::detail).toList(),p,s,total,(int)((total+s-1)/s));
+    }
+
+    private static String warehouseRequestPredicate(WarehouseTaskScope scope) {
+        return scope.active()?scope.predicateAny(REQUEST_WAREHOUSES,":discoveryWarehouseScope"):"TRUE";
+    }
+
+    private static void bindWarehouseScope(jakarta.persistence.Query query,WarehouseTaskScope scope) {
+        if(scope.active())query.setParameter("discoveryWarehouseScope",scope.idsCsv());
+    }
+
+    private boolean warehouseRequestReadable(UUID requestId) {
+        WarehouseTaskScope scope=warehouseScopes.current(null);
+        if(!scope.active())return true;
+        var query=em.createNativeQuery("SELECT EXISTS(SELECT 1 FROM production_material_discovery_requests request WHERE request.id=:id AND "
+                +warehouseRequestPredicate(scope)+")").setParameter("id",requestId);
+        bindWarehouseScope(query,scope);
+        return Boolean.TRUE.equals(query.getSingleResult());
+    }
+
+    private void requireWarehouseRequest(UUID requestId) {
+        if(!warehouseRequestReadable(requestId))throw notFound();
+    }
+
+    private void requireWarehouseSources(List<Material> items) {
+        WarehouseTaskScope scope=warehouseScopes.current(null);
+        if(!scope.active())return;
+        Set<UUID> permitted=new HashSet<>(scope.warehouseIds());
+        if(items.stream().anyMatch(item->!permitted.contains(item.warehouseId())))
+            throw new ApiException(ErrorCode.FORBIDDEN,WarehouseTaskScopePort.OUT_OF_SCOPE_MESSAGE);
     }
     private Segment segment(UUID id,boolean lock) {
         List<Object[]> rows=rows("""
@@ -315,11 +382,12 @@ public class ProductionMaterialDiscoveryService {
     }
     private void validateMaterialIdentity(Segment segment,UUID goodsId,UUID colorId,UUID unitId) {
         boolean valid=Boolean.TRUE.equals(em.createNativeQuery("""
-                SELECT EXISTS(SELECT 1 FROM goods JOIN units unit ON unit.id=goods.unit_id AND NOT unit.is_deleted
-                    WHERE goods.id=:goods AND NOT goods.is_deleted AND goods.unit_id=:unit
+                SELECT EXISTS(SELECT 1 FROM goods JOIN units unit ON unit.id=goods.unit_id
+                    LEFT JOIN colors color ON color.id=CAST(:color AS uuid)
+                    WHERE goods.id=:goods AND goods.unit_id=:unit AND (%s)
                       AND goods.id<>(SELECT product_goods_id FROM production_execution_segments WHERE id=:segment)
-                      AND (CAST(:color AS uuid) IS NULL OR EXISTS(SELECT 1 FROM colors WHERE id=:color AND NOT is_deleted)))
-                """).setParameter("goods",goodsId).setParameter("unit",unitId).setParameter("segment",segment.id()).setParameter("color",colorId).getSingleResult());
+                    )
+                """.formatted(usableMaterialMaster("CAST(:color AS uuid)"))).setParameter("goods",goodsId).setParameter("unit",unitId).setParameter("segment",segment.id()).setParameter("color",colorId).getSingleResult());
         if(!valid)throw validation("物料、颜色或基本单位不正确，请重新选择实际材料");
         requireOrderIssuedMaterial(goodsId);
         if(Boolean.TRUE.equals(em.createNativeQuery("""
@@ -347,10 +415,8 @@ public class ProductionMaterialDiscoveryService {
         validateMaterialIdentity(segment,item.goodsId(),item.colorId(),item.unitId());
         List<Object[]> available=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT goods.code,goods.name,color.name,unit.name,goods.spec,goods.stock_place FROM goods JOIN units unit ON unit.id=goods.unit_id
-                LEFT JOIN colors color ON color.id=:color WHERE goods.id=:goods
-                  AND NOT goods.auto_created AND goods.status IS DISTINCT FROM '禁用'
-                  AND unit.status IS DISTINCT FROM '禁用' AND color.status IS DISTINCT FROM '禁用'
-                """).setParameter("goods",item.goodsId()).setParameter("color",item.colorId()));
+                LEFT JOIN colors color ON color.id=CAST(:color AS uuid) WHERE goods.id=:goods AND (%s)
+                """.formatted(usableMaterialMaster("CAST(:color AS uuid)"))).setParameter("goods",item.goodsId()).setParameter("color",item.colorId()));
         if(available.isEmpty())throw validation("请选择可用的货品、颜色和基本单位，不能使用停用或系统占位主档");
         Object[] row=available.getFirst();
         return new SuggestedItem(item.goodsId(),(String)row[0],(String)row[1],item.colorId(),(String)row[2],item.unitId(),(String)row[3],item.qty(),(String)row[4],(String)row[5]);

@@ -230,7 +230,7 @@ class _FinanceProcurementApprovalReviewPageState
   void closeRecoveredReview() => _closeAfterDecision();
 
   /// 汇率编辑框（case 级记账汇率，非行单位换算率）：加载后预填
-  /// financeExchangeRate ?? 提交快照 exchangeRate ?? 1，未批 case 可改。
+  /// 本轮决定 ?? 当前待审参考 ?? 提交快照 exchangeRate ?? 1，未批 case 可改。
   final TextEditingController _rateController = TextEditingController();
   final TextEditingController _taxController = TextEditingController();
 
@@ -365,11 +365,15 @@ class _FinanceProcurementApprovalReviewPageState
   /// 时订单表头快照 exchangeRate（V438 冻结口径），都没有时兜底 1。
   String _defaultRateText(FinanceProcurementApprovalReview r) =>
       financeExactTrimmed(r.financeExchangeRate) ??
+      (r.isPending
+          ? financeExactTrimmed(r.referenceFinanceExchangeRate)
+          : null) ??
       financeExactTrimmed(r.exchangeRate) ??
       '1';
 
   String _defaultTaxText(FinanceProcurementApprovalReview r) =>
       financeExactTrimmed(r.financeTaxRate) ??
+      (r.isPending ? financeExactTrimmed(r.referenceFinanceTaxRate) : null) ??
       financeExactTrimmed(r.taxRate) ??
       '';
 
@@ -1297,6 +1301,9 @@ class _FinanceProcurementApprovalReviewPageState
                           suffixText: '%',
                           error: utenFieldError(_taxInputError()),
                         ),
+                        info: r.referenceFinanceTaxRate == null
+                            ? '本次通过后核定税率；提交税率保留原记录。'
+                            : '已带入前次财务核定税率作为本次参考，请核对后通过。',
                       ),
                     );
                   },
@@ -1325,6 +1332,9 @@ class _FinanceProcurementApprovalReviewPageState
                           hintText: '大于 0',
                           error: utenFieldError(_rateInputError()),
                         ),
+                        info: r.referenceFinanceExchangeRate == null
+                            ? null
+                            : '已带入前次财务核定汇率作为本次参考，请核对后通过。',
                       ),
                     );
                   },

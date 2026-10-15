@@ -250,8 +250,18 @@ void main() {
     expect(api.taskQueries.last['page'], 2);
 
     api.failNextList = true;
-    await tester.tap(find.text('刷新'));
+    final listRequests = api.listRequests;
+    final moreActions = find
+        .byKey(const Key('uten-app-bar-more-actions'))
+        .hitTestable();
+    expect(moreActions, findsOneWidget);
+    await tester.tap(moreActions);
     await tester.pumpAndSettle();
+    final refresh = find.byTooltip('刷新').hitTestable();
+    expect(refresh, findsOneWidget);
+    await tester.tap(refresh);
+    await tester.pumpAndSettle();
+    expect(api.listRequests, listRequests + 1);
     expect(find.text('委外领料单加载失败，请检查网络后重试'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

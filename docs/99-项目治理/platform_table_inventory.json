@@ -5195,8 +5195,8 @@
     {
       "id": "lib/features/finance/pages/finance_procurement_approval_review_page.dart::_FinanceProcurementApprovalReviewPageState::_itemsCard::UtenRevisionTable#1",
       "path": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
-      "line": 1221,
-      "endLine": 1567,
+      "line": 1225,
+      "endLine": 1577,
       "component": "UtenRevisionTable",
       "qualifiedType": "UtenRevisionTable<FinanceProcurementReviewLine>",
       "kind": "flutter_table",
@@ -5226,7 +5226,7 @@
           "label": "r.orderType == FinanceProcurementOrderType.subcontract ? '委外商' : '供应商'",
           "type": null,
           "value": "(_) => r.supplierName",
-          "sourceLine": 1336,
+          "sourceLine": 1346,
           "editable": false
         },
         {
@@ -5234,7 +5234,7 @@
           "label": "'币种'",
           "type": null,
           "value": "(_) => r.currencyName",
-          "sourceLine": 1346,
+          "sourceLine": 1356,
           "editable": false
         },
         {
@@ -5242,7 +5242,7 @@
           "label": "'税率(%)'",
           "type": null,
           "value": "(_) => r.isPending ? _taxController.text : _defaultTaxText(r)",
-          "sourceLine": 1352,
+          "sourceLine": 1362,
           "editable": false
         },
         {
@@ -5250,7 +5250,7 @@
           "label": "'结算方式'",
           "type": null,
           "value": "(_) => r.settlementMethodName",
-          "sourceLine": 1360,
+          "sourceLine": 1370,
           "editable": false
         },
         {
@@ -5258,7 +5258,7 @@
           "label": "'来源单号'",
           "type": null,
           "value": "(it) => extra(it, it.sourceDocNo)",
-          "sourceLine": 1366,
+          "sourceLine": 1376,
           "editable": false
         },
         {
@@ -5266,7 +5266,7 @@
           "label": "'申请来源 / 分配数量'",
           "type": null,
           "value": "(it) => extra(it, it.sourceApplicationNos)",
-          "sourceLine": 1372,
+          "sourceLine": 1382,
           "editable": false
         },
         {
@@ -5274,7 +5274,7 @@
           "label": "'行号'",
           "type": "'number'",
           "value": "(it) => it.lineNo.toString()",
-          "sourceLine": 1378,
+          "sourceLine": 1388,
           "editable": false
         },
         {
@@ -5282,7 +5282,7 @@
           "label": "'货品名称'",
           "type": null,
           "value": "(it) => it.goodsName ?? it.goodsCode ?? '—'",
-          "sourceLine": 1387,
+          "sourceLine": 1397,
           "editable": false
         },
         {
@@ -5290,7 +5290,7 @@
           "label": "'编号'",
           "type": null,
           "value": "(it) => UtenGoodsAttributeCell.text(it.goodsCode)",
-          "sourceLine": 1393,
+          "sourceLine": 1403,
           "editable": false
         },
         {
@@ -5298,7 +5298,7 @@
           "label": "'颜色'",
           "type": null,
           "value": "(it) => UtenGoodsAttributeCell.text(it.colorName)",
-          "sourceLine": 1402,
+          "sourceLine": 1412,
           "editable": false
         },
         {
@@ -5306,7 +5306,7 @@
           "label": "'数量'",
           "type": "'number'",
           "value": "(it) => formatExactQtyWithUnit(it.qty, it.unitName)",
-          "sourceLine": 1413,
+          "sourceLine": 1423,
           "editable": false
         },
         {
@@ -5314,7 +5314,7 @@
           "label": "'允许超收'",
           "type": null,
           "value": "(it) {final v = _trimNum(it.allowedOverReceiptPct); return v == null ? '不允许' : '$v%';}",
-          "sourceLine": 1424,
+          "sourceLine": 1434,
           "editable": false
         },
         {
@@ -5322,7 +5322,7 @@
           "label": "'允许损耗'",
           "type": null,
           "value": "(it) {if (!it.displaySnapshotComplete) return '历史未留存'; final v = _trimNum(it.allowedLossPct); return v == null ? null : '$v%';}",
-          "sourceLine": 1437,
+          "sourceLine": 1447,
           "editable": false
         },
         {
@@ -5330,7 +5330,7 @@
           "label": "'单价'",
           "type": "'money'",
           "value": "(it) => it.totalAmountInput == null ? financeMoneyWithUnitSuffix(it.price, currencyName: r.currencyName) : '${financeMoneyWithUnitSuffix(it.price, currencyName: r.currencyName)}（参考）'",
-          "sourceLine": 1449,
+          "sourceLine": 1459,
           "editable": false
         },
         {
@@ -5338,7 +5338,7 @@
           "label": "'总金额'",
           "type": "'money'",
           "value": "(it) => financeMoneyWithUnitSuffix(it.amountOriginal, currencyName: r.currencyName)",
-          "sourceLine": 1468,
+          "sourceLine": 1478,
           "editable": false
         },
         {
@@ -5346,7 +5346,7 @@
           "label": "'汇率'",
           "type": "'number'",
           "value": "(_) => _trimNum(rateText)",
-          "sourceLine": 1481,
+          "sourceLine": 1491,
           "editable": false
         },
         {
@@ -5354,7 +5354,7 @@
           "label": "'折合人民币'",
           "type": "'money'",
           "value": "(it) => financeLocalMoneyWithUnitSuffix(_lineAmountLocal(it, rateText))",
-          "sourceLine": 1491,
+          "sourceLine": 1501,
           "editable": false
         },
         {
@@ -5362,7 +5362,7 @@
           "label": "'交货日'",
           "type": "'date'",
           "value": "(it) => it.deliverDate",
-          "sourceLine": 1500,
+          "sourceLine": 1510,
           "editable": false
         },
         {
@@ -5370,7 +5370,7 @@
           "label": "'赠品数量'",
           "type": null,
           "value": "(it) => extra(it, it.giftQty, numeric: true)",
-          "sourceLine": 1513,
+          "sourceLine": 1523,
           "editable": false
         },
         {
@@ -5378,7 +5378,7 @@
           "label": "'备注'",
           "type": null,
           "value": "(it) => extra(it, it.remark)",
-          "sourceLine": 1519,
+          "sourceLine": 1529,
           "editable": false
         }
       ],
@@ -9885,8 +9885,8 @@
     {
       "id": "lib/features/production/pages/production_material_discovery_request_page.dart::_RequestState::build::MasterDataTableView#1",
       "path": "lib/features/production/pages/production_material_discovery_request_page.dart",
-      "line": 747,
-      "endLine": 764,
+      "line": 807,
+      "endLine": 824,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<DiscoveryRequestMaterialRow>",
       "kind": "flutter_table",
@@ -9905,7 +9905,7 @@
       "scope": null,
       "preferenceAndScopeEvidence": [
         {
-          "line": 384,
+          "line": 419,
           "ownerClass": "_RequestState",
           "name": "scope",
           "value": "UtenGoodsPickerScope.component"
@@ -9923,7 +9923,7 @@
           "label": "'提交状态'",
           "type": null,
           "value": "(row) => _completed.contains(row.task.segmentId) ? '已提交' : (_uncertain || _sourceChanged ? '待核对' : '待提交')",
-          "sourceLine": 515,
+          "sourceLine": 565,
           "editable": false
         },
         {
@@ -9931,7 +9931,7 @@
           "label": "'车间任务'",
           "type": null,
           "value": "(row) => row.task.segmentCode",
-          "sourceLine": 523,
+          "sourceLine": 573,
           "editable": false
         },
         {
@@ -9939,7 +9939,7 @@
           "label": "'生产计划'",
           "type": null,
           "value": "(row) => row.task.planNo",
-          "sourceLine": 529,
+          "sourceLine": 579,
           "editable": false
         },
         {
@@ -9947,7 +9947,7 @@
           "label": "'领料车间'",
           "type": null,
           "value": "(row) => row.task.workshopName ?? '—'",
-          "sourceLine": 535,
+          "sourceLine": 585,
           "editable": false
         },
         {
@@ -9955,7 +9955,7 @@
           "label": "'生产货品'",
           "type": null,
           "value": "(row) => row.task.productName ?? '—'",
-          "sourceLine": 541,
+          "sourceLine": 591,
           "editable": false
         },
         {
@@ -9963,7 +9963,7 @@
           "label": "'货品编号'",
           "type": null,
           "value": "(row) => row.task.productCode ?? '—'",
-          "sourceLine": 547,
+          "sourceLine": 597,
           "editable": false
         },
         {
@@ -9971,7 +9971,7 @@
           "label": "'货品颜色'",
           "type": null,
           "value": "(row) => row.task.productColorName ?? '—'",
-          "sourceLine": 553,
+          "sourceLine": 603,
           "editable": false
         },
         {
@@ -9979,7 +9979,7 @@
           "label": "'计划产量'",
           "type": "'number'",
           "value": "(row) => formatQtyWithUnit(row.task.plannedQty, row.task.productUnitName)",
-          "sourceLine": 561,
+          "sourceLine": 611,
           "editable": false
         },
         {
@@ -9987,7 +9987,7 @@
           "label": "'领料材料（选填）'",
           "type": null,
           "value": "(row) => row.values['goodsName'] as String? ?? ''",
-          "sourceLine": 569,
+          "sourceLine": 619,
           "editable": false
         },
         {
@@ -9995,7 +9995,7 @@
           "label": "'用料来源'",
           "type": null,
           "value": "(row) => row.memoryLabel ?? '本次填写'",
-          "sourceLine": 597,
+          "sourceLine": 647,
           "editable": false
         },
         {
@@ -10003,7 +10003,7 @@
           "label": "'材料编号'",
           "type": null,
           "value": "(row) => row.label('goodsCode')",
-          "sourceLine": 603,
+          "sourceLine": 653,
           "editable": false
         },
         {
@@ -10011,7 +10011,7 @@
           "label": "'材料颜色'",
           "type": null,
           "value": "(row) => row.label('colorName')",
-          "sourceLine": 609,
+          "sourceLine": 659,
           "editable": false
         },
         {
@@ -10019,7 +10019,7 @@
           "label": "'规格'",
           "type": null,
           "value": "(row) => row.label('spec')",
-          "sourceLine": 615,
+          "sourceLine": 665,
           "editable": false
         },
         {
@@ -10027,7 +10027,7 @@
           "label": "'参考库位'",
           "type": null,
           "value": "(row) => row.label('stockPlace')",
-          "sourceLine": 621,
+          "sourceLine": 671,
           "editable": false
         },
         {
@@ -10035,7 +10035,7 @@
           "label": "'领料数量（选填）'",
           "type": "'number'",
           "value": "(row) => row.qty.text",
-          "sourceLine": 628,
+          "sourceLine": 678,
           "editable": false
         },
         {
@@ -10043,7 +10043,7 @@
           "label": "'材料行'",
           "type": null,
           "value": "(_) => ''",
-          "sourceLine": 653,
+          "sourceLine": 703,
           "editable": false
         }
       ],
@@ -19907,8 +19907,8 @@
     {
       "id": "lib/features/warehouse/pages/stock_doc_detail_page.dart::_StockDocDetailPageState::_itemTable::MasterDataTableView#1",
       "path": "lib/features/warehouse/pages/stock_doc_detail_page.dart",
-      "line": 1369,
-      "endLine": 1553,
+      "line": 1377,
+      "endLine": 1561,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<StockDocItem>",
       "kind": "flutter_table",
@@ -19935,7 +19935,7 @@
           "label": "'货品名称'",
           "type": null,
           "value": "(it) => names.goods(it.goodsId)",
-          "sourceLine": 1393,
+          "sourceLine": 1401,
           "editable": false
         },
         {
@@ -19943,7 +19943,7 @@
           "label": "'编号'",
           "type": null,
           "value": "(it) => names.goodsInfo(it.goodsId)?.code ?? '—'",
-          "sourceLine": 1399,
+          "sourceLine": 1407,
           "editable": false
         },
         {
@@ -19951,7 +19951,7 @@
           "label": "'颜色'",
           "type": null,
           "value": "(it) => names.color(it.colorId)",
-          "sourceLine": 1405,
+          "sourceLine": 1413,
           "editable": false
         },
         {
@@ -19959,7 +19959,7 @@
           "label": "'系列'",
           "type": null,
           "value": "(it) => names.goodsInfo(it.goodsId)?.series ?? '—'",
-          "sourceLine": 1411,
+          "sourceLine": 1419,
           "editable": false
         },
         {
@@ -19967,7 +19967,7 @@
           "label": "'仓库'",
           "type": null,
           "value": "(it) => names.warehouse(it.warehouseId ?? _d!.warehouseId)",
-          "sourceLine": 1419,
+          "sourceLine": 1427,
           "editable": false
         },
         {
@@ -19975,7 +19975,7 @@
           "label": "'库位号'",
           "type": null,
           "value": "(it) => it.place?.trim().isNotEmpty == true ? it.place! : names.goodsInfo(it.goodsId)?.stockPlace ?? '—'",
-          "sourceLine": 1425,
+          "sourceLine": 1433,
           "editable": false
         },
         {
@@ -19983,7 +19983,7 @@
           "label": "'账面数量'",
           "type": "'number'",
           "value": "(it) => formatQtyWithUnit(it.qty ?? 0, unitOf(it))",
-          "sourceLine": 1434,
+          "sourceLine": 1442,
           "editable": false
         },
         {
@@ -19991,7 +19991,7 @@
           "label": "'实盘数量'",
           "type": "'number'",
           "value": "(it) => formatQtyWithUnit(it.countQty, unitOf(it), maxDecimals: 1)",
-          "sourceLine": 1441,
+          "sourceLine": 1449,
           "editable": false
         },
         {
@@ -19999,7 +19999,7 @@
           "label": "'盈亏'",
           "type": "'number'",
           "value": "(it) => formatQtyWithUnit(it.surplusQty, unitOf(it), maxDecimals: 1)",
-          "sourceLine": 1449,
+          "sourceLine": 1457,
           "editable": false
         },
         {
@@ -20007,7 +20007,7 @@
           "label": "'待点收上限'",
           "type": "'number'",
           "value": "(it) => formatQtyWithUnit(it.reportedQty ?? it.qty ?? 0, unitOf(it), maxDecimals: 2)",
-          "sourceLine": 1461,
+          "sourceLine": 1469,
           "editable": false
         },
         {
@@ -20015,7 +20015,7 @@
           "label": "detail.status == 1 ? '仓库实收' : '待点收'",
           "type": "'number'",
           "value": "(it) => formatQtyWithUnit(it.qty ?? 0, unitOf(it), maxDecimals: 2)",
-          "sourceLine": 1472,
+          "sourceLine": 1480,
           "editable": false
         },
         {
@@ -20023,7 +20023,7 @@
           "label": "'数量'",
           "type": "'number'",
           "value": "(it) => formatQtyWithUnit(it.qty ?? 0, unitOf(it), maxDecimals: 2)",
-          "sourceLine": 1482,
+          "sourceLine": 1490,
           "editable": false
         }
       ],
@@ -21202,8 +21202,8 @@
     {
       "id": "lib/features/warehouse/widgets/production_draw_detail_table.dart::ProductionDrawDetailTable::build::MasterDataTableView#1",
       "path": "lib/features/warehouse/widgets/production_draw_detail_table.dart",
-      "line": 274,
-      "endLine": 748,
+      "line": 305,
+      "endLine": 768,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<ProductionDrawDetailRow>",
       "kind": "flutter_table",
@@ -21215,7 +21215,7 @@
       "arguments": {
         "tableKey": "'features.warehouse.widgets.production_draw_detail_table.ProductionDrawDetailTable.build.1'",
         "rowKeyOf": "(row) => row.stableRowKey",
-        "columns": "[MasterColumnDef(key: 'issueStatus', label: '状态', width: 72, value: (row) => row.isMergedGroup ? (row.group!.map((r) => r.document!.issueStatus).toSet().length == 1 ? drawIssueStatusLabel(row.group!.first.document!.issueStatus) : '—') : row.discovery == null ? drawIssueStatusLabel(row.document!.issueStatus) : '待确认出库'), MasterColumnDef(key: 'billNo', sortable: true, filterFromRows: true, label: '领料单号', width: 160, value: (row) => row.isMergedGroup ? '${row.group!.length} 张单' : _numberLabel(row.document?.billNo)), MasterColumnDef(key: 'materialRequestNo', label: '领料申请号', width: 170, sortable: true, filterFromRows: true, value: (row) => _numberLabel(row.discovery?.request.requestNo ?? row.document?.materialRequestNo)), MasterColumnDef(key: 'goods', label: '货品名称', width: 200, value: (row) => row.isMergedGroup ? names.goods(row.group!.first.item!.goodsId) : row.discovery?.label('goodsName') ?? names.goods(row.item!.goodsId)), MasterColumnDef(key: 'goodsCode', label: '编号', width: 120, value: (row) => row.isMergedGroup ? names.goodsInfo(row.group!.first.item!.goodsId)?.code ?? '—' : row.discovery?.label('goodsCode') ?? names.goodsInfo(row.item!.goodsId)?.code ?? '—'), MasterColumnDef(key: 'color', label: '颜色', width: 90, value: (row) => row.isMergedGroup ? names.color(row.group!.first.item!.colorId) : row.discovery?.label('colorName') ?? names.color(row.item!.colorId)), MasterColumnDef(key: 'warehouse', label: discoveryRows.isEmpty ? '仓库' : '仓库 *', width: discoveryRows.isEmpty ? 160 : 200, value: (row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.warehouse(r.document!.warehouseId))) : row.discovery?.label('warehouseName') ?? names.warehouse(row.document!.warehouseId), cellBuilder: (context, row) => row.isMergedGroup ? Text(_joinedOrDash(row.group!.map((r) => names.warehouse(r.document!.warehouseId)))) : row.discovery == null ? Text(names.warehouse(row.document!.warehouseId)) : _discoveryWarehouseCell(context, row.discovery!)), MasterColumnDef(key: 'department', label: '领料车间', width: 150, value: (row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.department(r.document!.departmentId))) : row.discovery?.request.workshopName ?? names.department(row.document!.departmentId)), MasterColumnDef(key: 'worker', label: '领料负责人', width: 140, value: (row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.employeeOr(r.document!.workerName, r.document!.workerId))) : row.discovery == null ? names.employeeOr(row.document!.workerName, row.document!.workerId) : '—'), MasterColumnDef(key: 'place', label: '库位号', width: 100, value: (row) => row.isMergedGroup ? '—' : row.discovery?.label('stockPlace') ?? (row.item!.place?.trim().isNotEmpty == true ? row.item!.place! : names.goodsInfo(row.item!.goodsId)?.stockPlace ?? '—')), MasterColumnDef(key: 'qty', label: discoveryRows.isEmpty ? '应领数量' : '应领数量 *', width: discoveryRows.isEmpty ? 140 : 215, type: 'number', value: (row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.qty ?? 0, _unitOf(row)) : row.discovery == null ? formatQtyWithUnit(row.item!.qty ?? 0, _unitOf(row), maxDecimals: 4) : row.discovery!.quantity.text, exactValueOf: (row) => row.isMergedGroup ? _mergedExactQty(row.group!, (item) => item.qty) : row.discovery?.quantity.text ?? row.item?.qty?.toString(), exactListenableOf: (row) => row.discovery?.quantity, cellBuilder: (context, row) => row.isMergedGroup ? Text(_mergedQty(row.group!, (item) => item.qty ?? 0, _unitOf(row))) : row.discovery == null ? Text(formatQtyWithUnit(row.item!.qty ?? 0, _unitOf(row), maxDecimals: 4)) : _discoveryQuantityCell(context, row.discovery!)), MasterColumnDef(key: 'issuedQty', label: '已出库', width: 140, type: 'number', value: (row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.issuedQty ?? 0, _unitOf(row)) : row.discovery == null ? formatQtyWithUnit(row.item!.issuedQty ?? 0, _unitOf(row), maxDecimals: 4) : formatQtyWithUnit(0, _unitOf(row)), exactValueOf: (row) => row.isMergedGroup ? _mergedExactQty(row.group!, (item) => item.issuedQty) : row.discovery == null ? row.item?.issuedQty?.toString() : '0'), MasterColumnDef(key: 'issuedWeight', label: '已出库重量', width: 120, type: 'number', info: '各轮出库实称/分摊的重量合计(已扣取消出库); 「≈」为按库存均重或单重估算。', value: (row) => _issuedWeightText(row.item), exactValueOf: (row) => (row.item?.issuedQty ?? 0) > 0 ? row.item?.issuedWeightKg?.toString() : null, cellBuilder: (context, row) {final item = row.item; if (item == null || (item.issuedQty ?? 0) <= 0) {return const Text('—');} return WeightText(kg: item.issuedWeightKg, estimated: item.issuedWeightEstimated);}), MasterColumnDef(key: 'remainingQty', label: '待出库', width: 140, type: 'number', value: (row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.remainingQty, _unitOf(row)) : row.discovery == null ? formatQtyWithUnit(row.item!.remainingQty, _unitOf(row), maxDecimals: 4) : '待确认', exactValueOf: (row) => row.isMergedGroup ? _mergedExactQty(row.group!, (item) => item.remainingQty) : row.discovery == null ? row.item?.remainingQty.toString() : null), if (issueQtyControllers == null) ...weightColumns, if (issueQtyControllers != null) ...[MasterColumnDef(key: 'issueQty', label: '本次出库', width: 155, type: 'number', value: (row) => issueQtyControllers![row.item?.id]?.text ?? '', exactValueOf: (row) => issueQtyControllers![row.item?.id]?.text, exactListenableOf: (row) => issueQtyControllers![row.item?.id], cellBuilder: (context, row) {final controller = issueQtyControllers![row.item?.id]; if (controller == null) return const Text('—'); return Semantics(textField: true, label: '${names.goods(row.item?.goodsId)} 本次出库数量', child: _autofillQuantityField(context, key: ValueKey('draw-issue-qty-${row.item?.id}'), controller: controller, weight: _weightOf(row), enabled: !issueSaving && (row.item?.remainingQty ?? 0) > 0, unitName: _unitOf(row)));}), ...weightColumns], if (lineRemarkControllers != null) MasterColumnDef(key: 'lineRemark', label: '行备注', width: 160, value: (row) => lineRemarkControllers![row.item?.id]?.text ?? '', cellBuilder: (context, row) {final controller = lineRemarkControllers![row.item?.id]; if (controller == null) return const Text('—'); return Semantics(textField: true, label: '${names.goods(row.item?.goodsId)} 行备注', child: TextField(key: ValueKey('draw-issue-remark-${row.item?.id}'), controller: controller, enabled: !issueSaving && (row.item?.remainingQty ?? 0) > 0, maxLength: 60, decoration: const InputDecoration(isDense: true, hintText: '选填', counterText: '')));}), MasterColumnDef(key: 'planNo', label: '生产计划', width: 170, value: (row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => r.document?.planNo ?? '')) : row.discovery?.request.planNo ?? row.document?.planNo ?? '—', cellBuilder: (context, row) => row.isMergedGroup ? Text(_joinedOrDash(row.group!.map((r) => r.document?.planNo ?? ''))) : _sourceLink(context, row.discovery?.request.planNo ?? row.document?.planNo, row.document?.sourcePlanId == null ? null : RoutePath.productionPlanDetail(row.document!.sourcePlanId!))), MasterColumnDef(key: 'sourceDocNo', label: '来源', width: 170, value: (row) => row.isMergedGroup ? '—' : row.discovery?.request.segmentCode ?? row.item?.sourceDocNo ?? row.document?.sourceDocNo ?? '—', cellBuilder: (context, row) => _sourceLink(context, row.discovery?.request.segmentCode ?? row.item?.sourceDocNo ?? row.document?.sourceDocNo, row.document?.sourceDailyReportId == null ? null : '/production/daily-reports/${row.document!.sourceDailyReportId}')), if (documentWeightShown) MasterColumnDef(key: 'documentWeight', label: '单据重量', width: 110, type: 'number', value: (row) => row.item?.weight == null ? '—' : formatWeightValue(row.item!.weight), exactValueOf: (row) => row.item?.weight?.toString(), cellBuilder: (context, row) => row.item?.weight == null ? const Text('—') : WeightText(kg: row.item!.weight)), if (discoveryRows.isNotEmpty) ...[MasterColumnDef(key: 'spec', label: '规格', width: 140, value: (row) => row.discovery?.label('spec') ?? '—'), MasterColumnDef(key: 'usedFor', label: '用于生产', width: 280, value: (row) => row.discovery?.productionDescription ?? row.document?.planNo ?? '—'), MasterColumnDef(key: 'discoveryActions', label: '分仓发料', width: 136, value: (_) => '', cellBuilderHandlesSemantics: true, cellBuilder: (_, row) {final discovery = row.discovery; if (discovery == null) return const Text('—'); return Wrap(children: [IconButton(key: ValueKey('draw-discovery-split-${discovery.id}'), tooltip: '拆分到其他发料仓', onPressed: issueSaving || onSplitDiscoveryRow == null ? null : () => onSplitDiscoveryRow!(discovery), style: IconButton.styleFrom(minimumSize: Size.zero, padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact), iconSize: 16, icon: const Icon(Icons.add)), IconButton(key: ValueKey('draw-discovery-remove-${discovery.id}'), tooltip: '删除分仓行(每种材料至少保留一行)', onPressed: issueSaving || onRemoveDiscoveryRow == null || canRemoveDiscoveryRow?.call(discovery) != true ? null : () => onRemoveDiscoveryRow!(discovery), style: IconButton.styleFrom(minimumSize: Size.zero, padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact), iconSize: 16, icon: const Icon(Icons.remove_circle_outline))]);})]]",
+        "columns": "[MasterColumnDef(key: 'issueStatus', label: '状态', width: 72, value: (row) => row.isMergedGroup ? (row.group!.map((r) => r.document!.issueStatus).toSet().length == 1 ? drawIssueStatusLabel(row.group!.first.document!.issueStatus) : '—') : row.discovery == null ? drawIssueStatusLabel(row.document!.issueStatus) : '待确认出库'), MasterColumnDef(key: 'billNo', sortable: true, filterFromRows: true, label: '领料单号', width: 160, value: (row) => row.isMergedGroup ? '${row.group!.length} 张单' : _numberLabel(row.document?.billNo)), MasterColumnDef(key: 'materialRequestNo', label: '领料申请号', width: 170, sortable: true, filterFromRows: true, value: (row) => _numberLabel(row.discovery?.request.requestNo ?? row.document?.materialRequestNo)), MasterColumnDef(key: 'goods', label: '货品名称', width: 200, value: (row) => row.isMergedGroup ? names.goods(row.group!.first.item!.goodsId) : row.discovery?.label('goodsName') ?? names.goods(row.item!.goodsId)), MasterColumnDef(key: 'goodsCode', label: '编号', width: 120, value: (row) => row.isMergedGroup ? names.goodsInfo(row.group!.first.item!.goodsId)?.code ?? '—' : row.discovery?.label('goodsCode') ?? names.goodsInfo(row.item!.goodsId)?.code ?? '—'), MasterColumnDef(key: 'color', label: '颜色', width: 90, value: (row) => row.isMergedGroup ? names.color(row.group!.first.item!.colorId) : row.discovery?.label('colorName') ?? names.color(row.item!.colorId)), MasterColumnDef(key: 'warehouse', label: discoveryRows.isEmpty ? '仓库' : '仓库 *', width: discoveryRows.isEmpty ? 160 : 200, value: (row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.warehouse(r.document!.warehouseId))) : row.discovery?.label('warehouseName') ?? names.warehouse(row.document!.warehouseId), cellBuilder: (context, row) => row.isMergedGroup ? Text(_joinedOrDash(row.group!.map((r) => names.warehouse(r.document!.warehouseId)))) : row.discovery == null ? Text(names.warehouse(row.document!.warehouseId)) : _discoveryWarehouseCell(context, row.discovery!)), MasterColumnDef(key: 'department', label: '领料车间', width: 150, value: (row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.department(r.document!.departmentId))) : row.discovery?.request.workshopName ?? names.department(row.document!.departmentId)), MasterColumnDef(key: 'worker', label: '领料负责人', width: 140, value: (row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.employeeOr(r.document!.workerName, r.document!.workerId))) : row.discovery == null ? names.employeeOr(row.document!.workerName, row.document!.workerId) : '—'), MasterColumnDef(key: 'place', label: '库位号', width: 100, value: (row) => row.isMergedGroup ? '—' : row.discovery?.label('stockPlace') ?? (row.item!.place?.trim().isNotEmpty == true ? row.item!.place! : names.goodsInfo(row.item!.goodsId)?.stockPlace ?? '—')), MasterColumnDef(key: 'qty', label: discoveryRows.isEmpty ? '应领数量' : '应领数量 *', width: discoveryRows.isEmpty ? 140 : 215, type: 'number', value: (row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.qtyText, _unitOf(row)) : row.discovery == null ? formatExactQtyWithUnit(row.item!.qtyText, _unitOf(row)) : row.discovery!.quantity.text, exactValueOf: (row) => row.isMergedGroup ? _mergedExactQty(row.group!, (item) => item.qtyText) : row.discovery?.quantity.text ?? row.item?.qtyText, exactListenableOf: (row) => row.discovery?.quantity, cellBuilder: (context, row) => row.isMergedGroup ? Text(_mergedQty(row.group!, (item) => item.qtyText, _unitOf(row))) : row.discovery == null ? Text(formatExactQtyWithUnit(row.item!.qtyText, _unitOf(row))) : _discoveryQuantityCell(context, row.discovery!)), MasterColumnDef(key: 'issuedQty', label: '已出库', width: 140, type: 'number', value: (row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.issuedQtyText, _unitOf(row)) : row.discovery == null ? formatExactQtyWithUnit(row.item!.issuedQtyText, _unitOf(row)) : formatQtyWithUnit(0, _unitOf(row)), exactValueOf: (row) => row.isMergedGroup ? _mergedExactQty(row.group!, (item) => item.issuedQtyText) : row.discovery == null ? row.item?.issuedQtyText : '0'), MasterColumnDef(key: 'issuedWeight', label: '已出库重量', width: 120, type: 'number', info: '各轮出库实称/分摊的重量合计(已扣取消出库); 「≈」为按库存均重或单重估算。', value: (row) => _issuedWeightText(row.item), exactValueOf: (row) => (row.item?.issuedQty ?? 0) > 0 ? row.item?.issuedWeightKg?.toString() : null, cellBuilder: (context, row) {final item = row.item; if (item == null || (item.issuedQty ?? 0) <= 0) {return const Text('—');} return WeightText(kg: item.issuedWeightKg, estimated: item.issuedWeightEstimated);}), MasterColumnDef(key: 'remainingQty', label: '待出库', width: 140, type: 'number', value: (row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.remainingQtyText, _unitOf(row)) : row.discovery == null ? formatExactQtyWithUnit(row.item!.remainingQtyText, _unitOf(row)) : '待确认', exactValueOf: (row) => row.isMergedGroup ? _mergedExactQty(row.group!, (item) => item.remainingQtyText) : row.discovery == null ? row.item?.remainingQtyText : null), if (issueQtyControllers == null) ...weightColumns, if (issueQtyControllers != null) ...[MasterColumnDef(key: 'issueQty', label: '本次出库', width: 155, type: 'number', value: (row) => issueQtyControllers![row.item?.id]?.text ?? '', exactValueOf: (row) => issueQtyControllers![row.item?.id]?.text, exactListenableOf: (row) => issueQtyControllers![row.item?.id], cellBuilder: (context, row) {final controller = issueQtyControllers![row.item?.id]; if (controller == null) return const Text('—'); return Semantics(textField: true, label: '${names.goods(row.item?.goodsId)} 本次出库数量', child: _autofillQuantityField(context, key: ValueKey('draw-issue-qty-${row.item?.id}'), controller: controller, weight: _weightOf(row), enabled: !issueSaving && (financeExactDecimalUnits(row.item?.remainingQtyText) ?? BigInt.zero) > BigInt.zero, unitName: _unitOf(row)));}), ...weightColumns], if (lineRemarkControllers != null) MasterColumnDef(key: 'lineRemark', label: '行备注', width: 160, value: (row) => lineRemarkControllers![row.item?.id]?.text ?? '', cellBuilder: (context, row) {final controller = lineRemarkControllers![row.item?.id]; if (controller == null) return const Text('—'); return Semantics(textField: true, label: '${names.goods(row.item?.goodsId)} 行备注', child: TextField(key: ValueKey('draw-issue-remark-${row.item?.id}'), controller: controller, enabled: !issueSaving && (financeExactDecimalUnits(row.item?.remainingQtyText) ?? BigInt.zero) > BigInt.zero, maxLength: 60, decoration: const InputDecoration(isDense: true, hintText: '选填', counterText: '')));}), MasterColumnDef(key: 'planNo', label: '生产计划', width: 170, value: (row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => r.document?.planNo ?? '')) : row.discovery?.request.planNo ?? row.document?.planNo ?? '—', cellBuilder: (context, row) => row.isMergedGroup ? Text(_joinedOrDash(row.group!.map((r) => r.document?.planNo ?? ''))) : _sourceLink(context, row.discovery?.request.planNo ?? row.document?.planNo, row.document?.sourcePlanId == null ? null : RoutePath.productionPlanDetail(row.document!.sourcePlanId!))), MasterColumnDef(key: 'sourceDocNo', label: '来源', width: 170, value: (row) => row.isMergedGroup ? '—' : row.discovery?.request.segmentCode ?? row.item?.sourceDocNo ?? row.document?.sourceDocNo ?? '—', cellBuilder: (context, row) => _sourceLink(context, row.discovery?.request.segmentCode ?? row.item?.sourceDocNo ?? row.document?.sourceDocNo, row.document?.sourceDailyReportId == null ? null : '/production/daily-reports/${row.document!.sourceDailyReportId}')), if (documentWeightShown) MasterColumnDef(key: 'documentWeight', label: '单据重量', width: 110, type: 'number', value: (row) => row.item?.weight == null ? '—' : formatWeightValue(row.item!.weight), exactValueOf: (row) => row.item?.weight?.toString(), cellBuilder: (context, row) => row.item?.weight == null ? const Text('—') : WeightText(kg: row.item!.weight)), if (discoveryRows.isNotEmpty) ...[MasterColumnDef(key: 'spec', label: '规格', width: 140, value: (row) => row.discovery?.label('spec') ?? '—'), MasterColumnDef(key: 'usedFor', label: '用于生产', width: 280, value: (row) => row.discovery?.productionDescription ?? row.document?.planNo ?? '—'), MasterColumnDef(key: 'discoveryActions', label: '分仓发料', width: 136, value: (_) => '', cellBuilderHandlesSemantics: true, cellBuilder: (_, row) {final discovery = row.discovery; if (discovery == null) return const Text('—'); return Wrap(children: [IconButton(key: ValueKey('draw-discovery-split-${discovery.id}'), tooltip: '拆分到其他发料仓', onPressed: issueSaving || onSplitDiscoveryRow == null ? null : () => onSplitDiscoveryRow!(discovery), style: IconButton.styleFrom(minimumSize: Size.zero, padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact), iconSize: 16, icon: const Icon(Icons.add)), IconButton(key: ValueKey('draw-discovery-remove-${discovery.id}'), tooltip: '删除分仓行(每种材料至少保留一行)', onPressed: issueSaving || onRemoveDiscoveryRow == null || canRemoveDiscoveryRow?.call(discovery) != true ? null : () => onRemoveDiscoveryRow!(discovery), style: IconButton.styleFrom(minimumSize: Size.zero, padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact), iconSize: 16, icon: const Icon(Icons.remove_circle_outline))]);})]]",
         "items": "viewRows"
       },
       "prefKey": null,
@@ -21233,7 +21233,7 @@
           "label": "'状态'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? (row.group!.map((r) => r.document!.issueStatus).toSet().length == 1 ? drawIssueStatusLabel(row.group!.first.document!.issueStatus) : '—') : row.discovery == null ? drawIssueStatusLabel(row.document!.issueStatus) : '待确认出库'",
-          "sourceLine": 317,
+          "sourceLine": 347,
           "editable": false
         },
         {
@@ -21241,7 +21241,7 @@
           "label": "'领料单号'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? '${row.group!.length} 张单' : _numberLabel(row.document?.billNo)",
-          "sourceLine": 335,
+          "sourceLine": 365,
           "editable": false
         },
         {
@@ -21249,7 +21249,7 @@
           "label": "'领料申请号'",
           "type": null,
           "value": "(row) => _numberLabel(row.discovery?.request.requestNo ?? row.document?.materialRequestNo)",
-          "sourceLine": 346,
+          "sourceLine": 376,
           "editable": false
         },
         {
@@ -21257,7 +21257,7 @@
           "label": "'货品名称'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? names.goods(row.group!.first.item!.goodsId) : row.discovery?.label('goodsName') ?? names.goods(row.item!.goodsId)",
-          "sourceLine": 357,
+          "sourceLine": 387,
           "editable": false
         },
         {
@@ -21265,7 +21265,7 @@
           "label": "'编号'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? names.goodsInfo(row.group!.first.item!.goodsId)?.code ?? '—' : row.discovery?.label('goodsCode') ?? names.goodsInfo(row.item!.goodsId)?.code ?? '—'",
-          "sourceLine": 366,
+          "sourceLine": 396,
           "editable": false
         },
         {
@@ -21273,7 +21273,7 @@
           "label": "'颜色'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? names.color(row.group!.first.item!.colorId) : row.discovery?.label('colorName') ?? names.color(row.item!.colorId)",
-          "sourceLine": 379,
+          "sourceLine": 409,
           "editable": false
         },
         {
@@ -21281,7 +21281,7 @@
           "label": "discoveryRows.isEmpty ? '仓库' : '仓库 *'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.warehouse(r.document!.warehouseId))) : row.discovery?.label('warehouseName') ?? names.warehouse(row.document!.warehouseId)",
-          "sourceLine": 388,
+          "sourceLine": 418,
           "editable": false
         },
         {
@@ -21289,7 +21289,7 @@
           "label": "'领料车间'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.department(r.document!.departmentId))) : row.discovery?.request.workshopName ?? names.department(row.document!.departmentId)",
-          "sourceLine": 412,
+          "sourceLine": 442,
           "editable": false
         },
         {
@@ -21297,7 +21297,7 @@
           "label": "'领料负责人'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => names.employeeOr(r.document!.workerName, r.document!.workerId))) : row.discovery == null ? names.employeeOr(row.document!.workerName, row.document!.workerId) : '—'",
-          "sourceLine": 427,
+          "sourceLine": 457,
           "editable": false
         },
         {
@@ -21305,23 +21305,23 @@
           "label": "'库位号'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? '—' : row.discovery?.label('stockPlace') ?? (row.item!.place?.trim().isNotEmpty == true ? row.item!.place! : names.goodsInfo(row.item!.goodsId)?.stockPlace ?? '—')",
-          "sourceLine": 447,
+          "sourceLine": 477,
           "editable": false
         },
         {
           "key": "'qty'",
           "label": "discoveryRows.isEmpty ? '应领数量' : '应领数量 *'",
           "type": "'number'",
-          "value": "(row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.qty ?? 0, _unitOf(row)) : row.discovery == null ? formatQtyWithUnit(row.item!.qty ?? 0, _unitOf(row), maxDecimals: 4) : row.discovery!.quantity.text",
-          "sourceLine": 461,
+          "value": "(row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.qtyText, _unitOf(row)) : row.discovery == null ? formatExactQtyWithUnit(row.item!.qtyText, _unitOf(row)) : row.discovery!.quantity.text",
+          "sourceLine": 491,
           "editable": false
         },
         {
           "key": "'issuedQty'",
           "label": "'已出库'",
           "type": "'number'",
-          "value": "(row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.issuedQty ?? 0, _unitOf(row)) : row.discovery == null ? formatQtyWithUnit(row.item!.issuedQty ?? 0, _unitOf(row), maxDecimals: 4) : formatQtyWithUnit(0, _unitOf(row))",
-          "sourceLine": 493,
+          "value": "(row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.issuedQtyText, _unitOf(row)) : row.discovery == null ? formatExactQtyWithUnit(row.item!.issuedQtyText, _unitOf(row)) : formatQtyWithUnit(0, _unitOf(row))",
+          "sourceLine": 513,
           "editable": false
         },
         {
@@ -21329,15 +21329,15 @@
           "label": "'已出库重量'",
           "type": "'number'",
           "value": "(row) => _issuedWeightText(row.item)",
-          "sourceLine": 518,
+          "sourceLine": 534,
           "editable": false
         },
         {
           "key": "'remainingQty'",
           "label": "'待出库'",
           "type": "'number'",
-          "value": "(row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.remainingQty, _unitOf(row)) : row.discovery == null ? formatQtyWithUnit(row.item!.remainingQty, _unitOf(row), maxDecimals: 4) : '待确认'",
-          "sourceLine": 539,
+          "value": "(row) => row.isMergedGroup ? _mergedQty(row.group!, (item) => item.remainingQtyText, _unitOf(row)) : row.discovery == null ? formatExactQtyWithUnit(row.item!.remainingQtyText, _unitOf(row)) : '待确认'",
+          "sourceLine": 555,
           "editable": false
         },
         {
@@ -21345,7 +21345,7 @@
           "label": "'本次出库'",
           "type": "'number'",
           "value": "(row) => issueQtyControllers![row.item?.id]?.text ?? ''",
-          "sourceLine": 568,
+          "sourceLine": 580,
           "editable": false
         },
         {
@@ -21353,7 +21353,7 @@
           "label": "'行备注'",
           "type": null,
           "value": "(row) => lineRemarkControllers![row.item?.id]?.text ?? ''",
-          "sourceLine": 596,
+          "sourceLine": 612,
           "editable": false
         },
         {
@@ -21361,7 +21361,7 @@
           "label": "'生产计划'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? _joinedOrDash(row.group!.map((r) => r.document?.planNo ?? '')) : row.discovery?.request.planNo ?? row.document?.planNo ?? '—'",
-          "sourceLine": 621,
+          "sourceLine": 641,
           "editable": false
         },
         {
@@ -21369,7 +21369,7 @@
           "label": "'来源'",
           "type": null,
           "value": "(row) => row.isMergedGroup ? '—' : row.discovery?.request.segmentCode ?? row.item?.sourceDocNo ?? row.document?.sourceDocNo ?? '—'",
-          "sourceLine": 644,
+          "sourceLine": 664,
           "editable": false
         },
         {
@@ -21377,7 +21377,7 @@
           "label": "'单据重量'",
           "type": "'number'",
           "value": "(row) => row.item?.weight == null ? '—' : formatWeightValue(row.item!.weight)",
-          "sourceLine": 666,
+          "sourceLine": 686,
           "editable": false
         },
         {
@@ -21385,7 +21385,7 @@
           "label": "'规格'",
           "type": null,
           "value": "(row) => row.discovery?.label('spec') ?? '—'",
-          "sourceLine": 680,
+          "sourceLine": 700,
           "editable": false
         },
         {
@@ -21393,7 +21393,7 @@
           "label": "'用于生产'",
           "type": null,
           "value": "(row) => row.discovery?.productionDescription ?? row.document?.planNo ?? '—'",
-          "sourceLine": 686,
+          "sourceLine": 706,
           "editable": false
         },
         {
@@ -21401,7 +21401,7 @@
           "label": "'分仓发料'",
           "type": null,
           "value": "(_) => ''",
-          "sourceLine": 695,
+          "sourceLine": 715,
           "editable": false
         }
       ],
@@ -21563,8 +21563,8 @@
     {
       "id": "lib/features/warehouse/widgets/subcontract_outbound_detail_table.dart::_SubcontractOutboundDetailTableState::build::UtenEditableGrid#1",
       "path": "lib/features/warehouse/widgets/subcontract_outbound_detail_table.dart",
-      "line": 353,
-      "endLine": 603,
+      "line": 369,
+      "endLine": 617,
       "component": "UtenEditableGrid",
       "qualifiedType": "UtenEditableGrid<SubcontractOutboundTableRow>",
       "kind": "flutter_table",
@@ -21577,7 +21577,7 @@
         "tableKey": "'features.warehouse.widgets.subcontract_outbound_detail_table.SubcontractOutboundDetailTableState.build.1'",
         "controller": "_grid",
         "initialColumnOrder": "const ['status', 'document', 'order', 'goodsName', 'goodsCode', 'color', 'warehouse', 'requested', 'stockAvailable', 'place', 'quantity', 'weight', 'parentGoodsName', 'parentGoodsCode', 'lineRemark', 'documentRemark', 'supplier']",
-        "columns": "[if (widget.rows.any((row) => row.status != null)) textColumn('status', l10n.warehouseSubcontractOutboundStatus, 150, (row) => row.status ?? '—'), if (widget.showOrder) textColumn('document', l10n.warehouseStockOutboundBillNo, 180, (row) => row.documentNo ?? '—', info: '${l10n.warehouseSubcontractOutboundReviewHint}\\n${l10n.warehouseSubcontractOutboundBatchHint}'), if (widget.showOrder) textColumn('order', l10n.warehouseSubcontractOutboundOrder, 180, (row) => row.orderBillNo ?? '—'), if (widget.showOrder) textColumn('supplier', l10n.warehouseSubcontractOutboundSupplier, 150, (row) => row.supplierName ?? '—'), textColumn('goodsName', l10n.warehouseSubcontractOutboundGoodsName, 200, (row) => row.draft.line.goodsName ?? '—'), textColumn('goodsCode', l10n.warehouseSubcontractOutboundGoodsCode, 130, (row) => row.draft.line.goodsCode ?? '—'), textColumn('parentGoodsName', l10n.warehouseSubcontractOutboundParentName, 200, (row) => row.draft.line.parentGoodsName ?? '—', info: '上面几列是发给委外商的物料; 这一列是委外商加工后交回的委外件, 回厂时按它登记。'), textColumn('parentGoodsCode', l10n.warehouseSubcontractOutboundParentCode, 130, (row) => row.draft.line.parentGoodsCode ?? '—'), textColumn('color', l10n.warehouseSubcontractOutboundColor, 100, (row) => row.draft.line.colorName ?? '—'), weightGridColumn<SubcontractOutboundTableRow>(controllerOf: (row) => row.draft.weight.weight, entryUnit: weightUnits.entry, mode: WeightCaptureMode.outbound, paramsOf: weightCache == null ? null : (row) => row.draft.weight.paramsIn(weightCache), paramsListenable: weightCache, qtyBaseOf: (row) => row.draft.weight.qtyBase, qtyListenableOf: (row) => row.draft.qty, enabledOf: rowEditable, qtyAutofill: WeightQtyAutofill<SubcontractOutboundTableRow>(qtyControllerOf: (row) => row.draft.qty, unitRateOf: (row) => row.draft.item.unitRate ?? 1, enabledOf: rowEditable), onWeighCount: (context, row) => weighOutboundEntry(context, entry: row.draft.weight, goodsTitle: [row.draft.line.goodsName, row.draft.line.goodsCode, row.draft.line.colorName].whereType<String>().join(' '), cache: weightCache, lineUnitName: row.draft.line.unitName, warehouseId: row.warehouseId, sampleRemark: row.documentNo)), quantityColumn('requested', '领料数量', (row) => row.draft.line.requestedQty, info: '委外人员提交的领料数量。本次出库只能小于或等于它, 填 0 表示这次不发; ' '少发、不发的部分, 委外下次领料时系统会自动补齐。'), quantityColumn('stockAvailable', l10n.warehouseSubcontractOutboundStockAvailable, (row) => row.draft.line.stockAvailableQty, info: '领料单所在仓里这条物料当前可动用的合格数量, 用于核对实物。'), EditableGridColumn(key: 'quantity', exactValueOf: (row) => row.draft.qty.text, exactListenableOf: (row) => row.draft.qty, label: l10n.warehouseSubcontractOutboundQuantity, width: 150, required: true, numeric: true, headerInfo: subcontractOutboundQuantityHint, textOf: (row) => row.draft.qty.text, listenableOf: (row) => row.draft.qty, cellBuilder: (context, row) => RequiredCellFrame(listenable: row.draft.qty, isEmpty: () {final value = double.tryParse(row.draft.qty.text.trim()); return row.draft.selected && (value == null || !value.isFinite || value < 0 || value - row.draft.maxEditableQty > 0.0000001);}, child: _quantityField(row, l10n.warehouseSubcontractOutboundQuantity))), EditableGridColumn(key: 'warehouse', label: l10n.warehouseSubcontractOutboundWarehouse, width: 230, required: true, headerInfo: l10n.warehouseSubcontractOutboundWarehouseSyncHint, textOf: (row) => row.warehouse, cellBuilder: (_, row) => row.onWarehouseChanged == null ? Text(row.warehouse) : WarehouseHierarchyDropdown(key: ValueKey('subcontract-outbound-${row.draft.draftItemId}-warehouse'), entries: row.warehouses, use: WarehouseUse.goodOut, value: row.warehouseId, enabled: widget.editable && row.editable && row.draft.selected, labelText: null, dense: true, autofilled: row.warehouseAutofilled, onChanged: row.onWarehouseChanged!)), textColumn('place', l10n.warehouseSubcontractOutboundPlace, 120, (row) => row.draft.line.locationHint ?? '—'), EditableGridColumn(key: 'lineRemark', label: l10n.warehouseSubcontractOutboundLineRemark, width: 240, textOf: (row) => row.draft.remarkController.text, listenableOf: (row) => row.draft.remarkController, cellBuilder: (_, row) => _remarkField(row, row.draft.remarkController, 'remark')), if (widget.rows.any((row) => row.documentRemark != null)) EditableGridColumn(key: 'documentRemark', label: l10n.warehouseSubcontractOutboundDocumentRemark, width: 240, headerInfo: l10n.warehouseSubcontractOutboundDocumentRemarkHint, textOf: (row) => row.documentRemark?.text ?? '', listenableOf: (row) => row.documentRemark, cellBuilder: (_, row) => row.documentRemark == null ? const Text('—') : _remarkField(row, row.documentRemark!, 'document-remark'))]"
+        "columns": "[if (widget.rows.any((row) => row.status != null)) textColumn('status', l10n.warehouseSubcontractOutboundStatus, 150, (row) => row.status ?? '—'), if (widget.showOrder) textColumn('document', l10n.warehouseStockOutboundBillNo, 180, (row) => row.documentNo ?? '—', info: '${l10n.warehouseSubcontractOutboundReviewHint}\\n${l10n.warehouseSubcontractOutboundBatchHint}'), if (widget.showOrder) textColumn('order', l10n.warehouseSubcontractOutboundOrder, 180, (row) => row.orderBillNo ?? '—'), if (widget.showOrder) textColumn('supplier', l10n.warehouseSubcontractOutboundSupplier, 150, (row) => row.supplierName ?? '—'), textColumn('goodsName', l10n.warehouseSubcontractOutboundGoodsName, 200, (row) => row.draft.line.goodsName ?? '—'), textColumn('goodsCode', l10n.warehouseSubcontractOutboundGoodsCode, 130, (row) => row.draft.line.goodsCode ?? '—'), textColumn('parentGoodsName', l10n.warehouseSubcontractOutboundParentName, 200, (row) => row.draft.line.parentGoodsName ?? '—', info: '上面几列是发给委外商的物料; 这一列是委外商加工后交回的委外件, 回厂时按它登记。'), textColumn('parentGoodsCode', l10n.warehouseSubcontractOutboundParentCode, 130, (row) => row.draft.line.parentGoodsCode ?? '—'), textColumn('color', l10n.warehouseSubcontractOutboundColor, 100, (row) => row.draft.line.colorName ?? '—'), weightGridColumn<SubcontractOutboundTableRow>(controllerOf: (row) => row.draft.weight.weight, entryUnit: weightUnits.entry, mode: WeightCaptureMode.outbound, paramsOf: weightCache == null ? null : (row) => row.draft.weight.paramsIn(weightCache), paramsListenable: weightCache, qtyBaseOf: (row) => row.draft.weight.qtyBase, qtyListenableOf: (row) => row.draft.qty, enabledOf: rowEditable, qtyAutofill: WeightQtyAutofill<SubcontractOutboundTableRow>(qtyControllerOf: (row) => row.draft.qty, unitRateOf: (row) => row.draft.item.unitRate ?? 1, enabledOf: rowEditable), onWeighCount: (context, row) => weighOutboundEntry(context, entry: row.draft.weight, goodsTitle: [row.draft.line.goodsName, row.draft.line.goodsCode, row.draft.line.colorName].whereType<String>().join(' '), cache: weightCache, lineUnitName: row.draft.line.unitName, warehouseId: row.warehouseId, sampleRemark: row.documentNo)), quantityColumn('requested', '领料数量', (row) => row.draft.line.requestedQtyText, info: '委外人员提交的领料数量。本次出库只能小于或等于它, 填 0 表示这次不发; ' '少发、不发的部分, 委外下次领料时系统会自动补齐。'), quantityColumn('stockAvailable', l10n.warehouseSubcontractOutboundStockAvailable, (row) => row.draft.line.stockAvailableQtyText, info: '领料单所在仓里这条物料当前可动用的合格数量, 用于核对实物。'), EditableGridColumn(key: 'quantity', exactValueOf: (row) => row.draft.qty.text, exactListenableOf: (row) => row.draft.qty, label: l10n.warehouseSubcontractOutboundQuantity, width: 150, required: true, numeric: true, headerInfo: subcontractOutboundQuantityHint, textOf: (row) => row.draft.qty.text, listenableOf: (row) => row.draft.qty, cellBuilder: (context, row) => RequiredCellFrame(listenable: row.draft.qty, isEmpty: () {return row.draft.selected && (row.draft.quantityInvalid || row.draft.quantitySourceUnknown || row.draft.exceedsMaximum);}, child: _quantityField(row, l10n.warehouseSubcontractOutboundQuantity))), EditableGridColumn(key: 'warehouse', label: l10n.warehouseSubcontractOutboundWarehouse, width: 230, required: true, headerInfo: l10n.warehouseSubcontractOutboundWarehouseSyncHint, textOf: (row) => row.warehouse, cellBuilder: (_, row) => row.onWarehouseChanged == null ? Text(row.warehouse) : WarehouseHierarchyDropdown(key: ValueKey('subcontract-outbound-${row.draft.draftItemId}-warehouse'), entries: row.warehouses, use: WarehouseUse.goodOut, value: row.warehouseId, enabled: widget.editable && row.editable && row.draft.selected, labelText: null, dense: true, autofilled: row.warehouseAutofilled, onChanged: row.onWarehouseChanged!)), textColumn('place', l10n.warehouseSubcontractOutboundPlace, 120, (row) => row.draft.line.locationHint ?? '—'), EditableGridColumn(key: 'lineRemark', label: l10n.warehouseSubcontractOutboundLineRemark, width: 240, textOf: (row) => row.draft.remarkController.text, listenableOf: (row) => row.draft.remarkController, cellBuilder: (_, row) => _remarkField(row, row.draft.remarkController, 'remark')), if (widget.rows.any((row) => row.documentRemark != null)) EditableGridColumn(key: 'documentRemark', label: l10n.warehouseSubcontractOutboundDocumentRemark, width: 240, headerInfo: l10n.warehouseSubcontractOutboundDocumentRemarkHint, textOf: (row) => row.documentRemark?.text ?? '', listenableOf: (row) => row.documentRemark, cellBuilder: (_, row) => row.documentRemark == null ? const Text('—') : _remarkField(row, row.documentRemark!, 'document-remark'))]"
       },
       "prefKey": null,
       "scope": null,
@@ -21593,7 +21593,7 @@
           "label": "l10n.warehouseSubcontractOutboundQuantity",
           "type": null,
           "value": "(row) => row.draft.qty.text",
-          "sourceLine": 522,
+          "sourceLine": 538,
           "editable": true
         },
         {
@@ -21601,7 +21601,7 @@
           "label": "l10n.warehouseSubcontractOutboundWarehouse",
           "type": null,
           "value": "(row) => row.warehouse",
-          "sourceLine": 549,
+          "sourceLine": 563,
           "editable": true
         },
         {
@@ -21609,7 +21609,7 @@
           "label": "l10n.warehouseSubcontractOutboundLineRemark",
           "type": null,
           "value": "(row) => row.draft.remarkController.text",
-          "sourceLine": 581,
+          "sourceLine": 595,
           "editable": true
         },
         {
@@ -21617,7 +21617,7 @@
           "label": "l10n.warehouseSubcontractOutboundDocumentRemark",
           "type": null,
           "value": "(row) => row.documentRemark?.text ?? ''",
-          "sourceLine": 591,
+          "sourceLine": 605,
           "editable": true
         }
       ],

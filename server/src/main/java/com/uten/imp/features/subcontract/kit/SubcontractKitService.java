@@ -24,7 +24,7 @@ import java.util.UUID;
  * ADR-156 委外申请物料齐套才解锁下单。
  *
  * <p>委外加工价每天不一样, 直属物料不齐时不让生成委外订货单; 现有物料够做一部分或全部时才解锁,
- * 而且只能按现有物料够做的套数下单。齐套数量只在库里算一处(V809 {@code fn_subcontract_application_kit_facts}
+ * 而且只能按现有物料够做的套数下单。齐套数量只在库里算一处(V868 批量物料池权威; 旧单条入口 {@code fn_subcontract_application_kit_facts}
  * / {@code fn_subcontract_order_kit_shortages}), 这里只读:
  * <ul>
  *   <li>{@link #requireOrderKit}: 建单、改单、送审、批准、批准后加量的守卫, 不够就 409 点名缺哪种物料;</li>
@@ -199,13 +199,20 @@ public class SubcontractKitService {
         if (lines == null || lines.isEmpty()) {
             return result;
         }
+        String ids = lines.stream().map(SelectionLine::applicationItemId).filter(Objects::nonNull)
+                .distinct().sorted().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        Map<UUID, List<Map<String, Object>>> factsByApplication = new HashMap<>();
+        for (Map<String, Object> fact : jdbc.queryForList("""
+                SELECT application_item_id, component_goods_id, color_id, bom_unit_qty, exact_free_qty, public_free_qty
+                FROM fn_subcontract_application_kit_facts_batch(
+                    CAST(string_to_array(CAST(? AS text), ',') AS uuid[]), NULL)
+                ORDER BY application_item_id, sort_order, edge_id
+                """, ids)) {
+            factsByApplication.computeIfAbsent((UUID) fact.get("application_item_id"), ignored -> new ArrayList<>()).add(fact);
+        }
         Map<String, BigDecimal> publicLeft = new HashMap<>();
         for (SelectionLine line : lines) {
-            List<Map<String, Object>> facts = jdbc.queryForList("""
-                    SELECT component_goods_id, color_id, bom_unit_qty, exact_free_qty, public_free_qty
-                    FROM fn_subcontract_application_kit_facts(?, NULL)
-                    ORDER BY sort_order, edge_id
-                    """, line.applicationItemId());
+            List<Map<String, Object>> facts = factsByApplication.getOrDefault(line.applicationItemId(), List.of());
             if (facts.isEmpty()) {
                 result.put(line.applicationItemId(), new SelectionKit(BigDecimal.ZERO, BigDecimal.ZERO));
                 continue;
@@ -303,9 +310,9 @@ public class SubcontractKitService {
             return result;
         }
         jdbc.query("""
-                SELECT item.id, fn_subcontract_application_orderable_qty(item.id)
-                FROM subcontract_application_items item
-                WHERE item.id = ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]))
+                SELECT quantity.application_item_id, quantity.orderable_qty
+                FROM fn_subcontract_application_orderable_batch(
+                    CAST(string_to_array(CAST(? AS text), ',') AS uuid[])) quantity
                 """, rs -> {
             result.put(rs.getObject(1, UUID.class), decimal(rs.getBigDecimal(2)).max(BigDecimal.ZERO));
         }, ids);

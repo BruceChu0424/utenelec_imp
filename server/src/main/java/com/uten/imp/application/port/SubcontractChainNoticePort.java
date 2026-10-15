@@ -2,6 +2,8 @@ package com.uten.imp.application.port;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.Collection;
+import java.util.Map;
 
 /**
  * Durable notice projections emitted by the subcontract draw lifecycle (ADR-143 §4.4).
@@ -43,7 +45,14 @@ public interface SubcontractChainNoticePort {
      * 实时可下单量重建该申请明细的行动卡(每个申请明细一张), 返回卡上写的可下单量; 此刻为 0 时只撤卡, 返回 0。
      * 重算把返回值记作提醒水位(同 {@link #refreshSubcontractDrawAvailable})。
      */
-    BigDecimal refreshSubcontractOrderKitReady(UUID applicationItemId);
+    default BigDecimal refreshSubcontractOrderKitReady(UUID applicationItemId) {
+        if (applicationItemId == null) return BigDecimal.ZERO;
+        return refreshSubcontractOrderKitReadyBatch(java.util.List.of(applicationItemId))
+                .getOrDefault(applicationItemId, BigDecimal.ZERO);
+    }
+
+    /** One fresh authority read for all cards; returns the exact quantity written to each card. */
+    Map<UUID, BigDecimal> refreshSubcontractOrderKitReadyBatch(Collection<UUID> applicationItemIds);
 
     /** 可下单归零(物料被别的单占走、已全部下单、申请关闭): 撤掉该申请明细的「可下单」行动卡。 */
     void resolveSubcontractOrderKitReady(UUID applicationItemId);

@@ -46,6 +46,9 @@ import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/auth/document_scope_write_notice.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/measurement/weight_params.dart';
+import '../../../shared/measurement/document_quantity.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/widgets/weight_params_load_notice.dart';
 import '../../../shared/measurement/weight_predictor.dart';
 import '../../../shared/measurement/weight_prefs.dart';
@@ -492,9 +495,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     _disposeIssueInputs();
     final unit = ref.read(warehouseWeightUnitsPrefsProvider).entry;
     for (final item in detail.items) {
-      if (item.remainingQty <= 0 || item.id == null) continue;
+      if (item.remainingQtyText == '0' || item.id == null) continue;
       final qty = UtenAutofillTextController(
-        text: _quantityInputText(item.remainingQty),
+        text: item.remainingQtyText ?? '',
         autofilled: false,
       );
       _issueQty[item.id!] = qty;
@@ -548,9 +551,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     final body = <Map<String, dynamic>>[];
     var lineCount = 0;
     for (final item in detail.items) {
-      if (item.remainingQty <= 0 || item.id == null) continue;
+      if (item.remainingQtyText == '0' || item.id == null) continue;
       final controller = _issueQty[item.id!];
-      if (controller == null) continue;
+      if (controller == null) {
+        context.appError('待出库明细不完整，请刷新核对后再出库');
+        return;
+      }
       final row = ProductionDrawDetailRow(detail, item);
       final problem = drawIssueQtyError(row, controller.text);
       if (problem != null) {
@@ -564,8 +570,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
         );
         return;
       }
-      final qty = double.tryParse(controller.text.trim()) ?? 0;
-      if (qty <= 0) continue; // 明确填 0 的行跳过（分批出库）
+      final qty = positiveDocumentQuantityText(controller.text.trim())!;
       body.add({
         'itemId': item.id,
         'qty': qty,
@@ -593,20 +598,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       return;
     }
     // 合计（按单位分组，跨单位绝不相加——全站口径）。
-    final byUnit = <String, double>{};
-    for (final line in body) {
-      final item = detail.items.firstWhere((it) => it.id == line['itemId']);
-      final unit = item.unitId == null ? '' : names.unit(item.unitId!);
-      byUnit.update(
-        unit,
-        (sum) => sum + (line['qty'] as double),
-        ifAbsent: () => line['qty'] as double,
-      );
-    }
-    final totalsText = [
-      for (final entry in byUnit.entries)
-        '${_quantityInputText(entry.value)}${entry.key.isEmpty ? '' : ' ${entry.key}'}',
-    ].join(' · ');
+    final totalsText = exactMeasurementTotalsText([
+      for (final line in body)
+        for (final item in detail.items.where((it) => it.id == line['itemId']))
+          ExactMeasuredAmount(
+            value: line['qty'] as String,
+            unitId: item.unitId,
+            unitName: item.unitId == null ? null : names.unit(item.unitId!),
+          ),
+    ]);
     // 称重只提醒不拦截：总结里列出本次实称合计与偏差行(「比应发多约 35 个 (+1.5%)」)。
     final issuedWeights = [
       for (final line in body) _issueWeights[line['itemId']],
@@ -717,7 +717,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
   Future<void> _cancelIssueDialog() async {
     if (_busy || _d == null) return;
     final names = ref.read(masterNameServiceProvider);
-    final lines = _d!.items.where((it) => (it.issuedQty ?? 0) > 0).toList();
+    final lines = _d!.items
+        .where((it) => it.id != null && it.issuedQtyText != '0')
+        .toList();
     // 输入控制器由弹窗自己持有（随路由销毁）：此前在 showDialog 返回后立刻
     // dispose，退场动画期间的重建会再次订阅已销毁的控制器（备注框带字数计数
     // 器时必现）。
@@ -740,8 +742,14 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
     // 组装请求行(>0 才提交；后端会再校验上限)；取消出库不带重量(服务端按原流水镜像)。
     final body = <Map<String, dynamic>>[];
     for (final it in lines) {
-      final q = double.tryParse(input.quantities[it.id!] ?? '') ?? 0;
-      if (q > 0) body.add({'itemId': it.id, 'qty': q});
+      final value = input.quantities[it.id!] ?? '';
+      final problem = drawCancelIssueQtyError(it, value);
+      if (problem != null) {
+        context.appError('${names.goods(it.goodsId)}：$problem');
+        return;
+      }
+      final q = nonNegativeDocumentQuantityText(value)!;
+      if (q != '0') body.add({'itemId': it.id, 'qty': q});
     }
     if (body.isEmpty) {
       context.appError('没有有效的数量');
@@ -767,12 +775,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
           final itemId = line['itemId'] as String;
           final current = _d!.items
               .firstWhere((item) => item.id == itemId)
-              .issuedQty;
+              .issuedQtyText;
           // 服务端出库哈希含重量: 改了重量就是另一次请求, 键必须跟着变。
           final weight =
               '${weightKeyPart(line['weightKg'] as double?)}|'
               '${line['qtyFromWeight'] == true ? 1 : 0}';
-          return '$itemId|issued=${current ?? 0}|delta=${line['qty']}|w=$weight';
+          return '$itemId|issued=${current == null ? 'unknown' : financeExactTrimmed(current)}|delta=${line['qty']}|w=$weight';
         })
         .join(';');
     final idempotencyKey = businessIdempotencyKey(
@@ -1771,7 +1779,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       if (children.isEmpty) addBack();
     } else if (detail.status == 1) {
       if (widget.docType == StockDocType.draw) {
-        final anyRemaining = detail.items.any((item) => item.remainingQty > 0);
+        final anyRemaining = detail.items.any(
+          (item) => item.remainingQtyText != '0',
+        );
         final anyIssued = detail.items.any((item) => (item.issuedQty ?? 0) > 0);
         if (anyRemaining && _canIssue) {
           addAction(
@@ -1899,9 +1909,7 @@ class _CancelIssueDialog extends StatefulWidget {
 class _CancelIssueDialogState extends State<_CancelIssueDialog> {
   late final Map<String, TextEditingController> _quantities = {
     for (final it in widget.lines)
-      it.id!: TextEditingController(
-        text: _StockDocDetailPageState._quantityInputText(it.issuedQty ?? 0),
-      ),
+      it.id!: TextEditingController(text: it.issuedQtyText ?? ''),
   };
   final TextEditingController _reason = TextEditingController();
 
@@ -1939,7 +1947,7 @@ class _CancelIssueDialogState extends State<_CancelIssueDialog> {
                       flex: 3,
                       child: Text(
                         '${widget.names.goods(it.goodsId)}\n'
-                        '可取消 ${_StockDocDetailPageState._quantityInputText(it.issuedQty ?? 0)}',
+                        '可取消 ${it.issuedQtyText ?? '数量未留存'}',
                         style: theme.textTheme.labelMedium?.copyWith(
                           fontWeight: FontWeight.w400,
                         ),

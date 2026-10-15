@@ -22,24 +22,34 @@ String exactMeasurementTotalsText(
   const missingKey = '\u0000missing-unit';
   final grouped = <String, List<String?>>{};
   final names = <String, String>{};
+  final missingOrder = <String, int>{};
   for (final amount in amounts) {
     final unitId = amount.unitId?.trim();
-    final key = unitId == null || unitId.isEmpty ? missingKey : unitId;
+    final key = unitId == null || unitId.isEmpty
+        ? '$missingKey-${missingOrder.length}'
+        : unitId;
+    if (unitId == null || unitId.isEmpty) {
+      missingOrder[key] = missingOrder.length;
+    }
     grouped.putIfAbsent(key, () => []).add(amount.value);
     final name = amount.unitName?.trim();
     if (name != null && name.isNotEmpty) names.putIfAbsent(key, () => name);
   }
   final keys = grouped.keys.toList()
     ..sort((a, b) {
-      if (a == missingKey) return 1;
-      if (b == missingKey) return -1;
+      if (missingOrder.containsKey(a)) {
+        return missingOrder.containsKey(b)
+            ? missingOrder[a]!.compareTo(missingOrder[b]!)
+            : 1;
+      }
+      if (missingOrder.containsKey(b)) return -1;
       return a.compareTo(b);
     });
   if (keys.isEmpty) return emptyLabel;
   return keys
       .map((key) {
         final value = financeExactSumTexts(grouped[key]!);
-        final unit = key == missingKey ? missingUnitLabel : names[key] ?? key;
+        final unit = names[key] ?? missingUnitLabel;
         return '${value == null ? unknownQuantityLabel : financeExactTrimmed(value)} $unit';
       })
       .join(' · ');

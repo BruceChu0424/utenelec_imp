@@ -1461,6 +1461,32 @@ class SubcontractStepDrawEndToEndTest {
     // =====================================================================================
 
     @Test
+    void automaticOutboundDeliveryDateFreezesOnlyWithCommittedApprovalAndManualDatesStayFixed() {
+        String tag="scstep-delivery-day";
+        var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
+        UUID p=goods(w,tag,"P","委外"),m=goods(w,tag,"M","采购"),leaf=warehouse(tag+"-leaf");
+        fixture.insertBom(p,m,"1");otherIn(w,leaf,m,null,"10","5");
+        UUID order=subcontractOrder(w,p,"10",BusinessTime.today().plusDays(9),null);approveSubcontract(w,order);
+        UUID item=itemOf(order);
+        UUID automatic=drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item,new BigDecimal("5"))),"scstep-auto-day-"+item)).issueIds().getFirst();
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"自动日期在服务器草稿里应保持未指定");
+        warehousePick(automatic,m,"5");
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"保存拣货草稿不能提前冻结自动日期");
+        new TransactionTemplate(beans.getBean(PlatformTransactionManager.class)).executeWithoutResult(transaction->{
+            assertEquals(BusinessTime.today(),materialIssues.approve(automatic).getDeliverDate());
+            transaction.setRollbackOnly(); // A later part of the outbound command failed.
+        });
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"失败事务必须连自动日期一起回滚");
+        assertEquals(0,materialIssues.detail(automatic).getStatus().intValue());qty("10",onHand(m,leaf),"失败不能留下出库");
+        var approved=materialIssues.approve(automatic);assertEquals(BusinessTime.today(),approved.getDeliverDate());
+        LocalDate recorded=approved.getDeliverDate();assertThrows(ApiException.class,()->materialIssues.approve(automatic));
+        assertEquals(recorded,materialIssues.detail(automatic).getDeliverDate(),"重复动作不能改已审单据日期");
+        UUID manual=drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item,new BigDecimal("5"))),"scstep-manual-day-"+item)).issueIds().getFirst();
+        LocalDate chosen=BusinessTime.today().minusDays(3);warehousePick(manual,m,"5",chosen);
+        assertEquals(chosen,materialIssues.approve(manual).getDeliverDate(),"明确填写的日期始终保留");
+    }
+
+    @Test
     void aDisabledLeafStillHoldingStockIsDrawableAndItsDraftCanBeEditedAndIssuedInPlace() {
         String tag = "scstep-disabled";
         var w = fixture.seedWorld(tag);
@@ -1799,12 +1825,16 @@ class SubcontractStepDrawEndToEndTest {
 
     /** 仓库在拣货页把某种物料改成实发量(其余行原样回传, 回传行身份)。 */
     private void warehousePick(UUID issueId, UUID goodsId, String qty) {
+        warehousePick(issueId,goodsId,qty,materialIssues.detail(issueId).getDeliverDate());
+    }
+
+    private void warehousePick(UUID issueId,UUID goodsId,String qty,LocalDate deliveryDate) {
         MaterialIssueDetail draft = materialIssues.detail(issueId);
         var request = new MaterialIssueSaveRequest();
         request.setBillDate(draft.getBillDate());
         request.setSupplierId(draft.getSupplierId());
         request.setWarehouseId(draft.getWarehouseId());
-        request.setDeliverDate(draft.getDeliverDate());
+        request.setDeliverDate(deliveryDate);
         request.setRemark(draft.getRemark());
         List<MaterialIssueItemLine> lines = new ArrayList<>();
         for (MaterialIssueItemDto item : draft.getItems()) {

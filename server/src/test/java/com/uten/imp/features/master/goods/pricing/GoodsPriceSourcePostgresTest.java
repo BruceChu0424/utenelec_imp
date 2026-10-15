@@ -6,6 +6,8 @@ import com.uten.imp.features.master.client.ClientAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -43,6 +45,18 @@ class GoodsPriceSourcePostgresTest {
         order("purchase",null,"888","1");
         var rows=read(scope(owner)).observations();assertThat(rows).hasSize(1);assertThat(rows.getFirst().sourceId()).isEqualTo(own[0]);
     }
+    @ParameterizedTest
+    @CsvSource({"12345678901234.0001,1","1,0.123456789012345678"})
+    void numericApprovalSnapshotKeepsFullQuantityAndPricePrecision(String quantity,String price) throws Exception {
+        var ids=order("purchase",owner,price,quantity);UUID approval=approve(ids,1,"APPROVED");
+        BigDecimal original=new BigDecimal(quantity).multiply(new BigDecimal(price));
+        db.update("UPDATE procurement_order_approval_cases SET finance_total_local=? WHERE id=?",original.multiply(new BigDecimal("7")),approval);
+        var current=read(scope(owner)).observations().getFirst();
+        assertThat(current.reasonCodes()).isEmpty();assertThat(current.comparable()).isTrue();
+        assertThat(new BigDecimal(current.quantity())).isEqualByComparingTo(quantity);
+        assertThat(new BigDecimal(current.unitPrice())).isEqualByComparingTo(price);
+        assertThat(new BigDecimal(current.amount())).isEqualByComparingTo(original);
+    }
     @Test void financeConfirmedTaxHasIndependentEvidenceAndSurvivesTheHistoricalProjection() throws Exception {
         try(var in=getClass().getResourceAsStream("/db/migration/V865__procurement_finance_tax_rate.sql")){
             // The oracle already copied the latest migrated column shapes.
@@ -75,6 +89,31 @@ class GoodsPriceSourcePostgresTest {
         var fx=order("purchase",owner,"3","1");db.update("UPDATE purchase_orders SET currency_id=? WHERE id=?",UUID.randomUUID(),fx[0]);
         var color=order("purchase",owner,"4","1");db.update("UPDATE purchase_order_items SET color_id=? WHERE id=?",UUID.randomUUID(),color[1]);
         assertThat(read(scope(owner)).observations()).extracting(Observation::sourceItemId).containsExactly(valid[1]);
+    }
+
+    @Test void approvedTaxVersionsStayIndependentAcrossPendingRejectedAndReversedOrders() throws Exception {
+        try(var in=getClass().getResourceAsStream("/db/migration/V865__procurement_finance_tax_rate.sql")) {
+            String migration=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);
+            db.execute(migration.substring(migration.indexOf("CREATE FUNCTION fn_procurement_approved_tax_rate")));
+        }
+        var ids=order("purchase",owner,"10","1");UUID first=approve(ids,1,"APPROVED");
+        db.update("UPDATE procurement_order_approval_cases SET finance_tax_rate=13.1234 WHERE id=?",first);
+        UUID pending=approve(ids,2,"PENDING");
+        var query=new Query(goods,Kind.PURCHASE,180,null,null,unit,currency,null,null,null,null,null,null,"1");
+        assertThat(reader.read(query,reader.goods(goods),180,scope(owner)).observations().getFirst().reasonCodes())
+                .contains("FINANCE_REVIEW_NOT_APPROVED");
+        db.update("UPDATE procurement_order_approval_cases SET status='REJECTED' WHERE id=?",pending);
+        assertThat(reader.read(query,reader.goods(goods),180,scope(owner)).observations().getFirst().comparable()).isFalse();
+        UUID latest=approve(ids,3,"APPROVED");
+        db.update("UPDATE procurement_order_approval_cases SET finance_tax_rate=9 WHERE id=?",latest);
+        var current=reader.read(query,reader.goods(goods),180,scope(owner)).observations().getFirst();
+        assertThat(current.taxRate()).isEqualTo("9");assertThat(current.comparable()).isTrue();
+        db.update("UPDATE purchase_orders SET status=-1 WHERE id=?",ids[0]);
+        var history=reader.history(new HistoryQuery(query,null,null,null,20),scope(owner),false,true).observations();
+        assertThat(history).filteredOn(row->first.equals(row.historyVersionId())).singleElement()
+                .satisfies(row->{assertThat(row.taxRate()).isEqualTo("13.1234");assertThat(row.comparable()).isFalse();});
+        assertThat(history).filteredOn(row->latest.equals(row.historyVersionId())).singleElement()
+                .satisfies(row->assertThat(row.taxRate()).isEqualTo("9"));
     }
     @Test void exactTotalAndFinancialCaseRateWinOverDisplayPriceAndOrderRate() throws Exception {
         var ids=order("purchase",owner,"0.6666666667","3");

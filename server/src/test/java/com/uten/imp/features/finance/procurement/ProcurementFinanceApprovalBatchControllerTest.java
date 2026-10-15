@@ -113,7 +113,7 @@ class ProcurementFinanceApprovalBatchControllerTest {
                         "PENDING", 1, 1L, List.of("APPROVE"),
                         "提交人", null, null, "供应商A", "S001", null,
                         "人民币", null, null, "月结", null, null, null, null, null,
-                        null, null, null, 0, List.of(), List.of(), List.of(), java.util.Map.of(), java.util.Map.of(), List.of(), null);
+                        null, null, null, 0, List.of(), List.of(), List.of(), java.util.Map.of(), java.util.Map.of(), List.of(), null, null, null);
 
         when(service.review(caseId)).thenReturn(review);
         assertSame(review, controller.review(caseId));

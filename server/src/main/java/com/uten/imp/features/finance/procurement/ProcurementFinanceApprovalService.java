@@ -744,12 +744,20 @@ public class ProcurementFinanceApprovalService {
                        CAST(c.submission_snapshot ->> 'supplierId' AS uuid) AS supplier_id,
                        CAST(c.submission_snapshot ->> 'currencyId' AS uuid) AS currency_id,
                        c.finance_exchange_rate,
-                       COALESCE(c.finance_tax_rate, (SELECT prior.finance_tax_rate
-                         FROM procurement_order_approval_cases prior
-                         WHERE prior.order_type=c.order_type AND prior.order_id=c.order_id
-                           AND prior.attempt<c.attempt AND prior.status='APPROVED'
-                         ORDER BY prior.attempt DESC LIMIT 1)) AS finance_tax_rate
+                       c.finance_tax_rate,
+                       reference.finance_tax_rate AS reference_finance_tax_rate,
+                       reference.finance_exchange_rate AS reference_finance_exchange_rate
                 FROM procurement_order_approval_cases c
+                LEFT JOIN LATERAL (
+                    SELECT prior.finance_tax_rate,prior.finance_exchange_rate
+                    FROM procurement_order_approval_cases prior
+                    WHERE prior.order_type=c.order_type AND prior.order_id=c.order_id
+                      AND prior.attempt<c.attempt AND prior.status='APPROVED'
+                      AND c.status='PENDING' AND NOT EXISTS(
+                          SELECT 1 FROM procurement_order_approval_cases newer
+                          WHERE newer.order_type=c.order_type AND newer.order_id=c.order_id AND newer.attempt>c.attempt)
+                    ORDER BY prior.attempt DESC LIMIT 1
+                ) reference ON TRUE
                 LEFT JOIN purchase_orders po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
                 LEFT JOIN subcontract_orders so
@@ -796,7 +804,8 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("maker_name"),
                         rs.getObject("supplier_id", UUID.class),
                         rs.getObject("currency_id", UUID.class),
-                        rs.getBigDecimal("finance_exchange_rate"), rs.getBigDecimal("finance_tax_rate")},
+                        rs.getBigDecimal("finance_exchange_rate"), rs.getBigDecimal("finance_tax_rate"),
+                        rs.getBigDecimal("reference_finance_tax_rate"),rs.getBigDecimal("reference_finance_exchange_rate")},
                 caseId);
         if (headers.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "审批任务不存在或已被清理");
@@ -888,7 +897,7 @@ public class ProcurementFinanceApprovalService {
                 previousItems,
                 loadReviewHeader(caseId, false),
                 loadReviewHeader(caseId, true),
-                history, (BigDecimal) h[26]);
+                history, (BigDecimal) h[26], (BigDecimal) h[27], (BigDecimal) h[28]);
     }
 
     /**

@@ -9,6 +9,7 @@ import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
+import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.stock.InventoryKey;
 import com.uten.imp.features.stock.StockService;
 import com.uten.imp.features.stock.weight.CapturedWeight;
@@ -411,6 +412,9 @@ public class SubcontractMaterialIssueService {
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
         }
+        // Null keeps an untouched draft following today's date. Freeze the default only
+        // inside this approval transaction, so every rejected/failed issue keeps null.
+        if (r.getDeliverDate() == null) r.setDeliverDate(BusinessTime.today());
         for (SubcontractMaterialIssueItem it : items) {
             if (it.getOrderItemId() == null || it.getPlanItemId() == null) {
                 throw new ApiException(ErrorCode.BUSINESS, "委外出仓明细必须来自委外人员提交的领料，请刷新后重试");

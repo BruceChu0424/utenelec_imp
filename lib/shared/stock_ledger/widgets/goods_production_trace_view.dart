@@ -364,6 +364,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
                           alignment: Alignment.centerLeft,
                           child: TextButton(
                             onPressed: () {
+                              if (!mounted) return;
                               Navigator.of(panelContext).pop();
                               context.push(
                                 RouteName.stockItemDetail(
@@ -400,6 +401,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
       alignment: Alignment.centerLeft,
       child: TextButton(
         onPressed: () {
+          if (!mounted) return;
           Navigator.of(panelContext).pop();
           context.push(RouteName.stockItemDetail(id, tab: 'trace'));
         },
@@ -425,6 +427,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
             alignment: Alignment.centerLeft,
             child: TextButton(
               onPressed: () {
+                if (!mounted) return;
                 Navigator.of(panelContext).pop();
                 context.push(path);
               },

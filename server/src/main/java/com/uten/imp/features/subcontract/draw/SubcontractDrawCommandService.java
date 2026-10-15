@@ -516,22 +516,21 @@ public class SubcontractDrawCommandService {
     }
 
     private record ParentGoods(UUID orderItemId, UUID goodsId, UUID colorId, String code, String name,
-                               UUID supplierId, String orderBillNo, LocalDate deliverDate) {
+                               UUID supplierId, String orderBillNo) {
     }
 
     private Map<UUID, ParentGoods> parentGoods(List<UUID> itemIds) {
         Map<UUID, ParentGoods> parents = new HashMap<>();
         for (Object[] row : rows("""
                 SELECT oi.id, oi.goods_id, oi.color_id, goods.code, goods.name,
-                       o.supplier_id, o.bill_no, o.deliver_date
+                       o.supplier_id, o.bill_no
                 FROM subcontract_order_items oi
                 JOIN subcontract_orders o ON o.id = oi.order_id
                 LEFT JOIN goods ON goods.id = oi.goods_id
                 WHERE oi.id IN (:ids)
                 """, itemIds)) {
             parents.put(uuid(row[0]), new ParentGoods(uuid(row[0]), uuid(row[1]), uuid(row[2]),
-                    str(row[3]), str(row[4]), uuid(row[5]), str(row[6]),
-                    SubcontractDrawQueryService.localDate(row[7])));
+                    str(row[3]), str(row[4]), uuid(row[5]), str(row[6])));
         }
         return parents;
     }
@@ -539,6 +538,7 @@ public class SubcontractDrawCommandService {
     /**
      * 新建一张委外材料出仓草稿: 仓库待发池(无个人归属, 由持出仓权限的人办理), 建单人为提交领料的人,
      * 每行写入 requested_qty = 本次领料量(仓库只能改少)。
+     * 出仓交货日保持未指定，审批成功时再固定当天；订货单交期不属于仓库已填写的出仓日期。
      */
     private void createDraft(UUID issueId, String billNo, DraftKey key,
                              List<SubcontractDrawAllocator.Slice> slices,
@@ -550,7 +550,7 @@ public class SubcontractDrawCommandService {
                     id, bill_no, bill_date, supplier_id, warehouse_id, maker_id, owner_pool,
                     deliver_date, remark, status, is_closed, source_doc_no, created_by, updated_by)
                 VALUES (:id, :billNo, :billDate, CAST(:supplierId AS uuid), :warehouseId, NULL, :ownerPool,
-                    CAST(:deliverDate AS date), :remark, 0, FALSE, CAST(:sourceDocNo AS text), :actor, :actor)
+                    NULL, :remark, 0, FALSE, CAST(:sourceDocNo AS text), :actor, :actor)
                 """)
                 .setParameter("id", issueId)
                 .setParameter("billNo", billNo)
@@ -558,7 +558,6 @@ public class SubcontractDrawCommandService {
                 .setParameter("supplierId", head.supplierId())
                 .setParameter("warehouseId", key.warehouseId())
                 .setParameter("ownerPool", SubcontractMaterialIssue.POOL_WAREHOUSE_OUTBOUND)
-                .setParameter("deliverDate", head.deliverDate())
                 .setParameter("remark", DRAW_REMARK)
                 .setParameter("sourceDocNo", head.orderBillNo())
                 .setParameter("actor", actor)

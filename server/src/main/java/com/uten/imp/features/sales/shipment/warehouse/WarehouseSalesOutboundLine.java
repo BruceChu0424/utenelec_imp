@@ -41,4 +41,8 @@ public record WarehouseSalesOutboundLine(
     public WarehouseSalesOutboundLine {
         warehouseChoices = warehouseChoices == null ? List.of() : List.copyOf(warehouseChoices);
     }
+
+    public String getQuantityExact() {
+        return com.uten.imp.common.util.DecimalText.of(quantity);
+    }
 }

@@ -189,7 +189,8 @@ final class GoodsPriceSourceReader {
         if(state==null)return; // Explicit legacy approved-order facts remain distinguishable by missing case id.
         if(!"APPROVED".equals(state)){reasons.add("FINANCE_REVIEW_NOT_APPROVED");return;}
         try {
-            JsonNode header=json.readTree(Objects.toString(r.get("approval_snapshot"),"null"));
+            JsonNode header=json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                    .readTree(Objects.toString(r.get("approval_snapshot"),"null"));
             boolean match=same(header,"orderId",r.get("source_id"))&&same(header,"currencyId",r.get("currency_id"))
                     &&same(header,"supplierId",r.get("supplier_id"))&&sameTaxAuthority(header,amount(r,"tax_rate"));
             JsonNode selected=null;

@@ -24,6 +24,7 @@ import '../widgets/warehouse_selection.dart';
 import '../measurement/widgets/weight_text.dart';
 import '../providers/master_name_provider.dart';
 import '../providers/sensitive_read_boundary_provider.dart';
+import '../warehouse/warehouse_task_scope.dart';
 import 'stock_ledger_models.dart';
 import '../auth/permissions.dart';
 import 'widgets/goods_production_trace_view.dart';
@@ -184,6 +185,7 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
 
   /// 整个面板重取 (页面刷新按钮 / 返回即刷新)。
   void reload() {
+    ref.invalidate(myWarehouseScopeProvider);
     _loadNames();
     _loadContext();
     setState(() => _reloadTick++);
@@ -222,18 +224,31 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
   Widget build(BuildContext context) {
     final names = ref.watch(masterNameServiceProvider);
     final permissions = ref.watch(currentPermissionsProvider);
+    final admin = ref.watch(isSuperAdminProvider);
+    final productionRead = permissions.any(
+      {Perm.productionPlanView, Perm.productionExecutionView}.contains,
+    );
+    final warehouseScope =
+        permissions.contains(Perm.stockDocView) && !productionRead && !admin
+        ? ref.watch(myWarehouseScopeProvider)
+        : const AsyncData(MyWarehouseScope.empty);
     final canTrace =
-        ref.watch(isSuperAdminProvider) ||
-        permissions.any(
-          {
-            Perm.productionPlanView,
-            Perm.productionExecutionView,
-            Perm.stockDocView,
-          }.contains,
-        );
-    if (!canTrace && _segment == GoodsStockLedgerSegment.trace) {
+        admin ||
+        (permissions.contains(Perm.stockView) &&
+            (productionRead ||
+                (permissions.contains(Perm.stockDocView) &&
+                    confirmedMyWarehouseScope(
+                          warehouseScope,
+                        )?.warehouseParticipant ==
+                        true)));
+    if (!canTrace &&
+        !warehouseScope.isLoading &&
+        _segment == GoodsStockLedgerSegment.trace) {
       _segment = GoodsStockLedgerSegment.balance;
     }
+    final segment = !canTrace && _segment == GoodsStockLedgerSegment.trace
+        ? GoodsStockLedgerSegment.balance
+        : _segment;
     final goods = _context?.items.firstOrNull;
     final unit = goods?.unitName;
     final goodsTitle = [
@@ -245,7 +260,7 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_segment != GoodsStockLedgerSegment.trace)
+          if (segment != GoodsStockLedgerSegment.trace)
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -317,7 +332,7 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
             error: _contextError,
             onRetry: _loadContext,
             weightDisplay: ref.watch(warehouseWeightUnitsPrefsProvider).display,
-            showQuantities: _segment == GoodsStockLedgerSegment.balance,
+            showQuantities: segment == GoodsStockLedgerSegment.balance,
           ),
           const SizedBox(height: UtenSpacing.s8),
           UtenFilterToolbar<GoodsStockLedgerSegment>(
@@ -327,14 +342,14 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
                 if (s != GoodsStockLedgerSegment.trace || canTrace)
                   UtenFilterSegment(value: s, label: s.label),
             ],
-            selected: {_segment},
+            selected: {segment},
             onSelectionChanged: selectSegment,
-            trailing: _segment == GoodsStockLedgerSegment.trace
+            trailing: segment == GoodsStockLedgerSegment.trace
                 ? null
                 : const WeightDisplayUnitButton(),
           ),
           // KPI 概览条只在「库存余额」分段出现 (2026-09-29 用户口径), 挪到分段行下面。
-          if (_segment == GoodsStockLedgerSegment.balance) ...[
+          if (segment == GoodsStockLedgerSegment.balance) ...[
             const SizedBox(height: UtenSpacing.s8),
             GoodsStockKpiStrip(
               goodsId: widget.goodsId,
@@ -346,7 +361,7 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
           const SizedBox(height: UtenSpacing.s8),
         ],
       ),
-      body: switch (_segment) {
+      body: switch (segment) {
         GoodsStockLedgerSegment.trace => GoodsProductionTraceView(
           key: ValueKey(('trace', widget.goodsId, _readEpoch)),
           goodsId: widget.goodsId,

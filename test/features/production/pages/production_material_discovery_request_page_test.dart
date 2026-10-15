@@ -13,6 +13,7 @@ import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -24,6 +25,15 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+
+final _livePermissions = StateProvider<Set<String>>((ref) => const {});
+final _liveIdentity = StateProvider<AuthenticatedScope?>((ref) => null);
+final _liveServer = StateProvider<String>(
+  (ref) => 'https://original.invalid/api',
+);
+final _liveRepository =
+    StateProvider<ProductionMaterialDiscoveryRequestRepository?>((ref) => null);
 
 ProductionExecutionWorkbenchSegment _task(String id) =>
     ProductionExecutionWorkbenchSegment.fromJson({
@@ -153,13 +163,23 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
+        apiClientProvider.overrideWithValue(repo.api),
+        apiBaseUrlProvider.overrideWith((ref) => ref.watch(_liveServer)),
+        authenticatedScopeProvider.overrideWith(
+          (ref) => ref.watch(_liveIdentity),
+        ),
         isSuperAdminProvider.overrideWithValue(false),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.productionExecutionView,
-          if (permitted) Perm.productionExecutionStart,
-        }),
-        productionMaterialDiscoveryRequestRepositoryProvider.overrideWithValue(
-          repo,
+        _livePermissions.overrideWith(
+          (ref) => {
+            Perm.productionExecutionView,
+            if (permitted) Perm.productionExecutionStart,
+          },
+        ),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_livePermissions),
+        ),
+        productionMaterialDiscoveryRequestRepositoryProvider.overrideWith(
+          (ref) => ref.watch(_liveRepository) ?? repo,
         ),
         if (sources != null)
           productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
@@ -237,7 +257,102 @@ Future<void> _add(WidgetTester tester, DiscoveryRequestMaterialRow row) async {
   await tester.pumpAndSettle();
 }
 
+void _changeScope(WidgetTester tester, String change) {
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(ProductionMaterialDiscoveryRequestPage)),
+    listen: false,
+  );
+  switch (change) {
+    case 'account':
+      container.read(_liveIdentity.notifier).state = const AuthenticatedScope(
+        userId: 'another',
+      );
+    case 'server':
+      container.read(_liveServer.notifier).state =
+          'https://another.invalid/api';
+    case 'permissions':
+      container.read(_livePermissions.notifier).state = {
+        Perm.productionExecutionView,
+      };
+  }
+}
+
 void main() {
+  for (final change in ['account', 'server', 'permissions']) {
+    for (final stage in ['workbench', 'memory']) {
+      testWidgets(
+        '$change change during $stage loading cannot adopt old materials',
+        (tester) async {
+          final gate = Completer<void>();
+          final repo = _Repository()
+            ..contextGate = stage == 'memory' ? gate : null
+            ..remembered['a'] = {
+              'rememberedItems': [_plastic],
+              'memorySource': 'WAREHOUSE_CONFIRMED',
+            };
+          final source = stage == 'workbench'
+              ? (_SourceRepository()..gate = gate)
+              : null;
+          await _pump(tester, repo, sources: source, settle: false);
+          _changeScope(tester, change);
+          await tester.pump();
+          gate.complete();
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('discovery-request-table')),
+            findsNothing,
+          );
+          expect(find.text('塑料颗粒'), findsNothing);
+          expect(
+            find.byKey(const Key('discovery-request-submit')),
+            findsNothing,
+          );
+          expect(repo.submissions, isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+
+    testWidgets(
+      '$change change during first command stops the remaining batch',
+      (tester) async {
+        final repo = _Repository()..gate = Completer<void>();
+        final replacement = _Repository();
+        await _pump(tester, repo, ids: ['a', 'b']);
+        await tester.tap(find.byKey(const Key('discovery-request-submit')));
+        for (var i = 0; i < 12 && repo.submissions.isEmpty; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        expect(repo.submissions.map((row) => row.segment), ['a']);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ProductionMaterialDiscoveryRequestPage)),
+          listen: false,
+        );
+        container.read(_liveRepository.notifier).state = replacement;
+        _changeScope(tester, change);
+        await tester.pump();
+        repo.gate!.complete();
+        await tester.pumpAndSettle();
+        expect(repo.submissions.map((row) => row.segment), ['a']);
+        expect(replacement.submissions, isEmpty);
+        expect(find.byKey(const Key('discovery-request-table')), findsNothing);
+        expect(find.byKey(const Key('discovery-request-submit')), findsNothing);
+        if (change == 'permissions') {
+          container.read(_livePermissions.notifier).state = {
+            Perm.productionExecutionView,
+            Perm.productionExecutionStart,
+          };
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('discovery-request-submit')),
+            findsNothing,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'previous identities are reused per task while quantity stays blank',
     (tester) async {

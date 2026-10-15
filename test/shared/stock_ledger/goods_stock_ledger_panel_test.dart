@@ -19,6 +19,8 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/measurement/weight_prefs.dart';
 import 'package:uten_imp/shared/stock_ledger/goods_stock_ledger_panel.dart';
 import 'package:uten_imp/shared/stock_ledger/stock_ledger_models.dart';
+import 'package:uten_imp/shared/stock_ledger/widgets/goods_production_trace_view.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 class _MemoryWeightUnitsPrefs extends WarehouseWeightUnitsPrefsNotifier {
   @override
@@ -37,6 +39,7 @@ class _PanelApi extends ApiClient {
   final ledgerQueries = <Map<String, dynamic>>[];
   final posts = <(String, Object?)>[];
   int balanceCalls = 0;
+  int traceCalls = 0;
 
   @override
   Future<List<Map<String, dynamic>>> getList(
@@ -71,6 +74,10 @@ class _PanelApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path.endsWith('/production-trace')) {
+      traceCalls++;
+      return {'items': <Object>[], 'page': 1, 'size': 50, 'total': 0};
+    }
     switch (path) {
       case '/stock/goods/g1/inventory-context':
         if (contextResponse != null) return contextResponse!;
@@ -409,6 +416,70 @@ Future<_PanelApi> _pump(
 }
 
 void main() {
+  testWidgets(
+    'warehouse-only trace waits for participation and hides during revocation',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _PanelApi();
+      final initial = Completer<MyWarehouseScope>();
+      final refreshed = Completer<MyWarehouseScope>();
+      var loads = 0;
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.stockView,
+            Perm.stockDocView,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          warehouseWeightUnitsPrefsProvider.overrideWith(
+            _MemoryWeightUnitsPrefs.new,
+          ),
+          myWarehouseScopeProvider.overrideWith((ref) {
+            return loads++ == 0 ? initial.future : refreshed.future;
+          }),
+        ],
+      );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(
+              body: GoodsStockLedgerPanel(
+                goodsId: 'g1',
+                initialSegment: GoodsStockLedgerSegment.trace,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('用料追溯'), findsNothing);
+      expect(find.byType(GoodsProductionTraceView), findsNothing);
+      expect(api.traceCalls, 0);
+      initial.complete(const MyWarehouseScope(warehouseParticipant: true));
+      await tester.pumpAndSettle();
+      expect(find.byType(GoodsProductionTraceView), findsOneWidget);
+      expect(api.traceCalls, 1);
+      tester
+          .state<GoodsStockLedgerPanelState>(find.byType(GoodsStockLedgerPanel))
+          .reload();
+      await tester.pumpAndSettle();
+      expect(find.text('用料追溯'), findsNothing);
+      expect(find.byType(GoodsProductionTraceView), findsNothing);
+      refreshed.complete(MyWarehouseScope.empty);
+      await tester.pumpAndSettle();
+      expect(find.byType(GoodsProductionTraceView), findsNothing);
+      expect(api.traceCalls, 1);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+    },
+  );
+
   testWidgets(
     'account and endpoint switch invalidate an old inventory context response',
     (tester) async {

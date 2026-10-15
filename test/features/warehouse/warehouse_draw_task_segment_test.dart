@@ -218,7 +218,16 @@ class _FakeStockRepository extends StockDocRepository {
       status: int.parse(task.actionDocStatus!),
       planNo: task.planNo,
       issueStatus: 0,
-      items: [StockDocItem(id: 'line-$id', goodsId: id, qty: 5, issuedQty: 0)],
+      items: [
+        StockDocItem(
+          id: 'line-$id',
+          goodsId: id,
+          qty: 5,
+          qtyText: '5',
+          issuedQty: 0,
+          issuedQtyText: '0',
+        ),
+      ],
     );
   }
 }

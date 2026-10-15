@@ -259,7 +259,7 @@ class WarehouseSalesOutboundLine {
       unitId: _text(json['unitId']),
       unitName: _text(json['unitName']),
       unitRate: _number(json['unitRate']),
-      quantity: _decimalText(json['quantity']),
+      quantity: _decimalText(json['quantityExact'] ?? json['quantity']),
       weightKg: _number(json['weightKg']),
       weightSource: _text(json['weightSource']),
       parcelQuantity: _decimalText(json['parcelQuantity']),

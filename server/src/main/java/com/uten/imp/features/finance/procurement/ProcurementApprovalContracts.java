@@ -195,7 +195,12 @@ public final class ProcurementApprovalContracts {
             Map<String, Object> headerSnapshot,
             Map<String, Object> previousHeaderSnapshot,
             List<ReviewHistoryEntry> history,
-            @JsonSerialize(using = ExactDecimalText.class) BigDecimal financeTaxRate) {
+            /** Only this case's actual finance decision; never inherited into a historical round. */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal financeTaxRate,
+            /** Current pending case's prior approved decision, for confirmation rather than historical fact. */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal referenceFinanceTaxRate,
+            /** Prior finance exchange rate is a current pending reference, never this case's decision. */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal referenceFinanceExchangeRate) {
         public ApprovalReview {
             items = List.copyOf(items);
             previousItems = List.copyOf(previousItems);

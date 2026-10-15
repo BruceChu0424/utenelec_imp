@@ -269,6 +269,8 @@ class FinanceProcurementApprovalReview {
     this.exchangeRate,
     this.financeExchangeRate,
     this.financeTaxRate,
+    this.referenceFinanceTaxRate,
+    this.referenceFinanceExchangeRate,
     this.settlementMethodName,
     this.taxRate,
     this.purchaserName,
@@ -311,6 +313,10 @@ class FinanceProcurementApprovalReview {
   /// [exchangeRate] 快照兜底，再兜底 1）。
   final String? financeExchangeRate;
   final String? financeTaxRate;
+
+  /// Only the current pending round may offer an earlier decision as a reference.
+  final String? referenceFinanceTaxRate;
+  final String? referenceFinanceExchangeRate;
   final String? settlementMethodName;
   final String? taxRate;
   final String? purchaserName;
@@ -383,6 +389,12 @@ class FinanceProcurementApprovalReview {
       exchangeRate: _firstNullableString([json['exchangeRate']]),
       financeExchangeRate: _firstNullableString([json['financeExchangeRate']]),
       financeTaxRate: _firstNullableString([json['financeTaxRate']]),
+      referenceFinanceTaxRate: _firstNullableString([
+        json['referenceFinanceTaxRate'],
+      ]),
+      referenceFinanceExchangeRate: _firstNullableString([
+        json['referenceFinanceExchangeRate'],
+      ]),
       settlementMethodName: _firstNullableString([
         json['settlementMethodName'],
       ]),

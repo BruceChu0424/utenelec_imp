@@ -13,6 +13,8 @@ import com.uten.imp.features.stock.dto.*;
 import com.uten.imp.security.AuthUser;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -128,6 +130,109 @@ class ProductionMaterialDiscoveryEndToEndTest {
         assertTrue(discovery.context(segment).rememberedItems().isEmpty());
     }
 
+    @Test void warehouseDiscoveryUsesUnassignedPoolAndPhysicalWarehouseScopeBeforePagination(){
+        UUID own=discoveryLeaf(),other=discoveryLeaf();
+        receive(world.goodsD(),"6",own);receive(world.goodsD(),"6",other);
+        UUID keeper=discoveryWarehouseUser(own),pool=discoveryWarehouseUser(null);
+        Detail firstPending=discovery.request(segment,new Request(version(),"scope-other-request-"+segment));
+        Detail otherConfigured=discovery.configure(firstPending.requestId(),new Configure(firstPending.version(),
+                "scope-other-config-"+segment,List.of(new Material(world.goodsD(),null,world.unitId(),other,BigDecimal.ONE))));
+        releaseTask("100");
+        Detail secondPending=discovery.request(segment,new Request(version(),"scope-own-request-"+segment));
+        Detail ownConfigured=discovery.configure(secondPending.requestId(),new Configure(secondPending.version(),
+                "scope-own-config-"+segment,List.of(new Material(world.goodsD(),null,world.unitId(),own,BigDecimal.ONE))));
+        releaseTask("100");
+        Detail unknown=discovery.request(segment,new Request(version(),"scope-unknown-request-"+segment));
+        Configure command=new Configure(unknown.version(),"scope-unknown-config-"+segment,
+                List.of(new Material(world.goodsD(),null,world.unitId(),other,BigDecimal.ONE)));
+
+        fixture.loginAs(keeper);
+        assertEquals(0,discovery.list("PENDING",1,1).getTotal(),"子仓负责人不因知道UUID而取得未分仓任务");
+        var visible=discovery.list("CONFIGURED",1,1);
+        assertEquals(1,visible.getTotal());assertEquals(1,visible.getTotalPages());
+        assertEquals(ownConfigured.requestId(),visible.getItems().getFirst().requestId());
+        assertTrue(discovery.list("CONFIGURED",2,1).getItems().isEmpty());
+        assertEquals(com.uten.imp.common.web.ErrorCode.NOT_FOUND,assertThrows(ApiException.class,
+                ()->discovery.detail(otherConfigured.requestId())).getCode());
+        assertEquals(com.uten.imp.common.web.ErrorCode.NOT_FOUND,assertThrows(ApiException.class,
+                ()->discovery.detail(unknown.requestId())).getCode());
+        assertEquals(com.uten.imp.common.web.ErrorCode.NOT_FOUND,assertThrows(ApiException.class,
+                ()->discovery.configure(unknown.requestId(),command)).getCode());
+
+        fixture.loginAs(pool);
+        var scopes=beans.getBean(com.uten.imp.application.port.WarehouseTaskScopePort.class);
+        assertEquals(com.uten.imp.application.port.WarehouseTaskScopePort.Role.OTHER,scopes.access().role());
+        assertTrue(scopes.current(null).includeUnassigned());
+        var pending=discovery.list("PENDING",1,100);
+        assertTrue(pending.getItems().stream().anyMatch(item->unknown.requestId().equals(item.requestId())));
+        var workbench=beans.getBean(com.uten.imp.features.operations.workbench.FulfillmentWorkbenchQueryService.class);
+        assertEquals(workbench.warehouseStatusBreakdown(scopes.current(null)).get("MATERIALS_TO_DEFINE").longValue(),pending.getTotal());
+        assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN,assertThrows(ApiException.class,
+                ()->discovery.configure(unknown.requestId(),new Configure(unknown.version(),"scope-outside-source-"+segment,
+                        List.of(new Material(world.goodsD(),null,world.unitId(),own,BigDecimal.ONE))))).getCode());
+        assertEquals("PENDING",discovery.detail(unknown.requestId()).status());
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_discovery_lines WHERE request_id=?",Integer.class,unknown.requestId()));
+        Detail configured=discovery.configure(unknown.requestId(),command);
+        assertEquals(configured,discovery.configure(unknown.requestId(),command));
+        assertEquals(1,configured.items().size());assertEquals(other,configured.items().getFirst().warehouseId());
+
+        // Scope is resolved live, including an old confirmation's idempotent replay.
+        db.update("INSERT INTO warehouse_keepers(warehouse_id,employee_id) SELECT ?,employee_id FROM users WHERE id=?",other,keeper);
+        assertEquals(com.uten.imp.common.web.ErrorCode.NOT_FOUND,assertThrows(ApiException.class,
+                ()->discovery.configure(unknown.requestId(),command)).getCode());
+        fixture.loginAs(keeper);
+        assertEquals(3,discovery.list("CONFIGURED",1,1).getTotal());
+        assertEquals(otherConfigured.requestId(),discovery.detail(otherConfigured.requestId()).requestId());
+        fixture.loginAs(pool);
+        db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",world.departmentId(),pool);
+        assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN,assertThrows(ApiException.class,
+                ()->discovery.list("PENDING",1,1)).getCode());
+        assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN,assertThrows(ApiException.class,
+                ()->discovery.configure(unknown.requestId(),command)).getCode());
+        fixture.loginAs(world.superAdminUserId());
+        assertEquals(configured,discovery.detail(unknown.requestId()));
+    }
+
+    @Test void warehouseConfirmationRechecksKeeperChangesAfterWaitingForThePlanLock() throws Exception {
+        UUID actual=discoveryLeaf();receive(world.goodsD(),"2",actual);
+        Detail pending=discovery.request(segment,new Request(version(),"scope-lock-request-"+segment));
+        UUID pool=discoveryWarehouseUser(null),keeper=discoveryWarehouseUser(discoveryLeaf());
+        Configure command=new Configure(pending.version(),"scope-lock-config-"+segment,
+                List.of(new Material(world.goodsD(),null,world.unitId(),actual,BigDecimal.ONE)));
+        var executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+        try(var blocker=Objects.requireNonNull(db.getDataSource()).getConnection()) {
+            blocker.setAutoCommit(false);
+            try(var lock=blocker.prepareStatement("SELECT id FROM production_plans WHERE id=? FOR UPDATE")) {
+                lock.setObject(1,plan);lock.executeQuery().close();
+            }
+            var attempted=executor.submit(()->{
+                fixture.loginAs(pool);
+                try {return assertThrows(ApiException.class,()->discovery.configure(pending.requestId(),command));}
+                finally {SecurityContextHolder.clearContext();}
+            });
+            boolean waiting=false;
+            long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+            while(System.nanoTime()<deadline) {
+                waiting=Boolean.TRUE.equals(db.queryForObject("""
+                        SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+                          WHERE datname=current_database() AND wait_event_type='Lock'
+                            AND lower(query) LIKE '%production_plans%')
+                        """,Boolean.class));
+                if(waiting)break;
+                Thread.sleep(20);
+            }
+            assertTrue(waiting,"配置已通过初始未分仓与来源范围检查，正在等待计划锁");
+            db.update("INSERT INTO warehouse_keepers(warehouse_id,employee_id) SELECT ?,employee_id FROM users WHERE id=?",actual,keeper);
+            blocker.commit();
+            ApiException denied=attempted.get(30,java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN,denied.getCode(),denied::getMessage);
+        } finally {executor.shutdownNow();}
+        fixture.loginAs(world.superAdminUserId());
+        assertEquals("PENDING",discovery.detail(pending.requestId()).status());
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_discovery_lines WHERE request_id=?",Integer.class,pending.requestId()));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_demands WHERE execution_segment_id=?",Integer.class,segment));
+    }
+
     @Test void productionTraceUsesActualIssuesInBothDirectionsAndFiltersBeforePaging(){
         receive(world.goodsD(),"10");receive(world.goodsE(),"5");
         Detail pending=discovery.request(segment,new Request(version(),"trace-issue-"+segment));
@@ -159,6 +264,13 @@ class ProductionMaterialDiscoveryEndToEndTest {
         fixture.loginAs(stockOnly);
         assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN,assertThrows(ApiException.class,
                 ()->traces.query(world.goodsD(),"usage",1,20)).getCode());
+        UUID stockDocOnly=fixture.createUserWithPerms(world,"trace-stock-doc-only-"+UUID.randomUUID(),"stock:view","stock_doc:view");
+        fixture.loginAs(stockDocOnly);
+        assertEquals(com.uten.imp.common.web.ErrorCode.FORBIDDEN,assertThrows(ApiException.class,
+                ()->traces.query(world.goodsD(),"usage",1,20)).getCode(),"库存单据阅读权限本身不能扩大生产追溯范围");
+        db.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='SUB_WH' AND NOT is_deleted) WHERE id=(SELECT employee_id FROM users WHERE id=?)",stockDocOnly);
+        fixture.loginAs(stockDocOnly);
+        assertEquals(1,traces.query(world.goodsD(),"usage",1,20).getTotal(),"真实仓库任务参与者按现有跨模块阅读能力可追溯");
 
         fixture.loginAs(world.superAdminUserId());
         UUID draw=configured.drawDocIds().getFirst();
@@ -364,6 +476,32 @@ class ProductionMaterialDiscoveryEndToEndTest {
         db.update("UPDATE units SET status='使用' WHERE id=?",world.unitId());
         assertEquals(expected,version());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_discovery_requests WHERE execution_segment_id=?",Integer.class,segment));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_demands WHERE execution_segment_id=?",Integer.class,segment));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"GOODS_DISABLED","PLACEHOLDER","UNIT_DISABLED","COLOR_DISABLED"})
+    void warehouseConfirmationRechecksActiveMaterialMasterData(String change){
+        UUID color="COLOR_DISABLED".equals(change)?UUID.randomUUID():null;
+        if(color!=null)db.update("INSERT INTO colors(id,code,name,status) VALUES (?,?,'停用前已存货颜色','使用')",color,"MEMORY-OFF-"+color);
+        receive(world.goodsD(),"2",world.warehouseId(),color);
+        Detail pending=discovery.request(segment,new Request(version(),"master-recheck-request-"+segment));
+        long segmentVersion=version();
+        switch(change) {
+            case "GOODS_DISABLED" -> db.update("UPDATE goods SET status='禁用' WHERE id=?",world.goodsD());
+            case "PLACEHOLDER" -> db.update("UPDATE goods SET auto_created=TRUE WHERE id=?",world.goodsD());
+            case "UNIT_DISABLED" -> db.update("UPDATE units SET status='禁用' WHERE id=?",world.unitId());
+            case "COLOR_DISABLED" -> db.update("UPDATE colors SET status='禁用' WHERE id=?",color);
+            default -> throw new AssertionError(change);
+        }
+        UUID materialColor=color;
+        ApiException failure=assertThrows(ApiException.class,()->discovery.configure(pending.requestId(),
+                new Configure(pending.version(),"master-recheck-confirm-"+segment,List.of(
+                        new Material(world.goodsD(),materialColor,world.unitId(),world.warehouseId(),BigDecimal.ONE)))));
+        assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,failure.getCode(),failure::getMessage);
+        assertEquals(segmentVersion,version(),"拒绝过期主档不能推进车间任务版本");
+        assertEquals("PENDING",discovery.detail(pending.requestId()).status());
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_discovery_lines WHERE request_id=?",Integer.class,pending.requestId()));
         assertEquals(0,db.queryForObject("SELECT count(*) FROM production_material_demands WHERE execution_segment_id=?",Integer.class,segment));
     }
 
@@ -645,9 +783,25 @@ class ProductionMaterialDiscoveryEndToEndTest {
         }
     }
     void receive(UUID goods,String qty){receive(goods,qty,world.warehouseId());}
+    UUID discoveryLeaf(){
+        UUID id=UUID.randomUUID();
+        db.update("INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable) VALUES(?,?,?,?,'使用',TRUE)",
+                id,"DISC-SCOPE-"+id,"责任实际仓",world.warehouseId());
+        return id;
+    }
+    UUID discoveryWarehouseUser(UUID warehouse){
+        UUID user=fixture.createUserWithPerms(world,"discovery-scope-"+UUID.randomUUID(),
+                "stock:view","stock_doc:view","stock_doc:approve","stock_doc:issue");
+        if(warehouse!=null)db.update("INSERT INTO warehouse_keepers(warehouse_id,employee_id) SELECT ?,employee_id FROM users WHERE id=?",warehouse,user);
+        else db.update("UPDATE employees SET department_id=(SELECT id FROM departments WHERE code='SUB_WH' AND NOT is_deleted) WHERE id=(SELECT employee_id FROM users WHERE id=?)",user);
+        return user;
+    }
     void receive(UUID goods,String qty,UUID warehouse){
+        receive(goods,qty,warehouse,null);
+    }
+    void receive(UUID goods,String qty,UUID warehouse,UUID color){
         var request=new StockDocSaveRequest();request.setDocType("OTHER_IN");request.setWarehouseId(warehouse);request.setBillDate(BusinessTime.today());
-        var line=new StockDocItemLine();line.setGoodsId(goods);line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(BigDecimal.TEN);
+        var line=new StockDocItemLine();line.setGoodsId(goods);line.setColorId(color);line.setUnitId(world.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(BigDecimal.TEN);
         line.setAmountOriginal(new BigDecimal(qty).multiply(BigDecimal.TEN));line.setAmountLocal(line.getAmountOriginal());request.setItems(List.of(line));stock.approve(stock.create(request).getId());
     }
     long version(){return db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment);}

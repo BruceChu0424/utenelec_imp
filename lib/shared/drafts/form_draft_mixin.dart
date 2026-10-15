@@ -118,6 +118,14 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     );
   }
 
+  /// A page may fence its editor when its read/write scope changes. Original
+  /// draft evidence stays with its owner; this editor cannot start more work.
+  void invalidateFormDraftIdentity() {
+    if (!mounted || _draftDisposed || _draftIdentityChanged) return;
+    super.setState(() => _draftIdentityChanged = true);
+    _draftStatus.value = '登录身份、权限或服务器已变化，请重新进入页面';
+  }
+
   /// Pages with an initial asynchronous GET start this before loading. Other
   /// editors start it when initializing the draft, before any storage await.
   void startFormDraftIdentityGuard() {
@@ -126,11 +134,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
     final originalScope = ref.read(authenticatedScopeProvider);
     final originalServer = ref.read(apiBaseUrlProvider);
-    void invalidate() {
-      if (!mounted || _draftDisposed || _draftIdentityChanged) return;
-      super.setState(() => _draftIdentityChanged = true);
-      _draftStatus.value = '登录身份或服务器已变化，请重新进入页面';
-    }
+    void invalidate() => invalidateFormDraftIdentity();
 
     _draftScopeSubscription = ref.listenManual(authenticatedScopeProvider, (
       _,

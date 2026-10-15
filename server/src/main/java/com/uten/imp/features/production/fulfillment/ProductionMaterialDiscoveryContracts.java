@@ -13,7 +13,9 @@ public final class ProductionMaterialDiscoveryContracts {
     public record RequestedMaterial(UUID goodsId,UUID colorId,UUID unitId,BigDecimal qty) {}
     public record SuggestedItem(UUID goodsId,String goodsCode,String goodsName,UUID colorId,
                                 String colorName,UUID unitId,String unitName,BigDecimal qty,
-                                String spec,String stockPlace) {}
+                                String spec,String stockPlace) {
+        public String getQtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+    }
     public record Material(UUID goodsId,UUID colorId,UUID unitId,UUID warehouseId,BigDecimal qty) {}
     public record Configure(Long expectedVersion,String idempotencyKey,List<Material> items) {}
     public record Context(UUID segmentId,long expectedVersion,boolean materialDiscoveryRequired,
@@ -21,7 +23,9 @@ public final class ProductionMaterialDiscoveryContracts {
                           String memorySource,String memoryRequestNo) {}
     public record Item(UUID id,UUID demandId,UUID goodsId,String goodsCode,String goodsName,
                        UUID colorId,String colorName,UUID unitId,String unitName,UUID warehouseId,
-                       String warehouseName,BigDecimal qty,String spec,String stockPlace) {}
+                       String warehouseName,BigDecimal qty,String spec,String stockPlace) {
+        public String getQtyExact() { return com.uten.imp.common.util.DecimalText.of(qty); }
+    }
     public record DrawDocument(UUID id,String billNo,UUID warehouseId,String warehouseName) {}
     public record Detail(UUID requestId,UUID segmentId,String segmentCode,String planNo,
                          String productCode,String productName,BigDecimal plannedQty,String productUnitName,

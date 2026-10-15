@@ -39,6 +39,38 @@ void main() {
     _preferences = await SharedPreferences.getInstance();
   });
 
+  testWidgets('自动交期保存为null直到服务端成功确认，人工交期原样提交', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = SubcontractOutboundFakeApi();
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+    // Responsive columns change widget traversal order; bind the input to the
+    // source document identity rather than a visual/index position.
+    final manualDelivery = find.descendant(
+      of: find.byKey(const ValueKey('subcontract-outbound-card-issue-2')),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is UtenDateField && widget.label == '交货日期',
+      ),
+    );
+    expect(manualDelivery, findsOneWidget);
+    final chosen = DateTime(2026, 1, 3);
+    tester.widget<UtenDateField>(manualDelivery).onChanged(chosen);
+    await tester.pump();
+    expect(tester.widget<UtenDateField>(manualDelivery).value, chosen);
+    expect(tester.widget<UtenDateField>(manualDelivery).autofilled, isFalse);
+    await _confirm(tester);
+    expect(api.updates, _issueIds);
+    expect(api.savedBodies, hasLength(_issueIds.length));
+    final savedByIssue = {
+      for (var i = 0; i < api.updates.length; i++)
+        api.updates[i]: api.savedBodies[i],
+    };
+    expect(savedByIssue['issue-1']!['deliverDate'], isNull);
+    expect(savedByIssue['issue-2']!['deliverDate'], '2026-01-03');
+    expect(savedByIssue['issue-3']!['deliverDate'], isNull);
+  });
+
   testWidgets('默认交货日随重开当天，人工日期保留；表头字段等高', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 1100));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -446,7 +478,7 @@ void main() {
     table.rows.first.draft.qty.text = '70';
     await _confirm(tester);
     final first = (api.savedBodies.first['items'] as List).single as Map;
-    expect(first['qty'], 70);
+    expect(first['qty'], '70');
     expect(api.approvals, _issueIds);
     expect(tester.takeException(), isNull);
   });

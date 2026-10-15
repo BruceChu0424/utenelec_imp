@@ -90,9 +90,9 @@ void main() {
       expect(payload['orderItemId'], 'order-item-a');
       expect(payload['colorId'], 'color-a');
       expect(payload['unitId'], 'unit-a');
-      expect(payload['unitRate'], 12);
+      expect(payload['unitRate'], '12');
       expect(payload['parentGoodsId'], 'sc-goods-1');
-      expect(payload['qty'], 80);
+      expect(payload['qty'], '80');
     });
 
     final mismatches =

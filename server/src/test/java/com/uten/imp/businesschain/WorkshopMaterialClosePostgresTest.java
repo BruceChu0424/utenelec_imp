@@ -145,6 +145,7 @@ class WorkshopMaterialClosePostgresTest {
     @Autowired WorkshopMaterialReportQueryService reports;
     @Autowired WorkshopMaterialCountService counts;
     @Autowired ProductionDailyReportService dailyReports;
+    @Autowired com.uten.imp.features.stock.trace.GoodsProductionTraceQueryService traces;
 
     @AfterEach
     void logout() {
@@ -225,6 +226,17 @@ class WorkshopMaterialClosePostgresTest {
         assertEquals(1, ownAllocations.size());
         assertEquals(scope, ownAllocations.getFirst().get("cost_scope_segment_id"));
         money("1.2", ownAllocations.getFirst().get("allocated_qty"));
+        bench.login();
+        var trace=traces.query(own,"usage",1,20).getItems().getFirst();
+        assertEquals("PERIODIC",trace.kind());
+        assertEquals("期间盘点耗用分摊",trace.quantityBasis());
+        assertEquals(bench.world.goodsA(),trace.product().goodsId());
+        money("1.2",trace.allocatedQty());
+        assertNull(trace.issuedQty());assertNull(trace.returnedQty());assertNull(trace.consumedQty());
+        assertTrue(trace.receiptSources().isEmpty(),"期间分摊不能冒充逐产品实际进货批次");
+        assertEquals(1,trace.reports().size());money("5",trace.reports().getFirst().productQty());
+        assertTrue(traces.query(bench.world.goodsA(),"materials",1,20).getItems().stream()
+                .anyMatch(item->item.id().equals(trace.id())));
         money("1", ownAllocations.getFirst().get("basis_qty"));
         assertEquals(Boolean.TRUE, ownAllocations.getFirst().get("is_tail"));
         assertNotNull(ownAllocations.getFirst().get("value_node_id"));
@@ -463,6 +475,8 @@ class WorkshopMaterialClosePostgresTest {
         int postings = postingCount(line);
         money("1.8", balance(bench.bin, own));
         assertTrue(dateLocked(bench.segment));
+        bench.login();
+        assertEquals(1,traces.query(own,"usage",1,20).getTotal());
 
         // 撤销: 只撤成本, 数量不动; 期间回到已盘点并保留 24 小时
         bench.login();
@@ -475,6 +489,7 @@ class WorkshopMaterialClosePostgresTest {
                 SELECT held_until > now() + interval '23 hours' AND held_until <= now() + interval '24 hours'
                 FROM workshop_material_periods WHERE id = ?""", Boolean.class, first), "保留 24 小时");
         assertNull(reopened.lastClose());
+        assertEquals(0,traces.query(own,"usage",1,20).getTotal(),"已撤销期间分摊不得继续显示为有效耗用");
         assertEquals(1, db.queryForObject("""
                 SELECT count(*) FROM workshop_material_period_closes
                 WHERE period_id = ? AND status = 'REVERSED' AND reversal_event_id IS NOT NULL""", Integer.class, first));

@@ -50,7 +50,7 @@ public class PurchaseReceiptAmountAuthority {
             List<Object[]> rows = em.createNativeQuery("""
                     SELECT source_item.price, source_order.supplier_id,
                            source_order.currency_id, source_order.exchange_rate,
-                           source_order.settlement_method_id, source_order.tax_rate,
+                           source_order.settlement_method_id, fn_procurement_approved_tax_rate('PURCHASE', source_order.id, source_order.tax_rate),
                            source_order.status,
                            COALESCE(source_order.is_stopped,FALSE),
                            COALESCE(source_item.arrival_overage_posted_qty,0),

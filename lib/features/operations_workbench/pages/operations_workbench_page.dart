@@ -1146,12 +1146,37 @@ class _DesktopTaskTable extends StatelessWidget {
               : item.isDocumentGrouped
               ? '${item.openLineCount} 行'
               : _quantity(item.openQty, item.unitName),
+          cellBuilder: (context, item) => Text(
+            item.isMaterialDiscovery
+                ? '—'
+                : item.isDocumentGrouped
+                ? '${item.openLineCount} 行'
+                : _quantity(item.openQty, item.unitName),
+            style:
+                (item.isDocumentGrouped ? item.openLineCount : item.openQty) > 0
+                ? TextStyle(
+                    color:
+                        MasterDataTableCellScope.maybeOf(context)?.selected ==
+                            true
+                        ? MasterDataTableCellScope.maybeOf(
+                            context,
+                          )?.foregroundColor
+                        : Theme.of(context).colorScheme.error,
+                    fontWeight: FontWeight.w700,
+                  )
+                : null,
+          ),
         ),
         MasterColumnDef(
           key: 'exception',
           label: '异常',
           width: 140,
           value: (item) => item.exceptionLabel,
+          cellColor: (context, item) => utenStatusBadgeCellColor(
+            item.exceptionCode == null || item.exceptionCode!.isEmpty
+                ? UtenStatusBadgeType.success
+                : UtenStatusBadgeType.danger,
+          ),
         ),
         MasterColumnDef(
           key: 'warehouseName',

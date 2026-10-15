@@ -1296,6 +1296,10 @@ class SubcontractStepDrawEndToEndTest {
         assertEquals(2, count("SELECT COUNT(*) FROM subcontract_order_item_sources WHERE order_item_id=?", item),
                 "一个订货明细合并了两张申请");
         qty("20", planLines(item).get(m).get("planned_qty"), "M 计划量 = 20");
+        DrawTaskRow linkedTask = drawQueries.tasks(1, 50, "", "", orderId, null)
+                .page().getItems().getFirst();
+        assertEquals(Set.of(application1, application2), Set.copyOf(linkedTask.applicationItemIds()),
+                "领料任务保留全部真实申请来源，不能只认主锚点或按比例伪造逐申请领料数量");
 
         // M 公共库存 10: 领 10 套(全部来自公共库存, 没有专属交接)并发出; 委外商交回 10 个 P, 合格入库。
         otherIn(w, wh, m, null, "10", "5");
@@ -1323,6 +1327,32 @@ class SubcontractStepDrawEndToEndTest {
     // =====================================================================================
     // 停用叶仓里还有货(例如停用后被红冲退回): 领料候选仓、锁发现、草稿占用同一个仓谓词
     // =====================================================================================
+
+    @Test
+    void automaticOutboundDeliveryDateFreezesOnlyWithCommittedApprovalAndManualDatesStayFixed() {
+        String tag="scstep-delivery-day";
+        var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
+        UUID p=goods(w,tag,"P","委外"),m=goods(w,tag,"M","采购"),leaf=warehouse(tag+"-leaf");
+        fixture.insertBom(p,m,"1");otherIn(w,leaf,m,null,"10","5");
+        UUID order=subcontractOrder(w,p,"10",BusinessTime.today().plusDays(9),null);approveSubcontract(w,order);
+        UUID item=itemOf(order);
+        UUID automatic=drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item,new BigDecimal("5"))),"scstep-auto-day-"+item)).issueIds().getFirst();
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"自动日期在服务器草稿里应保持未指定");
+        warehousePick(automatic,m,"5");
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"保存拣货草稿不能提前冻结自动日期");
+        new TransactionTemplate(beans.getBean(PlatformTransactionManager.class)).executeWithoutResult(transaction->{
+            assertEquals(BusinessTime.today(),materialIssues.approve(automatic).getDeliverDate());
+            transaction.setRollbackOnly(); // A later part of the outbound command failed.
+        });
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"失败事务必须连自动日期一起回滚");
+        assertEquals(0,materialIssues.detail(automatic).getStatus().intValue());qty("10",onHand(m,leaf),"失败不能留下出库");
+        var approved=materialIssues.approve(automatic);assertEquals(BusinessTime.today(),approved.getDeliverDate());
+        LocalDate recorded=approved.getDeliverDate();assertThrows(ApiException.class,()->materialIssues.approve(automatic));
+        assertEquals(recorded,materialIssues.detail(automatic).getDeliverDate(),"重复动作不能改已审单据日期");
+        UUID manual=drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item,new BigDecimal("5"))),"scstep-manual-day-"+item)).issueIds().getFirst();
+        LocalDate chosen=BusinessTime.today().minusDays(3);warehousePick(manual,m,"5",chosen);
+        assertEquals(chosen,materialIssues.approve(manual).getDeliverDate(),"明确填写的日期始终保留");
+    }
 
     @Test
     void aDisabledLeafStillHoldingStockIsDrawableAndItsDraftCanBeEditedAndIssuedInPlace() {
@@ -1663,12 +1693,16 @@ class SubcontractStepDrawEndToEndTest {
 
     /** 仓库在拣货页把某种物料改成实发量(其余行原样回传, 回传行身份)。 */
     private void warehousePick(UUID issueId, UUID goodsId, String qty) {
+        warehousePick(issueId,goodsId,qty,materialIssues.detail(issueId).getDeliverDate());
+    }
+
+    private void warehousePick(UUID issueId,UUID goodsId,String qty,LocalDate deliveryDate) {
         MaterialIssueDetail draft = materialIssues.detail(issueId);
         var request = new MaterialIssueSaveRequest();
         request.setBillDate(draft.getBillDate());
         request.setSupplierId(draft.getSupplierId());
         request.setWarehouseId(draft.getWarehouseId());
-        request.setDeliverDate(draft.getDeliverDate());
+        request.setDeliverDate(deliveryDate);
         request.setRemark(draft.getRemark());
         List<MaterialIssueItemLine> lines = new ArrayList<>();
         for (MaterialIssueItemDto item : draft.getItems()) {

@@ -1,7 +1,7 @@
-// 单货品库存面板 (ADR-135 §6.3): 库存详情页 (/stock/item/:goodsId?tab=balance|ledger|weight)
+// 单货品库存面板 (ADR-135 §6.3): 库存详情页 (/stock/item/:goodsId?tab=balance|ledger|weight|trace)
 // 与货品详情「库存与出入库」页签共用同一个面板。
 //
-// 结构: 顶部 KPI 条 + 三个分段「库存余额 | 出入库流水 | 单重学习」+ 工具条「重量单位: 自动▾」。
+// 结构: 顶部 KPI 条 + 四个分段「库存余额 | 出入库流水 | 单重学习」+ 工具条「重量单位: 自动▾」。
 // - 库存余额: 各仓库 (x 颜色) 余额; 行操作 查看流水 (切到流水并筛到该仓库 + 颜色) /
 //   调整 (stock:balance:adjust) / 核重 (stock:weight:manage)。
 // - 出入库流水: 存货明细账 (服务端算结存与期初期末), 单号点回源单。
@@ -12,6 +12,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../components/layout/uten_filter_toolbar.dart';
+import '../../components/inputs/uten_filter_picker_field.dart';
+import '../../components/inputs/uten_dropdown_field.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../features/stock/models/stock_query.dart';
 import '../../features/stock/repositories/stock_query_repository.dart';
@@ -21,7 +23,11 @@ import '../widgets/warehouse_picker_panel.dart';
 import '../widgets/warehouse_selection.dart';
 import '../measurement/widgets/weight_text.dart';
 import '../providers/master_name_provider.dart';
+import '../providers/sensitive_read_boundary_provider.dart';
+import '../warehouse/warehouse_task_scope.dart';
 import 'stock_ledger_models.dart';
+import '../auth/permissions.dart';
+import 'widgets/goods_production_trace_view.dart';
 import '../../features/stock/models/instant_inventory_scope.dart';
 import 'widgets/goods_stock_inventory_overview.dart';
 import 'widgets/goods_stock_balance_view.dart';
@@ -67,12 +73,28 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
   bool _contextLoading = false;
   String? _contextError;
   int _contextVersion = 0;
+  int _readEpoch = 0;
 
   GoodsStockLedgerSegment get segment => _segment;
 
   @override
   void initState() {
     super.initState();
+    ref.listenManual(sensitiveReadBoundaryProvider, (old, next) {
+      if (old == next) return;
+      ++_contextVersion;
+      setState(() {
+        _context = null;
+        _contextError = null;
+        _contextLoading = false;
+        ++_readEpoch;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _loadNames();
+        _loadContext();
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadNames();
       _loadContext();
@@ -163,6 +185,7 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
 
   /// 整个面板重取 (页面刷新按钮 / 返回即刷新)。
   void reload() {
+    ref.invalidate(myWarehouseScopeProvider);
     _loadNames();
     _loadContext();
     setState(() => _reloadTick++);
@@ -200,6 +223,32 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
   @override
   Widget build(BuildContext context) {
     final names = ref.watch(masterNameServiceProvider);
+    final permissions = ref.watch(currentPermissionsProvider);
+    final admin = ref.watch(isSuperAdminProvider);
+    final productionRead = permissions.any(
+      {Perm.productionPlanView, Perm.productionExecutionView}.contains,
+    );
+    final warehouseScope =
+        permissions.contains(Perm.stockDocView) && !productionRead && !admin
+        ? ref.watch(myWarehouseScopeProvider)
+        : const AsyncData(MyWarehouseScope.empty);
+    final canTrace =
+        admin ||
+        (permissions.contains(Perm.stockView) &&
+            (productionRead ||
+                (permissions.contains(Perm.stockDocView) &&
+                    confirmedMyWarehouseScope(
+                          warehouseScope,
+                        )?.warehouseParticipant ==
+                        true)));
+    if (!canTrace &&
+        !warehouseScope.isLoading &&
+        _segment == GoodsStockLedgerSegment.trace) {
+      _segment = GoodsStockLedgerSegment.balance;
+    }
+    final segment = !canTrace && _segment == GoodsStockLedgerSegment.trace
+        ? GoodsStockLedgerSegment.balance
+        : _segment;
     final goods = _context?.items.firstOrNull;
     final unit = goods?.unitName;
     final goodsTitle = [
@@ -211,74 +260,71 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
       collapsingHeader: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '查询仓库范围：${_scope.label(warehouseName: names.warehouse(_scope.warehouseId), colorName: names.color(_scope.colorId), warehouseHasChildren: names.warehouseHasChildren(_scope.warehouseId))}',
-            key: const ValueKey('stock-inventory-scope-label'),
-          ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              OutlinedButton.icon(
-                key: const ValueKey('stock-inventory-warehouse'),
-                onPressed: _pickWarehouse,
-                icon: const Icon(Icons.warehouse_outlined),
-                label: const Text('选择查询仓库'),
-              ),
-              if (_scope.inventoryOnly || _scope.warehouseId != null)
-                TextButton(
-                  key: const ValueKey('stock-inventory-all-warehouses'),
-                  onPressed: () => selectScope(_scope.allWarehouses),
-                  child: const Text('切到全部仓库（含非核算仓）'),
+          if (segment != GoodsStockLedgerSegment.trace)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Tooltip(
+                  message: _scope.label(
+                    warehouseName: names.warehouse(_scope.warehouseId),
+                    colorName: names.color(_scope.colorId),
+                    warehouseHasChildren: names.warehouseHasChildren(
+                      _scope.warehouseId,
+                    ),
+                  ),
+                  child: UtenFilterPickerField(
+                    key: const ValueKey('stock-inventory-warehouse'),
+                    label: '仓库',
+                    width: 180,
+                    value: _scope.warehouseId == null
+                        ? null
+                        : names.warehouse(_scope.warehouseId),
+                    placeholder: _scope.inventoryOnly ? '核算仓库' : '全部仓库',
+                    onTap: _pickWarehouse,
+                  ),
                 ),
-              SizedBox(
-                width: 220,
-                child: DropdownButtonFormField<String>(
-                  key: ValueKey((
-                    'stock-inventory-color',
-                    _scope.colorId,
-                    _scope.colorNull,
-                  )),
-                  initialValue:
-                      _scope.colorId ??
-                      (_scope.colorNull ? '__null__' : '__all__'),
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: '查询颜色范围'),
-                  items: [
-                    const DropdownMenuItem(
-                      value: '__all__',
-                      child: Text('全部颜色'),
-                    ),
-                    const DropdownMenuItem(
-                      value: '__null__',
-                      child: Text('无颜色'),
-                    ),
-                    for (final entry in names.colorEntries.entries)
-                      DropdownMenuItem(
-                        value: entry.key,
-                        child: Text(entry.value),
+                if (_scope.inventoryOnly || _scope.warehouseId != null)
+                  TextButton(
+                    key: const ValueKey('stock-inventory-all-warehouses'),
+                    onPressed: () => selectScope(_scope.allWarehouses),
+                    child: const Text('全部仓库'),
+                  ),
+                SizedBox(
+                  width: 180,
+                  child: UtenDropdownField(
+                    key: const ValueKey('stock-inventory-color'),
+                    label: '颜色',
+                    value:
+                        _scope.colorId ??
+                        (_scope.colorNull ? '__null__' : '__all__'),
+                    allowClear: false,
+                    items: [
+                      const UtenDropdownItem(value: '__all__', label: '全部颜色'),
+                      const UtenDropdownItem(value: '__null__', label: '无颜色'),
+                      for (final entry in names.colorEntries.entries)
+                        UtenDropdownItem(value: entry.key, label: entry.value),
+                      if (_scope.colorId != null &&
+                          !names.colorEntries.containsKey(_scope.colorId))
+                        UtenDropdownItem(
+                          value: _scope.colorId!,
+                          label: _scope.colorId!,
+                        ),
+                    ],
+                    onChanged: (value) => selectScope(
+                      _scope.withDimensions(
+                        warehouseId: _scope.warehouseId,
+                        colorId: value == '__all__' || value == '__null__'
+                            ? null
+                            : value,
+                        colorNull: value == '__null__',
                       ),
-                    if (_scope.colorId != null &&
-                        !names.colorEntries.containsKey(_scope.colorId))
-                      DropdownMenuItem(
-                        value: _scope.colorId,
-                        child: Text(_scope.colorId!),
-                      ),
-                  ],
-                  onChanged: (value) => selectScope(
-                    _scope.withDimensions(
-                      warehouseId: _scope.warehouseId,
-                      colorId: value == '__all__' || value == '__null__'
-                          ? null
-                          : value,
-                      colorNull: value == '__null__',
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           const SizedBox(height: UtenSpacing.s8),
           GoodsStockInventoryOverview(
             data: _context,
@@ -286,23 +332,24 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
             error: _contextError,
             onRetry: _loadContext,
             weightDisplay: ref.watch(warehouseWeightUnitsPrefsProvider).display,
-            showQuantities: _segment == GoodsStockLedgerSegment.balance,
+            showQuantities: segment == GoodsStockLedgerSegment.balance,
           ),
           const SizedBox(height: UtenSpacing.s8),
-          if (_segment == GoodsStockLedgerSegment.weight)
-            const Text('单重学习是货品级参数，不按当前仓库或颜色拆分。'),
           UtenFilterToolbar<GoodsStockLedgerSegment>(
             segmentsKey: const Key('stock-item-detail-segments'),
             segments: [
               for (final s in GoodsStockLedgerSegment.values)
-                UtenFilterSegment(value: s, label: s.label),
+                if (s != GoodsStockLedgerSegment.trace || canTrace)
+                  UtenFilterSegment(value: s, label: s.label),
             ],
-            selected: {_segment},
+            selected: {segment},
             onSelectionChanged: selectSegment,
-            trailing: const WeightDisplayUnitButton(),
+            trailing: segment == GoodsStockLedgerSegment.trace
+                ? null
+                : const WeightDisplayUnitButton(),
           ),
           // KPI 概览条只在「库存余额」分段出现 (2026-09-29 用户口径), 挪到分段行下面。
-          if (_segment == GoodsStockLedgerSegment.balance) ...[
+          if (segment == GoodsStockLedgerSegment.balance) ...[
             const SizedBox(height: UtenSpacing.s8),
             GoodsStockKpiStrip(
               goodsId: widget.goodsId,
@@ -314,8 +361,14 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
           const SizedBox(height: UtenSpacing.s8),
         ],
       ),
-      body: switch (_segment) {
+      body: switch (segment) {
+        GoodsStockLedgerSegment.trace => GoodsProductionTraceView(
+          key: ValueKey(('trace', widget.goodsId, _readEpoch)),
+          goodsId: widget.goodsId,
+          reloadTick: _reloadTick,
+        ),
         GoodsStockLedgerSegment.balance => GoodsStockBalanceView(
+          key: ValueKey(('balance', widget.goodsId, _readEpoch)),
           goodsId: widget.goodsId,
           scope: _scope,
           goodsName: goods?.name,
@@ -326,6 +379,7 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
           onChanged: _changed,
         ),
         GoodsStockLedgerSegment.ledger => GoodsStockLedgerView(
+          key: ValueKey(('ledger', widget.goodsId, _readEpoch)),
           goodsId: widget.goodsId,
           scope: _scope,
           onScopeChanged: selectScope,
@@ -333,6 +387,7 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
           reloadTick: _reloadTick,
         ),
         GoodsStockLedgerSegment.weight => GoodsWeightLearningView(
+          key: ValueKey(('weight', widget.goodsId, _readEpoch)),
           goodsId: widget.goodsId,
           goodsTitle: goodsTitle,
           unitName: unit,

@@ -1996,7 +1996,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 order.getSupplierId(), order.getWarehouseId(), priceMasked ? null : order.getCurrencyId(),
                 priceMasked ? null : order.getExchangeRate(),
                 priceMasked ? null : order.getSettlementMethodId(),
-                priceMasked ? null : order.getTaxRate(), order.getPurchaserId(),
+                priceMasked ? null : com.uten.imp.common.finance.ProcurementApprovedTaxRate.read(em, "SUBCONTRACT", order.getId(), order.getTaxRate()), order.getPurchaserId(),
                 order.getMakerId(), order.getApproverId(), order.getDeliverDate(),
                 order.isFulfill(), order.getRemark(), priceMasked ? null : order.getTotalOriginal(),
                 priceMasked ? null : order.getTotalLocal(), order.getStatus(), order.isClosed(),

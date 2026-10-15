@@ -345,8 +345,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     );
   }
 
-  // 基础资料详情统一页签条（2026-09-25：选中指示条加高到 12px）。
-  TabBar _tabBar(ThemeData theme) => buildUtenDetailTabBar(
+  // 基础资料详情共用分类栏，保持 TabController 与正文同步。
+  PreferredSizeWidget _tabBar(ThemeData theme) => buildUtenDetailTabBar(
     context,
     controller: _tab,
     labelStyle: theme.textTheme.titleSmall?.copyWith(

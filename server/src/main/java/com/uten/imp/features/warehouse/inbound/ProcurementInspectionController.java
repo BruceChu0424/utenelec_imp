@@ -64,7 +64,9 @@ public class ProcurementInspectionController {
             /** 待检货品摘要「名称 (编号 · 颜色)、…」（2026-10-08）：与 FQC 检查单 goodsSummary 同口径。 */
             String goodsSummary,
             /** 待检数量文本「qty 单位 · qty 单位」（2026-10-08）：按货品基本单位分组，跨单位不相加。 */
-            String pendingQtyText) {
+            String pendingQtyText,
+            String goodsCodeSummary,
+            String colorNameSummary) {
     }
 
     @GetMapping("/pending-receipts")
@@ -87,7 +89,9 @@ public class ProcurementInspectionController {
                         (String) row[12],
                         (String) row[13],
                         (String) row[14],
-                        (String) row[15]))
+                        (String) row[15],
+                        (String) row[16],
+                        (String) row[17]))
                 .toList();
     }
 

@@ -39,13 +39,17 @@ Finder _resizeTable(DailyRowGroup group) => find.descendant(
       'daily-product-${group == DailyRowGroup.allocations ? 'allocation' : 'material'}-table-product',
     ),
   ),
-  matching: find.byType(Table),
+  matching: find.byWidgetPredicate(
+    (widget) => widget is UtenEditableGrid<dynamic>,
+  ),
 );
 
-double _resizeWidth(WidgetTester tester, DailyRowGroup group, int column) =>
-    (tester.widget<Table>(_resizeTable(group)).columnWidths![column]
-            as FixedColumnWidth)
-        .value;
+double _resizeWidth(WidgetTester tester, DailyRowGroup group, int column) {
+  final dynamic gridState = tester.state(_resizeTable(group));
+  // Public shared resize contract, independent from the rendering backend.
+  // ignore: avoid_dynamic_calls
+  return gridState.columnDragWidth(column) as double;
+}
 
 Finder _resizeHandle(DailyRowGroup group, String label) => find.descendant(
   of: _resizeTable(group),
@@ -142,19 +146,15 @@ void _registerProductDetailsResizeTests() {
         _resizeWidth(tester, DailyRowGroup.allocations, 1),
         greaterThan(600),
       );
-      final table = tester.widget<Table>(
+      final table = tester.widget<UtenEditableGrid<dynamic>>(
         _resizeTable(DailyRowGroup.allocations),
       );
-      final headerBorders = table.children.first.children.map((cell) {
-        final box = (cell as SizedBox).child! as DecoratedBox;
-        return (box.decoration as BoxDecoration).border! as BorderDirectional;
-      }).toList();
-      expect(headerBorders.last.end, BorderSide.none);
       expect(
-        headerBorders
-            .take(headerBorders.length - 1)
-            .every((border) => border.end.style == BorderStyle.solid),
-        isTrue,
+        find.descendant(
+          of: _resizeTable(DailyRowGroup.allocations),
+          matching: find.byType(UtenColumnResizeHandle),
+        ),
+        findsNWidgets(table.columns.length),
       );
       final field = find.byKey(
         ValueKey(
@@ -179,11 +179,11 @@ void _registerProductDetailsResizeTests() {
       final data = _DetailsData();
       _resizeTargets(data);
       final (events, _) = await _pump(tester, data, materialsOpen: false);
-      final table = tester.widget<Table>(
+      final table = tester.widget<UtenEditableGrid<dynamic>>(
         _resizeTable(DailyRowGroup.allocations),
       );
-      expect(table.columnWidths, hasLength(5));
-      expect(table.children.every((row) => row.children.length == 5), isTrue);
+      expect(table.columns, hasLength(5));
+      expect(table.controller.rows, hasLength(3));
       for (final text in ['REC-A', 'REC-B', '接收白色', '接收蓝色']) {
         expect(find.text(text), findsOneWidget);
       }

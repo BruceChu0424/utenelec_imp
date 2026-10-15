@@ -92,6 +92,7 @@ class _BatchDraft {
   String? workerId;
   DateTime date;
   DateTime? deliveryDate;
+  bool warehouseAutofilled = true;
   final TextEditingController remark;
   SubcontractOutboundExecutionState state =
       SubcontractOutboundExecutionState.pending;
@@ -172,10 +173,10 @@ class _WarehouseSubcontractOutboundBatchPageState
     'goodsId': row.item.goodsId ?? row.line.goodsId,
     'colorId': row.item.colorId,
     'unitId': row.item.unitId,
-    'unitRate': row.item.unitRate,
+    'unitRate': row.item.unitRateText,
     'orderItemId': row.item.orderItemId,
     'planItemId': row.line.planItemId,
-    'requestedQty': row.line.requestedQty,
+    'requestedQty': row.line.requestedQtyText,
   };
 
   Map<String, dynamic> _captureInput(_BatchDraft draft) => {
@@ -183,6 +184,7 @@ class _WarehouseSubcontractOutboundBatchPageState
     'serverFingerprint': subcontractOutboundDraftFingerprint(draft.document),
     'state': draft.state.name,
     'warehouseId': draft.warehouseId,
+    'warehouseAutofilled': draft.warehouseAutofilled,
     'workerId': draft.workerId,
     'billDate': draft.date.toIso8601String(),
     'deliverDate': draft.deliveryDate?.toIso8601String(),
@@ -235,8 +237,10 @@ class _WarehouseSubcontractOutboundBatchPageState
           ...saved,
           'state': SubcontractOutboundExecutionState.needsVerification.name,
         };
-      } else if (saved['serverFingerprint'] !=
-          subcontractOutboundDraftFingerprint(draft.document)) {
+      } else if (!subcontractOutboundSnapshotMatches(
+        saved['serverFingerprint'],
+        subcontractOutboundDraftFingerprint(draft.document),
+      )) {
         throw const FormatException('领料单被其他人修改过，原填写草稿继续保留；请核对最新领料单');
       }
       final savedRows = draftMaps(saved['rows']);
@@ -250,7 +254,7 @@ class _WarehouseSubcontractOutboundBatchPageState
             final row = rows[value['planItemId']];
             return row != null &&
                 value['sourceIdentity'] is Map &&
-                mapEquals(
+                subcontractOutboundSnapshotMatches(
                   (value['sourceIdentity'] as Map).cast<String, dynamic>(),
                   _sourceIdentity(row),
                 );
@@ -260,6 +264,7 @@ class _WarehouseSubcontractOutboundBatchPageState
         throw const FormatException('领料明细来源已变化，原填写草稿继续保留；禁止按货品猜测恢复');
       }
       draft.warehouseId = saved['warehouseId'] as String?;
+      draft.warehouseAutofilled = saved['warehouseAutofilled'] != false;
       draft.workerId = saved['workerId'] as String?;
       draft.date =
           DateTime.tryParse(draftText(saved, 'billDate')) ?? draft.date;
@@ -607,6 +612,7 @@ class _WarehouseSubcontractOutboundBatchPageState
             'supplierId': document.supplierId,
             'warehouseId': draft.warehouseId,
             'workerId': draft.workerId,
+            // Automatic dates freeze only when the server commits approval.
             'deliverDate': draft.deliveryDate == null
                 ? null
                 : _date(draft.deliveryDate!),
@@ -838,13 +844,16 @@ class _WarehouseSubcontractOutboundBatchPageState
                                                 draft.document.billNo,
                                             documentRemark: draft.remark,
                                             warehouseId: draft.warehouseId,
+                                            warehouseAutofilled:
+                                                draft.warehouseAutofilled,
                                             warehouses:
                                                 names.warehouseHierarchy,
                                             onWarehouseChanged: (value) =>
-                                                setState(
-                                                  () =>
-                                                      draft.warehouseId = value,
-                                                ),
+                                                setState(() {
+                                                  draft.warehouseId = value;
+                                                  draft.warehouseAutofilled =
+                                                      false;
+                                                }),
                                             status: _status(draft),
                                             editable: draft.pending,
                                           ),
@@ -1000,7 +1009,8 @@ class _WarehouseSubcontractOutboundBatchPageState
                 absorbing: !editable,
                 child: UtenDateField(
                   label: l10n.warehouseSubcontractOutboundDeliveryDate,
-                  value: draft.deliveryDate,
+                  value: draft.deliveryDate ?? ChinaDateTime.today(),
+                  autofilled: draft.deliveryDate == null,
                   onChanged: (value) =>
                       setState(() => draft.deliveryDate = value),
                 ),

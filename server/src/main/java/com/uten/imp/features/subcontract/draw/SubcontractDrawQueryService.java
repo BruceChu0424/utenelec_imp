@@ -397,7 +397,7 @@ public class SubcontractDrawQueryService {
                 task.drawnQty(), task.pendingQty(), BigDecimal.ZERO, shortQty, task.materialKindCount(),
                 task.readyKindCount(), task.shortKindCount(), task.unplannedShortKindCount(),
                 task.pendingQty().signum() > 0 ? "DRAW_SUBMITTED" : "WAITING_MATERIAL",
-                task.deliverDate(), false, task.materialQty(), task.planNo());
+                task.deliverDate(), false, task.materialQty(), task.planNo(), task.applicationItemIds());
     }
 
     /** 选中的开放任务(范围内), 带行级可领/已领/已覆盖套数。 */
@@ -581,7 +581,7 @@ public class SubcontractDrawQueryService {
                 alias + ".drawable_qty", alias + ".short_qty", alias + ".material_kind_count",
                 alias + ".ready_kind_count", alias + ".unplanned_short_kind_count", alias + ".status",
                 alias + ".deliver_date", alias + ".maker_id", alias + ".material_qty",
-                alias + ".plan_no")) + "\n";
+                alias + ".plan_no", alias + ".application_item_ids")) + "\n";
     }
 
     private static final int ROW_MAKER = 23;
@@ -596,7 +596,24 @@ public class SubcontractDrawQueryService {
                 uuid(r[o + 11]), str(r[o + 12]), decimal(r[o + 13]), decimal(r[o + 14]), decimal(r[o + 15]),
                 drawable, decimal(r[o + 17]), kinds, ready, Math.max(kinds - ready, 0),
                 (int) number(r[o + 20]), str(r[o + 21]), localDate(r[o + 22]),
-                canSubmit && makerId != null && drawable.signum() > 0, decimal(r[o + 24]), str(r[o + 25]));
+                canSubmit && makerId != null && drawable.signum() > 0, decimal(r[o + 24]), str(r[o + 25]),
+                access.hasAuthority("subcontract_application:view")
+                        ? sourceIds(r[o + 26])
+                        : List.of());
+    }
+
+    private static List<UUID> sourceIds(Object value) {
+        if (value instanceof java.sql.Array array) {
+            try {
+                return sourceIds(array.getArray());
+            } catch (java.sql.SQLException error) {
+                throw new ApiException(ErrorCode.CONFLICT, "委外任务来源读取失败，请刷新重试");
+            }
+        }
+        return value instanceof Object[] sources
+                ? java.util.Arrays.stream(sources).filter(Objects::nonNull)
+                    .map(SubcontractDrawQueryService::uuid).distinct().toList()
+                : List.of();
     }
 
     /** 状态筛选白名单(固定 SQL 片段, 不拼用户输入)。 */

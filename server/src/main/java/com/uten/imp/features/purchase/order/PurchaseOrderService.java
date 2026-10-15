@@ -1598,7 +1598,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         return new OrderDetail(
                 order.getId(), order.getLegacyId(), order.getBillNo(), order.getBillDate(),
                 order.getSupplierId(), order.getWarehouseId(), priceMasked ? null : order.getCurrencyId(),
-                priceMasked ? null : order.getExchangeRate(), priceMasked ? null : order.getTaxRate(),
+                priceMasked ? null : order.getExchangeRate(), priceMasked ? null : com.uten.imp.common.finance.ProcurementApprovedTaxRate.read(em, "PURCHASE", order.getId(), order.getTaxRate()),
                 order.getPurchaserId(), priceMasked ? null : order.getSettlementMethodId(),
                 priceMasked || order.getSettlementStyleLegacy() == null
                         ? null : order.getSettlementStyleLegacy().intValue(),

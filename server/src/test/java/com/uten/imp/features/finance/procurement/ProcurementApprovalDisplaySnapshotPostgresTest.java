@@ -196,7 +196,7 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                   attempt int,bill_no_snapshot text,amount_snapshot numeric,submission_snapshot jsonb,snapshot_hash text,
                   submitted_by_user_id uuid,submitted_by_employee_id uuid,assignee_user_id uuid,assignee_employee_id uuid,
                   assignee_name_snapshot text,status text,version bigint,submitted_at timestamptz DEFAULT now(),
-                  finance_exchange_rate numeric,finance_total_local numeric);
+                  finance_tax_rate numeric,finance_exchange_rate numeric,finance_total_local numeric);
                 CREATE TABLE procurement_order_approval_events(id uuid,case_id uuid,event_type text,actor_user_id uuid,
                   actor_employee_id uuid,from_assignee_user_id uuid,to_assignee_user_id uuid,reason text,event_snapshot jsonb,created_at timestamptz DEFAULT now());
                 CREATE TABLE procurement_order_qty_change_logs(order_type text,order_item_id uuid,old_qty numeric,new_qty numeric,changed_at timestamptz,changed_by_employee_id uuid,case_id uuid);

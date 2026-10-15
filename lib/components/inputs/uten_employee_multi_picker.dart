@@ -222,16 +222,16 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker>
                       error: field.errorText == null
                           ? null
                           : UtenFieldMessage.error(field.errorText!),
-                      prefixIcon: const Icon(Icons.group_add_outlined),
+                      prefixIcon: const Icon(
+                        Icons.group_add_outlined,
+                        size: 18,
+                      ),
                       suffixIcon: Icon(
                         Icons.unfold_more_rounded,
+                        size: 18,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                       border: const OutlineInputBorder(),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s16,
-                        vertical: UtenSpacing.s16,
-                      ),
                     ),
                   ),
                   theme,

@@ -71,6 +71,7 @@ class _Repo extends StockDocRepository {
         id: 'line-$id',
         goodsId: 'goods',
         qty: quantities[id] ?? 0.0001,
+        qtyText: (quantities[id] ?? 0.0001).toString(),
         unitId: 'unit',
         place: '33333',
         remark: '明细备注-$id',

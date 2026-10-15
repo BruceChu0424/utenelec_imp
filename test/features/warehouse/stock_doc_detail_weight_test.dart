@@ -108,7 +108,9 @@ Map<String, dynamic> _draw({double issuedQty = 5, double? issuedWeightKg}) => {
       'goodsId': 'screw',
       'unitId': 'pcs',
       'qty': 10,
+      'qtyExact': '10',
       'issuedQty': issuedQty,
+      'issuedQtyExact': issuedQty.toString(),
       'unitRate': 1,
       'issuedWeightKg': ?issuedWeightKg,
       'issuedWeightEstimated': false,
@@ -173,6 +175,92 @@ Future<_Api> _pump(
 const _issuer = {Perm.stockDocView, Perm.stockDocIssue};
 
 void main() {
+  testWidgets(
+    'DRAW actual issue keeps a decimal delta lost by legacy doubles',
+    (tester) async {
+      final document = _draw();
+      final line = (document['items'] as List).single as Map<String, dynamic>;
+      line.addAll(<String, Object>{
+        'qty': 100000000000000.0,
+        'qtyExact': '99999999999999.9999',
+        'issuedQty': 100000000000000.0,
+        'issuedQtyExact': '99999999999999.9998',
+      });
+      final api = await _pump(
+        tester,
+        type: StockDocType.draw,
+        document: document,
+        permissions: _issuer,
+      );
+      final input = find.byKey(const ValueKey('draw-issue-qty-i1'));
+      expect(tester.widget<TextField>(input).controller!.text, '0.0001');
+      await tester.tap(find.widgetWithText(UtenButton, '出库'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认出库'));
+      await tester.pumpAndSettle();
+      expect(api.posts.single.body['lines'], [
+        {'itemId': 'i1', 'qty': '0.0001'},
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('DRAW actual cancel retains all original quantity digits', (
+    tester,
+  ) async {
+    final document = _draw();
+    final line = (document['items'] as List).single as Map<String, dynamic>;
+    line.addAll(<String, Object>{
+      'qty': 100000000000000.0,
+      'qtyExact': '99999999999999.9999',
+      'issuedQty': 100000000000000.0,
+      'issuedQtyExact': '99999999999999.9998',
+    });
+    final api = await _pump(
+      tester,
+      type: StockDocType.draw,
+      document: document,
+      permissions: {..._issuer, Perm.stockDocReverseIssue},
+    );
+    await tester.tap(find.widgetWithText(UtenButton, '取消出库'));
+    await tester.pumpAndSettle();
+    final fields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    expect(
+      tester.widget<TextField>(fields.first).controller!.text,
+      '99999999999999.9998',
+    );
+    await tester.enterText(fields.last, '核对退回');
+    await tester.tap(find.text('确认取消出库'));
+    await tester.pumpAndSettle();
+    expect(api.posts.single.body['lines'], [
+      {'itemId': 'i1', 'qty': '99999999999999.9998'},
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('numeric-only DRAW quantities never write an estimated command', (
+    tester,
+  ) async {
+    final document = _draw();
+    final line = (document['items'] as List).single as Map<String, dynamic>;
+    line.remove('qtyExact');
+    line.remove('issuedQtyExact');
+    final api = await _pump(
+      tester,
+      type: StockDocType.draw,
+      document: document,
+      permissions: _issuer,
+    );
+    await tester.tap(find.widgetWithText(UtenButton, '出库'));
+    await tester.pumpAndSettle();
+    expect(api.posts, isEmpty);
+    expect(find.text('确认出库'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('stock entry and actual detail use the same goods code header', (
     tester,
   ) async {
@@ -257,7 +345,7 @@ void main() {
       final first = api.posts.single;
       expect(first.path, endsWith('/issue'));
       expect(first.body['lines'], [
-        {'itemId': 'i1', 'qty': 5.0, 'weightKg': 0.025},
+        {'itemId': 'i1', 'qty': '5', 'weightKg': 0.025},
       ]);
 
       await tester.enterText(
@@ -301,7 +389,7 @@ void main() {
       await tester.tap(find.text('确认出库'));
       await tester.pumpAndSettle();
       expect(api.posts.single.body['lines'], [
-        {'itemId': 'i1', 'qty': 5.0},
+        {'itemId': 'i1', 'qty': '5'},
       ]);
       expect(tester.takeException(), isNull);
     },
@@ -335,7 +423,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.posts.single.path, endsWith('/issue/reverse'));
       expect(api.posts.single.body['lines'], [
-        {'itemId': 'i1', 'qty': 2.0},
+        {'itemId': 'i1', 'qty': '2'},
       ]);
       expect(tester.takeException(), isNull);
     },

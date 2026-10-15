@@ -264,7 +264,7 @@ abstract final class RouteName {
 
   /// 库存详情 (即时库存双击进入)：该货品各仓余额 + 出入库流水 + 单重学习。
   /// balance/movement 两页已并入 (旧路由重定向保深链)。
-  /// [tab]：balance=库存余额(默认) / ledger=出入库流水 / weight=单重学习 (ADR-135)。
+  /// [tab]：balance=库存余额(默认) / ledger=出入库流水 / weight=单重学习 / trace=用料追溯 (ADR-135/119)。
   static const String stockItemBase = '/stock/item';
   static String stockItemDetail(
     String goodsId, {

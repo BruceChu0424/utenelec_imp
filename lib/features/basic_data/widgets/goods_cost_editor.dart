@@ -1074,7 +1074,6 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       key: ValueKey('cost-material-${widget.detail.id}'),
       tableKey: _GoodsCostTabState._tableKey,
       primary: true,
-      summaryBarInline: true,
       onFullscreenChanged: (value) {
         _materialFullscreen = value;
         if (!value) {

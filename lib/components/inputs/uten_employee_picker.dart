@@ -309,15 +309,24 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
                     error: field.errorText == null
                         ? null
                         : UtenFieldMessage.error(field.errorText!),
-                    prefixIcon: const Icon(Icons.person_search_rounded),
+                    prefixIcon: const Icon(
+                      Icons.person_search_rounded,
+                      size: 18,
+                    ),
                     suffixIcon: sel != null && widget.allowClear
                         ? IconButton(
                             tooltip: '清除选择',
                             onPressed: widget.enabled ? _clear : null,
-                            icon: const Icon(Icons.clear_rounded),
+                            constraints: UtenPageField.iconConstraints,
+                            padding: EdgeInsets.zero,
+                            style: const ButtonStyle(
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                            icon: const Icon(Icons.clear_rounded, size: 18),
                           )
                         : Icon(
                             Icons.unfold_more_rounded,
+                            size: 18,
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
                     border: OutlineInputBorder(
@@ -334,10 +343,6 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
                         color: theme.colorScheme.primary,
                         width: 2,
                       ),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
                     ),
                   ),
                 ),

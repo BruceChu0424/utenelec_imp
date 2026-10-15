@@ -1,5 +1,7 @@
 part of 'production_material_analysis_page.dart';
 
+const _waitingPlanningOrderLabel = '等待计划下单';
+
 final class _PendingMakeCandidate {
   const _PendingMakeCandidate({
     required this.material,
@@ -129,7 +131,7 @@ final class _BomFilterProjection {
 /// 不再有覆盖三档专用桶。
 const Map<String, String> _materialStatusFacetLabels = {
   'routePending': '路线待确认',
-  'pendingIssue': '未下达',
+  'pendingIssue': _waitingPlanningOrderLabel,
   'inTransit': '处理中',
   'covered': '已齐套',
   'blocked': '不可执行',

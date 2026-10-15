@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Set;
 
 /**
  * Object-level read guard for production material subresources.
@@ -44,6 +45,18 @@ public class ProductionMaterialReadAccessPolicy {
         }
         throw new ApiException(ErrorCode.NOT_FOUND, "生产计划不存在");
     }
+
+    /** Same object scope as requirePlanReadable, for filtering a cross-plan projection before paging. */
+    public DocumentAccessPolicy.NativeReadScope planReadScope(String ownerColumn,String parameterName) {
+        if (canUseWarehousePool()) return new DocumentAccessPolicy.NativeReadScope("1=1",null,Set.of());
+        if (!hasAuthority(PLAN_VIEW)) return new DocumentAccessPolicy.NativeReadScope("1=0",null,Set.of());
+        var scope=ownerVisibility.evaluate(PLAN_SCOPE,PLAN_VIEW_ALL);
+        if (scope.seeAll()) return new DocumentAccessPolicy.NativeReadScope("1=1",null,Set.of());
+        return scope.visibleOwners().isEmpty()?new DocumentAccessPolicy.NativeReadScope("1=0",null,Set.of())
+                :new DocumentAccessPolicy.NativeReadScope(ownerColumn+" IN (:"+parameterName+")",parameterName,scope.visibleOwners());
+    }
+
+    public boolean hasPlanReadCapability() { return canUseWarehousePool()||hasAuthority(PLAN_VIEW); }
 
     public void requireDrawReadable(UUID drawId) {
         DrawOwner draw = drawOwner(drawId);

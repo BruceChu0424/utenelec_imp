@@ -99,7 +99,9 @@ class UtenAppBarActionScope extends InheritedWidget {
   @override
   bool updateShouldNotify(UtenAppBarActionScope oldWidget) =>
       actionContext != oldWidget.actionContext ||
-      closeBeforeAction != oldWidget.closeBeforeAction;
+      closeBeforeAction != oldWidget.closeBeforeAction ||
+      claimAction != oldWidget.claimAction ||
+      dismiss != oldWidget.dismiss;
 }
 
 /// Adapt native page actions while preserving their focus, state and callbacks.

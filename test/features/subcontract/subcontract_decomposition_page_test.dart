@@ -41,6 +41,67 @@ const _decomposePermissions = {
 
 void main() {
   testWidgets(
+    'partially ordered application links to actual picking tasks without inventing per-source picking',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(
+                _data(capability: true, firstAllocatedQty: 4),
+              ),
+              drawRepository: FakeSubcontractDrawGateway(
+                rows: [
+                  drawRow(
+                    'linked-order',
+                    applicationItemIds: ['application-item-1'],
+                  ),
+                  drawRow(
+                    'other-order',
+                    applicationItemIds: ['application-item-2'],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<SubcontractPendingRow> table() => tester.widget(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      final initial = table();
+      final applicationRow = initial.items.first;
+      String? value(String key) => initial.columns
+          .singleWhere((column) => column.key == key)
+          .value(applicationRow);
+      expect(value('orderQty'), '4 件');
+      for (final key in ['drawnQty', 'pendingQty', 'drawableQty', 'shortQty']) {
+        expect(value(key), '见领料任务');
+      }
+      final context = tester.element(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      final link =
+          initial.columns
+                  .singleWhere((column) => column.key == 'drawnQty')
+                  .cellBuilder!(context, applicationRow)
+              as InkWell;
+      link.onTap!();
+      await tester.pumpAndSettle();
+      expect(table().unpagedItems, hasLength(1));
+      expect(
+        (table().unpagedItems.single as SubcontractPendingDrawRow)
+            .row
+            .orderItemId,
+        'linked-order',
+      );
+      expect(find.byKey(const Key('subcontract-draw-scope')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'return to the task center reloads once and drops stale answers',
     (tester) async {
       _desktop(tester, const Size(1600, 1000));
@@ -1174,6 +1235,39 @@ void main() {
               .value(table.unpagedItems.first),
           '100 个',
         );
+        final firstDrawRow = table.unpagedItems.first;
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'requiredQty')
+              .value(firstDrawRow),
+          '100 个',
+        );
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'openQty')
+              .value(firstDrawRow),
+          '0 个',
+        );
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'orderableQty')
+              .value(firstDrawRow),
+          '0 个',
+        );
+        final applicationRow = table.items.first;
+        for (final key in [
+          'drawnQty',
+          'pendingQty',
+          'drawableQty',
+          'shortQty',
+        ]) {
+          expect(
+            table.columns
+                .singleWhere((column) => column.key == key)
+                .value(applicationRow),
+            '下单后领料',
+          );
+        }
         expect(
           table.columns.where((column) => column.key == 'unitName'),
           isEmpty,
@@ -1712,6 +1806,7 @@ OperationsWorkbenchData _data({
   required bool capability,
   bool withSources = false,
   bool onlyFirst = false,
+  num firstAllocatedQty = 0,
 }) => OperationsWorkbenchData(
   department: OperationsWorkbenchDepartment.subcontract,
   summary: const OperationsWorkbenchSummary(
@@ -1729,6 +1824,7 @@ OperationsWorkbenchData _data({
       // 2026-10-10 V836：申请行的委外商由投影下发；本行有商，task-2 留空
       // （未定商是业务事实，列显「—」）。
       supplierName: '华信加工',
+      allocatedQty: firstAllocatedQty,
       sources: withSources
           ? SubcontractTaskSource.listFromJson([
               _sourceJson(1, 3),
@@ -1974,6 +2070,7 @@ OperationsWorkbenchTask _task(
   String? rdTaskNo,
   num? orderableQty,
   String? supplierName,
+  num allocatedQty = 0,
 }) => OperationsWorkbenchTask(
   displayStage: displayStage,
   rdTaskNo: rdTaskNo,
@@ -1991,7 +2088,7 @@ OperationsWorkbenchTask _task(
   unitName: '件',
   supplyRoute: 'SUBCONTRACT',
   requiredQty: 10,
-  allocatedQty: 0,
+  allocatedQty: allocatedQty,
   fulfilledQty: 0,
   supplyPeggedQty: 0,
   openQty: 6,

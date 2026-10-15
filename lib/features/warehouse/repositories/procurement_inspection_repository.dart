@@ -26,6 +26,8 @@ class PendingInspectionReceipt {
     this.preStockedPlaces,
     this.goodsSummary,
     this.pendingQtyText,
+    this.goodsCodeSummary,
+    this.colorNameSummary,
   });
 
   final String receiptType; // PURCHASE / SUBCONTRACT
@@ -57,6 +59,8 @@ class PendingInspectionReceipt {
   /// 待检数量文本「qty 单位 · qty 单位」（2026-10-08，按货品基本单位分组拼）：
   /// 待检队列「待检数量」列——跨单位不相加，与明细页合计文案同口径。
   final String? pendingQtyText;
+  final String? goodsCodeSummary;
+  final String? colorNameSummary;
 
   bool get isSubcontract => receiptType == 'SUBCONTRACT';
 
@@ -81,6 +85,8 @@ class PendingInspectionReceipt {
         preStockedPlaces: json['preStockedPlaces'] as String?,
         goodsSummary: json['goodsSummary'] as String?,
         pendingQtyText: json['pendingQtyText'] as String?,
+        goodsCodeSummary: json['goodsCodeSummary'] as String?,
+        colorNameSummary: json['colorNameSummary'] as String?,
       );
 }
 

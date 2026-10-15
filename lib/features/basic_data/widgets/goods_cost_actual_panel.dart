@@ -747,7 +747,6 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
           key: ValueKey('cost-actual-$_tab'),
           tableKey: 'master.goods.cost.actual.$_tab',
           primary: true,
-          summaryBarInline: true,
           onFullscreenChanged: (value) {
             _fullscreen = value;
             if (!value) {

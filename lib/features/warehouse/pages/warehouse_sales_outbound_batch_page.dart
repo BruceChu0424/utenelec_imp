@@ -711,11 +711,20 @@ class _WarehouseSalesOutboundBatchPageState
                                       toolbarActions: weightEntries.isEmpty
                                           ? null
                                           : const [WeightEntryUnitButton()],
-                                      summaryBar: weightEntries.isEmpty
+                                      summaryBar: rows.isEmpty
                                           ? null
                                           : OutboundWeightSummaryBar(
                                               entries: weightEntries,
                                               params: _weightCache,
+                                              productsOf: () => [
+                                                for (final row in rows)
+                                                  OutboundProductQuantity(
+                                                    goodsId: row.line.goodsId,
+                                                    quantity: row.line.quantity,
+                                                    unitId: row.line.unitId,
+                                                    unitName: row.line.unitName,
+                                                  ),
+                                              ],
                                             ),
                                       items: rows,
                                       bottomContentPadding:

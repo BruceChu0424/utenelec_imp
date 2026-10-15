@@ -36,6 +36,7 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
     this.sameClassAs,
     this.enabled = true,
     this.dense = false,
+    this.autofilled = false,
   });
 
   /// 层级有序仓库列表（names.warehouseHierarchy）。
@@ -58,6 +59,7 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
   /// 紧凑形态（表格单元格）：与同行输入格等高（UtenEditableGridCellSpec，
   /// 2026-10-08 表格输入格统一口径）；表单里保持默认高度。
   final bool dense;
+  final bool autofilled;
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +78,7 @@ class WarehouseHierarchyDropdown extends StatelessWidget {
     return UtenDropdownField(
       label: labelText,
       dense: dense,
+      autofilled: autofilled,
       value: includeAll && value == null ? '' : value,
       allowClear: false,
       enabled: enabled,

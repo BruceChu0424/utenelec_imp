@@ -40,8 +40,9 @@ Finder _headerCell(String label) => find
 Future<void> _pumpGrid(
   WidgetTester tester,
   UtenEditableGridController<_ResizeRow> controller,
-  TextDirection direction,
-) async {
+  TextDirection direction, {
+  double minimumWidth = 48,
+}) async {
   tester.view.physicalSize = const Size(1024, 700);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -66,6 +67,7 @@ Future<void> _pumpGrid(
                         key: 'name',
                         label: 'Product',
                         width: 200,
+                        minimumWidthOf: (_) => minimumWidth,
                         cellBuilder: (_, row) => Text(row.name),
                       ),
                       EditableGridColumn<_ResizeRow>(
@@ -116,14 +118,13 @@ void main() {
         final grip = tester.getRect(_nameGrip());
         final rtl = direction == TextDirection.rtl;
         expect(grip.width, 8);
-        expect(grip.center.dx, closeTo(rtl ? before.left : before.right, 0.1));
-
-        // Half of the 8px grip extends beyond the header Stack. Start two pixels
-        // inside the column so the real clipped hit area receives the pointer.
-        final point = Offset(
-          rtl ? before.left + 2 : before.right - 2,
-          grip.center.dy,
+        expect(
+          grip.center.dx,
+          closeTo(rtl ? before.left + 4 : before.right - 4, 0.1),
         );
+
+        // The entire shared grip is hit-testable inside its own header.
+        final point = grip.center;
         final pointer = await tester.startGesture(
           point,
           kind: PointerDeviceKind.mouse,
@@ -149,6 +150,36 @@ void main() {
         );
         expect(find.text(row.name), findsOneWidget);
         expect(find.text(row.note), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  for (final direction in [TextDirection.ltr, TextDirection.rtl]) {
+    testWidgets(
+      'shared minimum and double-click reset preserve business controllers: $direction',
+      (tester) async {
+        final row = _ResizeRow();
+        final controller = UtenEditableGridController<_ResizeRow>(
+          initial: [row],
+        );
+        await _pumpGrid(tester, controller, direction, minimumWidth: 140);
+        final pointer = await tester.startGesture(
+          tester.getCenter(_nameGrip()),
+          kind: PointerDeviceKind.mouse,
+        );
+        await pointer.moveBy(
+          Offset(direction == TextDirection.rtl ? 500 : -500, 0),
+        );
+        await pointer.up();
+        await tester.pumpAndSettle();
+        expect(tester.getSize(_headerCell('Product')).width, 140);
+        await tester.tap(_nameGrip());
+        await tester.pump(const Duration(milliseconds: 80));
+        await tester.tap(_nameGrip());
+        await tester.pumpAndSettle();
+        expect(tester.getSize(_headerCell('Product')).width, 200);
+        expect(row.quantity.text, '123.4567');
+        expect(row.quantityWrites, 0);
         expect(tester.takeException(), isNull);
       },
     );

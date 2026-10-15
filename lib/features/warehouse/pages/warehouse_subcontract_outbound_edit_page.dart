@@ -119,6 +119,7 @@ class _WarehouseSubcontractOutboundEditPageState
   DateTime _billDate = ChinaDateTime.today();
   DateTime? _deliverDate;
   String? _warehouseId;
+  bool _warehouseAutofilled = true;
   String? _workerId;
   bool _loading = true;
   bool _saving = false;
@@ -171,6 +172,7 @@ class _WarehouseSubcontractOutboundEditPageState
     else ...{
       'remark': _remark.text,
       'warehouseId': _warehouseId,
+      'warehouseAutofilled': _warehouseAutofilled,
       'workerId': _workerId,
       'billDate': _billDate.toIso8601String(),
       'deliverDate': _deliverDate?.toIso8601String(),
@@ -215,8 +217,10 @@ class _WarehouseSubcontractOutboundEditPageState
         (!_requestUncertain &&
             data['serverFingerprint'] != null &&
             (_document == null ||
-                data['serverFingerprint'] !=
-                    subcontractOutboundDraftFingerprint(_document!))) ||
+                !subcontractOutboundSnapshotMatches(
+                  data['serverFingerprint'],
+                  subcontractOutboundDraftFingerprint(_document!),
+                ))) ||
         bySource.length != _lines.length ||
         savedSourceIds.length != saved.length ||
         saved.length != _lines.length ||
@@ -224,12 +228,16 @@ class _WarehouseSubcontractOutboundEditPageState
           final row = bySource[item['planItemId']];
           return row == null ||
               (item['sourceIdentity'] != null &&
-                  item['sourceIdentity'] != _draftSourceIdentity(row));
+                  !subcontractOutboundSnapshotMatches(
+                    item['sourceIdentity'],
+                    _draftSourceIdentity(row),
+                  ));
         })) {
       throw const FormatException('领料单来源或服务器单据已变化，填写草稿保留；请先核对最新领料单');
     }
     _remark.text = draftText(data, 'remark');
     _warehouseId = data['warehouseId'] as String?;
+    _warehouseAutofilled = data['warehouseAutofilled'] != false;
     _workerId = data['workerId'] as String?;
     _billDate = DateTime.tryParse(draftText(data, 'billDate')) ?? _billDate;
     _deliverDate = DateTime.tryParse(draftText(data, 'deliverDate'));
@@ -260,10 +268,10 @@ class _WarehouseSubcontractOutboundEditPageState
     row.item.goodsId,
     row.item.colorId,
     row.item.unitId,
-    row.item.unitRate,
+    row.item.unitRateText,
     row.item.parentGoodsId,
     row.item.parentColorId,
-    row.line.requestedQty,
+    row.line.requestedQtyText,
   ].join('|');
 
   AppLocalizations get _l10n =>
@@ -385,6 +393,7 @@ class _WarehouseSubcontractOutboundEditPageState
         _detail = detail;
         _document = document;
         _warehouseId = document.warehouseId ?? detail.warehouseId;
+        _warehouseAutofilled = true;
         _billDate = _parseDate(document.billDate) ?? ChinaDateTime.today();
         _workerId = workerId;
         _deliverDate = _parseDate(document.deliverDate);
@@ -470,19 +479,18 @@ class _WarehouseSubcontractOutboundEditPageState
     final badWeight = <String>[];
     for (var index = 0; index < _lines.length; index++) {
       final e = _lines[index];
-      final qty = double.tryParse(e.qty.text.trim()) ?? -1;
       final name = e.line.goodsName ?? e.line.goodsCode ?? '该物料';
       final label = '第 ${index + 1} 行（$name）';
-      if (!qty.isFinite || qty < 0) {
+      if (e.quantityInvalid || e.quantitySourceUnknown) {
         badQty.add(label);
         continue;
       }
-      if (qty - e.maxEditableQty > 0.0000001) {
+      if (e.exceedsMaximum) {
         overMaxQty.add(label);
         continue;
       }
       // 填 0 = 这条物料本次不发：不回传这一行。
-      if (qty == 0) continue;
+      if (e.skipped) continue;
       if (e.weight.weight.hasError) {
         badWeight.add(label);
         continue;
@@ -520,7 +528,9 @@ class _WarehouseSubcontractOutboundEditPageState
       'supplierId': document.supplierId,
       'warehouseId': _warehouseId,
       if (_workerId != null) 'workerId': _workerId,
-      if (_deliverDate != null) 'deliverDate': _date(_deliverDate!),
+      // Keep the automatic policy through save and failed approval. The server
+      // freezes today's date in the same transaction as the actual outbound.
+      'deliverDate': _deliverDate == null ? null : _date(_deliverDate!),
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       'items': items,
     };
@@ -1072,9 +1082,15 @@ class _WarehouseSubcontractOutboundEditPageState
               entries: names.warehouseHierarchy,
               use: WarehouseUse.goodOut,
               value: _warehouseId,
+              autofilled: _warehouseAutofilled,
               labelText: '发出仓(必选)',
               onChanged: (v) {
-                if (v != null) setState(() => _warehouseId = v);
+                if (v != null) {
+                  setState(() {
+                    _warehouseId = v;
+                    _warehouseAutofilled = false;
+                  });
+                }
               },
             ),
             UtenEmployeePicker(
@@ -1115,6 +1131,7 @@ class _WarehouseSubcontractOutboundEditPageState
             UtenDateField(
               label: '交货日期',
               value: _deliverDate ?? ChinaDateTime.today(),
+              autofilled: _deliverDate == null,
               onChanged: (d) => setState(() => _deliverDate = d),
             ),
             TextField(

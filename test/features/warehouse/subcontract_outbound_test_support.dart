@@ -69,7 +69,9 @@ Map<String, dynamic> outboundPickLine({
   'colorName': colorName,
   'unitName': unitName,
   'requestedQty': requestedQty,
+  'requestedQtyExact': requestedQty.toString(),
   'stockAvailableQty': stockAvailableQty,
+  'stockAvailableQtyExact': stockAvailableQty?.toString(),
   'locationHint': locationHint,
 };
 
@@ -94,7 +96,9 @@ Map<String, dynamic> outboundDocItem({
   'colorId': colorId,
   'unitId': unitId,
   'unitRate': unitRate,
+  'unitRateExact': unitRate.toString(),
   'qty': qty,
+  'qtyExact': qty.toString(),
   'weight': ?weight,
   'parentGoodsId': parentGoodsId,
   'remark': ?remark,
@@ -296,6 +300,11 @@ class SubcontractOutboundFakeApi extends ApiClient {
                 'qty': items.firstWhere(
                   (item) => item['id'] == line['issueItemId'],
                 )['qty'],
+                'qtyExact': items
+                    .firstWhere(
+                      (item) => item['id'] == line['issueItemId'],
+                    )['qty']
+                    .toString(),
               },
           ],
         };
@@ -333,7 +342,7 @@ class SubcontractOutboundFakeApi extends ApiClient {
       if (existing.length != 1) {
         throw ApiException('CONFLICT', '不能新增明细', httpStatus: 409);
       }
-      if ((row['qty'] as num) <= 0) {
+      if (double.parse(row['qty'].toString()) <= 0) {
         throw ApiException(
           'VALIDATION',
           '出仓数量必须大于 0；本次不发的物料请删除该行',
@@ -341,6 +350,8 @@ class SubcontractOutboundFakeApi extends ApiClient {
         );
       }
       existing.single.addAll(row);
+      existing.single['qtyExact'] = row['qty'];
+      existing.single['unitRateExact'] = row['unitRate'];
     }
     // 没回传的行 = 本次不发: 服务端删行(拣货视图同步少一行)。
     final kept = sent.map((row) => row['id']).toSet();

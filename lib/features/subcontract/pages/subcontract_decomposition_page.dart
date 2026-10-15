@@ -190,6 +190,8 @@ class _SubcontractDecompositionPageState
   String? _drawOrderId;
   String? _drawOrderLabel;
   String? _drawOrderItemId;
+  Set<String> _drawApplicationItemIds = const {};
+  String? _drawApplicationLabel;
   final Set<String> _selectedDrawIds = <String>{};
   bool _drawNavigating = false;
 
@@ -436,6 +438,8 @@ class _SubcontractDecompositionPageState
     _drawOrderId = null;
     _drawOrderItemId = null;
     _drawOrderLabel = null;
+    _drawApplicationItemIds = const {};
+    _drawApplicationLabel = null;
     _historyTime = const UtenHistoryTimeValue.all();
   }
 
@@ -509,6 +513,8 @@ class _SubcontractDecompositionPageState
         ? orderId!.trim()
         : null;
     _drawOrderLabel = null;
+    _drawApplicationItemIds = const {};
+    _drawApplicationLabel = null;
     return true;
   }
 
@@ -753,6 +759,8 @@ class _SubcontractDecompositionPageState
       _exception = null;
       _selectedIds.clear();
       _columnFilters.clear();
+      _drawApplicationItemIds = const {};
+      _drawApplicationLabel = null;
       _drawOrderId = orderId;
       _drawOrderItemId = null;
       final number = task.actionDocument?.number.trim() ?? '';
@@ -768,6 +776,8 @@ class _SubcontractDecompositionPageState
       _drawOrderId = null;
       _drawOrderItemId = null;
       _drawOrderLabel = null;
+      _drawApplicationItemIds = const {};
+      _drawApplicationLabel = null;
     });
     _loadDraw();
   }
@@ -1166,7 +1176,9 @@ class _SubcontractDecompositionPageState
               key: const Key('subcontract-draw-scope'),
               avatar: const Icon(Icons.filter_alt_outlined, size: 18),
               label: Text(
-                _drawOrderItemId != null
+                _drawApplicationItemIds.isNotEmpty
+                    ? '领料行只看申请 $_drawApplicationLabel 的关联任务'
+                    : _drawOrderItemId != null
                     ? '领料行只看通知里的这条委外任务'
                     : _drawOrderLabel != null
                     ? '领料行只看订货单 $_drawOrderLabel 的委外任务'
@@ -1461,7 +1473,10 @@ class _SubcontractDecompositionPageState
 
   // —— 「待处理」领料行(ADR-171 修订二：拍平进待处理表) ——
 
-  bool get _drawScoped => _drawOrderId != null || _drawOrderItemId != null;
+  bool get _drawScoped =>
+      _drawOrderId != null ||
+      _drawOrderItemId != null ||
+      _drawApplicationItemIds.isNotEmpty;
 
   /// 领料行是否允许勾选(批量领料)：领料行可见且账号有提交权、服务端标了可领。
   bool get _canSubmitDraw =>
@@ -1479,7 +1494,9 @@ class _SubcontractDecompositionPageState
       if (_drawVisible)
         for (final row
             in _drawData?.page.items ?? const <SubcontractDrawTaskRow>[])
-          SubcontractPendingDrawRow(row),
+          if (_drawApplicationItemIds.isEmpty ||
+              row.applicationItemIds.any(_drawApplicationItemIds.contains))
+            SubcontractPendingDrawRow(row),
     ];
     final applicationRows = [
       for (final task in data.items) SubcontractApplicationRow(task),
@@ -1635,6 +1652,7 @@ class _SubcontractDecompositionPageState
         MasterColumnDef(
           key: 'requiredQty',
           label: '需求量',
+          info: '申请行是原申请需求；领料行是该订货明细的需求，数量均使用本行单位。',
           width: 110,
           type: 'number',
           value: (row) => switch (row) {
@@ -1643,7 +1661,10 @@ class _SubcontractDecompositionPageState
                   ? '—'
                   : '${formatWorkbenchQuantity(task.requiredQty)} ${task.unitName}'
                         .trim(),
-            SubcontractPendingDrawRow() => '—',
+            SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+              row.orderQty,
+              row.unitName,
+            ),
           },
         ),
         MasterColumnDef(
@@ -1657,8 +1678,22 @@ class _SubcontractDecompositionPageState
                   ? '${task.openLineCount} 行'
                   : '${formatWorkbenchQuantity(task.openQty)} ${task.unitName}'
                         .trim(),
-            SubcontractPendingDrawRow() => '—',
+            SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+              0,
+              row.unitName,
+            ),
           },
+          cellBuilder: (context, row) =>
+              _pendingQuantityCell(context, switch (row) {
+                SubcontractApplicationRow(:final task) =>
+                  task.isDocumentGrouped
+                      ? '${task.openLineCount} 行'
+                      : formatQtyWithUnit(task.openQty, task.unitName),
+                SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+                  0,
+                  row.unitName,
+                ),
+              }, row is SubcontractApplicationRow && row.task.openQty > 0),
         ),
         // ADR-156：紧挨数量列，「可部分下单 | 4 / 剩余 6 件」一眼读完。
         MasterColumnDef(
@@ -1672,8 +1707,24 @@ class _SubcontractDecompositionPageState
           value: (row) => switch (row) {
             SubcontractApplicationRow(:final task) =>
               task.orderableQtyText ?? '—',
-            SubcontractPendingDrawRow() => '—',
+            SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+              0,
+              row.unitName,
+            ),
           },
+          cellBuilder: (context, row) => _pendingQuantityCell(
+            context,
+            switch (row) {
+              SubcontractApplicationRow(:final task) =>
+                task.orderableQtyText ?? '—',
+              SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+                0,
+                row.unitName,
+              ),
+            },
+            row is SubcontractApplicationRow &&
+                (row.task.orderableQty ?? 0) > 0,
+          ),
         ),
         _pendingDrawQtyColumn('orderQty', '订货数量', (row) => row.orderQty),
         _pendingDrawQtyColumn('drawnQty', '已领', (row) => row.drawnQty),
@@ -1801,13 +1852,102 @@ class _SubcontractDecompositionPageState
     // 2026-10-10 数量+单位口径：单位(订货单位=委外件单位)内联进数字，
     // 独立「单位」列已删除；排序由表格组件剥单位后缀兜底。
     value: (row) => switch (row) {
-      SubcontractApplicationRow() => '—',
+      SubcontractApplicationRow(:final task) => _applicationDrawQtyText(
+        task,
+        key,
+      ),
       SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
         qty(row),
         row.unitName,
       ),
     },
+    cellBuilder: (context, row) {
+      final text = switch (row) {
+        SubcontractApplicationRow(:final task) => _applicationDrawQtyText(
+          task,
+          key,
+        ),
+        SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+          qty(row),
+          row.unitName,
+        ),
+      };
+      if (row is SubcontractApplicationRow &&
+          key != 'orderQty' &&
+          row.task.allocatedQty > 0 &&
+          _drawVisible) {
+        return InkWell(
+          onTap: () => _showApplicationDrawTasks(row.task),
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: MasterDataTableCellScope.maybeOf(context)?.selected == true
+                  ? MasterDataTableCellScope.maybeOf(context)?.foregroundColor
+                  : Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        );
+      }
+      final value = switch (row) {
+        SubcontractApplicationRow(:final task) =>
+          key == 'orderQty' ? task.allocatedQty : 0,
+        SubcontractPendingDrawRow(:final row) => qty(row),
+      };
+      return _pendingQuantityCell(
+        context,
+        text,
+        const {'orderQty', 'drawableQty', 'shortQty'}.contains(key) &&
+            value > 0,
+      );
+    },
   );
+
+  String _applicationDrawQtyText(OperationsWorkbenchTask task, String key) {
+    if (task.isDocumentGrouped) return '查看明细';
+    if (key == 'orderQty') {
+      return formatQtyWithUnit(task.allocatedQty, task.unitName);
+    }
+    if (task.allocatedQty <= 0) return '下单后领料';
+    return _drawVisible ? '见领料任务' : '受限';
+  }
+
+  void _showApplicationDrawTasks(OperationsWorkbenchTask task) {
+    final ids = _applicationItemIdsOf(task).toSet();
+    final visibleRows = _drawData?.page.items.where(
+      (row) => row.applicationItemIds.any(ids.contains),
+    );
+    if (ids.isEmpty || visibleRows == null || visibleRows.isEmpty) {
+      context.appInfo('当前没有可见的关联领料任务，请在进行中核对关联订货单。');
+      return;
+    }
+    setState(() {
+      _drawOrderId = null;
+      _drawOrderItemId = null;
+      _drawOrderLabel = null;
+      _drawApplicationItemIds = ids;
+      _drawApplicationLabel = task.actionDocument?.number ?? task.planNo;
+      _selectedDrawIds.clear();
+    });
+  }
+
+  Widget _pendingQuantityCell(BuildContext context, String text, bool urgent) {
+    final scope = MasterDataTableCellScope.maybeOf(context);
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: urgent
+          ? TextStyle(
+              color: scope?.selected == true
+                  ? scope?.foregroundColor
+                  : Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w700,
+            )
+          : null,
+    );
+  }
 
   static String _label(String? value) =>
       value?.trim().isNotEmpty == true ? value!.trim() : '—';

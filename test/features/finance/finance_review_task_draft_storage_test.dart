@@ -239,8 +239,13 @@ class _Fixture {
             ? <String>[]
             : ['EDIT', 'APPROVE', 'REJECT'],
         'exchangeRate': '1',
+        // This fixture's source order explicitly submitted 13%; a missing tax
+        // is unknown input and cannot stand in for an approvable zero rate.
+        'taxRate': '13',
         if (committed)
           'financeExchangeRate': submittedBody['exchangeRate']?.toString(),
+        if (committed)
+          'financeTaxRate': submittedBody['taxRate']?.toString() ?? '13',
         'items': [
           {
             'orderItemId': 'line',

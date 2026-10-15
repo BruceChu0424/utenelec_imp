@@ -148,6 +148,7 @@ SubcontractDrawTaskRow drawRow(
   int unplannedShortKindCount = 0,
   bool canDraw = true,
   String? planNo,
+  List<String> applicationItemIds = const [],
 }) => SubcontractDrawTaskRow.fromJson(<String, dynamic>{
   'orderItemId': orderItemId,
   'orderId': orderId,
@@ -175,6 +176,7 @@ SubcontractDrawTaskRow drawRow(
   'deliverDate': '2026-10-20',
   'canDraw': canDraw,
   'planNo': ?planNo,
+  'applicationItemIds': applicationItemIds,
 });
 
 Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
@@ -205,6 +207,7 @@ Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
       'deliverDate': row.deliverDate,
       'canDraw': row.canDraw,
       'planNo': ?row.planNo,
+      'applicationItemIds': row.applicationItemIds,
     };
 
 /// 预览任务行。

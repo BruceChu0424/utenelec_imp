@@ -57,6 +57,18 @@ public class MaterialIssueItemDto {
     private String returnNo;
     private String orderNo;
 
+    public String getQtyExact() {
+        return com.uten.imp.common.util.DecimalText.of(qty);
+    }
+
+    public String getRequestedQtyExact() {
+        return com.uten.imp.common.util.DecimalText.of(requestedQty);
+    }
+
+    public String getUnitRateExact() {
+        return com.uten.imp.common.util.DecimalText.of(unitRate);
+    }
+
     /** 供应商期末结存 = 发出 − 已消费 − 已退 − 已损耗（派生展示口径，不落库）。 */
     public BigDecimal getSupplierEnding() {
         BigDecimal at = atSupplierQty == null ? BigDecimal.ZERO : atSupplierQty;

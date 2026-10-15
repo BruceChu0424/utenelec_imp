@@ -57,7 +57,7 @@ class WarehouseScopeSelector extends ConsumerWidget {
         Localizations.of<AppLocalizations>(context, AppLocalizations) ??
         lookupAppLocalizations(const Locale('zh'));
     final theme = Theme.of(context);
-    final mine = ref.watch(myWarehouseScopeProvider).valueOrNull;
+    final mine = confirmedMyWarehouseScope(ref.watch(myWarehouseScopeProvider));
     if (mine == null) return const SizedBox.shrink();
     final only = mine.onlyWarehouse;
     if (only != null) {

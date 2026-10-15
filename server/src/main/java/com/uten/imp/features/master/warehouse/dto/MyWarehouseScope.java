@@ -12,13 +12,15 @@ import java.util.UUID;
  *                           其他人为空)。服务端按同一清单校验 scopeWarehouseId, 越界 403
  * @param keeperWarehouses   本人登记负责的仓(登记在主仓上的也列出)
  * @param defaultWarehouseId 只负责一个仓的子仓负责人 = 那个仓(选择器显示只读标签); 其余为空 = 本人默认范围
+ * @param warehouseParticipant 服务端判定的仓库任务参与能力；OTHER 不代表具备此能力
  */
 public record MyWarehouseScope(
         String role,
         boolean canSelectAll,
         List<Option> selectable,
         List<Option> keeperWarehouses,
-        UUID defaultWarehouseId) {
+        UUID defaultWarehouseId,
+        boolean warehouseParticipant) {
 
     /** 一个仓库选项。 */
     public record Option(UUID id, String code, String name, UUID parentId) {

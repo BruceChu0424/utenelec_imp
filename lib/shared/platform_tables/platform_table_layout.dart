@@ -5,6 +5,7 @@ import '../providers/uten_page_prefs_notifier.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../widgets/procurement_document_layout.dart';
 import 'platform_table_models.dart';
+import 'procurement_review_column_layout.dart';
 
 String platformTableFingerprint(String value) =>
     sha256.convert(utf8.encode(value)).toString().substring(0, 32);
@@ -125,6 +126,13 @@ class PlatformTableLayoutNotifier
     extends UtenPagePrefsNotifier<PlatformTableLayout> {
   PlatformTableLayoutNotifier(this.tableKey);
   final String tableKey;
+  bool get _materialPreparation =>
+      tableKey ==
+      'features.production.pages.material_analysis_material_table.MaterialAnalysisMaterialTableState._materialAnalysisTable.2';
+  bool get _financeReview => const {
+    'finance.procurement.review.purchase.items',
+    'finance.procurement.review.subcontract.items',
+  }.contains(tableKey);
   @override
   String get cacheKey {
     final scope = ref.read(authenticatedScopeProvider);
@@ -145,6 +153,8 @@ class PlatformTableLayoutNotifier
   PlatformTableLayout get defaultValue => PlatformTableLayout(
     layoutVersion: tableKey == purchaseOrderItemsTableKey
         ? purchaseOrderColumnLayoutVersion
+        : _financeReview || _materialPreparation
+        ? 1
         : 0,
   );
   @override
@@ -153,6 +163,21 @@ class PlatformTableLayoutNotifier
     final decoded = PlatformTableLayout.fromJson(
       Map<String, dynamic>.from(raw),
     );
+    if (_financeReview && decoded.layoutVersion < 1) {
+      return decoded.copyWith(
+        order: financeProcurementReviewColumns(
+          decoded.order,
+          keyOf: (key) => key,
+        ),
+        layoutVersion: 1,
+      );
+    }
+    if (_materialPreparation && decoded.layoutVersion < 1) {
+      return decoded.copyWith(
+        widths: Map.of(decoded.widths)..remove('handle'),
+        layoutVersion: 1,
+      );
+    }
     if (tableKey != purchaseOrderItemsTableKey ||
         decoded.layoutVersion >= purchaseOrderColumnLayoutVersion) {
       return decoded;

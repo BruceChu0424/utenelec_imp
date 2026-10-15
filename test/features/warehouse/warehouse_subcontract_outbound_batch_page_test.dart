@@ -9,6 +9,12 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/cards/uten_card.dart';
+import 'package:uten_imp/components/inputs/uten_date_field.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
+import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/warehouse_hierarchy_dropdown.dart';
@@ -18,6 +24,7 @@ import 'package:uten_imp/features/warehouse/pages/warehouse_subcontract_outbound
 import 'package:uten_imp/features/warehouse/pages/warehouse_outbound_task_center_page.dart';
 import 'package:uten_imp/features/warehouse/widgets/subcontract_outbound_detail_table.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'outbound_weight_fakes.dart';
 import 'subcontract_outbound_test_support.dart';
@@ -30,6 +37,124 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
+  });
+
+  testWidgets('自动交期保存为null直到服务端成功确认，人工交期原样提交', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = SubcontractOutboundFakeApi();
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+    final fields = find.byWidgetPredicate(
+      (widget) => widget is UtenDateField && widget.label == '交货日期',
+    );
+    final chosen = DateTime(2026, 1, 3);
+    tester.widget<UtenDateField>(fields.at(1)).onChanged(chosen);
+    await tester.pump();
+    await _confirm(tester);
+    expect(api.savedBodies.first['deliverDate'], isNull);
+    expect(api.savedBodies[1]['deliverDate'], '2026-01-03');
+  });
+
+  testWidgets('默认交货日随重开当天，人工日期保留；表头字段等高', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = SubcontractOutboundFakeApi();
+    await tester.pumpWidget(_app(api, productionTheme: true));
+    await tester.pumpAndSettle();
+    Finder delivery() => find.byWidgetPredicate(
+      (widget) => widget is UtenDateField && widget.label == '交货日期',
+    );
+    final today = ChinaDateTime.today();
+    expect(tester.widget<UtenDateField>(delivery().first).value, today);
+    expect(tester.widget<UtenDateField>(delivery().first).autofilled, isTrue);
+    expect(
+      tester.getSize(find.byType(UtenEmployeePicker).first).height,
+      tester.getSize(delivery().first).height,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('weight-cell-input')).first)
+          .height,
+      tester
+          .getSize(
+            find.byKey(
+              const ValueKey('subcontract-outbound-issue-item-1-quantity'),
+            ),
+          )
+          .height,
+    );
+    final element =
+        tester.element(find.byType(WarehouseSubcontractOutboundBatchPage))
+            as StatefulElement;
+    final state =
+        element.state as FormDraftMixin<WarehouseSubcontractOutboundBatchPage>;
+    final automatic = state.captureFormDraft();
+    final saved =
+        (automatic['documents'] as List).first as Map<String, dynamic>;
+    expect(saved['deliverDate'], isNull);
+    // The draft was recorded on a different day. Its automatic delivery date
+    // is represented by null, independently from its old document date.
+    saved['billDate'] = '2026-01-01T00:00:00.000';
+    tester
+        .widget<UtenDateField>(delivery().first)
+        .onChanged(DateTime(2026, 1, 2));
+    await tester.pump();
+    await state.restoreFormDraft(automatic);
+    element.markNeedsBuild();
+    await tester.pump();
+    expect(tester.widget<UtenDateField>(delivery().first).value, today);
+    final chosen = DateTime(2026, 1, 3);
+    tester.widget<UtenDateField>(delivery().first).onChanged(chosen);
+    await tester.pump();
+    final explicit = state.captureFormDraft();
+    await state.restoreFormDraft(explicit);
+    element.markNeedsBuild();
+    await tester.pump();
+    expect(tester.widget<UtenDateField>(delivery().first).value, chosen);
+    expect(tester.widget<UtenDateField>(delivery().first).autofilled, isFalse);
+    expect(api.updates, isEmpty);
+  });
+
+  testWidgets('发出仓预填需核对，表尾按货品和真实单位汇总', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1100));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = SubcontractOutboundFakeApi();
+    api.pickLines['issue-2']!.single['unitName'] = '箱';
+    ((api.documents['issue-2']!['items'] as List).single
+            as Map<String, dynamic>)['unitId'] =
+        'unit-box';
+    await tester.pumpWidget(_app(api));
+    await tester.pumpAndSettle();
+    final table = tester.widget<SubcontractOutboundDetailTable>(
+      find.byType(SubcontractOutboundDetailTable),
+    );
+    expect(table.rows.every((row) => row.warehouseAutofilled), isTrue);
+    table.rows.first.onWarehouseChanged!('actual-leaf-b');
+    await tester.pump();
+    final changed = tester.widget<SubcontractOutboundDetailTable>(
+      find.byType(SubcontractOutboundDetailTable),
+    );
+    expect(changed.rows.first.warehouseAutofilled, isFalse);
+    expect(
+      changed.rows.skip(1).every((row) => row.warehouseAutofilled),
+      isTrue,
+    );
+    final summary = tester.widget<UtenTotalsSummaryBar>(
+      find.byType(UtenTotalsSummaryBar),
+    );
+    expect(
+      summary.entries.any(
+        (entry) => entry.label == '货品种类' && entry.value == '3 种',
+      ),
+      isTrue,
+    );
+    expect(
+      summary.entries.any(
+        (entry) => entry.label == '合计数量' && entry.value == '200 个 · 100 箱',
+      ),
+      isTrue,
+    );
   });
 
   testWidgets('员工名称查询缓慢不阻塞出仓明细，原经办人UUID仍保留', (tester) async {
@@ -338,7 +463,7 @@ void main() {
     table.rows.first.draft.qty.text = '70';
     await _confirm(tester);
     final first = (api.savedBodies.first['items'] as List).single as Map;
-    expect(first['qty'], 70);
+    expect(first['qty'], '70');
     expect(api.approvals, _issueIds);
     expect(tester.takeException(), isNull);
   });
@@ -548,6 +673,7 @@ Future<void> _confirm(WidgetTester tester) async {
 Widget _app(
   SubcontractOutboundFakeApi api, {
   Set<String> permissions = subcontractOutboundPermissions,
+  bool productionTheme = false,
 }) => ProviderScope(
   overrides: [
     fakeWeightRepositoryOverride(),
@@ -556,7 +682,14 @@ Widget _app(
     currentPermissionsProvider.overrideWithValue(permissions),
     sharedPreferencesProvider.overrideWithValue(_preferences),
   ],
-  child: const MaterialApp(
-    home: WarehouseSubcontractOutboundBatchPage(issueIds: _issueIds),
+  child: MaterialApp(
+    theme: productionTheme
+        ? buildLightTheme().copyWith(platform: TargetPlatform.windows)
+        : null,
+    home: productionTheme
+        ? const UtenControlTheme(
+            child: WarehouseSubcontractOutboundBatchPage(issueIds: _issueIds),
+          )
+        : const WarehouseSubcontractOutboundBatchPage(issueIds: _issueIds),
   ),
 );

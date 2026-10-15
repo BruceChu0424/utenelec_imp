@@ -3,6 +3,7 @@ package com.uten.imp.features.production;
 import com.uten.imp.security.DocumentAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.application.port.ProductionDocumentReadScopePort;
 import org.springframework.stereotype.Component;
 
 /**
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Component;
  * 等系统内部路径豁免本隔离。
  */
 @Component
-public class ProductionDocumentAccessPolicy extends DocumentAccessPolicy {
+public class ProductionDocumentAccessPolicy extends DocumentAccessPolicy implements ProductionDocumentReadScopePort {
 
     public static final String SCOPE = "production_plan";
     public static final String VIEW_ALL = "production_plan:view:all";

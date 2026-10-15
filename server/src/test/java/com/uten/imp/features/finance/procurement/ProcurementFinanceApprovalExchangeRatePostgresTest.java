@@ -45,6 +45,42 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
+    void historicalUndecidedTaxNeverInheritsAnotherRoundsDecision() throws Exception {
+        try(var postgres=new PostgreSQLContainer<>("postgres:16-alpine")
+                .withDatabaseName("procurement_tax_history").withUsername("uten").withPassword("uten-test-only")) {
+            postgres.start();
+            var jdbc=new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()));
+            schema(jdbc);applyV835(jdbc);
+            for(String kind:List.of("PURCHASE","SUBCONTRACT")) {
+                Harness harness=harness(jdbc,kind);UUID first=submit(jdbc,harness);
+                harness.service.approveBatch(List.of(new ProcurementApprovalContracts.BatchDecisionItem(first,1L)),null,new BigDecimal("6.85"),new BigDecimal("13.1234"));
+                assertThat(harness.service.review(first).financeTaxRate()).isEqualByComparingTo("13.1234");
+                harness.service.submit(kind,harness.orderId());
+                UUID second=jdbc.queryForObject("SELECT id FROM procurement_order_approval_cases WHERE order_id=? AND attempt=2",UUID.class,harness.orderId());
+                var pending=harness.service.review(second);
+                assertThat(pending.financeTaxRate()).isNull();
+                assertThat(pending.referenceFinanceTaxRate()).isEqualByComparingTo("13.1234");
+                assertThat(pending.exchangeRate()).isEqualByComparingTo("1");
+                assertThat(pending.financeExchangeRate()).isNull();
+                assertThat(pending.referenceFinanceExchangeRate()).isEqualByComparingTo("6.85");
+                harness.service.rejectBatch(List.of(new ProcurementApprovalContracts.BatchDecisionItem(second,1L)),"退回补充数量");
+                var rejected=harness.service.review(second);
+                assertThat(rejected.financeTaxRate()).isNull();assertThat(rejected.referenceFinanceTaxRate()).isNull();
+                assertThat(rejected.financeExchangeRate()).isNull();assertThat(rejected.referenceFinanceExchangeRate()).isNull();
+                harness.service.submit(kind,harness.orderId());
+                UUID third=jdbc.queryForObject("SELECT id FROM procurement_order_approval_cases WHERE order_id=? AND attempt=3",UUID.class,harness.orderId());
+                jdbc.update("UPDATE procurement_order_approval_cases SET status='CANCELED',version=version+1 WHERE id=?",third);
+                var canceled=harness.service.review(third);
+                assertThat(canceled.financeTaxRate()).isNull();assertThat(canceled.referenceFinanceTaxRate()).isNull();
+                assertThat(canceled.referenceFinanceExchangeRate()).isNull();
+                assertThat(harness.service.review(first).financeTaxRate()).isEqualByComparingTo("13.1234");
+                assertThat(harness.service.review(first).financeExchangeRate()).isEqualByComparingTo("6.85");
+                assertThat(harness.service.review(first).referenceFinanceExchangeRate()).isNull();
+            }
+        }
+    }
+
+    @Test
     void approvedHistoryQueriesUseDecisionRateAndFrozenSupplier() throws Exception {
         // Real SQL must keep approved snapshots independent from current master-data renames.
         try (var postgres = new PostgreSQLContainer<>("postgres:16-alpine")
@@ -348,7 +384,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                   submitted_by_user_id uuid,submitted_by_employee_id uuid,assignee_user_id uuid,assignee_employee_id uuid,
                   assignee_name_snapshot text,status text,version bigint,submitted_at timestamptz DEFAULT now(),
                   rejection_reason text,decided_by_user_id uuid,decided_by_employee_id uuid,decided_at timestamptz,
-                  updated_at timestamptz);
+                  updated_at timestamptz, finance_tax_rate numeric);
                 CREATE TABLE procurement_order_approval_events(id uuid,case_id uuid,event_type text,actor_user_id uuid,
                   actor_employee_id uuid,from_assignee_user_id uuid,to_assignee_user_id uuid,reason text,event_snapshot jsonb,created_at timestamptz DEFAULT now());
                 CREATE TABLE procurement_order_qty_change_logs(order_type text,order_item_id uuid,old_qty numeric,new_qty numeric,changed_at timestamptz,changed_by_employee_id uuid,case_id uuid);
@@ -368,7 +404,7 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                 CREATE TABLE units(id uuid,name text);
                 """);
         for (String prefix : List.of("purchase", "subcontract")) {
-            jdbc.execute("CREATE TABLE " + prefix + "_receipts(id uuid,status smallint,exchange_rate numeric,is_deleted boolean DEFAULT FALSE)");
+            jdbc.execute("CREATE TABLE " + prefix + "_receipts(id uuid,status smallint,exchange_rate numeric,tax_rate numeric,is_deleted boolean DEFAULT FALSE)");
             jdbc.execute("CREATE TABLE " + prefix + "_receipt_items(id uuid,receipt_id uuid,order_item_id uuid,is_deleted boolean DEFAULT FALSE)");
             jdbc.execute("CREATE TABLE " + prefix + "_orders(id uuid,supplier_id uuid,warehouse_id uuid,currency_id uuid,settlement_method_id uuid,purchaser_id uuid,maker_id uuid,remark text,deliver_date date,status smallint DEFAULT 0,is_deleted boolean DEFAULT FALSE)");
             jdbc.execute("CREATE TABLE " + prefix + "_order_items(id uuid,order_id uuid,line_no int,goods_id uuid,color_id uuid,unit_id uuid,goods_code_snapshot text,goods_name_snapshot text,weight numeric(18,4),remark text,source_doc_no text,is_deleted boolean DEFAULT FALSE)");

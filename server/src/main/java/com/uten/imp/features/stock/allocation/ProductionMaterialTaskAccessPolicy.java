@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
 
 /** Material reads may be plan-wide; ordinary workshop writes are always checked per exact demand/segment. */
 @Component
@@ -26,6 +28,24 @@ public class ProductionMaterialTaskAccessPolicy {
 
     public record ReadScope(boolean all, List<UUID> segmentIds) {}
     public record Capabilities(boolean canSettle, boolean canReverse, boolean canClose, boolean canRequestReturn) {}
+
+    public record SqlReadScope(String predicate,Map<String,Object> parameters) {}
+
+    /** Binds the exact plan ownership / workshop task scope used by readable(), before list pagination. */
+    public SqlReadScope queryReadScope(String planAlias,String segmentAlias) {
+        if (!planAlias.matches("[a-zA-Z_][a-zA-Z0-9_]*")||!segmentAlias.matches("[a-zA-Z_][a-zA-Z0-9_]*"))
+            throw new IllegalArgumentException("Invalid internal material query alias");
+        if (!legacyReads.hasPlanReadCapability()&&!has("production_execution:view")) throw forbidden();
+        var plan=legacyReads.planReadScope(planAlias+".maker_id","materialPlanOwners");
+        Map<String,Object> parameters=new HashMap<>();
+        if(plan.parameterName()!=null)parameters.put(plan.parameterName(),plan.owners());
+        String predicate=plan.predicate();
+        if(has("production_execution:view")&&currentUser.get().map(user->user.getEmployeeId()!=null).orElse(false)) {
+            parameters.put("employeeId",currentUser.requireEmployeeId());
+            predicate="("+predicate+" OR "+ProductionWorkshopAssignmentScope.predicate(segmentAlias)+")";
+        }
+        return new SqlReadScope(predicate,Map.copyOf(parameters));
+    }
 
     public Capabilities capabilities(UUID planId, UUID segmentId) {
         readable(planId,segmentId);

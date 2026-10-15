@@ -1,6 +1,6 @@
 // 销售出货单列表「按真实阶段分段」（2026-09-20 用户口径：出货单等待财务审核、财务已放行
 // 待出库时 status 仍是 0，此前全被归到「草稿」）。断言：
-//   1. 分段行是 草稿/等待财务审核/财务已退回/已审/已出库/红冲/历史记录；
+//   1. 活动分段为草稿/等待财务审核/财务已退回/已审，终态从历史进入；
 //   2. 点某段发 stage=<阶段> 且不带 status；
 //   3. 状态列按行真实阶段显示（等待财务审核 / 已审 · 待出库），不再一律「草稿」。
 import 'package:dio/dio.dart';
@@ -17,6 +17,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 late SharedPreferences _preferences;
@@ -73,15 +74,7 @@ void main() {
       of: find.byKey(const Key('sales-doc-status-shipments')),
       matching: find.text(label),
     );
-    for (final label in const [
-      '草稿',
-      '等待财务审核',
-      '财务已退回',
-      '已审',
-      '已出库',
-      '已反审',
-      '历史记录',
-    ]) {
+    for (final label in const ['草稿', '等待财务审核', '财务已退回', '已审', '历史记录']) {
       expect(segmentText(label), findsOneWidget, reason: '分段「$label」');
     }
     // 自动选中已发 stage=DRAFT 查询。
@@ -91,7 +84,7 @@ void main() {
     //   · 草稿 4 / 财务已退回 2 = 红徽章(销售自己要提交、要改单重报);
     //   · 等待财务审核 3 / 已审 1 = 黄色进行中徽章(球在财务、仓库手上, 单子还在跑;
     //     「已审」在状态列的全称就是「已审 · 待出库」, 不是终态);
-    //   · 已出库 9 / 红冲 0 = 中性括号(已经结束; 0 也显示保持队形), 历史记录不挂数。
+    //   · 已出库 / 反审已结束，只从历史记录进入，历史不挂待办数。
     // 自动选中会多触发一次重载（计数重取）：取第一次的 kind 断言即可。
     expect(api.statusCountQueries.first['kind'], 'salesShipment');
     expect(api.statusCountQueries.first.containsKey('shipmentKind'), isFalse);
@@ -101,25 +94,54 @@ void main() {
     expect(find.byType(UtenInProgressBadge), findsNWidgets(2));
     expect(find.text('3'), findsOneWidget);
     expect(find.text('1'), findsOneWidget);
-    expect(find.text('(9)'), findsOneWidget);
-    expect(find.text('(0)'), findsOneWidget);
+    expect(segmentText('已出库'), findsNothing);
+    expect(segmentText('已反审'), findsNothing);
+    expect(find.text('(9)'), findsNothing);
+    expect(find.text('(0)'), findsNothing);
 
     await tester.tap(segmentText('等待财务审核'));
     await tester.pumpAndSettle();
     expect(api.listQueries.last['stage'], 'PENDING_FINANCE');
     expect(api.listQueries.last.containsKey('status'), isFalse);
     // 行状态按真实阶段：等待财审行与财务已放行待出库行各自成文，不再一律「草稿」。
-    expect(find.text('等待财务审核'), findsNWidgets(2));
-    expect(find.text('已审 · 待出库'), findsOneWidget);
-    expect(find.text('草稿'), findsOneWidget);
+    final activeTable = tester.widget<MasterDataTableView<SalesDocListItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<SalesDocListItem>,
+      ),
+    );
+    final status = activeTable.columns.singleWhere(
+      (column) => column.key == 'status',
+    );
+    expect(
+      status.value(
+        activeTable.items.singleWhere((row) => row.id == 'shipment-pending'),
+      ),
+      '等待财务审核',
+    );
+    expect(
+      status.value(
+        activeTable.items.singleWhere((row) => row.id == 'shipment-approved'),
+      ),
+      '已审 · 待出库',
+    );
+    expect(segmentText('草稿'), findsOneWidget);
 
     await tester.tap(segmentText('已审'));
     await tester.pumpAndSettle();
     expect(api.listQueries.last['stage'], 'FINANCE_APPROVED');
 
-    await tester.tap(segmentText('已出库'));
+    final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
+      find.byWidgetPredicate(
+        (widget) => widget is MasterDataTableView<SalesDocListItem>,
+      ),
+    );
+    table.onFilterChanged('status', SalesShipmentStage.shipped);
     await tester.pumpAndSettle();
     expect(api.listQueries.last['stage'], 'SHIPPED');
+    expect(
+      find.byKey(const Key('sales-doc-history-time-shipments')),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 }

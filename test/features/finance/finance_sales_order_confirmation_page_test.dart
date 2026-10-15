@@ -388,9 +388,10 @@ void main() {
         expect(pendingBadge().count, 3);
         expect(toolbar().segments.map((segment) => segment.value), [
           'pending',
-          'confirmed',
           'rejected',
+          'confirmed',
         ]);
+        expect(toolbar().segments.last.label, '历史单据');
         final search = find.descendant(
           of: find.byKey(const Key('sales-order-finance-search')),
           matching: find.byType(TextField),
@@ -676,7 +677,7 @@ void main() {
     expect(table().filters['status'], isNull);
     table().onFilterChanged('status', 'changes');
     await tester.pumpAndSettle();
-    await tester.tap(find.text('已批准'));
+    await tester.tap(find.text('历史单据'));
     await tester.pumpAndSettle();
     expect(repository.pendingQueries.last.confirmed, isTrue);
     expect(repository.pendingQueries.last.changes, isNull);
@@ -774,7 +775,7 @@ void main() {
     ]);
     await _pumpPage(tester, repository, size: const Size(1400, 900));
     expect(find.text('XD-APPROVED'), findsNothing);
-    await tester.tap(find.text('已批准'));
+    await tester.tap(find.text('历史单据'));
     await tester.pumpAndSettle();
     expect(find.text('XD-APPROVED'), findsOneWidget);
     expect(find.text('XD-PENDING'), findsNothing);

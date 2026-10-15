@@ -85,8 +85,11 @@ class CommercialHeaderFilterPostgresTest {
         assertTrue(containsBill(known,zero));assertFalse(containsBill(known,unknown));assertFalse(containsBill(known,legacy));
         JsonNode missing=read("/api/finance/expenses",setup.actor(),Map.of("hf.amountNull","true","hf.recordOrigin","CURRENT"),200);
         assertTrue(containsBill(missing,unknown));assertFalse(containsBill(missing,zero));
-        JsonNode imported=read("/api/finance/expenses/facets",setup.actor(),Map.of("hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200);
+        JsonNode activeImported=read("/api/finance/expenses/facets",setup.actor(),Map.of("view","ACTIVE","hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200);
+        assertFalse(activeImported.path("billNo").toString().contains(legacy));
+        JsonNode imported=read("/api/finance/expenses/facets",setup.actor(),Map.of("view","HISTORY","hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200);
         assertTrue(imported.path("billNo").toString().contains(legacy));
+        assertTrue(containsBill(read("/api/finance/expenses",setup.actor(),Map.of("view","HISTORY","hf.recordOrigin","LEGACY","hf.amountMin","8","hf.amountMax","8"),200),legacy));
         read("/api/finance/expenses",setup.actor(),Map.of("hf.amountNull","true","hf.amountMin","0"),422);
     }
     @Test void wasteWeightNullAndRealZeroUsePhysicalWeightWithoutExposingSuggestionMoney()throws Exception {
@@ -105,7 +108,10 @@ class CommercialHeaderFilterPostgresTest {
         assertFalse(containsBill(read("/api/finance/expenses",other,Map.of("hf.amountMin","8","hf.amountMax","8"),200),own));
         db.update("UPDATE finance_expenses SET is_deleted=TRUE,deleted_at=now() WHERE bill_no=?",own);
         assertFalse(containsBill(read("/api/finance/expenses",setup.actor(),Map.of("billNo",own,"hf.amountMin","8"),200),own));
-        assertTrue(containsBill(read("/api/finance/expenses",setup.actor(),Map.of("billNo",own,"onlyDeleted","true","hf.amountMin","8"),200),own));
+        assertFalse(containsBill(read("/api/finance/expenses",setup.actor(),Map.of("view","ACTIVE","billNo",own,"onlyDeleted","true","hf.amountMin","8"),200),own));
+        assertFalse(containsBill(read("/api/finance/expenses",setup.actor(),Map.of("view","HISTORY","billNo",own,"hf.amountMin","8"),200),own));
+        assertFalse(containsBill(read("/api/finance/expenses",other,Map.of("view","HISTORY","billNo",own,"onlyDeleted","true","hf.amountMin","8"),200),own));
+        assertTrue(containsBill(read("/api/finance/expenses",setup.actor(),Map.of("view","HISTORY","billNo",own,"onlyDeleted","true","hf.amountMin","8"),200),own));
     }
     @Test void allTwentyTwoNativeListAndFacetMappingsBuildRealPredicatesUnderTheSameContract()throws Exception {
         var setup=setup();String nowhere="HF-NO-MATCH-"+UUID.randomUUID();

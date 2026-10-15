@@ -252,7 +252,7 @@ void main() {
     final returned = _segment(tester, '已退回');
     expect(returned.count, 1);
     expect(returned.countForm, UtenSegmentCountForm.inProgress);
-    expect(_segment(tester, '已核价').count, isNull);
+    expect(_segment(tester, '历史单据').count, isNull);
 
     expect(find.text('XB-p1'), findsOneWidget);
     expect(find.text('待核价 · 有 2 行没有标价 · 王会计 正在核价'), findsWidgets);
@@ -265,7 +265,7 @@ void main() {
     tester,
   ) async {
     final repo = await _pump(tester);
-    await tester.tap(find.text('已核价'));
+    await tester.tap(find.text('历史单据'));
     await tester.pumpAndSettle();
     expect(repo.calls.last.$1, SalesQuoteFinanceState.confirmed);
     expect(find.text('已核价 · 王会计'), findsWidgets);

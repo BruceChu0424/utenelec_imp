@@ -105,7 +105,7 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 300));
 
-      // 方向 → 出库；来源 → 销售出库，直接读取全状态服务端表格。
+      // 方向 → 出库；来源 → 销售出库，直接读取进行中服务端表格。
       await tester.tap(find.text('出库'));
       await tester.pump(const Duration(milliseconds: 300));
       void expectAlignedCategories() {
@@ -128,7 +128,8 @@ void main() {
       expect(find.text('入库'), findsOneWidget);
       expect(find.text('委外出库'), findsOneWidget);
       expect(find.text('已出库'), findsNothing);
-      expect(find.text('历史单据'), findsNothing);
+      expect(find.text('全部任务'), findsOneWidget);
+      expect(find.text('历史单据'), findsOneWidget);
       expectAlignedCategories();
 
       // 滑到头（外层收完 + 表内滚）。
@@ -144,6 +145,7 @@ void main() {
       expect(find.text('入库'), findsNothing);
       expect(find.text('委外出库'), findsNothing);
       expect(find.text('已出库'), findsNothing);
+      expect(find.text('历史单据'), findsNothing);
       expect(find.text('状态').hitTestable(), findsWidgets);
     },
   );

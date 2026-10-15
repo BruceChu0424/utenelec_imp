@@ -47,7 +47,7 @@ class _Names extends MasterNameService {
 
 class _Repo extends StockDocRepository {
   _Repo(StockDocType type) : super(ApiClient(Dio()), type);
-  final statuses = <String, int>{};
+  final statuses = <String, int>{'done': 1};
   final quantities = <String, double>{};
   final approved = <String>[];
   String? failId;
@@ -114,19 +114,23 @@ class _Repo extends StockDocRepository {
     String? order,
   }) async {
     lastFilter = filter;
-    return PagedResult(
-      items: [
-        for (final id in ['a', 'b'])
+    final items = [
+      for (final id in ['a', 'b', 'done'])
+        if (((statuses[id] ?? 0) == 0) ==
+                (filter.view == WarehouseTaskView.active) &&
+            (filter.status == null || filter.status == (statuses[id] ?? 0)))
           StockDocListItem(
             id: id,
             billNo: 'OUT-$id',
             docType: type.code,
-            status: 0,
+            status: statuses[id] ?? 0,
           ),
-      ],
+    ];
+    return PagedResult(
+      items: items,
       page: page,
-      size: 20,
-      total: 2,
+      size: size,
+      total: items.length,
       totalPages: 1,
     );
   }
@@ -310,6 +314,8 @@ void main() {
         );
         expect(table.selectable, isTrue);
         expect(repo.lastFilter?.keyword, 'first');
+        expect(repo.lastFilter?.view, WarehouseTaskView.active);
+        expect(repo.lastFilter?.status, 0);
         table.onSelectedIdsChanged!({'a', 'b'});
         await tester.pumpAndSettle();
         expect(find.text('批量出库'), findsOneWidget);
@@ -322,13 +328,27 @@ void main() {
               .selectedIds,
           isEmpty,
         );
-        await tester.tap(find.text('已审'));
+        await tester.tap(find.text('历史单据'));
         await tester.pumpAndSettle();
-        final updated = tester.widget<MasterDataTableView<dynamic>>(
+        final updated = tester.widget<MasterDataTableView<StockDocListItem>>(
           find.byKey(key),
         );
         expect(updated.selectedIds, isEmpty);
         expect(updated.selectable, isFalse);
+        expect(updated.items.map((row) => row.id), ['done']);
+        expect(repo.lastFilter?.view, WarehouseTaskView.history);
+        expect(repo.lastFilter?.status, isNull);
+        expect(repo.lastFilter?.keyword, 'second');
+        expect(find.text('批量出库'), findsNothing);
+        await tester.tap(find.text('草稿'));
+        await tester.pumpAndSettle();
+        final restored = tester.widget<MasterDataTableView<dynamic>>(
+          find.byKey(key),
+        );
+        expect(restored.selectable, isTrue);
+        expect(restored.selectedIds, isEmpty);
+        expect(repo.lastFilter?.view, WarehouseTaskView.active);
+        expect(repo.lastFilter?.status, 0);
       },
     );
   }

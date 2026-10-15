@@ -64,17 +64,18 @@ void main() {
       final api = _ListApi();
       await tester.pumpWidget(app(entry.$1, api));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('已审'));
+      await tester.tap(find.text('进行中'));
       await tester.pumpAndSettle();
 
       MasterDataTableView<StockDocListItem> table() =>
           tester.widget(find.byType(MasterDataTableView<StockDocListItem>));
       expect(find.byKey(Key(entry.$2)), findsNothing);
-      expect(table().items.map((row) => row.issueStatus), [0, 1, 2]);
+      expect(api.stockQueries.last['view'], 'ACTIVE');
+      expect(api.stockQueries.last['status'], 1);
+      expect(table().items.map((row) => row.issueStatus), [0, 1]);
       expect(table().facets['issueStatus']!.map((bucket) => bucket.value), [
         '0',
         '1',
-        '2',
       ]);
 
       table().onFilterChanged('issueStatus', '1');
@@ -86,7 +87,22 @@ void main() {
       table().onFilterChanged('issueStatus', null);
       await tester.pumpAndSettle();
       expect(api.stockQueries.last.containsKey('issueStatus'), isFalse);
-      expect(table().items.map((row) => row.issueStatus), [0, 1, 2]);
+      expect(table().items.map((row) => row.issueStatus), [0, 1]);
+      expect(table().filters['issueStatus'], isNull);
+      await tester.tap(find.text('历史单据'));
+      await tester.pumpAndSettle();
+      expect(api.stockQueries.last['view'], 'HISTORY');
+      expect(api.stockQueries.last.containsKey('status'), isFalse);
+      expect(api.stockQueries.last.containsKey('issueStatus'), isFalse);
+      expect(table().items.map((row) => row.issueStatus), [2]);
+      expect(table().facets.containsKey('issueStatus'), isFalse);
+      expect(table().selectable, isFalse);
+      await tester.tap(find.text('进行中'));
+      await tester.pumpAndSettle();
+      expect(api.stockQueries.last['view'], 'ACTIVE');
+      expect(api.stockQueries.last['status'], 1);
+      expect(api.stockQueries.last.containsKey('issueStatus'), isFalse);
+      expect(table().items.map((row) => row.issueStatus), [0, 1]);
       expect(table().filters['issueStatus'], isNull);
       expect(tester.takeException(), isNull);
     });
@@ -137,10 +153,13 @@ class _ListApi extends ApiClient {
   }) async {
     if (path == '/stock/docs') {
       stockQueries.add(Map<String, dynamic>.from(query ?? const {}));
+      final history = query?['view'] == 'HISTORY';
       return _page([
         for (final progress in [0, 1, 2])
-          if (query?['issueStatus'] == null ||
-              query?['issueStatus'] == progress)
+          // 部分出库仍有后续需求；完全发完的单据只留在历史。
+          if ((progress == 2) == history &&
+              (query?['issueStatus'] == null ||
+                  query?['issueStatus'] == progress))
             {
               'id': 'draw-$progress',
               'docType': 'DRAW',

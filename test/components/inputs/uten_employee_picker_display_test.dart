@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
@@ -61,7 +62,7 @@ void main() {
     await tester.tap(tileFinder);
     await tester.pump();
     expect(find.text('已选择：张三(E001)'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
 
     expect(changed?.id, 'employee-1');

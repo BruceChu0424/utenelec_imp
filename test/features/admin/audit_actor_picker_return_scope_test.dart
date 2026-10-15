@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -80,7 +81,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('审计旧账号'));
         await tester.pump();
-        await tester.tap(find.widgetWithText(FilledButton, '确定'));
+        await tester.tap(find.widgetWithText(UtenButton, '确定'));
         await tester.pumpAndSettle();
         expect(popped, 1);
         final composer = tester.widget<AuditQueryScopeComposer>(

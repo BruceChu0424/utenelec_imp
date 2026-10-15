@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -145,7 +146,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       expect(
         tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '确定'))
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
             .onPressed,
         isNull,
       );
@@ -153,7 +154,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '确定'))
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
             .onPressed,
         isNull,
       );
@@ -161,7 +162,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '确定'))
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
             .onPressed,
         isNotNull,
       );

@@ -7,11 +7,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import 'stock_ledger_models.dart';
+import '../models/paged_result.dart';
+import 'production_trace_models.dart';
 
 class GoodsStockLedgerRepository {
   GoodsStockLedgerRepository(this.api);
 
   final ApiClient api;
+
+  Future<PagedResult<GoodsProductionTraceRow>> productionTrace(
+    String goodsId, {
+    required String direction,
+    int page = 1,
+  }) async => PagedResult.fromJson(
+    await api.get(
+      ApiEndpoints.stockGoodsProductionTrace(goodsId),
+      query: {'direction': direction, 'page': page, 'size': 50},
+    ),
+    GoodsProductionTraceRow.fromJson,
+  );
 
   /// GET /stock/goods/{goodsId}/ledger (stock:view)。
   Future<StockLedgerPage> ledger(String goodsId, StockLedgerQuery query) async {

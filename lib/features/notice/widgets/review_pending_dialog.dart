@@ -38,6 +38,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/opportunistic_dialog_coordinator.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
@@ -345,6 +346,10 @@ Future<void> showReviewPendingDialog(
     return Future<void>.value();
   }
   _reviewPendingDialogOpen = true;
+  final priority = ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(opportunisticDialogCoordinatorProvider).prioritize();
   final generation = _dialogGeneration;
   return showDialog<void>(
     context: context,
@@ -355,6 +360,7 @@ Future<void> showReviewPendingDialog(
       manual: manual,
     ),
   ).whenComplete(() {
+    priority.release();
     if (generation == _dialogGeneration) _reviewPendingDialogOpen = false;
   });
 }

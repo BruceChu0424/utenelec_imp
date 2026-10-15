@@ -14,6 +14,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/ui/opportunistic_dialog_coordinator.dart';
 
 import '../models/notice.dart';
 import '../providers/notice_providers.dart';
@@ -47,6 +48,7 @@ class _ReviewPendingLoginGateState
   Timer? _timer;
   int _generation = 0;
   int _retryAttempt = 0;
+  DialogPriorityReservation? _priority;
 
   @override
   void initState() {
@@ -61,6 +63,8 @@ class _ReviewPendingLoginGateState
         oldWidget.enabled != widget.enabled) {
       _generation++;
       _timer?.cancel();
+      _priority?.release();
+      _priority = null;
       _checkedForIdentity = null;
       _retryAttempt = 0;
       closeReviewPendingDialog();
@@ -72,6 +76,8 @@ class _ReviewPendingLoginGateState
   void dispose() {
     _generation++;
     _timer?.cancel();
+    _priority?.release();
+    _priority = null;
     super.dispose();
   }
 
@@ -81,6 +87,7 @@ class _ReviewPendingLoginGateState
   void _schedule() {
     if (widget.enabled && _checkedForIdentity != widget.identityKey) {
       _checkedForIdentity = widget.identityKey;
+      _priority = ref.read(opportunisticDialogCoordinatorProvider).prioritize();
       final generation = _generation;
       _timer = Timer(
         const Duration(milliseconds: 300),
@@ -96,6 +103,7 @@ class _ReviewPendingLoginGateState
       _retry(generation);
       return;
     }
+    var retrying = false;
     try {
       final repository = ref.read(noticeRepositoryProvider);
       // 审核待办与人工通知并行拉取；任一失败整体重试（不能让打卡提醒因一次
@@ -114,6 +122,7 @@ class _ReviewPendingLoginGateState
       }
       final dialogContext = widget.dialogContext();
       if (dialogContext == null || !dialogContext.mounted) {
+        retrying = true;
         _retry(generation);
         return;
       }
@@ -125,7 +134,13 @@ class _ReviewPendingLoginGateState
     } catch (_) {
       // A temporary failure is not a successful login check. Retry with a
       // bounded delay, while identity/disposal guards cancel obsolete work.
+      retrying = true;
       _retry(generation);
+    } finally {
+      if (generation == _generation && !retrying) {
+        _priority?.release();
+        _priority = null;
+      }
     }
   }
 

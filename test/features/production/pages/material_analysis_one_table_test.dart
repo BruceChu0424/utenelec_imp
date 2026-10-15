@@ -234,6 +234,46 @@ void main() {
   materialOrderAuthorityCases();
   materialQuantityPresentationCases();
   materialPolicyCases();
+  testWidgets(
+    'initial planning progress is unified across product and material views',
+    (tester) async {
+      await _pump(tester);
+      final table = tester.widget<MasterDataTableView<dynamic>>(
+        find.byKey(const Key('material-analysis-material-table')),
+      );
+      final dynamic progress = table.columns.singleWhere(
+        (column) => column.key == 'status',
+      );
+      final initialLabels = table.items
+          // ignore: avoid_dynamic_calls
+          .map((row) => progress.value(row))
+          .toList();
+      expect(initialLabels, contains('等待计划下单'));
+      expect(initialLabels, isNot(contains('等待下达车间')));
+      expect(initialLabels, isNot(contains('本批需求待通知 800')));
+      expect(
+        table.columns.singleWhere((column) => column.key == 'handle').width,
+        88,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final aggregateTable = tester.widget<MasterDataTableView<dynamic>>(
+        find.byKey(const Key('material-analysis-material-table')),
+      );
+      final dynamic aggregateProgress = aggregateTable.columns.singleWhere(
+        (column) => column.key == 'status',
+      );
+      final aggregateLabels = aggregateTable.items
+          // ignore: avoid_dynamic_calls
+          .map((row) => aggregateProgress.value(row))
+          .toList();
+      expect(aggregateLabels, contains('等待计划下单'));
+      expect(aggregateLabels, isNot(contains('等待下发采购')));
+      expect(tester.takeException(), isNull);
+    },
+  );
   Map<String, dynamic> withCoveredAppendPool(Map<String, dynamic> data) {
     _fixtureMaterial(data, 'm-3').addAll({
       'planningUncoveredQty': 0,

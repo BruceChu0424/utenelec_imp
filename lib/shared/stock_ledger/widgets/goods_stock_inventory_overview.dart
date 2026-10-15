@@ -64,11 +64,10 @@ class GoodsStockInventoryOverview extends StatelessWidget {
       ('所属类型', goods.categoryName),
       ('物料系列', goods.series),
       ('型号', goods.model),
-      ('客户型号（主档）', goods.cNumber),
+      ('客户型号', goods.cNumber),
       ('规格', goods.spec),
       ('基本单位', goods.unitName),
-      ('主档库位号', goods.stockPlace),
-      ('主档归属仓库', goods.owningWarehouseName),
+
       ('货品备注', goods.remark),
     ];
     return Container(
@@ -86,10 +85,11 @@ class GoodsStockInventoryOverview extends StatelessWidget {
             runSpacing: 8,
             children: [
               for (final (label, value) in facts)
-                Text(
-                  '$label：${value?.isNotEmpty == true ? value : '—'}',
-                  style: theme.textTheme.bodyMedium,
-                ),
+                if (value?.trim().isNotEmpty == true)
+                  Text(
+                    '$label：${value?.isNotEmpty == true ? value : '—'}',
+                    style: theme.textTheme.bodyMedium,
+                  ),
             ],
           ),
           if (showQuantities) ...[
@@ -112,18 +112,17 @@ class GoodsStockInventoryOverview extends StatelessWidget {
                 weightDisplay: weightDisplay,
               ),
             ),
-            const Text('待检量与合格待入库分别是品质/收货状态量，不计入实存或可发库存。'),
             Wrap(
               spacing: 16,
               runSpacing: 4,
               children: [
                 for (final row in page.items)
-                  Text(
-                    '多排数量（全局生产计划·${row.colorName ?? '无颜色'}）：${row.moreQty?.toString() ?? '—'}（计划行单位）',
-                  ),
+                  if ((row.moreQty ?? 0) != 0)
+                    Text(
+                      '多排数量（全局生产计划·${row.colorName ?? '无颜色'}）：${row.moreQty?.toString() ?? '—'}（计划行单位）',
+                    ),
               ],
             ),
-            if (page.totalPages > 1) const Text('多排明细仅展示当前返回页；库存合计覆盖全部筛选结果。'),
           ],
         ],
       ),

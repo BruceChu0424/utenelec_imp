@@ -7,12 +7,15 @@ abstract final class AuditRetentionPresentation {
       '清理本机回执不会改变服务器日志。修改月数仅调整留存时间，日志保护由服务器管理。';
 
   static String modeLabel(AuditArchivePurgeMode mode) => switch (mode) {
+    AuditArchivePurgeMode.permanentRetain => '服务器审计日志永久保留',
     AuditArchivePurgeMode.preserveUnclassified => '服务器历史日志保护已启用',
     AuditArchivePurgeMode.legacyPurge => '服务器仍按旧规则清理历史日志',
     AuditArchivePurgeMode.unknown => '历史日志保护状态尚未确认',
   };
 
   static String modeConsequence(AuditArchivePurgeMode mode) => switch (mode) {
+    AuditArchivePurgeMode.permanentRetain =>
+      '在线月数决定何时归档，已归档日志继续永久保存。修改月数不会启用删除；请继续核查备份和恢复能力。',
     AuditArchivePurgeMode.preserveUnclassified =>
       '日志仍按设置归档，到期后继续保留，等待分类核查。请继续做好备份与恢复检查。',
     AuditArchivePurgeMode.legacyPurge =>

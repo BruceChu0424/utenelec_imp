@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/ui/opportunistic_dialog_coordinator.dart';
 
 import '../../../shared/providers/shared_providers.dart';
 import '../models/notice.dart';
@@ -33,6 +34,9 @@ class _CelebrationPopupGateState extends ConsumerState<CelebrationPopupGate> {
   Future<void> _maybeShow() async {
     if (!mounted || _busy) return;
     _busy = true;
+    final priority = ref
+        .read(opportunisticDialogCoordinatorProvider)
+        .prioritize();
     try {
       final cached = ref.read(myCelebrationTodayProvider).valueOrNull;
       final List<MyCelebrationToday> list;
@@ -46,6 +50,7 @@ class _CelebrationPopupGateState extends ConsumerState<CelebrationPopupGate> {
     } catch (_) {
       // 庆典弹窗失败不影响主流程。
     } finally {
+      priority.release();
       if (mounted) _busy = false;
     }
   }

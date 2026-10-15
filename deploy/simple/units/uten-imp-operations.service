@@ -1,0 +1,45 @@
+[Unit]
+Description=Authorized local Uten IMP server operations bridge
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+UMask=0077
+RuntimeDirectory=uten-imp-operations
+RuntimeDirectoryMode=0750
+StateDirectory=uten-imp-operations
+StateDirectoryMode=0700
+ExecStartPre=+/usr/bin/install -d -o root -g root -m 0700 /run/uten-imp-updater
+ExecStart=/usr/bin/python3 -I /usr/local/lib/uten-imp/host_operations.py serve
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/uten-imp-operations /var/lib/uten-imp-operations
+ReadWritePaths=/etc/uten-imp-updater
+# Inventory cleanup is confined again by fd-relative allowlists and host config.
+ReadWritePaths=-/opt/uten-imp/releases -/var/log/uten-imp -/var/cache/uten-imp
+ReadWritePaths=-/srv/uten-backup/pre-activation -/data/uten-imp-backups/paired /run/uten-imp-updater
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native
+TasksMax=32
+MemoryMax=512M
+TimeoutStopSec=15s
+
+[Install]
+WantedBy=multi-user.target

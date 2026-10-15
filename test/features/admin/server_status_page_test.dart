@@ -131,10 +131,13 @@ void main() {
     (tester) async {
       expect(requiredAnyPermFor(RouteName.adminServerStatus), [
         Perm.serverStatusView,
+        Perm.serverUpdate,
+        Perm.serverCleanup,
       ]);
       expect(
         requiredAnyPermFor('${RouteName.adminServerStatus}?from=dashboard'),
-        [Perm.serverStatusView],
+        [Perm.serverStatusView, Perm.serverUpdate, Perm.serverCleanup],
+        // Delegated operators can view local state without authorization:manage.
       );
       final repository = _Repository(() async => _sample(sampledAt));
       await _pump(tester, repository, permissions: {Perm.authorizationManage});

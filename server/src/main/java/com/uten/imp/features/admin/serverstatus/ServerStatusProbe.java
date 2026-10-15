@@ -156,9 +156,16 @@ public class ServerStatusProbe {
                 memory==null?null:memoryTotal,memory==null?null:memoryTotal-memoryFree,memory==null?null:memoryFree));
         var heap=ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
         Double heapPercent=percent(heap.getUsed(),heap.getMax());
-        metrics.add(new Metric("jvm_memory","平台应用内存",heapPercent,"PERCENT",80d,90d,severity(heapPercent,80,90),
+        metrics.add(new Metric("jvm_memory","Java 堆内存",heapPercent,"PERCENT",80d,90d,severity(heapPercent,80,90),
                 "平台 Java 堆内存占用，与整台服务器的系统内存分开统计。",heapPercent==null?null:heap.getMax(),
                 heapPercent==null?null:heap.getUsed(),heapPercent==null?null:heap.getMax()-heap.getUsed()));
+        Long resident = ProcessMemoryProbe.residentBytes();
+        Double residentPercent = resident == null || memoryTotal == null ? null : percent(resident, memoryTotal);
+        metrics.add(new Metric("process_memory", "平台进程常驻内存", residentPercent, "PERCENT", 80d, 90d,
+                severity(residentPercent, 80, 90), resident == null
+                ? "当前环境不提供进程常驻内存；Java 堆内存单独显示。"
+                : "当前后端进程驻留在系统内存中的实际用量，包含 Java 堆、线程和本地内存。",
+                residentPercent == null ? null : memoryTotal, resident, null));
         double active=meters.find("hikaricp.connections.active").gauges().stream().mapToDouble(g->g.value()).sum();
         double maximum=meters.find("hikaricp.connections.max").gauges().stream().mapToDouble(g->g.value()).sum();
         metrics.add(metric("db_pool","平台数据库连接占用",percent(active,maximum),80,95,

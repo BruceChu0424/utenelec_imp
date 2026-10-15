@@ -43,6 +43,31 @@ class GoodsPriceSourcePostgresTest {
         order("purchase",null,"888","1");
         var rows=read(scope(owner)).observations();assertThat(rows).hasSize(1);assertThat(rows.getFirst().sourceId()).isEqualTo(own[0]);
     }
+    @Test void financeConfirmedTaxHasIndependentEvidenceAndSurvivesTheHistoricalProjection() throws Exception {
+        try(var in=getClass().getResourceAsStream("/db/migration/V865__procurement_finance_tax_rate.sql")){
+            // The oracle already copied the latest migrated column shapes.
+            // Install the actual new function/views against those shapes; the
+            // full application-chain test applies the complete forward DDL.
+            String migration=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);
+            db.execute(migration.substring(migration.indexOf("CREATE FUNCTION fn_procurement_approved_tax_rate")));
+        }
+        var ids=order("purchase",owner,"10","1"); UUID approval=approve(ids,1,"APPROVED");
+        String submitted=db.queryForObject("SELECT submission_snapshot::text FROM procurement_order_approval_cases WHERE id=?",String.class,approval);
+        db.update("UPDATE procurement_order_approval_cases SET finance_tax_rate=13.1234 WHERE id=?",approval);
+        Query query=new Query(goods,Kind.PURCHASE,180,null,null,unit,currency,"13.1234",null,null,null,null,null,"1");
+        var current=reader.read(query,reader.goods(goods),180,scope(owner)).observations().getFirst();
+        assertThat(current.comparable()).isTrue();assertThat(current.taxRate()).isEqualTo("13.1234");
+        assertThat(db.queryForObject("SELECT submission_snapshot::text FROM procurement_order_approval_cases WHERE id=?",String.class,approval)).isEqualTo(submitted);
+        var tampered=new HashMap<>(db.queryForMap("SELECT * FROM v_goods_price_observations WHERE source_item_id=?",ids[1]));
+        tampered.put("tax_rate",new BigDecimal("9"));
+        assertThat(reader.observation(tampered).reasonCodes()).contains("APPROVED_SNAPSHOT_MISMATCH");
+        db.update("UPDATE purchase_orders SET tax_rate=5 WHERE id=?",ids[0]);
+        assertThat(reader.read(query,reader.goods(goods),180,scope(owner)).observations().getFirst().reasonCodes()).contains("APPROVED_SNAPSHOT_MISMATCH");
+        db.update("UPDATE purchase_orders SET status=-1 WHERE id=?",ids[0]);
+        var historical=reader.history(new HistoryQuery(query,null,null,null,10),scope(owner),false,true).observations().getFirst();
+        assertThat(historical.taxRate()).isEqualTo("13.1234");
+        assertThat(historical.reasonCodes()).containsExactly("HISTORICAL_VERSION_ONLY");
+    }
     @Test void currencyTaxColorAndFrozenUnitRateNeverMix(){
         var valid=order("purchase",owner,"10","1");
         var rate=order("purchase",owner,"1","1");db.update("UPDATE purchase_order_items SET unit_rate=24 WHERE id=?",rate[1]);

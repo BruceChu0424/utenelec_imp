@@ -25,19 +25,20 @@ public class VisitorSmsService {
     private final SystemSettingsService settings;
     private final VisitorSmsIssuanceTransaction issuanceTransaction;
 
-    /** 生成并发送验证码；返回明文 code（log 网关时 controller 可回传联调）。 */
+    /** Commit and send once. Returns a code only for the same explicitly permitted development sender. */
     public String send(String phone, String scene) {
+        SmsGateway.Prepared sender = gateway.prepare();
         String code = String.format("%06d", RNG.nextInt(1_000_000));
         VisitorSmsIssuanceTransaction.Issuance issuance =
                 issuanceTransaction.prepare(phone, scene, code);
-        SmsSendResult result = gateway.sendCode(phone, code);
+        SmsSendResult result = sender.sendCode(phone, code);
         if (result == SmsSendResult.REJECTED) {
             issuanceTransaction.reject(issuance.id());
             throw new ApiException(ErrorCode.BUSINESS);
         }
         issuanceTransaction.complete(issuance.id(),result);
         // UNCERTAIN 保留已提交 OTP：供应商可能已收，自动重发/作废会制造不可用验证码。
-        return code;
+        return sender.developmentCodeAllowed() ? code : null;
     }
 
     /** 校验并消费验证码（手机号 + 验证码均匹配最新未消费记录）。 */

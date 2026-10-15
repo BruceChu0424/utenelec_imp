@@ -62,6 +62,12 @@ void main() {
   test('审计保全只认服务器能力，缺字段和未知值不假称已保护', () {
     expect(
       PublicSettings.fromJson(const {
+        'auditArchivePurgeMode': 'PERMANENT_RETAIN',
+      }).auditArchivePurgeMode,
+      AuditArchivePurgeMode.permanentRetain,
+    );
+    expect(
+      PublicSettings.fromJson(const {
         'auditArchivePurgeMode': 'PRESERVE_UNCLASSIFIED',
       }).auditArchivePurgeMode,
       AuditArchivePurgeMode.preserveUnclassified,

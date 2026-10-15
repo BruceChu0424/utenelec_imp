@@ -90,6 +90,10 @@ public final class UtenImpMigrator {
         return Flyway.configure(UtenImpMigrator.class.getClassLoader())
                 .dataSource(DATABASE_URL, DATABASE_USER, password)
                 .locations(MIGRATION_LOCATION)
+                // The platform's business namespace is fixed. A role's default
+                // search_path must never redirect history or DDL into another schema.
+                .defaultSchema("public")
+                .schemas("public")
                 .baselineOnMigrate(false)
                 .cleanDisabled(true)
                 .outOfOrder(false)

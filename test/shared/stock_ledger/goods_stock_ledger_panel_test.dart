@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 // 单货品库存面板 (ADR-135 §6.3) 交互契约:
 //  1. KPI 条 + 三分段; 余额重量「≈」/「未称」, 调整/核重按权限出现;
 //  2. 余额行「查看流水」切到流水并筛到该仓库 + 颜色 (无颜色 = colorNull);
@@ -29,6 +31,9 @@ class _MemoryWeightUnitsPrefs extends WarehouseWeightUnitsPrefsNotifier {
 class _PanelApi extends ApiClient {
   _PanelApi() : super(Dio());
 
+  Future<Map<String, dynamic>>? contextResponse;
+  String contextName = '螺丝';
+
   final ledgerQueries = <Map<String, dynamic>>[];
   final posts = <(String, Object?)>[];
   int balanceCalls = 0;
@@ -55,7 +60,7 @@ class _PanelApi extends ApiClient {
     }
     if (path.contains('goods') && path.contains('lookup')) {
       return [
-        {'id': 'g1', 'name': '螺丝', 'code': 'S-001', 'unitId': 'u1'},
+        {'id': 'g1', 'name': contextName, 'code': 'S-001', 'unitId': 'u1'},
       ];
     }
     return const [];
@@ -68,11 +73,12 @@ class _PanelApi extends ApiClient {
   }) async {
     switch (path) {
       case '/stock/goods/g1/inventory-context':
+        if (contextResponse != null) return contextResponse!;
         return {
           'items': [
             {
               'goodsId': 'g1',
-              'name': '螺丝',
+              'name': contextName,
               'goodsCode': 'S-001',
               'unitName': '个',
               'qty': 5000,
@@ -84,7 +90,7 @@ class _PanelApi extends ApiClient {
             },
             {
               'goodsId': 'g1',
-              'name': '螺丝',
+              'name': contextName,
               'goodsCode': 'S-001',
               'unitName': '个',
               'qty': 20,
@@ -403,6 +409,71 @@ Future<_PanelApi> _pump(
 }
 
 void main() {
+  testWidgets(
+    'account and endpoint switch invalidate an old inventory context response',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final oldResponse = Completer<Map<String, dynamic>>();
+      final oldApi = _PanelApi()..contextResponse = oldResponse.future;
+      final nextApi = _PanelApi()..contextName = '新公司货品';
+      const permissions = {Perm.stockView};
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(oldApi),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'old'),
+          ),
+          currentPermissionsProvider.overrideWithValue(permissions),
+          isSuperAdminProvider.overrideWithValue(false),
+          warehouseWeightUnitsPrefsProvider.overrideWith(
+            _MemoryWeightUnitsPrefs.new,
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(body: GoodsStockLedgerPanel(goodsId: 'g1')),
+          ),
+        ),
+      );
+      await tester.pump();
+      container.updateOverrides([
+        apiClientProvider.overrideWithValue(nextApi),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'new'),
+        ),
+        currentPermissionsProvider.overrideWithValue(permissions),
+        isSuperAdminProvider.overrideWithValue(false),
+        warehouseWeightUnitsPrefsProvider.overrideWith(
+          _MemoryWeightUnitsPrefs.new,
+        ),
+      ]);
+      await tester.pumpAndSettle();
+      expect(find.text('名称：新公司货品'), findsOneWidget);
+      oldResponse.complete({
+        'items': [
+          {'goodsId': 'g1', 'name': '旧公司货品', 'unitName': '个', 'qty': 99},
+        ],
+        'page': 1,
+        'size': 50,
+        'total': 1,
+        'totalPages': 1,
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('名称：新公司货品'), findsOneWidget);
+      expect(find.text('名称：旧公司货品'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      container.dispose();
+      await tester.pump();
+    },
+  );
+
   testWidgets('parent rebuild preserves the selected inventory scope', (
     tester,
   ) async {

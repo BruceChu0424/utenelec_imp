@@ -130,8 +130,6 @@ class _GoodsStockKpiStripState extends ConsumerState<GoodsStockKpiStrip> {
         runSpacing: UtenSpacing.s4,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          if (!widget.showInventory)
-            const Text('货品级分析参考（服务端全局口径，与当前仓库/颜色范围不同）：'),
           for (var i = 0; i < parts.length; i++) ...[
             if (i > 0)
               Text(

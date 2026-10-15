@@ -49,6 +49,44 @@ Future<void> _dragUp(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('默认合计条紧贴少量数据的末行，切全屏仍保持位置', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MasterDataTableView<String>(
+            columns: const [
+              MasterColumnDef<String>(
+                key: 'value',
+                label: '值',
+                width: 240,
+                value: _identity,
+              ),
+            ],
+            items: const ['ONLY-ROW'],
+            facets: const {},
+            nullCounts: const {},
+            filters: const {},
+            onFilterChanged: (_, _) {},
+            summaryBar: const Text(_summaryText),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    void check() {
+      final gap =
+          tester.getTopLeft(find.text(_summaryText)).dy -
+          tester.getBottomLeft(find.text('ONLY-ROW')).dy;
+      expect(gap, inInclusiveRange(0, 60));
+      expect(tester.takeException(), isNull);
+    }
+
+    check();
+    await tester.tap(find.text('全屏'));
+    await tester.pumpAndSettle();
+    check();
+  });
+
   testWidgets('inline 合计条：首屏不可见，滚到表底才出现在末行之下', (tester) async {
     await tester.pumpWidget(_table(inline: true));
     await tester.pumpAndSettle();

@@ -260,6 +260,9 @@ class AuditTriggerCoverageMigrationContractTest {
                     List.of("status", "closed_by", "closed_at", "close_reason"),
                     "物料改挪记录: 新建时行内已带发起人与原因, 之后会被人工撤回/取消、随优先履约推进状态: "
                             + "只记状态与关闭人、关闭时间、关闭原因"),
+            new ScopedTable("sms_gateway_settings", "system", false,
+                    List.of("mode", "provider", "endpoint", "sign_name", "template_code", "version"),
+                    "V867 SMS runtime settings: only public decisions and revision; neither encrypted credential, hint nor INSERT/DELETE snapshots enter audit"),
             new ScopedTable("ai_providers", "system", false,
                     List.of("name", "preset", "region", "protocol", "base_url", "model", "json_mode",
                             "thinking_control", "send_temperature", "supports_vision", "max_output_tokens",

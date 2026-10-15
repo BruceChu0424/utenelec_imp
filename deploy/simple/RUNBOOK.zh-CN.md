@@ -135,7 +135,9 @@ nginx -t && systemctl enable --now nginx
 /usr/local/sbin/uten-imp-updater activate v1.0.0   # 备份→建库→切换→健康检查
 
 # 8. 通过后开机自启 + 定时更新
-systemctl enable --now uten-imp.service uten-imp-updater.timer
+systemctl enable --now uten-imp.service
+systemctl disable --now uten-imp-updater.timer
+bash deploy/simple/install-server-operations.sh deploy/simple
 ```
 
 数据库必须先区分全新主机与已有 PostgreSQL 的主机。全新专用主机使用[数据库初始化脚本](../setup/phase2-postgres.sh)及对应前置检查；它负责安装 PostgreSQL 和分离应用、迁移、所有者身份，拒绝任何已有集群。已有数据库不得执行该脚本，也不能删掉集群来通过检查；按[现有角色加固协议](../setup/harden-existing-postgres-roles.sh)先核对当前权限和恢复路径，再实施适合该主机的改动。公司已有库的小版本更新仅执行正式前向迁移，不重新初始化角色、数据库或密钥。
@@ -237,20 +239,15 @@ Simple Release现在在构建前强制核验实际检出提交SHA对应的三个
 git tag v1.4.1 && git push origin v1.4.1
 ```
 
-- 服务器默认每周日 **05:00（服务器当地时间）** 自动拉取（要立即上线可 SSH 执行
-  `sudo /usr/local/sbin/uten-imp-updater check`）；**没动数据库**的版本直接自动激活（失败自动回滚上一版）；
-- 系统设置的 `updater_check_interval_days` 接受 `0..365`：`0` 仅手动，`7` 为每周日；
-  其他 `N` 从设置修改的服务器当地日期加 `N` 天开始，此后每隔 `N` 天当地 05:00 执行。
-  `7` 的首次执行是严格晚于设置修改时刻的首个周日 05:00。服务器时区可通过
-  `timedatectl show -p Timezone --value` 核实，本次不改变原有时区或 05:00 时刻。
-- systemd 每分钟运行 `update_schedule.py`，**只读本机 PostgreSQL**。未到期、仅手动、
-  配置缺失/非法或数据库不可读时不访问 OSS。设置保存后约一分钟内被读取，无需重启；
-  不补昨天及更早的计划，同一当地日期最多自动尝试一次（含失败与中断），失败后可手动重试。
-  没有开机专用触发或定时器补跑；同一到期日 05:00 后恢复服务会执行当日尚未尝试的计划。
-- 系统设置页读取 root 生成的 `/var/lib/uten-imp/updater-schedule/status.json`，显示实际已读取的
-  间隔、下次执行和最后尝试；保存值不等于服务器已应用。缺失、过期、与数据库设置不一致或
-  执行失败必须显示未同步/异常。该状态查询与保存设置都不产生 OSS GET。
-  `uten-imp-updater status` 仍会访问 OSS 读取最新版本，只用于主动检查，不接入周期状态探测。
+- 自动更新已退役。进入系统设置点击“检查版本更新”，发现新版本后选择立即或预约；
+  预约按服务器当地时间计算，到期重新验证授权。页面刷新、通知和状态轮询只读本机。
+- 旧 `updater_check_interval_days` 只读保留，不再控制执行；`uten-imp-updater.timer` 必须 disabled/inactive。
+  历史 `update_schedule.py` 兼容入口不读数据库、不调用更新器、不访问 OSS。
+- 已安装主机组件时，独立 root worker 负责验签下载、配套备份、必要的 migrator、切换和连续健康检查，
+  应用重启不会终止作业。首次安装、权限、预约窗口和安全清理详见
+  [SERVER_OPERATIONS.zh-CN.md](SERVER_OPERATIONS.zh-CN.md)。
+- `uten-imp-updater status` 仅本机状态；显式 `latest` 才检查云端；`check`/`stage <version>` 只暂存，
+  不自动激活。人工 `activate` 保留作受控恢复/首装入口，不是日常页面更新的必需步骤。
 - **OSS 只保留最新一版**：发布流水线上传本版后自动删除 `releases/` 下旧版本
   （含版本控制桶的历史版本与删除标记），并分页清理精确 `LATEST.txt` 的历史版本。
   清理前后确认最新指针仍是本版；当前版本目录的全部对象版本与当前指针保留。
@@ -275,49 +272,29 @@ git tag v1.4.1 && git push origin v1.4.1
 
 升级旧更新器时，另行只读列出实际`UTEN_BACKUP_DIR`及其已有dump的所有者/权限，确认后按明确路径收紧旧备份为`0600`、目录为`0700`；新代码不会自动重写历史文件。恢复时由root读取私有dump并流入postgres的`pg_restore`，不需要把备份临时开放给普通用户。相关回归为`deploy/updater/test_simple_release_backup.py`，文件权限验证必须在Linux执行。
 
-### 已有服务器应用可配置计划
+### 已有服务器安装手动/预约更新组件
 
-仅发布应用包不会替换已经安装的 systemd 单元。先核对 `systemctl cat uten-imp-updater.service
-uten-imp-updater.timer` 及 `systemctl list-timers --all uten-imp-updater.timer`；若有 drop-in
-覆盖命令或定时规则，先按实际内容合并，避免旧直接拉取任务与新调度器并行。
-确认没有正在执行的更新，完成包含设置登记的数据库前向迁移后，在服务器部署目录执行：
+只发布应用包不会替换已安装的主机助手/systemd 单元。先核对实际单元、drop-in、当前更新作业、
+磁盘挂载和备份恢复结果，从同一已核验提交取得完整 `deploy/simple/`，运行：
 
 ```bash
-schedule_backup=$(sudo mktemp -d /var/backups/uten-imp-schedule.XXXXXX)
-sudo cp -a /etc/systemd/system/uten-imp-updater.service \
-  /etc/systemd/system/uten-imp-updater.timer "$schedule_backup/"
-sudo systemctl stop uten-imp-updater.timer
-sudo install -d -o root -g root -m 0755 /usr/local/lib/uten-imp
-sudo install -o root -g root -m 0644 deploy/simple/update_schedule.py \
-  /usr/local/lib/uten-imp/update_schedule.py
-sudo install -o root -g root -m 0644 deploy/simple/units/uten-imp-updater.service \
-  deploy/simple/units/uten-imp-updater.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now uten-imp-updater.timer
-systemctl cat uten-imp-updater.service uten-imp-updater.timer
-systemctl list-timers --all uten-imp-updater.timer
-# 下一分钟后核验本地回执；它不访问 OSS
-sudo cat /var/lib/uten-imp/updater-schedule/status.json
+sudo bash deploy/simple/install-server-operations.sh deploy/simple
+systemctl is-enabled uten-imp-updater.timer
+systemctl is-active uten-imp-updater.timer
+systemctl is-active uten-imp-operations.service
 ```
 
-调度器使用 root 私有目录 `/var/lib/uten-imp-update-schedule` 的持久化尝试记录和锁去重；
-应用仅能读取回执（目录 root:uten-imp 0750、文件 0640），不能改 root 的排程执行记录。
-回执上级 `/var/lib/uten-imp` 必须由 root 管理且不可被应用写入；不符合时先核对用途并修正部署，
-调度器拒绝使用不安全目录。
+旧 timer 必须 disabled/inactive，operations bridge 必须 active。安装器私有备份旧助手及单元，
+配置来源保存在 root `/etc/uten-imp-updater/source.env`，已有 legacy env 复制后保留，后续由超管页面修改。
+安装不访问 OSS、不启动更新、不改数据库。应用保持无 sudo/特权，通过固定 Unix socket 操作主机。
+回退主机组件时保留当前备份与作业证据，**不要重新开启自动拉取 timer**。
 
-回退时先停定时器，从 `$schedule_backup` 恢复两个旧单元后 `daemon-reload`；恢复前的旧计划
-可能每日拉取，确认需要该频率后才重新启用，也可保持停用并手动 `check`。验证通过后
-`sudo rm -rf "$schedule_backup"`，服务器上不留旧单元副本。
-本节不改变数据库与附件备份计划。运行测试：
-`python3 -m unittest discover -s deploy/updater -p test_simple_update_schedule.py -v`。
+主机路径由 `/etc/uten-imp/operations.json` 配置，改路径同步 systemd 可写范围。
+安装 operations 后旧更新器不再按年龄自动删版本/升级前 dump，改为页面受控预览清理，
+正式配套备份 retention 也读取同一实际恢复证明保护。缺可信恢复证明时保留备份并显示原因。
 
-2026-10-06 起 `uten-imp-updater.service` 带沙箱 (`ProtectSystem=strict` 等，ADR-157)：定时触发的检查与
-纯代码激活只能写单元注释里列出的几个目录 (`/opt/uten-imp`、`/run/lock`、两个排程状态目录、
-升级前 dump 目录)。更新器锁随之从 `/run/uten-imp-updater.lock` 改为 `/run/lock/uten-imp-updater.lock`，
-换装前先停定时器、确认没有正在进行的激活。改 `UTEN_BACKUP_DIR` 到别处时同步给该单元加
-`ReadWritePaths=` drop-in。维护窗口里人工 `sudo uten-imp-updater activate` 不经过该单元，不受沙箱影响。
-`deploy/updater/test_simple_units_contract.py` 校验脚本写到的每个路径都在单元的可写清单里。
-
+测试覆盖 `deploy/simple/test_host_operations.py`、`test_operations_storage.py`、
+`deploy/updater/test_simple_update_schedule.py` 和现有 Simple Release/主机沙箱回归。
 ### 发行目录权限 (2026-10-06 起)
 
 nginx (`www-data`) 不再加入 `uten-imp` 组，只加入专用组 `uten-web`。更新器暂存和激活时都会执行

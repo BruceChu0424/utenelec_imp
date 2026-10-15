@@ -10,6 +10,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../models/instant_inventory_summary.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 
 /// 独立总览页正文。所有指标沿用同一筛选范围的服务端合计。
 class InstantInventoryOverviewContent extends ConsumerWidget {
@@ -740,35 +741,20 @@ class _UnitQuantities extends StatelessWidget {
     String number(double? value) =>
         value == null ? '未提供' : formatter.format(value);
     final theme = Theme.of(context);
-    Widget cell(
-      String value, {
-      bool header = false,
-      bool numberCell = false,
-      bool danger = false,
-    }) => Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: UtenSpacing.s16,
-        vertical: UtenSpacing.s12,
-      ),
-      child: Text(
-        value,
-        // 全站表格口径（2026-10-10）：数字列同样左对齐，numberCell 只保留
-        // tabular 等宽数字与字重。
-        style:
-            (header ? theme.textTheme.labelLarge : theme.textTheme.bodyMedium)
-                ?.copyWith(
-                  color: danger
-                      ? theme.colorScheme.error
-                      : header
-                      ? theme.colorScheme.onSurfaceVariant
-                      : null,
-                  fontWeight: header || numberCell ? FontWeight.w600 : null,
-                  fontFeatures: numberCell
-                      ? const [FontFeature.tabularFigures()]
-                      : null,
-                ),
-      ),
-    );
+    Widget cell(BuildContext cellContext, String text, {bool danger = false}) {
+      final scope = MasterDataTableCellScope.maybeOf(cellContext);
+      return Text(
+        text,
+        style: TextStyle(
+          color: scope?.selected == true
+              ? scope!.foregroundColor
+              : danger
+              ? theme.colorScheme.error
+              : null,
+        ),
+      );
+    }
+
     return _SectionPanel(
       title: '按单位统计',
       subtitle: '同一单位横向比较三个阶段 · 全零单位已隐藏',
@@ -831,56 +817,62 @@ class _UnitQuantities extends StatelessWidget {
                     ],
                   );
                 }
-                return ClipRRect(
-                  borderRadius: UtenRadius.mdAll,
-                  child: Table(
-                    columnWidths: const {
-                      0: FlexColumnWidth(),
-                      1: FlexColumnWidth(2),
-                      2: FlexColumnWidth(2),
-                      3: FlexColumnWidth(2),
-                    },
-                    defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                    border: TableBorder(
-                      horizontalInside: BorderSide(
-                        color: theme.colorScheme.outlineVariant,
+                return MasterDataTableView<InventoryUnitSummary>(
+                  tableKey: 'stock.inventory_overview.unit_quantities',
+                  embedded: true,
+                  showColumnChooser: false,
+                  showFullscreenToggle: false,
+                  items: rows,
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  columns: [
+                    MasterColumnDef(
+                      key: 'unit',
+                      label: '单位',
+                      width: 120,
+                      value: (row) => row.unit,
+                      cellBuilder: (ctx, row) =>
+                          cell(ctx, row.unit, danger: row.missingUnit),
+                    ),
+                    MasterColumnDef(
+                      key: 'qty',
+                      label: '库存数量',
+                      width: 180,
+                      emphasized: true,
+                      value: (row) => number(row.quantity),
+                      cellBuilder: (ctx, row) => cell(
+                        ctx,
+                        number(row.quantity),
+                        danger: (row.quantity ?? 0) < 0,
                       ),
                     ),
-                    children: [
-                      TableRow(
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surfaceContainerLow,
-                        ),
-                        children: [
-                          cell('单位', header: true),
-                          cell('库存数量', header: true, numberCell: true),
-                          cell('待检量', header: true, numberCell: true),
-                          cell('合格待入库', header: true, numberCell: true),
-                        ],
+                    MasterColumnDef(
+                      key: 'pending',
+                      label: '待检量',
+                      width: 180,
+                      emphasized: true,
+                      value: (row) => number(row.pending),
+                      cellBuilder: (ctx, row) => cell(
+                        ctx,
+                        number(row.pending),
+                        danger: (row.pending ?? 0) < 0,
                       ),
-                      for (final row in rows)
-                        TableRow(
-                          children: [
-                            cell(row.unit, danger: row.missingUnit),
-                            cell(
-                              number(row.quantity),
-                              numberCell: true,
-                              danger: (row.quantity ?? 0) < 0,
-                            ),
-                            cell(
-                              number(row.pending),
-                              numberCell: true,
-                              danger: (row.pending ?? 0) < 0,
-                            ),
-                            cell(
-                              number(row.pendingStockIn),
-                              numberCell: true,
-                              danger: (row.pendingStockIn ?? 0) < 0,
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
+                    ),
+                    MasterColumnDef(
+                      key: 'pendingIn',
+                      label: '合格待入库',
+                      width: 180,
+                      emphasized: true,
+                      value: (row) => number(row.pendingStockIn),
+                      cellBuilder: (ctx, row) => cell(
+                        ctx,
+                        number(row.pendingStockIn),
+                        danger: (row.pendingStockIn ?? 0) < 0,
+                      ),
+                    ),
+                  ],
                 );
               },
             ),

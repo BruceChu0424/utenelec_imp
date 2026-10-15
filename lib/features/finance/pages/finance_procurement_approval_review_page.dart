@@ -21,7 +21,7 @@ import '../../../components/data_display/uten_table_surface.dart';
 //    批量动作，整单决策仍走底部通过/驳回；
 //  - 审批历史卡：逐轮 提交/驳回/通过 事件与驳回原因；
 //  - 底栏三操作：驳回（必填原因）/ 通过（选填备注）/ 返回——不必退回任务中心即可决策。
-// 财务核对单据并确认审批汇率，不修改业务金额；修改由制单人退回后办理。
+// 财务核对单据并确认审批汇率与税率，不修改业务金额；修改由制单人退回后办理。
 // 按服务端 allowedActions、版本与本人有效认领办理，历史修订与对比继续只读展示。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,7 +52,7 @@ import '../../../shared/concurrency/task_claim_session.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
-import '../../../shared/widgets/procurement_document_layout.dart';
+import '../../../shared/platform_tables/procurement_review_column_layout.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
@@ -142,19 +142,24 @@ class _FinanceProcurementApprovalReviewPageState
   @override
   Iterable<Listenable> get formDraftListenables => [
     _rateController,
+    _taxController,
     _approveRemark,
     _rejectReason,
   ];
   @override
   Map<String, dynamic> captureReviewInputs() => {
     'rate': _rateController.text,
+    'taxRate': _taxController.text,
     'approveRemark': _approveRemark.text,
     'rejectReason': _rejectReason.text,
   };
   @override
   void restoreReviewInputs(Map<String, dynamic> inputs) {
-    // 旧草稿中的业务金额输入已退役，只恢复审批汇率和意见。
+    // 旧草稿中的业务金额输入已退役，只恢复财务汇率、税率和意见。
     _rateController.text = inputs['rate'] as String? ?? '';
+    if (inputs['taxRate'] is String) {
+      _taxController.text = inputs['taxRate'] as String;
+    }
     _approveRemark.text = inputs['approveRemark'] as String? ?? '';
     _rejectReason.text = inputs['rejectReason'] as String? ?? '';
   }
@@ -192,6 +197,15 @@ class _FinanceProcurementApprovalReviewPageState
                 financeRateUnits(
                   (command['request'] as Map?)?['exchangeRate'] as String?,
                 ) &&
+            (((command['request'] as Map?)?['reviewedTaxRate'] ??
+                        (command['request'] as Map?)?['taxRate']) ==
+                    null ||
+                financeRateUnits(current.financeTaxRate ?? current.taxRate) ==
+                    financeRateUnits(
+                      ((command['request'] as Map?)?['reviewedTaxRate'] ??
+                              (command['request'] as Map?)?['taxRate'])
+                          as String?,
+                    )) &&
             current.history.any(
               (entry) =>
                   entry.attempt == current.attempt &&
@@ -218,6 +232,7 @@ class _FinanceProcurementApprovalReviewPageState
   /// 汇率编辑框（case 级记账汇率，非行单位换算率）：加载后预填
   /// financeExchangeRate ?? 提交快照 exchangeRate ?? 1，未批 case 可改。
   final TextEditingController _rateController = TextEditingController();
+  final TextEditingController _taxController = TextEditingController();
 
   /// 明细行勾选集（防看岔行的纯阅读辅助，无行级批量动作）。
   final Set<String> _selectedLineIds = <String>{};
@@ -230,6 +245,7 @@ class _FinanceProcurementApprovalReviewPageState
   void dispose() {
     ++_loadGeneration;
     _rateController.dispose();
+    _taxController.dispose();
     _approveRemark.dispose();
     _rejectReason.dispose();
     _reviewClaim?.removeListener(_claimChanged);
@@ -308,6 +324,7 @@ class _FinanceProcurementApprovalReviewPageState
         _loading = false;
         // 汇率编辑框每次加载重置为 case 默认值（已批 = 财务落定值，未批 = 快照兜底）。
         _rateController.text = _defaultRateText(review);
+        _taxController.text = _defaultTaxText(review);
         _approveRemark.clear();
         _rejectReason.clear();
       });
@@ -350,6 +367,21 @@ class _FinanceProcurementApprovalReviewPageState
       financeExactTrimmed(r.financeExchangeRate) ??
       financeExactTrimmed(r.exchangeRate) ??
       '1';
+
+  String _defaultTaxText(FinanceProcurementApprovalReview r) =>
+      financeExactTrimmed(r.financeTaxRate) ??
+      financeExactTrimmed(r.taxRate) ??
+      '';
+
+  String? _taxInputError() {
+    final units = financeRateUnits(_taxController.text);
+    return units != null &&
+            units >= BigInt.zero &&
+            units <= BigInt.from(100000000) &&
+            units % BigInt.from(100) == BigInt.zero
+        ? null
+        : '税率须为 0 至 100，最多 4 位小数';
+  }
 
   /// 编辑框当前是否为合法的 >0 十进制汇率（科学计数法等 double 能解析、
   /// 十进制精确乘算不认的写法一并判非法，避免折合列悄悄回落默认值）。
@@ -414,6 +446,10 @@ class _FinanceProcurementApprovalReviewPageState
       context.appWarning(_rateInputError() ?? '汇率必须大于 0');
       return;
     }
+    if (_taxInputError() != null) {
+      context.appWarning(_taxInputError()!);
+      return;
+    }
     if (claim == null || !claim.isReady) {
       context.appWarning('审核认领还没有生效，请重新认领');
       return;
@@ -476,6 +512,15 @@ class _FinanceProcurementApprovalReviewPageState
       return;
     }
     final reviewedRate = _effectiveRateText(review);
+    if (_taxInputError() != null) {
+      context.appWarning(_taxInputError()!);
+      return;
+    }
+    final reviewedTax = financeExactTrimmed(_taxController.text);
+    final changedTax =
+        reviewedTax != financeExactTrimmed(_defaultTaxText(review))
+        ? reviewedTax
+        : null;
     setState(() => _busy = true);
     try {
       if (!await claim.validateForDecision() ||
@@ -502,8 +547,14 @@ class _FinanceProcurementApprovalReviewPageState
               ],
               remark: remark,
               exchangeRate: reviewedRate,
+              taxRate: changedTax,
             ),
-        request: {'exchangeRate': reviewedRate, 'remark': remark.trim()},
+        request: {
+          'exchangeRate': reviewedRate,
+          'taxRate': changedTax,
+          'reviewedTaxRate': reviewedTax,
+          'remark': remark.trim(),
+        },
       );
       if (!mounted) return;
       await finishReviewDraft();
@@ -1039,7 +1090,7 @@ class _FinanceProcurementApprovalReviewPageState
             fullCurrencyName: true,
           ),
         ),
-        kv('税率', _trimNum(r.taxRate)),
+        kv('提交税率', _trimNum(r.taxRate)),
         kv('单据日期', r.billDate),
         if (r.warehouseName?.isNotEmpty == true) kv('仓库', r.warehouseName),
         kv('结算方式', r.settlementMethodName),
@@ -1223,11 +1274,37 @@ class _FinanceProcurementApprovalReviewPageState
                 // 汇率列 = 表格内可编辑单元格（2026-10-10 用户口径：汇率写在表格
                 // 对应行的单元格里，不再表下另起一行编辑器）。
                 cellBuilders: {
+                  'taxRate': (cellContext, row) {
+                    if (!r.isPending ||
+                        row.kind == UtenRevisionKind.removed ||
+                        !r.allowedActions.contains('APPROVE') ||
+                        !canDispatchReviewCommand('approve')) {
+                      return Text(
+                        _defaultTaxText(r),
+                        key: const Key('finance-order-review-tax-readonly'),
+                      );
+                    }
+                    return TextField(
+                      key: const Key('finance-order-review-tax-field'),
+                      controller: _taxController,
+                      onChanged: (_) => setState(() {}),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: UtenInputDecoration(
+                        InputDecoration(
+                          isDense: true,
+                          suffixText: '%',
+                          error: utenFieldError(_taxInputError()),
+                        ),
+                      ),
+                    );
+                  },
                   'exchangeRate': (cellContext, row) {
                     if (!r.isPending ||
                         row.kind == UtenRevisionKind.removed ||
                         !r.allowedActions.contains('APPROVE') ||
-                        _reviewClaim?.isReady != true) {
+                        !canDispatchReviewCommand('approve')) {
                       return Text(
                         _trimNum(rateText) ?? '1',
                         key: const Key('finance-order-review-rate-readonly'),
@@ -1253,7 +1330,7 @@ class _FinanceProcurementApprovalReviewPageState
                   },
                 },
                 columns:
-                    canonicalProcurementColumns<
+                    financeProcurementReviewColumns<
                       MasterColumnDef<FinanceProcurementReviewLine>
                     >([
                       MasterColumnDef(
@@ -1276,7 +1353,9 @@ class _FinanceProcurementApprovalReviewPageState
                         key: 'taxRate',
                         label: '税率(%)',
                         width: 100,
-                        value: (_) => _trimNum(r.taxRate),
+                        value: (_) => r.isPending
+                            ? _taxController.text
+                            : _defaultTaxText(r),
                       ),
                       MasterColumnDef(
                         key: 'settlement',
@@ -1448,44 +1527,45 @@ class _FinanceProcurementApprovalReviewPageState
                         ...r.items,
                       ], columnsOf: (line) => line.extraColumns),
                     ], keyOf: (column) => column.key),
+                summaryBar: r.items.isEmpty
+                    ? null
+                    : UtenTotalsSummaryBar(
+                        density: true,
+                        rowCount: r.items.length,
+                        entries: [
+                          // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
+                          UtenTotalEntry(
+                            '合计数量',
+                            exactMeasurementTotalsText(
+                              r.items.map(
+                                (it) => ExactMeasuredAmount(
+                                  value: it.qty,
+                                  unitId: it.unitId,
+                                  unitName: it.unitName,
+                                ),
+                              ),
+                            ),
+                          ),
+                          UtenTotalEntry(
+                            '合计金额',
+                            financeMoneyWithUnitSuffix(
+                              r.totalOriginal,
+                              currencyName: r.currencyName,
+                            ),
+                            danger: true,
+                          ),
+                          // 折合人民币随汇率编辑实时重算（totalOriginal × 当前汇率）。
+                          UtenTotalEntry(
+                            '折合人民币',
+                            financeLocalMoneyWithUnitSuffix(
+                              _totalAmountLocal(r),
+                            ),
+                          ),
+                        ],
+                      ),
                 rows: rows,
               ),
             ),
-            if (r.items.isNotEmpty) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              UtenTotalsSummaryBar(
-                density: true,
-                rowCount: r.items.length,
-                entries: [
-                  // 合计数量按单位分组（不同单位绝不相加）：多单位显示「12 个 · 3 箱」。
-                  UtenTotalEntry(
-                    '合计数量',
-                    exactMeasurementTotalsText(
-                      r.items.map(
-                        (it) => ExactMeasuredAmount(
-                          value: it.qty,
-                          unitId: it.unitId,
-                          unitName: it.unitName,
-                        ),
-                      ),
-                    ),
-                  ),
-                  UtenTotalEntry(
-                    '合计金额',
-                    financeMoneyWithUnitSuffix(
-                      r.totalOriginal,
-                      currencyName: r.currencyName,
-                    ),
-                    danger: true,
-                  ),
-                  // 折合人民币随汇率编辑实时重算（totalOriginal × 当前汇率）。
-                  UtenTotalEntry(
-                    '折合人民币',
-                    financeLocalMoneyWithUnitSuffix(_totalAmountLocal(r)),
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
       ),

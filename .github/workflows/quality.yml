@@ -307,6 +307,7 @@ jobs:
       - name: Test updater, backup, setup, monitoring, and cloud policy helpers
         run: |
           python3 -m unittest discover -s deploy/updater -p "test*.py" -v
+          python3 -m unittest discover -s deploy/simple -p "test*.py" -v
           python3 -m unittest discover -s deploy/postgres/backup -p "test*.py" -v
           python3 -m unittest discover -s deploy/setup -p "test*.py" -v
           python3 -m unittest discover -s deploy/monitoring -p "test*.py" -v

@@ -42,6 +42,7 @@ void main() {
       expect(hinted.stockPlaces, {'line-1': 'A01-01'});
       expect(hinted.lineWarehouses, {'line-1': 'leaf-1'});
       expect(hinted.warehouseNameOf('line-1'), '成品一仓');
+      expect(hinted.confirmedWarehouses, isEmpty);
       expect(hinted.validate(), isTrue);
       hinted.dispose();
 
@@ -61,6 +62,11 @@ void main() {
       expect(draft.stockPlaces, {'line-1': 'OLD-A'});
       expect(draft.lineWarehouses, {'line-1': 'leaf-2'});
       draft.changeWarehouse('line-1', 'leaf-1');
+      expect(draft.confirmedWarehouses, {'line-1'});
+      final restored = WarehouseSalesPickingDraft(historical)
+        ..restoreInput(draft.captureInput());
+      expect(restored.confirmedWarehouses, {'line-1'});
+      restored.dispose();
       expect(draft.lineWarehouses, {'line-1': 'leaf-1'});
       expect(draft.stockPlaces, {'line-1': 'OLD-A'});
       expect(historical.lines.single.actualStockPlace, 'OLD-A');

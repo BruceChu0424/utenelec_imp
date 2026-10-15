@@ -6,6 +6,12 @@ class ProductionMaterialDiscoveryRequestRepository {
   const ProductionMaterialDiscoveryRequestRepository(this.api);
   final ApiClient api;
 
+  Future<Map<String, dynamic>> context(String segmentId) async =>
+      Map<String, dynamic>.from(
+        await api.get('/production/material-discovery/segments/$segmentId')
+            as Map,
+      );
+
   Future<void> cancel(String requestId) async {
     final result = Map<String, dynamic>.from(
       await api.get('/production/material-discovery/requests/$requestId')

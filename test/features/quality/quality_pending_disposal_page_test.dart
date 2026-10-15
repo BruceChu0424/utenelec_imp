@@ -196,6 +196,21 @@ void main() {
       expect(find.text('PVC粒料 (WL001 · 蓝色)'), findsOneWidget);
       expect(find.text('5 个'), findsOneWidget);
       expect(find.text('支架 (WL002)'), findsOneWidget);
+      final table = _queueTable(tester);
+      final dynamic codes = table.columns.singleWhere(
+        (column) => column.key == 'goodsCode',
+      );
+      final dynamic colors = table.columns.singleWhere(
+        (column) => column.key == 'colorName',
+      );
+      expect(
+        // The queue row is private to the page library.
+        // ignore: avoid_dynamic_calls
+        table.items.map((row) => codes.value(row)),
+        containsAll(['WL001', 'WL002']),
+      );
+      // ignore: avoid_dynamic_calls
+      expect(table.items.map((row) => colors.value(row)), contains('蓝色'));
 
       // 类型表头筛选只留 FQC；无需在表格上方找重复来源分段。
       await _selectQueueFilter(tester, 'docType', 'FQC');
@@ -686,6 +701,8 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
       pendingBaseQty: 5,
       goodsSummary: 'PVC粒料 (WL001 · 蓝色)',
       pendingQtyText: '5 个',
+      goodsCodeSummary: 'WL001',
+      colorNameSummary: '蓝色',
     ),
     PendingInspectionReceipt(
       receiptType: 'SUBCONTRACT',
@@ -696,6 +713,7 @@ class _FakeIqcRepository implements ProcurementInspectionRepository {
       pendingBaseQty: 3,
       goodsSummary: '支架 (WL002)',
       pendingQtyText: '3 个',
+      goodsCodeSummary: 'WL002',
     ),
   ];
 
@@ -895,6 +913,8 @@ class _FqcApi extends ApiClient {
     'pendingQtyText': decided ? null : '10 件',
     'reportNos': _reportNo,
     'goodsSummary': 'V5多功能三极插座E极插套(酸洗)',
+    'goodsCodeSummary': 'FQC-001',
+    'colorNameSummary': '白色',
     'status': decided ? 'CLOSED' : 'ACTIVE',
     'createdAt': '2026-08-28T05:00:00Z',
     if (preStocked) 'preStockedItemCount': decided ? 0 : 1,

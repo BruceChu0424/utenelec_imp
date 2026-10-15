@@ -26,8 +26,8 @@ public class PublicSettingsController {
     public PublicSettings publicSettings() {
         return new PublicSettings(
                 settings.readInt(SystemSettingKey.SESSION_IDLE_TIMEOUT_MINUTES),
-                settings.readInt(SystemSettingKey.AUDIT_HOT_RETENTION_MONTHS)
-                        + settings.readInt(SystemSettingKey.AUDIT_ARCHIVE_RETENTION_MONTHS),
+                Math.max(6, settings.readInt(SystemSettingKey.AUDIT_HOT_RETENTION_MONTHS)
+                        + settings.readInt(SystemSettingKey.AUDIT_ARCHIVE_RETENTION_MONTHS)),
                 storage.getMaxBytes(),
                 settings.readInt(SystemSettingKey.BADGE_POLL_SECONDS),
                 auditRetention.currentMode());

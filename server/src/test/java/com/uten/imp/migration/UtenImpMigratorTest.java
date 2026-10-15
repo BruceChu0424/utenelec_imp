@@ -26,6 +26,8 @@ class UtenImpMigratorTest {
         assertThat(configuration.getUrl()).isEqualTo("jdbc:postgresql://127.0.0.1:5432/uten_imp");
         assertThat(configuration.getUser()).isEqualTo("uten_migrator");
         assertThat(configuration.getPassword()).isEqualTo(TEST_PASSWORD);
+        assertThat(configuration.getDefaultSchema()).isEqualTo("public");
+        assertThat(configuration.getSchemas()).containsExactly("public");
         assertThat(configuration.getLocations())
                 .extracting(Location::getDescriptor)
                 .containsExactly("classpath:db/migration");

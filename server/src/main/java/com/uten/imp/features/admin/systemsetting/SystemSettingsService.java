@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -54,6 +55,7 @@ public class SystemSettingsService {
     public boolean readBool(SystemSettingKey key) {
         requireType(key, SystemSettingKey.Type.BOOL);
         String raw = rawValue(key);
+        if (raw != null) raw = raw.trim();
         if ("true".equalsIgnoreCase(raw)) return true;
         if ("false".equalsIgnoreCase(raw)) return false;
         return Boolean.parseBoolean(key.defaultValue());
@@ -74,11 +76,13 @@ public class SystemSettingsService {
     public List<SystemSettingDto> list() {
         Map<String, SystemSetting> rows = repo.findAll().stream()
                 .collect(Collectors.toMap(SystemSetting::getKey, Function.identity()));
+        Map<String, String> values = rows.values().stream()
+                .collect(Collectors.toMap(SystemSetting::getKey, SystemSetting::getValue));
         return Arrays.stream(SystemSettingKey.values())
                 .sorted(Comparator.comparing((SystemSettingKey k) -> k.category().ordinal())
                         .thenComparingInt(SystemSettingKey::sortOrder))
                 .filter(k -> rows.containsKey(k.key()))
-                .map(k -> SystemSettingDto.of(k, rows.get(k.key())))
+                .map(k -> SystemSettingDto.of(k, rows.get(k.key()), values))
                 .toList();
     }
 
@@ -106,29 +110,57 @@ public class SystemSettingsService {
             if (SystemSettingKey.of(change.key()).isEmpty()) {
                 throw new ApiException(ErrorCode.NOT_FOUND, "设置项不存在，请刷新后重试");
             }
+            requireEditable(SystemSettingKey.of(change.key()).orElseThrow());
         }
-        List<SystemSetting> rows = repo.findAllForUpdate(changes.keySet());
-        if (rows.size() != changes.size()) {
+        var lockKeys = new TreeSet<>(changes.keySet());
+        boolean rateLimits = lockKeys.contains(SystemSettingKey.LOGIN_RATE_LIMIT_PER_MINUTE.key())
+                || lockKeys.contains(SystemSettingKey.LOGIN_IP_RATE_LIMIT_PER_MINUTE.key());
+        if (rateLimits) {
+            lockKeys.add(SystemSettingKey.LOGIN_RATE_LIMIT_PER_MINUTE.key());
+            lockKeys.add(SystemSettingKey.LOGIN_IP_RATE_LIMIT_PER_MINUTE.key());
+        }
+        List<SystemSetting> rows = repo.findAllForUpdate(lockKeys);
+        if (!rows.stream().map(SystemSetting::getKey).collect(Collectors.toSet()).containsAll(changes.keySet())) {
             throw new ApiException(ErrorCode.NOT_FOUND, "设置项不存在，请刷新后重试");
         }
         for (SystemSetting row : rows) {
             SystemSettingKey key = SystemSettingKey.of(row.getKey()).orElseThrow();
             SystemSettingDto.Change change = changes.get(row.getKey());
+            if (change == null) continue;
             if (!Objects.equals(row.getValue(), change.expectedValue())) {
                 throw new ApiException(ErrorCode.CONFLICT,
                         key.label() + " 已被修改，请刷新设置后重新确认");
             }
             requireValid(key, change.value().trim());
         }
+        if (rateLimits) {
+            Map<String, String> prospective = rows.stream()
+                    .collect(Collectors.toMap(SystemSetting::getKey, SystemSetting::getValue));
+            changes.forEach((key, change) -> prospective.put(key, change.value().trim()));
+            if (!prospective.keySet().containsAll(lockKeys)) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "关联限流设置缺失，请刷新后重试");
+            }
+            if (effectiveNumber(SystemSettingKey.LOGIN_IP_RATE_LIMIT_PER_MINUTE,
+                    prospective.get(SystemSettingKey.LOGIN_IP_RATE_LIMIT_PER_MINUTE.key()))
+                    < effectiveNumber(SystemSettingKey.LOGIN_RATE_LIMIT_PER_MINUTE,
+                    prospective.get(SystemSettingKey.LOGIN_RATE_LIMIT_PER_MINUTE.key()))) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "鉴权 IP 粗限流不得低于登录主体限流，请一并调整后保存");
+            }
+        }
         tx.bindActor(actorId, actorAccount);
         for (SystemSetting row : rows) {
             SystemSettingKey key = SystemSettingKey.of(row.getKey()).orElseThrow();
+            if (!changes.containsKey(row.getKey())) continue;
             apply(key, row, changes.get(row.getKey()).value().trim(),
                     actorId, actorAccount, "update_system_setting");
         }
         repo.flush();
+        Map<String, String> values = repo.findAll().stream()
+                .collect(Collectors.toMap(SystemSetting::getKey, SystemSetting::getValue));
+        rows.forEach(row -> values.put(row.getKey(), row.getValue()));
         return rows.stream()
-                .map(row -> SystemSettingDto.of(SystemSettingKey.of(row.getKey()).orElseThrow(), row))
+                .filter(row -> changes.containsKey(row.getKey()))
+                .map(row -> SystemSettingDto.of(SystemSettingKey.of(row.getKey()).orElseThrow(), row, values))
                 .toList();
     }
 
@@ -140,9 +172,29 @@ public class SystemSettingsService {
     public void writeDelegated(SystemSettingKey key, String value,
                                UUID actorId, String actorAccount, String auditAction) {
         String normalized = value == null ? "" : value.trim();
+        requireEditable(key);
         requireValid(key, normalized);
-        SystemSetting row = repo.findAllForUpdate(List.of(key.key())).stream().findFirst()
+        boolean rateLimit = key == SystemSettingKey.LOGIN_RATE_LIMIT_PER_MINUTE
+                || key == SystemSettingKey.LOGIN_IP_RATE_LIMIT_PER_MINUTE;
+        List<String> lockKeys = rateLimit ? List.of(SystemSettingKey.LOGIN_IP_RATE_LIMIT_PER_MINUTE.key(),
+                SystemSettingKey.LOGIN_RATE_LIMIT_PER_MINUTE.key()) : List.of(key.key());
+        List<SystemSetting> locked = repo.findAllForUpdate(lockKeys);
+        SystemSetting row = locked.stream().filter(item -> item.getKey().equals(key.key())).findFirst()
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "设置项不存在：" + key.label()));
+        if (rateLimit) {
+            Map<String, String> prospective = locked.stream()
+                    .collect(Collectors.toMap(SystemSetting::getKey, SystemSetting::getValue));
+            prospective.put(key.key(), normalized);
+            if (!prospective.keySet().containsAll(lockKeys)) {
+                throw new ApiException(ErrorCode.NOT_FOUND, "关联限流设置缺失，请刷新后重试");
+            }
+            if (effectiveNumber(SystemSettingKey.LOGIN_IP_RATE_LIMIT_PER_MINUTE,
+                    prospective.get(SystemSettingKey.LOGIN_IP_RATE_LIMIT_PER_MINUTE.key()))
+                    < effectiveNumber(SystemSettingKey.LOGIN_RATE_LIMIT_PER_MINUTE,
+                    prospective.get(SystemSettingKey.LOGIN_RATE_LIMIT_PER_MINUTE.key()))) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "鉴权 IP 粗限流不得低于登录主体限流，请一并调整后保存");
+            }
+        }
         tx.bindActor(actorId, actorAccount);
         apply(key, row, normalized, actorId, actorAccount, auditAction);
         repo.flush();
@@ -150,12 +202,6 @@ public class SystemSettingsService {
 
     private void apply(SystemSettingKey key, SystemSetting row, String value,
                        UUID actorId, String actorAccount, String auditAction) {
-        // The local scheduler consumes a canonical decimal interval. Equivalent
-        // input such as +7/007 must not create a new schedule anchor or disagree
-        // with the database value it reads independently of this application.
-        if (key == SystemSettingKey.UPDATER_CHECK_INTERVAL_DAYS) {
-            value = Integer.toString(Integer.parseInt(value));
-        }
         String old = row.getValue();
         if (Objects.equals(old, value)) {
             return;
@@ -165,6 +211,13 @@ public class SystemSettingsService {
         repo.save(row);
         audit.logCommitted(actorId, actorAccount, auditAction, "system_settings",
                 key.key() + ": " + old + " → " + value, "success");
+    }
+
+    private static void requireEditable(SystemSettingKey key) {
+        if (key == SystemSettingKey.UPDATER_CHECK_INTERVAL_DAYS) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                    "自动更新间隔已退役；请使用服务器运维页手动检查或显式预约更新");
+        }
     }
 
     private void requireValid(SystemSettingKey key, String value) {

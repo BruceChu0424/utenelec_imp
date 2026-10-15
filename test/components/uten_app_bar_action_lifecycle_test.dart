@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar_action_scope.dart';
@@ -52,6 +53,183 @@ List<Widget> _withFillers(Widget action) => [
 ];
 
 void main() {
+  for (final kind in ['native', 'uten', 'header']) {
+    for (final change in ['disabled', 'removed', 'callback']) {
+      testWidgets(
+        'open menu uses current $kind action after $change and rejects the old callback',
+        (tester) async {
+          _size(tester);
+          late StateSetter update;
+          var enabled = true, visible = true, version = 0;
+          final called = <int>[];
+          await tester.pumpWidget(
+            _app(
+              StatefulBuilder(
+                builder: (context, setState) {
+                  update = setState;
+                  final captured = version;
+                  final VoidCallback? callback = enabled
+                      ? () => called.add(captured)
+                      : null;
+                  final action = switch (kind) {
+                    'native' => TextButton(
+                      onPressed: callback,
+                      child: const Text('当前动作'),
+                    ),
+                    'uten' => UtenButton(
+                      onPressed: callback,
+                      child: const Text('当前动作'),
+                    ),
+                    _ => UtenAppBarActionButton(
+                      label: '当前动作',
+                      onPressed: callback,
+                    ),
+                  };
+                  return Scaffold(
+                    appBar: UtenAppBar(
+                      title: '动作业务页',
+                      showPagePermissionAction: false,
+                      actions: [
+                        if (visible) action,
+                        ..._withFillers(const SizedBox.shrink()),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+          await _openActions(tester);
+          Finder button() => find
+              .ancestor(
+                of: find.text('当前动作'),
+                matching: find.byWidgetPredicate(
+                  (widget) => kind == 'native'
+                      ? widget is ButtonStyleButton
+                      : widget is InkWell,
+                ),
+              )
+              .first;
+          VoidCallback? currentCallback() => kind == 'native'
+              ? tester.widget<ButtonStyleButton>(button()).onPressed
+              : tester.widget<InkWell>(button()).onTap;
+          final oldCallback = currentCallback()!;
+          update(() {
+            if (change == 'disabled') {
+              enabled = false;
+            } else if (change == 'removed') {
+              visible = false;
+            } else {
+              version = 1;
+            }
+          });
+          await tester.pump();
+          // Old material callbacks cannot execute during the frame before the
+          // modal rebuild adopts the latest page action list.
+          oldCallback();
+          expect(called, isEmpty);
+          await tester.pumpAndSettle();
+          expect(find.byTooltip('关闭操作面板'), findsOneWidget);
+          if (change == 'removed') {
+            expect(find.text('当前动作'), findsNothing);
+          } else if (change == 'disabled') {
+            expect(currentCallback(), isNull);
+          } else {
+            await tester.tap(find.text('当前动作'));
+            await tester.pumpAndSettle();
+            expect(called, [1]);
+            expect(find.byTooltip('关闭操作面板'), findsNothing);
+          }
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'reused stateful actions receive the current claim without remounting',
+    (tester) async {
+      _size(tester);
+      late StateSetter update;
+      var calls = 0, initialized = 0, disposed = 0, revision = 0;
+      final action = _RetainedAction(
+        onPressed: () => calls++,
+        onInit: () => initialized++,
+        onDispose: () => disposed++,
+      );
+      await tester.pumpWidget(
+        _app(
+          StatefulBuilder(
+            builder: (context, setState) {
+              update = setState;
+              return Scaffold(
+                appBar: UtenAppBar(
+                  title: '当前页$revision',
+                  showPagePermissionAction: false,
+                  actions: _withFillers(action),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await _openActions(tester);
+      final mountedCount = initialized, disposedCount = disposed;
+      update(() => revision++);
+      await tester.pumpAndSettle();
+      expect(initialized, mountedCount);
+      expect(disposed, disposedCount);
+      await tester.tap(find.text('复用动作'));
+      await tester.pumpAndSettle();
+      expect(calls, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a claimed async Consumer survives parent action changes until it completes',
+    (tester) async {
+      _size(tester);
+      late StateSetter update;
+      var visible = true, readValue = 0;
+      final ready = Completer<void>();
+      await tester.pumpWidget(
+        _app(
+          StatefulBuilder(
+            builder: (context, setState) {
+              update = setState;
+              return Scaffold(
+                appBar: UtenAppBar(
+                  title: '异步更新页',
+                  showPagePermissionAction: false,
+                  actions: [
+                    if (visible)
+                      _AsyncConsumerAction(
+                        ready: ready.future,
+                        onRead: (value) => readValue = value,
+                      ),
+                    ..._withFillers(const SizedBox.shrink()),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await _openActions(tester);
+      await tester.tap(find.text('准备异步任务'));
+      await tester.pump();
+      update(() => visible = false);
+      await tester.pump();
+      ready.complete();
+      await tester.pumpAndSettle();
+      expect(readValue, 7);
+      expect(find.text('后续业务弹窗'), findsOneWidget);
+      expect(find.byTooltip('关闭操作面板'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'more preview keeps original route projection and async consumer mounted',
     (tester) async {
@@ -387,6 +565,35 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+}
+
+class _RetainedAction extends StatefulWidget {
+  const _RetainedAction({
+    required this.onPressed,
+    required this.onInit,
+    required this.onDispose,
+  });
+  final VoidCallback onPressed, onInit, onDispose;
+  @override
+  State<_RetainedAction> createState() => _RetainedActionState();
+}
+
+class _RetainedActionState extends State<_RetainedAction> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onInit();
+  }
+
+  @override
+  void dispose() {
+    widget.onDispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      UtenButton(onPressed: widget.onPressed, child: const Text('复用动作'));
 }
 
 class _AsyncConsumerAction extends ConsumerWidget {

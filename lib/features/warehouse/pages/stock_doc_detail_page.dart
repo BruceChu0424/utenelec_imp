@@ -1377,6 +1377,15 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
               entries: byEntry.keys.toList(growable: false),
               params: _weightCache,
               mode: WeightCaptureMode.inbound,
+              productsOf: () => [
+                for (final item in detail.items)
+                  OutboundProductQuantity(
+                    goodsId: item.goodsId,
+                    quantity: item.qtyText ?? item.qty?.toString(),
+                    unitId: item.unitId,
+                    unitName: unitOf(item),
+                  ),
+              ],
             )
           : null,
       columns: [

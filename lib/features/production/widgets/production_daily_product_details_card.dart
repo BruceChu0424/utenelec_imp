@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
-import '../../../components/inputs/uten_table_cell_spec.dart';
-import '../../../components/layout/uten_h_scroll_area.dart';
+import '../../../components/layout/uten_editable_grid.dart';
 import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -60,8 +59,6 @@ class ProductionDailyProductDetailsCard extends StatefulWidget {
 
 class _ProductionDailyProductDetailsCardState
     extends State<ProductionDailyProductDetailsCard> {
-  final _manualWidths = <DailyRowGroup, Map<String, double>>{};
-
   DailyGridRow get product => widget.product;
   List<DailyGridRow> get allocationRows => widget.allocationRows;
   List<DailyGridRow> get materialRows => widget.materialRows;
@@ -81,12 +78,6 @@ class _ProductionDailyProductDetailsCardState
   VoidCallback? get onAddAllocation => widget.onAddAllocation;
   ValueChanged<DailyGridRow>? get onRemoveAllocation =>
       widget.onRemoveAllocation;
-
-  @override
-  void didUpdateWidget(ProductionDailyProductDetailsCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.product, product)) _manualWidths.clear();
-  }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -322,6 +313,7 @@ class _ProductionDailyProductDetailsCardState
         allocationRows.any((row) => row.allocationDemandId != null);
     return _ProductDetailsTable(
       key: ValueKey('daily-product-allocation-table-${product.localRowId}'),
+      tableKey: 'production.daily_report.product_details.allocations',
       columnKeys: [
         'order',
         'name',
@@ -332,15 +324,6 @@ class _ProductionDailyProductDetailsCardState
       ],
       columnLabels: ['去向工单', '接收名称', '编号', '颜色', '去向数量', if (removable) ''],
       minimumWidths: [64, 148, 64, 64, 140, if (removable) actionWidth],
-      manualWidths: _manualWidths[DailyRowGroup.allocations] ?? const {},
-      onResize: (key, delta, initial, minimum) => _resizeDetailColumn(
-        DailyRowGroup.allocations,
-        key,
-        delta,
-        initial,
-        minimum,
-      ),
-      onReset: (key) => _resetDetailColumn(DailyRowGroup.allocations, key),
       compactColumns: removable ? const {5} : const {},
       widths: [
         _nameWidth(
@@ -442,18 +425,10 @@ class _ProductionDailyProductDetailsCardState
 
   Widget _materialTable(BuildContext context) => _ProductDetailsTable(
     key: ValueKey('daily-product-material-table-${product.localRowId}'),
+    tableKey: 'production.daily_report.product_details.materials',
     columnKeys: const ['name', 'code', 'color', 'issued', 'usage'],
     columnLabels: const ['子件名称', '编号', '颜色', '领料量', '本次实际用料'],
     minimumWidths: const [72, 64, 64, 96, 160],
-    manualWidths: _manualWidths[DailyRowGroup.materials] ?? const {},
-    onResize: (key, delta, initial, minimum) => _resizeDetailColumn(
-      DailyRowGroup.materials,
-      key,
-      delta,
-      initial,
-      minimum,
-    ),
-    onReset: (key) => _resetDetailColumn(DailyRowGroup.materials, key),
     widths: [
       _nameWidth(
         context,
@@ -630,22 +605,6 @@ class _ProductionDailyProductDetailsCardState
             .firstOrNull
             ?.receivingColorName;
   }
-
-  void _resizeDetailColumn(
-    DailyRowGroup group,
-    String key,
-    double delta,
-    double initial,
-    double minimum,
-  ) {
-    final widths = _manualWidths.putIfAbsent(group, () => {});
-    setState(
-      () => widths[key] = math.max(minimum, (widths[key] ?? initial) + delta),
-    );
-  }
-
-  void _resetDetailColumn(DailyRowGroup group, String key) =>
-      setState(() => _manualWidths[group]?.remove(key));
 
   String _destinationCode(DailyGridRow row) {
     final id = row.allocationDemandId;
@@ -873,160 +832,102 @@ class _DetailGroupHeader extends StatelessWidget {
   }
 }
 
-class _ProductDetailRow {
-  const _ProductDetailRow({required this.key, required this.cells});
+class _ProductDetailRow extends EditableGridRow {
+  _ProductDetailRow({required this.key, required this.cells});
   final LocalKey key;
-  final List<Widget> cells;
+  List<Widget> cells;
 }
 
-class _ProductDetailsTable extends StatelessWidget {
+/// Both detail sections use the same document grid as the owning report. This
+/// adapter owns only presentation rows; editing controllers remain with the page.
+class _ProductDetailsTable extends StatefulWidget {
   const _ProductDetailsTable({
     super.key,
+    required this.tableKey,
     required this.widths,
     required this.columnKeys,
     required this.columnLabels,
     required this.minimumWidths,
-    required this.manualWidths,
-    required this.onResize,
-    required this.onReset,
     required this.headers,
     required this.rows,
     this.compactColumns = const {},
   });
+  final String tableKey;
   final List<double> widths, minimumWidths;
   final List<String> columnKeys, columnLabels;
-  final Map<String, double> manualWidths;
-  final void Function(String, double, double, double) onResize;
-  final ValueChanged<String> onReset;
   final List<Widget> headers;
   final List<_ProductDetailRow> rows;
   final Set<int> compactColumns;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final resolved = [
-        for (var i = 0; i < widths.length; i++)
-          math.max(minimumWidths[i], manualWidths[columnKeys[i]] ?? widths[i]),
-      ];
-      final width = resolved.fold(0.0, (sum, value) => sum + value);
-      final rowHeight = math.max(
-        UtenControlMetrics.minimumHitExtent(context, desktop: 36) +
-            UtenSpacing.s4,
-        math.max(
-          42.0,
-          MediaQuery.textScalerOf(context).scale(24) +
-              UtenEditableGridCellSpec.contentPadding.vertical +
-              6,
+  State<_ProductDetailsTable> createState() => _ProductDetailsTableState();
+}
+
+class _ProductDetailsTableState extends State<_ProductDetailsTable> {
+  late final _controller = UtenEditableGridController<_ProductDetailRow>(
+    initial: widget.rows,
+  );
+
+  @override
+  void didUpdateWidget(_ProductDetailsTable oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldRows = _controller.rows;
+    final byKey = {for (final row in oldRows) row.key: row};
+    final next = [
+      for (final incoming in widget.rows)
+        if (byKey[incoming.key] case final existing?)
+          (() {
+            existing.cells = incoming.cells;
+            if (!identical(existing, incoming)) incoming.dispose();
+            return existing;
+          })()
+        else
+          incoming,
+    ];
+    final removed = oldRows.where((row) => !next.contains(row)).toList();
+    if (removed.isNotEmpty) _controller.removeRows(removed);
+    if (next.length != oldRows.length ||
+        next.asMap().entries.any(
+          (entry) => !identical(entry.value, oldRows[entry.key]),
+        )) {
+      _controller.swapRows(next);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => UtenEditableGrid<_ProductDetailRow>(
+    tableKey: widget.tableKey,
+    controller: _controller,
+    showAddRow: false,
+    showRowDelete: false,
+    showColumnSettings: false,
+    stickyHeader: false,
+    columns: [
+      for (var column = 0; column < widget.columnKeys.length; column++)
+        EditableGridColumn<_ProductDetailRow>(
+          key: widget.columnKeys[column],
+          label: widget.columnLabels[column],
+          width:
+              widget.widths[column] +
+              (widget.compactColumns.contains(column) ? 12 : 0),
+          minimumWidthOf: (_) =>
+              widget.minimumWidths[column] +
+              (widget.compactColumns.contains(column) ? 12 : 0),
+          headerInfo: widget.headers[column] is UtenColumnHeaderInfo
+              ? (widget.headers[column] as UtenColumnHeaderInfo).message
+              : null,
+          required:
+              widget.headers[column] is Text &&
+              ((widget.headers[column] as Text).data?.endsWith(' *') ?? false),
+          cellBuilder: (_, row) =>
+              KeyedSubtree(key: row.key, child: row.cells[column]),
         ),
-      );
-      final colors = Theme.of(context).colorScheme;
-      return UtenHScrollArea(
-        child: SizedBox(
-          width: width,
-          child: Table(
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            columnWidths: {
-              for (var i = 0; i < widths.length; i++)
-                i: FixedColumnWidth(resolved[i]),
-            },
-            border: TableBorder(
-              horizontalInside: BorderSide(color: colors.outlineVariant),
-            ),
-            children: [
-              TableRow(
-                decoration: BoxDecoration(color: colors.surfaceContainerHigh),
-                children: [
-                  for (var column = 0; column < headers.length; column++)
-                    SizedBox(
-                      height: math.max(
-                        32,
-                        MediaQuery.textScalerOf(context).scale(20) + 12,
-                      ),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: BorderDirectional(
-                            end: column == headers.length - 1
-                                ? BorderSide.none
-                                : BorderSide(color: colors.outline),
-                          ),
-                        ),
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: compactColumns.contains(column)
-                                      ? UtenSpacing.s2
-                                      : UtenSpacing.s12,
-                                ),
-                                child: Align(
-                                  alignment: AlignmentDirectional.centerStart,
-                                  child: DefaultTextStyle(
-                                    style: UtenTableHeader.textStyle(
-                                      Theme.of(context),
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    child: headers[column],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (!compactColumns.contains(column))
-                              PositionedDirectional(
-                                end: 0,
-                                top: 0,
-                                bottom: 0,
-                                width: 8,
-                                child: UtenColumnResizeHandle(
-                                  key: ValueKey((
-                                    key,
-                                    'resize',
-                                    columnKeys[column],
-                                  )),
-                                  label: columnLabels[column],
-                                  onResize: (delta) => onResize(
-                                    columnKeys[column],
-                                    delta,
-                                    resolved[column],
-                                    minimumWidths[column],
-                                  ),
-                                  onReset: () => onReset(columnKeys[column]),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              for (final row in rows)
-                TableRow(
-                  key: row.key,
-                  children: [
-                    for (var column = 0; column < row.cells.length; column++)
-                      SizedBox(
-                        height: rowHeight,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: compactColumns.contains(column)
-                                ? UtenSpacing.s2
-                                : UtenSpacing.s12,
-                            vertical: UtenSpacing.s2,
-                          ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: row.cells[column],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      );
-    },
+    ],
   );
 }

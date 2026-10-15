@@ -268,6 +268,7 @@ class FinanceProcurementApprovalReview {
     this.currencyName,
     this.exchangeRate,
     this.financeExchangeRate,
+    this.financeTaxRate,
     this.settlementMethodName,
     this.taxRate,
     this.purchaserName,
@@ -309,6 +310,7 @@ class FinanceProcurementApprovalReview {
   /// 财务通过时填写并随事件冻结的汇率；未批 case = null（前端编辑默认值用
   /// [exchangeRate] 快照兜底，再兜底 1）。
   final String? financeExchangeRate;
+  final String? financeTaxRate;
   final String? settlementMethodName;
   final String? taxRate;
   final String? purchaserName;
@@ -380,6 +382,7 @@ class FinanceProcurementApprovalReview {
       currencyName: _firstNullableString([json['currencyName']]),
       exchangeRate: _firstNullableString([json['exchangeRate']]),
       financeExchangeRate: _firstNullableString([json['financeExchangeRate']]),
+      financeTaxRate: _firstNullableString([json['financeTaxRate']]),
       settlementMethodName: _firstNullableString([
         json['settlementMethodName'],
       ]),

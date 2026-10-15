@@ -12,9 +12,15 @@ import '../attachments/attachment_file_rules.dart';
 import '../providers/authenticated_scope_provider.dart';
 
 /// Reported by the installed database capability, never inferred from month settings.
-enum AuditArchivePurgeMode { preserveUnclassified, legacyPurge, unknown }
+enum AuditArchivePurgeMode {
+  permanentRetain,
+  preserveUnclassified,
+  legacyPurge,
+  unknown,
+}
 
 AuditArchivePurgeMode _auditArchivePurgeMode(Object? value) => switch (value) {
+  'PERMANENT_RETAIN' => AuditArchivePurgeMode.permanentRetain,
   'PRESERVE_UNCLASSIFIED' => AuditArchivePurgeMode.preserveUnclassified,
   'LEGACY_PURGE' => AuditArchivePurgeMode.legacyPurge,
   _ => AuditArchivePurgeMode.unknown,
@@ -117,6 +123,16 @@ final auditArchivePurgeModeProvider = Provider<AuditArchivePurgeMode>((ref) {
         AuditArchivePurgeMode.unknown;
   } catch (_) {
     return AuditArchivePurgeMode.unknown;
+  }
+});
+
+final auditEffectiveRetentionMonthsProvider = Provider<int?>((ref) {
+  try {
+    return ref
+        .watch(publicSettingsSnapshotProvider)
+        ?.auditReceiptRetentionMonths;
+  } catch (_) {
+    return null;
   }
 });
 

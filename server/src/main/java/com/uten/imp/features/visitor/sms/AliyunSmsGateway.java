@@ -11,8 +11,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.util.ChinaMobileNumber;
 import com.uten.imp.config.props.SmsProperties;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.Map;
@@ -20,12 +18,10 @@ import java.util.Map;
 /**
  * 阿里云国内短信网关（Dysmsapi 2017-05-25 V2 SDK）。
  *
- * <p>SDK Client 是线程安全对象，应用生命周期内只创建一次。SendSms 不提供幂等能力，因此显式关闭
+ * <p>SDK Client 按不可变配置修订复用；配置切换创建新实例，进行中的签发保留旧实例。SendSms 不提供幂等能力，因此显式关闭
  * SDK 自动重试；调用结果不确定时由短信回执/运营平台核查，不能盲目重发验证码。
  */
 @Slf4j
-@Component
-@ConditionalOnProperty(prefix = "uten.sms", name = "provider", havingValue = "aliyun")
 public class AliyunSmsGateway implements SmsGateway {
 
     private static final RuntimeOptions RUNTIME_OPTIONS = new RuntimeOptions()
@@ -35,7 +31,8 @@ public class AliyunSmsGateway implements SmsGateway {
             .setReadTimeout(5_000)
             .setKeepAlive(true);
 
-    private final SmsProperties properties;
+    private final String signName;
+    private final String templateCode;
     private final ObjectMapper objectMapper;
     private final Client client;
 
@@ -44,7 +41,8 @@ public class AliyunSmsGateway implements SmsGateway {
     }
 
     AliyunSmsGateway(SmsProperties properties, ObjectMapper objectMapper, Client client) {
-        this.properties = properties;
+        this.signName = properties.getSignName();
+        this.templateCode = properties.getTemplateCode();
         this.objectMapper = objectMapper;
         this.client = client;
     }
@@ -54,11 +52,15 @@ public class AliyunSmsGateway implements SmsGateway {
         try {
             SendSmsRequest request = new SendSmsRequest()
                     .setPhoneNumbers(phone)
-                    .setSignName(properties.getSignName())
-                    .setTemplateCode(properties.getTemplateCode())
+                    .setSignName(signName)
+                    .setTemplateCode(templateCode)
                     .setTemplateParam(objectMapper.writeValueAsString(Map.of("code", code)));
             SendSmsResponse response = client.sendSmsWithOptions(request, RUNTIME_OPTIONS);
             SendSmsResponseBody body = response == null ? null : response.getBody();
+            if (body == null || body.getCode() == null || body.getCode().isBlank()) {
+                log.warn("Aliyun SMS response uncertain: phoneSuffix={}", ChinaMobileNumber.maskedSuffix(phone));
+                return SmsSendResult.UNCERTAIN;
+            }
             if (body != null && "OK".equals(body.getCode())) {
                 log.info(
                         "Aliyun SMS accepted: phoneSuffix={}, requestId={}, bizId={}",
@@ -97,10 +99,11 @@ public class AliyunSmsGateway implements SmsGateway {
             Config config = new Config()
                     .setAccessKeyId(properties.getAccessKeyId())
                     .setAccessKeySecret(properties.getAccessKeySecret())
+                    .setProtocol("HTTPS")
                     .setEndpoint(properties.getEndpoint());
             return new Client(config);
         } catch (Exception e) {
-            throw new IllegalStateException("无法初始化阿里云短信客户端", e);
+            throw new IllegalStateException("无法初始化阿里云短信客户端");
         }
     }
 

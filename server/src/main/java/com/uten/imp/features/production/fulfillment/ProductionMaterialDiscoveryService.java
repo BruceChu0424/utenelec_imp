@@ -48,9 +48,76 @@ public class ProductionMaterialDiscoveryService {
         Segment segment=segment(segmentId,false); requireWorkshop(segment,false);
         List<Object[]> requests=rows("SELECT id,status FROM production_material_discovery_requests WHERE execution_segment_id=:id AND status<>'CANCELLED'",segmentId);
         Object[] request=requests.isEmpty()?null:requests.getFirst();
+        MaterialMemory memory=segment.eligible()&&request==null?materialMemory(segmentId):MaterialMemory.EMPTY;
         return new Context(segmentId,segment.version(),segment.discovery(),request==null?null:(UUID)request[0],
                 request==null?null:(String)request[1],segment.eligible()&&request==null&&access.hasAuthority("production_execution:start")
-                    &&Boolean.TRUE.equals(em.createNativeQuery("SELECT start_route IN('FULL_KIT','CONTINUOUS') FROM production_execution_segments WHERE id=:id").setParameter("id",segmentId).getSingleResult()));
+                    &&Boolean.TRUE.equals(em.createNativeQuery("SELECT start_route IN('FULL_KIT','CONTINUOUS') FROM production_execution_segments WHERE id=:id").setParameter("id",segmentId).getSingleResult()),
+                memory.items(),memory.source(),memory.requestNo());
+    }
+
+    /**
+     * Recognition precedes measured BOM learning. Reuse only material identities from the latest valid
+     * request for this product/color/unit in this workshop; every new task still confirms its own
+     * quantity and warehouse. Stock presence is deliberately absent from this query.
+     */
+    private MaterialMemory materialMemory(UUID segmentId) {
+        List<Object[]> previous=rows("""
+                SELECT request.id,request.status,request.request_no
+                FROM production_execution_segments target
+                JOIN production_execution_segments previous ON previous.product_goods_id=target.product_goods_id
+                    AND previous.product_color_id IS NOT DISTINCT FROM target.product_color_id
+                    AND previous.product_unit_id=target.product_unit_id
+                    AND previous.workshop_department_id IS NOT DISTINCT FROM target.workshop_department_id
+                JOIN production_plans plan ON plan.id=previous.plan_id
+                JOIN production_planning_packages package ON package.id=previous.package_id
+                JOIN production_material_discovery_requests request ON request.execution_segment_id=previous.id
+                WHERE target.id=:id AND previous.id<>target.id AND NOT previous.is_deleted
+                  AND previous.status NOT IN('CANCELLED','REVERSED') AND NOT plan.is_deleted AND NOT plan.is_canceled
+                  AND NOT plan.is_stopped AND NOT package.is_deleted AND package.status='CONFIRMED'
+                  AND (request.status='CONFIGURED' OR (request.status='PENDING' AND request.requested_materials<>'[]'::jsonb))
+                ORDER BY COALESCE(request.configured_at,request.created_at) DESC,request.id DESC LIMIT 1
+                """,segmentId);
+        if(previous.isEmpty())return MaterialMemory.EMPTY;
+        Object[] source=previous.getFirst();
+        List<Object[]> materials=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+                WITH identities AS (
+                    SELECT DISTINCT line.goods_id,line.color_id,line.unit_id
+                    FROM production_material_discovery_lines line WHERE line.request_id=:request AND :confirmed
+                    UNION
+                    SELECT item."goodsId",item."colorId",item."unitId"
+                    FROM production_material_discovery_requests request
+                    CROSS JOIN LATERAL jsonb_to_recordset(request.requested_materials)
+                        AS item("goodsId" uuid,"colorId" uuid,"unitId" uuid)
+                    WHERE request.id=:request AND NOT :confirmed
+                )
+                SELECT identity.goods_id,goods.code,goods.name,identity.color_id,color.name,identity.unit_id,
+                       unit.name,goods.spec,goods.stock_place,
+                       COALESCE(NOT goods.is_deleted AND NOT goods.auto_created AND goods.status IS DISTINCT FROM '禁用'
+                         AND goods.unit_id=identity.unit_id AND goods.issue_method<>'PERIODIC'
+                         AND NOT unit.is_deleted AND unit.status IS DISTINCT FROM '禁用'
+                         AND (identity.color_id IS NULL OR (NOT color.is_deleted AND color.status IS DISTINCT FROM '禁用'))
+                         AND NOT EXISTS (
+                             WITH RECURSIVE descendants(id) AS (
+                                 SELECT identity.goods_id
+                                 UNION SELECT bom.component_goods_id FROM descendants
+                                 JOIN goods_bom_items bom ON bom.goods_id=descendants.id AND NOT bom.is_deleted)
+                             SELECT 1 FROM descendants WHERE id=(SELECT product_goods_id
+                                 FROM production_execution_segments WHERE id=:segment)),FALSE)
+                FROM identities identity LEFT JOIN goods ON goods.id=identity.goods_id
+                LEFT JOIN units unit ON unit.id=identity.unit_id LEFT JOIN colors color ON color.id=identity.color_id
+                ORDER BY goods.code,identity.goods_id,identity.color_id NULLS FIRST
+                """).setParameter("request",source[0]).setParameter("confirmed","CONFIGURED".equals(source[1]))
+                .setParameter("segment",segmentId));
+        // Never carry a partial recipe after one of its identities was disabled, removed or reclassified.
+        if(materials.isEmpty()||materials.size()>100||materials.stream().anyMatch(row->!Boolean.TRUE.equals(row[9])))
+            return MaterialMemory.EMPTY;
+        List<SuggestedItem> items=materials.stream().map(row->new SuggestedItem((UUID)row[0],(String)row[1],
+                (String)row[2],(UUID)row[3],(String)row[4],(UUID)row[5],(String)row[6],null,(String)row[7],(String)row[8])).toList();
+        return new MaterialMemory(items,"CONFIGURED".equals(source[1])?"WAREHOUSE_CONFIRMED":"WORKSHOP_REQUESTED",(String)source[2]);
+    }
+
+    private record MaterialMemory(List<SuggestedItem> items,String source,String requestNo) {
+        private static final MaterialMemory EMPTY=new MaterialMemory(List.of(),null,null);
     }
 
     @Transactional public Detail request(UUID segmentId,Request command) {

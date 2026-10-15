@@ -184,7 +184,7 @@ class ProcurementFinanceApprovalReviewTest {
             UUID caseId, UUID orderId, String status,
             java.math.BigDecimal financeExchangeRate, String orderType) {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
-        Object[] row = new Object[26];
+        Object[] row = new Object[27];
         row[0] = caseId;
         row[1] = orderType;
         row[2] = orderId;

@@ -100,6 +100,30 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @release2518ServerUpdates.
+  ///
+  /// In zh, this message translates to:
+  /// **'有权限人员可手动检查服务器新版本，选择立即更新或按服务器当地时间预约；发现更新后显示提醒和徽章，平时不自动检查更新源。'**
+  String get release2518ServerUpdates;
+
+  /// No description provided for @release2518Storage.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器存储可查看内存、磁盘、数据库、上传和备份明细；经授权预览并清理符合条件的资源，当前版本、回滚与恢复所需备份和上传原件受保护。'**
+  String get release2518Storage;
+
+  /// No description provided for @release2518CompanyConnections.
+  ///
+  /// In zh, this message translates to:
+  /// **'超级管理员可配置每家公司的 OSS 更新源与短信网关；密钥只写不回显，短信网关配置用于下一次发码。'**
+  String get release2518CompanyConnections;
+
+  /// No description provided for @release2518LayoutAndTrace.
+  ///
+  /// In zh, this message translates to:
+  /// **'统一表格和编辑区布局，完善财务核税与车间物料身份沿用；双向物料追溯保留真实数量、单位和来源，关联委外领料支持准确定位与分页。'**
+  String get release2518LayoutAndTrace;
+
   /// No description provided for @release2517PickerLayout.
   ///
   /// In zh, this message translates to:

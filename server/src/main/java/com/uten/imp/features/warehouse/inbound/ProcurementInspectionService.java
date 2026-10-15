@@ -899,7 +899,11 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                            CASE WHEN NULLIF(g.name, '') IS NULL
                                                 THEN NULL ELSE NULLIF(g.code, '') END,
                                            NULLIF(col.name, '')), '') || ')', ''),
-                                       '、') AS goods_summary
+                                       '、') AS goods_summary,
+                                   string_agg(DISTINCT NULLIF(g.code, ''), '、'
+                                       ORDER BY NULLIF(g.code, '')) AS goods_code_summary,
+                                   string_agg(DISTINCT NULLIF(col.name, ''), '、'
+                                       ORDER BY NULLIF(col.name, '')) AS color_name_summary
                             FROM procurement_inspection_items i
                             LEFT JOIN warehouses w ON w.id = i.pre_stocked_warehouse_id
                             LEFT JOIN goods g ON g.id = i.goods_id
@@ -915,7 +919,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort {
                                a.goods_summary,
                                -- 待检队列「待检数量」列：与明细页 inspectionQuantityTotalText 同口径，
                                -- 按货品基本单位分组拼「qty 单位 · qty 单位」（跨单位不相加）。
-                               pending.text AS pending_qty_text
+                               pending.text AS pending_qty_text,
+                               a.goods_code_summary, a.color_name_summary
                         FROM agg a
                         JOIN (
                             SELECT 'PURCHASE'::text AS t, id, bill_no, bill_date, supplier_id

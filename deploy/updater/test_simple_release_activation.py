@@ -14,9 +14,11 @@ class SimpleReleaseActivationTest(unittest.TestCase):
     def activation(self, *, migration=False, first=False, start=True,
                    candidate_health=True, restart=True, old_health=True, migrate=True, final_stop=True,
                    backup_dir_blocked=False, backup_dir_symlink=False, install_noop=False,
-                   web_group=True, migrator_readable=True):
+                   web_group=True, migrator_readable=True, backup=True, expected='',
+                   database='uten_imp', port='5432', migrator_extra='', migrator_mode=0o600):
         source = SCRIPT.read_text(encoding="utf-8")
         activate = re.search(r"(?ms)^do_activate\(\) \{.*?^\}", source).group(0)
+        preflight = re.search(r"(?ms)^validate_migrator_config\(\) \{.*?^\}", source).group(0)
         with tempfile.TemporaryDirectory(prefix="uten-activation-") as temp:
             root = Path(temp)
             releases = root / "releases"
@@ -26,7 +28,9 @@ class SimpleReleaseActivationTest(unittest.TestCase):
             active.write_text("none\n" if first else "v1.0.0\n")
             if not first:
                 (root / "current").symlink_to("releases/v1.0.0", target_is_directory=True)
-            (root / "migrator.env").write_text("# no credentials in this fixture\n")
+            (root / "migrator.env").write_text(
+                "UTEN_MIGRATOR_DB_PASSWORD=FixtureOnlyPassword1234567890\n" + migrator_extra)
+            (root / "migrator.env").chmod(migrator_mode)
             backup_dir = root / "pre-activation"
             if backup_dir_blocked:
                 # A regular file where the directory should be: like an unmounted, immutable mount point.
@@ -42,7 +46,9 @@ class SimpleReleaseActivationTest(unittest.TestCase):
                        START=str(int(start)), CANDIDATE_HEALTH=str(int(candidate_health)),
                        RESTART=str(int(restart)), OLD_HEALTH=str(int(old_health)), MIGRATE=str(int(migrate)),
                        FINAL_STOP=str(int(final_stop)), UTEN_BACKUP_DIR=backup_dir.as_posix(),
-                       WEB_GROUP_PRESENT=str(int(web_group)), MIGRATOR_READABLE=str(int(migrator_readable)))
+                       WEB_GROUP_PRESENT=str(int(web_group)), MIGRATOR_READABLE=str(int(migrator_readable)),
+                       BACKUP_SUCCEEDS=str(int(backup)), UTEN_PG_DATABASE=database, UTEN_PG_PORT=port,
+                       UTEN_OSS_KEY_SECRET='FixtureCloudSecretOnly', JAVA_TOOL_OPTIONS='FixtureNoRealJvm')
             fixture = r'''
 set -euo pipefail
 log() { printf '%s\n' "$*"; }
@@ -52,10 +58,12 @@ flock() { :; }
 migration_digest() {
   if [[ "$1" == *"releases/v1.1.0/"* && "$MIGRATION" == 1 ]]; then printf new; else printf old; fi
 }
-create_database_backup() { printf 'backup\n' >> "$EVENTS"; printf '%s/backup.dump\n' "$UTEN_BASE"; }
+current_version() { cat "$ACTIVE_FILE"; }
+create_database_backup() { printf 'backup\n' >> "$EVENTS"; [[ "$BACKUP_SUCCEEDS" == 1 ]] || return 1; printf '%s/backup.dump\n' "$UTEN_BASE"; }
 runuser() { [[ "$1 $2 $3 $4" == '-u uten-imp -- test' && "$MIGRATOR_READABLE" == 1 ]]; }
 timeout() {
   [[ "$1 $2 $3 $4 $5 $6" == '900 runuser -u uten-imp -- /usr/bin/java' ]] || return 99
+  printf 'migration-env:%s\n' "$(/usr/bin/env | cut -d= -f1 | sort | tr '\n' ',')" >> "$EVENTS"
   printf 'migrate\n' >> "$EVENTS"; [[ "$MIGRATE" == 1 ]];
 }
 systemctl() {
@@ -83,7 +91,7 @@ prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
             if install_noop:
                 # A successful helper exit does not prove that its directory postcondition exists.
                 fixture += '\ninstall() { return 0; }\n'
-            result = subprocess.run([bash_path(), "-c", fixture + activate + '\ndo_activate v1.1.0 manual'],
+            result = subprocess.run([bash_path(), "-c", fixture + preflight + '\n' + activate + '\ndo_activate v1.1.0 manual ' + expected],
                                     env=env, text=True, encoding="utf-8", capture_output=True, check=False)
             link = root / "current"
             return result, (root / "events").read_text().splitlines(), active.read_text().strip(), (
@@ -99,6 +107,11 @@ prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
         self.assertLess(events.index("health:v1.1.0"), events.index("prune"))
         # Old pre-migration dumps are pruned only after the new backup exists and the release is healthy.
         self.assertLess(events.index("prune"), events.index("prune-dumps"))
+        child_env = next(event for event in events if event.startswith('migration-env:'))
+        self.assertIn('UTEN_MIGRATOR_DB_PASSWORD', child_env)
+        self.assertNotIn('UTEN_OSS_KEY_SECRET', child_env)
+        self.assertNotIn('JAVA_TOOL_OPTIONS', child_env)
+        self.assertNotIn('UTEN_MIGRATOR_ENV', child_env)
         # Release permissions (web/ only for uten-web) are fixed before the application is stopped.
         self.assertLess(events.index("web-group"), events.index("stop:v1.0.0"))
         self.assertLess(events.index("perms:v1.1.0"), events.index("stop:v1.0.0"))
@@ -109,6 +122,47 @@ prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
         self.assertFalse(any(event.startswith("stop:") for event in events))
         self.assertNotIn("backup", events)
         self.assertNotIn("migrate", events)
+
+    def test_migrator_actual_target_and_static_private_password_are_checked_before_stop(self):
+        cases = ({'database': 'other_company'}, {'port': '5433'},
+                 {'migrator_extra': 'SPRING_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:5433/other\n'},
+                 {'migrator_extra': 'touch "$UTEN_BASE/injected"\n'},
+                 {'migrator_extra': 'UTEN_MIGRATOR_DB_PASSWORD=SecondFixturePassword12345\n'},
+                 {'migrator_mode': 0o644})
+        for case in cases:
+            with self.subTest(**case):
+                result, events, active, link = self.activation(migration=True, **case)
+                self.assertNotEqual(0, result.returncode)
+                self.assertEqual(('v1.0.0', 'releases/v1.0.0'), (active, link))
+                self.assertFalse(any(event.startswith(('stop:', 'start:', 'restart:')) for event in events))
+                self.assertNotIn('backup', events)
+                self.assertNotIn('migrate', events)
+                self.assertIn('未停应用', result.stderr)
+
+    def test_code_only_activation_does_not_require_migration_credentials_or_target(self):
+        result, events, active, _ = self.activation(database='other_company', port='5433', migrator_mode=0o644)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual('v1.1.0', active)
+        self.assertNotIn('migrate', events)
+
+    def test_final_cutover_dump_failure_restores_original_service_without_migrating(self):
+        result, events, active, link = self.activation(migration=True, backup=False)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual((active, link), ('v1.0.0', 'releases/v1.0.0'))
+        self.assertIn('stop:v1.0.0', events)
+        self.assertIn('start:v1.0.0', events)
+        self.assertIn('原服务已恢复', result.stderr)
+        self.assertNotIn('migrate', events)
+        self.assertNotIn('prune', events)
+
+    def test_expected_current_cas_rejects_a_manual_change_before_any_stop_or_migration(self):
+        result, events, active, link = self.activation(migration=True, expected='v0.9.0')
+        self.assertEqual(42, result.returncode, result.stderr)
+        self.assertEqual((active, link), ('v1.0.0', 'releases/v1.0.0'))
+        self.assertIn('未停服', result.stderr)
+        self.assertFalse(any(e.startswith(('stop:', 'start:', 'restart:')) for e in events))
+        self.assertNotIn('backup', events)
+        self.assertNotIn('migrate', events)
 
     def test_missing_web_group_or_unwritable_backup_dir_fails_before_the_application_stops(self):
         for case in ({"web_group": False}, {"backup_dir_blocked": True}):

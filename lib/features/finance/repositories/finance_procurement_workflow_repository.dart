@@ -52,6 +52,7 @@ abstract interface class FinanceProcurementExactApprovalRepository {
     List<FinanceProcurementDecisionItem> items, {
     String? remark,
     String? exchangeRate,
+    String? taxRate,
   });
 }
 
@@ -60,6 +61,7 @@ extension ProcurementExactRateAccess on FinanceProcurementWorkflowRepository {
     List<FinanceProcurementDecisionItem> items, {
     String? remark,
     String? exchangeRate,
+    String? taxRate,
   }) {
     final repository = this;
     if (repository is FinanceProcurementExactApprovalRepository) {
@@ -68,10 +70,14 @@ extension ProcurementExactRateAccess on FinanceProcurementWorkflowRepository {
             items,
             remark: remark,
             exchangeRate: exchangeRate,
+            taxRate: taxRate,
           );
     }
     // Older adapters remain compatible only when their numeric API can carry
     // the exact decimal. Never silently degrade an unsupported exact input.
+    if (taxRate != null) {
+      throw UnsupportedError('当前连接尚不能提交财务税率，请重新连接后重试');
+    }
     final number = exchangeRate == null ? null : double.tryParse(exchangeRate);
     if (exchangeRate != null &&
         (number == null ||
@@ -100,8 +106,18 @@ class DioFinanceProcurementWorkflowRepository
     List<FinanceProcurementDecisionItem> items, {
     String? remark,
     String? exchangeRate,
+    String? taxRate,
   }) async {
     final exactRate = financeExactTrimmed(exchangeRate);
+    final exactTax = financeExactTrimmed(taxRate);
+    final taxUnits = financeRateUnits(exactTax);
+    if (taxRate != null &&
+        (taxUnits == null ||
+            taxUnits < BigInt.zero ||
+            taxUnits > BigInt.from(100000000) ||
+            taxUnits % BigInt.from(100) != BigInt.zero)) {
+      throw const FormatException('税率须为 0 至 100，最多 4 位小数');
+    }
     final units = financeRateUnits(exactRate);
     if (exchangeRate != null &&
         (units == null ||
@@ -115,6 +131,7 @@ class DioFinanceProcurementWorkflowRepository
         'items': [for (final item in items) item.toJson()],
         if (remark?.trim().isNotEmpty == true) 'remark': remark!.trim(),
         'exchangeRate': ?exactRate,
+        'taxRate': ?exactTax,
       },
     );
   }

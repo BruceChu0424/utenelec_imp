@@ -30,6 +30,7 @@ class VisitorSmsServiceTest {
     void commitsLocalIssuanceBeforeCallingTheExternalGateway() {
         VisitorOtpVerifier verifier = mock(VisitorOtpVerifier.class);
         SmsGateway gateway = mock(SmsGateway.class);
+        when(gateway.prepare()).thenReturn(new SmsGateway.Prepared(gateway,true));
         SystemSettingsService settings = mock(SystemSettingsService.class);
         VisitorSmsIssuanceTransaction issuance =
                 mock(VisitorSmsIssuanceTransaction.class);
@@ -54,6 +55,7 @@ class VisitorSmsServiceTest {
     void definitiveProviderRejectionRetainsTheUnsentIssuanceAndDisablesIt() {
         VisitorOtpVerifier verifier = mock(VisitorOtpVerifier.class);
         SmsGateway gateway = mock(SmsGateway.class);
+        when(gateway.prepare()).thenReturn(new SmsGateway.Prepared(gateway,true));
         SystemSettingsService settings = mock(SystemSettingsService.class);
         VisitorSmsIssuanceTransaction issuance =
                 mock(VisitorSmsIssuanceTransaction.class);
@@ -74,6 +76,7 @@ class VisitorSmsServiceTest {
     void uncertainProviderOutcomeKeepsTheIssuedOtpAndDoesNotRetry() {
         VisitorOtpVerifier verifier = mock(VisitorOtpVerifier.class);
         SmsGateway gateway = mock(SmsGateway.class);
+        when(gateway.prepare()).thenReturn(new SmsGateway.Prepared(gateway,true));
         SystemSettingsService settings = mock(SystemSettingsService.class);
         VisitorSmsIssuanceTransaction issuance =
                 mock(VisitorSmsIssuanceTransaction.class);

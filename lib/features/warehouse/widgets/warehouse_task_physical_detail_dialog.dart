@@ -8,6 +8,7 @@ import '../../../core/network/server_config.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/warehouse_task_center_record.dart';
 
 /// History reads keep the same source identity and warehouse authorization as the list.
@@ -129,8 +130,8 @@ class _WarehouseTaskPhysicalDetailDialogState
         : widget.row;
     final fields =
         <(String, String)>[
-              ('goodsCode', '货品编号'),
               ('goodsName', '货品名称'),
+              ('goodsCode', '货品编号'),
               ('colorName', '颜色'),
               ('unitName', '单位'),
               ('quantity', '数量'),
@@ -196,29 +197,37 @@ class _WarehouseTaskPhysicalDetailDialogState
                   Expanded(
                     child: fields.isEmpty
                         ? const Center(child: Text('当前记录没有物料明细'))
-                        : SingleChildScrollView(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: DataTable(
-                                columns: [
-                                  for (final field in fields)
-                                    DataColumn(label: Text(field.$2)),
-                                ],
-                                rows: [
-                                  for (final line in lines)
-                                    DataRow(
-                                      cells: [
-                                        for (final field in fields)
-                                          DataCell(
-                                            Text(
-                                              line[field.$1]?.toString() ?? '—',
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                ],
-                              ),
-                            ),
+                        : MasterDataTableView<Map<String, dynamic>>(
+                            tableKey:
+                                'warehouse.task-center.physical-detail.${row.recordType}',
+                            columns: [
+                              for (final field in fields)
+                                MasterColumnDef(
+                                  key: field.$1,
+                                  label: field.$2,
+                                  width: switch (field.$1) {
+                                    'goodsName' || 'decisionReason' => 240,
+                                    'lotId' ||
+                                    'sourceReportItemId' ||
+                                    'stockDocumentNos' => 220,
+                                    _ => 140,
+                                  },
+                                  value: (line) {
+                                    final value = line[field.$1];
+                                    return value is List
+                                        ? value
+                                              .map((item) => item.toString())
+                                              .join('、')
+                                        : value?.toString();
+                                  },
+                                ),
+                            ],
+                            items: lines,
+                            facets: const {},
+                            nullCounts: const {},
+                            filters: const {},
+                            onFilterChanged: (_, _) {},
+                            emptyMessage: '当前记录没有物料明细',
                           ),
                   ),
                   if (pages > 1)

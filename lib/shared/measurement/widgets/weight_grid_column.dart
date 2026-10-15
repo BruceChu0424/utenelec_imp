@@ -579,7 +579,7 @@ class _WeightCellState<T extends EditableGridRow>
     final theme = Theme.of(context);
     final weighExtent = UtenControlMetrics.minimumHitExtent(
       context,
-      desktop: 32,
+      desktop: 24,
     );
     final c = widget.controller;
     final params = widget.paramsOf?.call(widget.row);
@@ -659,8 +659,8 @@ class _WeightCellState<T extends EditableGridRow>
             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             visualDensity: VisualDensity.standard,
           ),
-          padding: const EdgeInsets.all(UtenSpacing.s4),
-          icon: const Icon(Icons.scale_outlined, size: 16),
+          padding: EdgeInsets.zero,
+          icon: const Icon(Icons.scale_outlined, size: 14),
         ),
     ];
 

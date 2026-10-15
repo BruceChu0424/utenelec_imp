@@ -158,6 +158,22 @@ void main() {
     expect(columnKeys.contains('supplyRoute'), isFalse);
     expect(columnKeys.contains('action'), isFalse);
     final first = table.items.first;
+    final context = tester.element(
+      find.byKey(const Key('operations-workbench-desktop-table')),
+    );
+    expect(
+      table.columns
+          .singleWhere((column) => column.key == 'exception')
+          .cellColor!(context, first),
+      utenStatusBadgeCellColor(UtenStatusBadgeType.success),
+    );
+    final unfinished =
+        table.columns
+                .singleWhere((column) => column.key == 'openQty')
+                .cellBuilder!(context, first)
+            as Text;
+    expect(unfinished.style?.fontWeight, FontWeight.w700);
+    expect(unfinished.style?.color, Theme.of(context).colorScheme.error);
     expect(
       table.columns
           .singleWhere((column) => column.key == 'actionDocNo')

@@ -112,8 +112,8 @@ void main() {
     await tester.pumpWidget(_wrap(_grid(c)));
     final initial = cellMaxWidth!;
 
-    // 抓列右边界竖线（贴列右边界、半溢出 4px 的命中区，Stack 裁掉溢出半区后
-    // 可点的是边界内侧 4px）向左拖 → 手动缩小生效。列右边界由表头文本位置推算：
+    // 抓列右边界内的共享手柄向左拖 → 手动缩小生效。
+    // 列右边界由表头文本位置推算：
     // 表头内边距 12 + 当前列宽（cellMaxWidth + 格内边距 16）。
     // 用鼠标指针：resize 手柄本身即桌面交互（悬停显 resize 光标）；触屏指针下
     // 手柄与表头横向滚动区的手势竞技由滚动区胜出（与 MasterDataTableView 同款既有行为）。
@@ -142,7 +142,8 @@ void main() {
 
     // 锁定后即使输入超长内容也不再自动加宽。
     await tester.enterText(find.byType(TextField), _long * 8);
-    await tester.pump();
+    // Shared grips also recognize double-click reset; finish its minimum-tap timer.
+    await tester.pump(const Duration(milliseconds: 50));
     expect(cellMaxWidth, locked);
   });
 }

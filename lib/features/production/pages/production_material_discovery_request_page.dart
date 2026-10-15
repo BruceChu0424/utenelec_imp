@@ -21,6 +21,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/idempotency_key.dart';
+import '../../../core/theme/uten_colors.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../basic_data/models/goods_node.dart';
@@ -40,12 +41,19 @@ class DiscoveryRequestMaterialRow {
   final qty = TextEditingController();
 
   bool get isEmpty => values['goodsId'] == null && qty.text.trim().isEmpty;
+  String? get memoryLabel => switch (values['memorySource']) {
+    'WAREHOUSE_CONFIRMED' => '上次仓库确认',
+    'WORKSHOP_REQUESTED' => '上次车间登记，待仓库核对',
+    _ => null,
+  };
   String label(String field) {
     final value = (values[field] as String?)?.trim();
     return value == null || value.isEmpty ? '—' : value;
   }
 
   void selectGoods(GoodsListItem goods) {
+    values.remove('memorySource');
+    values.remove('memoryRequestNo');
     final sameGoods = values['goodsId'] == goods.id;
     if (!sameGoods || values['unitId'] != goods.unitId) qty.clear();
     values.addAll({
@@ -243,6 +251,7 @@ class _RequestState
 
   bool _editable(DiscoveryRequestMaterialRow row) =>
       _canWrite &&
+      !_loadingSources &&
       !_saving &&
       !_uncertain &&
       !_completed.contains(row.task.segmentId);
@@ -251,7 +260,7 @@ class _RequestState
   void initState() {
     super.initState();
     _tasks = widget.tasks;
-    _loadingSources = _tasks.isEmpty && widget.segmentIds.isNotEmpty;
+    _loadingSources = _tasks.isNotEmpty || widget.segmentIds.isNotEmpty;
     for (final task in widget.tasks) {
       _rows.add(_newRow(task));
     }
@@ -295,6 +304,55 @@ class _RequestState
             // 服务端拒绝(如任务已变化/无权限)给的是中文原因，能看就如实展示。
             _error = humanErrorMessage(e) ?? '车间任务信息没有加载出来，请返回「我的车间任务」重新进入';
           });
+        }
+      } finally {
+        if (mounted) setState(() => _loadingSources = false);
+      }
+    }
+    if (mounted && !_sourceChanged) {
+      setState(() => _loadingSources = true);
+      try {
+        final repository = ref.read(
+          productionMaterialDiscoveryRequestRepositoryProvider,
+        );
+        // Keep each task's recipe separate; loading finishes before editing or draft restoration.
+        for (var offset = 0; offset < _tasks.length; offset += 6) {
+          final tasks = _tasks.skip(offset).take(6).toList();
+          final contexts = await Future.wait(
+            tasks.map((task) => repository.context(task.segmentId)),
+          );
+          if (!mounted) return;
+          for (var index = 0; index < tasks.length; index++) {
+            final task = tasks[index];
+            final context = contexts[index];
+            if (context['canRequest'] != true ||
+                context['expectedVersion'] != task.lockVersion) {
+              throw const FormatException('原车间任务已变化，请返回「我的车间任务」核对后重新申请');
+            }
+            final remembered = draftMaps(context['rememberedItems']);
+            if (remembered.isEmpty) continue;
+            final existing = _rows
+                .where((row) => row.task.segmentId == task.segmentId)
+                .toList();
+            // A restored or edited row always wins over a background suggestion.
+            if (existing.length != 1 || !existing.single.isEmpty) continue;
+            final position = _rows.indexOf(existing.single);
+            _rows.removeAt(position).dispose();
+            _rows.insertAll(position, [
+              for (final item in remembered)
+                _newRow(task)
+                  ..values.addAll({
+                    ...item,
+                    'memorySource': context['memorySource'],
+                    'memoryRequestNo': context['memoryRequestNo'],
+                  }),
+            ]);
+          }
+        }
+      } catch (error) {
+        if (mounted) {
+          _sourceChanged = true;
+          _error = humanErrorMessage(error) ?? '领料信息没有加载出来，请返回任务中心重试';
         }
       } finally {
         if (mounted) setState(() => _loadingSources = false);
@@ -514,12 +572,34 @@ class _RequestState
       width: 200,
       value: (row) => row.values['goodsName'] as String? ?? '',
       cellBuilderHandlesSemantics: true,
-      cellBuilder: (_, row) => UtenTableCellAction(
-        key: ValueKey('discovery-request-goods-${row.id}'),
-        label: row.values['goodsName'] as String? ?? '选择材料（可留空）',
-        onPressed: _editable(row) ? () => _pickGoods(row) : null,
-      ),
+      cellBuilder: (_, row) {
+        final action = UtenTableCellAction(
+          key: ValueKey('discovery-request-goods-${row.id}'),
+          label: row.values['goodsName'] as String? ?? '选择材料（可留空）',
+          tooltip: row.memoryLabel == null
+              ? null
+              : '${row.memoryLabel}（${row.values['memoryRequestNo'] ?? '—'}）；请核对本次用料，数量和发料仓另行填写',
+          onPressed: _editable(row) ? () => _pickGoods(row) : null,
+        );
+        return row.memoryLabel == null
+            ? action
+            : DecoratedBox(
+                decoration: BoxDecoration(
+                  color: UtenColors.warning.withValues(alpha: .10),
+                  border: Border.all(color: UtenColors.warning),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: action,
+              );
+      },
     ),
+    if (_rows.any((row) => row.memoryLabel != null))
+      MasterColumnDef(
+        key: 'materialMemory',
+        label: '用料来源',
+        width: 180,
+        value: (row) => row.memoryLabel ?? '本次填写',
+      ),
     MasterColumnDef(
       key: 'goodsCode',
       label: '材料编号',

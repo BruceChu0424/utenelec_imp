@@ -47,6 +47,7 @@ class OssSigningTest(unittest.TestCase):
             bin_dir = Path(temp) / "bin"
             bin_dir.mkdir()
             spy = Path(temp) / "argv.log"
+            config = Path(temp) / "curl-config"
             # A python3 stand-in that records its own argv and whether the secret arrived through
             # the environment, then runs the real interpreter with the same arguments.
             shim = bin_dir / "python3"
@@ -57,8 +58,11 @@ class OssSigningTest(unittest.TestCase):
                 f"exec '{interpreter().as_posix()}' \"$@\"\n", encoding="utf-8")
             shim.chmod(0o755)
             script = ("set -euo pipefail\n"
+                      f"python3() {{ printf 'python3 %s\\n' \"$*\" >> '{spy.as_posix()}'; "
+                      f"[ -z \"${{UTEN_OSS_SIGNING_SECRET:-}}\" ] || printf 'env-secret-present\\n' >> '{spy.as_posix()}'; "
+                      f"command '{interpreter().as_posix()}' \"$@\"; }}\n"
                       "die() { printf '%s\\n' \"$*\" >&2; exit 1; }\n"
-                      f"curl() {{ printf 'curl %s\\n' \"$*\" >> '{spy.as_posix()}'; printf 'BODY'; }}\n"
+                      f"curl() {{ printf 'curl %s\\n' \"$*\" >> '{spy.as_posix()}'; cat > '{config.as_posix()}'; printf 'BODY'; }}\n"
                       f"openssl() {{ printf 'openssl %s\\n' \"$*\" >> '{spy.as_posix()}'; return 9; }}\n"
                       "date() { printf 'Mon, 05 Oct 2026 08:00:00 GMT'; }\n"
                       + shell_function("oss_sign") + "\n" + shell_function("oss_get") + "\n"
@@ -69,7 +73,11 @@ class OssSigningTest(unittest.TestCase):
             # The secret is a plain (non-exported) shell variable, exactly like the sourced root config.
             result = subprocess.run([bash_path(), "-c", f"UTEN_OSS_KEY_SECRET='{OSS_FIXTURE}'\n" + script],
                                     env=env, capture_output=True, text=True, encoding="utf-8", check=False)
-            return result, spy.read_text(encoding="utf-8") if spy.exists() else ""
+            log = spy.read_text(encoding="utf-8") if spy.exists() else ""
+            self.assertNotIn('Authorization:', log)
+            self.assertNotIn('--location', log)
+            self.assertIn('--proto =https --max-redirs 0', log)
+            return result, log + (config.read_text() if config.exists() else '')
 
     def test_signature_is_correct_and_the_secret_is_never_an_argument(self):
         result, log = self.run_get()

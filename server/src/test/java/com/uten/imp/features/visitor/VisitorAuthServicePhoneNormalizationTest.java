@@ -3,7 +3,6 @@ package com.uten.imp.features.visitor;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
-import com.uten.imp.config.props.SmsProperties;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.JwtService;
 import com.uten.imp.security.LoginRateLimiter;
@@ -40,7 +39,6 @@ class VisitorAuthServicePhoneNormalizationTest {
                 mock(JwtService.class),
                 mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
-                new SmsProperties(),
                 mock(AuditService.class),
                 rateLimiter,
                 mock(MasterCodeService.class),

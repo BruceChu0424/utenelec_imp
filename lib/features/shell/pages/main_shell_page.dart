@@ -43,6 +43,7 @@ import '../../notice/pages/notice_list_page.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
+import '../../admin/widgets/server_update_popup_gate.dart';
 import '../widgets/floating_capsule_nav_bar.dart';
 import '../widgets/idle_timeout_guard.dart';
 import '../widgets/uten_side_nav_rail.dart';
@@ -220,7 +221,10 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
     return IdleTimeoutGuard(
-      child: AiChatOverlay(currentRoute: location, child: shell),
+      child: ServerUpdatePopupGate(
+        visible: location == RouteName.dashboard,
+        child: AiChatOverlay(currentRoute: location, child: shell),
+      ),
     );
   }
 

@@ -69,10 +69,10 @@ class ProcurementFinanceReconfirmationDecisionTest {
         if ("approveOne".equals(action)) {
             var approve = ProcurementFinanceApprovalService.class.getDeclaredMethod(action,
                     String.class, UUID.class, long.class, UUID.class, String.class,
-                    BigDecimal.class, BigDecimal.class);
+                    BigDecimal.class, BigDecimal.class, BigDecimal.class);
             approve.setAccessible(true);
             approve.invoke(fixture.service(), "PURCHASE", fixture.orderId(), 1L,
-                    fixture.caseId(), "核对金额", BigDecimal.ONE, BigDecimal.ONE);
+                    fixture.caseId(), "核对金额", BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ZERO);
             return;
         }
         var method = ProcurementFinanceApprovalService.class.getDeclaredMethod(action,

@@ -9,9 +9,15 @@ import '../../../../shared/auth/permissions.dart';
 import '../../../../shared/auth/document_permission_set.dart';
 import '../../../../shared/warehouse/workshop_material_first_use_impact.dart';
 import '../../../basic_data/models/goods_issue_method.dart';
+import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../basic_data/repositories/goods_issue_method_repository.dart';
 import '../models/stock_count_request.dart';
 import '../repositories/stock_count_request_repository.dart';
+
+typedef _CountReviewRow = ({
+  StockCountRequest request,
+  StockCountRequestLine line,
+});
 
 /// Opening the dialog only reads the selected requests. Approval is a single
 /// command after current versions, stock changes and first-use impacts are shown.
@@ -199,50 +205,76 @@ class _StockCountBatchApprovalDialogState
               const Center(child: CircularProgressIndicator())
             else ...[
               const Text('确认后按以下实盘数量、重量更新库存；任一笔变化，整批保持原样。'),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: DataTable(
-                  columns: const [
-                    DataColumn(label: Text('盘点单 / 仓库')),
-                    DataColumn(label: Text('物料')),
-                    DataColumn(label: Text('账面数量')),
-                    DataColumn(label: Text('实盘数量')),
-                    DataColumn(label: Text('账面重量')),
-                    DataColumn(label: Text('实盘重量')),
-                  ],
-                  rows: [
+              SizedBox(
+                height:
+                    ((requests.fold<int>(
+                                  0,
+                                  (sum, request) => sum + request.lines.length,
+                                ) +
+                                1) *
+                            48)
+                        .clamp(120, 320)
+                        .toDouble(),
+                child: MasterDataTableView<_CountReviewRow>(
+                  tableKey: 'stock.count.batch_review.lines',
+                  showColumnChooser: false,
+                  showFullscreenToggle: false,
+                  rowKeyOf: (row) => '${row.request.id}:${row.line.key}',
+                  items: [
                     for (final request in requests)
                       for (final line in request.lines)
-                        DataRow(
-                          cells: [
-                            DataCell(
-                              Text(
-                                '${request.requestNo}\n${request.warehouseName}',
-                              ),
-                            ),
-                            DataCell(
-                              Text(
-                                [
-                                  line.goodsName,
-                                  if (line.colorName?.isNotEmpty == true)
-                                    line.colorName!,
-                                ].join(' · '),
-                              ),
-                            ),
-                            DataCell(
-                              Text(_quantity(line.beforeQty, line.unitName)),
-                            ),
-                            DataCell(
-                              Text(_quantity(line.targetQty, line.unitName)),
-                            ),
-                            DataCell(
-                              Text(_quantity(line.beforeWeightKg, 'kg')),
-                            ),
-                            DataCell(
-                              Text(_quantity(line.targetWeightKg, 'kg')),
-                            ),
-                          ],
-                        ),
+                        (request: request, line: line),
+                  ],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  columns: [
+                    MasterColumnDef(
+                      key: 'document',
+                      label: '盘点单 / 仓库',
+                      width: 220,
+                      value: (row) =>
+                          '${row.request.requestNo} · ${row.request.warehouseName}',
+                    ),
+                    MasterColumnDef(
+                      key: 'goods',
+                      label: '物料',
+                      width: 220,
+                      value: (row) => [
+                        row.line.goodsName,
+                        if (row.line.colorName?.isNotEmpty == true)
+                          row.line.colorName!,
+                      ].join(' · '),
+                    ),
+                    MasterColumnDef(
+                      key: 'beforeQty',
+                      label: '账面数量',
+                      width: 140,
+                      value: (row) =>
+                          _quantity(row.line.beforeQty, row.line.unitName),
+                    ),
+                    MasterColumnDef(
+                      key: 'targetQty',
+                      label: '实盘数量',
+                      width: 140,
+                      emphasized: true,
+                      value: (row) =>
+                          _quantity(row.line.targetQty, row.line.unitName),
+                    ),
+                    MasterColumnDef(
+                      key: 'beforeWeight',
+                      label: '账面重量',
+                      width: 140,
+                      value: (row) => _quantity(row.line.beforeWeightKg, 'kg'),
+                    ),
+                    MasterColumnDef(
+                      key: 'targetWeight',
+                      label: '实盘重量',
+                      width: 140,
+                      emphasized: true,
+                      value: (row) => _quantity(row.line.targetWeightKg, 'kg'),
+                    ),
                   ],
                 ),
               ),

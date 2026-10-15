@@ -166,7 +166,9 @@ enum WorkbenchBadgeCatalog {
 
     // —— 系统管理 ——
     /** 服务器状态: 越过警告或危急阈值的告警条数。 */
-    serverStatusAlert(Module.system, facts("serverStatus.alerts"), none());
+    serverStatusAlert(Module.system, facts("serverStatus.alerts"), none()),
+    /** A manually discovered version; only a current update operator gets this fact. */
+    serverUpdateAvailable(Module.system, facts("serverOperations.updates"), none());
 
     /** 徽章容器: 一个容器对应工作台上的一张模块卡 / 一个 hub。 */
     enum Module {

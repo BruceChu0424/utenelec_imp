@@ -10,10 +10,12 @@ class UtenFitOrCompact extends StatefulWidget {
     super.key,
     required this.expanded,
     required this.compact,
+    this.forceCompact = false,
   });
 
   final Widget expanded;
   final Widget compact;
+  final bool forceCompact;
 
   @override
   State<UtenFitOrCompact> createState() => _FitState();
@@ -31,6 +33,7 @@ class _FitState extends State<UtenFitOrCompact> {
   @override
   Widget build(BuildContext context) => _FitLayout(
     onChanged: _onChanged,
+    forceCompact: widget.forceCompact,
     children: [
       SelectionContainer.disabled(
         child: ExcludeFocus(excluding: _compact, child: widget.expanded),
@@ -43,20 +46,26 @@ class _FitState extends State<UtenFitOrCompact> {
 }
 
 class _FitLayout extends MultiChildRenderObjectWidget {
-  const _FitLayout({required this.onChanged, required super.children});
+  const _FitLayout({
+    required this.onChanged,
+    required this.forceCompact,
+    required super.children,
+  });
 
   final ValueChanged<bool> onChanged;
+  final bool forceCompact;
 
   @override
   MultiChildRenderObjectElement createElement() => _FitElement(this);
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _FitRenderBox(onChanged);
+      _FitRenderBox(onChanged, forceCompact);
 
   @override
   void updateRenderObject(BuildContext context, _FitRenderBox renderObject) {
     renderObject.onChanged = onChanged;
+    renderObject.forceCompact = forceCompact;
   }
 }
 
@@ -80,8 +89,15 @@ class _FitRenderBox extends RenderBox
           RenderBox,
           ContainerBoxParentData<RenderBox>
         > {
-  _FitRenderBox(this.onChanged);
+  _FitRenderBox(this.onChanged, this._forceCompact);
   ValueChanged<bool> onChanged;
+  bool _forceCompact;
+  set forceCompact(bool value) {
+    if (_forceCompact == value) return;
+    _forceCompact = value;
+    markNeedsLayout();
+  }
+
   bool compact = false;
 
   RenderBox get _expanded => firstChild!;
@@ -96,7 +112,9 @@ class _FitRenderBox extends RenderBox
   }
 
   bool _needsCompact(double width) =>
-      width.isFinite && _expanded.getMaxIntrinsicWidth(double.infinity) > width;
+      _forceCompact ||
+      (width.isFinite &&
+          _expanded.getMaxIntrinsicWidth(double.infinity) > width);
 
   @override
   double computeMinIntrinsicWidth(double height) =>

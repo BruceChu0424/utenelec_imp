@@ -127,21 +127,22 @@ class UpdaterUnitTest(unittest.TestCase):
     script = read(DEPLOY / "simple/uten-imp-updater.sh")
     schedule = read(DEPLOY / "simple/update_schedule.py")
 
-    def test_every_path_the_updater_and_scheduler_write_is_granted(self):
-        grants = write_paths(self.unit)
+    def test_manual_job_writes_are_granted_and_retired_scheduler_has_no_authority(self):
+        job = read(UNITS / "uten-imp-update-job.service")
+        grants = write_paths(job)
         lock = re.search(r"(?m)^LOCK_FILE=(\S+)$", self.script).group(1)
         backup = re.search(r'"\$\{UTEN_BACKUP_DIR:=([^}]+)\}"', self.script).group(1)
         base = re.search(r'"\$\{UTEN_BASE:=([^}]+)\}"', self.script).group(1)
-        state = re.search(r'STATE_DIR = Path\("([^"]+)"\)', self.schedule).group(1)
-        status = re.search(r'STATUS_PATH = Path\("([^"]+)"\)', self.schedule).group(1)
-        for path in (os.path.dirname(lock), backup, base, state, os.path.dirname(status),
-                     os.path.dirname(os.path.dirname(status))):
+        for path in (os.path.dirname(lock), backup, base, '/var/lib/uten-imp-operations'):
             self.assertTrue(covered(path, grants), path)
         self.assertNotIn("/run", grants)  # only /run/lock, never the whole of /run
-        self.assertIn("ProtectSystem=strict", self.unit)
-        # Directories the scheduler creates on first run exist before the sandboxed ExecStart.
-        self.assertIn(f"ExecStartPre=+/usr/bin/install -d -o root -g root -m 0700 {state}", self.unit)
-        self.assertIn("ExecStartPre=+/usr/bin/install -d -o root -g root -m 0755 /var/lib/uten-imp", self.unit)
+        self.assertIn("ProtectSystem=strict", job)
+        self.assertNotIn('subprocess', self.schedule)
+        self.assertNotIn('read_config', self.schedule)
+        bridge = read(UNITS / 'uten-imp-operations.service')
+        self.assertEqual(['AF_UNIX'], directives(bridge, 'RestrictAddressFamilies'))
+        self.assertNotIn('/etc', write_paths(bridge))
+        self.assertIn('/etc/uten-imp-updater', write_paths(bridge))
 
     def test_sandbox_items(self):
         for line in ("NoNewPrivileges=true", "PrivateTmp=true", "PrivateDevices=true", "ProtectHome=true",

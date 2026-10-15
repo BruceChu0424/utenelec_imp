@@ -17,7 +17,8 @@ public final class ProductionMaterialDiscoveryContracts {
     public record Material(UUID goodsId,UUID colorId,UUID unitId,UUID warehouseId,BigDecimal qty) {}
     public record Configure(Long expectedVersion,String idempotencyKey,List<Material> items) {}
     public record Context(UUID segmentId,long expectedVersion,boolean materialDiscoveryRequired,
-                          UUID requestId,String status,boolean canRequest) {}
+                          UUID requestId,String status,boolean canRequest,List<SuggestedItem> rememberedItems,
+                          String memorySource,String memoryRequestNo) {}
     public record Item(UUID id,UUID demandId,UUID goodsId,String goodsCode,String goodsName,
                        UUID colorId,String colorName,UUID unitId,String unitName,UUID warehouseId,
                        String warehouseName,BigDecimal qty,String spec,String stockPlace) {}

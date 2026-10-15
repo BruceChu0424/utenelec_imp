@@ -18,6 +18,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class SecretCipherTest {
 
+    @Test void smsCredentialColumnsAreBoundIndependentlyAndCannotBeMovedIntoAiOrAnotherRow() {
+        SecretCipher cipher=derivedOnly();
+        UUID id=UUID.randomUUID();String context="sms_gateway_settings|access_key_id|"+id;
+        String encrypted=cipher.encrypt("fixture-access-key",context);
+        assertThat(cipher.decrypt(encrypted,context)).isEqualTo("fixture-access-key");
+        for(String other:new String[]{"sms_gateway_settings|access_key_secret|"+id,
+                "sms_gateway_settings|access_key_id|"+UUID.randomUUID(),"ai_providers|secret|"+id})
+            assertThatThrownBy(()->cipher.decrypt(encrypted,other)).isInstanceOf(SecretCipher.SecretUnreadableException.class);
+    }
+
     private static final String HMAC = "hmac-key-0123456789-0123456789-abcdef";
     private static final String PGP = "pgp-master-key-0123456789-0123456789-xyz";
     private static final String DEDICATED = "dedicated-secret-cipher-key-0123456789-abc";

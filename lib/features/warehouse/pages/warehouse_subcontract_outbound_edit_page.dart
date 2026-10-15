@@ -119,6 +119,7 @@ class _WarehouseSubcontractOutboundEditPageState
   DateTime _billDate = ChinaDateTime.today();
   DateTime? _deliverDate;
   String? _warehouseId;
+  bool _warehouseAutofilled = true;
   String? _workerId;
   bool _loading = true;
   bool _saving = false;
@@ -171,6 +172,7 @@ class _WarehouseSubcontractOutboundEditPageState
     else ...{
       'remark': _remark.text,
       'warehouseId': _warehouseId,
+      'warehouseAutofilled': _warehouseAutofilled,
       'workerId': _workerId,
       'billDate': _billDate.toIso8601String(),
       'deliverDate': _deliverDate?.toIso8601String(),
@@ -230,6 +232,7 @@ class _WarehouseSubcontractOutboundEditPageState
     }
     _remark.text = draftText(data, 'remark');
     _warehouseId = data['warehouseId'] as String?;
+    _warehouseAutofilled = data['warehouseAutofilled'] != false;
     _workerId = data['workerId'] as String?;
     _billDate = DateTime.tryParse(draftText(data, 'billDate')) ?? _billDate;
     _deliverDate = DateTime.tryParse(draftText(data, 'deliverDate'));
@@ -385,6 +388,7 @@ class _WarehouseSubcontractOutboundEditPageState
         _detail = detail;
         _document = document;
         _warehouseId = document.warehouseId ?? detail.warehouseId;
+        _warehouseAutofilled = true;
         _billDate = _parseDate(document.billDate) ?? ChinaDateTime.today();
         _workerId = workerId;
         _deliverDate = _parseDate(document.deliverDate);
@@ -451,7 +455,7 @@ class _WarehouseSubcontractOutboundEditPageState
   /// 保存拣货修改(只改数量/重量/备注与表头)；返回是否已写入。
   /// 数量校验：0 ≤ 数量 ≤ 委外提交的领料数量；填 0 的行不回传(服务端删行退库存)，
   /// 至少要有一行大于 0——整单不发走「退回委外(不发)」。
-  Future<bool> _saveDraft() async {
+  Future<bool> _saveDraft({bool forApproval = false}) async {
     final document = _document;
     if (document == null) return false;
     if (_warehouseId == null ||
@@ -520,7 +524,14 @@ class _WarehouseSubcontractOutboundEditPageState
       'supplierId': document.supplierId,
       'warehouseId': _warehouseId,
       if (_workerId != null) 'workerId': _workerId,
-      if (_deliverDate != null) 'deliverDate': _date(_deliverDate!),
+      // null is the automatic-day policy in a saved draft. The actual day is
+      // frozen only for the confirmed outbound command; reopening an untouched
+      // draft on another day therefore keeps following today's date.
+      'deliverDate': _deliverDate != null
+          ? _date(_deliverDate!)
+          : forApproval
+          ? _date(ChinaDateTime.today())
+          : null,
       'remark': _remark.text.trim().isEmpty ? null : _remark.text.trim(),
       'items': items,
     };
@@ -598,7 +609,7 @@ class _WarehouseSubcontractOutboundEditPageState
       _saving = true;
     });
     try {
-      final saved = await _saveDraft();
+      final saved = await _saveDraft(forApproval: true);
       if (!saved) {
         if (mounted) setState(() => _saving = false);
         return;
@@ -1072,9 +1083,15 @@ class _WarehouseSubcontractOutboundEditPageState
               entries: names.warehouseHierarchy,
               use: WarehouseUse.goodOut,
               value: _warehouseId,
+              autofilled: _warehouseAutofilled,
               labelText: '发出仓(必选)',
               onChanged: (v) {
-                if (v != null) setState(() => _warehouseId = v);
+                if (v != null) {
+                  setState(() {
+                    _warehouseId = v;
+                    _warehouseAutofilled = false;
+                  });
+                }
               },
             ),
             UtenEmployeePicker(
@@ -1115,6 +1132,7 @@ class _WarehouseSubcontractOutboundEditPageState
             UtenDateField(
               label: '交货日期',
               value: _deliverDate ?? ChinaDateTime.today(),
+              autofilled: _deliverDate == null,
               onChanged: (d) => setState(() => _deliverDate = d),
             ),
             TextField(

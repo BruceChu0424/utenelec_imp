@@ -128,48 +128,35 @@ class SystemSettingsBatchUpdateTest {
     }
 
     @Test
-    void updaterIntervalUsesTheSameBoundedAuditedExpectedValueWrite() {
+    void legacyUpdaterValueStaysReadableButIsNotEditableOrApplied() {
         SystemSetting interval = setting("updater_check_interval_days", "7");
-        when(repository.findAllForUpdate(anyCollection())).thenReturn(List.of(interval));
-        var saved = service.writeBatch(new SystemSettingDto.BatchUpdate(List.of(
-                new SystemSettingDto.Change(interval.getKey(), "0", "7"))), actorId, "admin");
-        assertEquals("0", interval.getValue());
-        assertEquals("updates", saved.getFirst().category());
-        assertEquals(0L, saved.getFirst().minValue());
-        assertEquals(365L, saved.getFirst().maxValue());
-        verify(audit).logCommitted(eq(actorId), eq("admin"), eq("update_system_setting"),
-                eq("system_settings"), eq("updater_check_interval_days: 7 → 0"), eq("success"));
-        ApiException stale = assertThrows(ApiException.class, () -> service.writeBatch(
-                new SystemSettingDto.BatchUpdate(List.of(
-                        new SystemSettingDto.Change(interval.getKey(), "3", "7"))), actorId, "admin"));
-        assertEquals(ErrorCode.CONFLICT, stale.getCode());
-        assertEquals("0", interval.getValue());
-        for (String invalid : List.of("-1", "366", "1.5", "weekly")) {
-            assertThrows(ApiException.class, () -> service.writeBatch(
-                    new SystemSettingDto.BatchUpdate(List.of(
-                            new SystemSettingDto.Change(interval.getKey(), invalid, "0"))), actorId, "admin"));
-        }
-        assertEquals(null, SystemSettingsService.validationError(SystemSettingKey.UPDATER_CHECK_INTERVAL_DAYS, "365"));
+        when(repository.findAll()).thenReturn(List.of(interval));
+        when(repository.findById(interval.getKey())).thenReturn(Optional.of(interval));
+        var entry = service.list().getFirst();
+        assertEquals("7", entry.value());
+        assertEquals("updates", entry.category());
+        assertEquals(0L, entry.minValue());
+        assertEquals(365L, entry.maxValue());
+        assertFalse(entry.editable());
+        assertNull(entry.effectiveValue());
+        assertEquals("LEGACY_MANUAL_ONLY", entry.applyMode());
+        assertEquals(7, service.readInt(SystemSettingKey.UPDATER_CHECK_INTERVAL_DAYS));
+        assertNull(SystemSettingsService.validationError(SystemSettingKey.UPDATER_CHECK_INTERVAL_DAYS, "365"));
+        verifyNoInteractions(audit);
     }
 
     @Test
-    void equivalentUpdaterIntegersAreCanonicalAndDoNotResetTheScheduleAnchor() {
-        SystemSetting interval = setting("updater_check_interval_days", "7");
-        when(repository.findAllForUpdate(anyCollection())).thenReturn(List.of(interval));
-        for (String sameValue : List.of("007", "+7", " 7 ")) {
-            service.writeBatch(new SystemSettingDto.BatchUpdate(List.of(
-                    new SystemSettingDto.Change(interval.getKey(), sameValue, "7"))), actorId, "admin");
+    void oldUpdaterClientsCannotChangeValuesOrScheduleAnchorsEvenWithCanonicalIntegers() {
+        for (String attempted : List.of("0", "007", "+7", " 7 ", "-1", "366", "1.5", "weekly")) {
+            ApiException rejected = assertThrows(ApiException.class, () -> service.writeBatch(
+                    new SystemSettingDto.BatchUpdate(List.of(new SystemSettingDto.Change(
+                            "updater_check_interval_days", attempted, "7"))), actorId, "admin"));
+            assertEquals(ErrorCode.VALIDATION_FAILED, rejected.getCode());
         }
-        assertEquals("7", interval.getValue());
+        verify(repository, never()).findAllForUpdate(anyCollection());
         verify(repository, never()).save(any());
         verifyNoInteractions(audit);
-        service.writeBatch(new SystemSettingDto.BatchUpdate(List.of(
-                new SystemSettingDto.Change(interval.getKey(), "-0", "7"))), actorId, "admin");
-        assertEquals("0", interval.getValue());
-        verify(audit).logCommitted(eq(actorId), eq("admin"), eq("update_system_setting"),
-                eq("system_settings"), eq("updater_check_interval_days: 7 → 0"), eq("success"));
     }
-
     private static SystemSetting setting(String key, String value) {
         SystemSetting result = new SystemSetting();
         result.setKey(key);

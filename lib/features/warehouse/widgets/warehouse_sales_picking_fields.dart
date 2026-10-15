@@ -47,6 +47,7 @@ class WarehouseSalesPickingDraft {
 
   /// 逐行发出仓当前选择(行 id → 仓 id)。
   final Map<String, String?> warehouses = {};
+  final Set<String> confirmedWarehouses = {};
   final Map<String, TextEditingController> places = {};
 
   /// 逐行实称重量(行 id → 录入状态)；只在待确认出库时有。
@@ -88,6 +89,7 @@ class WarehouseSalesPickingDraft {
           'goodsId': line.goodsId,
           'quantity': line.quantity,
           'warehouseId': warehouses[line.id],
+          'warehouseConfirmed': confirmedWarehouses.contains(line.id),
           'place': places[line.id]?.text ?? '',
           if (weights[line.id] case final entry?) ...{
             'weightKg': entry.kg,
@@ -120,6 +122,11 @@ class WarehouseSalesPickingDraft {
     for (final line in detail.lines) {
       final row = byId[line.id]!;
       warehouses[line.id] = row['warehouseId'] as String?;
+      if (row['warehouseConfirmed'] == true) {
+        confirmedWarehouses.add(line.id);
+      } else {
+        confirmedWarehouses.remove(line.id);
+      }
       places[line.id]?.text = row['place'] as String? ?? '';
       final weight = weights[line.id]?.weight;
       if (weight != null) {
@@ -173,6 +180,7 @@ class WarehouseSalesPickingDraft {
 
   void changeWarehouse(String lineId, String? value) {
     warehouses[lineId] = value;
+    confirmedWarehouses.add(lineId);
     lineErrors.remove(lineId);
     error = null;
   }

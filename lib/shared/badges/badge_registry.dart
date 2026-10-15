@@ -159,7 +159,10 @@ enum BadgeEntry {
 
   // —— 系统管理 ——
   /// 服务器状态: 越过警告或危急阈值的告警条数。
-  serverStatusAlert(BadgeModule.system);
+  serverStatusAlert(BadgeModule.system),
+
+  /// 上次手动检查发现尚未激活的新版本，只对具备更新权限的人员计数。
+  serverUpdateAvailable(BadgeModule.system);
 
   const BadgeEntry(this.module);
 
@@ -288,6 +291,7 @@ abstract final class BadgeFact {
   static String financeRejected(String kind) => 'financeRejected.$kind';
 
   static const serverStatusAlerts = 'serverStatus.alerts';
+  static const serverUpdateAvailable = 'serverOperations.updates';
 
   static const noticesUnread = 'notices.unread';
   static const noticesDigest = 'notices.digest';

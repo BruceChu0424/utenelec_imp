@@ -73,9 +73,9 @@ class ProcurementFinanceApprovalBatchControllerTest {
                 new BatchDecisionResponse(2, List.of());
         BatchDecisionResponse rejected =
                 new BatchDecisionResponse(2, List.of());
-        when(service.approveBatch(items, null, null)).thenReturn(approved);
-        when(service.approveBatch(items, "留意供应商账期", null)).thenReturn(approved);
-        when(service.approveBatch(items, "按当日汇率", rate)).thenReturn(approved);
+        when(service.approveBatch(items, null, null, null)).thenReturn(approved);
+        when(service.approveBatch(items, "留意供应商账期", null, null)).thenReturn(approved);
+        when(service.approveBatch(items, "按当日汇率", rate, null)).thenReturn(approved);
         when(service.rejectBatch(items, "统一原因")).thenReturn(rejected);
 
         assertSame(
@@ -94,9 +94,9 @@ class ProcurementFinanceApprovalBatchControllerTest {
                 controller.rejectBatch(
                         new BatchRejectionRequest(items, "统一原因")));
 
-        verify(service).approveBatch(items, null, null);
-        verify(service).approveBatch(items, "留意供应商账期", null);
-        verify(service).approveBatch(items, "按当日汇率", rate);
+        verify(service).approveBatch(items, null, null, null);
+        verify(service).approveBatch(items, "留意供应商账期", null, null);
+        verify(service).approveBatch(items, "按当日汇率", rate, null);
         verify(service).rejectBatch(items, "统一原因");
     }
 
@@ -113,7 +113,7 @@ class ProcurementFinanceApprovalBatchControllerTest {
                         "PENDING", 1, 1L, List.of("APPROVE"),
                         "提交人", null, null, "供应商A", "S001", null,
                         "人民币", null, null, "月结", null, null, null, null, null,
-                        null, null, null, 0, List.of(), List.of(), List.of(), java.util.Map.of(), java.util.Map.of(), List.of());
+                        null, null, null, 0, List.of(), List.of(), List.of(), java.util.Map.of(), java.util.Map.of(), List.of(), null);
 
         when(service.review(caseId)).thenReturn(review);
         assertSame(review, controller.review(caseId));

@@ -349,6 +349,8 @@ class ProductionFqcInspectionSheet {
     this.pendingQtyText,
     this.reportNos,
     this.goodsSummary,
+    this.goodsCodeSummary,
+    this.colorNameSummary,
     required this.status,
     required this.createdAt,
     this.preStockedItemCount = 0,
@@ -370,6 +372,8 @@ class ProductionFqcInspectionSheet {
   final String? pendingQtyText;
   final String? reportNos;
   final String? goodsSummary;
+  final String? goodsCodeSummary;
+  final String? colorNameSummary;
   final String status;
   final DateTime createdAt;
 
@@ -398,6 +402,8 @@ class ProductionFqcInspectionSheet {
         pendingQtyText: json['pendingQtyText'] as String?,
         reportNos: json['reportNos'] as String?,
         goodsSummary: json['goodsSummary'] as String?,
+        goodsCodeSummary: json['goodsCodeSummary'] as String?,
+        colorNameSummary: json['colorNameSummary'] as String?,
         status: json['status'] as String? ?? 'ACTIVE',
         createdAt:
             DateTime.tryParse(json['createdAt']?.toString() ?? '') ??

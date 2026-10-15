@@ -3,6 +3,7 @@ package com.uten.imp.features.purchase;
 import com.uten.imp.security.DocumentAccessPolicy;
 import com.uten.imp.security.OwnerVisibility;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.application.port.PurchaseDocumentReadScopePort;
 import org.springframework.stereotype.Component;
 
 /**
@@ -13,7 +14,7 @@ import org.springframework.stereotype.Component;
  * 是计划系统生成的只读需求单，不接入本隔离（持 :view 可见全部）。
  */
 @Component
-public class PurchaseDocumentAccessPolicy extends DocumentAccessPolicy {
+public class PurchaseDocumentAccessPolicy extends DocumentAccessPolicy implements PurchaseDocumentReadScopePort {
 
     public static final String SCOPE = "purchase";
     public static final String VIEW_ALL = "purchase:view:all";

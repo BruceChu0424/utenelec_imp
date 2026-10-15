@@ -191,7 +191,7 @@ final class GoodsPriceSourceReader {
         try {
             JsonNode header=json.readTree(Objects.toString(r.get("approval_snapshot"),"null"));
             boolean match=same(header,"orderId",r.get("source_id"))&&same(header,"currencyId",r.get("currency_id"))
-                    &&same(header,"supplierId",r.get("supplier_id"))&&sameDecimal(header,"taxRate",amount(r,"tax_rate"));
+                    &&same(header,"supplierId",r.get("supplier_id"))&&sameTaxAuthority(header,amount(r,"tax_rate"));
             JsonNode selected=null;
             for(JsonNode item:header.path("items"))if(same(item,"itemId",r.get("source_item_id"))){selected=item;break;}
             if(selected==null||!match||!same(selected,"goodsId",r.get("goods_id"))||!same(selected,"colorId",r.get("color_id"))
@@ -202,6 +202,14 @@ final class GoodsPriceSourceReader {
         }catch(Exception malformed){reasons.add("APPROVED_SNAPSHOT_INCOMPLETE");}
     }
     private static boolean same(JsonNode node,String key,Object expected){JsonNode v=node.get(key);return expected==null?v==null||v.isNull():v!=null&&!v.isNull()&&expected.toString().equals(v.asText());}
+    /** V865 adds read-only evidence to the view projection; the stored submission stays byte-for-byte immutable. */
+    private static boolean sameTaxAuthority(JsonNode header,BigDecimal effectiveTax){
+        if(!header.has("_contractTaxRate")) return sameDecimal(header,"taxRate",effectiveTax);
+        JsonNode contract=header.get("_contractTaxRate"),finance=header.get("_financeTaxRate");
+        BigDecimal contractTax=contract==null||contract.isNull()?null:new BigDecimal(contract.asText());
+        return sameDecimal(header,"taxRate",contractTax)
+                &&sameDecimal(header,finance!=null&&!finance.isNull()?"_financeTaxRate":"taxRate",effectiveTax);
+    }
     private static boolean sameDecimal(JsonNode node,String key,BigDecimal expected){JsonNode v=node.get(key);return expected==null?v==null||v.isNull():v!=null&&!v.isNull()&&expected.compareTo(new BigDecimal(v.asText()))==0;}
     static String hash(String value){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));}catch(Exception impossible){throw new IllegalStateException(impossible);}}
     static String decimalText(BigDecimal value){return value==null?null:value.stripTrailingZeros().toPlainString();}

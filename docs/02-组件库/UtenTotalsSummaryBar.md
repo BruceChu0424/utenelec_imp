@@ -68,12 +68,11 @@ UtenTotalsSummaryBar(
 5. 客户端一次拉全、前端切页的表（如待检处置页）合计的是**当前筛选下的全部行**而非当页，
    目的与上面一致：合计数必须覆盖用户以为的范围。
 
-位置：表格统一把合计条挂在**表体（内部滚动）与翻页条之间**
-（`MasterDataTableView.summaryBar`），所以表体滚到哪一行合计条都在；
+位置：表格默认把合计条挂在**最后一行数据下方**
+（`MasterDataTableView.summaryBar`，`summaryBarInline` 默认 true），随表体竖向滚动；
 全屏表格与嵌入式明细表同样跟随。各页不自己摆位置，全站间距/字号因此一致。
-例外(2026-09-15 起)：详情页「合计行是表格脚注」语义传 `summaryBarInline: true`，
-合计条改渲染进**表体滚动内容末尾**(跟在最后一行数据之下、随表格竖向滚动)，
-但**横向钉在表体可视框右缘**——怎么左右滑合计都在卡片右边，不必把表格拖到最右才看得见，
+仅明确需要固定总览的宿主才传 `summaryBarInline: false`。
+合计条**横向钉在表体可视框右缘**，左右滑动无需拖到表格最右端才能看到合计，
 见 [MasterDataTableView](MasterDataTableView.md) `summaryBarInline`。
 
 ## 六、接入表（2026-09-11）

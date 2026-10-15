@@ -80,6 +80,14 @@ local 裸文件在 `media/local/final/`，按数据库原始大小和 SHA-256 �
   等于目录名、`completed_at` 带时区。任何一项不符的目录记为 `unrecognized`，永不删除。
 - 永远保留：本次刚发布的集合、`latest-success.json` 指向的集合、时间戳最新的完整集合。
   本次集合或成功指针任一无法确认为完整集合时整轮跳过，一个都不删 (所以成功集合不足 1 份时不会删)。
+- 安装服务器运维组件后（root `/etc/uten-imp/operations.json` 存在），自动保留还读取固定
+  `/var/lib/uten-imp-operations/recovery-proofs.json`。必须是 root 私有文件，证明实际完成隔离 PostgreSQL 恢复，
+  绑定原 manifest/dump 哈希、恢复回执哈希、来源版本与恢复前后相同的 Flyway 版本/数量。
+  最新实际恢复点和 `requiredRollbackResources` 永远保护，数量下限至少三套。
+  证明缺失、不安全、实物哈希变化或保护集合已不存在时整轮 `SKIPPED`，监控继续显示保留未应用；
+  不会因为备份本身成功而把恢复状态标为成功。尚未安装运维组件的旧主机继续沿用原保留策略。
+  `--verify` 和 `pg_restore --list` 不能代替真实恢复证明；登记步骤见
+  [服务器运维说明](../../simple/SERVER_OPERATIONS.zh-CN.md)。
 - 失败/中断留下的 `.incomplete-<set-id>` 目录，只按日历日规则 (不受数量下限保护) 和同样的
   名称/真实目录/属主规则清理；
   未满保留期的失败目录继续保留作为证据。其它文件 (`last-attempt.json`、`.backup.lock`、`.latest-*`、

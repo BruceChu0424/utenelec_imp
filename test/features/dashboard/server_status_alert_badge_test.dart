@@ -14,6 +14,26 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/badge_summary_fixture.dart';
 
 void main() {
+  test(
+    'manual release reminder is a separate task from resource health alerts',
+    () {
+      final summary = badgeSummaryFixture(
+        entries: {
+          BadgeEntry.serverStatusAlert: (2, 0),
+          BadgeEntry.serverUpdateAvailable: (1, 0),
+        },
+      );
+      expect(
+        workbenchBadgeCounts(WorkbenchBadgeKind.serverStatus, summary).todo,
+        2,
+      );
+      expect(
+        workbenchBadgeCounts(WorkbenchBadgeKind.serverUpdate, summary).todo,
+        1,
+      );
+      expect(BadgeFact.serverUpdateAvailable, 'serverOperations.updates');
+    },
+  );
   Future<int> badgeCount(
     WidgetTester tester, {
     required int alerts,

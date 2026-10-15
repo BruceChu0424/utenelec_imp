@@ -5,6 +5,7 @@ set directories, manifests, links and pointers under its own temporary root.
 """
 import contextlib
 import io
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -178,6 +179,7 @@ class PairedRetentionTest(RetentionFixture):
         self.assertEqual(kept | set(failed[1:]) | {"latest-success.json"}, self.names())
         self.assertEqual(3, result["complete_sets"])
         self.assertEqual(sorted(daily[-2:]), events[0]["kept_by_count"])
+
         self.assertEqual(3, events[-1]["remaining_sets"])
 
     def test_forward_clock_jump_preserves_three_sets_not_the_whole_history(self):
@@ -508,6 +510,114 @@ class PairedRetentionAfterBackupTest(RetentionFixture):
         self.assertIn(old, self.names())
         self.assertEqual("FAILED", self.attempt()["status"])
         self.assertNotIn("retention", self.attempt())
+
+
+@unittest.skipUnless(os.name == 'posix' and os.geteuid() == 0, 'root-owned operations restore registry')
+class OperationsRecoveryRetentionTest(RetentionFixture):
+    def setUp(self):
+        super().setUp()
+        self.operations = self.root.parent / 'operations.json'
+        self.operations.write_text('{}')
+        self.proofs = self.root.parent / 'recovery-proofs.json'
+
+    def registry(self, names, required=()):
+        entries = []
+        for index, name in enumerate(names):
+            manifest_path = self.root / name / 'manifest.json'
+            manifest = json.loads(manifest_path.read_text())
+            dump_hash = hashlib.sha256((self.root / name / 'database.dump').read_bytes()).hexdigest()
+            manifest['database_dump_sha256'] = dump_hash
+            manifest_path.write_text(json.dumps(manifest))
+            entries.append({'kind': 'PAIRED_BACKUPS', 'resourceName': name,
+                            'manifestSha256': hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+                            'dumpSha256': dump_hash, 'verifiedAt': (NOW - timedelta(hours=2-index)).isoformat(),
+                            'restoreExitCode': 0, 'sourceVersion': 'v2.5.16', 'flywayVersion': '864', 'flywayCount': 790,
+                            'verificationMethod': 'ISOLATED_POSTGRES_RESTORE', 'restoreReceiptSha256': 'b' * 64,
+                            'restoredFlywayVersion': '864', 'restoredFlywayCount': 790, 'restoredFlywayFailed': 0})
+        value = {'format': 'uten-operations-recovery-proofs-v1', 'proofs': entries,
+                 'requiredReleaseVersions': ['v2.5.16'],
+                 'requiredRollbackResources': [{'kind': 'PAIRED_BACKUPS', 'resourceName': n} for n in required]}
+        self.proofs.write_text(json.dumps(value))
+        self.proofs.chmod(0o600)
+        return value
+
+    def apply(self, current):
+        with contextlib.redirect_stderr(io.StringIO()):
+            return paired.prune_expired_sets(self.root, 14, current, NOW, operations_config=self.operations,
+                                            recovery_proofs=self.proofs)
+
+    def test_installed_operations_without_actual_restore_registry_fail_closed(self):
+        old = self.days_ago(40)
+        for day in (0, 1, 2): current = self.days_ago(day)
+        self.point_to(current)
+        result = self.apply(current)
+        self.assertTrue(result['skipped'])
+        self.assertTrue((self.root / old).exists())
+        self.assertEqual([], result['removed'])
+
+    def test_latest_actual_restored_set_and_explicit_rollback_survive_automatic_retention(self):
+        restored, rollback, excess = [self.days_ago(day) for day in (40, 39, 38)]
+        current, _, _ = [self.days_ago(day) for day in (0, 1, 2)]
+        self.point_to(current)
+        self.registry([rollback, restored], required=[rollback])
+        result = self.apply(current)
+        self.assertFalse(result['skipped'])
+        self.assertEqual([excess], [r['name'] for r in result['removed']])
+        self.assertTrue((self.root / restored).exists())
+        self.assertTrue((self.root / rollback).exists())
+
+    def test_dump_corruption_after_restore_proof_blocks_all_retention(self):
+        old = self.days_ago(40)
+        current, _, _ = [self.days_ago(day) for day in (0, 1, 2)]
+        self.point_to(current)
+        self.registry([current])
+        (self.root / current / 'database.dump').write_bytes(b'changed')
+        self.assertTrue(self.apply(current)['skipped'])
+        self.assertTrue((self.root / old).exists())
+
+    def test_verify_only_catalog_mismatch_and_non_private_registry_are_not_restore_proof(self):
+        current = self.days_ago(0)
+        self.point_to(current)
+        original = self.registry([current])
+        for field, value in [('verificationMethod', 'VERIFY_SET'), ('restoredFlywayCount', 789), ('restoreExitCode', 1)]:
+            modified = json.loads(json.dumps(original))
+            modified['proofs'][0][field] = value
+            self.proofs.write_text(json.dumps(modified))
+            self.assertTrue(self.apply(current)['skipped'], field)
+        self.proofs.write_text(json.dumps(original))
+        self.proofs.chmod(0o644)
+        self.assertTrue(self.apply(current)['skipped'])
+
+    def test_expired_old_proof_history_does_not_block_latest_valid_point(self):
+        older = self.days_ago(50)
+        old = self.days_ago(40)
+        current, _, _ = [self.days_ago(day) for day in (0, 1, 2)]
+        self.point_to(current)
+        self.registry([older, current])
+        shutil.rmtree(self.root / older)
+        result = self.apply(current)
+        self.assertFalse(result['skipped'])
+        self.assertEqual([old], [r['name'] for r in result['removed']])
+
+    def test_uninstalled_legacy_host_keeps_existing_retention_contract(self):
+        self.operations.unlink()
+        old = self.days_ago(40)
+        current, _, _ = [self.days_ago(day) for day in (0, 1, 2)]
+        self.point_to(current)
+        result = self.apply(current)
+        self.assertFalse(result['skipped'])
+        self.assertEqual([old], [r['name'] for r in result['removed']])
+
+    def test_operations_installation_enforces_at_least_three_sets_even_if_legacy_config_says_one(self):
+        names = [self.days_ago(day) for day in (40, 30, 20, 10)]
+        current = names[-1]
+        self.point_to(current)
+        self.registry([current])
+        with contextlib.redirect_stderr(io.StringIO()):
+            result = paired.prune_expired_sets(self.root, 1, current, NOW, min_complete_sets=1,
+                                              operations_config=self.operations, recovery_proofs=self.proofs)
+        self.assertEqual([names[0]], [r['name'] for r in result['removed']])
+        self.assertEqual(result['complete_sets'], 3)
 
 
 if __name__ == "__main__":

@@ -92,6 +92,7 @@ class _BatchDraft {
   String? workerId;
   DateTime date;
   DateTime? deliveryDate;
+  bool warehouseAutofilled = true;
   final TextEditingController remark;
   SubcontractOutboundExecutionState state =
       SubcontractOutboundExecutionState.pending;
@@ -183,6 +184,7 @@ class _WarehouseSubcontractOutboundBatchPageState
     'serverFingerprint': subcontractOutboundDraftFingerprint(draft.document),
     'state': draft.state.name,
     'warehouseId': draft.warehouseId,
+    'warehouseAutofilled': draft.warehouseAutofilled,
     'workerId': draft.workerId,
     'billDate': draft.date.toIso8601String(),
     'deliverDate': draft.deliveryDate?.toIso8601String(),
@@ -260,6 +262,7 @@ class _WarehouseSubcontractOutboundBatchPageState
         throw const FormatException('领料明细来源已变化，原填写草稿继续保留；禁止按货品猜测恢复');
       }
       draft.warehouseId = saved['warehouseId'] as String?;
+      draft.warehouseAutofilled = saved['warehouseAutofilled'] != false;
       draft.workerId = saved['workerId'] as String?;
       draft.date =
           DateTime.tryParse(draftText(saved, 'billDate')) ?? draft.date;
@@ -607,9 +610,7 @@ class _WarehouseSubcontractOutboundBatchPageState
             'supplierId': document.supplierId,
             'warehouseId': draft.warehouseId,
             'workerId': draft.workerId,
-            'deliverDate': draft.deliveryDate == null
-                ? null
-                : _date(draft.deliveryDate!),
+            'deliverDate': _date(draft.deliveryDate ?? ChinaDateTime.today()),
             'remark': draft.remark.text.trim().isEmpty
                 ? null
                 : draft.remark.text.trim(),
@@ -838,13 +839,16 @@ class _WarehouseSubcontractOutboundBatchPageState
                                                 draft.document.billNo,
                                             documentRemark: draft.remark,
                                             warehouseId: draft.warehouseId,
+                                            warehouseAutofilled:
+                                                draft.warehouseAutofilled,
                                             warehouses:
                                                 names.warehouseHierarchy,
                                             onWarehouseChanged: (value) =>
-                                                setState(
-                                                  () =>
-                                                      draft.warehouseId = value,
-                                                ),
+                                                setState(() {
+                                                  draft.warehouseId = value;
+                                                  draft.warehouseAutofilled =
+                                                      false;
+                                                }),
                                             status: _status(draft),
                                             editable: draft.pending,
                                           ),
@@ -1000,7 +1004,8 @@ class _WarehouseSubcontractOutboundBatchPageState
                 absorbing: !editable,
                 child: UtenDateField(
                   label: l10n.warehouseSubcontractOutboundDeliveryDate,
-                  value: draft.deliveryDate,
+                  value: draft.deliveryDate ?? ChinaDateTime.today(),
+                  autofilled: draft.deliveryDate == null,
                   onChanged: (value) =>
                       setState(() => draft.deliveryDate = value),
                 ),

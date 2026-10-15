@@ -8,6 +8,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
@@ -41,6 +42,7 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (!path.startsWith('/warehouse/task-center/')) return {};
     calls.add((path: path, query: {...?query}));
     if (pending != null) return pending!.future;
     final page = query?['linePage'] as int? ?? 1;
@@ -94,6 +96,11 @@ void main() {
     );
     expect(api.calls.single.query['scopeWarehouseId'], 'warehouse-a');
     expect(find.text('PHYSICAL-1'), findsOneWidget);
+    expect(
+      find.byType(MasterDataTableView<Map<String, dynamic>>),
+      findsOneWidget,
+    );
+    expect(find.byType(DataTable), findsNothing);
     expect(find.textContaining('PRIVATE'), findsNothing);
     expect(find.text('1 / 2'), findsOneWidget);
     await tester.tap(find.text('下一页'));

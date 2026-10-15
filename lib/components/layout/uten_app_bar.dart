@@ -16,13 +16,14 @@ import '../buttons/uten_back_button.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 import 'uten_adaptive_panel.dart';
 import 'uten_app_bar_action_scope.dart';
+import 'uten_fit_or_compact.dart';
 import '../buttons/uten_button.dart';
 import '../buttons/uten_app_bar_action_button.dart';
 
 /// Uten 自适应顶栏
 ///
 /// 在手机端显示紧凑标题，在大屏端可以扩展显示副标题/操作区。
-class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
+class UtenAppBar extends StatefulWidget implements PreferredSizeWidget {
   const UtenAppBar({
     super.key,
     this.title,
@@ -75,15 +76,50 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
   final bool blurred;
 
   @override
+  State<UtenAppBar> createState() => _UtenAppBarState();
+
+  @override
   Size get preferredSize {
     final bottomHeight = bottom?.preferredSize.height ?? 0;
     return Size.fromHeight(
       subtitle != null ? 64 + bottomHeight : 56 + bottomHeight,
     );
   }
+}
+
+class _UtenAppBarState extends State<UtenAppBar> {
+  int _actionRevision = 0;
+  _AppBarActionPanel? _actionPanel;
+
+  String? get title => widget.title;
+  String? get subtitle => widget.subtitle;
+  Widget? get leading => widget.leading;
+  List<Widget>? get actions => widget.actions;
+  bool get centerTitle => widget.centerTitle;
+  bool get showBackButton => widget.showBackButton;
+  Color? get backgroundColor => widget.backgroundColor;
+  Color? get foregroundColor => widget.foregroundColor;
+  PreferredSizeWidget? get bottom => widget.bottom;
+  Widget? get flexibleSpace => widget.flexibleSpace;
+  bool get showBottomBorder => widget.showBottomBorder;
+  bool get blurred => widget.blurred;
+  Widget? get centerWidget => widget.centerWidget;
+  Widget? get titleWidget => widget.titleWidget;
+  bool get showPagePermissionAction => widget.showPagePermissionAction;
+
+  @override
+  void dispose() {
+    ++_actionRevision;
+    final panel = _actionPanel;
+    if (panel != null && !panel.claimed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => panel.dismiss());
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final revision = ++_actionRevision;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
@@ -160,20 +196,51 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
     final presentedActions = [
       for (final action in pageActions) textAction(action),
     ];
+    final panel = _actionPanel;
+    if (panel != null && !panel.claimed) {
+      // The old controls become inert immediately. Publish after this build so
+      // a sibling modal route is never marked dirty during the page's build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            revision != _actionRevision ||
+            !identical(panel, _actionPanel) ||
+            panel.claimed) {
+          return;
+        }
+        panel.presentation.value = (
+          revision: revision,
+          actions: presentedActions,
+        );
+      });
+    }
     final appBar = LayoutBuilder(
       builder: (context, constraints) {
         final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-        final compactActions =
-            (actions?.isNotEmpty ?? false) &&
-            (constraints.maxWidth < 360 * textScale ||
-                ((pageActions.length > 2 ||
-                        actions!.any(
-                          (action) =>
-                              action is! IconButton &&
-                              action is! ButtonStyleButton &&
-                              action is! UtenAppBarActionButton,
-                        )) &&
-                    constraints.maxWidth < 600 * textScale));
+        // Reserve readable title space, then measure the actual action labels.
+        // A fixed phone breakpoint misses crowded tablet/desktop windows and
+        // enlarged text. Hidden presentations retain their state and callbacks.
+        final titleBudget = (constraints.maxWidth * 0.35).clamp(
+          140 * textScale,
+          360 * textScale,
+        );
+        final actionBudget = (constraints.maxWidth - titleBudget - 80).clamp(
+          112 * textScale,
+          constraints.maxWidth,
+        );
+        final expandedActions = Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final action in presentedActions)
+              UtenAppBarActionPresentation(child: action),
+          ],
+        );
+        final compactAction = UtenAppBarActionPresentation(
+          child: UtenAppBarActionButton(
+            key: const Key('uten-app-bar-more-actions'),
+            label: '更多操作',
+            onPressed: () => _showActions(context, presentedActions, revision),
+          ),
+        );
         return AppBar(
           title: _buildTitleArea(context, theme, isDark),
           leading:
@@ -183,20 +250,18 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
                   : const SizedBox.shrink()),
           automaticallyImplyLeading: false,
           leadingWidth: leading == null && !showBackButton ? 0 : null,
-          actions: compactActions
-              ? [
-                  UtenAppBarActionPresentation(
-                    child: UtenAppBarActionButton(
-                      key: const Key('uten-app-bar-more-actions'),
-                      label: '更多操作',
-                      onPressed: () => _showActions(context, presentedActions),
-                    ),
-                  ),
-                ]
-              : [
-                  for (final action in presentedActions)
-                    UtenAppBarActionPresentation(child: action),
-                ],
+          actions: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: actionBudget),
+              child: UtenFitOrCompact(
+                expanded: expandedActions,
+                compact: compactAction,
+                forceCompact:
+                    (actions?.isNotEmpty ?? false) &&
+                    constraints.maxWidth < 600 * textScale,
+              ),
+            ),
+          ],
           centerTitle: centerTitle,
           backgroundColor: blurred
               ? baseColor.withValues(alpha: 0.8)
@@ -233,41 +298,43 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
   }
 
-  Future<void> _showActions(BuildContext context, List<Widget> pageActions) {
-    ModalRoute<void>? actionRoute;
-    var claimed = false;
-    bool claim() {
-      if (claimed || actionRoute?.isCurrent != true) return false;
-      claimed = true;
+  Future<void> _showActions(
+    BuildContext context,
+    List<Widget> pageActions,
+    int revision,
+  ) {
+    if (!mounted || revision != _actionRevision) return Future<void>.value();
+    final panel = _AppBarActionPanel(_actionRevision, pageActions);
+    _actionPanel = panel;
+    bool claim(int revision) {
+      if (!mounted ||
+          revision != _actionRevision ||
+          panel.claimed ||
+          panel.route?.isCurrent != true) {
+        return false;
+      }
+      panel.claimed = true;
       return true;
     }
 
-    void dismiss() {
-      final route = actionRoute;
-      final navigator = route?.navigator;
-      if (route == null || navigator == null || !route.isActive) return;
-      if (route.isCurrent) {
-        navigator.pop();
-      } else {
-        navigator.removeRoute(route);
-      }
-    }
+    void dismiss() => panel.dismiss();
 
-    VoidCallback? before(VoidCallback? callback) => callback == null
+    VoidCallback? before(VoidCallback? callback, int revision) =>
+        callback == null
         ? null
         : () {
-            if (!claim()) return;
+            if (!claim(revision)) return;
             dismiss();
             callback();
           };
-    Widget present(Widget source, BuildContext panelContext) {
+    Widget present(Widget source, BuildContext panelContext, int revision) {
       if (source is Padding) {
         return Padding(
           key: source.key,
           padding: source.padding,
           child: source.child == null
               ? null
-              : present(source.child!, panelContext),
+              : present(source.child!, panelContext, revision),
         );
       }
       if (source is SizedBox) {
@@ -277,7 +344,7 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
           height: source.height,
           child: source.child == null
               ? null
-              : present(source.child!, panelContext),
+              : present(source.child!, panelContext, revision),
         );
       }
       if (source is Align) {
@@ -288,7 +355,7 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
           heightFactor: source.heightFactor,
           child: source.child == null
               ? null
-              : present(source.child!, panelContext),
+              : present(source.child!, panelContext, revision),
         );
       }
       if (source is IconButton) {
@@ -306,8 +373,8 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
           highlightColor: source.highlightColor,
           splashColor: source.splashColor,
           disabledColor: source.disabledColor,
-          onPressed: before(source.onPressed),
-          onLongPress: before(source.onLongPress),
+          onPressed: before(source.onPressed, revision),
+          onLongPress: before(source.onLongPress, revision),
           onHover: source.onHover,
           mouseCursor: source.mouseCursor,
           focusNode: source.focusNode,
@@ -326,15 +393,15 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
         return UtenAppBarNativeActionButton(
           key: source.key,
           source: native,
-          onPressed: before(native.onPressed),
-          onLongPress: before(native.onLongPress),
+          onPressed: before(native.onPressed, revision),
+          onLongPress: before(native.onLongPress, revision),
         );
       }
       if (source is UtenButton || source is UtenAppBarActionButton) {
         return UtenAppBarActionPresentation(
           child: UtenAppBarActionScope(
             actionContext: context,
-            claimAction: claim,
+            claimAction: () => claim(revision),
             dismiss: dismiss,
             closeBeforeAction: true,
             child: source,
@@ -348,53 +415,63 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
       context: context,
       compactHeightFactor: 0.5,
       builder: (panelContext) {
-        actionRoute = ModalRoute.of<void>(panelContext);
-        return UtenAppBarActionScope(
-          actionContext: context,
-          claimAction: claim,
-          dismiss: dismiss,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title ?? '页面操作',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(panelContext).textTheme.titleMedium,
+        panel.route = ModalRoute.of<void>(panelContext);
+        return ValueListenableBuilder<_AppBarActionPresentation>(
+          valueListenable: panel.presentation,
+          builder: (_, presentation, _) => UtenAppBarActionScope(
+            actionContext: context,
+            claimAction: () => claim(presentation.revision),
+            dismiss: dismiss,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title ?? '页面操作',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(panelContext).textTheme.titleMedium,
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: '关闭操作面板',
-                      onPressed: () => Navigator.of(panelContext).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+                      IconButton(
+                        tooltip: '关闭操作面板',
+                        onPressed: () => Navigator.of(panelContext).pop(),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: UtenAppBarActionPresentation(
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 12,
-                      children: [
-                        for (final action in pageActions)
-                          present(action, panelContext),
-                      ],
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: UtenAppBarActionPresentation(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 12,
+                        children: [
+                          for (final action in presentation.actions)
+                            present(
+                              action,
+                              panelContext,
+                              presentation.revision,
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
-    );
+    ).whenComplete(() {
+      if (identical(_actionPanel, panel)) _actionPanel = null;
+      panel.presentation.dispose();
+    });
   }
 
   /// 组合标题区，优先级：[titleWidget] > [title]+[centerWidget] > [title]。
@@ -453,5 +530,26 @@ class UtenAppBar extends StatelessWidget implements PreferredSizeWidget {
           ),
       ],
     );
+  }
+}
+
+typedef _AppBarActionPresentation = ({int revision, List<Widget> actions});
+
+class _AppBarActionPanel {
+  _AppBarActionPanel(int revision, List<Widget> actions)
+    : presentation = ValueNotifier((revision: revision, actions: actions));
+  final ValueNotifier<_AppBarActionPresentation> presentation;
+  ModalRoute<void>? route;
+  bool claimed = false;
+
+  void dismiss() {
+    final current = route;
+    final navigator = current?.navigator;
+    if (current == null || navigator == null || !current.isActive) return;
+    if (current.isCurrent) {
+      navigator.pop();
+    } else {
+      navigator.removeRoute(current);
+    }
   }
 }

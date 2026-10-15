@@ -197,6 +197,7 @@ class SubcontractOutboundTableRow extends EditableGridRow {
     this.warehouseId,
     this.warehouses = const [],
     this.onWarehouseChanged,
+    this.warehouseAutofilled = true,
     this.status,
   });
 
@@ -211,6 +212,7 @@ class SubcontractOutboundTableRow extends EditableGridRow {
   final String? warehouseId;
   final List<WarehouseDictEntry> warehouses;
   final ValueChanged<String?>? onWarehouseChanged;
+  final bool warehouseAutofilled;
 }
 
 /// Shared by single-document picking and batch picking. It uses the same
@@ -364,6 +366,15 @@ class _SubcontractOutboundDetailTableState
           : OutboundWeightSummaryBar(
               entries: [for (final row in widget.rows) row.draft.weight],
               params: weightCache,
+              productsOf: () => [
+                for (final row in widget.rows)
+                  OutboundProductQuantity(
+                    goodsId: row.draft.item.goodsId ?? row.draft.line.goodsId,
+                    quantity: row.draft.qty.text,
+                    unitId: row.draft.item.unitId,
+                    unitName: row.draft.line.unitName,
+                  ),
+              ],
             ),
       // 2026-10-10 用户口径(批量出库页默认列序)：处理结果前置，单据链(出库单号/来源订单)
       // 次之，先核对身份(名称/编号/颜色)再核仓与量；数量列已内联单位(无独立单位列)，
@@ -557,6 +568,7 @@ class _SubcontractOutboundDetailTableState
                   labelText: null,
                   // dense：与同行数量/备注输入格等高（2026-10-08 表格输入格统一口径）。
                   dense: true,
+                  autofilled: row.warehouseAutofilled,
                   onChanged: row.onWarehouseChanged!,
                 ),
         ),

@@ -30,6 +30,10 @@ abstract final class Perm {
   /// Read-only server health and capacity overview.
   static const serverStatusView = 'server_status:view';
 
+  /// 手动更新与本机安全清理，仅超级管理员可向指定运维人员授予。
+  static const serverUpdate = 'server:update';
+  static const serverCleanup = 'server:cleanup';
+
   /// 接收服务器状态告警（V552）：磁盘/内存/数据库/备份越线时收站内通知。
   /// 与 [serverStatusView] 分开授——「能看」和「该被吵醒」不是一回事。
   static const serverStatusAlertReceive = 'server_status:alert:receive';

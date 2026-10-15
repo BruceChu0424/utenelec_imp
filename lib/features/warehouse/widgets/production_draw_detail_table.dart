@@ -284,8 +284,34 @@ class ProductionDrawDetailTable extends StatelessWidget {
       filters: const {},
       onFilterChanged: (_, _) {},
       toolbarActions: _capturesWeight ? const [WeightEntryUnitButton()] : null,
-      summaryBar: _capturesWeight && entries.isNotEmpty
-          ? OutboundWeightSummaryBar(entries: entries, params: weightParams)
+      summaryBar: rows.isNotEmpty
+          ? OutboundWeightSummaryBar(
+              entries: entries,
+              params: weightParams,
+              quantityListenables: [
+                ...?issueQtyControllers?.values,
+                for (final row in discoveryRows) row.quantity,
+              ],
+              productsOf: () => [
+                for (final row in rows)
+                  OutboundProductQuantity(
+                    goodsId:
+                        row.discovery?.values['goodsId'] as String? ??
+                        row.item?.goodsId,
+                    quantity:
+                        row.discovery?.quantity.text ??
+                        issueQtyControllers?[row.item?.id]?.text ??
+                        (_capturesWeight
+                            ? row.item?.remainingQtyText ??
+                                  row.item?.remainingQty.toString()
+                            : row.item?.qtyText ?? row.item?.qty?.toString()),
+                    unitId:
+                        row.discovery?.values['unitId'] as String? ??
+                        row.item?.unitId,
+                    unitName: _unitName(row),
+                  ),
+              ],
+            )
           : null,
       columns: [
         MasterColumnDef(
@@ -833,13 +859,19 @@ class ProductionDrawDetailTable extends StatelessWidget {
     ),
     child: InputDecorator(
       decoration: applyRequiredEmpty(
-        UtenInputDecoration(
-          InputDecoration(
-            isDense: true,
-            error: showDiscoveryValidation && row.warehouseError != null
-                ? UtenFieldMessage.error(row.warehouseError!)
-                : null,
+        applyAutofillHint(
+          UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              error: showDiscoveryValidation && row.warehouseError != null
+                  ? UtenFieldMessage.error(row.warehouseError!)
+                  : null,
+            ),
           ),
+          Theme.of(context),
+          autofilled:
+              row.warehouseError == null &&
+              row.values['warehouseConfirmed'] != true,
         ),
         Theme.of(context),
         requiredEmpty: row.warehouseError != null,

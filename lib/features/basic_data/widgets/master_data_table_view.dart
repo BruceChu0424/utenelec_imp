@@ -320,7 +320,7 @@ class MasterDataTableView<T> extends StatefulWidget {
     this.maxRetainedPages = 5,
     this.maxRetainedRows = 1000,
     this.summaryBar,
-    this.summaryBarInline = false,
+    this.summaryBarInline = true,
     this.toolbarActions,
     this.toolbarLeadingActions,
     this.embedded = false,
@@ -688,8 +688,7 @@ class MasterDataTableView<T> extends StatefulWidget {
 
   /// 表格下方的合计条（通常是 `UtenTotalsSummaryBar`）。
   ///
-  /// 全站统一挂在**表体与翻页条之间**：表体内部滚动，合计条在滚动区之外，
-  /// 因此滚到哪一行它都在；全屏表格与嵌入式明细表同样跟随，位置/间距/字号一处定义处处一致。
+  /// 默认作为表格末行下方的脚注，嵌入式、全屏和独立表格采用同一位置。
   ///
   /// **服务端分页的表格必须传服务端合计**——对当前页求和会得出一个看着像总计、
   /// 其实只覆盖一页的数；拿不到服务端合计时要么不传，要么把标签写成「本页合计」。
@@ -698,7 +697,7 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// 合计条改为**随表体滚动**：渲染进表体竖向滚动内容的末尾（最后一行数据之下），
   /// 行少时紧跟末行，行多时要滚到底才见——合计条属于表格那一块，不再钉在区块底部。
   /// 横向同样随表格内容（表格横向滚动时合计条跟着走）。用于详情页等
-  /// 「合计行是表格脚注」语义的场景；默认 false 保持钉在表体之外的全站口径。
+  /// 「合计行是表格脚注」语义的场景。只有明确需要固定总览的宿主才传 false。
   final bool summaryBarInline;
 
   @override
@@ -4779,21 +4778,18 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       child: Stack(
         children: [
           content,
-          // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的 8px 命中区。
+          // 列边界命中区完整留在当前列内；与编辑表共用鼠标/键盘/RTL/恢复交互。
           // opaque 截获该区点击（避免误开筛选下拉）；横向拖拽改本列宽，
           // 桌面端悬停显示 resize 光标作为可调提示。
-          Positioned(
-            right: -_gripHalf,
+          PositionedDirectional(
+            end: 0,
             top: 0,
             bottom: 0,
             width: _gripHalf * 2,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (d) => _resizeColumn(i, d.delta.dx),
-              child: const MouseRegion(
-                cursor: SystemMouseCursors.resizeColumn,
-                child: SizedBox.expand(),
-              ),
+            child: UtenColumnResizeHandle(
+              label: _columns[i].label,
+              onResize: (delta) => _resizeColumn(i, delta),
+              onReset: () => _resetColumnWidth(i),
             ),
           ),
         ],
@@ -4811,6 +4807,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     setState(() {
       _widths[index] = next;
       _manualResized.add(index);
+    });
+    _fsTick.value++;
+    _persistPlatformLayout();
+  }
+
+  void _resetColumnWidth(int index) {
+    setState(() {
+      _manualResized.remove(index);
+      _widthsDirty = true;
     });
     _fsTick.value++;
     _persistPlatformLayout();

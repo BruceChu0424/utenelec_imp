@@ -46,12 +46,13 @@ public final class AuditClassifier {
             "update_system_setting", "audit_retention_completed", "audit_retention_failed",
             "business_data_reset", "business_data_reset_received", "business_data_reset_failed",
             "legacy_migration_run",
-            "notice_celebration_auto_toggle");
+            "notice_celebration_auto_toggle", "server_source_save", "server_update_check",
+            "server_update_start", "server_update_cancel", "server_cleanup");
     /** 不可逆或绕过常规流程的显式业务动作。 */
     private static final Set<String> HIGH_RISK_ACTIONS = Set.of(
             "password_temporary_reset", "task_force_release", "admin_force_release",
             "business_data_reset", "business_data_reset_received", "legacy_migration_run",
-            "notice_delete");
+            "notice_delete", "server_source_save", "server_update_start", "server_update_cancel", "server_cleanup");
     /** 含个人、账户或财务敏感字段的详情; 查看它们记中风险。 */
     static final Set<String> SENSITIVE_DETAIL_TARGETS = Set.of(
             "employees", "visitor_applications", "website_inquiries",
@@ -69,7 +70,8 @@ public final class AuditClassifier {
             "page_permission_workspace", "impersonation", "client_access");
     /** 系统级资源: 成功的写入一律记高风险(AI 服务配置与系统设置同级, ADR-133)。 */
     private static final Set<String> SYSTEM_RESOURCES = Set.of(
-            "system_setting", "platform_settings", "system_test", "legacy_migration", "ai_provider", "pii_key_rotation");
+            "system_setting", "platform_settings", "system_test", "legacy_migration", "ai_provider", "pii_key_rotation",
+            "server_operations", "server_storage", "sms_settings", "sms_gateway_settings");
     private static final Set<String> AUTHENTICATION_RESOURCES = Set.of("auth", "visitor_auth");
     /** 语义写事件里的高风险方法(按「资源.方法」的方法部分判断, 前缀匹配)。 */
     private static final List<String> HIGH_RISK_VERB_PREFIXES = List.of(

@@ -2561,7 +2561,6 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
                 : null,
             // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容末尾
             //（最后一行数据之下），不钉在区块底部/按钮上方。
-            summaryBarInline: true,
           ),
         ),
       ],

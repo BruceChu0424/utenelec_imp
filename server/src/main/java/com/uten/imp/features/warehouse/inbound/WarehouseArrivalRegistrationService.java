@@ -908,7 +908,8 @@ public class WarehouseArrivalRegistrationService {
                 rs.getObject("currency_id", UUID.class),
                 com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(jdbc,orderType,
                     rs.getObject("source_order_id",UUID.class),rs.getBigDecimal("exchange_rate")).rate(),
-                rs.getBigDecimal("tax_rate"),
+                com.uten.imp.common.finance.ProcurementApprovedTaxRate.read(jdbc, orderType,
+                    rs.getObject("source_order_id", UUID.class), rs.getBigDecimal("tax_rate")),
                 rs.getObject("settlement_method_id", UUID.class)),
                 orderItemIds.toArray()).stream().distinct().toList();
         if (headers.size() != 1) {

@@ -127,6 +127,7 @@ class EditableGridColumn<T extends EditableGridRow> {
     required this.label,
     required this.width,
     required this.cellBuilder,
+    this.minimumWidthOf,
     this.numeric = false,
     this.defaultVisible = true,
     this.exportDefinition,
@@ -151,6 +152,9 @@ class EditableGridColumn<T extends EditableGridRow> {
   final String key;
   final String label;
   final double width;
+
+  /// Presentation floor for a control or identity column; business values are unaffected.
+  final double Function(BuildContext context)? minimumWidthOf;
   final Widget Function(BuildContext context, T row) cellBuilder;
 
   /// 状态图例「值 -> 含义」(ADR-150, 可选)：AI 读页面时给本列底色/状态值附上含义。
@@ -756,6 +760,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.showRemoveRowsAction = true,
     this.showInlineRemoveAction = false,
     this.stickyHeaderPinned,
+    this.stickyHeader = true,
     this.onAddColumn,
     this.forceVisibleColumnKeys = const {},
     this.addColumnLabel = '添加列',
@@ -807,6 +812,9 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   /// 由页面创建并传入；网格在 sticky 位置重算时写入——true = 表头已吸附视口顶。
   /// 不传则不发布信号(页面滚动条维持常显)。
   final ValueNotifier<bool>? stickyHeaderPinned;
+
+  /// Nested detail grids keep their header in flow while the owning grid pins its header.
+  final bool stickyHeader;
 
   final bool showRowDelete;
 
@@ -1326,8 +1334,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 只在 [_stickyEngaged] 后启用且只增不减（不缩回）：首屏保持自然高度，
   /// 「添加行/合计」表尾条不被推出视口（新建单先点添加行的主流程）；
   /// 滚动浏览/撑高后内容总高稳定，反向滚动不跳动。
-  double get _stickyTrailingSpace =>
-      _stickyEngaged ? _stickyStretch + _stickyReachExtra : 0;
+  double get _stickyTrailingSpace => widget.stickyHeader && _stickyEngaged
+      ? _stickyStretch + _stickyReachExtra
+      : 0;
 
   /// 实测缺口累计的垫高量（见 [_stickyTrailingSpace]；0=还不需要垫）。
   double _stickyStretch = 0;
@@ -1566,6 +1575,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void didUpdateWidget(covariant UtenEditableGrid<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
     final previousColumns = _platformColumnCache ?? oldWidget.columns;
+    if (_sameColumnKeys(oldWidget.columns, widget.columns)) {
+      for (var i = 0; i < widget.columns.length && i < _widths.length; i++) {
+        final column = widget.columns[i];
+        if (!_manualResized.contains(column.key) &&
+            column.width != oldWidget.columns[i].width) {
+          _widths[i] = _widths[i] < column.width ? column.width : _widths[i];
+          _autoGrowDirty = true;
+        }
+      }
+    }
     // 置顶信号 notifier 换实例（宿主页重建换新 notifier）→ 吸顶核心重绑。
     if (!identical(oldWidget.stickyHeaderPinned, widget.stickyHeaderPinned)) {
       _sticky.pinnedSink = widget.stickyHeaderPinned;
@@ -1655,6 +1674,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   /// 祖先滚动 tick：同帧定表头位置 + post-frame 复核量位。
   void _onPagePosChanged() {
+    if (!widget.stickyHeader) return;
     _sticky.handleScrollTick();
     _scheduleStickyUpdate();
   }
@@ -2011,14 +2031,34 @@ class _UtenEditableGridState<T extends EditableGridRow>
     }
   }
 
-  /// 拖拽改第 [index] 列宽：按本次横向增量更新，下限 [_minColWidth] 防拖没。
+  /// 拖拽改第 [index] 列宽：按本次横向增量更新，尊重该列控件的最小宽度。
   /// 手动拖过的列即锁定（进 [_manualResized]），不再随内容自动加宽——用户拖到哪就
   /// 停在哪（缩小的位置就是默认位置），列集合变化时才随列宽重置一起解锁。
   void _resizeColumn(int index, double dx) {
-    final next = _widths[index] + dx;
-    if (next < _minColWidth) return;
+    final minimum = _minimumColumnWidth(context, _columns[index]);
+    final proposed = _widths[index] + dx;
+    final next = proposed < minimum ? minimum : proposed;
     _manualResized.add(_columns[index].key);
     setState(() => _widths[index] = next);
+    _persistPlatformLayout();
+  }
+
+  double _minimumColumnWidth(
+    BuildContext context,
+    EditableGridColumn<T> column,
+  ) {
+    final requested = column.minimumWidthOf?.call(context) ?? _minColWidth;
+    return requested < _minColWidth ? _minColWidth : requested;
+  }
+
+  void _resetColumnWidth(int index) {
+    setState(() {
+      final column = _columns[index];
+      _manualResized.remove(column.key);
+      final minimum = _minimumColumnWidth(context, column);
+      _widths[index] = column.width < minimum ? minimum : column.width;
+      _autoGrowDirty = true;
+    });
     _persistPlatformLayout();
   }
 
@@ -2086,6 +2126,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 保证系统改大字号后列重新适配）。量宽直接写 [_widths]，同帧布局即用新值
   /// （与 MasterDataTableView._ensureWidths 同款做法，不经 setState）。
   void _ensureAutoFit(BuildContext context) {
+    for (var i = 0; i < _columns.length && i < _widths.length; i++) {
+      final minimum = _minimumColumnWidth(context, _columns[i]);
+      if (_widths[i] < minimum) _widths[i] = minimum;
+    }
     final scaler = MediaQuery.textScalerOf(context);
     final chromeWidths = [
       for (final column in _columns)
@@ -2130,7 +2174,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
           );
         }
       }
-      _widths[i] = w;
+      final minimum = _minimumColumnWidth(context, col);
+      _widths[i] = w < minimum ? minimum : w;
     }
   }
 
@@ -2646,11 +2691,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
         ),
         // sticky 表头覆盖层：top 由吸顶核心驱动——0=自然位（表头在网格顶）；
         // 页面上滑把表头顶到视口顶后钉住；表体尾部上推时随尾部推出。
-        ValueListenableBuilder<double>(
-          valueListenable: _sticky.headerY,
-          builder: (context, y, _) =>
-              Positioned(left: 0, right: 0, top: y, child: headerUnit),
-        ),
+        if (!widget.stickyHeader)
+          Positioned(left: 0, right: 0, top: 0, child: headerUnit)
+        else
+          ValueListenableBuilder<double>(
+            valueListenable: _sticky.headerY,
+            builder: (context, y, _) =>
+                Positioned(left: 0, right: 0, top: y, child: headerUnit),
+          ),
       ],
     );
     // 粘贴属于整张表：空表、筛选后为空、末行后的空白也必须能进入。
@@ -2674,7 +2722,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     Widget resolve(Widget child) {
       // 吸顶网格（stickyHeaderPinned）外包滚轮截停门：一格越置顶点即止 + 停顿窗
       // 吞同一滚势的后续格 + 短表够不着顶时按需撑高（见 UtenStickyWheelGate）。
-      if (widget.stickyHeaderPinned == null) {
+      if (!widget.stickyHeader || widget.stickyHeaderPinned == null) {
         return SelectionContainer.disabled(child: child);
       }
       return SelectionContainer.disabled(
@@ -3248,15 +3296,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
         child: Stack(
           children: [
             content,
-            // 列宽拖拽手柄：贴列右边界、半溢出到相邻列的命中区。
+            // 列边界命中区完整放在本列内，避免中心点落进相邻列。
             PositionedDirectional(
-              end: -_gripHalf,
+              end: 0,
               top: 0,
               bottom: 0,
               width: _gripHalf * 2,
               child: UtenColumnResizeHandle(
                 label: _columns[i].label,
                 onResize: (delta) => _resizeColumn(i, delta),
+                onReset: () => _resetColumnWidth(i),
               ),
             ),
           ],

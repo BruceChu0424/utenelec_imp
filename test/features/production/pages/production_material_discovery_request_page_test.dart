@@ -65,6 +65,20 @@ class _Repository extends ProductionMaterialDiscoveryRequestRepository {
   Object? failure;
   String? failSegment;
   Completer<void>? gate;
+  Completer<void>? contextGate;
+  Object? contextFailure;
+  final remembered = <String, Map<String, dynamic>>{};
+  @override
+  Future<Map<String, dynamic>> context(String segmentId) async {
+    if (contextGate != null) await contextGate!.future;
+    if (contextFailure != null) throw contextFailure!;
+    return {
+      'canRequest': true,
+      'expectedVersion': 3,
+      ...?remembered[segmentId],
+    };
+  }
+
   @override
   Future<void> request(
     String segmentId,
@@ -224,6 +238,85 @@ Future<void> _add(WidgetTester tester, DiscoveryRequestMaterialRow row) async {
 }
 
 void main() {
+  testWidgets(
+    'previous identities are reused per task while quantity stays blank',
+    (tester) async {
+      final repo = _Repository()
+        ..remembered['a'] = {
+          'rememberedItems': [
+            {..._plastic, 'qty': 99},
+          ],
+          'memorySource': 'WAREHOUSE_CONFIRMED',
+          'memoryRequestNo': 'LQ20261015000001',
+        };
+      await _pump(tester, repo, ids: ['a', 'b']);
+      expect(_rows(tester).first.values['goodsId'], 'plastic');
+      expect(_rows(tester).first.qty.text, isEmpty);
+      expect(_rows(tester).last.values['goodsId'], isNull);
+      expect(find.text('上次仓库确认'), findsOneWidget);
+      await _submit(tester);
+      expect(repo.submissions.first.items, [
+        {'goodsId': 'plastic', 'colorId': 'white', 'unitId': 'kg'},
+      ]);
+      expect(repo.submissions.last.items, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'workshop recognition is labelled pending warehouse verification',
+    (tester) async {
+      final repo = _Repository()
+        ..remembered['a'] = {
+          'rememberedItems': [_plastic],
+          'memorySource': 'WORKSHOP_REQUESTED',
+          'memoryRequestNo': 'LQ20261015000002',
+        };
+      await _pump(tester, repo);
+      expect(find.text('上次车间登记，待仓库核对'), findsOneWidget);
+      expect(_rows(tester).single.qty.text, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'memory loading holds editing and stale context prevents a new request',
+    (tester) async {
+      final repo = _Repository()
+        ..contextGate = Completer<void>()
+        ..remembered['a'] = {
+          'expectedVersion': 4,
+          'rememberedItems': [_plastic],
+        };
+      await _pump(tester, repo, settle: false);
+      expect(
+        find.byKey(const Key('discovery-request-loading')),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('discovery-request-submit')),
+            )
+            .onPressed,
+        isNull,
+      );
+      repo.contextGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('原车间任务已变化'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const Key('discovery-request-submit')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(repo.submissions, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'source lookup uses shared modal loading and releases it when the form is ready',
     (tester) async {

@@ -603,6 +603,7 @@ class _ProductionDrawBatchIssuePageState
         () => row.values.addAll({
           'warehouseId': selected.id,
           'warehouseName': selected.label,
+          'warehouseConfirmed': true,
         }),
       );
       _ensureWeightParams();

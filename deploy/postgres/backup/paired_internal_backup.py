@@ -45,6 +45,8 @@ IDENTITY_FIELDS = ("storage_provider", "storage_key", "storage_version", "sha256
 SET_NAME = re.compile(r"([0-9]{8}T[0-9]{6}Z)-[a-f0-9]{12}\Z")
 UNPUBLISHED_NAME = re.compile(r"\.(incomplete|expired)-(([0-9]{8}T[0-9]{6}Z)-[a-f0-9]{12})\Z")
 SET_FORMATS = ("uten-paired-internal-v1", "uten-paired-internal-v2")
+OPERATIONS_CONFIG = Path('/etc/uten-imp/operations.json')
+RECOVERY_PROOFS = Path('/var/lib/uten-imp-operations/recovery-proofs.json')
 CONSISTENCY_SQL = """
 SELECT EXISTS (
   SELECT 1 FROM attachments a JOIN attachment_object_outbox o
@@ -807,8 +809,73 @@ def remove_owned_directory(root: Path, name: str, owner: int) -> int:
     return size
 
 
+def recovery_protected_sets(root: Path, moment: datetime, *, operations_config=OPERATIONS_CONFIG,
+                            recovery_proofs=RECOVERY_PROOFS) -> set[str] | None:
+    """None blocks retention; an empty set is legacy hosts without operations installed.
+
+    The operations registry attests an actual isolated PostgreSQL restore. File
+    verification alone is not such an attestation. This function runs under the
+    formal backup lock, also taken by the root-only registry writer.
+    """
+    if not os.path.lexists(operations_config):
+        return set()
+    try:
+        path = Path(recovery_proofs)
+        with open_original(Path(path.anchor), Path(*path.parts[1:])) as source:
+            info = os.fstat(source.fileno())
+            if info.st_uid != 0 or info.st_mode & 0o077 or info.st_nlink != 1 or info.st_size > 1048576:
+                return None
+            value = json.loads(source.read(1048577))
+        if (value.get('format') != 'uten-operations-recovery-proofs-v1'
+                or not isinstance(value.get('proofs'), list) or not 1 <= len(value['proofs']) <= 128
+                or not isinstance(value.get('requiredRollbackResources'), list)
+                or not isinstance(value.get('requiredReleaseVersions'), list) or not value['requiredReleaseVersions']):
+            return None
+        proofs = [p for p in value['proofs'] if p.get('kind') == 'PAIRED_BACKUPS']
+        if not proofs:
+            return None
+        for proof in proofs:
+            verified = datetime.fromisoformat(proof['verifiedAt'].replace('Z', '+00:00'))
+            if (not SET_NAME.fullmatch(proof['resourceName']) or verified.tzinfo is None or verified > moment
+                    or proof.get('restoreExitCode') != 0 or proof.get('verificationMethod') != 'ISOLATED_POSTGRES_RESTORE'
+                    or not re.fullmatch(r'[a-f0-9]{64}', proof.get('restoreReceiptSha256', ''))
+                    or not re.fullmatch(r'[a-f0-9]{64}', proof.get('manifestSha256', ''))
+                    or not re.fullmatch(r'[a-f0-9]{64}', proof.get('dumpSha256', ''))
+                    or not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', proof.get('sourceVersion', ''))
+                    or not str(proof.get('flywayVersion', '')).isdigit()
+                    or type(proof.get('flywayCount')) is not int or proof['flywayCount'] < 1
+                    or str(proof.get('restoredFlywayVersion')) != str(proof.get('flywayVersion'))
+                    or proof.get('restoredFlywayCount') != proof.get('flywayCount')
+                    or proof.get('restoredFlywayFailed') != 0):
+                return None
+        latest = max(proofs, key=lambda p: datetime.fromisoformat(p['verifiedAt'].replace('Z', '+00:00')))
+        protected = {latest['resourceName']}
+        for item in value['requiredRollbackResources']:
+            if item.get('kind') == 'PAIRED_BACKUPS':
+                if not any(p['resourceName'] == item.get('resourceName') for p in proofs):
+                    return None
+                protected.add(item['resourceName'])
+        for name in protected:
+            proof = next(p for p in proofs if p['resourceName'] == name)
+            with open_original(root, Path(name, 'manifest.json')) as manifest:
+                raw = manifest.read(65537)
+            if len(raw) > 65536 or hashlib.sha256(raw).hexdigest() != proof['manifestSha256']:
+                return None
+            summary = json.loads(raw)
+            if (summary.get('set_id') != name or summary.get('format') not in SET_FORMATS
+                    or summary.get('database_dump_sha256') != proof['dumpSha256']):
+                return None
+            with open_original(root, Path(name, 'database.dump')) as dump:
+                if hashlib.file_digest(dump, 'sha256').hexdigest() != proof['dumpSha256']:
+                    return None
+        return protected
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return None
+
+
 def prune_expired_sets(root: Path, retention_days: int, current: str, moment: datetime | None = None,
-                       *, min_complete_sets: int = 3) -> dict:
+                       *, min_complete_sets: int = 3, operations_config=OPERATIONS_CONFIG,
+                       recovery_proofs=RECOVERY_PROOFS) -> dict:
     """Remove complete sets that are both outside the window and beyond the count floor.
 
     A complete set is removed only when it is dated retention_days or more local calendar days
@@ -822,6 +889,8 @@ def prune_expired_sets(root: Path, retention_days: int, current: str, moment: da
     """
     check_retention_days(retention_days)
     check_min_complete_sets(min_complete_sets)
+    if os.path.lexists(operations_config):
+        min_complete_sets = max(3, min_complete_sets)
     real_directory(root)
     owner = os.lstat(root).st_uid
     moment = moment or datetime.now(timezone.utc).astimezone()
@@ -847,14 +916,16 @@ def prune_expired_sets(root: Path, retention_days: int, current: str, moment: da
         elif match[1] == "expired" or expired(created):
             stale.append(name)
     pointer = success_pointer_set(root)
-    if current not in complete or pointer not in complete:
-        log_event("paired_backup_retention_skipped", reason="new set or success pointer is not a complete set",
+    restored = recovery_protected_sets(root, moment, operations_config=operations_config, recovery_proofs=recovery_proofs)
+    if current not in complete or pointer not in complete or restored is None or not restored <= set(complete):
+        reason = 'actual restore proof missing or unsafe' if restored is None or not (restored or set()) <= set(complete) else 'new set or success pointer is not a complete set'
+        log_event("paired_backup_retention_skipped", reason=reason,
                   retention_days=retention_days, min_complete_sets=min_complete_sets, unrecognized=unrecognized)
         return {"removed": [], "failed": [], "freed_bytes": 0, "skipped": True,
                 "complete_sets": len(complete), "unrecognized": unrecognized}
     ranked = sorted(complete, key=lambda name: (complete[name], name), reverse=True)
     newest, floor = ranked[0], ranked[:min_complete_sets]
-    keep = {current, pointer, *floor}
+    keep = {current, pointer, *floor, *restored}
     expire = [name for name in sorted(complete) if name not in keep and expired(complete[name])]
     log_event("paired_backup_retention_plan", retention_days=retention_days, min_complete_sets=min_complete_sets,
               current=current, pointer=pointer,
@@ -886,7 +957,7 @@ def retain_after_success(root: Path, config: Config, published: Path) -> dict:
     skipped or failing cleanup is visible instead of silently accumulating sets.
     """
     state = {"status": "FAILED", "retentionDays": config.retention_days,
-             "minCompleteSets": config.min_complete_sets}
+             "minCompleteSets": max(3, config.min_complete_sets) if os.path.lexists(OPERATIONS_CONFIG) else config.min_complete_sets}
     try:
         result = prune_expired_sets(root, config.retention_days, published.name,
                                     min_complete_sets=config.min_complete_sets)

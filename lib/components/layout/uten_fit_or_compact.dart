@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
@@ -122,7 +124,7 @@ class _FitRenderBox extends RenderBox
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
-      _expanded.getMaxIntrinsicWidth(height);
+      (_forceCompact ? _compact : _expanded).getMaxIntrinsicWidth(height);
 
   @override
   double computeMinIntrinsicHeight(double width) =>
@@ -144,6 +146,28 @@ class _FitRenderBox extends RenderBox
     );
   }
 
+  BoxConstraints _hiddenConstraints(RenderBox child) {
+    final naturalWidth = child.getMaxIntrinsicWidth(double.infinity);
+    final availableWidth = constraints.hasBoundedWidth
+        ? constraints.maxWidth
+        : constraints.minWidth;
+    final width = math.max(
+      availableWidth,
+      naturalWidth.isFinite ? naturalWidth : availableWidth,
+    );
+    final naturalHeight = constraints.hasBoundedHeight
+        ? constraints.maxHeight
+        : child.getMaxIntrinsicHeight(width);
+    return BoxConstraints(
+      maxWidth: width,
+      minHeight: constraints.minHeight,
+      maxHeight: math.max(
+        constraints.minHeight,
+        naturalHeight.isFinite ? naturalHeight : constraints.minHeight,
+      ),
+    );
+  }
+
   @override
   void performLayout() {
     final next = _needsCompact(constraints.maxWidth);
@@ -152,8 +176,14 @@ class _FitRenderBox extends RenderBox
       markNeedsSemanticsUpdate();
       onChanged(compact);
     }
-    // Natural width must remain free, while a toolbar's shared height must
-    // reach the painted control rather than only stretching this outer box.
+    // Both retained branches must complete layout. Leaving a dirty hidden
+    // descendant under a clean parent breaks the relayout-boundary contract
+    // when text scaling or rebuilding actions changes that descendant again.
+    // Give the hidden branch finite natural-width space: the visible budget
+    // can overflow its Row, while an infinite width breaks Expanded children.
+    final hidden = compact ? _expanded : _compact;
+    hidden.layout(_hiddenConstraints(hidden), parentUsesSize: true);
+    // Preserve shared toolbar height on the painted control, not only here.
     _active.layout(constraints.copyWith(minWidth: 0), parentUsesSize: true);
     size = constraints.constrain(_active.size);
   }
@@ -161,6 +191,12 @@ class _FitRenderBox extends RenderBox
   @override
   void paint(PaintingContext context, Offset offset) =>
       context.paintChild(_active, offset);
+
+  @override
+  bool paintsChild(RenderBox child) {
+    assert(child.parent == this);
+    return child == _active;
+  }
 
   @override
   bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>

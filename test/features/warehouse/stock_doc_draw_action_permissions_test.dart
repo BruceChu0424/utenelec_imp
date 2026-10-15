@@ -87,7 +87,9 @@ class _DrawDetailApi extends ApiClient {
           'id': 'draw-item-1',
           'lineNo': 1,
           'qty': qty,
+          'qtyExact': qty.toString(),
           'issuedQty': issuedQty,
+          'issuedQtyExact': issuedQty.toString(),
           'unitRate': 1,
           'executionSegmentId': 'segment-1',
         },
@@ -192,7 +194,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.postedPath, '/stock/docs/draw-1/approve-and-issue');
       expect(api.posted?['lines'], [
-        {'itemId': 'draw-item-1', 'qty': 0.0001},
+        {'itemId': 'draw-item-1', 'qty': '0.0001'},
       ]);
       expect(tester.takeException(), isNull);
     },

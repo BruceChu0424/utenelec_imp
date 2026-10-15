@@ -60,11 +60,24 @@ LANGUAGE sql STABLE AS $$
         JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1
           AND NOT plan.is_deleted AND NOT plan.is_canceled AND plan.material_analysis_id=formal.analysis_id
         JOIN production_material_analysis_items source ON source.id=plan.material_analysis_item_id AND NOT source.is_deleted
+        LEFT JOIN production_material_analysis_materials parent ON parent.id=source.parent_analysis_material_id
+          AND parent.analysis_id=source.analysis_id
         JOIN production_material_analysis_materials material ON material.id=formal.material_id AND material.active
           AND material.analysis_id=formal.analysis_id
           AND (material.goods_id,material.color_id,material.unit_id)
               IS NOT DISTINCT FROM (demand.goods_id,demand.color_id,demand.unit_id)
-          AND fn_analysis_plan_material_matches(source.id,material.id)
+          -- Inline of fn_analysis_plan_material_matches(source.id,material.id); keep in
+          -- sync with the V495 definition.
+          AND (
+            (source.parent_analysis_material_id IS NULL
+               AND material.analysis_item_id=source.id AND material.depth=1)
+            OR (source.source_type IN('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+               AND parent.active
+               AND material.analysis_item_id=parent.analysis_item_id
+               AND ((parent.node_role='ROOT_SUPPLY' AND material.depth=1
+                       AND material.parent_node_key IS NULL)
+                 OR (parent.node_role<>'ROOT_SUPPLY'
+                       AND material.parent_node_key=parent.node_key))))
     ), sliced AS (
         SELECT raw.*, COALESCE(SUM(qty) OVER (PARTITION BY reservation_id
             ORDER BY material_id,source_child_id NULLS FIRST
@@ -145,12 +158,15 @@ FROM slots;
 CREATE FUNCTION fn_production_workbench_frozen_material_scopes(p_analysis UUID)
 RETURNS TABLE(analysis_id UUID,demand_id UUID,material_id UUID,path TEXT,node_key TEXT,qty numeric)
 LANGUAGE sql STABLE AS $$
-    WITH candidates AS (
+    WITH pinned AS (
+        SELECT owned.demand_id,owned.material_id,SUM(owned.qty) AS qty
+        FROM fn_production_workbench_material_owned_coverage(p_analysis) owned
+        GROUP BY owned.demand_id,owned.material_id
+    ), candidates AS (
         SELECT plan.material_analysis_id AS analysis_id,demand.id AS demand_id,
                material.id AS material_id,material.path,material.node_key,
                GREATEST(COALESCE(demand.required_qty,0)-COALESCE(demand.released_qty,0),0) AS retained_qty,
-               COALESCE((SELECT SUM(owned.qty) FROM fn_production_workbench_material_owned_coverage(p_analysis) owned
-                 WHERE owned.demand_id=demand.id AND owned.material_id=material.id),0) AS pinned_qty,
+               COALESCE(pinned.qty,0) AS pinned_qty,
                COUNT(*) OVER (PARTITION BY demand.id) AS member_count,
                fn_material_analysis_edge_required(
                  (COALESCE(demand.required_for_product_qty,segment.planned_qty,output.qty,0)
@@ -165,7 +181,8 @@ LANGUAGE sql STABLE AS $$
                      * COALESCE(material.parent_per_product_qty,1)
                      / COALESCE(NULLIF(parent.per_product_qty,0),NULLIF(root.per_product_qty,0),1),
                    material.bom_qty,material.consumption_basis,material.basis_output_qty,material.allow_partial_package) AS curve_qty,
-               fn_preplan_aggregate_source_capacity(material.id) AS live_qty
+               GREATEST(COALESCE(material.required_qty,0)+COALESCE(capacity.qty_sum,0),
+                        COALESCE(capacity.cap_max,0)) AS live_qty
         FROM production_material_demands demand
         JOIN production_plans plan ON plan.id=demand.plan_id AND plan.status=1
           AND NOT plan.is_deleted AND NOT plan.is_canceled
@@ -173,6 +190,7 @@ LANGUAGE sql STABLE AS $$
         JOIN production_material_analysis_items source ON source.id=plan.material_analysis_item_id
           AND source.analysis_id=plan.material_analysis_id AND NOT source.is_deleted
         LEFT JOIN production_material_analysis_materials parent ON parent.id=source.parent_analysis_material_id
+          AND parent.analysis_id=source.analysis_id
         LEFT JOIN production_material_analysis_materials root ON root.id=source.root_material_id
         LEFT JOIN production_execution_segments segment ON segment.id=demand.execution_segment_id
         LEFT JOIN LATERAL (
@@ -183,7 +201,27 @@ LANGUAGE sql STABLE AS $$
         JOIN production_material_analysis_materials material ON material.analysis_id=plan.material_analysis_id AND material.active
           AND (material.goods_id,material.color_id,material.unit_id)
               IS NOT DISTINCT FROM (demand.goods_id,demand.color_id,demand.unit_id)
-          AND fn_analysis_plan_material_matches(source.id,material.id)
+          -- Inline of fn_analysis_plan_material_matches(source.id,material.id): the
+          -- function call per candidate pair dominated trigger-time cost. Keep in
+          -- sync with the V495 definition.
+          AND (
+            (source.parent_analysis_material_id IS NULL
+               AND material.analysis_item_id=source.id AND material.depth=1)
+            OR (source.source_type IN('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+               AND parent.active
+               AND material.analysis_item_id=parent.analysis_item_id
+               AND ((parent.node_role='ROOT_SUPPLY' AND material.depth=1
+                       AND material.parent_node_key IS NULL)
+                 OR (parent.node_role<>'ROOT_SUPPLY'
+                       AND material.parent_node_key=parent.node_key))))
+        LEFT JOIN LATERAL (
+          SELECT SUM(fn_preplan_aggregate_alias_qty(alias.id))
+                   FILTER (WHERE fn_preplan_aggregate_alias_identity_valid(alias.id)) AS qty_sum,
+                 MAX(fn_preplan_aggregate_alias_source_capacity(alias.id))
+                   FILTER (WHERE fn_preplan_aggregate_alias_identity_valid(alias.id)) AS cap_max
+          FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=material.id
+        ) capacity ON TRUE
+        LEFT JOIN pinned ON pinned.demand_id=demand.id AND pinned.material_id=material.id
         WHERE NOT demand.is_deleted AND demand.status NOT IN ('RELEASED','REVERSED')
           AND (demand.execution_segment_id IS NULL OR (segment.id IS NOT NULL AND NOT segment.is_deleted
                AND segment.status NOT IN ('CANCELLED','REVERSED')))
@@ -279,6 +317,13 @@ DECLARE row RECORD; child RECORD; rec RECORD; pool NUMERIC; headroom NUMERIC; ta
         demand_key TEXT; material_key TEXT; child_key TEXT;
         actual NUMERIC; pending NUMERIC; responsibility NUMERIC;
 BEGIN
+    -- No active component child means the table below has no rows at all;
+    -- short-circuit before materializing snapshots for trigger-time callers.
+    IF NOT EXISTS(SELECT 1 FROM production_material_analysis_items guard
+                  WHERE guard.analysis_id=p_analysis AND guard.source_type='MAKE_COMPONENT'
+                    AND NOT guard.is_deleted AND guard.requested_qty>0) THEN
+        RETURN;
+    END IF;
     FOR rec IN
       SELECT scope.demand_id,scope.material_id,scope.qty
       FROM fn_production_workbench_frozen_material_scopes(p_analysis) scope
@@ -330,9 +375,19 @@ BEGIN
       pending_by_material:=jsonb_set(pending_by_material,ARRAY[rec.material_id::text],to_jsonb(rec.qty));
     END LOOP;
     FOR row IN
-      SELECT material.id,GREATEST(fn_preplan_aggregate_source_capacity(material.id),
-        COALESCE((scope_sum_by_material->>material.id::text)::numeric,0)) AS qty
-      FROM production_material_analysis_materials material WHERE material.analysis_id=p_analysis AND material.active
+      SELECT material.id,
+             GREATEST(COALESCE(material.required_qty,0)+COALESCE(capacity.qty_sum,0),
+                      COALESCE(capacity.cap_max,0),
+                      COALESCE((scope_sum_by_material->>material.id::text)::numeric,0)) AS qty
+      FROM production_material_analysis_materials material
+      LEFT JOIN LATERAL (
+          SELECT SUM(fn_preplan_aggregate_alias_qty(alias.id))
+                   FILTER (WHERE fn_preplan_aggregate_alias_identity_valid(alias.id)) AS qty_sum,
+                 MAX(fn_preplan_aggregate_alias_source_capacity(alias.id))
+                   FILTER (WHERE fn_preplan_aggregate_alias_identity_valid(alias.id)) AS cap_max
+          FROM preplan_aggregate_material_aliases alias WHERE alias.source_material_id=material.id
+      ) capacity ON TRUE
+      WHERE material.analysis_id=p_analysis AND material.active
     LOOP
       gross:=jsonb_set(gross,ARRAY[row.id::text],to_jsonb(row.qty));
     END LOOP;

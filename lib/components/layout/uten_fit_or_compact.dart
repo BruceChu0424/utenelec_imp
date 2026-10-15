@@ -24,12 +24,45 @@ class UtenFitOrCompact extends StatefulWidget {
 }
 
 class _FitState extends State<UtenFitOrCompact> {
-  bool _compact = false;
+  final _expandedFocus = FocusNode(
+    canRequestFocus: false,
+    skipTraversal: true,
+    debugLabel: 'Fit expanded presentation',
+  );
+  final _compactFocus = FocusNode(
+    canRequestFocus: false,
+    skipTraversal: true,
+    descendantsAreFocusable: false,
+    descendantsAreTraversable: false,
+    debugLabel: 'Fit compact presentation',
+  );
+  bool _pendingCompact = false;
+  bool _focusUpdateScheduled = false;
 
   void _onChanged(bool compact) {
+    _pendingCompact = compact;
+    if (_focusUpdateScheduled) return;
+    _focusUpdateScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _compact != compact) setState(() => _compact = compact);
+      _focusUpdateScheduled = false;
+      if (!mounted) return;
+      // Update the focus tree before this frame completes. A widget rebuild
+      // on the next frame leaves the newly hidden button keyboard-active.
+      // External nodes retain these values through later Focus rebuilds.
+      _expandedFocus
+        ..descendantsAreFocusable = !_pendingCompact
+        ..descendantsAreTraversable = !_pendingCompact;
+      _compactFocus
+        ..descendantsAreFocusable = _pendingCompact
+        ..descendantsAreTraversable = _pendingCompact;
     });
+  }
+
+  @override
+  void dispose() {
+    _expandedFocus.dispose();
+    _compactFocus.dispose();
+    super.dispose();
   }
 
   @override
@@ -38,10 +71,18 @@ class _FitState extends State<UtenFitOrCompact> {
     forceCompact: widget.forceCompact,
     children: [
       SelectionContainer.disabled(
-        child: ExcludeFocus(excluding: _compact, child: widget.expanded),
+        child: Focus.withExternalFocusNode(
+          focusNode: _expandedFocus,
+          includeSemantics: false,
+          child: widget.expanded,
+        ),
       ),
       SelectionContainer.disabled(
-        child: ExcludeFocus(excluding: !_compact, child: widget.compact),
+        child: Focus.withExternalFocusNode(
+          focusNode: _compactFocus,
+          includeSemantics: false,
+          child: widget.compact,
+        ),
       ),
     ],
   );

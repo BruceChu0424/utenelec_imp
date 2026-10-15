@@ -278,6 +278,84 @@ void _changeScope(WidgetTester tester, String change) {
 }
 
 void main() {
+  for (final stage in ['workbench', 'memory']) {
+    testWidgets(
+      'unchanged permissions during $stage loading preserve the request',
+      (tester) async {
+        final gate = Completer<void>();
+        final repo = _Repository()
+          ..contextGate = stage == 'memory' ? gate : null
+          ..remembered['a'] = {
+            'rememberedItems': [_plastic],
+            'memorySource': 'WAREHOUSE_CONFIRMED',
+          };
+        final source = stage == 'workbench'
+            ? (_SourceRepository()..gate = gate)
+            : null;
+        await _pump(tester, repo, sources: source, settle: false);
+        final container = ProviderScope.containerOf(
+          tester.element(find.byType(ProductionMaterialDiscoveryRequestPage)),
+          listen: false,
+        );
+        container.read(_livePermissions.notifier).state = {
+          Perm.productionExecutionStart,
+          Perm.productionExecutionView,
+        };
+        await tester.pump();
+        gate.complete();
+        await tester.pumpAndSettle();
+        final row = _rows(tester).single;
+        expect(row.values['goodsId'], 'plastic');
+        row.qty.text = '12.7500';
+        container.read(_livePermissions.notifier).state = {
+          Perm.productionExecutionView,
+          Perm.productionExecutionStart,
+        };
+        await tester.pumpAndSettle();
+        expect(identical(_rows(tester).single, row), isTrue);
+        expect(row.qty.text, '12.7500');
+        await _submit(tester);
+        expect(repo.submissions.single.segment, 'a');
+        expect(repo.submissions.single.version, 3);
+        expect(repo.submissions.single.items, [
+          {
+            'goodsId': 'plastic',
+            'colorId': 'white',
+            'unitId': 'kg',
+            'qty': '12.7500',
+          },
+        ]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('unchanged permissions do not interrupt a submitted batch', (
+    tester,
+  ) async {
+    final repo = _Repository()..gate = Completer<void>();
+    await _pump(tester, repo, ids: ['a', 'b']);
+    await tester.tap(find.byKey(const Key('discovery-request-submit')));
+    for (var i = 0; i < 12 && repo.submissions.isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(repo.submissions.map((row) => row.segment), ['a']);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ProductionMaterialDiscoveryRequestPage)),
+      listen: false,
+    );
+    container.read(_livePermissions.notifier).state = {
+      Perm.productionExecutionStart,
+      Perm.productionExecutionView,
+    };
+    await tester.pump();
+    repo.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(repo.submissions.map((row) => row.segment), ['a', 'b']);
+    expect(repo.submissions.every((row) => row.version == 3), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final change in ['account', 'server', 'permissions']) {
     for (final stage in ['workbench', 'memory']) {
       testWidgets(

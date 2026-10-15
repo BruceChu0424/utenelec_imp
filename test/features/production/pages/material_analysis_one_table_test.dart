@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -87,6 +88,33 @@ Finder _issueButton(String line) =>
 
 bool _enabled(WidgetTester tester, Finder finder) =>
     tester.widget<InkWell>(finder).onTap != null;
+
+Future<Finder> _resizeMaterialHandlingColumn(
+  WidgetTester tester,
+  double width,
+) async {
+  final handle = find.byWidgetPredicate(
+    (widget) => widget is UtenColumnResizeHandle && widget.label == '物料办理',
+  );
+  expect(handle, findsOneWidget);
+  // Start at the shared column handle, rather than a label's inner container.
+  // Its public resize contract leaves the host's desktop/touch minimum intact.
+  final column = find
+      .ancestor(
+        of: handle,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Container &&
+              widget.constraints?.hasBoundedWidth == true,
+        ),
+      )
+      .first;
+  tester
+      .widget<UtenColumnResizeHandle>(handle)
+      .onResize(width - tester.getSize(column).width);
+  await tester.pumpAndSettle();
+  return column;
+}
 
 /// 这一行的勾选框此刻勾没勾(行必须有勾选框, 没有就直接失败)。
 ///
@@ -5168,36 +5196,7 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       // 共享表格可拖到 48px：统一文字按钮须受列宽约束并保持单行。
-      final handleHeader = find
-          .ancestor(
-            of: find.text('物料办理'),
-            matching: find.byWidgetPredicate(
-              (widget) =>
-                  widget is Container &&
-                  widget.constraints?.hasBoundedWidth == true,
-            ),
-          )
-          .first;
-      final grip = tester.widget<GestureDetector>(
-        find.descendant(
-          of: handleHeader,
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is GestureDetector &&
-                widget.onHorizontalDragUpdate != null &&
-                widget.child is MouseRegion &&
-                (widget.child! as MouseRegion).cursor ==
-                    SystemMouseCursors.resizeColumn,
-          ),
-        ),
-      );
-      grip.onHorizontalDragUpdate!(
-        DragUpdateDetails(
-          delta: Offset(48 - tester.getSize(handleHeader).width, 0),
-          globalPosition: tester.getCenter(handleHeader),
-        ),
-      );
-      await tester.pumpAndSettle();
+      final handleHeader = await _resizeMaterialHandlingColumn(tester, 48);
       expect(tester.getSize(handleHeader).width, 48);
       expect(tester.getSize(row).height, lessThanOrEqualTo(64));
       expect(tester.takeException(), isNull, reason: '最窄列也不横向溢出或折成两行');
@@ -5258,34 +5257,7 @@ void main() {
           find.byKey(const ValueKey('material-bom-layout-material')),
         );
         await tester.pumpAndSettle();
-        final header = find
-            .ancestor(
-              of: find.text('物料办理'),
-              matching: find.byWidgetPredicate(
-                (w) => w is Container && w.constraints?.hasBoundedWidth == true,
-              ),
-            )
-            .first;
-        final grip = tester.widget<GestureDetector>(
-          find.descendant(
-            of: header,
-            matching: find.byWidgetPredicate(
-              (w) =>
-                  w is GestureDetector &&
-                  w.onHorizontalDragUpdate != null &&
-                  w.child is MouseRegion &&
-                  (w.child! as MouseRegion).cursor ==
-                      SystemMouseCursors.resizeColumn,
-            ),
-          ),
-        );
-        grip.onHorizontalDragUpdate!(
-          DragUpdateDetails(
-            delta: Offset(48 - tester.getSize(header).width, 0),
-            globalPosition: tester.getCenter(header),
-          ),
-        );
-        await tester.pumpAndSettle();
+        await _resizeMaterialHandlingColumn(tester, 48);
         final actions = find.byKey(
           const ValueKey('material-top-level-cancel-plan'),
         );

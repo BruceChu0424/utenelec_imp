@@ -8,6 +8,79 @@ import 'package:uten_imp/components/layout/uten_app_bar_action_scope.dart';
 import 'package:uten_imp/components/layout/uten_fit_or_compact.dart';
 
 void main() {
+  for (final transition in ['width', 'forced']) {
+    testWidgets('single-frame focus fencing after $transition transition', (
+      tester,
+    ) async {
+      final expandedFocus = FocusNode();
+      final compactFocus = FocusNode();
+      final calls = <String>[];
+      late StateSetter update;
+      var narrow = false;
+      try {
+        await tester.pumpWidget(
+          _app(
+            StatefulBuilder(
+              builder: (context, setState) {
+                update = setState;
+                return SizedBox(
+                  width: transition == 'width' && narrow ? 120 : 500,
+                  height: 72,
+                  child: UtenFitOrCompact(
+                    forceCompact: transition == 'forced' && narrow,
+                    expanded: SizedBox(
+                      width: 300,
+                      child: TextButton(
+                        focusNode: expandedFocus,
+                        onPressed: () => calls.add('expanded'),
+                        child: const Text('展开操作'),
+                      ),
+                    ),
+                    compact: TextButton(
+                      focusNode: compactFocus,
+                      onPressed: () => calls.add('compact'),
+                      child: const Text('操作'),
+                    ),
+                  ),
+                );
+              },
+            ),
+            scale: 2,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expandedFocus.requestFocus();
+        await tester.pump();
+        expect(expandedFocus.hasPrimaryFocus, isTrue);
+        update(() => narrow = true);
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        expect(calls, isEmpty, reason: '刚隐藏的展开按钮不能在下一帧前响应键盘');
+        expect(expandedFocus.canRequestFocus, isFalse);
+        await tester.pumpAndSettle();
+        compactFocus.requestFocus();
+        await tester.pump();
+        expect(compactFocus.hasPrimaryFocus, isTrue);
+        update(() => narrow = false);
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        expect(calls, isEmpty, reason: '刚隐藏的折叠按钮同样不能响应键盘');
+        expect(compactFocus.canRequestFocus, isFalse);
+        await tester.pumpAndSettle();
+        expandedFocus.requestFocus();
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        expect(calls, ['expanded'], reason: '当前可见按钮仍然支持键盘操作');
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pumpAndSettle();
+        expandedFocus.dispose();
+        compactFocus.dispose();
+      }
+    });
+  }
+
   testWidgets(
     'hidden native actions and tooltips rebuild across narrow large-text windows',
     (tester) async {

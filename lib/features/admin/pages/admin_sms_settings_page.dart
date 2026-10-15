@@ -6,6 +6,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -360,15 +361,18 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
                             _field('key-id', '新访问密钥 ID（留空保留）', _keyId),
                             TextFormField(
                               key: const ValueKey('sms-secret'),
+                              errorBuilder: utenTextFieldErrorBuilder,
                               controller: _secret,
                               enabled: _enabled && !_clear,
                               obscureText: true,
                               autocorrect: false,
                               enableSuggestions: false,
                               autofillHints: const [],
-                              decoration: const InputDecoration(
-                                labelText: '新访问密钥（留空保留）',
-                                border: OutlineInputBorder(),
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(
+                                  labelText: '新访问密钥（留空保留）',
+                                  border: OutlineInputBorder(),
+                                ),
                               ),
                             ),
                             const SizedBox(height: UtenSpacing.s8),
@@ -449,16 +453,13 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
     padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
     child: TextFormField(
       key: ValueKey('sms-$key'),
+      errorBuilder: utenTextFieldErrorBuilder,
       controller: controller,
       enabled: _enabled && !(key == 'key-id' && _clear),
       decoration: UtenInputDecoration(
         InputDecoration(
           labelText: label,
           hintText: hint,
-          helperText: key == 'endpoint'
-              ? '从服务器允许的官方短信接口中选择；不含协议、端口或路径。停用时可留空。'
-              : null,
-          helperMaxLines: 3,
           suffixIcon:
               key == 'endpoint' &&
                   (_settings?.allowedEndpoints.isNotEmpty ?? false)
@@ -476,6 +477,7 @@ class _SmsEditorState extends ConsumerState<_SmsEditor> {
               : null,
           border: const OutlineInputBorder(),
         ),
+        info: key == 'endpoint' ? '从服务器允许的官方短信接口中选择；不含协议、端口或路径。停用时可留空。' : null,
       ),
       validator: (value) {
         if (required && (value == null || value.trim().isEmpty)) {

@@ -43,7 +43,6 @@ import '../../notice/pages/notice_list_page.dart';
 import '../../notice/providers/notice_providers.dart';
 import '../../profile/pages/profile_page.dart';
 import '../../settings/pages/settings_page.dart';
-import '../../admin/widgets/server_update_popup_gate.dart';
 import '../widgets/floating_capsule_nav_bar.dart';
 import '../widgets/idle_timeout_guard.dart';
 import '../widgets/uten_side_nav_rail.dart';
@@ -51,12 +50,19 @@ import '../widgets/uten_sliding_tab_view.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/ai/chat/ai_chat_overlay.dart';
 
+typedef MainShellReminderBuilder =
+    Widget Function({required bool visible, required Widget child});
+
 class MainShellPage extends ConsumerStatefulWidget {
-  const MainShellPage({super.key, required this.child});
+  const MainShellPage({super.key, required this.child, this.reminderBuilder});
 
   /// ShellRoute 传入的当前路由页面。
   /// 四个主 Tab 路由时忽略它（由内部 PageView 承载，保证滑动 + 状态保留）。
   final Widget child;
+
+  /// The application composition root supplies optional business reminders.
+  /// The shell owns visibility and navigation, without importing their modules.
+  final MainShellReminderBuilder? reminderBuilder;
 
   @override
   ConsumerState<MainShellPage> createState() => _MainShellPageState();
@@ -220,11 +226,14 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
             workbenchTodos: workbenchTodos,
           );
     // 包空闲超时守卫：监听全局活动续期，超时弹窗 + 登出（仅已登录区生效）
+    final body = AiChatOverlay(currentRoute: location, child: shell);
     return IdleTimeoutGuard(
-      child: ServerUpdatePopupGate(
-        visible: location == RouteName.dashboard,
-        child: AiChatOverlay(currentRoute: location, child: shell),
-      ),
+      child:
+          widget.reminderBuilder?.call(
+            visible: location == RouteName.dashboard,
+            child: body,
+          ) ??
+          body,
     );
   }
 

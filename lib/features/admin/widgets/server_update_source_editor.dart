@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -203,15 +204,18 @@ class _ServerUpdateSourceEditorState
                   _field('key-id', '新访问密钥 ID（留空保留）', _keyId),
                   TextFormField(
                     key: const ValueKey('server-source-secret'),
+                    errorBuilder: utenTextFieldErrorBuilder,
                     controller: _secret,
                     enabled: _enabled && !_clear,
                     obscureText: true,
                     enableSuggestions: false,
                     autocorrect: false,
                     autofillHints: const [],
-                    decoration: const InputDecoration(
-                      labelText: '新访问密钥（留空保留）',
-                      border: OutlineInputBorder(),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(
+                        labelText: '新访问密钥（留空保留）',
+                        border: OutlineInputBorder(),
+                      ),
                     ),
                   ),
                   CheckboxListTile(
@@ -286,6 +290,7 @@ class _ServerUpdateSourceEditorState
     padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
     child: TextFormField(
       key: ValueKey('server-source-$key'),
+      errorBuilder: utenTextFieldErrorBuilder,
       controller: controller,
       enabled: _enabled && !(key == 'key-id' && _clear),
       minLines: lines,
@@ -295,9 +300,8 @@ class _ServerUpdateSourceEditorState
           labelText: label,
           border: const OutlineInputBorder(),
           hintText: hint,
-          helperText: helper,
-          helperMaxLines: 4,
         ),
+        info: helper,
       ),
       validator: (value) {
         final text = value?.trim() ?? '';

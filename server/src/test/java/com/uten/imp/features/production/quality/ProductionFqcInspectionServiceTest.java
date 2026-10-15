@@ -123,6 +123,25 @@ class ProductionFqcInspectionServiceTest {
                 ProductionFqcInspectionService.normalizeStatusFilter(
                         "cancelled"))
                 .isEqualTo("CANCELLED");
+        assertThat(ProductionFqcInspectionService.normalizeStatusFilter("history"))
+                .isEqualTo("HISTORY");
+    }
+
+    @Test void historyListAndTotalUseTheSameTerminalPredicateWithoutInventingAStatusParameter() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = countQuery(em, 0L);
+        when(query.getResultList()).thenReturn(List.of());
+        var access = mock(ProductionDocumentAccessPolicy.class);
+        var tasks = mock(ProductionFqcTaskAccessPolicy.class);
+        when(tasks.canAccessQualityPool()).thenReturn(true);
+        var result = service(em, access, tasks).list("HISTORY", "", null, 1, 1);
+        assertThat(result.getTotal()).isZero();
+        var sql = ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(em, org.mockito.Mockito.atLeastOnce()).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues()).allSatisfy(value -> assertThat(value)
+                .contains("inspection.status IN ('RESOLVED','CANCELLED')")
+                .doesNotContain("inspection.status = :status"));
+        verify(query, never()).setParameter(eq("status"), any());
     }
 
     @Test

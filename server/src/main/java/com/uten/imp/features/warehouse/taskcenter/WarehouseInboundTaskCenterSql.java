@@ -12,6 +12,27 @@ import java.util.List;
 final class WarehouseInboundTaskCenterSql {
     private WarehouseInboundTaskCenterSql() {}
 
+    // A viewer's command grants do not decide whether a physical workflow is finished.
+    // The same lifecycle predicate is applied before rows, totals and header facets.
+    private static final String ACTIVE_STATUS_PREDICATE = """
+            workflow_status IN (
+              'PURCHASE_READY_REGISTER','PURCHASE_BLOCKED','PURCHASE_CONTINUE_INSPECTION',
+              'PURCHASE_EXCESS_PENDING_FINANCE','PURCHASE_WAITING_INSPECTION',
+              'PURCHASE_PRE_STOCKED_WAITING_INSPECTION','PURCHASE_PASSED_WAITING_STOCK_IN',
+              'PURCHASE_PARTIAL_PASSED','PURCHASE_RETURN_REQUIRED','PURCHASE_RECEIPT_DRAFT',
+              'PURCHASE_EXCEPTION_PENDING_FINANCE','PURCHASE_EXCEPTION_RECEIPT_ADJUSTED',
+              'PURCHASE_EXCEPTION_RETURN_REQUIRED','PURCHASE_EXCEPTION_RECEIPT_POSTED',
+              'SUBCONTRACT_READY_REGISTER','SUBCONTRACT_BLOCKED','SUBCONTRACT_CONTINUE_INSPECTION',
+              'SUBCONTRACT_EXCESS_PENDING_FINANCE','SUBCONTRACT_WAITING_INSPECTION',
+              'SUBCONTRACT_PRE_STOCKED_WAITING_INSPECTION','SUBCONTRACT_PASSED_WAITING_STOCK_IN',
+              'SUBCONTRACT_PARTIAL_PASSED','SUBCONTRACT_RETURN_REQUIRED','SUBCONTRACT_RECEIPT_DRAFT',
+              'SUBCONTRACT_EXCEPTION_PENDING_FINANCE','SUBCONTRACT_EXCEPTION_RECEIPT_ADJUSTED',
+              'SUBCONTRACT_EXCEPTION_RETURN_REQUIRED','SUBCONTRACT_EXCEPTION_RECEIPT_POSTED',
+              'FINISHED_READY_REGISTER','FINISHED_READY_COUNT','FINISHED_RESIDUAL_COUNT',
+              'FINISHED_WAITING_FQC','FINISHED_PRE_STOCKED_FQC','FINISHED_FQC_PARTIAL',
+              'FINISHED_DRAFT','OTHER_DRAFT','RETURN_DRAFT','RETURN_PENDING_RECEIVE')
+            """;
+
     record Access(boolean inbound, boolean purchaseHistory, boolean subcontractHistory,
                   boolean quality, boolean stock, boolean productionPool, String stockOwnerPredicate) {}
 
@@ -51,6 +72,7 @@ final class WarehouseInboundTaskCenterSql {
                    AND (CAST(:dateFrom AS date) IS NULL OR business_date >= CAST(:dateFrom AS date))
                    AND (CAST(:dateTo AS date) IS NULL OR business_date <= CAST(:dateTo AS date))
                 """ + (includeBillNo?" AND (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))\n":"")
+                + " AND (:view = 'ALL' OR (:view = 'ACTIVE') = (" + ACTIVE_STATUS_PREDICATE + "))\n"
                 + (includeStatus ? " AND (:status = '' OR workflow_status = :status)\n" : "");
     }
 

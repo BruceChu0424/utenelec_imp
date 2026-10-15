@@ -1,4 +1,8 @@
 {
+  "release2517PickerLayout": "Selection panels keep Clear, Cancel and Confirm together at the bottom right. Clear is marked in red, with tidier page inputs and more compact category rows.",
+  "release2517Lifecycle": "Daily lists focus on work in progress and upcoming tasks. Completed and cancelled records are grouped under History and remain available to view.",
+  "release2517Paging": "When viewing history, clearing a status filter, changing pages or refreshing keeps you in history. Handling the final inquiry on the last page returns you to a valid page.",
+  "release2517Drafts": "History no longer mixes in task drafts or pending actions. Unfinished drafts remain linked to their original tasks and can be resumed.",
   "editorDocumentIdentityChanged": "The document or source has changed. Reopen this page.",
   "editorSessionIdentityChanged": "The signed-in account or server has changed. Reopen this page.",
   "release2511DailyReport": "Daily reports use compact product cards with expandable destinations and components; material review preserves quantities and source links.",

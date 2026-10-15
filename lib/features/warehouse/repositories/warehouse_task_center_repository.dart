@@ -2,7 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../../shared/warehouse/warehouse_task_view.dart';
 import '../models/warehouse_task_center_record.dart';
+
+export '../../../shared/warehouse/warehouse_task_view.dart';
 
 enum WarehouseTaskDirection { inbound, outbound }
 
@@ -10,6 +13,7 @@ abstract interface class WarehouseTaskCenterGateway {
   Future<WarehouseTaskCenterPageResult> list({
     required WarehouseTaskDirection direction,
     String source = 'ALL',
+    WarehouseTaskView view = WarehouseTaskView.active,
     String? status,
     String? keyword,
     String? billNo,
@@ -31,6 +35,7 @@ class WarehouseTaskCenterRepository implements WarehouseTaskCenterGateway {
   Future<WarehouseTaskCenterPageResult> list({
     required WarehouseTaskDirection direction,
     String source = 'ALL',
+    WarehouseTaskView view = WarehouseTaskView.active,
     String? status,
     String? keyword,
     String? billNo,
@@ -46,6 +51,7 @@ class WarehouseTaskCenterRepository implements WarehouseTaskCenterGateway {
       '/warehouse/task-center/${direction.name}',
       query: {
         'source': source,
+        'view': view.apiValue,
         'page': page,
         'size': size,
         if (status != null && status.isNotEmpty) 'status': status,

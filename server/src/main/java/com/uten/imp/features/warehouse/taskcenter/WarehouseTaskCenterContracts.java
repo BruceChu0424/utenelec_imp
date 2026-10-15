@@ -9,6 +9,21 @@ import java.util.UUID;
 public final class WarehouseTaskCenterContracts {
     private WarehouseTaskCenterContracts() {}
 
+    /** ALL is reserved for a scope-authorized physical detail lookup. */
+    public enum TaskView {
+        ACTIVE, HISTORY, ALL;
+
+        public static TaskView requested(String value) {
+            String normalized = value == null || value.isBlank() ? "ACTIVE"
+                    : value.strip().toUpperCase(java.util.Locale.ROOT);
+            if (!normalized.equals("ACTIVE") && !normalized.equals("HISTORY")) {
+                throw new com.uten.imp.common.web.ApiException(
+                        com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, "单据视图不正确");
+            }
+            return valueOf(normalized);
+        }
+    }
+
     public record Row(
             String rowKey, UUID id, String sourceType, String recordType,
             String billNo, String sourceDocNo, LocalDate businessDate,
@@ -32,7 +47,17 @@ public final class WarehouseTaskCenterContracts {
 
     public record Filter(String source, String status, String keyword, String billNo,
                          LocalDate dateFrom, LocalDate dateTo, UUID scopeWarehouseId,
-                         int page, int size, String sort, String order) {
+                         int page, int size, String sort, String order, TaskView view) {
+        public Filter {
+            view = view == null ? TaskView.ACTIVE : view;
+        }
+
+        public Filter(String source, String status, String keyword, String billNo,
+                      LocalDate dateFrom, LocalDate dateTo, UUID scopeWarehouseId,
+                      int page, int size, String sort, String order) {
+            this(source, status, keyword, billNo, dateFrom, dateTo, scopeWarehouseId,
+                    page, size, sort, order, TaskView.ACTIVE);
+        }
         public Filter(String source, String status, String keyword, String billNo,
                       LocalDate dateFrom, LocalDate dateTo, UUID scopeWarehouseId,
                       int page, int size) {

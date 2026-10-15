@@ -26,6 +26,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestContext;
 import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.context.annotation.Import;
+import com.uten.imp.config.JpaAuditingConfig;
 import org.springframework.test.context.support.AbstractTestExecutionListener;
 import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -55,6 +57,7 @@ import static org.mockito.Mockito.*;
         "spring.jpa.show-sql=false",
         "logging.level.org.hibernate.SQL=OFF"
 })
+@Import({JpaAuditingConfig.class, com.uten.imp.security.SecurityContextCurrentUser.class})
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class ProfileChangeBatchPaginationPostgresTest {
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
@@ -124,6 +127,34 @@ class ProfileChangeBatchPaginationPostgresTest {
         reviews = new ProfileChangeReviewService(repository, employees, accounts,
                 mock(NoticeService.class), notices, applier,
                 mapper, codec, access, tx);
+    }
+
+    @Test
+    void historyPagesUseAggregateBatchStateAndKeepMineAndDepartmentScopes() {
+        UUID pending = batch(employeeA, "pending", 2, OffsetDateTime.now());
+        jdbc.update("UPDATE profile_change_requests SET status = 'rejected' WHERE batch_id = ? AND field_code = 'testField0'", pending);
+        List<UUID> mineHistory = List.of(
+                batch(employeeA, "applied", 2, OffsetDateTime.now().minusMinutes(1)),
+                batch(employeeA, "rejected", 1, OffsetDateTime.now().minusMinutes(2)),
+                batch(employeeA, "cancelled", 1, OffsetDateTime.now().minusMinutes(3)),
+                batch(employeeA, "approved", 1, OffsetDateTime.now().minusMinutes(4)));
+        batch(employeeB, "applied", 1, OffsetDateTime.now().minusMinutes(5));
+        entityManager.clear();
+        var active = queries.myList(1, 1, null);
+        assertEquals(1, active.totalElements());
+        assertEquals(pending, active.items().getFirst().batchId());
+        assertEquals(2, active.items().getFirst().itemCount());
+        var mine = queries.myList(1, 1, "history");
+        assertEquals(4, mine.totalElements());
+        assertEquals(4, mine.totalPages());
+        List<UUID> paged = java.util.stream.IntStream.rangeClosed(1, 4)
+                .mapToObj(page -> queries.myList(page, 1, "history").items().getFirst().batchId()).toList();
+        assertEquals(mineHistory, paged);
+        assertEquals(4, queries.hrList(1, 1, "history", null, departmentA).totalElements());
+        assertEquals(1, queries.hrList(1, 1, "history", employeeB, departmentB).totalElements());
+        assertEquals(0, queries.hrList(1, 1, "history", employeeA, departmentB).totalElements());
+        assertEquals(5, queries.hrFacets("history").departments().stream().mapToLong(bucket -> bucket.count()).sum());
+        assertEquals(1, queries.hrFacets("pending").departments().stream().mapToLong(bucket -> bucket.count()).sum());
     }
 
     @Test

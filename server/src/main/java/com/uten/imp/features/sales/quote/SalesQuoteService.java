@@ -232,7 +232,7 @@ public class SalesQuoteService {
         String bucket = raw.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (bucket) {
             case BUCKET_DRAFT, BUCKET_FINANCE_REJECTED, BUCKET_PENDING_FINANCE, BUCKET_APPROVED, BUCKET_REVERSED,
-                 BUCKET_AWAITING_CONVERSION, BUCKET_AWAITING_CUSTOMER -> bucket;
+                 BUCKET_AWAITING_CONVERSION, BUCKET_AWAITING_CUSTOMER, "ACTIVE" -> bucket;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价分段无效: " + raw);
         };
     }
@@ -244,6 +244,14 @@ public class SalesQuoteService {
     private static Predicate bucketPredicate(String bucket, Root<SalesQuote> root,
                                              jakarta.persistence.criteria.CriteriaQuery<?> query, CriteriaBuilder cb) {
         return switch (bucket) {
+            case "ACTIVE" -> {
+                jakarta.persistence.criteria.Subquery<Integer> converted = query.subquery(Integer.class);
+                Root<com.uten.imp.features.sales.order.SalesOrder> order = converted.from(com.uten.imp.features.sales.order.SalesOrder.class);
+                converted.select(cb.literal(1)).where(cb.equal(order.get("sourceQuoteId"), root.get("id")));
+                yield cb.or(root.get("status").in(STATUS_DRAFT, STATUS_PENDING_FINANCE),
+                        cb.and(cb.equal(root.get("status"), STATUS_CONFIRMED),
+                               cb.isNotNull(root.get("financeConfirmedAt")), cb.not(cb.exists(converted))));
+            }
             case BUCKET_DRAFT -> cb.and(cb.equal(root.get("status"), STATUS_DRAFT),
                     cb.isNull(root.get("financeReturnReason")));
             case BUCKET_FINANCE_REJECTED -> cb.and(cb.equal(root.get("status"), STATUS_DRAFT),

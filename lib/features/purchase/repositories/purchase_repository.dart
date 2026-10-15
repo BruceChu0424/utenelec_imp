@@ -20,6 +20,7 @@ class PurchaseDocFilter {
     this.supplierId,
     this.warehouseId,
     this.status,
+    this.closed,
     this.dateFrom,
     this.dateTo,
     this.financeApproval,
@@ -29,6 +30,7 @@ class PurchaseDocFilter {
   final String? supplierId;
   final String? warehouseId;
   final int? status;
+  final bool? closed;
   final String? dateFrom; // yyyy-MM-dd
   final String? dateTo;
 
@@ -62,6 +64,7 @@ class PurchaseRepository {
       if (filter.supplierId != null) 'supplierId': filter.supplierId,
       if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
       if (filter.status != null) 'status': filter.status,
+      if (filter.closed != null) 'closed': filter.closed,
       if (filter.financeApproval != null)
         'financeApproval': filter.financeApproval,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
@@ -85,6 +88,7 @@ class PurchaseRepository {
       if (filter.supplierId != null) 'supplierId': filter.supplierId,
       if (filter.warehouseId != null) 'warehouseId': filter.warehouseId,
       if (filter.status != null) 'status': filter.status,
+      if (filter.closed != null) 'closed': filter.closed,
       if (filter.financeApproval != null)
         'financeApproval': filter.financeApproval,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,

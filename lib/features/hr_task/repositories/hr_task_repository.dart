@@ -4,11 +4,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/hr_task_summary.dart';
+import '../models/hr_celebration_publication.dart';
+import '../../../shared/models/paged_result.dart';
 
 class HrTaskRepository {
   const HrTaskRepository(this._api);
 
   final ApiClient _api;
+
+  Future<PagedResult<HrCelebrationPublication>> celebrationHistory({
+    required String type,
+    int page = 1,
+  }) async {
+    final json = await _api.get(
+      '/org/hr-tasks/celebrations/history',
+      query: {'type': type, 'page': page, 'size': 20},
+    );
+    return PagedResult.fromJson(json, HrCelebrationPublication.fromJson);
+  }
 
   Future<HrTaskSummary> summary() async {
     final json = await _api.get(ApiEndpoints.hrTaskSummary);

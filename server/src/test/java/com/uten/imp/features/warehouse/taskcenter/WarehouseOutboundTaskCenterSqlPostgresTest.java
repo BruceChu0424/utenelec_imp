@@ -65,6 +65,7 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
         try (var statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA outbound_physical_oracle");
             statement.execute("SET LOCAL search_path=outbound_physical_oracle,public");
+            statement.execute("SET LOCAL jit=off");
         }
         // Query-only rollback projections keep every real column. No authority function is replaced;
         // request visibility comes from the original document/segment/event/item facts below.
@@ -103,6 +104,38 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
         var same = plan("ALL", null, "SAME", null, null, full(), WarehouseTaskScope.ALL, "");
         assertThat(count(same)).isEqualTo(2);
         assertThat(jdbc.queryForList(same.billNoFacetsSql(), parameters(same))).hasSize(4);
+    }
+
+    @Test
+    void activeAndHistoryPartitionEveryPhysicalStageBeforePagesCountsAndFacets() {
+        UUID pendingSale=UUID.randomUUID(),completedSale=UUID.randomUUID(),cancelledSale=UUID.randomUUID();
+        sale(pendingSale,"A-PENDING-SALE",WAREHOUSE_A);
+        sale(completedSale,"H-SHIPPED-SALE",WAREHOUSE_A);
+        sale(cancelledSale,"H-CANCELLED-SALE",WAREHOUSE_A);
+        jdbc.update("UPDATE sales_shipments SET status=1,warehouse_work_status='SHIPPED' WHERE id=:id",Map.of("id",completedSale));
+        jdbc.update("UPDATE sales_shipments SET rejected=TRUE,warehouse_work_status='CANCELLED' WHERE id=:id",Map.of("id",cancelledSale));
+        stock(UUID.randomUUID(),"OTHER_OUT","A-OTHER-DRAFT",ACTOR,WAREHOUSE_A,0,0);
+        UUID workshopWarehouse=UUID.randomUUID();
+        jdbc.update("INSERT INTO warehouses(id,name,is_line_side,is_deleted) VALUES(:id,'车间内料仓',TRUE,FALSE)",Map.of("id",workshopWarehouse));
+        stock(UUID.randomUUID(),"OTHER_OUT","H-WORKSHOP-CONSUMPTION",ACTOR,workshopWarehouse,1,0);
+        stock(UUID.randomUUID(),"FINISHED_OUT","H-FINISHED-REVERSED",ACTOR,WAREHOUSE_A,-1,0);
+        stock(UUID.randomUUID(),"OTHER_OUT","H-OUTSIDE",ACTOR,WAREHOUSE_B,1,0);
+        var scope=new WarehouseTaskScope(true,List.of(WAREHOUSE_A,workshopWarehouse),false);
+        var active=WarehouseOutboundTaskCenterSql.build(new Filter("ALL",null,null,null,null,null,null,1,1,"billNo","asc"),full(),scope,"");
+        var history=WarehouseOutboundTaskCenterSql.build(new Filter("ALL",null,null,null,null,null,null,1,2,"billNo","asc",
+                WarehouseTaskCenterContracts.TaskView.HISTORY),full(),scope,"");
+        assertThat(count(active)).isEqualTo(2);
+        assertThat(rows(active,2,1)).extracting(row->row.get("bill_no")).containsExactly("A-PENDING-SALE");
+        assertThat(jdbc.queryForList(active.facetsSql(),parameters(active))).extracting(row->row.get("status"))
+                .containsExactlyInAnyOrder("OTHER_DRAFT","SALES_PENDING");
+        assertThat(count(history)).isEqualTo(4);
+        assertThat(jdbc.queryForList(history.billNoFacetsSql(),parameters(history))).extracting(row->row.get("bill_no"))
+                .containsExactly("H-CANCELLED-SALE","H-FINISHED-REVERSED","H-SHIPPED-SALE","H-WORKSHOP-CONSUMPTION");
+        assertThat(rows(history,2,2)).extracting(row->row.get("bill_no"))
+                .containsExactly("H-SHIPPED-SALE","H-WORKSHOP-CONSUMPTION");
+        jdbc.update("UPDATE sales_shipments SET status=0,warehouse_work_status='PENDING_PICK' WHERE id=:id",Map.of("id",completedSale));
+        assertThat(count(active)).isEqualTo(3);
+        assertThat(count(history)).isEqualTo(3);
     }
 
     @Test
@@ -219,7 +252,8 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
     }
     private static WarehouseOutboundTaskCenterSql.Plan plan(String source, String status, String billNo, String sort, String order,
             WarehouseOutboundTaskCenterSql.Access access, WarehouseTaskScope scope, String own) {
-        return WarehouseOutboundTaskCenterSql.build(new Filter(source, status, null, billNo, null, null, null, 1, 20, sort, order), access, scope, own);
+        return WarehouseOutboundTaskCenterSql.build(new Filter(source, status, null, billNo, null, null, null, 1, 20, sort, order,
+                WarehouseTaskCenterContracts.TaskView.ALL), access, scope, own);
     }
     private static MapSqlParameterSource parameters(WarehouseOutboundTaskCenterSql.Plan plan) {
         return new MapSqlParameterSource(plan.parameters());

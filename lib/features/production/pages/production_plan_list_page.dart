@@ -16,7 +16,6 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_reviewer_responsibility_notice.dart';
 import '../../../components/data_display/doc_status_badge.dart';
-import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
 import '../../../shared/providers/draft_counts_provider.dart';
 import '../../../components/data_display/paged_list_controller.dart';
@@ -24,7 +23,9 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_document_lifecycle_filter.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
@@ -63,6 +64,8 @@ class _ProductionPlanListPageState
     extends ConsumerState<ProductionPlanListPage> {
   final _list = PagedListController<ProductionPlanListItem>();
   int? _statusFilter; // null=全部
+  bool _historyMode = false;
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
 
   /// 表头列筛选：车间（departments/tree 展平桶，value=UUID 回传 departmentId）。
@@ -118,6 +121,16 @@ class _ProductionPlanListPageState
             keyword: _list.normalizedKeyword,
             departmentId: _workshopIdFilter,
             status: _statusFilter,
+            lifecycle:
+                !_historyMode && _statusFilter == kProductionStatusApproved
+                ? 'ACTIVE'
+                : null,
+            dateFrom: _historyMode && _historyTime.range != null
+                ? ChinaDateTime.formatDate(_historyTime.range!.start)
+                : null,
+            dateTo: _historyMode && _historyTime.range != null
+                ? ChinaDateTime.formatDate(_historyTime.range!.end)
+                : null,
           ),
           sort: _list.sortKey,
           order: _list.sortOrder,
@@ -139,6 +152,7 @@ class _ProductionPlanListPageState
   Future<void> _reload([int? page, bool silent = false]) async {
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
+    if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) return;
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || _selectedIds.isEmpty) return;
     final draftIds = {
@@ -148,14 +162,50 @@ class _ProductionPlanListPageState
     setState(() => _selectedIds.retainAll(draftIds));
   }
 
-  void _onStatus(int? s) {
+  void _onCategory(int? status) {
     setState(() {
       _selectedIds.clear();
-      _statusFilter = s;
+      _historyMode = status == null;
+      _statusFilter = status;
       _statusFilterSelected = true;
     });
     _reload(1);
   }
+
+  void _onStatus(int? status) {
+    setState(() {
+      _selectedIds.clear();
+      if (!_historyMode && status == kProductionStatusReversed) {
+        _historyMode = true;
+      }
+      _statusFilter = !_historyMode && status == null ? _statusFilter : status;
+      _statusFilterSelected = _historyMode || _statusFilter != null;
+    });
+    _reload(1);
+  }
+
+  Widget _lifecycleFilters(Map<String, int>? counts) =>
+      UtenDocumentLifecycleFilter(
+        selected: _statusFilterSelected,
+        history: _historyMode,
+        status: _statusFilter,
+        hasOngoing: true,
+        draftCount: counts?[DocumentStatusBucket.draft],
+        onCategoryChanged: _onCategory,
+        onHistoryStatusChanged: _onStatus,
+        historyTime: _historyTime,
+        onHistoryTimeChanged: (value) {
+          setState(() => _historyTime = value);
+          _reload(1);
+        },
+        searchHint: '搜索单据号',
+        searchValue: _list.keyword,
+        onSearchChanged: (value) {
+          _selectedIds.clear();
+          _list.keyword = value;
+          _reload(1);
+        },
+      );
 
   /// 表头筛选回调：车间值并进 repository.list 的 departmentId；状态列与
   /// 分段条联动（复用 [_onStatus]），重拉回第 1 页。
@@ -360,7 +410,7 @@ class _ProductionPlanListPageState
 
   Widget _withFormDraftRows(
     MasterDataTableView<ProductionPlanListItem> table,
-  ) => _statusFilter == kProductionStatusDraft
+  ) => !_historyMode && _statusFilter == kProductionStatusDraft
       ? FormDraftCategoryTable<ProductionPlanListItem>(
           scope: _formDraftScope,
           table: table,
@@ -467,43 +517,7 @@ class _ProductionPlanListPageState
                   // 桌面：左筛选侧栏（统一筛选工具条）+ 右表格；手机：垂直堆叠
                   body: UtenListTwoPane(
                     // 全平台统一筛选工具条：状态分段 + 胶囊搜索框。
-                    filterPane: Padding(
-                      padding: EdgeInsets.zero,
-                      child: UtenFilterToolbar<int?>(
-                        // 2026-09-21 用户口径: hub 卡有草稿红徽章, 子分类也要有数——
-                        // 草稿红徽章(与卡面同源同数), 已审 / 红冲中性括号, 「全部」不挂。
-                        segments: [
-                          const UtenFilterSegment(value: null, label: '全部'),
-                          UtenFilterSegment(
-                            value: kProductionStatusDraft,
-                            label: '草稿',
-                            count: statusCounts?[DocumentStatusBucket.draft],
-                            countForm: UtenSegmentCountForm.actionable,
-                          ),
-                          UtenFilterSegment(
-                            value: kProductionStatusApproved,
-                            label: '已审',
-                            count: statusCounts?[DocumentStatusBucket.approved],
-                          ),
-                          UtenFilterSegment(
-                            value: kProductionStatusReversed,
-                            label: '已反审',
-                            count: statusCounts?[DocumentStatusBucket.reversed],
-                          ),
-                        ],
-                        selected: _statusFilterSelected
-                            ? {_statusFilter}
-                            : const {},
-                        onSelectionChanged: _onStatus,
-                        searchHint: '搜索单据号',
-                        initialSearchValue: _list.keyword,
-                        onSearchChanged: (v) {
-                          _selectedIds.clear();
-                          _list.keyword = v;
-                          _reload(1);
-                        },
-                      ),
-                    ),
+                    filterPane: _lifecycleFilters(statusCounts),
                     tablePane: _withFormDraftRows(
                       MasterDataTableView<ProductionPlanListItem>(
                         tableKey: 'production.plan.list',
@@ -548,6 +562,7 @@ class _ProductionPlanListPageState
                             context.push('/production/plans/${it.id}'),
                         // 审核与删除只接收草稿；仍走服务端已有的批量单事务接口。
                         selectable:
+                            !_historyMode &&
                             _statusFilter == kProductionStatusDraft &&
                             (_canBatchApprove || _canBatchDelete),
                         idOf: (it) =>

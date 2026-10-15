@@ -2,6 +2,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
 
 void main() {
+  test(
+    'stopped cancelled and reversed progress rows remain terminal without inventing completion',
+    () {
+      for (final flags in [
+        {'stopped': true},
+        {'canceled': true},
+        {'status': -1},
+      ]) {
+        final row = PlanProgressRow.fromJson({
+          'planId': 'history-plan',
+          'closed': false,
+          ...flags,
+        });
+        expect(row.terminal, isTrue);
+        expect(row.closed, isFalse, reason: '归历史不伪造生产实收完成');
+        expect(row.copyWith(pinned: true).terminal, isTrue);
+        expect(row.copyWith(important: true).status, row.status);
+      }
+    },
+  );
+
   test('plan, nested plan and MRP keep public receipts outside progress', () {
     final json = <String, dynamic>{
       'planId': 'plan',

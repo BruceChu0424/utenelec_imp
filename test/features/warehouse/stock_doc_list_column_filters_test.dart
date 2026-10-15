@@ -77,13 +77,12 @@ void main() {
     expect(api.lastQuery?['departmentId'], 'dept-1');
     expect(api.lastQuery?['warehouseId'], 'warehouse-1');
 
-    await tester.tap(find.text('已审'));
+    await tester.tap(find.text('进行中'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('stock-doc-issue-DRAW')), findsNothing);
     expect(tableWidget().facets['issueStatus']?.map((bucket) => bucket.value), [
       '0',
       '1',
-      '2',
     ]);
     tableWidget().onFilterChanged('issueStatus', '1');
     await tester.pumpAndSettle();
@@ -92,6 +91,11 @@ void main() {
     expect(api.lastListQuery?['page'], 1);
     expect(api.lastListQuery?['warehouseId'], 'warehouse-1');
     expect(tableWidget().filters['issueStatus'], '1');
+    tableWidget().onFilterChanged('issueStatus', '2');
+    await tester.pumpAndSettle();
+    expect(api.lastListQuery?['view'], 'ACTIVE');
+    expect(api.lastListQuery?.containsKey('issueStatus'), isFalse);
+    expect(tableWidget().filters['issueStatus'], isNull);
     tableWidget().onFilterChanged('issueStatus', null);
     await tester.pumpAndSettle();
     expect(api.lastListQuery?.containsKey('issueStatus'), isFalse);

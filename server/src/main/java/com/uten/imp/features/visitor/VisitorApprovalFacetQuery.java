@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 
 /**
  * HR 访客审批列表表头筛选桶（2026-09-10）：按状态集聚合「状态」与「接待人部门」命中数。
@@ -25,9 +24,7 @@ public class VisitorApprovalFacetQuery {
     /** status 空 = 待办状态集（pending + hostReviewing），与 listForApproval 默认口径一致。 */
     @Transactional(readOnly = true)
     public VisitorApprovalFacets facets(String status) {
-        Collection<String> statuses = (status == null || status.isBlank())
-                ? Set.of("pending", "hostReviewing")
-                : Set.of(status.trim());
+        Collection<String> statuses = VisitorStatusFilter.parse(status, List.of("pending", "hostReviewing"));
         return new VisitorApprovalFacets(statusBuckets(statuses), departmentBuckets(statuses));
     }
 

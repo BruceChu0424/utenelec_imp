@@ -57,6 +57,78 @@ void main() {
     expect(find.textContaining('物料下单保留完整精度'), findsNothing);
   });
 
+  testWidgets('2.5.17 shows only its own business release notes', (
+    tester,
+  ) async {
+    await pump(tester, version: 'v2.5.17');
+    final l10n = AppLocalizations.of(
+      tester.element(find.byType(AppVersionTile)),
+    );
+    expect(find.text('版本更新 · v2.5.17'), findsOneWidget);
+    for (final note in [
+      l10n.release2517PickerLayout,
+      l10n.release2517Lifecycle,
+      l10n.release2517Paging,
+      l10n.release2517Drafts,
+    ]) {
+      expect(find.textContaining(note), findsOneWidget);
+    }
+    expect(find.textContaining(l10n.release2511Platform), findsNothing);
+    expect(find.textContaining(l10n.release254QuantityPrecision), findsNothing);
+    await tester.tap(find.text(l10n.releaseNotesClose));
+    await tester.pumpAndSettle();
+    await pump(tester, version: 'v2.5.16');
+    expect(find.text(l10n.releaseNotesUnavailable), findsOneWidget);
+    expect(find.textContaining(l10n.release2517Lifecycle), findsNothing);
+  });
+
+  for (final language in ['zh', 'en', 'ko']) {
+    testWidgets(
+      '2.5.17 $language notes remain localized and usable on a narrow screen',
+      (tester) async {
+        tester.view.physicalSize = const Size(375, 667);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        for (final brightness in Brightness.values) {
+          await pump(
+            tester,
+            version: '2.5.17',
+            locale: Locale(language),
+            scale: 1.6,
+            brightness: brightness,
+          );
+          final l10n = AppLocalizations.of(
+            tester.element(find.byType(AppVersionTile)),
+          );
+          for (final note in [
+            l10n.release2517PickerLayout,
+            l10n.release2517Lifecycle,
+            l10n.release2517Paging,
+            l10n.release2517Drafts,
+          ]) {
+            expect(find.textContaining(note), findsOneWidget);
+          }
+          if (language != 'zh') {
+            expect(find.textContaining('选择滑窗的清空'), findsNothing);
+          }
+          await tester.drag(
+            find.byType(SingleChildScrollView),
+            const Offset(0, -10000),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.text(l10n.releaseNotesClose).hitTestable(),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+          await tester.tap(find.text(l10n.releaseNotesClose));
+          await tester.pumpAndSettle();
+        }
+      },
+    );
+  }
+
   test('the default client version matches the package release version', () {
     final packageVersion = RegExp(
       r'^version:\s+([0-9]+\.[0-9]+\.[0-9]+)(?:\+[0-9]+)?\s*$',

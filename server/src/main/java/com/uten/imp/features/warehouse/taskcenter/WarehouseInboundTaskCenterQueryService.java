@@ -83,6 +83,7 @@ public class WarehouseInboundTaskCenterQueryService {
         int size = Math.max(1,Math.min(100,filter.size()));
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("type","ALL").addValue("source",source).addValue("status",status)
+                .addValue("view",filter.view().name())
                 .addValue("keyword",text(filter.keyword()).toLowerCase(Locale.ROOT))
                 .addValue("pattern","%"+text(filter.keyword()).toLowerCase(Locale.ROOT)+"%")
                 .addValue("billNo",text(filter.billNo()).isEmpty()?null:text(filter.billNo()))
@@ -131,7 +132,8 @@ public class WarehouseInboundTaskCenterQueryService {
     }
 
     private Map<String,Object> detailScoped(String[] parts, UUID id, UUID warehouseId, int linePage, int lineSize) {
-        Page page=list(new Filter(parts[0],"","",null,null,null,warehouseId,1,1),new Identity(id,parts[1]));
+        Page page=list(new Filter(parts[0],"","",null,null,null,warehouseId,1,1,null,null,
+                WarehouseTaskCenterContracts.TaskView.ALL),new Identity(id,parts[1]));
         if(page.items().isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,"入库记录不存在或已不在当前范围");
         Row row=page.items().getFirst();
         MapSqlParameterSource parameters=new MapSqlParameterSource("id",id);

@@ -48,6 +48,7 @@ class StockCountReviewPage extends ConsumerStatefulWidget {
     this.warehouseScope = const WarehouseTaskScope.all(),
     this.keyword,
     this.onChanged,
+    this.initialStatus = 'PENDING',
   });
   final String? reviewRoute;
   final String? requestId;
@@ -57,6 +58,7 @@ class StockCountReviewPage extends ConsumerStatefulWidget {
   final WarehouseTaskScope warehouseScope;
   final String? keyword;
   final VoidCallback? onChanged;
+  final String initialStatus;
 
   @override
   ConsumerState<StockCountReviewPage> createState() =>
@@ -67,6 +69,11 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
   PagedResult<StockCountRequest>? _page;
   StockCountRequest? _detail;
   String _status = 'PENDING';
+  bool get _history =>
+      _status == 'HISTORY' ||
+      _status == 'APPROVED' ||
+      _status == 'CANCELLED' ||
+      (_status == 'REJECTED' && widget.reviewRoute != null);
   String? _error;
   bool _loading = true;
   bool _working = false;
@@ -100,6 +107,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
   @override
   void initState() {
     super.initState();
+    _status = widget.initialStatus == 'HISTORY' ? 'HISTORY' : 'PENDING';
     Future.microtask(
       () => widget.requestId == null ? _load() : _open(widget.requestId!),
     );
@@ -110,7 +118,11 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.warehouseScope != widget.warehouseScope ||
         oldWidget.keyword != widget.keyword ||
-        oldWidget.reviewRoute != widget.reviewRoute) {
+        oldWidget.reviewRoute != widget.reviewRoute ||
+        oldWidget.initialStatus != widget.initialStatus) {
+      if (oldWidget.initialStatus != widget.initialStatus) {
+        _status = widget.initialStatus == 'HISTORY' ? 'HISTORY' : 'PENDING';
+      }
       _sequence++;
       _detail = null;
       _page = null;
@@ -161,10 +173,22 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
 
   void _selectStatus(String? value) {
     if (_working) return;
-    final next =
-        const {'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'}.contains(value)
+    var next =
+        const {
+          'PENDING',
+          'APPROVED',
+          'REJECTED',
+          'CANCELLED',
+          'HISTORY',
+        }.contains(value)
         ? value!
-        : '';
+        : (_history ? 'HISTORY' : 'PENDING');
+    if (widget.embedded) {
+      if (widget.initialStatus == 'HISTORY' && next == 'PENDING') {
+        next = 'HISTORY';
+      }
+      if (widget.initialStatus != 'HISTORY') next = 'PENDING';
+    }
     if (_status == next) return;
     setState(() {
       _status = next;
@@ -587,7 +611,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
             child: UtenFilterToolbar<String>(
               segmentsKey: const Key('stock-count-status-segments'),
-              selected: {_status},
+              selected: {_history ? 'HISTORY' : _status},
               enabled: !_working,
               segments: [
                 UtenFilterSegment<String>(
@@ -600,25 +624,15 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
                       ? UtenSegmentCountForm.browsing
                       : UtenSegmentCountForm.actionable,
                 ),
-                UtenFilterSegment<String>(
-                  value: 'APPROVED',
-                  label: '已通过',
-                  count: _status == 'APPROVED' ? _page?.total : null,
-                ),
-                UtenFilterSegment<String>(
-                  value: 'REJECTED',
-                  label: '已驳回',
-                  count: _status == 'REJECTED' ? _page?.total : null,
-                ),
-                UtenFilterSegment<String>(
-                  value: 'CANCELLED',
-                  label: '已撤回',
-                  count: _status == 'CANCELLED' ? _page?.total : null,
-                ),
-                UtenFilterSegment<String>(
-                  value: '',
-                  label: '全部',
-                  count: _status.isEmpty ? _page?.total : null,
+                if (widget.reviewRoute == null)
+                  UtenFilterSegment<String>(
+                    value: 'REJECTED',
+                    label: '待更正',
+                    count: _status == 'REJECTED' ? _page?.total : null,
+                  ),
+                const UtenFilterSegment<String>(
+                  value: 'HISTORY',
+                  label: '历史单据',
                 ),
               ],
               onSelectionChanged: _selectStatus,
@@ -693,23 +707,44 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage> {
             items: _page?.items ?? const [],
             facets: {
               if (widget.embedded)
-                'status': const [
-                  MasterFacetBucket(value: 'PENDING', label: '待审核', count: 0),
-                  MasterFacetBucket(value: 'APPROVED', label: '已通过', count: 0),
-                  MasterFacetBucket(value: 'REJECTED', label: '已驳回', count: 0),
-                  MasterFacetBucket(value: 'CANCELLED', label: '已撤回', count: 0),
+                'status': [
+                  if (!_history)
+                    const MasterFacetBucket(
+                      value: 'PENDING',
+                      label: '待审核',
+                      count: 0,
+                    ),
+                  if (_history) ...const [
+                    MasterFacetBucket(
+                      value: 'APPROVED',
+                      label: '已通过',
+                      count: 0,
+                    ),
+                    MasterFacetBucket(
+                      value: 'REJECTED',
+                      label: '已驳回',
+                      count: 0,
+                    ),
+                    MasterFacetBucket(
+                      value: 'CANCELLED',
+                      label: '已撤回',
+                      count: 0,
+                    ),
+                  ],
                 ],
             },
             nullCounts: const {},
             filters: {
-              if (widget.embedded) 'status': _status.isEmpty ? null : _status,
+              if (widget.embedded)
+                'status': _status == 'HISTORY' ? null : _status,
             },
             onFilterChanged: (key, value) {
               if (widget.embedded && key == 'status') _selectStatus(value);
             },
-            selectable: true,
-            showSelectionColumn: widget.embedded || widget.reviewRoute != null,
-            singleSelection: widget.reviewRoute == null,
+            selectable: !_history,
+            showSelectionColumn:
+                !_history && (widget.embedded || widget.reviewRoute != null),
+            singleSelection: !_history && widget.reviewRoute == null,
             showSelectionSummary: false,
             bottomContentPadding: widget.reviewRoute == null
                 ? 0

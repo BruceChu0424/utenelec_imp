@@ -1,21 +1,13 @@
 // 销售单据列表页（按 docType 参数化）。
 //
 // 2026-09-03 起统一「分类分段」范式（ADR-066）：
-// - 订货单：主阶段 = 待生产/生产中/待发货/本月完成/草稿/历史记录 + 搜索。
-//   单据状态由表头筛选下推服务端，清除后仍在当前主阶段；历史按所选日期范围
-//   查询，状态筛选与日期正交。主阶段徽章来自后端 stats；可发货置顶开关保留。
-// - 出货/客户零星发货：单行范式，但按真实阶段分段（草稿/等待财务审核/财务已退回/
-//   已审/已出库/红冲，服务端 stage 参数；2026-09-20）+ 末尾历史记录 + 搜索——出货单的
-//   status 只在仓库确认出库时才变 1，按 status 分段会把等待财审的单全归到草稿。
-// - 退货/报价：草稿/已审/红冲 + 末尾历史记录 + 搜索，默认不选不发请求。
-// 分段计数形态(ADR-100 三形态): 本人要动手的段(草稿 / 财务已退回)红徽章, 还在流程里
-// 跑着、销售不用动手的段(待生产 / 生产中 / 等待财务审核 / 已审待出库)黄色进行中徽章,
-// 终态(本月完成 / 已出库 / 红冲)中性括号; 「待发货」的红色出口在「订单进度查询」页,
-// 本页不重复告警, 见下方分段处注释。
-// 大类未选（订货单）/状态未选（其他单据）时内容区显示引导占位，不发请求。
-// 名称解析（客户/仓库）通过 SalesMasterNameService；编辑按 edit 权限显隐「新建」。
-import 'package:uten_imp/components/feedback/uten_dialog.dart';
+// - 订货单：草稿 / 待生产 / 生产中 / 待发货；仅查询未中止且未结案的订单。
+// - 出货 / 报价：普通分类只放草稿和仍有财审、客户、转单或出库工作要办的阶段。
+// - 退货：草稿处理。完成、反审、已转单等通过末尾历史记录查阅。
+// - 历史不限状态，时间范围和状态表头筛选在同一服务端分页查询中生效。
+// - 明确的 ACTIVE 聚合恢复当前普通父类全量，避免清状态时捞回已完成单据。
 import 'dart:async';
+import '../../../components/feedback/uten_dialog.dart';
 
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_master_names.dart';
@@ -68,22 +60,16 @@ const String _kDraftStage = 'draft';
 const String _kHistoryStage = 'history';
 
 /// 小类分段值：真实单据状态（status 非空）、出货真实阶段（shipmentStage 非空）
-/// 或全部/历史记录哨兵。
+/// 或历史记录哨兵。
 class _SalesDocSeg {
-  const _SalesDocSeg.all()
-    : status = null,
-      shipmentStage = null,
-      history = false;
   const _SalesDocSeg.stage(int this.status)
     : shipmentStage = null,
       history = false;
   const _SalesDocSeg.shipment(String this.shipmentStage)
     : status = null,
       history = false;
-  const _SalesDocSeg.history()
-    : status = null,
-      shipmentStage = null,
-      history = true;
+  const _SalesDocSeg.history([this.status, this.shipmentStage])
+    : history = true;
 
   final int? status;
 
@@ -142,7 +128,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   int _reloadGeneration = 0;
   int _statsGeneration = 0;
 
-  /// 大类分段（仅订货单）：pending/production/shippable/monthDone/draft/history；
+  /// 大类分段（仅订货单）：pending/production/shippable/draft/history；
   /// null = 未选择引导态（不发请求）。
   String? _stage;
 
@@ -528,24 +514,14 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
       // 草稿段强制 status=0：草稿的 chain_status 恒为 0，落不进任何链路大类，
       // 只能按单据状态直查（closed 也一并不带，草稿不可能结案）。
-      status: _isDraftStage
-          ? kSalesStatusDraft
-          : (_isHistory && !_isOrder ? null : _statusSeg?.status),
+      status: _isDraftStage ? kSalesStatusDraft : _statusSeg?.status,
       // 出货真实阶段(草稿/等待财务审核/…)走 stage，报价分桶走 bucket，历史记录不限。
-      stage: _isHistory || _quoteStaged ? null : _statusSeg?.shipmentStage,
-      bucket: _isHistory || !_quoteStaged ? null : _statusSeg?.shipmentStage,
+      stage: _quoteStaged ? null : _statusSeg?.shipmentStage,
+      bucket: !_quoteStaged ? null : _statusSeg?.shipmentStage,
       chain: _isOrder && !_isHistory ? _cardChain() : null,
       chainGroup: _isOrder && !_isHistory ? _cardChainGroup() : null,
-      closed: _isOrder && _stage == 'monthDone' && !_isHistory ? true : null,
-      // 「本月完成」口径 = is_closed 且结案在本月；钻取须带月初起，否则列表
-      // 含非本月结案单，段计数与列表数对不上。
-      dateFrom: range != null
-          ? ChinaDateTime.formatDate(range.start)
-          : (_isOrder && _stage == 'monthDone'
-                ? ChinaDateTime.formatDate(
-                    ChinaDateTime.today().copyWith(day: 1),
-                  )
-                : null),
+      closed: _isOrder && !_isHistory && !_isDraftStage ? false : null,
+      dateFrom: range == null ? null : ChinaDateTime.formatDate(range.start),
       dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
       billNo: withBillNo ? _columnFilters['billNo'] : null,
     );
@@ -920,8 +896,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (_isOrder) ...[
-                        // 大类行（仅订货单）：待生产/生产中/待发货/本月完成 + 搜索。
-                        // 原统计卡钻取口径不变（chain/closed/本月月初）。
+                        // 订单活动大类与服务端全量统计同口径；办结订单只从历史进入。
+                        // 数量派生的链路阶段下推服务端，保留部分履约和分页总数。
                         // 计数形态(三形态口径 ADR-100)：待生产/生产中的球在生产手上,
                         // 单子还在流程里跑着、销售不用动手 → 黄色进行中徽章;
                         // 「待发货」= 有可发量等销售去开出货单, 是销售自己的活 → 红徽章。
@@ -929,7 +905,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                         // 是**对的**: 准则 §一 要求「同一语义的入口全平台必须用同一种
                         // 形态」, 而分段计数从不进累加, 红两处也不会把总数数两遍;
                         // 反过来在本页压成中性括号, 才会让人在订货单列表里漏掉要开的单。
-                        // 「本月完成」是终态, 中性括号; 「草稿」是本人没提交的活,
+                        // 「草稿」是本人没提交的活,
                         // 与 hub 卡草稿红徽章同源同形(2026-09-21 父有红徽章子也要红)。
                         UtenFilterToolbar<String>(
                           segmentsKey: const Key('sales-doc-order-stages'),
@@ -951,11 +927,6 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               label: '待发货',
                               count: _stats?.shippable,
                               countForm: UtenSegmentCountForm.actionable,
-                            ),
-                            UtenFilterSegment(
-                              value: 'monthDone',
-                              label: '本月完成',
-                              count: _stats?.monthDone,
                             ),
                             // 第 5 段「草稿」：草稿的 chain_status 恒为 0，落不进
                             // 任何链路大类，此前在订货单列表里根本看不到。计数与
@@ -981,23 +952,29 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                           },
                         ),
                       ] else
-                        // 其他单据：单行范式（状态 + 末尾历史记录 + 搜索）。
+                        // 其他单据：活动阶段 + 历史记录；终态状态只在历史表头查阅。
                         UtenFilterToolbar<_SalesDocSeg>(
                           segmentsKey: Key(
                             'sales-doc-status-${_cfg.type.pathSegment}',
                           ),
                           segments: [
-                            const UtenFilterSegment(
-                              value: _SalesDocSeg.all(),
-                              label: '全部',
-                            ),
+                            if (_staged)
+                              const UtenFilterSegment(
+                                value: _SalesDocSeg.shipment('ACTIVE'),
+                                label: '待办与进行中',
+                              ),
                             // 2026-09-21 用户口径: 父分类(hub 卡)有红徽章, 子分类也要
                             // 有数——出货六阶段全部带数, 草稿 / 财务已退回红徽章
                             // (财务退回件不再混在草稿里), 等待财务审核 / 已审待出库
                             // 黄色进行中徽章(ADR-100), 已出库 / 红冲中性括号;
                             // 报价/退货三状态只有草稿是活(红), 已审/红冲是终态(括号)。
                             if (_shipmentStaged)
-                              for (final stage in SalesShipmentStage.segments)
+                              for (final stage
+                                  in SalesShipmentStage.segments.where(
+                                    (stage) =>
+                                        stage != SalesShipmentStage.shipped &&
+                                        stage != SalesShipmentStage.reversed,
+                                  ))
                                 UtenFilterSegment(
                                   value: _SalesDocSeg.shipment(stage),
                                   label: salesShipmentStageLabel(stage),
@@ -1005,7 +982,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                                   countForm: _shipmentStageCountForm(stage),
                                 )
                             else if (l10n != null)
-                              for (final stage in SalesQuoteStage.segments)
+                              for (final stage
+                                  in SalesQuoteStage.segments.where(
+                                    (stage) =>
+                                        stage != SalesQuoteStage.approved &&
+                                        stage != SalesQuoteStage.reversed,
+                                  ))
                                 UtenFilterSegment(
                                   value: _SalesDocSeg.shipment(stage),
                                   label: salesQuoteStageLabel(l10n, stage),
@@ -1019,11 +1001,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                                   countForm: _quoteStageCountForm(stage),
                                 )
                             else
-                              for (final status in [
-                                kSalesStatusDraft,
-                                kSalesStatusApproved,
-                                kSalesStatusReversed,
-                              ])
+                              for (final status in [kSalesStatusDraft])
                                 UtenFilterSegment(
                                   value: _SalesDocSeg.stage(status),
                                   label: salesStatusLabel(status),
@@ -1037,7 +1015,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                               label: '历史记录',
                             ),
                           ],
-                          selected: seg == null ? const {} : {seg},
+                          selected: seg == null
+                              ? const {}
+                              : {
+                                  seg.history
+                                      ? const _SalesDocSeg.history()
+                                      : seg,
+                                },
                           onSelectionChanged: _selectStatusSeg,
                           searchHint: '搜索单据号 / 客户',
                           initialSearchValue: _list.keyword,
@@ -1288,23 +1272,57 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         if (value != null && status == null) return;
         clearDraftSelection();
         setState(() {
+          if (!_isHistory && status == kSalesStatusReversed) {
+            _stage = _kHistoryStage;
+          }
           _statusSeg = status == null ? null : _SalesDocSeg.stage(status);
         });
         // 清除状态筛选只恢复当前工作阶段；历史时间范围也继续保留。
         _reload(1);
         return;
       }
-      if (value == null) {
-        _selectStatusSeg(const _SalesDocSeg.all());
+      if (_isHistory) {
+        _selectStatusSeg(
+          _quoteStaged || _shipmentStaged
+              ? _SalesDocSeg.history(null, value)
+              : _SalesDocSeg.history(
+                  value == null ? null : int.tryParse(value),
+                ),
+        );
         return;
       }
-      if (_quoteStaged) {
-        _selectStatusSeg(_SalesDocSeg.shipment(value));
+      if (value == null) {
+        _selectStatusSeg(
+          _staged
+              ? const _SalesDocSeg.shipment('ACTIVE')
+              : const _SalesDocSeg.stage(kSalesStatusDraft),
+        );
+        return;
+      }
+      if (_quoteStaged || _shipmentStaged) {
+        final terminal = _quoteStaged
+            ? {
+                SalesQuoteStage.approved,
+                SalesQuoteStage.reversed,
+              }.contains(value)
+            : {
+                SalesShipmentStage.shipped,
+                SalesShipmentStage.reversed,
+              }.contains(value);
+        _selectStatusSeg(
+          terminal
+              ? _SalesDocSeg.history(null, value)
+              : _SalesDocSeg.shipment(value),
+        );
         return;
       }
       final status = int.tryParse(value);
       if (status != null) {
-        _selectStatusSeg(_SalesDocSeg.stage(status));
+        _selectStatusSeg(
+          status == kSalesStatusDraft
+              ? _SalesDocSeg.stage(status)
+              : _SalesDocSeg.history(status),
+        );
       }
       return;
     }
@@ -1356,10 +1374,12 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     };
     if (_isDraftStage) return extra;
     final seg = _statusSeg;
-    if (_quoteStaged && seg?.shipmentStage != null && !seg!.history) {
-      return <String, String?>{'status': seg.shipmentStage, ...extra};
+    if ((_quoteStaged || _shipmentStaged) &&
+        seg?.shipmentStage != null &&
+        seg?.shipmentStage != 'ACTIVE') {
+      return <String, String?>{'status': seg!.shipmentStage, ...extra};
     }
-    if (seg == null || seg.history || seg.status == null) return extra;
+    if (seg == null || seg.status == null) return extra;
     return <String, String?>{'status': '${seg.status}', ...extra};
   }
 
@@ -1383,8 +1403,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
             label: salesQuoteStageLabel(l10n, stage),
           ),
       ]
-    // 出货类状态列显示真实阶段，0/1/-1 桶对它没有意义（阶段在分段行）。
-    else if (!_shipmentStaged && !_isDraftStage)
+    else if (_shipmentStaged)
+      'status': [
+        for (final stage in SalesShipmentStage.segments)
+          MasterFacetBucket(
+            value: stage,
+            count: 0,
+            label: salesShipmentStageLabel(stage),
+          ),
+      ]
+    else if (!_isDraftStage)
       'status': const [
         MasterFacetBucket(value: '0', count: 0, label: '草稿'),
         MasterFacetBucket(value: '1', count: 0, label: '已审'),

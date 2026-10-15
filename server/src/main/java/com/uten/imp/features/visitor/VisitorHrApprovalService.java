@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import java.util.List;
 
 import static com.uten.imp.common.util.Strings.isBlank;
 
@@ -60,7 +61,10 @@ public class VisitorHrApprovalService {
             if (status == null || status.isBlank()) {
                 p = cb.and(p, root.get("status").in("pending", "hostReviewing"));
             } else {
-                p = cb.and(p, cb.equal(root.get("status"), status));
+                List<String> statuses = VisitorStatusFilter.parse(status, List.of());
+                p = cb.and(p, statuses.size() == 1
+                        ? cb.equal(root.get("status"), statuses.getFirst())
+                        : root.get("status").in(statuses));
             }
             if (hostDepartmentId != null) {
                 p = cb.and(p, cb.equal(root.get("hostDepartmentId"), hostDepartmentId));

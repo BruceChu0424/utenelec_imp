@@ -11,6 +11,13 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Root;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -86,6 +93,33 @@ class PayrollServiceTest {
 
         assertEquals(ErrorCode.NOT_FOUND, error.getCode());
         verify(itemRepository, never()).findBySlipIdInOrderBySlipIdAscLineNoAsc(anyCollection());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"ACTIVE,PUBLISHED,false", "HISTORY,PUBLISHED,true", "APPROVED,APPROVED,true"})
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void batchLifecycleScopeIsAppliedBeforePagingAndPreservesDepartment(
+            String scope, String comparedStatus, boolean equality) {
+        when(authUser.getPermissions()).thenReturn(Set.of("payroll:review"));
+        when(batchRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(1, 20), 42));
+        UUID departmentId = UUID.randomUUID();
+        var response = service.listBatches(null, null, scope, departmentId, 2, 20);
+        ArgumentCaptor<Specification<PayrollBatch>> spec = ArgumentCaptor.forClass(Specification.class);
+        ArgumentCaptor<Pageable> page = ArgumentCaptor.forClass(Pageable.class);
+        verify(batchRepository).findAll(spec.capture(), page.capture());
+        Root<PayrollBatch> root = mock(Root.class);
+        Path<Object> statusPath = mock(Path.class);
+        Path<Object> departmentPath = mock(Path.class);
+        when(root.get("status")).thenReturn(statusPath);
+        when(root.get("departmentId")).thenReturn(departmentPath);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class);
+        spec.getValue().toPredicate(root, mock(CriteriaQuery.class), cb);
+        if (equality) verify(cb).equal(statusPath, comparedStatus);
+        else verify(cb).notEqual(statusPath, comparedStatus);
+        verify(cb).equal(departmentPath, departmentId);
+        assertEquals(1, page.getValue().getPageNumber());
+        assertEquals(42, response.getTotal());
     }
 
     @Test

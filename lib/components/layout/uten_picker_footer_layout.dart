@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../buttons/uten_button.dart';
 import '../data_display/master_data_table_rows_controller.dart';
 import '../inputs/uten_input_decoration.dart';
-import '../inputs/uten_field_message.dart';
 
 /// Selection, paging, and confirmation share one footer on wide panels.
 /// Narrow panels wrap without shrinking text or touch targets.
@@ -28,19 +28,20 @@ class UtenPickerFooterLayout extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            summary,
+            Align(alignment: Alignment.centerLeft, child: summary),
             if (pagination != null) ...[const SizedBox(height: 8), pagination!],
             const SizedBox(height: 8),
-            actions,
+            Align(alignment: Alignment.centerRight, child: actions),
           ],
         );
       }
       return Row(
         children: [
-          Flexible(child: summary),
+          Expanded(
+            child: Align(alignment: Alignment.centerLeft, child: summary),
+          ),
           const SizedBox(width: 12),
-          Expanded(child: pagination ?? const SizedBox.shrink()),
-          const SizedBox(width: 12),
+          if (pagination != null) ...[pagination!, const SizedBox(width: 24)],
           actions,
         ],
       );
@@ -62,20 +63,35 @@ class UtenPickerPageControls<T> extends StatelessWidget {
           if (page == null || page.totalPages <= 1) {
             return const SizedBox.shrink();
           }
-          final height = UtenFilterRow.heightOf(context);
+          final theme = Theme.of(context);
+          final textHeight =
+              MediaQuery.textScalerOf(
+                    context,
+                  ).scale(theme.textTheme.bodyMedium?.fontSize ?? 14) *
+                  1.5 +
+              12;
+          final height = UtenControlMetrics.controlHeight(
+            context,
+          ).clamp(textHeight, double.infinity);
           final inputWidth = UtenControlMetrics.minimumHitExtent(
             context,
-            desktop: 54,
+            desktop: 64,
           );
-          final previous = TextButton(
+          final previous = UtenButton(
             key: const ValueKey('master-table-page-previous'),
+            type: UtenButtonType.ghost,
+            size: UtenButtonSize.small,
+            height: height,
             onPressed: !page.busy && page.currentPage > 1
                 ? () => controller.goToPage(page.currentPage - 1)
                 : null,
             child: const Text('上一页'),
           );
-          final next = TextButton(
+          final next = UtenButton(
             key: const ValueKey('master-table-page-next'),
+            type: UtenButtonType.ghost,
+            size: UtenButtonSize.small,
+            height: height,
             onPressed: !page.busy && page.currentPage < page.totalPages
                 ? () => controller.goToPage(page.currentPage + 1)
                 : null,
@@ -84,27 +100,28 @@ class UtenPickerPageControls<T> extends StatelessWidget {
           final counter = Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Text('第', style: theme.textTheme.bodyMedium),
+              const SizedBox(width: 8),
               SizedBox(
                 width: inputWidth,
+                height: height,
                 child: _PickerPageInput(
                   page: page,
-                  height: height,
                   goToPage: controller.goToPage,
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                '/ ${page.totalPages}',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
+              Text('/ ${page.totalPages}', style: theme.textTheme.bodyMedium),
+              const SizedBox(width: 4),
+              Text('页', style: theme.textTheme.bodyMedium),
             ],
           );
           return Wrap(
             key: const Key('picker-footer-pagination'),
             alignment: WrapAlignment.center,
             crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 4,
-            runSpacing: 4,
+            spacing: 8,
+            runSpacing: 8,
             children: [previous, counter, next],
           );
         },
@@ -112,13 +129,8 @@ class UtenPickerPageControls<T> extends StatelessWidget {
 }
 
 class _PickerPageInput extends StatefulWidget {
-  const _PickerPageInput({
-    required this.page,
-    required this.height,
-    required this.goToPage,
-  });
+  const _PickerPageInput({required this.page, required this.goToPage});
   final MasterDataPagination page;
-  final double height;
   final ValueChanged<int> goToPage;
 
   @override
@@ -146,31 +158,58 @@ class _PickerPageInputState extends State<_PickerPageInput> {
   }
 
   @override
-  Widget build(BuildContext context) => TextFormField(
-    errorBuilder: utenTextFieldErrorBuilder,
-    controller: _text,
-    focusNode: _focus,
-    enabled: !widget.page.busy,
-    keyboardType: TextInputType.number,
-    textAlign: TextAlign.center,
-    textAlignVertical: TextAlignVertical.center,
-    style: Theme.of(context).textTheme.bodyMedium,
-    decoration: UtenInputDecoration(
-      InputDecoration(
-        isDense: true,
-        constraints: BoxConstraints(minHeight: widget.height),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-        border: const OutlineInputBorder(
-          borderRadius: UtenFilterRow.borderRadius,
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _focus,
+    builder: (context, _) => DecoratedBox(
+      key: const Key('picker-page-input-outline'),
+      decoration: BoxDecoration(
+        color: widget.page.busy
+            ? Theme.of(context).colorScheme.surfaceContainerHigh
+            : Theme.of(context).colorScheme.surface,
+        borderRadius: UtenFilterRow.borderRadius,
+        border: Border.all(
+          color: _focus.hasFocus
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.outline,
+          width: _focus.hasFocus ? 2 : 1,
+        ),
+      ),
+      child: Center(
+        child: TextField(
+          controller: _text,
+          focusNode: _focus,
+          enabled: !widget.page.busy,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          textAlign: TextAlign.center,
+          textAlignVertical: TextAlignVertical.center,
+          style: Theme.of(context).textTheme.bodyMedium,
+          decoration: const UtenInputDecoration(
+            InputDecoration(
+              isCollapsed: true,
+              constraints: BoxConstraints(),
+              filled: false,
+              visualDensity: VisualDensity.standard,
+              hintText: '页码',
+              contentPadding: EdgeInsets.symmetric(horizontal: 8),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+            ),
+          ),
+          onSubmitted: (value) {
+            final target =
+                (int.tryParse(value.trim()) ?? widget.page.currentPage).clamp(
+                  1,
+                  widget.page.totalPages,
+                );
+            _text.text = '$target';
+            _focus.unfocus();
+            widget.goToPage(target);
+          },
         ),
       ),
     ),
-    onFieldSubmitted: (value) {
-      final target = (int.tryParse(value.trim()) ?? widget.page.currentPage)
-          .clamp(1, widget.page.totalPages);
-      _text.text = '$target';
-      _focus.unfocus();
-      widget.goToPage(target);
-    },
   );
 }

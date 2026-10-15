@@ -125,6 +125,12 @@ final payrollDepartmentOptionsProvider =
       return ref.watch(payrollRepositoryProvider).listDepartmentOptions();
     });
 
+enum PayrollBatchScope { active, history }
+
+final payrollBatchScopeProvider = StateProvider.autoDispose<PayrollBatchScope>(
+  (ref) => PayrollBatchScope.active,
+);
+
 final payrollBatchListProvider =
     AsyncNotifierProvider.autoDispose<
       PayrollBatchListNotifier,
@@ -133,16 +139,29 @@ final payrollBatchListProvider =
 
 class PayrollBatchListNotifier
     extends AutoDisposeAsyncNotifier<PagedResult<PayrollBatch>> {
-  @override
-  Future<PagedResult<PayrollBatch>> build() =>
-      ref.watch(payrollRepositoryProvider).listBatches();
+  int _page = 1;
+  PayrollBatchScope? _lastScope;
 
-  Future<void> refresh() async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(
-      () => ref.read(payrollRepositoryProvider).listBatches(),
-    );
+  @override
+  Future<PagedResult<PayrollBatch>> build() {
+    ref.listen(masterDataSessionKeyProvider, (previous, next) {
+      if (previous == next) return;
+      _page = 1;
+      state = const AsyncLoading();
+      ref.invalidateSelf();
+    });
+    final scope = ref.watch(payrollBatchScopeProvider);
+    if (_lastScope != scope) _page = 1;
+    _lastScope = scope;
+    return ref
+        .watch(payrollRepositoryProvider)
+        .listBatches(
+          status: scope == PayrollBatchScope.history ? 'HISTORY' : 'ACTIVE',
+          page: _page,
+        );
   }
+
+  Future<void> refresh() => _reloadPage(1);
 
   Future<void> previousPage() async {
     final current = state.valueOrNull;
@@ -158,12 +177,20 @@ class PayrollBatchListNotifier
 
   Future<void> _goTo(int page) async {
     if (state.isLoading) return;
+    await _reloadPage(page);
+  }
+
+  Future<void> _reloadPage(int page) async {
+    _page = page;
     state = const AsyncLoading<PagedResult<PayrollBatch>>().copyWithPrevious(
       state,
     );
-    state = await AsyncValue.guard(
-      () => ref.read(payrollRepositoryProvider).listBatches(page: page),
-    );
+    ref.invalidateSelf();
+    try {
+      await future;
+    } catch (_) {
+      /* Error remains visible in provider state. */
+    }
   }
 }
 

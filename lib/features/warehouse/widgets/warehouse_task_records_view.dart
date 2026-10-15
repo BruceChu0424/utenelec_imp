@@ -42,6 +42,7 @@ class WarehouseTaskRecordsView extends ConsumerStatefulWidget {
     required this.direction,
     required this.source,
     required this.sources,
+    this.view = WarehouseTaskView.active,
     this.keyword = '',
     this.refreshTick = 0,
     this.externalHeader,
@@ -50,6 +51,7 @@ class WarehouseTaskRecordsView extends ConsumerStatefulWidget {
   final WarehouseTaskDirection direction;
   final String source;
   final Map<String, String> sources;
+  final WarehouseTaskView view;
   final String keyword;
   final int refreshTick;
   final Widget? externalHeader;
@@ -78,6 +80,8 @@ class _WarehouseTaskRecordsViewState
   String? _decisionFingerprint;
   String? _decisionKey;
 
+  bool get _history => widget.view == WarehouseTaskView.history;
+
   @override
   void initState() {
     super.initState();
@@ -101,7 +105,8 @@ class _WarehouseTaskRecordsViewState
   void didUpdateWidget(covariant WarehouseTaskRecordsView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.source != widget.source ||
-        oldWidget.direction != widget.direction) {
+        oldWidget.direction != widget.direction ||
+        oldWidget.view != widget.view) {
       _status = null;
       _billNo = null;
       _dates = null;
@@ -154,6 +159,7 @@ class _WarehouseTaskRecordsViewState
           .list(
             direction: widget.direction,
             source: _effectiveSource,
+            view: widget.view,
             status: _effectiveStatus,
             keyword: widget.keyword,
             billNo: _billNo,
@@ -205,6 +211,7 @@ class _WarehouseTaskRecordsViewState
   }
 
   List<FormDraft> _draftsFor(WarehouseTaskCenterRecord row) {
+    if (_history) return const [];
     if (row.recordType == 'LOCAL_FORM_DRAFT') {
       return ref
           .read(formDraftsProvider)
@@ -239,8 +246,9 @@ class _WarehouseTaskRecordsViewState
     };
   }
 
-  Set<String> get _newDocumentPrefixes =>
-      widget.direction == WarehouseTaskDirection.inbound
+  Set<String> get _newDocumentPrefixes => _history
+      ? const {}
+      : widget.direction == WarehouseTaskDirection.inbound
       ? {
           if (_effectiveSource == 'ALL' || _effectiveSource == 'OTHER')
             '/warehouse/OTHER_IN/new',
@@ -321,6 +329,7 @@ class _WarehouseTaskRecordsViewState
   }
 
   bool _canSelect(WarehouseTaskCenterRecord row) =>
+      !_history &&
       !_loading &&
       !_busy &&
       ref.read(authenticatedScopeProvider)?.readOnly != true &&
@@ -346,7 +355,8 @@ class _WarehouseTaskRecordsViewState
 
   Future<void> _open(WarehouseTaskCenterRecord row) async {
     if (_busy || _loading) return;
-    if (row.action == 'ARRIVAL_CONTINUE' &&
+    if (!_history &&
+        row.action == 'ARRIVAL_CONTINUE' &&
         _draftsFor(row).isEmpty &&
         row.canHandle) {
       await _batch(targets: [row]);
@@ -651,6 +661,7 @@ class _WarehouseTaskRecordsViewState
     final superAdmin = ref.watch(isSuperAdminProvider);
     final readOnly = ref.watch(authenticatedScopeProvider)?.readOnly ?? false;
     final selectable =
+        !_history &&
         !readOnly &&
         (result?.items.any(
               (row) =>
@@ -733,7 +744,7 @@ class _WarehouseTaskRecordsViewState
       body: MasterDataTableView<WarehouseTaskCenterRecord>(
         key: ValueKey('warehouse-task-records-${widget.direction.name}'),
         tableKey:
-            'warehouse.task-center.${widget.direction.name}.${widget.source}',
+            'warehouse.task-center.${widget.direction.name}.${widget.source}${_history ? '.history' : ''}',
         requiredLeadingColumnKeys: const ['status'],
         primary: true,
         rowsController: _rows,
@@ -741,6 +752,7 @@ class _WarehouseTaskRecordsViewState
         paginationScope: (
           widget.direction,
           widget.source,
+          widget.view,
           _status,
           _billNo,
           _sort,
@@ -791,14 +803,14 @@ class _WarehouseTaskRecordsViewState
         onRowTap: _open,
         rowMenuBuilder: (row) => [
           UtenMenuItem(
-            label: row.canHandle ? '打开办理' : '查看原单',
+            label: !_history && row.canHandle ? '打开办理' : '查看原单',
             icon: Icons.open_in_new_rounded,
             onTap: () => _open(row),
           ),
         ],
         canShowRowMenu: warehouseTaskRecordCanOpen,
         toolbarActions: [
-          if (!readOnly)
+          if (!_history && !readOnly)
             for (final source in ['OTHER', 'FINISHED'])
               if (widget.sources.containsKey(source) &&
                   (widget.source == 'ALL' || widget.source == source) &&

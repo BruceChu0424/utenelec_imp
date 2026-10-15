@@ -80,15 +80,16 @@ public class WebsiteInquiryService {
 
     @Transactional(readOnly = true)
     public PageResponse<WebsiteInquiryListItem> list(String status, String keyword, int page, int size) {
-        if (status != null && !status.isBlank() && !STATUSES.contains(status)) {
+        String filter = status == null || status.isBlank() ? "ACTIVE" : status.trim();
+        if (!STATUSES.contains(filter) && !Set.of("ACTIVE", "HISTORY").contains(filter)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知状态: " + status);
         }
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 100);
         Page<WebsiteInquiry> result = repository.search(
-                status == null || status.isBlank() ? null : status,
+                filter,
                 keyword == null ? "" : keyword.trim(),
-                PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "receivedAt")));
+                PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Order.desc("receivedAt"), Sort.Order.desc("id"))));
         Map<UUID, String> names = assigneeNames(result.getContent());
         return new PageResponse<>(
                 result.getContent().stream().map(item -> toListItem(item, names)).toList(),

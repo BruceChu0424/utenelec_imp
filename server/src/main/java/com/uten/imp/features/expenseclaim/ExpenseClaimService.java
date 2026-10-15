@@ -484,6 +484,12 @@ public class ExpenseClaimService {
             }
             // 2026-09-25 单号列统一：我的报销列表只消费报销单号桶（部门/年月/类别
             // 桶是审批/打款队列口径，个人列表不需要），其余桶恒空。
+            case "mineactive", "minehistory" -> {
+                require(user, "expense:apply");
+                boolean historyOnly = "minehistory".equals(queue.trim().toLowerCase(Locale.ROOT));
+                return new ExpenseClaimFacetsDto(List.of(), List.of(), List.of(),
+                        toBuckets(applicantQuery.mineClaimNoFacets(user.getEmployeeId(), includeDeleted || onlyDeleted, onlyDeleted, historyOnly)));
+            }
             case "mine" -> {
                 require(user, "expense:apply");
                 return new ExpenseClaimFacetsDto(List.of(), List.of(), List.of(),

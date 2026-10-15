@@ -203,7 +203,7 @@ class WarehouseDataScopeEndToEndTest {
         fixture.loginAs(keeperA);
         assertForbidden(() -> scopes.current(warehouseB));
         assertForbidden(() -> stockDocs.list("OTHER_OUT", null, null, null, null, null, null, null, null, null,
-                1, 20, null, null, warehouseB, null, false, false, null));
+                1, 20, null, null, warehouseB, null, false, false, null, "ACTIVE"));
         assertForbidden(() -> badges.badges(warehouseB));
         MyWarehouseScope a = dataScope.myScope();
         assertThat(a.role()).isEqualTo("KEEPER");
@@ -412,11 +412,11 @@ class WarehouseDataScopeEndToEndTest {
                 fulfillment.warehouse("OPEN_ANY", "", "", null, null, 1, 1, "", "asc", selected, Map.of()).total());
         assertThat(facts.get("productionReturn.count")).as(label + " production return").isEqualTo(
                 stockDocs.list(null, null, null, (short) 0, null, null, null, null, true, null, 1, 1, null, null,
-                        selected, null, false, false, null).getTotal());
+                        selected, null, false, false, null, "ACTIVE").getTotal());
         assertThat(facts.get("workshopMaterial.pendingIssue")).as(label + " workshop issue").isEqualTo(
-                requisitions.list("PENDING", "ISSUE", null, selected, 1, 1).getTotal());
+                requisitions.list("PENDING", "ACTIVE", "ISSUE", null, selected, 1, 1, null).getTotal());
         assertThat(facts.get("workshopMaterial.pendingReturn")).as(label + " workshop return").isEqualTo(
-                requisitions.list("PENDING", "RETURN", null, selected, 1, 1).getTotal());
+                requisitions.list("PENDING", "ACTIVE", "RETURN", null, selected, 1, 1, null).getTotal());
         assertThat(facts.get("stockCountWarehouse.count")).as(label + " stock count").isEqualTo(
                 stockCounts.list("WAREHOUSE", "PENDING", null, selected, null, 1, 1).getTotal());
         // 品质检查结果: 红 + 黄 = 列表里没完结的张数; 每个状态段 = 带该状态筛选的列表 total。
@@ -427,7 +427,8 @@ class WarehouseDataScopeEndToEndTest {
                 .mapToLong(Map.Entry::getValue).sum();
         assertThat(typed).as(label + " quality result").isEqualTo(open);
         for (var status : statuses.entrySet()) {
-            assertThat(qualityResults.list("", "ALL", status.getKey(), null, null, 1, 1, null, null, null, selected)
+            assertThat(qualityResults.list("", "ALL", status.getKey(), "COMPLETED".equals(status.getKey()) ? "HISTORY" : "ACTIVE",
+                    null, null, 1, 1, null, null, null, selected)
                     .getTotal()).as(label + " quality " + status.getKey()).isEqualTo(status.getValue());
         }
         // 仓库草稿红数 = 仓库单据列表「草稿」段(同一仓库范围)。
@@ -435,13 +436,13 @@ class WarehouseDataScopeEndToEndTest {
                 documentCounts.statusCounts("stockDocument", null, null, selected).get("DRAFT"));
         assertThat(documentCounts.statusCounts("stockDocument", null, "OTHER_OUT", selected).get("DRAFT"))
                 .as(label + " other-out drafts").isEqualTo(stockDocs.list("OTHER_OUT", null, null, (short) 0, null,
-                        null, null, null, null, null, 1, 1, null, null, selected, null, false, false, null).getTotal());
+                        null, null, null, null, null, 1, 1, null, null, selected, null, false, false, null, "ACTIVE").getTotal());
     }
 
     private List<UUID> otherOutDrafts(UUID selected) {
         List<UUID> ids = new ArrayList<>();
         for (var item : stockDocs.list("OTHER_OUT", null, null, (short) 0, null, null, null, null, null, null,
-                1, 100, null, null, selected, null, false, false, null).getItems()) {
+                1, 100, null, null, selected, null, false, false, null, "ACTIVE").getItems()) {
             ids.add(item.getId());
         }
         return ids;

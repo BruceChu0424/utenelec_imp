@@ -31,6 +31,7 @@ class WebsiteInquiryListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final list = ref.watch(websiteInquiryListProvider);
     final status = ref.watch(websiteInquiryStatusFilterProvider);
+    final history = ref.watch(websiteInquiryHistoryProvider);
 
     Widget body = Column(
       children: [
@@ -49,7 +50,11 @@ class WebsiteInquiryListPage extends ConsumerWidget {
                 if (inquiries.isEmpty) {
                   return UtenEmpty(
                     icon: Icons.mail_outline_rounded,
-                    message: status == null ? '暂无官网询盘' : '该状态下暂无询盘',
+                    message: history
+                        ? '暂无历史询盘'
+                        : status == null
+                        ? '暂无进行中的询盘'
+                        : '该状态下暂无询盘',
                     description: '客户在官网提交的留言会实时汇入这里',
                   );
                 }
@@ -108,16 +113,22 @@ class WebsiteInquiryListPage extends ConsumerWidget {
       appBar: UtenAppBar(
         title: '官网询盘',
         showBackButton: true,
-        centerWidget: UtenSegmentedFilter<WebsiteInquiryStatus?>(
-          selected: status,
-          onChanged: (v) =>
-              ref.read(websiteInquiryStatusFilterProvider.notifier).state = v,
+        centerWidget: UtenSegmentedFilter<String>(
+          selected: history ? 'HISTORY' : status?.wireName ?? 'ACTIVE',
+          onChanged: (value) {
+            ref.read(websiteInquiryHistoryProvider.notifier).state =
+                value == 'HISTORY';
+            ref
+                .read(websiteInquiryStatusFilterProvider.notifier)
+                .state = value == 'ACTIVE' || value == 'HISTORY'
+                ? null
+                : WebsiteInquiryStatus.fromName(value);
+          },
           segments: const [
-            UtenSegment(value: WebsiteInquiryStatus.newOne, label: '未处理'),
-            UtenSegment(value: WebsiteInquiryStatus.following, label: '跟进中'),
-            UtenSegment(value: WebsiteInquiryStatus.converted, label: '已转客户'),
-            UtenSegment(value: WebsiteInquiryStatus.closed, label: '已关闭'),
-            UtenSegment(value: null, label: '全部'),
+            UtenSegment(value: 'ACTIVE', label: '全部进行中'),
+            UtenSegment(value: 'new', label: '未处理'),
+            UtenSegment(value: 'following', label: '跟进中'),
+            UtenSegment(value: 'HISTORY', label: '历史单据'),
           ],
         ),
       ),

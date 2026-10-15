@@ -9,6 +9,7 @@ import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegis
 import com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInPermissions;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Filter;
 import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Row;
+import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.TaskView;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.DocumentAccessPolicy.NativeReadScope;
 import com.uten.imp.security.OwnerVisibility.OwnerScope;
@@ -57,6 +58,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         try(var statement=connection.createStatement()) {
             statement.execute("CREATE SCHEMA inbound_query_oracle");
             statement.execute("SET LOCAL search_path=inbound_query_oracle,public");
+            statement.execute("SET LOCAL jit=off");
         }
         // Private rollback-only projection facts retain real types. Business FK/trigger proofs belong to command tests.
         MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection,
@@ -66,7 +68,9 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 "production_finished_arrival_registration_reversals","production_fqc_inspections",
                 "production_fqc_inspection_sheets","production_fqc_inspection_sheet_items",
                 "production_finished_in_confirmations","procurement_arrival_exceptions","goods",
-                "inbound_expectations","inbound_expectation_items","production_fqc_legacy_exemptions");
+                "inbound_expectations","inbound_expectation_items","production_fqc_legacy_exemptions",
+                "procurement_inspection_items","procurement_inspection_events","procurement_iqc_stock_in_batch_items",
+                "procurement_iqc_rejection_cases");
         // PostgreSQL views bind source relation OIDs. Rebind the actual migrated
         // predicate to these rollback-only facts instead of accidentally reading
         // public reports when exercising a populated FINISHED_REGISTER detail.
@@ -89,6 +93,95 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(page.items()).isEmpty();
         assertThat(page.total()).isZero();
         assertThat(page.facets()).containsKeys("status","billNo");
+    }
+
+    @Test void completedReversedAndClosedDocumentsLeaveActiveBeforePagingAndRetainScopedHistory() {
+        UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+        UUID draft=UUID.randomUUID(),posted=UUID.randomUUID(),reversed=UUID.randomUUID(),closed=UUID.randomUUID();
+        stock(draft,"OTHER_IN","ACTIVE","2026-10-12",null);
+        stock(posted,"FINISHED_IN","POSTED","2026-10-12",null);
+        stock(reversed,"OTHER_IN","REVERSED","2026-10-12",null);
+        stock(closed,"WDRAW","CLOSED","2026-10-12",null);
+        execute("UPDATE stock_documents SET warehouse_id=:warehouse","warehouse",warehouse);
+        execute("UPDATE stock_documents SET status=1 WHERE id=:id","id",posted);
+        execute("UPDATE stock_documents SET status=-1 WHERE id=:id","id",reversed);
+        execute("UPDATE stock_documents SET is_closed=TRUE WHERE id=:id","id",closed);
+        UUID hidden=UUID.randomUUID();
+        stock(hidden,"OTHER_IN","HIDDEN","2026-10-12",null);
+        execute("UPDATE stock_documents SET warehouse_id=:warehouse,status=1 WHERE id=:id","warehouse",outside,"id",hidden);
+        var service=service(Set.of("stock_doc:view"),new WarehouseTaskScope(true,List.of(warehouse),false),false);
+        var active=service.list(filter("ALL","",99,1));
+        assertThat(active.total()).isEqualTo(1);
+        assertThat(active.page()).isEqualTo(1);
+        assertThat(active.items()).extracting(Row::id).containsExactly(draft);
+        assertThat(active.facets().get("status")).extracting(WarehouseTaskCenterContracts.StatusFacet::value)
+                .containsExactly("OTHER_DRAFT");
+        var history=service.list(new Filter("ALL","","",null,null,null,null,1,2,"billNo","asc",TaskView.HISTORY));
+        assertThat(history.total()).isEqualTo(3);
+        assertThat(history.totalPages()).isEqualTo(2);
+        assertThat(history.items()).extracting(Row::billNo).containsExactly("CLOSED","POSTED");
+        assertThat(history.facets().get("billNo")).extracting(WarehouseTaskCenterContracts.StatusFacet::value)
+                .containsExactly("CLOSED","POSTED","REVERSED");
+        assertThat(((Row)service.detail("FINISHED:STOCK_DOCUMENT:"+posted,null).get("row")).id()).isEqualTo(posted);
+        assertThatThrownBy(()->service.detail("OTHER:STOCK_DOCUMENT:"+hidden,null)).isInstanceOf(ApiException.class);
+        execute("UPDATE stock_documents SET status=0 WHERE id=:id","id",posted);
+        assertThat(service.list(filter("ALL","",1,20)).items()).extracting(Row::id).containsExactlyInAnyOrder(draft,posted);
+        assertThat(service.list(new Filter("ALL","","",null,null,null,null,1,20,null,null,TaskView.HISTORY)).total())
+                .isEqualTo(2);
+    }
+
+    @Test void qualityResultsUseTheSameLifecycleForRowsTotalsAndBillNumberFacets() {
+        UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
+        UUID waiting=UUID.randomUUID(),completed=UUID.randomUUID(),hidden=UUID.randomUUID();
+        receipt("purchase_receipts",waiting,"Q-WAITING","2026-10-12",warehouse);
+        receipt("purchase_receipts",completed,"Q-COMPLETED","2026-10-12",warehouse);
+        receipt("purchase_receipts",hidden,"Q-HIDDEN","2026-10-12",outside);
+        execute("UPDATE purchase_receipts SET status=1");
+        for(UUID receipt:List.of(waiting,completed,hidden)) {
+            execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,status,received_base_qty,"
+                    +" passed_base_qty,failed_base_qty,warehouse_stocked_base_qty)"
+                    +" VALUES(:id,'PURCHASE',:receipt,:status,5,:passed,0,:passed)","id",UUID.randomUUID(),
+                    "receipt",receipt,"status",receipt.equals(waiting)?"PENDING":"RESOLVED",
+                    "passed",receipt.equals(waiting)?0:5);
+        }
+        var em=executingEntityManager();
+        var service=new com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService(em,mock(SecurityContextCurrentUser.class));
+        var scope=new WarehouseTaskScope(true,List.of(warehouse),false);
+        var active=service.list("","ALL","",null,null,1,1,null,null,null,scope,TaskView.ACTIVE);
+        assertThat(active.getTotal()).isEqualTo(1);
+        assertThat(active.getItems()).extracting(com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.TaskSummary::billNo)
+                .containsExactly("Q-WAITING");
+        var history=service.list("","ALL","",null,null,1,1,null,null,null,scope,TaskView.HISTORY);
+        assertThat(history.getTotal()).isEqualTo(1);
+        assertThat(history.getItems()).extracting(com.uten.imp.features.warehouse.inbound.WarehouseQualityResultContracts.TaskSummary::billNo)
+                .containsExactly("Q-COMPLETED");
+        assertThat(service.facets("","ALL","",null,null,scope,TaskView.ACTIVE).get("billNo"))
+                .singleElement().satisfies(bucket->assertThat(bucket.get("value")).isEqualTo("Q-WAITING"));
+        assertThat(service.facets("","ALL","",null,null,scope,TaskView.HISTORY).get("billNo"))
+                .singleElement().satisfies(bucket->assertThat(bucket.get("value")).isEqualTo("Q-COMPLETED"));
+    }
+
+    /** Executes the service's unmodified native SQL and bindings against this migrated PostgreSQL fixture. */
+    private jakarta.persistence.EntityManager executingEntityManager() {
+        var em=mock(jakarta.persistence.EntityManager.class);
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation->{
+            String sql=invocation.getArgument(0);
+            var bindings=new MapSqlParameterSource();
+            var query=mock(jakarta.persistence.Query.class);
+            when(query.setParameter(anyString(),any())).thenAnswer(binding->{
+                bindings.addValue(binding.getArgument(0),binding.getArgument(1));
+                return query;
+            });
+            when(query.setMaxResults(org.mockito.ArgumentMatchers.anyInt())).thenReturn(query);
+            when(query.getSingleResult()).thenAnswer(result->jdbc.queryForObject(sql,bindings,Long.class));
+            when(query.getResultList()).thenAnswer(result->jdbc.query(sql,bindings,(rows,index)->{
+                Object[] values=new Object[rows.getMetaData().getColumnCount()];
+                for(int column=0;column<values.length;column++) values[column]=rows.getObject(column+1);
+                return values;
+            }));
+            return query;
+        });
+        return em;
     }
 
     @Test void mixedSourcesWithSameUuidAreGloballyPagedSortedAndFilteredWithoutLostIdentity() throws Exception {
@@ -176,6 +269,14 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(partial.items().stream().filter(row->row.id().equals(document))).hasSize(1);
         assertThat(partial.items()).anySatisfy(row->assertThat(row.status()).isEqualTo("FINISHED_RESIDUAL_COUNT"));
         assertThat(partial.items()).anySatisfy(row->assertThat(row.status()).isEqualTo("FINISHED_FQC_PARTIAL"));
+        execute("UPDATE production_fqc_inspections SET status='RESOLVED',passed_qty=5 WHERE id=:id","id",inspection);
+        execute("UPDATE stock_documents SET status=1 WHERE id=:id","id",document);
+        assertThat(service.list(filter("FINISHED","",1,30)).items()).noneMatch(row->row.id().equals(registration));
+        var history=service.list(new Filter("FINISHED","","",null,null,null,null,1,30,null,null,TaskView.HISTORY));
+        assertThat(history.items()).anySatisfy(row->{
+            assertThat(row.id()).isEqualTo(registration);
+            assertThat(row.status()).isEqualTo("FINISHED_REGISTRATION_CLOSED");
+        });
     }
 
     @Test void beforeInspectionCapabilityRequiresCurrentSpecialAuthorityAndOriginalRegistrationAction() {

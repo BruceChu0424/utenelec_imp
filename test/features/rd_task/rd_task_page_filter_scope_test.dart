@@ -72,6 +72,15 @@ void main() {
       reason: '翻页后仍使用完整类别枚举，不随当前页样本变化',
     );
     expect(tester.takeException(), isNull);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('rd-task-segments')),
+        matching: find.text('历史单据'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(api.queries.last['status'], 'done');
+    expect(api.queries.last['page'], 1);
   });
 }
 

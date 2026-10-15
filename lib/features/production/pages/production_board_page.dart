@@ -1631,7 +1631,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
           children: [
             Expanded(
               child: Text(
-                '${widget.closed ? '已完成' : '在产'} $count 张计划 · '
+                '${widget.closed ? '历史' : '在产'} $count 张计划 · '
                 '排产 ${_fmt(sumQty)} · 已报工 ${_fmt(sumReported)} · '
                 '已入库 ${_fmt(sumIn)}',
                 style: theme.textTheme.bodyMedium,
@@ -1780,7 +1780,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }
 
   Widget _planCard(ThemeData theme, PlanProgressRow r) {
-    final done = r.closed;
+    final done = r.terminal;
     final overdue = r.overdue && !done; // 已过交货日：整卡红色标注
     final urgent = r.urgent && !done && !overdue; // 交货 ≤3 天未逾期：浅色提醒
     final expanded = _expanded.contains(r.planId);
@@ -2180,7 +2180,13 @@ class _PlanPanelState extends ConsumerState<_PlanPanel> {
   }) {
     // ADR-169 收编（原裸 Colors.green/Colors.orange）：已完成=success 绿、
     // 进行中=info 蓝（正在执行）；逾期/紧急保持主题 error（危险语义随主题）。
-    final (label, color) = done
+    final (label, color) = r.status == -1
+        ? ('已反审', _tierText(theme, UtenStatusBadgeType.danger))
+        : r.canceled
+        ? ('已取消', _tierText(theme, UtenStatusBadgeType.neutral))
+        : r.stopped
+        ? ('已中止', _tierText(theme, UtenStatusBadgeType.neutral))
+        : done
         ? ('已完成 ✓', _tierText(theme, UtenStatusBadgeType.success))
         : overdue
         ? ('已逾期', theme.colorScheme.error)

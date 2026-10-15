@@ -9,6 +9,22 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get release2517PickerLayout =>
+      '선택 패널의 초기화·취소·확인 버튼을 오른쪽 아래에 모았습니다. 초기화는 빨간색으로 표시하며, 페이지 입력과 분류 목록을 더 간결하게 정리했습니다.';
+
+  @override
+  String get release2517Lifecycle =>
+      '일반 목록에는 진행 중인 업무와 곧 처리할 업무를 표시합니다. 완료·취소된 기록은 이력 문서에서 계속 확인할 수 있습니다.';
+
+  @override
+  String get release2517Paging =>
+      '이력을 볼 때 상태 필터를 지우거나 페이지를 이동하거나 새로 고침해도 이력 범위를 유지합니다. 문의 목록의 마지막 페이지를 모두 처리하면 유효한 페이지로 이동합니다.';
+
+  @override
+  String get release2517Drafts =>
+      '이력에는 처리 대기 중인 임시 저장 자료나 작업 버튼이 섞여 표시되지 않습니다. 미완료 임시 저장 자료는 원래 작업에 연결되어 이어서 작성할 수 있습니다.';
+
+  @override
   String get editorDocumentIdentityChanged =>
       '문서 또는 원본이 변경되었습니다. 이 페이지를 다시 열어 주세요.';
 

@@ -28,6 +28,7 @@ public class WarehouseInboundTaskCenterController {
     @PreAuthorize("hasAnyAuthority('warehouse_inbound:view','warehouse_purchase_receipt_history:view',"
             + "'warehouse_subcontract_receipt_history:view','warehouse_iqc_stock_in:view','warehouse_iqc_return:view','stock_doc:view')")
     public Page list(@RequestParam(defaultValue="ALL") String source,
+                     @RequestParam(defaultValue="ACTIVE") String view,
                      @RequestParam(defaultValue="") String status,
                      @RequestParam(defaultValue="") String keyword,
                      @RequestParam(required=false) String billNo,
@@ -38,7 +39,8 @@ public class WarehouseInboundTaskCenterController {
                      @RequestParam(required=false) String order,
                      @RequestParam(defaultValue="1") int page,
                      @RequestParam(defaultValue="30") int size) {
-        return service.list(new Filter(source,status,keyword,billNo,dateFrom,dateTo,scopeWarehouseId,page,size,sort,order));
+        return service.list(new Filter(source,status,keyword,billNo,dateFrom,dateTo,scopeWarehouseId,page,size,sort,order,
+                WarehouseTaskCenterContracts.TaskView.requested(view)));
     }
 
     @GetMapping("/{rowKey}/detail")

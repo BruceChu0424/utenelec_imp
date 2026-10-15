@@ -80,6 +80,7 @@ class WarehouseTaskRecordsCall {
     required this.status,
     required this.page,
     required this.scope,
+    this.view = WarehouseTaskView.active,
     this.keyword,
     this.billNo,
     this.sort,
@@ -90,6 +91,7 @@ class WarehouseTaskRecordsCall {
   final String? status;
   final int page;
   final WarehouseTaskScope scope;
+  final WarehouseTaskView view;
   final String? keyword;
   final String? billNo;
   final String? sort;
@@ -138,6 +140,7 @@ class WarehouseTaskRecordsFakeGateway implements WarehouseTaskCenterGateway {
   Future<WarehouseTaskCenterPageResult> list({
     required WarehouseTaskDirection direction,
     String source = 'ALL',
+    WarehouseTaskView view = WarehouseTaskView.active,
     String? status,
     String? keyword,
     String? billNo,
@@ -151,6 +154,7 @@ class WarehouseTaskRecordsFakeGateway implements WarehouseTaskCenterGateway {
   }) async {
     final call = WarehouseTaskRecordsCall(
       direction: direction,
+      view: view,
       source: source,
       status: status,
       keyword: keyword,
@@ -241,10 +245,12 @@ class _ViewSpec {
     this.direction = WarehouseTaskDirection.outbound,
     this.source = 'ALL',
     this.sources = warehouseTestOutboundSources,
+    this.view = WarehouseTaskView.active,
   });
   final WarehouseTaskDirection direction;
   final String source;
   final Map<String, String> sources;
+  final WarehouseTaskView view;
 }
 
 final _view = StateProvider<_ViewSpec>((_) => const _ViewSpec());
@@ -341,6 +347,7 @@ Future<_Harness> _pump(
                 child: WarehouseTaskRecordsView(
                   key: const Key('same-record-view'),
                   direction: value.direction,
+                  view: value.view,
                   source: value.source,
                   sources: value.sources,
                 ),
@@ -406,6 +413,89 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets('历史单据向服务器声明历史范围且不混草稿或办理入口', (tester) async {
+    final row = warehouseTestRecord(
+      source: 'FINISHED',
+      record: 'STOCK_DOC',
+      id: 'completed',
+      billNo: 'FINISHED-CLOSED',
+      status: 'FINISHED_POSTED',
+      statusLabel: '成品已入库',
+      action: 'STOCK_EDIT',
+      canHandle: true,
+      data: const {'docType': 'FINISHED_IN'},
+    );
+    final draftSpec = FormDraftCatalog.stockDocument.spec(
+      route: '/warehouse/FINISHED_IN/new',
+    );
+    final draft = FormDraft(
+      id: 'local-future-document',
+      title: '不能混入历史的填写草稿',
+      module: draftSpec.module,
+      route: draftSpec.route,
+      permission: draftSpec.permission,
+      draftKind: draftSpec.draftKind,
+      updatedAt: DateTime.utc(2026, 10, 15),
+      data: const {'billNo': 'LOCAL-FUTURE'},
+    );
+    final gateway = WarehouseTaskRecordsFakeGateway([row]);
+    await _pump(
+      tester,
+      gateway,
+      spec: const _ViewSpec(
+        direction: WarehouseTaskDirection.inbound,
+        source: 'FINISHED',
+        sources: warehouseTestInboundSources,
+        view: WarehouseTaskView.history,
+      ),
+      drafts: [draft],
+    );
+    expect(gateway.calls.single.view, WarehouseTaskView.history);
+    expect(find.text('FINISHED-CLOSED'), findsOneWidget);
+    expect(find.text('LOCAL-FUTURE'), findsNothing);
+    expect(find.text('新建产成品入库'), findsNothing);
+    expect(_table(tester).selectable, isFalse);
+    expect(_table(tester).batchActionsBuilder, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('活动与历史切换清除选择并隔离迟到响应', (tester) async {
+    final active = warehouseTestRecord(
+      source: 'FINISHED',
+      record: 'REPORT',
+      id: 'active',
+      billNo: 'FUTURE',
+      action: 'FINISHED_REGISTER',
+      canHandle: true,
+    );
+    final closed = warehouseTestRecord(
+      source: 'FINISHED',
+      record: 'STOCK_DOC',
+      id: 'closed',
+      billNo: 'HISTORICAL',
+      status: 'FINISHED_POSTED',
+      statusLabel: '成品已入库',
+    );
+    final gateway = WarehouseTaskRecordsFakeGateway([], controlled: true);
+    final harness = await _pump(tester, gateway, settle: false);
+    final old = gateway.calls.single;
+    harness.container.read(_view.notifier).state = const _ViewSpec(
+      view: WarehouseTaskView.history,
+    );
+    await tester.pump();
+    await tester.pump();
+    final historical = gateway.calls.last;
+    expect(historical.view, WarehouseTaskView.history);
+    historical.result.complete(gateway.pageOf([closed]));
+    await tester.pumpAndSettle();
+    old.result.complete(gateway.pageOf([active]));
+    await tester.pumpAndSettle();
+    expect(find.text('HISTORICAL'), findsOneWidget);
+    expect(find.text('FUTURE'), findsNothing);
+    expect(_table(tester).selectable, isFalse);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'legacy JSON without extra capability keeps inspection-first only',
     (tester) async {
@@ -720,6 +810,7 @@ void main() {
       expect(api.lastPath, '/warehouse/task-center/inbound');
       expect(api.lastQuery, {
         'source': 'PURCHASE',
+        'view': 'ACTIVE',
         'status': 'PURCHASE_RECEIPT_DRAFT',
         'keyword': 'receipt',
         'billNo': 'PR-001',

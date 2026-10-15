@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.materialbin;
 
+import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.TaskView;
 import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WorkshopMaterialNoticePort;
 import com.uten.imp.application.port.WorkshopMaterialSetupPort;
@@ -331,8 +332,26 @@ public class WorkshopMaterialRequisitionService {
     public PageResponse<RequisitionView> list(String status, String kind, UUID workshopId,
                                               WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
                                               int page, int size) {
+        return list(status, kind, workshopId, warehouseScope, page, size,
+                TaskView.ACTIVE);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<RequisitionView> list(String status, String kind, UUID workshopId,
+                                              WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+                                              int page, int size,
+                                              TaskView view) {
+        return list(status,kind,workshopId,warehouseScope,page,size,view,null);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<RequisitionView> list(String status, String kind, UUID workshopId,
+                                              WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+                                              int page, int size, TaskView view, String keyword) {
         MapSqlParameterSource params = new MapSqlParameterSource();
         StringBuilder where = new StringBuilder(scope.predicate("requisition.workshop_department_id", params));
+        where.append(view == TaskView.HISTORY
+                ? " AND requisition.status IN ('DONE','CANCELLED')" : " AND requisition.status = 'PENDING'");
         if (status != null && !status.isBlank()) {
             if (!Set.of("PENDING", "DONE", "CANCELLED").contains(status)) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "单据状态不对");
@@ -350,6 +369,20 @@ public class WorkshopMaterialRequisitionService {
         }
         String warehouseFilter = scope.requisitionWarehouseFilter(warehouseScope, params);
         if (!warehouseFilter.isEmpty()) where.append(" AND ").append(warehouseFilter);
+        if (keyword != null && !keyword.isBlank()) {
+            params.addValue("keyword", "%" + keyword.strip().toLowerCase(java.util.Locale.ROOT) + "%");
+            where.append("""
+                     AND (LOWER(COALESCE(requisition.request_no,'')) LIKE :keyword
+                       OR EXISTS (SELECT 1 FROM departments search_workshop
+                                  WHERE search_workshop.id=requisition.workshop_department_id
+                                    AND LOWER(COALESCE(search_workshop.name,'')) LIKE :keyword)
+                       OR EXISTS (SELECT 1 FROM workshop_material_requisition_lines search_line
+                                  JOIN goods search_goods ON search_goods.id=search_line.goods_id
+                                  WHERE search_line.requisition_id=requisition.id
+                                    AND (LOWER(COALESCE(search_goods.code,'')) LIKE :keyword
+                                      OR LOWER(COALESCE(search_goods.name,'')) LIKE :keyword)))
+                    """);
+        }
         var pageable = Pageables.of(page, size);
         Long total = db.queryForObject("SELECT count(*) FROM workshop_material_requisitions requisition WHERE "
                 + where, params, Long.class);

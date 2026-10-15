@@ -72,6 +72,20 @@ class WebsiteInquiryServiceTest {
     }
 
     @Test
+    void listScopesAreForwardedBeforePagingAndUnknownScopesAreRejected() {
+        when(repository.search(anyString(), anyString(), any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+        for (String scope : new String[]{null, "ACTIVE", "HISTORY", "following"}) service.list(scope, " keyword ", 2, 1);
+        ArgumentCaptor<String> scopes = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<org.springframework.data.domain.Pageable> pages = ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.times(4)).search(scopes.capture(), org.mockito.ArgumentMatchers.eq("keyword"), pages.capture());
+        assertEquals(java.util.List.of("ACTIVE", "ACTIVE", "HISTORY", "following"), scopes.getAllValues());
+        assertTrue(pages.getAllValues().stream().allMatch(page -> page.getPageNumber() == 1 && page.getPageSize() == 1));
+        assertEquals(java.util.List.of("receivedAt", "id"), pages.getValue().getSort().stream().map(Sort -> Sort.getProperty()).toList());
+        assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class, () -> service.list("UNKNOWN", null, 1, 20)).getCode());
+    }
+
+    @Test
     void ingestCreatesOnceAndRepeatsIdempotently() {
         when(repository.findBySourceId("web-1")).thenReturn(Optional.empty());
         assertTrue(service.ingest(ingestRequest("web-1")));

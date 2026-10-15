@@ -120,7 +120,9 @@ class _HrProfileChangesListPageState
           _departmentId = value;
         case 'status':
           // 'pending' 即默认待审段（后端空值口径），与分段值对齐。
-          _status = (value == null || value == 'pending') ? null : value;
+          _status = value == 'pending'
+              ? null
+              : value ?? (_isPendingSegment ? null : 'history');
           _departmentId = null;
         default:
           return;
@@ -152,6 +154,11 @@ class _HrProfileChangesListPageState
       value: 'cancelled',
       count: 0,
       label: l10n.profileChangeStatusCancelled,
+    ),
+    MasterFacetBucket(
+      value: 'approved',
+      count: 0,
+      label: l10n.profileChangeStatusApproved,
     ),
   ];
 
@@ -313,27 +320,12 @@ class _HrProfileChangesListPageState
                 ),
                 // 已生效/已驳回为浏览型 → 中性括号；仅当前段显示（取列表全量
                 // total，与报销审批历史段同款口径），不为此另发计数请求。
-                UtenFilterSegment<String?>(
-                  value: 'applied',
-                  label: l10n.profileChangeFilterApplied,
-                  count: _status == 'applied' ? async.valueOrNull?.total : null,
-                ),
-                UtenFilterSegment<String?>(
-                  value: 'rejected',
-                  label: l10n.profileChangeFilterRejected,
-                  count: _status == 'rejected'
-                      ? async.valueOrNull?.total
-                      : null,
-                ),
-                UtenFilterSegment<String?>(
-                  value: 'cancelled',
-                  label: l10n.profileChangeStatusCancelled,
-                  count: _status == 'cancelled'
-                      ? async.valueOrNull?.total
-                      : null,
+                const UtenFilterSegment<String?>(
+                  value: 'history',
+                  label: '历史单据',
                 ),
               ],
-              selected: {_status},
+              selected: {_isPendingSegment ? null : 'history'},
               onSelectionChanged: _onSegmentChanged,
             ),
           ),
@@ -383,7 +375,10 @@ class _HrProfileChangesListPageState
           'status': _statusFacets(l10n),
         },
         nullCounts: const {},
-        filters: {'departmentName': _departmentId, 'status': _effectiveStatus},
+        filters: {
+          'departmentName': _departmentId,
+          'status': _status == 'history' ? null : _effectiveStatus,
+        },
         onFilterChanged: _onFilterChanged,
         // 待审段开多选 + 悬浮批量通过/驳回；已生效/已驳回段只读浏览。
         selectable: _isPendingSegment,

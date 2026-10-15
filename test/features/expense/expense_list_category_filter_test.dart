@@ -40,6 +40,16 @@ void main() {
     );
     expect(table.facets.keys, containsAll(<String>['status', 'category']));
     expect(
+      (api.lastQuery?['status'] as String?)?.split(','),
+      contains('APPROVED'),
+      reason: '审批通过但未付款仍在进行中',
+    );
+    expect(
+      (api.lastQuery?['status'] as String?)?.split(','),
+      isNot(contains('PAID')),
+      reason: '已付款只能在历史单据',
+    );
+    expect(
       table.facets['category']?.map((bucket) => bucket.value),
       containsAll(<String>['TRANSPORT', 'TRAVEL', 'MEAL', 'OFFICE', 'OTHER']),
     );

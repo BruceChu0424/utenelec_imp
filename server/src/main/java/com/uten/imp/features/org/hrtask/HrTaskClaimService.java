@@ -59,6 +59,7 @@ public class HrTaskClaimService {
     private ClaimOutcome claimInternal(String taskType, UUID employeeId) {
         requireTaskType(taskType);
         requireCanHandle(taskType);
+        requireOpenCelebration(taskType, employeeId);
         UUID me = currentUser.requireEmployeeId();
         HrTaskClaim existing = claimRepo
                 .findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(taskType, employeeId)
@@ -94,6 +95,7 @@ public class HrTaskClaimService {
     @Transactional
     public void release(String taskType, UUID employeeId) {
         requireTaskType(taskType);
+        requireOpenCelebration(taskType, employeeId);
         UUID me = currentUser.requireEmployeeId();
         boolean canManage = currentUser.get()
                 .map(u -> u.getPermissions().contains("employee:edit"))
@@ -117,6 +119,7 @@ public class HrTaskClaimService {
     public HrTaskClaimView takeover(String taskType, UUID employeeId) {
         requireTaskType(taskType);
         requireCanHandle(taskType);
+        requireOpenCelebration(taskType, employeeId);
         UUID me = currentUser.requireEmployeeId();
         HrTaskClaim previous = claimRepo
                 .findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(taskType, employeeId)
@@ -162,6 +165,15 @@ public class HrTaskClaimService {
     /** 认领人姓名（懒查，数百人规模下成本可忽略）。 */
     String claimantName(UUID employeeId) {
         return empRepo.findById(employeeId).map(Employee::getFullName).orElse("同事");
+    }
+
+    /** Published celebrations are complete; their archive cannot change soft claims. */
+    private void requireOpenCelebration(String taskType, UUID employeeId) {
+        if (("birthday".equals(taskType) || "anniversary".equals(taskType))
+                && claimRepo.celebrationPublished(employeeId, taskType,
+                    com.uten.imp.common.time.BusinessTime.today().getYear())) {
+            throw new ApiException(ErrorCode.CONFLICT, "本年度庆典已发布，请在历史单据查看");
+        }
     }
 
     /** 证件核对与列表同一道权限：超管或 employee:pii:edit，否则不能认领 / 接管。 */

@@ -491,6 +491,19 @@ class ExpenseClaimServiceTest {
         verify(applicantQuery).mineClaimNoFacets(actorId,false,false);
     }
 
+    @Test
+    void mineActiveAndHistoricalFacetsUseTheSamePaymentBoundaryAsTheList() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));
+        when(applicantQuery.mineClaimNoFacets(actorId, false, false, false)).thenReturn(List.of(
+                new ExpenseApplicantQuery.FacetRow("BX-APPROVED-UNPAID", "BX-APPROVED-UNPAID", 1)));
+        when(applicantQuery.mineClaimNoFacets(actorId, false, false, true)).thenReturn(List.of(
+                new ExpenseApplicantQuery.FacetRow("BX-PAID", "BX-PAID", 1)));
+        assertEquals("BX-APPROVED-UNPAID", service.facets("mineActive").claimNos().getFirst().value());
+        assertEquals("BX-PAID", service.facets("mineHistory").claimNos().getFirst().value());
+        verify(applicantQuery).mineClaimNoFacets(actorId, false, false, false);
+        verify(applicantQuery).mineClaimNoFacets(actorId, false, false, true);
+    }
+
     // ---- 发票登记（V608） ---------------------------------------------------------
 
     @Test

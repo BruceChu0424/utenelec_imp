@@ -26,6 +26,9 @@ public interface ProfileChangeRepository extends JpaRepository<ProfileChangeRequ
           AND (CAST(:departmentId AS uuid) IS NULL OR e.department_id = CAST(:departmentId AS uuid))
         GROUP BY p.batch_id
         HAVING (CAST(:status AS text) IS NULL OR
+          (CAST(:status AS text) = 'history' AND
+            MAX(CASE p.status WHEN 'pending' THEN 5 WHEN 'applied' THEN 4 WHEN 'approved' THEN 3
+              WHEN 'rejected' THEN 2 WHEN 'cancelled' THEN 1 ELSE 0 END) BETWEEN 1 AND 4) OR
           MAX(CASE p.status WHEN 'pending' THEN 5 WHEN 'applied' THEN 4 WHEN 'approved' THEN 3
             WHEN 'rejected' THEN 2 WHEN 'cancelled' THEN 1 ELSE 0 END) =
           CASE CAST(:status AS text) WHEN 'pending' THEN 5 WHEN 'applied' THEN 4 WHEN 'approved' THEN 3
@@ -75,7 +78,10 @@ public interface ProfileChangeRepository extends JpaRepository<ProfileChangeRequ
         JOIN departments d ON d.id = e.department_id
         WHERE p.batch_id IN (
           SELECT p.batch_id FROM profile_change_requests p GROUP BY p.batch_id
-          HAVING MAX(CASE p.status WHEN 'pending' THEN 5 WHEN 'applied' THEN 4 WHEN 'approved' THEN 3
+          HAVING (CAST(:status AS text) = 'history' AND
+            MAX(CASE p.status WHEN 'pending' THEN 5 WHEN 'applied' THEN 4 WHEN 'approved' THEN 3
+              WHEN 'rejected' THEN 2 WHEN 'cancelled' THEN 1 ELSE 0 END) BETWEEN 1 AND 4) OR
+          MAX(CASE p.status WHEN 'pending' THEN 5 WHEN 'applied' THEN 4 WHEN 'approved' THEN 3
             WHEN 'rejected' THEN 2 WHEN 'cancelled' THEN 1 ELSE 0 END) =
           CASE CAST(:status AS text) WHEN 'pending' THEN 5 WHEN 'applied' THEN 4 WHEN 'approved' THEN 3
             WHEN 'rejected' THEN 2 WHEN 'cancelled' THEN 1 ELSE -1 END)

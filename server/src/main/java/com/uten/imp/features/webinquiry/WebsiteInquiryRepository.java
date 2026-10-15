@@ -15,7 +15,9 @@ public interface WebsiteInquiryRepository extends JpaRepository<WebsiteInquiry, 
 
     @Query("""
             SELECT w FROM WebsiteInquiry w
-            WHERE (:status IS NULL OR w.status = :status)
+            WHERE (:status IS NULL OR w.status = :status
+              OR (:status = 'ACTIVE' AND w.status IN ('new', 'following'))
+              OR (:status = 'HISTORY' AND w.status IN ('converted', 'closed')))
               AND (:keyword IS NULL OR :keyword = ''
                    OR lower(w.name)    LIKE lower(concat('%', :keyword, '%'))
                    OR lower(w.company) LIKE lower(concat('%', :keyword, '%'))

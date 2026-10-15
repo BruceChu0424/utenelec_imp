@@ -10,7 +10,7 @@ import java.util.UUID;
  * percent = plannedInboundQty / totalQty；actualSurplusInboundQty 单列，不抵扣计划责任。
  * todayQty = 今日成品入库量（当日已审 FINISHED_IN 按 plan_draw_links 溯源汇总，基本单位）。
  * 顶层只列父计划；subplans 为拆分生成的子计划进度（点开展示）。
- * closed 为派生口径（所有明细 qty-iqty ≤ 0，与 recomputeClosed 同口径，不依赖 is_closed 是否已重算）。
+ * closed 读取主表 is_closed（含物料结清守卫）；status/stopped/canceled 保留真实终态，归历史不伪造完工。
  * pinned/important 为看板标记。
  */
 public record PlanProgressRow(
@@ -42,7 +42,10 @@ public record PlanProgressRow(
         BigDecimal todayQty,
         java.util.List<SubProgress> subplans,
         BigDecimal plannedInboundQty,
-        BigDecimal actualSurplusInboundQty) {
+        BigDecimal actualSurplusInboundQty,
+        Short status,
+        boolean stopped,
+        boolean canceled) {
 
     /** 子计划进度（subplan_links 溯源）。 */
     public record SubProgress(

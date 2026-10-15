@@ -8,9 +8,9 @@ import '../../../shared/models/paged_result.dart';
 import '../models/website_inquiry.dart';
 
 abstract interface class WebsiteInquiryRepository {
-  /// 询盘分页列表，[status] 为空表示全部状态。
+  /// 单状态或 ACTIVE/HISTORY 范围；空值由服务端按 ACTIVE 查询。
   Future<PagedResult<WebsiteInquiry>> list({
-    WebsiteInquiryStatus? status,
+    String? status,
     String keyword = '',
     int page = 1,
     int size = 20,
@@ -37,7 +37,7 @@ class DioWebsiteInquiryRepository implements WebsiteInquiryRepository {
 
   @override
   Future<PagedResult<WebsiteInquiry>> list({
-    WebsiteInquiryStatus? status,
+    String? status,
     String keyword = '',
     int page = 1,
     int size = 20,
@@ -45,7 +45,7 @@ class DioWebsiteInquiryRepository implements WebsiteInquiryRepository {
     final json = await _api.get(
       ApiEndpoints.websiteInquiries,
       query: {
-        if (status != null) 'status': status.wireName,
+        'status': ?status,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
         'page': page,
         'size': size,

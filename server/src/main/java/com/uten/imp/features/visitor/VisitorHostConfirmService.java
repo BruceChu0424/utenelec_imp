@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.util.List;
 
 import static com.uten.imp.common.util.Strings.isBlank;
 
@@ -44,11 +45,12 @@ public class VisitorHostConfirmService {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
         final UUID eid = employeeId;
-        final String effectiveStatus = isBlank(status) ? "hostReviewing" : status;
+        final List<String> statuses = VisitorStatusFilter.parse(status, List.of("hostReviewing"));
         Specification<VisitorApplication> spec = (root, q, cb) -> cb.and(
                 cb.equal(root.get("deleted"), false),
                 cb.equal(root.get("hostEmployeeId"), eid),
-                cb.equal(root.get("status"), effectiveStatus));
+                statuses.size() == 1 ? cb.equal(root.get("status"), statuses.getFirst())
+                        : root.get("status").in(statuses));
         Pageable pageable = VisitorApplicationService.visitorPageable(page, size);
         Page<VisitorApplication> result = appRepo.findAll(spec, pageable);
         return appService.toPageResponse(result, pageable);

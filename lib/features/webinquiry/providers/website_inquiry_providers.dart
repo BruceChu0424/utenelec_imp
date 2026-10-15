@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/master_name_provider.dart'
+    show masterDataSessionKeyProvider;
 import '../models/website_inquiry.dart';
 import '../repositories/website_inquiry_repository.dart';
 
@@ -13,10 +15,11 @@ final websiteInquiryRepositoryProvider = Provider<WebsiteInquiryRepository>((
   return DioWebsiteInquiryRepository(ref.watch(apiClientProvider));
 });
 
-/// 列表筛选：null = 全部状态
+/// Null clears only the status within the current active/history scope.
 final websiteInquiryStatusFilterProvider = StateProvider<WebsiteInquiryStatus?>(
-  (ref) => WebsiteInquiryStatus.newOne,
+  (ref) => null,
 );
+final websiteInquiryHistoryProvider = StateProvider<bool>((ref) => false);
 
 final websiteInquiryListProvider =
     AsyncNotifierProvider.autoDispose<
@@ -26,10 +29,21 @@ final websiteInquiryListProvider =
 
 class WebsiteInquiryListNotifier
     extends AutoDisposeAsyncNotifier<PagedResult<WebsiteInquiry>> {
+  int _page = 1;
+  Object? _lastScope;
   @override
   Future<PagedResult<WebsiteInquiry>> build() {
-    ref.watch(websiteInquiryStatusFilterProvider);
-    return _fetch(1);
+    final status = ref.watch(websiteInquiryStatusFilterProvider);
+    final history = ref.watch(websiteInquiryHistoryProvider);
+    final scope = (status, history, ref.watch(masterDataSessionKeyProvider));
+    if (_lastScope != scope) _page = 1;
+    _lastScope = scope;
+    return ref
+        .watch(websiteInquiryRepositoryProvider)
+        .list(
+          status: status?.wireName ?? (history ? 'HISTORY' : 'ACTIVE'),
+          page: _page,
+        );
   }
 
   Future<void> refresh() async {
@@ -59,16 +73,39 @@ class WebsiteInquiryListNotifier
     final filter = ref.read(websiteInquiryStatusFilterProvider);
     final index = current.items.indexWhere((item) => item.id == updated.id);
     if (index < 0) return; // 不在当前页：翻页/刷新自然带上，不动。
-    final stillInFilter = filter == null || updated.status == filter;
+    final terminal =
+        updated.status == WebsiteInquiryStatus.converted ||
+        updated.status == WebsiteInquiryStatus.closed;
+    final stillInFilter =
+        terminal == ref.read(websiteInquiryHistoryProvider) &&
+        (filter == null || updated.status == filter);
     if (!stillInFilter) {
       final items = [...current.items]..removeAt(index);
+      final total = current.total > 0 ? current.total - 1 : 0;
+      final size = current.size > 0 ? current.size : 1;
+      final totalPages = (total + size - 1) ~/ size;
+      final lastPage = totalPages > 0 ? totalPages : 1;
+      final targetPage = current.page > lastPage
+          ? lastPage
+          : items.isEmpty && current.page > 1
+          ? current.page - 1
+          : current.page;
+      if (targetPage != current.page) {
+        // A server mutation can remove the last row of the last page. Reload
+        // a valid page through build so filters and stale-response guards stay
+        // identical to ordinary navigation and later refreshes.
+        _page = targetPage;
+        state = const AsyncLoading();
+        ref.invalidateSelf();
+        return;
+      }
       state = AsyncData(
         PagedResult(
           items: items,
           page: current.page,
           size: current.size,
-          total: current.total > 0 ? current.total - 1 : 0,
-          totalPages: current.totalPages,
+          total: total,
+          totalPages: totalPages,
         ),
       );
       return;
@@ -94,14 +131,13 @@ class WebsiteInquiryListNotifier
             state,
           )
         : const AsyncLoading<PagedResult<WebsiteInquiry>>();
-    state = await AsyncValue.guard(() => _fetch(page));
-  }
-
-  Future<PagedResult<WebsiteInquiry>> _fetch(int page) {
-    final status = ref.read(websiteInquiryStatusFilterProvider);
-    return ref
-        .read(websiteInquiryRepositoryProvider)
-        .list(status: status, page: page);
+    _page = page;
+    ref.invalidateSelf();
+    try {
+      await future;
+    } catch (_) {
+      /* Provider state retains the error. */
+    }
   }
 }
 

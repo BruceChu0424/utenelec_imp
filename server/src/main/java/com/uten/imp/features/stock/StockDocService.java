@@ -243,6 +243,23 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             List<Predicate> ps = new ArrayList<>();
             if (onlyDeleted) ps.add(cb.isTrue(root.get("deleted")));
             else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
+            // A request slice can be fully issued while the frozen instruction still has
+            // future work. Activity follows the effective whole instruction quantity;
+            // command capability separately checks the currently requested quantity.
+            Predicate approvedDraw = cb.disjunction();
+            if (f.docType() == null || f.docType().isBlank() || "DRAW".equals(f.docType())) {
+                var remaining = q.subquery(Integer.class);
+                Root<StockDocumentItem> item = remaining.from(StockDocumentItem.class);
+                remaining.select(cb.literal(1)).where(cb.equal(item.get("docId"),root.get("id")),
+                        cb.isFalse(item.get("deleted")),
+                        cb.greaterThan(cb.function("fn_production_draw_item_effective_qty",BigDecimal.class,item.get("id")),
+                                cb.coalesce(item.<BigDecimal>get("issuedQty"),BigDecimal.ZERO)));
+                approvedDraw = cb.and(cb.equal(root.get("docType"),"DRAW"),cb.equal(root.get("status"),(short)1),
+                        cb.lessThan(root.get("issueStatus"),(short)2),cb.exists(remaining));
+            }
+            Predicate activeWorkflow = cb.and(cb.isFalse(root.get("deleted")),cb.isFalse(root.get("closed")),
+                    cb.or(cb.equal(root.get("status"),(short)0),approvedDraw));
+            ps.add("HISTORY".equals(f.view()) ? cb.not(activeWorkflow) : activeWorkflow);
             // 草稿工作区与 stockDocument 徽章同口径；历史开关也不能把已删/已审/生产任务混回。
             // 仅附加收敛条件，下面既有的归属、查看权限、生产请求与仓库范围判定全部保留。
             if (Boolean.TRUE.equals(f.standaloneDrafts())) {
@@ -284,10 +301,6 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             if (f.departmentId() != null) ps.add(cb.equal(root.get("departmentId"), f.departmentId()));
             if (f.issueStatus() != null) {
                 ps.add(cb.equal(root.get("issueStatus"), f.issueStatus()));
-                if ("DRAW".equals(f.docType()) && f.issueStatus() < 2) {
-                    ps.add(cb.or(cb.isTrue(cb.function("fn_production_draw_pending", Boolean.class, root.get("id"))),
-                            includeDeleted || onlyDeleted ? cb.isTrue(root.get("deleted")) : cb.disjunction()));
-                }
             }
             if (Boolean.TRUE.equals(f.productionReturnRequests())) {
                 ps.add(cb.equal(root.get("docType"), "WDRAW"));

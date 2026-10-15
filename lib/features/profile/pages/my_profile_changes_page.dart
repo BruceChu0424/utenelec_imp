@@ -53,7 +53,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       RetainedAsyncPage<ProfileChangePage<MyProfileChangeListItem>>();
   Object get _paginationScope =>
       (_status, ref.watch(masterDataSessionKeyProvider));
-  String? _status; // null = 全部
+  String? _status = 'pending';
   int _page = 1; // 当前页（服务端真分页：翻页/换筛选都从后端按页拉取）
   final List<UtenSegment<String?>> _segments = [];
 
@@ -83,13 +83,23 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
       count: 0,
       label: l10n.profileChangeFilterRejected,
     ),
+    MasterFacetBucket(
+      value: 'approved',
+      count: 0,
+      label: l10n.profileChangeStatusApproved,
+    ),
+    MasterFacetBucket(
+      value: 'cancelled',
+      count: 0,
+      label: l10n.profileChangeStatusCancelled,
+    ),
   ];
 
   /// 表头状态筛选 → 切到对应分段（下推后端 status）并回第 1 页；选「所有」= 全部段。
   void _onFilterChanged(String key, String? value) {
     if (key != 'status') return;
     setState(() {
-      _status = value;
+      _status = value ?? (_status == 'pending' ? 'pending' : 'history');
       _page = 1;
     });
   }
@@ -125,10 +135,8 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
     _segments
       ..clear()
       ..addAll([
-        UtenSegment(value: null, label: l10n.profileChangeFilterAll),
         UtenSegment(value: 'pending', label: l10n.profileChangeFilterPending),
-        UtenSegment(value: 'applied', label: l10n.profileChangeFilterApplied),
-        UtenSegment(value: 'rejected', label: l10n.profileChangeFilterRejected),
+        const UtenSegment(value: 'history', label: '历史单据'),
       ]);
 
     final async = _retainedPage.resolve(
@@ -145,7 +153,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
             alignment: AlignmentDirectional.centerStart,
             child: UtenSegmentedFilter<String?>(
               segments: _segments,
-              selected: _status,
+              selected: _status == 'pending' ? 'pending' : 'history',
               onChanged: (v) => setState(() {
                 _status = v;
                 _page = 1; // 换筛选回到第 1 页
@@ -201,7 +209,7 @@ class _MyProfileChangesPageState extends ConsumerState<MyProfileChangesPage> {
           items: page.items,
           facets: {'status': _statusFacets(l10n)},
           nullCounts: const {},
-          filters: {'status': _status},
+          filters: {'status': _status == 'history' ? null : _status},
           onFilterChanged: _onFilterChanged,
           // 双击行打开本批旧→新差异弹窗（保留原卡片「查看差异」能力）。
           onRowTap: (item) => _openDetail(item.batchId),

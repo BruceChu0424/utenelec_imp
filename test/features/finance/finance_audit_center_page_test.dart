@@ -113,9 +113,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('已驳回'), findsOneWidget);
     expect(repository.pendingQueries.last, (true, false, null));
-    await selectFilterSegment(tester, '已批准');
+    await selectFilterSegment(tester, '历史单据');
     await tester.pumpAndSettle();
-    expect(find.text('已批准'), findsOneWidget);
+    expect(find.text('历史单据'), findsOneWidget);
     expect(repository.pendingQueries.last, (false, true, null));
     await selectFilterSegment(tester, '待确认');
     await tester.pumpAndSettle();

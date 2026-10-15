@@ -188,14 +188,14 @@ void main() {
     response.complete(_page('A', 2));
     await tester.pumpAndSettle();
     // The first page remains under the viewport's top until we scroll farther.
-    expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '1'), findsOneWidget);
     await _edge(tester, top: false);
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '2'), findsOneWidget);
     expect(suppliers.requests, [('A', 1), ('A', 2)]);
     await _edge(tester, top: true);
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '1'), findsOneWidget);
     expect(find.text('A-委外商1-0'), findsOneWidget);
 
     await tester.tap(find.text('确定'));
@@ -224,7 +224,7 @@ void main() {
         tester.getTopLeft(find.text('A-委外商3-0')).dy,
         closeTo(oldRowTop, 1),
       );
-      expect(find.widgetWithText(TextFormField, '3'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '3'), findsOneWidget);
 
       await _edge(tester, top: false);
       await _wheel(tester, 150);
@@ -232,7 +232,7 @@ void main() {
       expect(suppliers.requests.last, ('A', 4));
       await _edge(tester, top: true);
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(TextFormField, '2'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '2'), findsOneWidget);
       await tester.tap(find.text('A-委外商2-0'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('确定'));
@@ -252,7 +252,7 @@ void main() {
       await _wheel(tester, 150);
       failed.completeError(StateError('offline'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '1'), findsOneWidget);
       await _edge(tester, top: false);
       await _wheel(tester, 150);
       expect(suppliers.requests, [('A', 1), ('A', 2)]);
@@ -263,7 +263,7 @@ void main() {
       expect(suppliers.requests, [('A', 1), ('A', 2), ('A', 2)]);
       retried.complete(_page('A', 2));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(TextFormField, '1'), findsOneWidget);
+      expect(find.widgetWithText(TextField, '1'), findsOneWidget);
       await _edge(tester, top: true);
       expect(find.text('A-委外商1-0'), findsOneWidget);
       expect(tester.takeException(), isNull);

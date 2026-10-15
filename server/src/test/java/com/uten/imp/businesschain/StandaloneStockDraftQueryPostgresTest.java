@@ -69,13 +69,14 @@ class StandaloneStockDraftQueryPostgresTest {
     @Autowired WarehouseKeeperService keepers;
     @Autowired com.uten.imp.features.stock.StockDocAccessPolicy stockAccess;
     private FullChainEndToEndTest fixture;
-    private UUID keeper, other, employee, otherEmployee, warehouseA, warehouseB;
+    private UUID keeper, other, employee, otherEmployee, warehouseA, warehouseB, material, unit;
 
     @BeforeEach void prepare() {
         fixture = new FullChainEndToEndTest();
         beans.autowireBean(fixture);
         String tag = "standalone-" + UUID.randomUUID().toString().substring(0, 8);
         var world = fixture.seedWorld(tag);
+        material=world.goodsA(); unit=world.unitId();
         keeper = fixture.createUserWithPerms(world, "keeper-" + tag, "stock_doc:view");
         other = fixture.createUserWithPerms(world, "other-" + tag, "stock_doc:view");
         employee = employee(keeper);
@@ -189,9 +190,45 @@ class StandaloneStockDraftQueryPostgresTest {
         Map<String, String> onlyHistory = Map.of("standaloneDrafts", "true", "onlyDeleted", "true");
         assertTrue(workspace(onlyHistory).isEmpty());
         assertFacetMatchesPage("OTHER_IN", onlyHistory, page("OTHER_IN", onlyHistory));
-        assertEquals(Set.of(live, deleted), workspace(Map.of("includeDeleted", "true")),
-                "omitted standaloneDrafts keeps the previous history query behavior");
-        assertEquals(Set.of(deleted), workspace(Map.of("standaloneDrafts", "false", "onlyDeleted", "true")));
+        assertEquals(Set.of(live), workspace(Map.of("includeDeleted", "true")),
+                "active workflow excludes deleted records even when history visibility was requested");
+        assertEquals(Set.of(deleted), workspace(Map.of("view", "HISTORY", "includeDeleted", "true")));
+        assertEquals(Set.of(deleted), workspace(Map.of("view", "HISTORY", "standaloneDrafts", "false", "onlyDeleted", "true")));
+    }
+
+    @Test void lifecycleFiltersActualPostedStatesBeforeHttpPagesAndHeaderFacets() throws Exception {
+        UUID draft=document("OTHER_IN",employee,warehouseA,null,0,false);
+        UUID pendingReturn=document("WDRAW",employee,warehouseA,null,0,false);
+        UUID receivedReturn=document("WDRAW",employee,warehouseA,null,1,false);
+        UUID posted=document("OTHER_IN",employee,warehouseA,null,1,false);
+        UUID reversed=document("OTHER_IN",employee,warehouseA,null,-1,false);
+        UUID hidden=document("OTHER_IN",otherEmployee,warehouseA,null,1,false);
+        UUID deleted=document("OTHER_IN",employee,warehouseA,null,0,true);
+        UUID draw=document("DRAW",employee,warehouseA,null,0,false);
+        UUID line=UUID.randomUUID();
+        db.update("""
+                INSERT INTO stock_document_items(id,doc_id,bill_type,bill_no,bill_date,line_no,goods_id,unit_id,
+                  unit_rate,qty,base_qty,issued_qty,goods_snapshot_source,goods_code_snapshot,goods_name_snapshot)
+                SELECT ?,document.id,document.doc_type,document.bill_no,document.bill_date,1,goods.id,?,
+                  1,2,2,0,'MASTER_AT_SAVE',goods.code,goods.name
+                FROM stock_documents document JOIN goods ON goods.id=? WHERE document.id=?
+                """,line,unit,material,draw);
+        db.update("UPDATE stock_documents SET status=1 WHERE id=?",draw);
+        validateFixture();
+        assertTrue(db.queryForObject("SELECT fn_production_draw_pending(?)",Boolean.class,draw));
+        assertEquals(Set.of(draft,pendingReturn,draw),workspace(Map.of()));
+        assertEquals(Set.of(posted,reversed,receivedReturn),workspace(Map.of("view","HISTORY")));
+        assertFalse(workspace(Map.of("view","HISTORY")).contains(hidden));
+        assertFalse(workspace(Map.of("view","HISTORY")).contains(deleted));
+        for(String type:TYPES) {
+            assertFacetMatchesPage(type,Map.of(),page(type,Map.of()));
+            assertFacetMatchesPage(type,Map.of("view","HISTORY"),page(type,Map.of("view","HISTORY")));
+        }
+        JsonNode second=read("/api/stock/docs",Map.of("docType","OTHER_IN","view","HISTORY","page","2","size","1"),200);
+        assertEquals(2,second.path("total").asInt());
+        assertEquals(2,second.path("totalPages").asInt());
+        assertEquals(1,second.path("items").size());
+        read("/api/stock/docs",Map.of("docType","OTHER_IN","view","ALL"),422);
     }
 
     @Test void standaloneParameterDoesNotBypassTheStockViewPermission() throws Exception {

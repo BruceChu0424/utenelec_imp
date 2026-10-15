@@ -11,6 +11,7 @@ import '../../../../components/buttons/uten_button.dart';
 import '../../../../components/data_display/uten_status_cell_color.dart';
 import '../../../../components/feedback/uten_context_menu.dart';
 import '../../../../components/layout/uten_collapsing_header_scroll_view.dart';
+import '../../../../components/layout/uten_filter_toolbar.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/router/route_names.dart';
@@ -107,8 +108,8 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
             label: '周期盘点',
             inProgressCount: counting,
           ),
-        if (canIssue)
-          WarehouseTaskSegmentSpec(value: 'history', label: l10n.wmHistory),
+        if (canIssue || canReview)
+          const WarehouseTaskSegmentSpec(value: 'history', label: '历史单据'),
       ],
       embedded: true,
       externalKeyword: externalKeyword,
@@ -158,13 +159,86 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
               refreshTick: refreshTick,
               header: headerPrefix,
             ),
-            _ => WmRequisitionSegment(
+            _ => _WorkshopMaterialHistory(
               key: const ValueKey('wm-seg-history'),
+              canIssue: canIssue,
+              canReview: canReview,
               keyword: keyword,
               refreshTick: refreshTick,
               header: headerPrefix,
+              warehouseScope: warehouseScope,
             ),
           },
+    );
+  }
+}
+
+class _WorkshopMaterialHistory extends StatefulWidget {
+  const _WorkshopMaterialHistory({
+    super.key,
+    required this.canIssue,
+    required this.canReview,
+    required this.keyword,
+    required this.refreshTick,
+    required this.header,
+    required this.warehouseScope,
+  });
+  final bool canIssue;
+  final bool canReview;
+  final String keyword;
+  final int refreshTick;
+  final Widget header;
+  final WarehouseTaskScope warehouseScope;
+  @override
+  State<_WorkshopMaterialHistory> createState() =>
+      _WorkshopMaterialHistoryState();
+}
+
+class _WorkshopMaterialHistoryState extends State<_WorkshopMaterialHistory> {
+  String? _section;
+  @override
+  Widget build(BuildContext context) {
+    final options = <String, String>{
+      if (widget.canIssue) 'requisitions': '领料与退回',
+      if (widget.canReview) 'counts': '盘点单据',
+    };
+    if (options.isEmpty) return const Center(child: Text('暂无已授权的历史单据'));
+    final selected = options.containsKey(_section)
+        ? _section!
+        : options.keys.first;
+    final header = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        widget.header,
+        const SizedBox(height: UtenFilterRow.rowGap),
+        UtenFilterToolbar<String>(
+          autoSelectBadge: false,
+          segments: [
+            for (final entry in options.entries)
+              UtenFilterSegment(value: entry.key, label: entry.value),
+          ],
+          selected: {selected},
+          onSelectionChanged: (value) => setState(() => _section = value),
+        ),
+      ],
+    );
+    if (selected == 'counts') {
+      return StockCountReviewPage(
+        key: const ValueKey('wm-count-history'),
+        reviewRoute: 'WAREHOUSE',
+        initialStatus: 'HISTORY',
+        embedded: true,
+        externalHeader: header,
+        externalRefreshTick: widget.refreshTick,
+        warehouseScope: widget.warehouseScope,
+        keyword: widget.keyword,
+      );
+    }
+    return WmRequisitionSegment(
+      view: WarehouseTaskView.history,
+      keyword: widget.keyword,
+      refreshTick: widget.refreshTick,
+      header: header,
     );
   }
 }
@@ -173,6 +247,7 @@ class WorkshopMaterialTaskCenter extends ConsumerWidget {
 class WmRequisitionSegment extends ConsumerStatefulWidget {
   const WmRequisitionSegment({
     super.key,
+    this.view = WarehouseTaskView.active,
     this.status,
     this.kind,
     required this.keyword,
@@ -181,6 +256,7 @@ class WmRequisitionSegment extends ConsumerStatefulWidget {
   });
 
   final String? status;
+  final WarehouseTaskView view;
   final String? kind;
   final String keyword;
   final int refreshTick;
@@ -213,8 +289,11 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
     if (oldWidget.keyword != widget.keyword ||
         oldWidget.refreshTick != widget.refreshTick ||
         oldWidget.status != widget.status ||
+        oldWidget.view != widget.view ||
         oldWidget.kind != widget.kind) {
-      if (oldWidget.status != widget.status || oldWidget.kind != widget.kind) {
+      if (oldWidget.status != widget.status ||
+          oldWidget.kind != widget.kind ||
+          oldWidget.view != widget.view) {
         _statusFilter = widget.status;
         _kindFilter = widget.kind;
         _result = null;
@@ -233,6 +312,7 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
       final result = await ref
           .read(workshopMaterialRepositoryProvider)
           .requisitions(
+            view: widget.view,
             status: _statusFilter,
             kind: _kindFilter,
             keyword: widget.keyword,
@@ -272,7 +352,9 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
   void _onHeaderFilter(String key, String? value) {
     if (key != 'status' && key != 'kind') return;
     final allowed = key == 'status'
-        ? const {'PENDING', 'DONE', 'CANCELLED'}
+        ? widget.view == WarehouseTaskView.history
+              ? const {'DONE', 'CANCELLED'}
+              : const {'PENDING'}
         : const {'ISSUE', 'RETURN'};
     final next = allowed.contains(value) ? value : null;
     if ((key == 'status' ? _statusFilter : _kindFilter) == next) return;
@@ -418,13 +500,20 @@ class _WmRequisitionSegmentState extends ConsumerState<WmRequisitionSegment> {
           ],
         ],
         items: items,
-        facets: const {
+        facets: {
           'status': [
-            MasterFacetBucket(value: 'PENDING', label: '待处理', count: 0),
-            MasterFacetBucket(value: 'DONE', label: '已完成', count: 0),
-            MasterFacetBucket(value: 'CANCELLED', label: '已取消', count: 0),
+            if (widget.view == WarehouseTaskView.active)
+              const MasterFacetBucket(value: 'PENDING', label: '待处理', count: 0),
+            if (widget.view == WarehouseTaskView.history) ...[
+              const MasterFacetBucket(value: 'DONE', label: '已完成', count: 0),
+              const MasterFacetBucket(
+                value: 'CANCELLED',
+                label: '已取消',
+                count: 0,
+              ),
+            ],
           ],
-          'kind': [
+          'kind': const [
             MasterFacetBucket(value: 'ISSUE', label: '领料', count: 0),
             MasterFacetBucket(value: 'RETURN', label: '退料', count: 0),
           ],

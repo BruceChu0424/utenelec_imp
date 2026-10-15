@@ -210,6 +210,42 @@ class ProcurementIqcRejectionServiceContractTest {
         verify(globalCurrent, never()).requireId();
     }
 
+    @Test
+    void activeCasesAreFilteredBeforeDataPaginationAndCountAndTerminalHistoryIsSeparate() {
+        EntityManager em = mock(EntityManager.class);
+        List<NativeCall> calls = new ArrayList<>();
+        when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {
+            Map<String, Object> parameters = new LinkedHashMap<>();
+            calls.add(new NativeCall(compact(invocation.getArgument(0)), parameters));
+            Query query = mock(Query.class, org.mockito.Mockito.RETURNS_SELF);
+            when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenAnswer(argument -> {
+                parameters.put(argument.getArgument(0), argument.getArgument(1));
+                return query;
+            });
+            when(query.getResultList()).thenReturn(List.of());
+            when(query.getSingleResult()).thenReturn(2L);
+            return query;
+        });
+        UUID actor = UUID.randomUUID();
+        var service = service(em, mock(TxSessionVars.class),
+                currentUser(actor, "procurement_iqc_rejection:view"), mock(BusinessEventPublisher.class));
+        var page = service.list("PURCHASE", "ACTIVE", "bolt", 2, 1);
+        assertThat(page.total()).isEqualTo(2);
+        assertThat(page.page()).isEqualTo(2);
+        assertThat(page.totalPages()).isEqualTo(2);
+        assertThat(calls).hasSize(2).allSatisfy(call -> {
+            assertThat(call.sql()).contains("rejection.status in ('pending_return','return_recorded','finance_exception')")
+                    .contains("rejection.owner_user_id=:currentuserid");
+            assertThat(call.parameters()).containsEntry("currentUserId", actor).containsEntry("keyword", "%bolt%");
+        });
+        assertThat(calls.getFirst().parameters()).containsEntry("limit", 1).containsEntry("offset", 1L);
+        calls.clear();
+        service.list(null, "TERMINAL", null, 1, 1);
+        assertThat(calls).allSatisfy(call -> assertThat(call.sql())
+                .contains("'credit_confirmed','closed_no_credit','reversed'")
+                .doesNotContain("'pending_return','return_recorded','finance_exception'"));
+    }
+
     private static void stubProjectionQueries(
             EntityManager em, List<NativeCall> calls) {
         when(em.createNativeQuery(anyString())).thenAnswer(invocation -> {

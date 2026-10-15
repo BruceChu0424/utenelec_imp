@@ -56,6 +56,24 @@ void main() {
       ProcurementIqcReceiptType.subcontract,
     );
     expect(gateway.filters.last.status, 'PENDING_RETURN');
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
+    expect(gateway.filters.last.status, 'TERMINAL');
+    final historyTable = tester
+        .widget<MasterDataTableView<ProcurementIqcRejectionCase>>(
+          find.byKey(const Key('iqc-rejection-task-table')),
+        );
+    historyTable.onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(gateway.filters.last.status, 'TERMINAL', reason: '清除历史状态保持历史父类');
+    await tester.tap(find.text('待办与进行中'));
+    await tester.pumpAndSettle();
+    expect(gateway.filters.last.status, 'ACTIVE');
+    expect(
+      gateway.filters.every((filter) => filter.status != null),
+      isTrue,
+      reason: '普通列表不发无约束全状态请求',
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -143,7 +161,7 @@ void main() {
       final lists = requests
           .where((request) => request.path == '/procurement/iqc-rejections')
           .toList();
-      expect(lists, hasLength(3));
+      expect(lists, hasLength(2), reason: '未选择分类不再先拉全量终态记录');
       expect(lists.last.method, 'GET');
       expect(lists.last.uri.queryParameters, {
         'receiptType': 'SUBCONTRACT',

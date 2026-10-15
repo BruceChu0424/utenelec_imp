@@ -139,7 +139,8 @@ class WarehouseOutboundTaskCenterMigratedSchemaPostgresTest {
     }
 
     private static WarehouseOutboundTaskCenterSql.Plan plan(WarehouseTaskScope scope, String status, String billNo) {
-        return WarehouseOutboundTaskCenterSql.build(new Filter("ALL", status, null, billNo, null, null, null, 1, 20, "billNo", "asc"),
+        return WarehouseOutboundTaskCenterSql.build(new Filter("ALL", status, null, billNo, null, null, null, 1, 20, "billNo", "asc",
+                WarehouseTaskCenterContracts.TaskView.ALL),
                 new WarehouseOutboundTaskCenterSql.Access(true, true, true, true, true, new OwnerScope(false, Set.of(ACTOR))), scope, ACTOR.toString());
     }
     private static MapSqlParameterSource parameters(WarehouseOutboundTaskCenterSql.Plan plan) {

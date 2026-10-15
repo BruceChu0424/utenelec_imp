@@ -28,6 +28,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_paged_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -53,6 +54,7 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scope = ref.watch(payrollBatchScopeProvider);
     final batchesAsync = ref.watch(payrollBatchListProvider);
     final batches = batchesAsync.valueOrNull?.items ?? const <PayrollBatch>[];
     final selectedId = batches.any((batch) => batch.id == _selectedId)
@@ -149,10 +151,37 @@ class _PayrollReviewPageState extends ConsumerState<PayrollReviewPage> {
       appBar: const UtenAppBar(title: '工资批次审核', showBackButton: true),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: selectedBatch == null
+      floatingActionButton:
+          selectedBatch == null || scope == PayrollBatchScope.history
           ? null
           : _actionBar(selectedBatch, permissions),
-      body: body,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+            child: UtenFilterToolbar<PayrollBatchScope>(
+              segmentsKey: const Key('payroll-batch-scope'),
+              autoSelectBadge: false,
+              selected: {scope},
+              segments: const [
+                UtenFilterSegment(
+                  value: PayrollBatchScope.active,
+                  label: '进行中',
+                ),
+                UtenFilterSegment(
+                  value: PayrollBatchScope.history,
+                  label: '历史单据',
+                ),
+              ],
+              onSelectionChanged: (value) {
+                setState(() => _selectedId = null);
+                ref.read(payrollBatchScopeProvider.notifier).state = value;
+              },
+            ),
+          ),
+          Expanded(child: body),
+        ],
+      ),
     );
   }
 

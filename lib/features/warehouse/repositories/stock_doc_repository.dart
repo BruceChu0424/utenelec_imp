@@ -9,8 +9,10 @@ import '../../../shared/models/paged_result.dart';
 import '../models/stock_doc.dart';
 import '../models/stock_doc_outbound_review.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../../shared/warehouse/warehouse_task_view.dart';
 
 export '../models/stock_doc_outbound_review.dart';
+export '../../../shared/warehouse/warehouse_task_view.dart';
 
 class StockDocFilter {
   const StockDocFilter({
@@ -26,6 +28,7 @@ class StockDocFilter {
     this.warehouseScope = const WarehouseTaskScope.all(),
     this.billNo,
     this.standaloneDrafts = false,
+    this.view = WarehouseTaskView.active,
   });
   final String? keyword;
   final String? warehouseId;
@@ -53,6 +56,7 @@ class StockDocFilter {
 
   /// Independent document drafts only; production tasks keep their own entries.
   final bool standaloneDrafts;
+  final WarehouseTaskView view;
 }
 
 class StockDocRepository {
@@ -71,6 +75,7 @@ class StockDocRepository {
       ApiEndpoints.stockDocsBase,
       query: {
         'docType': type.code,
+        'view': filter.view.apiValue,
         'page': page,
         'size': size,
         if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
@@ -102,6 +107,7 @@ class StockDocRepository {
     final json = await api.get(
       '${ApiEndpoints.stockDocsBase}/facets',
       query: {
+        'view': filter.view.apiValue,
         'docType': type.code,
         if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)
           'keyword': filter.keyword!.trim(),

@@ -224,15 +224,23 @@ public class ExpenseApplicantQuery {
     public List<FacetRow> mineClaimNoFacets(UUID actor) { return mineClaimNoFacets(actor,false,false); }
 
     public List<FacetRow> mineClaimNoFacets(UUID actor, boolean includeDeleted, boolean onlyDeleted) {
+        return mineClaimNoFacets(actor, includeDeleted, onlyDeleted, null);
+    }
+
+    public List<FacetRow> mineClaimNoFacets(UUID actor, boolean includeDeleted, boolean onlyDeleted, Boolean historyOnly) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = entityManager.createNativeQuery("""
                         SELECT c.claim_no, COUNT(*)
                         FROM expense_claims c
                         WHERE (:onlyDeleted AND c.is_deleted OR NOT :onlyDeleted AND (:includeDeleted OR NOT c.is_deleted)) AND c.applicant_id = :actor
+                          AND (CAST(:historyOnly AS boolean) IS NULL
+                               OR (:historyOnly = true AND c.status = 'PAID')
+                               OR (:historyOnly = false AND c.status <> 'PAID'))
                         GROUP BY c.claim_no
                         ORDER BY c.claim_no
                         """)
                 .setParameter("actor", actor).setParameter("includeDeleted",includeDeleted).setParameter("onlyDeleted",onlyDeleted)
+                .setParameter("historyOnly", historyOnly)
                 .setMaxResults(500)
                 .getResultList();
         return rows.stream()

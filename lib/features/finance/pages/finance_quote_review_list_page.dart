@@ -270,14 +270,14 @@ class _FinanceQuoteReviewListPageState
           countForm: UtenSegmentCountForm.actionable,
         ),
         UtenFilterSegment(
-          value: SalesQuoteFinanceState.confirmed,
-          label: l10n.quoteFinanceTabConfirmed,
-        ),
-        UtenFilterSegment(
           value: SalesQuoteFinanceState.returned,
           label: l10n.quoteFinanceTabReturned,
           count: _returnedCount,
           countForm: UtenSegmentCountForm.inProgress,
+        ),
+        const UtenFilterSegment(
+          value: SalesQuoteFinanceState.confirmed,
+          label: '历史单据',
         ),
       ],
       selected: {_state},

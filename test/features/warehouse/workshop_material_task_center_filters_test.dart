@@ -7,6 +7,7 @@ import 'package:uten_imp/features/warehouse/materialbin/widgets/workshop_materia
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/platform_tables/platform_table_layout.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_view.dart';
 
 import 'workshop_material_test_support.dart';
 
@@ -28,7 +29,15 @@ class _SavedQuery extends PlatformTableLayoutNotifier {
 
 class _Requisitions extends FakeWorkshopMaterialRepository {
   final queries =
-      <({String? status, String? kind, int page, Map<String, String> scope})>[];
+      <
+        ({
+          WarehouseTaskView view,
+          String? status,
+          String? kind,
+          int page,
+          Map<String, String> scope,
+        })
+      >[];
   final rows = [
     for (var index = 1; index <= 20; index++)
       WmRequisition(
@@ -47,6 +56,7 @@ class _Requisitions extends FakeWorkshopMaterialRepository {
 
   @override
   Future<PagedResult<WmRequisition>> requisitions({
+    WarehouseTaskView view = WarehouseTaskView.active,
     String? status,
     String? kind,
     String? workshopId,
@@ -55,10 +65,19 @@ class _Requisitions extends FakeWorkshopMaterialRepository {
     int size = 20,
     Map<String, String> scope = const {},
   }) async {
-    queries.add((status: status, kind: kind, page: page, scope: Map.of(scope)));
+    queries.add((
+      view: view,
+      status: status,
+      kind: kind,
+      page: page,
+      scope: Map.of(scope),
+    ));
     final matching = rows
         .where(
           (row) =>
+              (view == WarehouseTaskView.active
+                  ? row.status == 'PENDING'
+                  : row.status != 'PENDING') &&
               (status == null || row.status == status) &&
               (kind == null || row.kind == kind),
         )
@@ -117,6 +136,7 @@ void main() {
         body: WarehouseListScope(
           scope: WarehouseTaskScope.warehouse('warehouse-1'),
           child: WmRequisitionSegment(
+            view: WarehouseTaskView.history,
             keyword: '',
             refreshTick: 0,
             header: SizedBox.shrink(),
@@ -125,8 +145,9 @@ void main() {
       ),
       repo: repo,
     );
-    expect(find.text('RETURN-21'), findsNothing);
-    expect(_table(tester).totalPages, 2);
+    expect(repo.queries.last.view, WarehouseTaskView.history);
+    expect(find.text('RETURN-21'), findsOneWidget);
+    expect(_table(tester).totalPages, 1);
     expect(_table(tester).requiredLeadingColumnKeys, ['status']);
     _table(tester).onFilterChanged('status', 'DONE');
     await tester.pumpAndSettle();
@@ -144,7 +165,8 @@ void main() {
     expect(repo.queries.last.status, isNull);
     expect(repo.queries.last.kind, isNull);
     expect(repo.queries.last.scope, {'scopeWarehouseId': 'warehouse-1'});
-    expect(_table(tester).totalPages, 2);
+    expect(repo.queries.last.view, WarehouseTaskView.history);
+    expect(_table(tester).totalPages, 1);
     expect(tester.takeException(), isNull);
   });
 

@@ -9,7 +9,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../shared/providers/document_status_counts_provider.dart';
@@ -18,7 +17,9 @@ import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_document_lifecycle_filter.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/page_resume_provider.dart';
@@ -63,6 +64,8 @@ class _ProductionDailyReportListPageState
       MasterDataTableRowsController<ProductionDailyReportListItem>();
   int _reloadGeneration = 0;
   int? _statusFilter;
+  bool _historyMode = false;
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
 
   /// 表头列筛选：车间（departments/tree 展平桶，value=UUID 回传 departmentId）。
@@ -98,6 +101,7 @@ class _ProductionDailyReportListPageState
   );
 
   bool get _canDeleteDrafts =>
+      !_historyMode &&
       _statusFilter == kProductionStatusDraft &&
       DocumentPermissionCatalog.productionDailyReport.allows(
         ref.read(currentPermissionsProvider),
@@ -138,6 +142,12 @@ class _ProductionDailyReportListPageState
           keyword: _list.normalizedKeyword,
           departmentId: _workshopIdFilter,
           status: _statusFilter,
+          dateFrom: _historyMode && _historyTime.range != null
+              ? ChinaDateTime.formatDate(_historyTime.range!.start)
+              : null,
+          dateTo: _historyMode && _historyTime.range != null
+              ? ChinaDateTime.formatDate(_historyTime.range!.end)
+              : null,
         ),
         sort: _list.sortKey,
         order: _list.sortOrder,
@@ -152,6 +162,7 @@ class _ProductionDailyReportListPageState
     final generation = ++_reloadGeneration;
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
+    if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) return;
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
@@ -166,14 +177,36 @@ class _ProductionDailyReportListPageState
     });
   }
 
-  void _onStatus(int? s) {
+  void _onCategory(int? status) {
     clearDraftSelection();
     setState(() {
-      _statusFilter = s;
+      _historyMode = status == null;
+      _statusFilter = status;
       _statusFilterSelected = true;
     });
     _reload(1);
   }
+
+  void _onHistoryStatus(int? status) {
+    clearDraftSelection();
+    setState(() => _statusFilter = status);
+    _reload(1);
+  }
+
+  Widget _lifecycleFilters(Map<String, int>? counts) =>
+      UtenDocumentLifecycleFilter(
+        selected: _statusFilterSelected,
+        history: _historyMode,
+        status: _statusFilter,
+        draftCount: counts?[DocumentStatusBucket.draft],
+        onCategoryChanged: _onCategory,
+        onHistoryStatusChanged: _onHistoryStatus,
+        historyTime: _historyTime,
+        onHistoryTimeChanged: (value) {
+          setState(() => _historyTime = value);
+          _reload(1);
+        },
+      );
 
   /// 表头筛选回调：车间值并进 repository.list 的 departmentId，重拉回第 1 页。
   void _onColumnFilterChanged(String key, String? value) {
@@ -230,7 +263,7 @@ class _ProductionDailyReportListPageState
 
   Widget _withFormDraftRows(
     MasterDataTableView<ProductionDailyReportListItem> table,
-  ) => _statusFilter == kProductionStatusDraft
+  ) => !_historyMode && _statusFilter == kProductionStatusDraft
       ? FormDraftCategoryTable<ProductionDailyReportListItem>(
           scope: _formDraftScope,
           table: table,
@@ -320,33 +353,7 @@ class _ProductionDailyReportListPageState
                     Padding(
                       padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
                       // 全平台统一筛选工具条：状态分段（搜索框在上方标题行，不在此收口）。
-                      child: UtenFilterToolbar<int?>(
-                        // 2026-09-21 用户口径: hub 卡有草稿红徽章, 子分类也要有数——
-                        // 草稿红徽章(与卡面同源同数), 已审 / 红冲中性括号, 「全部」不挂。
-                        segments: [
-                          const UtenFilterSegment(value: null, label: '全部'),
-                          UtenFilterSegment(
-                            value: kProductionStatusDraft,
-                            label: '草稿',
-                            count: statusCounts?[DocumentStatusBucket.draft],
-                            countForm: UtenSegmentCountForm.actionable,
-                          ),
-                          UtenFilterSegment(
-                            value: kProductionStatusApproved,
-                            label: '已审',
-                            count: statusCounts?[DocumentStatusBucket.approved],
-                          ),
-                          UtenFilterSegment(
-                            value: kProductionStatusReversed,
-                            label: '已反审',
-                            count: statusCounts?[DocumentStatusBucket.reversed],
-                          ),
-                        ],
-                        selected: _statusFilterSelected
-                            ? {_statusFilter}
-                            : const {},
-                        onSelectionChanged: _onStatus,
-                      ),
+                      child: _lifecycleFilters(statusCounts),
                     ),
                     Expanded(
                       child: _withFormDraftRows(
@@ -399,6 +406,8 @@ class _ProductionDailyReportListPageState
                           paginationScope: (
                             _list.normalizedKeyword,
                             _statusFilter,
+                            _historyMode,
+                            _historyTime,
                             _workshopIdFilter,
                           ),
                           onPageChange: (p) => _reload(p),

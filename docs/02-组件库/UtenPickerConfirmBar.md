@@ -1,39 +1,14 @@
-# UtenPickerConfirmBar · 滑窗选择器统一确认栏
+# UtenPickerConfirmBar：选择滑窗底部操作
 
-> 源码：[`uten_picker_confirm_bar.dart`](../../lib/components/layout/uten_picker_confirm_bar.dart) · 视觉基座：[UtenBottomActionBar](UtenBottomActionBar.md) · 最后核对：2026-09-24。
+右侧抽屉及窄屏底部面板共用 `UtenPickerConfirmBar`、`UtenPickerFooterLayout` 和 `UtenPickerActions`。列表点击只暂存，确认后才返回；取消及关闭不回填。
 
-## 一、用途
+- 左侧展示紧凑摘要，分页独立排布，操作组始终锚定最右下方。短摘要不能留下 flex 空洞把按钮推在中间。
+- 清空使用 `UtenButtonType.danger`，取消使用 `secondary`，确定使用 `primary`；清空无选择时禁用。
+- `summary` 可传入展开已选清单等自定义摘要，不重写操作条；`confirmButtonKey` 保持既有测试及调用方锚点。
+- 普通选择器确认条件默认 `selectedCount > 0`。员工多选允许确认空集合、位置选择允许“无父级”等业务使用 `confirmEnabled` 明确传入完整条件，包含加载、错误、候选失效和权限校验。
+- 分页使用真实输入外框与数字中心对齐，而不仅是让外层容器等高；桌面采用标准控件高度，触屏保留至少 48px 命中区。提交页码时校验页数范围，加载期间禁用，保留表格控制器的跨页与迟到响应规则。
+- 空间不足时摘要、分页及操作分行，操作继续靠右；不通过压缩字号或点击目标强塞一行。
 
-全站「滑窗/抽屉选择器」的统一底部确认栏，落实**二次操作契约**：点列表项仅高亮勾选，必须再点底部「确定」才把选中值 pop 回调用方；「取消」(或右上角关闭/点遮罩)= 放弃选择。公司年长用户多，点行即关的滑窗容易误选误关，2026-08-16 起所有选择滑窗统一为本契约。
+分类树的 flat 模式桌面行收紧为 36px，触屏至少 48px；非 flat 的管理树及用户保存的分栏宽度不重置。大字和长名称按实际内容增长，不裁掉可操作区域。
 
-## 二、参数
-
-| 参数 | 说明 |
-| --- | --- |
-| `selectedCount` | 已选条数；0 时「确定」禁用、左侧显示「请选择后点『确定』」 |
-| `onConfirm` | 确认回调(把选中值 `Navigator.pop` 回调用方) |
-| `onCancel` | 取消回调；缺省直接关闭滑窗 |
-| `selectedLabel` | 单选场景的已选项名称，左侧显示「已选择：xxx」；多选留空显示计数 |
-| `onClear` | 多选场景的「清空」按钮；null 不显示 |
-| `confirmLabel` | 确认按钮文案；多选调用方传「确定(n)」 |
-| `hint` | 左侧提示覆盖(如报工计划行选择器显示「共 N 条可报工任务」) |
-
-视觉沿用 `UtenBottomActionBar`(surface 吸底 + 顶部细分隔线 + 底部安全区)，左侧提示文字 + 右侧「清空(可选) / 取消 / 确定」。
-
-## 三、接入方(2026-08-16 起)
-
-- [UtenClientPicker](UtenClientPicker.md)(客户，单选)
-- [UtenGoodsPicker](UtenGoodsPicker.md)(货品，单选；**多选 2026-09-24 起改用自有底栏**——左侧「已选 N 项」胶囊点开底部已选清单滑层可逐项取消，右侧仍为 清空/取消/确定(N)，二次操作契约不变)
-- [UtenEmployeePicker](UtenEmployeePicker.md)(员工，单选)
-- `UtenDepartmentPicker`(部门，单/多选；单选默认即二次确认)
-- `UtenPositionPicker`(岗位，单选)
-- [UtenDepartmentEmployeePicker](UtenDepartmentEmployeePicker.md)(部门内选员工，单选)
-- 销售订单选择器(`sales_order_picker.dart`，生产计划来源单号)
-- 可报工计划行选择器(`reportable_plan_line_picker.dart`)
-- 公告类型选择器(`notice_type_picker.dart`)
-
-「从上游引入」「批量发货」等带业务动作的面板(底部主按钮是「引入 / 生成出货单」)不属于纯选择器，维持各自的主按钮文案，不强改成本组件。
-
-## 四、回归测试
-
-各接入选择器自身的 widget 测试覆盖点行高亮与点确定返回(如 `uten_client_picker_test.dart`、`department_edit_dialog_test.dart`)。
+货品单选/多选、主档、员工、部门、岗位、自定义岗位、位置、通知类型、销售订单、可报工计划行及权限员工选择均复用同一组件。点行即关闭的仓库等选择器保持其已有语义，不强加二次确认。

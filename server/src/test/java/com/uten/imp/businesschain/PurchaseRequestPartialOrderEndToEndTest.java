@@ -333,13 +333,106 @@ class PurchaseRequestPartialOrderEndToEndTest {
         org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"passAndStockPurchase",f.world(),finalReceipt,"1");
         assertThat(orders.detail(order).isClosed()).isTrue();
         assertApprovedReviewStage(order,"ORDER_PENDING_APPROVAL","FINANCE_REVIEW_PENDING");
+        var documentActive = new com.uten.imp.features.purchase.order.dto.OrderQueryFilter(null,null,null,null,null,null,"IN_PROGRESS",orders.detail(order).getBillNo());
+        assertThat(orders.list(documentActive,1,1,null,null).getTotal()).isEqualTo(1);
+        assertThat(orders.facets(documentActive).get("billNo")).hasSize(1);
         approve(f,order);
+        assertThat(orders.list(documentActive,1,1,null,null).getTotal()).isZero();
+        assertThat(orders.facets(documentActive).get("billNo")).isEmpty();
         assertThat(orders.detail(order).isClosed()).isTrue();
         assertThat(workbench.query("PURCHASE","IN_PROGRESS",orders.detail(order).getBillNo(),"",null,null,1,20).total()).isZero();
         assertThat(workbench.query("PURCHASE","COMPLETED",orders.detail(order).getBillNo(),"",null,null,1,20).items())
                 .extracting(com.uten.imp.features.operations.workbench.FulfillmentTaskRow::taskStatus).containsExactly("COMPLETED");
         assertThat(documentCounts.financeRejectedCounts().get("purchaseOrder")).isEqualTo(rejectedBefore);
         assertBalances(f,f.first(),"2","3","5");
+    }
+
+    @Test
+    void documentLifecycleUsesServerPaginationAndFacetsAndKeepsClosedFinancialReviewsActive() {
+        Fixture f = fixture("doc-lifecycle");
+        var active = new com.uten.imp.features.purchase.order.dto.OrderQueryFilter(
+                null, f.world().supplierId(), null, null, null, null, "IN_PROGRESS");
+        var first = orders.list(active, 1, 1, "billNo", "asc");
+        var second = orders.list(active, 2, 1, "billNo", "asc");
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(first.getTotalPages()).isEqualTo(2);
+        assertThat(second.getTotal()).isEqualTo(2);
+        assertThat(first.getItems().getFirst().getId()).isNotEqualTo(second.getItems().getFirst().getId());
+        assertThat(orders.facets(active).get("billNo")).hasSize(2);
+
+        UUID item = orders.detail(f.approvedOrder()).getItems().getFirst().getId();
+        UUID receipt = org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness, "receiveIntoQuarantine",
+                f.world(), f.world().goodsD(), item, "2", "NORMAL");
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness, "passAndStockPurchase", f.world(), receipt, "2");
+        assertThat(orders.detail(f.approvedOrder()).isClosed()).isTrue();
+        assertThat(orders.list(active, 1, 1, "billNo", "asc").getTotal()).isEqualTo(1);
+        assertThat(orders.list(active, 1, 1, "billNo", "asc").getItems()).extracting(row -> row.getId()).containsExactly(f.pendingOrder());
+        assertThat(orders.facets(active).get("billNo")).extracting(row -> row.get("value"))
+                .containsExactly(orders.detail(f.pendingOrder()).getBillNo());
+        var history = new com.uten.imp.features.purchase.order.dto.OrderQueryFilter(
+                null, f.world().supplierId(), null, null, null, null, null);
+        assertThat(orders.list(history, 1, 1, "billNo", "asc").getTotal()).isEqualTo(2);
+
+        var openRequests = new com.uten.imp.features.purchase.request.dto.RequestQueryFilter(
+                null, null, (short) 1, null, null, requests.detail(f.request()).getBillNo()).withClosed(false);
+        assertThat(requests.list(openRequests, 1, 1, null, null).getTotal()).isEqualTo(1);
+        approve(f, f.pendingOrder());
+        var remaining = createOrder(f, List.of(orderLine(f, f.first(), "5"), orderLine(f, f.second(), "4")));
+        submit(f, remaining.getId());
+        approve(f, remaining.getId());
+        assertThat(requests.detail(f.request()).isClosed()).isTrue();
+        assertThat(requests.list(openRequests, 1, 1, null, null).getTotal()).isZero();
+        assertThat(requests.facets(openRequests).get("billNo")).isEmpty();
+        assertThat(requests.list(openRequests.withClosed(null), 1, 1, null, null).getTotal()).isEqualTo(1);
+    }
+
+    @Test
+    void stoppedSalesOrdersAndTerminalProductionPlansLeaveWorkingListsButStayTraceable() {
+        var world = harness.seedWorld("lifecycle-plans-sales");
+        harness.loginAs(world.superAdminUserId());
+        var sales = beans.getBean(com.uten.imp.features.sales.order.SalesOrderService.class);
+        UUID ongoing = harness.createApprovedOrder(world, world.goodsA(), "10", "100");
+        UUID stopped = harness.createApprovedOrder(world, world.goodsA(), "10", "100");
+        sales.toggleStopped(stopped, true);
+        var salesActive = new com.uten.imp.features.sales.order.dto.OrderQueryFilter(
+                null, world.clientId(), null, null, null, null, null, null, "pending");
+        assertThat(sales.list(salesActive, 1, 1, null, null).getTotal()).isEqualTo(1);
+        assertThat(sales.list(salesActive, 1, 1, null, null).getItems()).extracting(row -> row.getId()).containsExactly(ongoing);
+        assertThat(sales.facets(salesActive).get("billNo")).hasSize(1);
+        var salesHistory = new com.uten.imp.features.sales.order.dto.OrderQueryFilter(
+                null, world.clientId(), null, null, null, null, null, null, null);
+        assertThat(sales.list(salesHistory, 1, 1, null, null).getTotal()).isEqualTo(2);
+
+        var plans = beans.getBean(com.uten.imp.features.production.plan.ProductionPlanService.class);
+        var numbers = beans.getBean(com.uten.imp.common.docnumber.DocNumberService.class);
+        String workshop = "生命周期隔离车间-" + world.departmentId();
+        UUID activePlan = null;
+        UUID stoppedPlan = null;
+        for (int kind = 0; kind < 5; kind++) {
+            UUID id = UUID.randomUUID();
+            if (kind == 0) activePlan = id;
+            if (kind == 2) stoppedPlan = id;
+            String bill = numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.PRODUCTION_PLAN);
+            db.update("""
+                    INSERT INTO production_plans(id,bill_no,bill_date,department_id,workshop_name,status,
+                                                 is_closed,is_stopped,is_canceled,maker_id,created_by)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                    """, id, bill, BusinessTime.today(), world.departmentId(), workshop,
+                    kind == 4 ? -1 : 1, kind == 1, kind == 2, kind == 3, world.employeeId(), world.superAdminUserId());
+        }
+        var activeRows = plans.progress(false, "billDate", 1, 1, null, workshop, null, null);
+        assertThat(activeRows.getTotal()).isEqualTo(1);
+        assertThat(activeRows.getItems().getFirst().planId()).isEqualTo(activePlan);
+        var historyRows = plans.progress(true, "billDate", 1, 10, null, workshop, null, null);
+        assertThat(historyRows.getTotal()).isEqualTo(4);
+        assertThat(historyRows.getItems()).filteredOn(row -> row.stopped()).hasSize(1)
+                .allSatisfy(row -> assertThat(row.closed()).isFalse());
+        assertThat(historyRows.getItems()).filteredOn(row -> row.canceled()).hasSize(1);
+        assertThat(historyRows.getItems()).filteredOn(row -> row.status() == -1).hasSize(1);
+        assertThat(plans.progressSummary(true, null, workshop, null, null).get("count")).isEqualTo(4L);
+        var activeDocuments = new com.uten.imp.features.production.plan.dto.PlanQueryFilter(
+                null, world.departmentId(), (short) 1, null, null, null, "ACTIVE");
+        assertThat(plans.list(activeDocuments,1,1,null,null).getTotal()).isEqualTo(1);
     }
 
     private void assertApprovedReviewStage(UUID order,String task,String display) {

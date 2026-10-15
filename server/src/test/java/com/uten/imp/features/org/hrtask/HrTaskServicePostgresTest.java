@@ -75,6 +75,47 @@ class HrTaskServicePostgresTest {
     }
 
     @Test
+    void publicationHistorySpansYearsAndUsesTheReadersNoticeAudienceBeforePaging() {
+        UUID actorId = UUID.randomUUID();
+        UUID actorEmployee = insertEmployee("history-reader", "active", null);
+        jdbc.update("INSERT INTO users(id,employee_id,login_account,password_hash) VALUES (?,?,?,'unused-fixture')",
+                actorId, actorEmployee, "history-" + actorId);
+        when(currentUser.get()).thenReturn(Optional.of(new AuthUser(actorId, actorEmployee, "hr-history",
+                Set.of("employee:view", "notice:read", "employee:pii:view"), false, true, false)));
+        UUID subject = insertEmployee("history", "resigned", null);
+        UUID oldest = historyNotice(subject, "birthday", "2024-01-03T08:00:00Z", "all", null);
+        historyNotice(subject, "birthday", "2025-02-04T08:00:00Z", "selected", null);
+        UUID selected = historyNotice(subject, "birthday", "2026-03-05T08:00:00Z", "selected", null);
+        jdbc.update("INSERT INTO notice_user_states(notice_id,user_id) VALUES (?,?)", selected, actorId);
+        UUID targeted = historyNotice(subject, "birthday", "2026-04-06T08:00:00Z", "all", actorId);
+        historyNotice(subject, "anniversary", "2026-05-07T08:00:00Z", "all", null);
+        UUID legacy = UUID.randomUUID();
+        jdbc.update("INSERT INTO notices(id,title,content,type,publisher,published_at,subject_name,event_label) VALUES (?,?,'旧发布记录','birthday','历史发布人','2023-01-01T08:00:00Z'::timestamptz,'旧主角快照','旧生日标签')",
+                legacy, "HRTASK-TEST-history-legacy-" + legacy);
+        var history = new HrCelebrationHistoryService(jdbc, currentUser);
+        var first = history.list("birthday", 1, 1);
+        assertEquals(4, first.getTotal());
+        assertEquals(4, first.getTotalPages());
+        assertEquals(targeted, first.getItems().getFirst().noticeId());
+        assertEquals(selected, history.list("birthday", 2, 1).getItems().getFirst().noticeId());
+        assertEquals(oldest, history.list("birthday", 3, 1).getItems().getFirst().noticeId());
+        assertEquals(legacy, history.list("birthday", 4, 1).getItems().getFirst().noticeId());
+        assertEquals("旧主角快照", history.list("birthday", 4, 1).getItems().getFirst().employeeName());
+        assertEquals("发布时姓名", first.getItems().getFirst().employeeName());
+        jdbc.update("UPDATE notice_user_states SET deleted_at = now() WHERE notice_id = ? AND user_id = ?", selected, actorId);
+        assertEquals(3, history.list("birthday", 1, 20).getTotal());
+        assertEquals(1, history.list("anniversary", 1, 20).getTotal());
+    }
+
+    private UUID historyNotice(UUID employeeId, String type, String published, String scope, UUID target) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO notices(id,title,content,type,publisher,published_at,audience_scope,audience_user_id) VALUES (?,?,'发布记录',?,'发布人快照',?::timestamptz,?,?)",
+                id, "HRTASK-TEST-history-" + id, type, published, scope, target);
+        jdbc.update("INSERT INTO notice_celebration_subjects(notice_id,employee_id,employee_name,event_label) VALUES (?,?,'发布时姓名','纪念事项快照')", id, employeeId);
+        return id;
+    }
+
+    @Test
     void employeeWhoseBirthMonthDayIsTodayAppearsInBirthdayTodayAndCountsInBadge() {
         LocalDate today = BusinessTime.today();
         UUID birthdayToday = insertEmployee("today", "active", monthDay(today));

@@ -24,6 +24,16 @@ public class HrTaskController {
 
     private final HrTaskService service;
     private final HrTaskClaimService claimService;
+    private final HrCelebrationHistoryService celebrationHistory;
+
+    @GetMapping("/celebrations/history")
+    @PreAuthorize("hasAuthority('employee:view') and hasAuthority('notice:read')")
+    public com.uten.imp.common.web.PageResponse<HrCelebrationHistoryService.Publication> celebrationHistory(
+            @org.springframework.web.bind.annotation.RequestParam String type,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "1") int page,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20") int size) {
+        return celebrationHistory.list(type, page, size);
+    }
 
     @GetMapping("/summary")
     @PreAuthorize("hasAuthority('employee:view')")

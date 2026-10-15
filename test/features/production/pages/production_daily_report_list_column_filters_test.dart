@@ -42,6 +42,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(api.lastQuery, isNull, reason: '未选分类不能加载已办结日报');
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['status'], 0);
+    expect(find.text('已审'), findsNothing);
+    expect(find.text('已反审'), findsNothing);
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
 
     MasterDataTableView<ProductionDailyReportListItem> tableWidget() =>
         tester.widget(
@@ -62,6 +70,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.lastQuery?['departmentId'], 'dept-1');
     expect(api.lastQuery?['page'], 1);
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?.containsKey('status'), isFalse);
+    await tester.tap(find.text('已审'));
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['status'], 1);
+    expect(api.lastQuery?['departmentId'], 'dept-1');
     expect(tester.takeException(), isNull);
   });
 }

@@ -23,7 +23,11 @@ class _FakeProfileChangeRepository extends Fake
       items: [
         MyProfileChangeListItem(
           batchId: 'batch-1',
-          status: ProfileChangeStatus.pending,
+          status: status == 'pending'
+              ? ProfileChangeStatus.pending
+              : status == 'rejected'
+              ? ProfileChangeStatus.rejected
+              : ProfileChangeStatus.applied,
           itemCount: 1,
           submittedAt: DateTime(2026, 9, 10, 9),
           fieldCodes: const ['phone'],
@@ -62,14 +66,35 @@ void main() {
       'pending',
       'applied',
       'rejected',
+      'approved',
+      'cancelled',
     ]);
-    expect(table.filters['status'], isNull, reason: '「全部」段不选中任何状态');
+    expect(table.filters['status'], 'pending');
+    expect(repo.listCalls.last['status'], 'pending');
 
     table.onFilterChanged('status', 'rejected');
     await tester.pumpAndSettle();
 
     expect(repo.listCalls.last['status'], 'rejected');
     expect(repo.listCalls.last['page'], 1);
+    var historyTable = tester
+        .widget<MasterDataTableView<MyProfileChangeListItem>>(
+          find.byKey(const Key('my-profile-changes-table')),
+        );
+    expect(
+      historyTable.rowMenuBuilder!(historyTable.items.single),
+      hasLength(1),
+      reason: '历史只能查看差异，不可撤销',
+    );
+    historyTable.onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['status'], 'history', reason: '清除历史子状态仍留在历史范围');
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
+    historyTable = tester.widget<MasterDataTableView<MyProfileChangeListItem>>(
+      find.byKey(const Key('my-profile-changes-table')),
+    );
+    expect(historyTable.filters['status'], isNull);
 
     await tester.pumpWidget(const SizedBox());
   });

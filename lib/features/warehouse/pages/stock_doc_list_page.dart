@@ -190,6 +190,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         .list(
           page: _list.pageNum,
           filter: StockDocFilter(
+            view: seg.history
+                ? WarehouseTaskView.history
+                : WarehouseTaskView.active,
             keyword: _list.normalizedKeyword,
             warehouseId: _warehouseIdFilter,
             departmentId: _isDraw ? _departmentIdFilter : null,
@@ -220,6 +223,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
             .read(stockDocRepositoryProvider(widget.docType))
             .billNoFacets(
               filter: StockDocFilter(
+                view: seg.history
+                    ? WarehouseTaskView.history
+                    : WarehouseTaskView.active,
                 keyword: _list.normalizedKeyword,
                 warehouseId: _warehouseIdFilter,
                 departmentId: _isDraw ? _departmentIdFilter : null,
@@ -300,7 +306,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       } else if (key == 'toWarehouse') {
         _toWarehouseIdFilter = value;
       } else if (key == 'issueStatus' && _canFilterIssueStatus) {
-        _issueStatus = int.tryParse(value ?? '');
+        _issueStatus = const {'0', '1'}.contains(value)
+            ? int.parse(value!)
+            : null;
       }
     });
     _reload(1);
@@ -484,16 +492,11 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                             count: statusCounts?[DocumentStatusBucket.draft],
                             countForm: UtenSegmentCountForm.actionable,
                           ),
-                          UtenFilterSegment(
-                            value: const _StockDocSeg.stage(1),
-                            label: '已审',
-                            count: statusCounts?[DocumentStatusBucket.approved],
-                          ),
-                          UtenFilterSegment(
-                            value: const _StockDocSeg.stage(-1),
-                            label: '已撤回',
-                            count: statusCounts?[DocumentStatusBucket.reversed],
-                          ),
+                          if (_isDraw)
+                            const UtenFilterSegment(
+                              value: _StockDocSeg.stage(1),
+                              label: '进行中',
+                            ),
                           const UtenFilterSegment(
                             value: _StockDocSeg.history(),
                             label: '历史单据',
@@ -613,11 +616,6 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                                     value: '1',
                                     count: 0,
                                     label: '部分出库',
-                                  ),
-                                  MasterFacetBucket(
-                                    value: '2',
-                                    count: 0,
-                                    label: '已出完',
                                   ),
                                 ],
                               'billNo': _columnFilters.bucketOf('billNo'),

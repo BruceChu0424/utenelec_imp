@@ -54,6 +54,7 @@ enum BadgeEntry {
   /// sales_quote_finance:confirm 的人才有数)。
   financeQuoteReview(BadgeModule.finance),
   financeStockCountReview(BadgeModule.finance),
+  financeExpenseConfirmation(BadgeModule.finance),
 
   /// 财务报销: 待审批 + 待付款。
   expenseFinance(BadgeModule.finance),
@@ -190,6 +191,7 @@ abstract final class BadgeFact {
   static const shipmentFinance = 'shipmentFinance.count';
   static const procurementApproval = 'procurementApproval.count';
   static const financeArrivalException = 'financeArrivalException.count';
+  static const financeExpenseConfirmation = 'financeExpenseConfirmation.count';
 
   /// IQC 退回贷项仍需财务处理的案件(待退回 + 已登记退回 + 财务异常, 服务端算好)。
   static const iqcRejectionOpen = 'iqcRejection.open';

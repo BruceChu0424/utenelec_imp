@@ -82,10 +82,144 @@ class FinanceDocumentMutationConcurrencyPostgresTest {
     @Autowired private FinanceBankTransferService transferService;
     @Autowired private FinanceExpenseService expenseService;
     @Autowired private GlPostingService glPostingService;
+    @Autowired private com.uten.imp.features.documents.DocumentStatusCountQueryService statusCounts;
+    @Autowired private com.uten.imp.features.workbench.badge.WorkbenchBadgeService badges;
 
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void pendingExpenseConfirmationStaysActiveAcrossPagingFacetsScopeAndRealConfirmation() throws Exception {
+        DraftDocument template = seedDrafts().stream().filter(document -> document.label().equals("expense"))
+                .findFirst().orElseThrow();
+        Actor owner = seedCurrentActor("expense-lifecycle-owner");
+        Actor other = seedCurrentActor("expense-lifecycle-other");
+        jdbc.update("UPDATE finance_expenses SET maker_id=? WHERE id=?", owner.employeeId(), template.id());
+        UUID pending = template.id();
+        UUID closedPending = copyExpenseDraft(template.id(), owner.employeeId());
+        UUID confirmed = copyExpenseDraft(template.id(), owner.employeeId());
+        UUID reversed = copyExpenseDraft(template.id(), owner.employeeId());
+        UUID draft = copyExpenseDraft(template.id(), owner.employeeId());
+        UUID deleted = copyExpenseDraft(template.id(), owner.employeeId());
+        UUID foreign = copyExpenseDraft(template.id(), other.employeeId());
+        for (UUID id : List.of(pending, closedPending, confirmed, reversed, foreign)) {
+            callAsSuperAdmin("expense-lifecycle-approver", () -> expenseService.approve(id));
+        }
+        callAsSuperAdmin("expense-lifecycle-confirmer", () -> expenseService.glConfirm(confirmed));
+        callAsSuperAdmin("expense-lifecycle-reverser", () -> expenseService.reverse(reversed));
+        callAsSuperAdmin("expense-lifecycle-deleter", () -> { expenseService.delete(deleted); return null; });
+        // The old closed flag is not a glConfirm guard.
+        jdbc.update("UPDATE finance_expenses SET is_closed=true WHERE id=?", closedPending);
+
+        loginActor(owner, Set.of("finance_expense:view"));
+        var active = expenseFilter("ACTIVE", (short) 1);
+        var first = expenseService.list(active, 1, 1, "billNo", "asc");
+        var second = expenseService.list(active, 2, 1, "billNo", "asc");
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(first.getTotalPages()).isEqualTo(2);
+        assertThat(second.getTotal()).isEqualTo(2);
+        assertThat(first.getItems()).hasSize(1);
+        assertThat(second.getItems()).hasSize(1);
+        assertThat(List.of(first.getItems().getFirst().getId(), second.getItems().getFirst().getId()))
+                .containsExactlyInAnyOrder(pending, closedPending);
+        assertThat(first.getItems().getFirst().getGlStatus()).isEqualTo((short) 1);
+        assertThat(expenseService.facets(active).get("billNo"))
+                .extracting(row -> row.get("value"))
+                .containsExactlyInAnyOrder(expenseNo(pending), expenseNo(closedPending));
+        assertThat(expenseService.facets(active).get("billNo"))
+                .extracting(row -> ((Number) row.get("count")).longValue()).containsOnly(1L);
+        assertThat(statusCounts.counts("financeExpense", null, null).get("PENDING_GL_CONFIRMATION"))
+                .isEqualTo(2L);
+        assertThat(expenseService.list(expenseFilter("ACTIVE", null), 1, 20, null, null).getItems())
+                .extracting(row -> row.getId()).containsExactlyInAnyOrder(pending, closedPending, draft);
+
+        var history = expenseFilter("HISTORY", null);
+        var historyPage = expenseService.list(history, 1, 20, null, null);
+        assertThat(historyPage.getTotal()).isEqualTo(2);
+        assertThat(historyPage.getItems()).extracting(row -> row.getId())
+                .containsExactlyInAnyOrder(confirmed, reversed);
+        assertThat(expenseService.facets(history).get("billNo"))
+                .extracting(row -> row.get("value"))
+                .containsExactlyInAnyOrder(expenseNo(confirmed), expenseNo(reversed));
+        assertThat(expenseService.list(history.withHistory(true, false), 1, 20, null, null).getItems())
+                .extracting(row -> row.getId()).containsExactlyInAnyOrder(confirmed, reversed, deleted);
+        var narrowed = new com.uten.imp.features.finance.expense.dto.FinanceExpenseQueryFilter(
+                expenseNo(closedPending), null, null, (short) 1, BusinessTime.today(), BusinessTime.today(), null)
+                .withView("ACTIVE");
+        assertThat(expenseService.list(narrowed, 1, 1, null, null).getTotal()).isEqualTo(1);
+        assertThat(expenseService.facets(narrowed).get("billNo")).hasSize(1);
+        assertThatThrownBy(() -> expenseService.detail(foreign)).isInstanceOf(ApiException.class)
+                .satisfies(failure -> assertThat(((ApiException) failure).getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+        assertThatThrownBy(() -> expenseService.glConfirm(pending))
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThatThrownBy(() -> expenseService.confirmationCounts())
+                .isInstanceOf(org.springframework.security.access.AccessDeniedException.class);
+        assertThat(badges.summary(Set.of("financeExpenseConfirmation")).entries())
+                .doesNotContainKey("financeExpenseConfirmation");
+
+        loginActor(owner, Set.of("finance_expense:view", "finance_expense:gl_confirm"));
+        assertThat(expenseService.confirmationCounts()).containsEntry("count", 2L);
+        assertThat(badges.summary(Set.of("financeExpenseConfirmation")).entries()
+                .get("financeExpenseConfirmation").todo()).isEqualTo(2L);
+        assertThatThrownBy(() -> expenseService.glConfirm(foreign)).isInstanceOf(ApiException.class)
+                .satisfies(failure -> assertThat(((ApiException) failure).getCode()).isEqualTo(ErrorCode.FORBIDDEN));
+        expenseService.glConfirm(pending);
+        assertThat(expenseService.confirmationCounts()).containsEntry("count", 1L);
+        assertThat(badges.summary(Set.of("financeExpenseConfirmation")).entries()
+                .get("financeExpenseConfirmation").todo()).isEqualTo(1L);
+        assertThat(expenseService.list(active, 1, 1, null, null).getItems())
+                .extracting(row -> row.getId()).containsExactly(closedPending);
+        assertThat(statusCounts.counts("financeExpense", null, null).get("PENDING_GL_CONFIRMATION"))
+                .isEqualTo(1L);
+        assertThat(expenseService.facets(active).get("billNo"))
+                .extracting(row -> row.get("value")).containsExactly(expenseNo(closedPending));
+        assertThat(expenseService.list(history, 1, 20, null, null).getItems())
+                .extracting(row -> row.getId()).contains(pending).doesNotContain(closedPending, draft, foreign);
+        expenseService.glConfirm(closedPending);
+        assertThat(expenseService.confirmationCounts()).containsEntry("count", 0L);
+        assertThat(badges.summary(Set.of("financeExpenseConfirmation")).entries()
+                .get("financeExpenseConfirmation").todo()).isZero();
+        assertThat(expenseService.list(active, 1, 1, null, null).getTotal()).isZero();
+        assertThat(expenseService.facets(active).get("billNo")).isEmpty();
+        assertThat(statusCounts.counts("financeExpense", null, null).get("PENDING_GL_CONFIRMATION"))
+                .isZero();
+        assertThatThrownBy(() -> expenseFilter("ALL", null)).isInstanceOf(ApiException.class);
+    }
+
+    private com.uten.imp.features.finance.expense.dto.FinanceExpenseQueryFilter expenseFilter(String view, Short status) {
+        return new com.uten.imp.features.finance.expense.dto.FinanceExpenseQueryFilter(
+                null, null, null, status, null, null, null).withView(view);
+    }
+
+    private UUID copyExpenseDraft(UUID template, UUID maker) {
+        UUID id = UUID.randomUUID();
+        String billNo = businessIdentifier("YF", BusinessTime.today());
+        jdbc.update("""
+                INSERT INTO finance_expenses(id,bill_no,bill_date,account_id,currency_id,exchange_rate,
+                    amount_original,amount_local,maker_id,status,gl_status,is_deleted)
+                SELECT ?,?,bill_date,account_id,currency_id,exchange_rate,amount_original,amount_local,?,0,0,false
+                FROM finance_expenses WHERE id=?
+                """, id, billNo, maker, template);
+        jdbc.update("""
+                INSERT INTO finance_expense_items(id,expense_id,bill_no,bill_date,expense_style_id,
+                    amount_original,amount_local,line_no,is_deleted)
+                SELECT ?,?,?,bill_date,expense_style_id,amount_original,amount_local,line_no,false
+                FROM finance_expense_items WHERE expense_id=?
+                """, UUID.randomUUID(), id, billNo, template);
+        return id;
+    }
+
+    private String expenseNo(UUID id) {
+        return jdbc.queryForObject("SELECT bill_no FROM finance_expenses WHERE id=?", String.class, id);
+    }
+
+    private static void loginActor(Actor actor, Set<String> permissions) {
+        AuthUser user = new AuthUser(actor.userId(), actor.employeeId(), actor.loginAccount(), permissions,
+                false, true, false);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(user, null, user.getAuthorities()));
     }
 
     @Test

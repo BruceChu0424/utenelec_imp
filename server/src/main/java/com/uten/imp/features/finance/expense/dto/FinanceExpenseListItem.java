@@ -18,6 +18,7 @@ public class FinanceExpenseListItem extends com.uten.imp.common.history.Document
     private BigDecimal amountLocal;
     private Short status;
     private Integer legacyId;
+    private Short glStatus;
 
     // Additive exact text never passes through a binary floating-point value.
     public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }

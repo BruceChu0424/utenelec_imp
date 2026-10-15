@@ -48,6 +48,7 @@ public class DocumentStatusCountQueryService {
     static final String FINANCE_APPROVED = "FINANCE_APPROVED";
     static final String SHIPPED = "SHIPPED";
     static final String REVERSED = "REVERSED";
+    static final String PENDING_GL_CONFIRMATION = "PENDING_GL_CONFIRMATION";
 
     /** 前端 DraftDocKind.name → 单据声明(顺序无关, 键必须与前端枚举名逐字一致). */
     static final Map<String, DraftSource> KINDS = Map.ofEntries(
@@ -86,6 +87,12 @@ public class DocumentStatusCountQueryService {
     static List<Bucket> bucketsOf(String kind, DraftSource source) {
         String draft = "o.status = 0" + (source.extraPredicate() == null ? "" : " AND " + source.extraPredicate());
         return switch (kind) {
+            case "financeExpense" -> List.of(
+                    new Bucket(DRAFT, draft),
+                    new Bucket(PENDING_GL_CONFIRMATION,
+                            "o.legacy_id IS NULL AND o.status = 1 AND o.gl_status = 1"),
+                    new Bucket(APPROVED, "o.status = 1"),
+                    new Bucket(REVERSED, "o.status = -1"));
             case "salesShipment" -> List.of(
                     new Bucket(DRAFT, draft),
                     new Bucket(PENDING_FINANCE, "o.status = 0 AND o.shipment_kind <> 'LEGACY' AND o.rejected = false"

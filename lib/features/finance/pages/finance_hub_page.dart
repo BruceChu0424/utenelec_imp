@@ -72,6 +72,9 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
     final canOpenAuditCenter = canOpen(RouteName.financeAudits);
     final canOpenQuoteReview = canOpen(RouteName.financeQuoteReview);
     final canOpenStockCountReview = canOpen(RouteName.financeStockCountReview);
+    final canOpenExpenseConfirmation = canOpen(
+      RoutePath.financeExpenseConfirmation,
+    );
     final canHandleExpense = canOpen('/expense/approval');
     List<_Entry> visible(List<_Entry> entries) => entries
         .where((entry) => canOpen(entry.location))
@@ -111,6 +114,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
               if (canOpenAuditCenter ||
                   canOpenQuoteReview ||
                   canOpenStockCountReview ||
+                  canOpenExpenseConfirmation ||
                   canHandleExpense) ...[
                 _section(context, theme, l10n.hubSectionTaskCenter, [
                   // 2026-09-18 合并：原 6 张审核队列卡（销售订单财务确认/销售订单
@@ -137,6 +141,16 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
                       location: RouteName.financeStockCountReview,
                       badgeScope: BadgeScope.entry(
                         BadgeEntry.financeStockCountReview,
+                      ),
+                    ),
+                  if (canOpenExpenseConfirmation)
+                    const _Entry(
+                      icon: Icons.fact_check_outlined,
+                      label: '费用单财务确认',
+                      description: '核对一般费用已过账凭证，完成财务确认',
+                      location: RoutePath.financeExpenseConfirmation,
+                      badgeScope: BadgeScope.entry(
+                        BadgeEntry.financeExpenseConfirmation,
                       ),
                     ),
                   if (canOpenQuoteReview)

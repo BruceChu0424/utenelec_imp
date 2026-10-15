@@ -123,6 +123,7 @@ class FinanceDocListItem {
     this.amountLocal,
     this.amountLocalText,
     this.status,
+    this.glStatus,
     this.legacyId,
     bool legacyImported = false,
   }) : legacyImported =
@@ -141,6 +142,7 @@ class FinanceDocListItem {
   final double? amountLocal;
   final String? amountLocalText;
   final int? status;
+  final int? glStatus;
   final int? legacyId;
   final bool legacyImported;
 
@@ -160,6 +162,7 @@ class FinanceDocListItem {
           json['amountLocalExact'] ?? json['amountLocal'],
         ),
         status: (json['status'] as num?)?.toInt(),
+        glStatus: (json['glStatus'] as num?)?.toInt(),
         legacyId: (json['legacyId'] as num?)?.toInt(),
         legacyImported: json['legacyImported'] as bool? ?? false,
       );

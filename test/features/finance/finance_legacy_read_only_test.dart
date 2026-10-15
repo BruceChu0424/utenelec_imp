@@ -20,6 +20,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/widgets/sales_order_money_summary_card.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
+import '../../support/filter_segment_tap.dart';
 
 void main() {
   test(
@@ -128,6 +129,8 @@ void main() {
       );
       addTearDown(router.dispose);
       await _pump(tester, _HistoryApi(status: 1), router: router);
+      await selectFilterSegment(tester, '历史单据');
+      await tester.pumpAndSettle();
       expect(find.text('历史记录（只读）'), findsOneWidget);
       expect(find.text('历史收款类型待核实'), findsOneWidget);
       expect(find.text('已审'), findsWidgets);

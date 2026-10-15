@@ -15,6 +15,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -89,6 +90,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     if (isDraftStatusQuery(widget.initialStatus)) {
       _statusFilter = kFinanceStatusDraft;
       _statusFilterSelected = true;
+    } else if (widget.docType == FinanceDocType.expense &&
+        widget.initialStatus == 'pending-gl-confirmation') {
+      _statusFilter = kFinanceStatusApproved;
+      _statusFilterSelected = true;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(financeNameServiceProvider).ensureLoaded();
@@ -113,8 +118,11 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     _myLocation = null;
     _statusFilter = isDraftStatusQuery(widget.initialStatus)
         ? kFinanceStatusDraft
+        : widget.docType == FinanceDocType.expense &&
+              widget.initialStatus == 'pending-gl-confirmation'
+        ? kFinanceStatusApproved
         : null;
-    _statusFilterSelected = isDraftStatusQuery(widget.initialStatus);
+    _statusFilterSelected = _statusFilter != null;
     _historyMode = false;
     _historyTime = const UtenHistoryTimeValue.all();
     _partyIdFilter = null;
@@ -193,6 +201,9 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         ? _accountIdFilter
         : null,
     status: _statusFilter,
+    view: widget.docType == FinanceDocType.expense
+        ? (_historyMode ? 'HISTORY' : 'ACTIVE')
+        : null,
     receiptKind: _cfg.type == FinanceDocType.receipt
         ? _receiptKindFilter
         : null,
@@ -243,6 +254,14 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
     }
+    final result = _list.page;
+    if (widget.docType == FinanceDocType.expense &&
+        result != null &&
+        result.page > (result.totalPages > 0 ? result.totalPages : 1)) {
+      // Confirmation can remove the last row on a later pending page. Requery
+      // the current lifecycle scope at its last valid page.
+      return _reload(result.totalPages > 0 ? result.totalPages : 1);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || generation != _reloadGeneration) return;
       retainDraftSelection(
@@ -275,6 +294,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         selected: _statusFilterSelected,
         history: _historyMode,
         status: _statusFilter,
+        hasOngoing: widget.docType == FinanceDocType.expense,
+        ongoingLabel: '待财务确认',
+        ongoingCount: counts?[DocumentStatusBucket.pendingGlConfirmation],
+        historyIncludesDrafts: widget.docType != FinanceDocType.expense,
         draftCount: counts?[DocumentStatusBucket.draft],
         onCategoryChanged: _onCategory,
         onHistoryStatusChanged: _onHistoryStatus,
@@ -306,9 +329,13 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     setState(() {
       if (key == 'status') {
         _statusFilter = value == null
-            ? (_historyMode ? null : kFinanceStatusDraft)
+            ? (_historyMode ? null : _statusFilter ?? kFinanceStatusDraft)
             : int.tryParse(value);
-        if (_statusFilter != kFinanceStatusDraft) _historyMode = true;
+        if (_statusFilter != kFinanceStatusDraft &&
+            !(widget.docType == FinanceDocType.expense &&
+                _statusFilter == kFinanceStatusApproved)) {
+          _historyMode = true;
+        }
         _statusFilterSelected = _historyMode || _statusFilter != null;
       } else if (key == 'accountId') {
         _accountIdFilter = value;
@@ -348,11 +375,23 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         key: 'status',
         label: '状态',
         width: 72,
-        value: (it) => financeStatusLabel(it.status),
+        value: (it) =>
+            widget.docType == FinanceDocType.expense &&
+                !it.legacyImported &&
+                it.status == kFinanceStatusApproved &&
+                it.glStatus == 1
+            ? '待财务确认'
+            : financeStatusLabel(it.status),
         // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
         // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
-        cellColor: (context, it) =>
-            utenStatusBadgeCellColor(docStatusBadgeType(it.status)),
+        cellColor: (context, it) => utenStatusBadgeCellColor(
+          widget.docType == FinanceDocType.expense &&
+                  !it.legacyImported &&
+                  it.status == kFinanceStatusApproved &&
+                  it.glStatus == 1
+              ? UtenStatusBadgeType.warning
+              : docStatusBadgeType(it.status),
+        ),
       ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
@@ -564,7 +603,27 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                               label: '历史记录（只读）',
                             ),
                           ],
-                          'status': financeDocumentStatusFacets,
+                          'status': widget.docType == FinanceDocType.expense
+                              ? [
+                                  if (!_historyMode)
+                                    const MasterFacetBucket(
+                                      value: '0',
+                                      count: 0,
+                                      label: '草稿',
+                                    ),
+                                  MasterFacetBucket(
+                                    value: '1',
+                                    count: 0,
+                                    label: _historyMode ? '已审' : '待财务确认',
+                                  ),
+                                  if (_historyMode)
+                                    const MasterFacetBucket(
+                                      value: '-1',
+                                      count: 0,
+                                      label: '已反审',
+                                    ),
+                                ]
+                              : financeDocumentStatusFacets,
                         },
                         nullCounts: const {},
                         filters: {

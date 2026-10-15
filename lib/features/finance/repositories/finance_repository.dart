@@ -57,6 +57,7 @@ class FinanceDocFilter {
     this.dateFrom,
     this.dateTo,
     this.billNo,
+    this.view,
   });
   final String? keyword;
   final String? partyId;
@@ -64,6 +65,7 @@ class FinanceDocFilter {
   final String? outAccountId;
   final String? departmentId;
   final int? status;
+  final String? view;
   final String? receiptKind;
   final FinanceRecordOrigin? recordOrigin;
   final String? dateFrom; // yyyy-MM-dd
@@ -114,6 +116,8 @@ class FinanceRepository {
       if (type == FinanceDocType.receipt && filter.receiptKind != null)
         'receiptKind': filter.receiptKind,
       if (filter.status != null) 'status': filter.status,
+      if (type == FinanceDocType.expense && filter.view != null)
+        'view': filter.view,
       if (filter.recordOrigin != null)
         'hf.recordOrigin': filter.recordOrigin!.wireValue,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,
@@ -143,6 +147,8 @@ class FinanceRepository {
       if (type == FinanceDocType.receipt && filter.receiptKind != null)
         'receiptKind': filter.receiptKind,
       if (filter.status != null) 'status': filter.status,
+      if (type == FinanceDocType.expense && filter.view != null)
+        'view': filter.view,
       if (filter.recordOrigin != null)
         'hf.recordOrigin': filter.recordOrigin!.wireValue,
       if (filter.dateFrom != null) 'dateFrom': filter.dateFrom,

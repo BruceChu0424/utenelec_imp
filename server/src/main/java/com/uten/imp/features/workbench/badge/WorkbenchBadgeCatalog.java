@@ -48,6 +48,8 @@ enum WorkbenchBadgeCatalog {
     financeQuoteReview(Module.finance, facts("salesQuoteFinance.pending"), none()),
     /** 财务侧盘点审核: 待财务复核的盘点差异。 */
     financeStockCountReview(Module.finance, facts("stockCountFinance.count"), none()),
+    /** General expenses posted but still requiring the independent GL confirmation. */
+    financeExpenseConfirmation(Module.finance, facts("financeExpenseConfirmation.count"), none()),
     /** 钱流草稿: 收款/付款/费用/其它收入/银行转账。 */
     financeDrafts(Module.finance, facts(
             "drafts.financeReceipt",

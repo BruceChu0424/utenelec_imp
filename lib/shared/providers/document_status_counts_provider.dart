@@ -18,6 +18,7 @@ import 'draft_counts_provider.dart';
 
 /// 分桶键(与后端 DocumentStatusCountQueryService 逐字一致)。
 abstract final class DocumentStatusBucket {
+  static const pendingGlConfirmation = 'PENDING_GL_CONFIRMATION';
   static const draft = 'DRAFT';
   static const pendingFinance = 'PENDING_FINANCE';
   static const financeRejected = 'FINANCE_REJECTED';

@@ -9,6 +9,12 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/production/widgets/where_used_material_picker.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+
+final _pickerPermissions = StateProvider<Set<String>>(
+  (ref) => {Perm.productionWhereUsedView},
+);
 
 typedef _RequestHandler =
     Future<Map<String, dynamic>> Function(Map<String, dynamic> query);
@@ -105,7 +111,16 @@ Future<void> _pumpApp(
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [apiClientProvider.overrideWithValue(api)],
+      overrides: [
+        apiClientProvider.overrideWithValue(api),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'picker-viewer'),
+        ),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_pickerPermissions),
+        ),
+        isSuperAdminProvider.overrideWithValue(false),
+      ],
       child: MaterialApp(home: _Launcher(onSelected: onSelected)),
     ),
   );
@@ -113,6 +128,41 @@ Future<void> _pumpApp(
 }
 
 void main() {
+  testWidgets(
+    'revocation closes the old material picker and rejects its delayed rows',
+    (tester) async {
+      final gate = Completer<Map<String, dynamic>>();
+      final api = _FakeApiClient((_) => gate.future);
+      GoodsListItem? selected;
+      await _pumpApp(
+        tester,
+        api,
+        size: const Size(390, 844),
+        onSelected: (value) => selected = value,
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('where-used-material-search')),
+        'OLD',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      final container = ProviderScope.containerOf(
+        tester.element(find.byKey(const Key('where-used-material-picker'))),
+      );
+      container.read(_pickerPermissions.notifier).state = {};
+      await tester.pumpAndSettle();
+      gate.complete(
+        _page(
+          items: [_item(id: 'old-id', code: 'OLD', name: '旧范围物料')],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('where-used-material-picker')), findsNothing);
+      expect(find.text('旧范围物料'), findsNothing);
+      expect(selected, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'continues downward without removing rows and selects an earlier row',
     (tester) async {

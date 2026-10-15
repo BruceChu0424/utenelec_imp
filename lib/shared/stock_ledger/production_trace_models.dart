@@ -28,12 +28,31 @@ class TraceProductionReport {
       billDate = _text(j['billDate']),
       productQty = financeExactDecimal(j['productQty']),
       unitName = _text(j['unitName']),
+      batches = _maps(j['batches']).map(TraceProductionBatch.fromJson).toList(),
       workers = _maps(
         j['workers'],
       ).map((w) => _text(w['name'])).nonNulls.toList();
   final String? id, billNo, billDate, unitName;
   final String? productQty;
   final List<String> workers;
+  final List<TraceProductionBatch> batches;
+}
+
+class TraceProductionBatch {
+  TraceProductionBatch.fromJson(Map<String, dynamic> json)
+    : id = _text(json['id']),
+      code = _text(json['code']),
+      label = _text(json['label']),
+      lineNo = int.tryParse(json['lineNo']?.toString() ?? ''),
+      reportItemId = _text(json['reportItemId']),
+      productQty = financeExactDecimal(json['productQty']),
+      unitName = _text(json['unitName']);
+
+  final String? id, code, reportItemId, productQty, unitName;
+  final String? label;
+  final int? lineNo;
+
+  String get displayName => code ?? label ?? '批次未编号';
 }
 
 class TraceReceiptSource {

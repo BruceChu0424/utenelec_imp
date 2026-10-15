@@ -2,6 +2,8 @@
 //
 // 当前 BOM、旧生产快照、新生产履约需求和委外历史证据由后端分别聚合；
 // 日期只过滤历史证据，当前 BOM 始终表示查询时现状。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,13 +12,12 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -24,6 +25,10 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/stock_ledger/material_trace_models.dart';
+import '../../../shared/stock_ledger/widgets/goods_production_trace_view.dart';
+import '../../../shared/stock_ledger/widgets/material_trace_subject_picker.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../report/shared/report_cell.dart';
@@ -46,6 +51,24 @@ enum _WhereUsedSource {
   final String label;
   final String description;
 }
+
+enum _TraceEntry {
+  goods('goods', '货品'),
+  document('document', '单据'),
+  batch('batch', '生产批次');
+
+  const _TraceEntry(this.value, this.label);
+  final String value, label;
+}
+
+enum _TraceResultMode { actual, relationships }
+
+typedef _WhereUsedFilters = ({
+  _WhereUsedSource source,
+  bool limitHistoryDates,
+  DateTime from,
+  DateTime to,
+});
 
 class _WhereUsedQuerySnapshot {
   const _WhereUsedQuerySnapshot({
@@ -77,6 +100,11 @@ class WhereUsedReportPage extends ConsumerStatefulWidget {
 
 class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   GoodsListItem? _material;
+  MaterialTraceSubject? _subject;
+  _TraceEntry _entry = _TraceEntry.goods;
+  _TraceResultMode _mode = _TraceResultMode.relationships;
+  int _readEpoch = 0;
+  int _traceReloadTick = 0;
   _WhereUsedSource _source = _WhereUsedSource.all;
   bool _limitHistoryDates = false;
   DateTime _from = defaultReportFrom();
@@ -92,9 +120,93 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   bool _loading = false;
   bool _openingDetail = false;
   String? _loadError;
+  ModalRoute<dynamic>? _filterRoute;
+  ModalRoute<dynamic>? _basisRoute;
+  final _closingRoutes = <ModalRoute<dynamic>>{};
 
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
+
+  String get _subjectLabel {
+    final subject = _subject;
+    if (subject == null) {
+      return switch (_entry) {
+        _TraceEntry.goods => '搜索并选择物料',
+        _TraceEntry.document => '输入并选择单据',
+        _TraceEntry.batch => '输入并选择生产批次',
+      };
+    }
+    return subject.code.isEmpty || subject.displayName == subject.code
+        ? subject.displayName
+        : '${subject.displayName} · ${subject.code}';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
+      if (previous == next || !mounted) return;
+      _closeReadRoute(_filterRoute);
+      _closeReadRoute(_basisRoute);
+      setState(() {
+        ++_readEpoch;
+        ++_traceReloadTick;
+        _subject = null;
+        _material = null;
+        _entry = _TraceEntry.goods;
+        _mode = _TraceResultMode.relationships;
+        _page = 1;
+        _sortKey = null;
+        _sortAscending = true;
+        _invalidateLoadedResults();
+      });
+    });
+  }
+
+  void _closeReadRoute(ModalRoute<dynamic>? route) {
+    if (route == null || !_closingRoutes.add(route)) return;
+    unawaited(route.completed.whenComplete(() => _closingRoutes.remove(route)));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = route.navigator;
+      if (navigator == null || !route.isActive) return;
+      if (route.isCurrent) {
+        navigator.pop();
+      } else {
+        navigator.removeRoute(route);
+      }
+    });
+  }
+
+  Widget _readPanel(
+    BuildContext context,
+    SensitiveReadBoundary boundary,
+    Widget child, {
+    bool filters = false,
+  }) {
+    final route = ModalRoute.of(context);
+    if (filters) {
+      _filterRoute = route;
+    } else {
+      _basisRoute = route;
+    }
+    return Consumer(
+      builder: (context, ref, _) {
+        if (ref.watch(sensitiveReadBoundaryProvider) != boundary) {
+          _closeReadRoute(route);
+          return const SizedBox.shrink();
+        }
+        return child;
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    ++_loadGeneration;
+    _closeReadRoute(_filterRoute);
+    _closeReadRoute(_basisRoute);
+    super.dispose();
+  }
 
   String _formatDate(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-'
@@ -116,16 +228,86 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   }
 
   Future<void> _pickMaterial() async {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = _readEpoch;
     final selected = await showWhereUsedMaterialPicker(context, ref);
-    if (selected == null || !mounted) return;
+    if (selected == null ||
+        !mounted ||
+        epoch != _readEpoch ||
+        boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      return;
+    }
     setState(() {
       _invalidateLoadedResults();
       _material = selected;
+      _subject = MaterialTraceSubject(
+        type: 'GOODS',
+        id: selected.id,
+        code: selected.code ?? '',
+        label: selected.name ?? selected.code ?? '',
+        goodsId: selected.id,
+        goodsCode: selected.code,
+        goodsName: selected.name,
+        status: selected.status,
+      );
+      _mode = _TraceResultMode.relationships;
       _page = 1;
       _sortKey = null;
       _sortAscending = true;
     });
     await _load();
+  }
+
+  Future<void> _pickSubject() async {
+    if (_entry == _TraceEntry.goods) return _pickMaterial();
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = _readEpoch;
+    final selected = await showMaterialTraceSubjectPicker(
+      context,
+      ref,
+      kind: _entry.value,
+    );
+    if (!mounted ||
+        selected == null ||
+        epoch != _readEpoch ||
+        boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      return;
+    }
+    setState(() {
+      _invalidateLoadedResults();
+      _subject = selected;
+      _material = null;
+      _mode = _TraceResultMode.actual;
+      ++_traceReloadTick;
+    });
+  }
+
+  void _changeEntry(String? value) {
+    final entry = _TraceEntry.values.where((e) => e.value == value).firstOrNull;
+    if (entry == null || entry == _entry) return;
+    setState(() {
+      _entry = entry;
+      _subject = null;
+      _material = null;
+      _mode = entry == _TraceEntry.goods
+          ? _TraceResultMode.relationships
+          : _TraceResultMode.actual;
+      _page = 1;
+      _sortKey = null;
+      _sortAscending = true;
+      _invalidateLoadedResults();
+      ++_traceReloadTick;
+    });
+  }
+
+  Future<void> _refreshQuery() async {
+    if (_subject == null) return _pickSubject();
+    if (_mode == _TraceResultMode.actual) {
+      setState(() => ++_traceReloadTick);
+    } else {
+      _page = 1;
+      await _load();
+    }
   }
 
   Future<void> _load() async {
@@ -176,7 +358,15 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       });
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
+      final revoked =
+          error is ApiException &&
+          ({401, 403, 404}.contains(error.httpStatus) ||
+              {'UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND'}.contains(error.code));
       setState(() {
+        if (revoked) {
+          _data = null;
+          _loadedQuery = null;
+        }
         _loadError = error is ApiException ? error.message : '反查加载失败，请稍后重试';
         _loading = false;
         final loaded = _loadedQuery;
@@ -198,6 +388,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     }
 
     _openingDetail = true;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = _readEpoch;
     try {
       final permissions = ref.read(currentPermissionsProvider);
       final result = await showWhereUsedProductDetailDialog(
@@ -207,8 +399,14 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         historyRangeLabel: _historyRangeLabel(loadedQuery),
         canViewGoods: permissions.contains(Perm.goodsView),
         canViewStock: permissions.contains(Perm.stockView),
+        readBoundary: boundary,
       );
-      if (!mounted || result == null) return;
+      if (!mounted ||
+          result == null ||
+          epoch != _readEpoch ||
+          boundary != ref.read(sensitiveReadBoundaryProvider)) {
+        return;
+      }
 
       if (result.link == WhereUsedProductLink.stockMovements) {
         context.push(_stockMovementPath(result.productId));
@@ -244,27 +442,6 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     _load();
   }
 
-  void _changeSource(_WhereUsedSource? value) {
-    if (value == null || value == _source) return;
-    setState(() {
-      _source = value;
-      _page = 1;
-      _invalidateLoadedResults();
-    });
-    if (_material != null) _load();
-  }
-
-  void _setAllHistory(bool allHistory) {
-    final newLimit = !allHistory;
-    if (newLimit == _limitHistoryDates) return;
-    setState(() {
-      _limitHistoryDates = newLimit;
-      _page = 1;
-      _invalidateLoadedResults();
-    });
-    if (_material != null && allHistory) _load();
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -274,11 +451,11 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     // 返回时重查当前查询；尚未查询（无物料/无结果）不触发，避免弹「请先选物料」。
     _myLocation ??= currentLocationOr(context, RouteName.production);
     ref.onPageResume(_myLocation!, () {
-      if (_data != null) _load();
+      if (_subject != null) _refreshQuery();
     });
     return Scaffold(
       appBar: UtenAppBar(
-        title: '物料反查产成品',
+        title: '物料反查与追溯',
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.production),
         ),
@@ -286,12 +463,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新当前结果',
-            onPressed: _material == null || _loading
-                ? null
-                : () async {
-                    setState(() => _page = 1);
-                    await _load();
-                  },
+            onPressed: _subject == null || _loading ? null : _refreshQuery,
           ),
         ],
       ),
@@ -299,36 +471,20 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         child: UtenContentContainer.wide(
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            // 「顶部折叠 + 表格吸顶内滚」：提示条与标题行随上滑收起腾出空间，
-            // 筛选/表格区占满剩余空间、表体内部滚动（与单据列表页统一）。
             child: UtenCollapsingHeaderScrollView(
               collapsingHeader: Column(
                 children: [
-                  _CoverageNotice(theme: theme),
-                  if (unattributed > 0)
+                  _buildQueryToolbar(),
+                  _buildTitle(theme),
+                  if (_mode == _TraceResultMode.relationships &&
+                      unattributed > 0)
                     _UnattributedNotice(
                       count: unattributed,
                       quantity: _data?.meta['unattributedDemandQty'],
                     ),
-                  _buildTitle(theme),
                 ],
               ),
-              body: LayoutBuilder(
-                builder: (context, constraints) {
-                  final filterPane = _buildFilterPane(theme);
-                  return UtenListTwoPane(
-                    filterPane: context.breakpoint.isExpanded
-                        ? filterPane
-                        : ConstrainedBox(
-                            constraints: BoxConstraints(
-                              maxHeight: constraints.maxHeight * 0.48,
-                            ),
-                            child: filterPane,
-                          ),
-                    tablePane: _buildTablePane(theme),
-                  );
-                },
-              ),
+              body: _buildResultPane(theme),
             ),
           ),
         ),
@@ -344,160 +500,355 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         UtenSpacing.s4,
         UtenSpacing.s8,
       ),
-      child: Row(
+      child: Wrap(
+        spacing: UtenSpacing.s12,
+        runSpacing: UtenSpacing.s4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Icon(
-            Icons.account_tree_outlined,
-            size: 19,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              '关系结果 · 点击行查看详情',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+          UtenSegmentRow<_TraceResultMode>(
+            key: const Key('where-used-result-mode'),
+            segments: [
+              const ButtonSegment(
+                value: _TraceResultMode.actual,
+                label: Text('实际追溯'),
               ),
-            ),
+              ButtonSegment(
+                value: _TraceResultMode.relationships,
+                label: const Text('BOM 与历史关系'),
+                enabled: _subject?.isGoods ?? _entry == _TraceEntry.goods,
+              ),
+            ],
+            selected: {_mode},
+            onSelectionChanged: (values) {
+              final mode = values.single;
+              if (mode == _mode) return;
+              setState(() => _mode = mode);
+              if (mode == _TraceResultMode.relationships &&
+                  _material != null &&
+                  _data == null) {
+                _load();
+              }
+            },
           ),
-          if (_data != null)
+          if (_mode == _TraceResultMode.relationships)
             Text(
-              '共 ${_data!.total} 个成品/半成品',
+              _source.label,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+          if (_mode == _TraceResultMode.relationships && _data != null)
+            Text('共 ${_data!.total} 个成品/半成品', style: theme.textTheme.bodySmall),
+          TextButton(
+            key: const Key('where-used-basis'),
+            onPressed: _showBasis,
+            child: const Text('依据说明'),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildFilterPane(ThemeData theme) {
-    // primary:false：筛选区是页面局部滚动件，不参与外层折叠联动，
-    // 避免与表体 primary 列表争抢 PrimaryScrollController（多 ScrollPosition 冲突）。
-    return SingleChildScrollView(
-      primary: false,
-      padding: EdgeInsets.zero,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildQueryToolbar() => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+    child: LayoutBuilder(
+      builder: (context, constraints) => Wrap(
+        spacing: UtenSpacing.s8,
+        runSpacing: UtenSpacing.s8,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          _filterLabel('反查物料(必选)'),
           SizedBox(
-            width: double.infinity,
-            child: UtenButton(
-              type: UtenButtonType.tonal,
-              icon: _material == null
-                  ? Icons.search_rounded
-                  : Icons.swap_horiz_rounded,
-              onPressed: _loading ? null : _pickMaterial,
-              child: Text(_material == null ? '搜索并选择物料' : '更换物料'),
+            width: 168.0.clamp(0, constraints.maxWidth),
+            child: UtenDropdownField(
+              key: const Key('where-used-entry-kind'),
+              label: '查询入口',
+              value: _entry.value,
+              allowClear: false,
+              enabled: !_loading,
+              items: [
+                for (final entry in _TraceEntry.values)
+                  UtenDropdownItem(value: entry.value, label: entry.label),
+              ],
+              onChanged: _changeEntry,
             ),
           ),
-          if (_material != null) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            _SelectedMaterialCard(material: _material!),
+          SizedBox(
+            width: constraints.maxWidth < 640
+                ? constraints.maxWidth
+                : (constraints.maxWidth - 260).clamp(280.0, 520.0),
+            child: UtenButton(
+              key: const Key('where-used-query-subject'),
+              type: UtenButtonType.tonal,
+              icon: Icons.search_rounded,
+              onPressed: _loading ? null : _pickSubject,
+              child: Text(
+                _subjectLabel,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          FilledButton(
+            key: const Key('where-used-search'),
+            onPressed: _loading ? null : _refreshQuery,
+            child: Text(
+              _loading
+                  ? '查询中…'
+                  : _mode == _TraceResultMode.actual
+                  ? '查询追溯'
+                  : '查询关系',
+            ),
+          ),
+          OutlinedButton(
+            key: const Key('where-used-filters'),
+            onPressed: _loading ? null : _showFilters,
+            child: Text(
+              _source == _WhereUsedSource.all && !_limitHistoryDates
+                  ? '筛选'
+                  : '筛选 · 已设置',
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Future<void> _showBasis() {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    return showUtenAdaptivePanel<void>(
+      context: context,
+      builder: (panelContext) => _readPanel(
+        panelContext,
+        boundary,
+        Column(
+          children: [
+            ListTile(
+              title: const Text('关系依据说明'),
+              trailing: TextButton(
+                onPressed: () => Navigator.of(panelContext).pop(),
+                child: const Text('关闭'),
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(UtenSpacing.s12),
+                child: Column(
+                  children: [
+                    const Text('实际追溯读取凭证与过账事实；BOM、冻结需求和旧快照只说明关系，不表示实际耗用。'),
+                    const SizedBox(height: UtenSpacing.s12),
+                    if (_material != null) ...[
+                      _SelectedMaterialCard(material: _material!),
+                      const SizedBox(height: UtenSpacing.s12),
+                    ],
+                    _CoverageNotice(theme: Theme.of(panelContext)),
+                  ],
+                ),
+              ),
+            ),
           ],
-          const SizedBox(height: UtenSpacing.s16),
+        ),
+      ),
+    ).whenComplete(() => _basisRoute = null);
+  }
+
+  Future<void> _showFilters() async {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final epoch = _readEpoch;
+    var draft = (
+      source: _source,
+      limitHistoryDates: _limitHistoryDates,
+      from: _from,
+      to: _to,
+    );
+    String? error;
+    final result = await showUtenAdaptivePanel<_WhereUsedFilters>(
+      context: context,
+      builder: (panelContext) => _readPanel(
+        panelContext,
+        boundary,
+        StatefulBuilder(
+          builder: (context, update) => Column(
+            children: [
+              ListTile(
+                title: Text(
+                  _mode == _TraceResultMode.actual ? '筛选实际追溯' : '筛选 BOM 与历史关系',
+                ),
+                trailing: TextButton(
+                  onPressed: () => Navigator.of(panelContext).pop(),
+                  child: const Text('关闭'),
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  primary: false,
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  child: _buildFilterPane(Theme.of(context), draft, (value) {
+                    update(() {
+                      draft = value;
+                      error = null;
+                    });
+                  }),
+                ),
+              ),
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    error!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(UtenSpacing.s16),
+                child: Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(panelContext).pop(),
+                      child: const Text('取消'),
+                    ),
+                    const SizedBox(width: UtenSpacing.s12),
+                    Expanded(
+                      child: FilledButton(
+                        key: const Key('where-used-filter-apply'),
+                        onPressed: () {
+                          if (draft.limitHistoryDates &&
+                              draft.from.isAfter(draft.to)) {
+                            update(() => error = '起始日期不能晚于结束日期');
+                            return;
+                          }
+                          Navigator.of(panelContext).pop(draft);
+                        },
+                        child: const Text('应用筛选'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        filters: true,
+      ),
+    );
+    _filterRoute = null;
+    if (!mounted ||
+        result == null ||
+        epoch != _readEpoch ||
+        boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      return;
+    }
+    setState(() {
+      _source = result.source;
+      _limitHistoryDates = result.limitHistoryDates;
+      _from = result.from;
+      _to = result.to;
+      _page = 1;
+      _invalidateLoadedResults();
+    });
+    if (_subject != null) await _refreshQuery();
+  }
+
+  Widget _buildFilterPane(
+    ThemeData theme,
+    _WhereUsedFilters filters,
+    ValueChanged<_WhereUsedFilters> onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_mode == _TraceResultMode.relationships) ...[
           _filterLabel('关系来源'),
           UtenDropdownField(
             key: const Key('where-used-source-filter'),
-            value: _source.apiValue,
+            value: filters.source.apiValue,
             allowClear: false,
             enabled: !_loading,
             items: [
               for (final source in _WhereUsedSource.values)
                 UtenDropdownItem(value: source.apiValue, label: source.label),
             ],
-            onChanged: (v) => _changeSource(
-              _WhereUsedSource.values.where((s) => s.apiValue == v).firstOrNull,
-            ),
+            onChanged: (value) {
+              final source = _WhereUsedSource.values
+                  .where((s) => s.apiValue == value)
+                  .firstOrNull;
+              if (source != null) {
+                onChanged((
+                  source: source,
+                  limitHistoryDates: filters.limitHistoryDates,
+                  from: filters.from,
+                  to: filters.to,
+                ));
+              }
+            },
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(
-            _source.description,
+            filters.source.description,
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: UtenSpacing.s16),
-          _filterLabel('历史日期范围'),
-          UtenSegmentRow<bool>(
-            key: const Key('where-used-history-range'),
-            segments: const [
-              ButtonSegment(
-                value: true,
-                label: Text('全部历史', key: Key('where-used-all-history')),
-              ),
-              ButtonSegment(
-                value: false,
-                label: Text('自定义', key: Key('where-used-custom-history')),
-              ),
-            ],
-            selected: {!_limitHistoryDates},
-            onSelectionChanged: _loading
-                ? null
-                : (values) => _setAllHistory(values.single),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
+        ],
+        _filterLabel(_mode == _TraceResultMode.actual ? '凭证日期范围' : '历史日期范围'),
+        UtenSegmentRow<bool>(
+          key: const Key('where-used-history-range'),
+          segments: const [
+            ButtonSegment(
+              value: true,
+              label: Text('全部历史', key: Key('where-used-all-history')),
+            ),
+            ButtonSegment(
+              value: false,
+              label: Text('自定义', key: Key('where-used-custom-history')),
+            ),
+          ],
+          selected: {!filters.limitHistoryDates},
+          onSelectionChanged: (values) => onChanged((
+            source: filters.source,
+            limitHistoryDates: !values.single,
+            from: filters.from,
+            to: filters.to,
+          )),
+        ),
+        const SizedBox(height: UtenSpacing.s4),
+        if (_mode == _TraceResultMode.relationships)
           Text(
             '日期只过滤生产/委外历史，当前 BOM 不受影响',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          if (_limitHistoryDates) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            _dateButton(
-              key: const Key('where-used-date-from'),
-              label: '起 ${_formatDate(_from)}',
-              initialDate: _from,
-              onPicked: (value) {
-                setState(() {
-                  _from = value;
-                  _page = 1;
-                  _invalidateLoadedResults();
-                });
-              },
-            ),
-            const SizedBox(height: UtenSpacing.s4),
-            _dateButton(
-              key: const Key('where-used-date-to'),
-              label: '止 ${_formatDate(_to)}',
-              initialDate: _to,
-              onPicked: (value) {
-                setState(() {
-                  _to = value;
-                  _page = 1;
-                  _invalidateLoadedResults();
-                });
-              },
-            ),
-          ],
-          const SizedBox(height: UtenSpacing.s16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              key: const Key('where-used-search'),
-              onPressed: _material == null || _loading
-                  ? null
-                  : () {
-                      _page = 1;
-                      _load();
-                    },
-              icon: _loading
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.search_rounded, size: 18),
-              label: Text(_loading ? '查询中…' : '查询已知关系'),
-            ),
+        if (filters.limitHistoryDates) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          _dateButton(
+            key: const Key('where-used-date-from'),
+            label: '起 ${_formatDate(filters.from)}',
+            initialDate: filters.from,
+            onPicked: (value) => onChanged((
+              source: filters.source,
+              limitHistoryDates: filters.limitHistoryDates,
+              from: value,
+              to: filters.to,
+            )),
           ),
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s4),
+          _dateButton(
+            key: const Key('where-used-date-to'),
+            label: '止 ${_formatDate(filters.to)}',
+            initialDate: filters.to,
+            onPicked: (value) => onChanged((
+              source: filters.source,
+              limitHistoryDates: filters.limitHistoryDates,
+              from: filters.from,
+              to: value,
+            )),
+          ),
         ],
-      ),
+        const SizedBox(height: UtenSpacing.s12),
+      ],
     );
   }
 
@@ -588,6 +939,56 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         Expanded(child: table),
       ],
     );
+  }
+
+  Widget _buildResultPane(ThemeData theme) {
+    if (_mode == _TraceResultMode.relationships) return _buildTablePane(theme);
+    final subject = _subject;
+    if (subject == null) {
+      return _StatePanel(
+        icon: Icons.manage_search_rounded,
+        title: '选择要追溯的${_entry.label}',
+        message: _entry == _TraceEntry.batch
+            ? '按系统实际生产批次查询来源与去向。'
+            : '选择具体货品或单据后查看权限范围内的实际记录。',
+        actionLabel: '选择${_entry.label}',
+        onAction: _pickSubject,
+      );
+    }
+    final epoch = _readEpoch;
+    return GoodsProductionTraceView.query(
+      key: ValueKey(('where-used-actual', subject.identity, _readEpoch)),
+      subject: subject,
+      dateFrom: _limitHistoryDates ? _formatDate(_from) : null,
+      dateTo: _limitHistoryDates ? _formatDate(_to) : null,
+      reloadTick: _traceReloadTick,
+      onTraceSubject: (value) {
+        if (mounted && epoch == _readEpoch) _followTraceSubject(value);
+      },
+    );
+  }
+
+  void _followTraceSubject(MaterialTraceSubject subject) {
+    setState(() {
+      _subject = subject;
+      _entry = subject.isGoods
+          ? _TraceEntry.goods
+          : subject.type == 'PRODUCTION_OUTPUT_LOT'
+          ? _TraceEntry.batch
+          : _TraceEntry.document;
+      _material = subject.isGoods
+          ? GoodsListItem(
+              id: subject.id,
+              code: subject.code,
+              name: subject.displayName,
+              status: subject.status,
+            )
+          : null;
+      _mode = _TraceResultMode.actual;
+      _page = 1;
+      _invalidateLoadedResults();
+      ++_traceReloadTick;
+    });
   }
 
   Widget _buildTable(ReportData data) {

@@ -7,6 +7,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../basic_data/models/goods_node.dart';
 import '../../basic_data/repositories/goods_repository.dart';
 
@@ -38,6 +39,7 @@ Future<WhereUsedProductDetailResult?> showWhereUsedProductDetailDialog({
   required String historyRangeLabel,
   required bool canViewGoods,
   required bool canViewStock,
+  SensitiveReadBoundary? readBoundary,
 }) {
   final body = _WhereUsedProductDetailBody(
     row: row,
@@ -45,6 +47,12 @@ Future<WhereUsedProductDetailResult?> showWhereUsedProductDetailDialog({
     historyRangeLabel: historyRangeLabel,
     canViewGoods: canViewGoods,
     canViewStock: canViewStock,
+    boundary:
+        readBoundary ??
+        ProviderScope.containerOf(
+          context,
+          listen: false,
+        ).read(sensitiveReadBoundaryProvider),
   );
 
   if (context.breakpoint.isCompact) {
@@ -89,6 +97,7 @@ class _WhereUsedProductDetailBody extends ConsumerStatefulWidget {
     required this.historyRangeLabel,
     required this.canViewGoods,
     required this.canViewStock,
+    required this.boundary,
   });
 
   final Map<String, dynamic> row;
@@ -96,6 +105,7 @@ class _WhereUsedProductDetailBody extends ConsumerStatefulWidget {
   final String historyRangeLabel;
   final bool canViewGoods;
   final bool canViewStock;
+  final SensitiveReadBoundary boundary;
 
   @override
   ConsumerState<_WhereUsedProductDetailBody> createState() =>
@@ -108,6 +118,24 @@ class _WhereUsedProductDetailBodyState
   bool _loading = false;
   bool _loadFailed = false;
   bool _accessDenied = false;
+  bool _boundaryChanged = false;
+  int _requestGeneration = 0;
+  bool _closeScheduled = false;
+
+  void _closeStaleRoute() {
+    if (_closeScheduled) return;
+    _closeScheduled = true;
+    final route = ModalRoute.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = route?.navigator;
+      if (route == null || navigator == null || !route.isActive) return;
+      if (route.isCurrent) {
+        navigator.pop();
+      } else {
+        navigator.removeRoute(route);
+      }
+    });
+  }
 
   String get _productId =>
       _rawText(widget.row['__productId'] ?? widget.row['__srcId']);
@@ -115,6 +143,18 @@ class _WhereUsedProductDetailBodyState
   @override
   void initState() {
     super.initState();
+    _boundaryChanged =
+        widget.boundary != ref.read(sensitiveReadBoundaryProvider);
+    ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
+      if (previous == next || !mounted || _boundaryChanged) return;
+      ++_requestGeneration;
+      setState(() {
+        _boundaryChanged = true;
+        _detail = null;
+      });
+      _closeStaleRoute();
+    });
+    if (_boundaryChanged) return;
     if (widget.canViewGoods) {
       _loading = true;
       _loadDetail();
@@ -124,6 +164,8 @@ class _WhereUsedProductDetailBodyState
   }
 
   Future<void> _loadDetail({bool retry = false}) async {
+    if (_boundaryChanged) return;
+    final generation = ++_requestGeneration;
     if (retry) {
       setState(() {
         _loading = true;
@@ -131,7 +173,7 @@ class _WhereUsedProductDetailBodyState
       });
     }
     if (_productId.isEmpty) {
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _loading = false;
         _loadFailed = true;
@@ -140,14 +182,14 @@ class _WhereUsedProductDetailBodyState
     }
     try {
       final detail = await ref.read(goodsRepositoryProvider).detail(_productId);
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _detail = detail;
         _loading = false;
         _loadFailed = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _requestGeneration) return;
       setState(() {
         final forbidden = error is ApiException && error.code == 'FORBIDDEN';
         _loading = false;
@@ -159,6 +201,7 @@ class _WhereUsedProductDetailBodyState
   }
 
   void _follow(WhereUsedProductLink link) {
+    if (_boundaryChanged) return;
     final detail = _detail;
     if (link != WhereUsedProductLink.stockMovements && detail == null) return;
     if (_productId.isEmpty) return;
@@ -173,6 +216,10 @@ class _WhereUsedProductDetailBodyState
 
   @override
   Widget build(BuildContext context) {
+    if (_boundaryChanged) {
+      _closeStaleRoute();
+      return const SizedBox.shrink();
+    }
     final theme = Theme.of(context);
     final productName = _display(widget.row['goodsName']);
     final productCode = _display(widget.row['goodsCode']);

@@ -66,12 +66,12 @@ LANGUAGE sql STABLE AS $$
           AND material.analysis_id=formal.analysis_id
           AND (material.goods_id,material.color_id,material.unit_id)
               IS NOT DISTINCT FROM (demand.goods_id,demand.color_id,demand.unit_id)
-          -- Inline of fn_analysis_plan_material_matches(source.id,material.id); keep in
-          -- sync with the V495 definition.
+          -- Inline of fn_analysis_plan_material_matches(source.id,material.id) in its
+          -- post-V798 shape; keep in sync with the surviving function definition.
           AND (
             (source.parent_analysis_material_id IS NULL
                AND material.analysis_item_id=source.id AND material.depth=1)
-            OR (source.source_type IN('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+            OR (source.source_type='MAKE_COMPONENT'
                AND parent.active
                AND material.analysis_item_id=parent.analysis_item_id
                AND ((parent.node_role='ROOT_SUPPLY' AND material.depth=1
@@ -201,13 +201,13 @@ LANGUAGE sql STABLE AS $$
         JOIN production_material_analysis_materials material ON material.analysis_id=plan.material_analysis_id AND material.active
           AND (material.goods_id,material.color_id,material.unit_id)
               IS NOT DISTINCT FROM (demand.goods_id,demand.color_id,demand.unit_id)
-          -- Inline of fn_analysis_plan_material_matches(source.id,material.id): the
-          -- function call per candidate pair dominated trigger-time cost. Keep in
-          -- sync with the V495 definition.
+          -- Inline of fn_analysis_plan_material_matches(source.id,material.id) in its
+          -- post-V798 shape (the retired SUBCONTRACT_MAKE value no longer exists);
+          -- keep in sync with the surviving function definition.
           AND (
             (source.parent_analysis_material_id IS NULL
                AND material.analysis_item_id=source.id AND material.depth=1)
-            OR (source.source_type IN('MAKE_COMPONENT','SUBCONTRACT_MAKE')
+            OR (source.source_type='MAKE_COMPONENT'
                AND parent.active
                AND material.analysis_item_id=parent.analysis_item_id
                AND ((parent.node_role='ROOT_SUPPLY' AND material.depth=1

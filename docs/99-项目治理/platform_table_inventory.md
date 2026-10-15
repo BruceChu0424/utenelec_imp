@@ -2,7 +2,7 @@
 
 > 自动生成：`python scripts/audit_platform_tables.py --write`；CI/本地核对：`--check`。
 
-扫描 `lib/` 1372 个 Dart 源文件，记录 273 个调用点（200 个文件）。真实 Flutter 表格 242 处。
+扫描 `lib/` 1375 个 Dart 源文件，记录 273 个调用点（200 个文件）。真实 Flutter 表格 242 处。
 
 这里统计实际 AST 调用（包括已核对的原件 CSV 自绘表格 `_CsvBody`），排除注释、字符串与构造器声明。`pw.Table` 是 PDF 内容；`UtenPrintTable` 是打印数据规格，均不计入交互表格。调用点不等于页面数：共享 wrapper 的实际渲染点记录一次。
 
@@ -177,7 +177,7 @@
 | `lib/features/production/pages/production_report_page.dart:243` | UtenPrintTable | print | not_declared_at_call_site | 未声明 |
 | `lib/features/production/pages/production_report_page.dart:485` | MasterDataTableView<Map<String, dynamic>> | report | not_declared_at_call_site | 'features.production.pages.production_report_page.ProductionReportPageState._buildTable.1' |
 | `lib/features/production/pages/production_workshop_tasks_page.dart:2973` | MasterDataTableView<ProductionExecutionWorkbenchSegment> | business_list | (task) => _selectable && _selectableTask(task) ? task.segmentId : null; (task) => task.segmentId | 'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.1' |
-| `lib/features/production/pages/where_used_report_page.dart:609` | MasterDataTableView<Map<String, dynamic>> | report | not_declared_at_call_site | 'features.production.pages.where_used_report_page.WhereUsedReportPageState._buildTable.1' |
+| `lib/features/production/pages/where_used_report_page.dart:1010` | MasterDataTableView<Map<String, dynamic>> | report | not_declared_at_call_site | 'features.production.pages.where_used_report_page.WhereUsedReportPageState._buildTable.1' |
 | `lib/features/production/pages/workshop_material_reports_page.dart:667` | MasterDataTableView<WmBinUsageRow> | business_list | not_declared_at_call_site | 'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._usageTable.1' |
 | `lib/features/production/pages/workshop_material_reports_page.dart:785` | MasterDataTableView<WmProductUsageRow> | business_list | not_declared_at_call_site | 'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._productTable.1' |
 | `lib/features/production/pages/workshop_material_reports_page.dart:1014` | MasterDataTableView<WmMissingWeightRow> | business_list | not_declared_at_call_site | 'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._missingTable.1' |
@@ -305,7 +305,7 @@
 | `lib/shared/drafts/draft_workspace_table.dart:490` | MasterDataTableView<DraftWorkspaceRow> | business_list | (row) => _canSelect(row) ? row.key : null; (row) => row.key; (row) => ValueKey('draft-workspace-row-${row.key}') | '${widget.tableKey ?? 'shared.drafts.workspace.${_kinds.map((kind) => kind.name).join('.')}'}' '.v2' |
 | `lib/shared/drafts/form_draft_category_table.dart:249` | MasterDataTableView<FormDraftCategoryRow<T>> | business_list | (row) => row.isLocal ? '$_prefix${row.draft!.id}' : table.idOf?.call(row.record as T); (row) => row.isLocal ? '$_prefix${row.draft!.id}' : _id(row.record as T); (row) => row.isLocal ? ValueKey('form-draft-row-${row.draft!.id}') : table.rowWidgetKeyOf?.call(row.record as T) | table.tableKey |
 | `lib/shared/drafts/form_draft_category_table.dart:733` | MasterDataTableView<Object> | business_list | (_) => null | 'shared.drafts.category.v2' |
-| `lib/shared/stock_ledger/widgets/goods_production_trace_view.dart:139` | MasterDataTableView<GoodsProductionTraceRow> | report | (row) => row.id | 'goods.production_trace.$_direction' |
+| `lib/shared/stock_ledger/widgets/goods_production_trace_view.dart:239` | MasterDataTableView<GoodsProductionTraceRow> | report | (row) => row.id | 'goods.production_trace.$_direction' |
 | `lib/shared/stock_ledger/widgets/goods_stock_balance_view.dart:194` | MasterDataTableView<BalanceRow> | report | not_declared_at_call_site | 'shared.stock_ledger.widgets.goods_stock_balance_view.GoodsStockBalanceViewState.build.1' |
 | `lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart:230` | MasterDataTableView<StockLedgerRow> | report | (row) => '${row.rowKind}:${row.id}' | 'shared.stock_ledger.widgets.goods_stock_ledger_view.GoodsStockLedgerViewState.build.1' |
 | `lib/shared/stock_ledger/widgets/goods_weight_learning_view.dart:508` | MasterDataTableView<WeightObservation> | report | (o) => o.id | 'shared.stock_ledger.widgets.goods_weight_learning_view.GoodsWeightLearningViewState._recordsTable.1' |

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "lib",
   "generator": "scripts/audit_platform_tables.py + Dart analyzer AST",
-  "sourceFileCount": 1372,
+  "sourceFileCount": 1375,
   "parseErrorFiles": [],
   "countMeaning": "Source invocation sites, not route count or runtime table instances. Shared wrappers count at their renderer call; PDF and print data are separate.",
   "printBoundaries": [
@@ -10822,8 +10822,8 @@
     {
       "id": "lib/features/production/pages/where_used_report_page.dart::_WhereUsedReportPageState::_buildTable::MasterDataTableView#1",
       "path": "lib/features/production/pages/where_used_report_page.dart",
-      "line": 609,
-      "endLine": 636,
+      "line": 1010,
+      "endLine": 1037,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<Map<String, dynamic>>",
       "kind": "flutter_table",
@@ -23292,8 +23292,8 @@
     {
       "id": "lib/shared/stock_ledger/widgets/goods_production_trace_view.dart::_TraceState::build::MasterDataTableView#1",
       "path": "lib/shared/stock_ledger/widgets/goods_production_trace_view.dart",
-      "line": 139,
-      "endLine": 160,
+      "line": 239,
+      "endLine": 274,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<GoodsProductionTraceRow>",
       "kind": "flutter_table",
@@ -23319,19 +23319,11 @@
       },
       "baseFields": [
         {
-          "key": "'basis'",
-          "label": "'记录类型'",
-          "type": null,
-          "value": "(row) => row.isPeriodic ? '期间分摊' : '按单用料'",
-          "sourceLine": 169,
-          "editable": false
-        },
-        {
           "key": "'goods'",
           "label": "_direction == 'usage' ? '生产产品' : '使用物料'",
           "type": null,
           "value": "(row) => related(row).goodsName ?? '—'",
-          "sourceLine": 175,
+          "sourceLine": 388,
           "editable": false
         },
         {
@@ -23339,7 +23331,23 @@
           "label": "'编号'",
           "type": null,
           "value": "(row) => related(row).goodsCode ?? '—'",
-          "sourceLine": 181,
+          "sourceLine": 394,
+          "editable": false
+        },
+        {
+          "key": "'productionBatches'",
+          "label": "'生产批次'",
+          "type": null,
+          "value": "(row) => _joined(row.reports.expand((report) => report.batches).map((batch) => batch.displayName))",
+          "sourceLine": 400,
+          "editable": false
+        },
+        {
+          "key": "'basis'",
+          "label": "'记录类型'",
+          "type": null,
+          "value": "(row) => row.isPeriodic ? '期间分摊' : '按单用料'",
+          "sourceLine": 410,
           "editable": false
         },
         {
@@ -23347,7 +23355,7 @@
           "label": "'颜色'",
           "type": null,
           "value": "(row) => related(row).colorName ?? '—'",
-          "sourceLine": 187,
+          "sourceLine": 416,
           "editable": false
         },
         {
@@ -23355,7 +23363,7 @@
           "label": "'车间'",
           "type": null,
           "value": "(row) => row.workshopName ?? '—'",
-          "sourceLine": 193,
+          "sourceLine": 422,
           "editable": false
         },
         {
@@ -23363,7 +23371,7 @@
           "label": "'生产计划'",
           "type": null,
           "value": "(row) => row.planNo ?? row.segmentCode ?? '—'",
-          "sourceLine": 199,
+          "sourceLine": 428,
           "editable": false
         },
         {
@@ -23371,7 +23379,7 @@
           "label": "'已领数量'",
           "type": null,
           "value": "(row) => _qty(row.issuedQty, row.material.unitName)",
-          "sourceLine": 205,
+          "sourceLine": 434,
           "editable": false
         },
         {
@@ -23379,7 +23387,7 @@
           "label": "'已退数量'",
           "type": null,
           "value": "(row) => _qty(row.returnedQty, row.material.unitName)",
-          "sourceLine": 211,
+          "sourceLine": 440,
           "editable": false
         },
         {
@@ -23387,7 +23395,7 @@
           "label": "'核销耗用'",
           "type": null,
           "value": "(row) => _qty(row.consumedQty, row.material.unitName)",
-          "sourceLine": 217,
+          "sourceLine": 446,
           "editable": false
         },
         {
@@ -23395,15 +23403,15 @@
           "label": "'期间分摊量'",
           "type": null,
           "value": "(row) => _qty(row.allocatedQty, row.material.unitName)",
-          "sourceLine": 223,
+          "sourceLine": 452,
           "editable": false
         },
         {
           "key": "'reports'",
-          "label": "'生产日期'",
+          "label": "'报工日期'",
           "type": null,
           "value": "(row) => _joined(row.reports.map((r) => r.billDate).nonNulls)",
-          "sourceLine": 229,
+          "sourceLine": 458,
           "editable": false
         },
         {
@@ -23411,7 +23419,7 @@
           "label": "'报工参与人'",
           "type": null,
           "value": "(row) => _joined(row.reports.expand((r) => r.workers))",
-          "sourceLine": 235,
+          "sourceLine": 464,
           "editable": false
         },
         {
@@ -23419,7 +23427,7 @@
           "label": "'入库来源单据'",
           "type": null,
           "value": "(row) => row.receiptSources.isEmpty ? '暂无可显示来源' : row.receiptSources.map((r) => r.billNo ?? '—').toSet().join('、')",
-          "sourceLine": 241,
+          "sourceLine": 470,
           "editable": false
         }
       ],

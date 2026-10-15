@@ -15,4 +15,7 @@ public interface SubcontractDocumentReadAccessPort {
             String ownerColumn,
             String parameterName,
             String... operationAuthorities);
+
+    /** Retains the material-issue feature's original owner-or-outbound-pool visibility. */
+    NativeReadScope materialIssueReadScope(String documentAlias,String parameterName);
 }

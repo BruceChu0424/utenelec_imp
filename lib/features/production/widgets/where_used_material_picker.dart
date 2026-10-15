@@ -10,6 +10,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../basic_data/models/goods_node.dart';
 
 /// 物料反查专用选择器。
@@ -23,6 +24,7 @@ Future<GoodsListItem?> showWhereUsedMaterialPicker(
 ) {
   final picker = _WhereUsedMaterialPicker(
     api: ref.read(apiClientProvider),
+    boundary: ref.read(sensitiveReadBoundaryProvider),
     autofocus: !context.breakpoint.isCompact,
   );
 
@@ -59,18 +61,24 @@ Future<GoodsListItem?> showWhereUsedMaterialPicker(
   );
 }
 
-class _WhereUsedMaterialPicker extends StatefulWidget {
-  const _WhereUsedMaterialPicker({required this.api, required this.autofocus});
+class _WhereUsedMaterialPicker extends ConsumerStatefulWidget {
+  const _WhereUsedMaterialPicker({
+    required this.api,
+    required this.boundary,
+    required this.autofocus,
+  });
 
   final ApiClient api;
+  final SensitiveReadBoundary boundary;
   final bool autofocus;
 
   @override
-  State<_WhereUsedMaterialPicker> createState() =>
+  ConsumerState<_WhereUsedMaterialPicker> createState() =>
       _WhereUsedMaterialPickerState();
 }
 
-class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
+class _WhereUsedMaterialPickerState
+    extends ConsumerState<_WhereUsedMaterialPicker> {
   static const _pageSize = 50;
 
   final _keywordController = TextEditingController();
@@ -81,6 +89,40 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
   int _page = 1;
   int _requestGeneration = 0;
   bool _loading = false;
+  bool _boundaryChanged = false;
+  bool _closeScheduled = false;
+
+  void _closeStaleRoute() {
+    if (_closeScheduled) return;
+    _closeScheduled = true;
+    final route = ModalRoute.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = route?.navigator;
+      if (route == null || navigator == null || !route.isActive) return;
+      if (route.isCurrent) {
+        navigator.pop();
+      } else {
+        navigator.removeRoute(route);
+      }
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.boundary != ref.read(sensitiveReadBoundaryProvider)) {
+      _boundaryChanged = true;
+    }
+    ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
+      if (previous == next || !mounted || _boundaryChanged) return;
+      ++_requestGeneration;
+      setState(() {
+        _boundaryChanged = true;
+        _result = null;
+      });
+      _closeStaleRoute();
+    });
+  }
 
   @override
   void dispose() {
@@ -121,6 +163,7 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
   }
 
   Future<void> _reload() async {
+    if (_boundaryChanged) return;
     if (_keyword.trim().isEmpty) {
       _resetToSearchPrompt();
       return;
@@ -182,6 +225,10 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
 
   @override
   Widget build(BuildContext context) {
+    if (_boundaryChanged) {
+      _closeStaleRoute();
+      return const SizedBox.shrink();
+    }
     final theme = Theme.of(context);
     return SafeArea(
       key: const Key('where-used-material-picker'),
@@ -282,7 +329,11 @@ class _WhereUsedMaterialPickerState extends State<_WhereUsedMaterialPicker> {
         return _MaterialTile(
           key: ValueKey('where-used-material-${item.id}'),
           item: item,
-          onTap: () => Navigator.of(context).pop(item.toGoodsListItem()),
+          onTap: () {
+            if (!_boundaryChanged) {
+              Navigator.of(context).pop(item.toGoodsListItem());
+            }
+          },
         );
       },
     );

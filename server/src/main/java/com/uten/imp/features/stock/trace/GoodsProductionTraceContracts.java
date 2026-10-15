@@ -2,6 +2,7 @@ package com.uten.imp.features.stock.trace;
 
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.uten.imp.common.finance.ExactDecimalText;
+import com.uten.imp.application.port.MaterialTraceabilityReadPort;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -14,9 +15,17 @@ public final class GoodsProductionTraceContracts {
     public record DocumentRef(UUID id,String billNo,String docType,LocalDate billDate) {}
     /** Ordered participants of the whole report, not per-person production quantities. */
     public record Worker(UUID id,String name) {}
+    public record OutputBatch(UUID id,String code,UUID reportItemId,
+                              @JsonSerialize(using=ExactDecimalText.class) BigDecimal productQty,String unitName,
+                              Integer lineNo,String label) {}
     public record ProductionReport(UUID id,String billNo,LocalDate billDate,UUID segmentId,
                                    @JsonSerialize(using=ExactDecimalText.class) BigDecimal productQty,
-                                   String unitName,List<Worker> workers) {}
+                                   String unitName,List<Worker> workers,List<OutputBatch> batches) {
+        public ProductionReport(UUID id,String billNo,LocalDate billDate,UUID segmentId,BigDecimal productQty,
+                                String unitName,List<Worker> workers) {
+            this(id,billNo,billDate,segmentId,productQty,unitName,workers,List.of());
+        }
+    }
     /** Only an exact receipt-to-issued-reservation bridge can populate this list. */
     public record ReceiptSource(UUID id,String billNo,UUID receiptItemId,LocalDate billDate,UUID supplierId,
                                 String supplierName,@JsonSerialize(using=ExactDecimalText.class) BigDecimal qty,
@@ -31,5 +40,5 @@ public final class GoodsProductionTraceContracts {
                            @JsonSerialize(using=ExactDecimalText.class) BigDecimal lossQty,
                            @JsonSerialize(using=ExactDecimalText.class) BigDecimal allocatedQty,
                            List<DocumentRef> drawDocuments,List<ProductionReport> reports,
-                           List<ReceiptSource> receiptSources) {}
+                           List<ReceiptSource> receiptSources) implements MaterialTraceabilityReadPort.TraceItem {}
 }

@@ -58,7 +58,14 @@ class _ProcurementIqcRejectionListPageState
   PagedResult<ProcurementIqcRejectionCase>? _result;
   ProcurementIqcRejectionCounts? _counts;
   ProcurementIqcReceiptType? _receiptType;
-  String? _status;
+  String? _status = 'ACTIVE';
+  bool get _historyStatus => const {
+    'TERMINAL',
+    'CREDIT_CONFIRMED',
+    'CLOSED_NO_CREDIT',
+    'REVERSED',
+  }.contains(_status);
+  bool _hasAcceptedList = false;
   bool _statusSelected = false; // 进页面不预选（不选=不过滤）
   String _keyword = '';
   bool _loading = true;
@@ -112,12 +119,23 @@ class _ProcurementIqcRejectionListPageState
         keyword: _keyword,
       );
       final values = await Future.wait<Object>([
-        _repository.list(filter),
+        _statusSelected
+            ? _repository.list(filter)
+            : Future.value(
+                const PagedResult<ProcurementIqcRejectionCase>(
+                  items: [],
+                  page: 1,
+                  size: 20,
+                  total: 0,
+                  totalPages: 1,
+                ),
+              ),
         _repository.counts(countFilter),
       ]);
       if (!mounted || requestId != _requestId) return;
       setState(() {
         _result = values[0] as PagedResult<ProcurementIqcRejectionCase>;
+        if (_statusSelected) _hasAcceptedList = true;
         _counts = values[1] as ProcurementIqcRejectionCounts;
         _loading = false;
       });
@@ -145,7 +163,7 @@ class _ProcurementIqcRejectionListPageState
   void _changeStatus(String? value) {
     if (_status == value && _statusSelected) return;
     setState(() {
-      _status = value;
+      _status = value ?? (_historyStatus ? 'TERMINAL' : 'ACTIVE');
       _statusSelected = true;
     });
     _load(1);
@@ -186,7 +204,7 @@ class _ProcurementIqcRejectionListPageState
     final result = _result;
     // 加载/错误态也钉住宿主分类栏（2026-10-01 用户口径：点击子分类的瞬间
     // 整条分类栏不得消失），数据到位后照常走折叠容器。
-    final transient = result == null && (_loading || _error != null);
+    final transient = !_hasAcceptedList && (_loading || _error != null);
     final Widget fallback;
     if (_loading && transient) {
       fallback = Center(
@@ -326,7 +344,7 @@ class _ProcurementIqcRejectionListPageState
     return UtenFilterToolbar<String?>(
       segmentsKey: const Key('iqc-rejection-status-segments'),
       segments: [
-        const UtenFilterSegment(value: null, label: '全部'),
+        const UtenFilterSegment(value: 'ACTIVE', label: '待办与进行中'),
         UtenFilterSegment(
           value: 'PENDING_RETURN',
           label: '待退回',
@@ -348,14 +366,11 @@ class _ProcurementIqcRejectionListPageState
           count: counts.financeException,
           countForm: UtenSegmentCountForm.inProgress,
         ),
-        UtenFilterSegment(
-          value: 'TERMINAL',
-          label: '终态',
-          count:
-              counts.creditConfirmed + counts.closedNoCredit + counts.reversed,
-        ),
+        const UtenFilterSegment(value: 'TERMINAL', label: '历史单据'),
       ],
-      selected: _statusSelected ? {_status} : const {},
+      selected: _statusSelected
+          ? {_historyStatus ? 'TERMINAL' : _status}
+          : const {},
       onSelectionChanged: _changeStatus,
     );
   }

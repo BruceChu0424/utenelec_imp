@@ -71,7 +71,7 @@ class WarehouseQualityResultApiContractTest {
         // 2026-09-25 单号列统一：列表方法追加 sort/order/billNo 三个可选参数
         // （单号列排序 + 值筛选）；ADR-149 再追加 scopeWarehouseId(仓库数据范围)；读权限口径不变。
         Method list = WarehouseQualityResultController.class.getDeclaredMethod(
-                "list", String.class, String.class, String.class, LocalDate.class, LocalDate.class,
+                "list", String.class, String.class, String.class, String.class, LocalDate.class, LocalDate.class,
                 int.class, int.class, String.class, String.class, String.class, UUID.class);
         Method detail = WarehouseQualityResultController.class.getDeclaredMethod(
                 "detail", String.class, UUID.class);

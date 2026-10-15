@@ -13,6 +13,8 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/hr_task/models/hr_task_summary.dart';
+import 'package:uten_imp/features/hr_task/models/hr_celebration_publication.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/features/hr_task/pages/hr_task_list_page.dart';
 import 'package:uten_imp/features/hr_task/repositories/hr_task_repository.dart';
 import 'package:uten_imp/features/hr_task/widgets/hr_task_widgets.dart';
@@ -34,6 +36,34 @@ class _FakeHrTaskRepository extends Fake implements HrTaskRepository {
   HrTaskSummary summaryValue;
   int summaryCalls = 0;
   final claimed = <(String, String)>[];
+  final historyPages = <int>[];
+
+  @override
+  Future<PagedResult<HrCelebrationPublication>> celebrationHistory({
+    required String type,
+    int page = 1,
+  }) async {
+    historyPages.add(page);
+    return PagedResult(
+      items: [
+        HrCelebrationPublication(
+          id: 'history-$page',
+          noticeId: 'notice-$page',
+          employeeName: '历史员工$page',
+          type: type,
+          eventLabel: '历史发布快照',
+          publishedAt: page == 1
+              ? '2025-01-01T08:00:00Z'
+              : '2024-02-03T08:00:00Z',
+          publisher: '发布人快照',
+        ),
+      ],
+      page: page,
+      size: 1,
+      total: 2,
+      totalPages: 2,
+    );
+  }
 
   @override
   Future<void> claim(String taskType, String employeeId) async {
@@ -220,6 +250,66 @@ UtenMenuItem _menuItem(WidgetTester tester, HrTaskItem item, String label) =>
     );
 
 void main() {
+  testWidgets(
+    'celebration active rows exclude completed and archive pages contain no task actions',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final hrTasks = _FakeHrTaskRepository(
+        _summary(
+          birthdayToday: [_item('open'), _item('done', blessed: true)],
+          birthdayUpcoming: [_item('future', days: 5)],
+        ),
+      );
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _app(
+          type: HrTaskType.birthday,
+          hrTasks: hrTasks,
+          preferences: preferences,
+          notices: _FakeNoticeRepository(),
+          permissions: {
+            Perm.employeeView,
+            Perm.employeePiiView,
+            Perm.noticeRead,
+            Perm.noticePublish,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_table(tester).items.map((item) => item.employeeId), [
+        'open',
+        'future',
+      ]);
+      await tester.tap(find.text('历史单据'));
+      await tester.pumpAndSettle();
+      var history = tester
+          .widget<MasterDataTableView<HrCelebrationPublication>>(
+            find.byKey(const Key('hr-celebration-history-table')),
+          );
+      expect(history.totalPages, 2);
+      expect(history.items.single.employeeName, '历史员工1');
+      expect(history.selectable, isFalse);
+      expect(history.rowMenuBuilder, isNull);
+      expect(history.batchActionsBuilder, isNull);
+      expect(find.byKey(const Key('hr-task-batch-bless')), findsNothing);
+      expect(
+        find.byKey(const Key('hr-task-celebration-auto-switch')),
+        findsNothing,
+      );
+      await history.onPageChange!(2);
+      await tester.pumpAndSettle();
+      history = tester.widget<MasterDataTableView<HrCelebrationPublication>>(
+        find.byKey(const Key('hr-celebration-history-table')),
+      );
+      expect(history.items.single.publishedAt, startsWith('2024-'));
+      expect(hrTasks.historyPages, [1, 2]);
+      expect(hrTasks.claimed, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('160逻辑画布系统200%生日开关与一键祝福保持可达及精确人员范围', (tester) async {
     tester.view.physicalSize = const Size(160, 800);
     tester.view.devicePixelRatio = 1;
@@ -984,7 +1074,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final table = _table(tester);
-    expect(table.columns.map((c) => c.key), contains('blessed'));
+    expect(table.columns.map((c) => c.key), isNot(contains('blessed')));
     expect(table.selectable, isTrue);
     table.onSelectedIdsChanged!({'a', 'b', 'c'});
     await tester.pumpAndSettle();

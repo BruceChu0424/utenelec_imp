@@ -220,6 +220,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 
   @override
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
     String? scopeWarehouseId,
@@ -232,6 +233,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 
   @override
   Future<List<MasterFacetBucket>> billNoFacets({
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
@@ -241,6 +243,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
+    WarehouseTaskView view = WarehouseTaskView.active,
     int page = 1,
     int size = 40,
     WarehouseIqcStockInReceiptType? receiptType,

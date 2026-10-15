@@ -165,10 +165,10 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
           child: Padding(
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
             child: UtenCollapsingHeaderScrollView(
-              // 分段(进页面默认「全部」: 我的报销是个人列表, 落地即见数据)。
+              // 默认只查询本人待办与进行中；已付款单据从历史单据查阅。
               // 三形态各就各位(ADR-100): 草稿 / 待修订是本人要动手的活 -> 红;
               // 「处理中」已经交出去、在审批人或出纳手上滚着 -> 黄;
-              // 「全部」「已完成」是浏览型 -> 不挂 / 括号。
+              // 历史单据不挂待办数。
               // 2026-09-24 对齐物料分析页：页面头移入滚走区，body 只剩表格。
               collapsingHeader: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -178,7 +178,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                     segments: [
                       const UtenFilterSegment(
                         value: ExpenseFilter.all,
-                        label: '全部',
+                        label: '待办与进行中',
                       ),
                       UtenFilterSegment(
                         value: ExpenseFilter.draft,
@@ -204,7 +204,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
                       ),
                       const UtenFilterSegment(
                         value: ExpenseFilter.finished,
-                        label: '已完成',
+                        label: '历史单据',
                       ),
                     ],
                     selected: {filter},

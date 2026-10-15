@@ -194,6 +194,14 @@ public class SalesOrderService {
             if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
+            // Work categories follow the same active header boundary as stats,
+            // even if a stopped/closed document retains an old child chain state.
+            if ((f.chain() != null && !f.chain().isEmpty())
+                    || (f.chainGroup() != null && !f.chainGroup().isBlank())) {
+                ps.add(cb.equal(root.get("status"), STATUS_APPROVED));
+                ps.add(cb.isFalse(root.get("closed")));
+                ps.add(cb.isFalse(root.get("stopped")));
+            }
             // 链路状态组筛选（工作台统计卡钻取）：存在任一明细行命中即返回
             if (f.chain() != null && !f.chain().isEmpty()) {
                 jakarta.persistence.criteria.Subquery<UUID> sub = q.subquery(UUID.class);

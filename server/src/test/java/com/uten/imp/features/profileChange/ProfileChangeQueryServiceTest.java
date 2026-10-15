@@ -53,6 +53,22 @@ class ProfileChangeQueryServiceTest {
     }
 
     @Test
+    void ownListDefaultsToPendingAndHistoryKeepsSubmittedByBeforePaging() {
+        UUID employeeId = UUID.randomUUID();
+        AuthUser user = mock(AuthUser.class);
+        when(user.getEmployeeId()).thenReturn(employeeId);
+        when(access.requireStaff()).thenReturn(user);
+        when(repo.findBatchIds(anyString(), eq(employeeId), isNull(), isNull(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+        service.myList(1, 20, null);
+        service.myList(2, 20, "history");
+        verify(repo).findBatchIds(eq("pending"), eq(employeeId), isNull(), isNull(), any(Pageable.class));
+        ArgumentCaptor<Pageable> page = ArgumentCaptor.forClass(Pageable.class);
+        verify(repo).findBatchIds(eq("history"), eq(employeeId), isNull(), isNull(), page.capture());
+        assertEquals(1, page.getValue().getPageNumber());
+    }
+
+    @Test
     void hrListWithDepartmentUsesDepartmentScopedQueryAndDefaultsToPending() {
         UUID departmentId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();

@@ -1,5 +1,5 @@
 // 报价列表按财务核价分桶分段(ADR-134)：草稿(红) / 财务退回(红) / 待财务核价(黄) /
-// 已核价(红 = 待转订货单) / 作废(括号)，选中分段向服务端传 bucket(服务端 QuoteQueryFilter)；
+// 待客户同意 / 待转订货单，已转单与作废在历史；选中分段传 bucket(服务端 QuoteQueryFilter)；
 // 状态列按分桶显示。订货单「从报价引入」弹窗按 bucket=AWAITING_CONVERSION 在服务端筛。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -129,34 +129,35 @@ void main() {
         ),
       );
 
-  testWidgets('five finance-pricing buckets with the right count forms', (
-    tester,
-  ) async {
-    final api = await pump(tester);
-    // 2026-10-04 起进页面自动选中第一条红徽章段（待客户同意，红6）：
-    // bucket 查询随挂载即发，不再停在「未选段」占位。
-    expect(
-      api.listQueries.last?['bucket'],
-      SalesQuoteStage.awaitingCustomer,
-      reason: 'first red bucket auto-selected',
-    );
-    expect(seg(tester, '草稿').count, 3);
-    expect(seg(tester, '草稿').countForm, UtenSegmentCountForm.actionable);
-    expect(seg(tester, '财务退回').count, 1);
-    expect(seg(tester, '财务退回').countForm, UtenSegmentCountForm.actionable);
-    expect(seg(tester, '待财务核价').count, 2);
-    expect(seg(tester, '待财务核价').countForm, UtenSegmentCountForm.inProgress);
-    // 已核价段的红数只数「待转订货单」，与任务中心报价大类同源。
-    expect(seg(tester, '待生成订货单').count, 5);
-    expect(seg(tester, '待生成订货单').countForm, UtenSegmentCountForm.actionable);
-    expect(seg(tester, '待客户同意').count, 6);
-    expect(seg(tester, '待客户同意').countForm, UtenSegmentCountForm.actionable);
-    expect(seg(tester, '已核价').countForm, UtenSegmentCountForm.browsing);
-    expect(seg(tester, '作废').count, 4);
-    expect(seg(tester, '作废').countForm, UtenSegmentCountForm.browsing);
-    expect(find.text('已审'), findsNothing);
-    expect(find.text('红冲'), findsNothing);
-  });
+  testWidgets(
+    'active finance-pricing buckets keep their count forms and terminal states live in history',
+    (tester) async {
+      final api = await pump(tester);
+      // 2026-10-04 起进页面自动选中第一条红徽章段（待客户同意，红6）：
+      // bucket 查询随挂载即发，不再停在「未选段」占位。
+      expect(
+        api.listQueries.last?['bucket'],
+        SalesQuoteStage.awaitingCustomer,
+        reason: 'first red bucket auto-selected',
+      );
+      expect(seg(tester, '草稿').count, 3);
+      expect(seg(tester, '草稿').countForm, UtenSegmentCountForm.actionable);
+      expect(seg(tester, '财务退回').count, 1);
+      expect(seg(tester, '财务退回').countForm, UtenSegmentCountForm.actionable);
+      expect(seg(tester, '待财务核价').count, 2);
+      expect(seg(tester, '待财务核价').countForm, UtenSegmentCountForm.inProgress);
+      // 已核价段的红数只数「待转订货单」，与任务中心报价大类同源。
+      expect(seg(tester, '待生成订货单').count, 5);
+      expect(seg(tester, '待生成订货单').countForm, UtenSegmentCountForm.actionable);
+      expect(seg(tester, '待客户同意').count, 6);
+      expect(seg(tester, '待客户同意').countForm, UtenSegmentCountForm.actionable);
+      expect(find.text('已核价'), findsNothing);
+      expect(find.text('作废'), findsNothing);
+      expect(seg(tester, '历史记录').count, isNull);
+      expect(find.text('已审'), findsNothing);
+      expect(find.text('红冲'), findsNothing);
+    },
+  );
 
   testWidgets('selecting a bucket sends bucket and shows bucket status text', (
     tester,

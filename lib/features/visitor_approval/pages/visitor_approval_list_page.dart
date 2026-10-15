@@ -46,7 +46,7 @@ import '../../visitor/widgets/visitor_status_ui.dart';
 import '../providers/visitor_approval_providers.dart';
 import '../../../shared/badges/badge_registry.dart';
 
-enum ApprovalTab { pending, approved, rejected, checkedIn, cancelled }
+enum ApprovalTab { pending, approved, history }
 
 /// 单次批量上限：逐单循环单审 API，超过则提示分批（无后端批量端点）。
 const int kVisitorBatchLimit = 50;
@@ -82,9 +82,7 @@ class _VisitorApprovalListPageState
   String? get _tabStatus => switch (_tab) {
     ApprovalTab.pending => null,
     ApprovalTab.approved => 'approved',
-    ApprovalTab.rejected => 'rejected',
-    ApprovalTab.checkedIn => 'checkedIn',
-    ApprovalTab.cancelled => 'cancelled',
+    ApprovalTab.history => 'checkedIn,rejected,cancelled',
   };
 
   VisitorApprovalQuery get _query => (
@@ -117,14 +115,10 @@ class _VisitorApprovalListPageState
               _tab = ApprovalTab.approved;
               _statusFilter = null;
             case 'rejected':
-              _tab = ApprovalTab.rejected;
-              _statusFilter = null;
             case 'checkedIn':
-              _tab = ApprovalTab.checkedIn;
-              _statusFilter = null;
             case 'cancelled':
-              _tab = ApprovalTab.cancelled;
-              _statusFilter = null;
+              _tab = ApprovalTab.history;
+              _statusFilter = value;
             case null:
               _statusFilter = null;
             default:
@@ -398,23 +392,9 @@ class _VisitorApprovalListPageState
                 ),
                 countForm: UtenSegmentCountForm.inProgress,
               ),
-              UtenFilterSegment(
-                value: ApprovalTab.rejected,
-                label: l10n.visitorFilterRejected,
-              ),
-              UtenFilterSegment(
-                value: ApprovalTab.checkedIn,
-                label: visitorStatusLabel(
-                  VisitorApplicationStatus.checkedIn,
-                  l10n,
-                ),
-              ),
-              UtenFilterSegment(
-                value: ApprovalTab.cancelled,
-                label: visitorStatusLabel(
-                  VisitorApplicationStatus.cancelled,
-                  l10n,
-                ),
+              const UtenFilterSegment(
+                value: ApprovalTab.history,
+                label: '历史单据',
               ),
             ],
           ),
@@ -458,7 +438,9 @@ class _VisitorApprovalListPageState
                 },
                 nullCounts: const {},
                 filters: {
-                  'status': _statusFilter ?? _tabStatus,
+                  'status':
+                      _statusFilter ??
+                      (_tab == ApprovalTab.history ? null : _tabStatus),
                   'hostDepartment': _hostDepartmentId,
                 },
                 onFilterChanged: _onFilterChanged,

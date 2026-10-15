@@ -12,6 +12,7 @@ import 'package:uten_imp/core/responsive/display_zoom.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 
@@ -1267,7 +1268,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       // Confirming the panel applies the actor choice without loading data.
-      await tester.tap(find.widgetWithText(FilledButton, '确定'));
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
       expect(repository.listCalls, isEmpty);
       expect(repository.summaryCalls, isEmpty);
@@ -1843,14 +1844,14 @@ Future<void> _selectDefaultAuditScope(
 
   // The actor directory now opens the employee selection panel: pick the
   // person row (list tiles are keyed by candidate id), then confirm with the
-  // 确定 FilledButton. Tapping the row alone only drafts the selection.
+  // shared 确定 action. Tapping the row alone only drafts the selection.
   final actor = find.byKey(
     const ValueKey('employee-picker-item-${_AuditRepository.actorId}'),
   );
   expect(actor, findsOneWidget);
   await tester.tap(actor);
   await tester.pumpAndSettle();
-  await tester.tap(find.widgetWithText(FilledButton, '确定'));
+  await tester.tap(find.widgetWithText(UtenButton, '确定'));
   await tester.pumpAndSettle();
 
   final today = find.byKey(const ValueKey('audit-date-today'));

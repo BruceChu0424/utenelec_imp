@@ -141,14 +141,12 @@ void main() {
       ),
     );
     expect(toolbar.segments.map((segment) => segment.label), [
-      '全部',
+      '待办与进行中',
       '草稿',
       '财务退回',
       '待财务核价',
       '待客户同意',
       '待生成订货单',
-      '已核价',
-      '作废',
       '历史记录',
     ]);
     expect(toolbar.selected, isEmpty);

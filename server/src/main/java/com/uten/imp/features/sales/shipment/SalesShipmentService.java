@@ -150,7 +150,7 @@ public class SalesShipmentService {
      * 历史来源不完整的 LEGACY 单与仓库驳回单不进任何活动阶段，只在历史记录里可见。
      */
     static final Set<String> SHIPMENT_STAGES = Set.of(
-            "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "FINANCE_APPROVED", "SHIPPED", "REVERSED");
+            "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "FINANCE_APPROVED", "SHIPPED", "REVERSED", "ACTIVE");
 
     private static void addStagePredicates(
             List<Predicate> ps, CriteriaBuilder cb, Root<SalesShipment> root, String rawStage) {
@@ -163,6 +163,11 @@ public class SalesShipmentService {
                 cb.isNotNull(root.get("salesConfirmedAt")),
                 cb.equal(root.get("salesConfirmedRevision"), root.get("reviewRevision")));
         switch (stage) {
+            case "ACTIVE" -> {
+                ps.add(cb.equal(root.get("status"), (short) 0));
+                ps.add(cb.notEqual(root.get("shipmentKind"), "LEGACY"));
+                ps.add(cb.or(cb.isFalse(root.get("rejected")), cb.isTrue(root.get("financeRejected"))));
+            }
             case "DRAFT" -> {
                 ps.add(cb.equal(root.get("status"), (short) 0));
                 ps.add(cb.notEqual(root.get("shipmentKind"), "LEGACY"));

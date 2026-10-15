@@ -97,9 +97,13 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     tokens: {
       'Perm.employeeConfirm': 2,
       'Perm.employeeEdit': 1,
+      // ADR-180: history visibility mirrors the server GET guards. Birthday
+      // history still requires PII read; neither guard grants a write action.
+      'Perm.employeePiiView': 1,
       'Perm.employeeTaskTakeover': 1,
       'Perm.employeeView': 1,
       'Perm.noticePublish': 1,
+      'Perm.noticeRead': 1,
     },
   ),
   'lib/features/hr_task/pages/hr_workbench_page.dart': (
@@ -253,7 +257,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      33,
+      35, // Original 33 plus the two precisely registered history read guards.
     );
   });
 }

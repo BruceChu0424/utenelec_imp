@@ -9,6 +9,22 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get release2517PickerLayout =>
+      'Selection panels keep Clear, Cancel and Confirm together at the bottom right. Clear is marked in red, with tidier page inputs and more compact category rows.';
+
+  @override
+  String get release2517Lifecycle =>
+      'Daily lists focus on work in progress and upcoming tasks. Completed and cancelled records are grouped under History and remain available to view.';
+
+  @override
+  String get release2517Paging =>
+      'When viewing history, clearing a status filter, changing pages or refreshing keeps you in history. Handling the final inquiry on the last page returns you to a valid page.';
+
+  @override
+  String get release2517Drafts =>
+      'History no longer mixes in task drafts or pending actions. Unfinished drafts remain linked to their original tasks and can be resumed.';
+
+  @override
   String get editorDocumentIdentityChanged =>
       'The document or source has changed. Reopen this page.';
 

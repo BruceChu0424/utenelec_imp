@@ -62,7 +62,7 @@ enum _RdTaskSeg {
   draft('', '草稿'),
   pending('pending', '待处理'),
   inProgress('in_progress', '进行中'),
-  done('done', '已完成');
+  done('done', '历史单据');
 
   const _RdTaskSeg(this.apiStatus, this.label);
 

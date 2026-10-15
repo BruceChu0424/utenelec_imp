@@ -13,6 +13,18 @@ import java.util.Map;
 final class WarehouseOutboundTaskCenterSql {
     private WarehouseOutboundTaskCenterSql() {}
 
+    private static final java.util.Set<String> ACTIVE_STATUSES = java.util.Set.of(
+            "SALES_PENDING","SALES_LEGACY","SUBCONTRACT_PENDING","SUBCONTRACT_DRAFT",
+            "DRAW_PENDING","DRAW_PARTIAL","DRAW_DISCOVERY_PENDING","OTHER_DRAFT","FINISHED_DRAFT");
+    private static final String ACTIVE_STATUS_PREDICATE = "status IN ("
+            + ACTIVE_STATUSES.stream().sorted().map(status -> "'" + status + "'")
+                    .collect(java.util.stream.Collectors.joining(",")) + ")";
+
+    static boolean visibleStatus(String status, WarehouseTaskCenterContracts.TaskView view) {
+        return view == WarehouseTaskCenterContracts.TaskView.ALL
+                || (view == WarehouseTaskCenterContracts.TaskView.ACTIVE) == ACTIVE_STATUSES.contains(status);
+    }
+
     record Access(boolean sales, boolean subcontractTasks, boolean subcontractHistory,
                   boolean stock, boolean production, OwnerScope stockOwners) {}
 
@@ -87,6 +99,7 @@ final class WarehouseOutboundTaskCenterSql {
         parameters.put("dateFrom", filter.dateFrom());
         parameters.put("dateTo", filter.dateTo());
         parameters.put("status", filter.status());
+        parameters.put("view", filter.view().name());
         String union = String.join("\nUNION ALL\n", branches);
         if (union.isEmpty()) throw new IllegalArgumentException("No authorized outbound source");
         // Status facets omit only their own filter, while retaining source/owner/scope/search/date.
@@ -97,7 +110,8 @@ final class WarehouseOutboundTaskCenterSql {
                 """ + union + """
                 ), physical_rows AS (
                   SELECT source_rows.*,
-                    (POSITION(CAST(:keyword AS text) IN LOWER(COALESCE(search_text,'')))>0
+                    ((:view='ALL' OR (:view='ACTIVE')=(%s))
+                     AND POSITION(CAST(:keyword AS text) IN LOWER(COALESCE(search_text,'')))>0
                      AND (CAST(:dateFrom AS date) IS NULL OR business_date>=CAST(:dateFrom AS date))
                      AND (CAST(:dateTo AS date) IS NULL OR business_date<=CAST(:dateTo AS date))) AS context_match
                   FROM source_rows
@@ -106,7 +120,7 @@ final class WarehouseOutboundTaskCenterSql {
                     AND (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
                     AND (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
                 )
-                """;
+                """.formatted(ACTIVE_STATUS_PREDICATE);
         String direction = "asc".equals(filter.order()) ? "ASC" : "DESC";
         String primary = "billNo".equals(filter.sort()) ? "bill_no " + direction + " NULLS LAST,business_date DESC NULLS LAST"
                 : "business_date " + direction + " NULLS LAST";

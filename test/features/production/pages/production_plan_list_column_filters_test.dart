@@ -43,6 +43,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(api.lastQuery, isNull, reason: '未选择分类不能查询全部计划');
+    await tester.tap(find.text('进行中'));
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['status'], 1);
+    expect(api.lastQuery?['lifecycle'], 'ACTIVE');
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?.containsKey('lifecycle'), isFalse);
 
     MasterDataTableView<ProductionPlanListItem> tableWidget() => tester.widget(
       find.byWidgetPredicate(
@@ -70,6 +78,11 @@ void main() {
     refreshed.onFilterChanged('status', '1');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['status'], 1);
+    expect(
+      api.lastQuery?.containsKey('lifecycle'),
+      isFalse,
+      reason: '历史已审筛选仍可查看已结案计划',
+    );
     expect(api.lastQuery?['departmentId'], 'dept-1');
     expect(tester.takeException(), isNull);
   });

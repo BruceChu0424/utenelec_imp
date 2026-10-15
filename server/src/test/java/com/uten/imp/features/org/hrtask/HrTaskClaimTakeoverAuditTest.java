@@ -61,6 +61,15 @@ class HrTaskClaimTakeoverAuditTest {
     }
 
     @Test
+    void publishedCelebrationsCannotBeClaimedReleasedOrTakenOver() {
+        when(repository.celebrationPublished(eq(employeeId), eq("birthday"), org.mockito.ArgumentMatchers.anyInt())).thenReturn(true);
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class, () -> service.claim("birthday", employeeId)).getCode());
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class, () -> service.release("birthday", employeeId)).getCode());
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class, () -> service.takeover("birthday", employeeId)).getCode());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
     void currentOwnerTakeoverIsRecordedAsManualRenew() {
         HrTaskClaim mine = active(me);
         when(repository.findFirstByTaskTypeAndEmployeeIdAndReleasedAtIsNull(

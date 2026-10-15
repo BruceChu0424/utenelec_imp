@@ -93,6 +93,7 @@ class WebsiteInquiryConcurrencyPostgresTest {
     }
 
     @Autowired private WebsiteInquiryService service;
+    @Autowired private WebsiteInquiryController controller;
     @Autowired private WebsiteInquiryRepository repository;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private EntityManager entityManager;
@@ -110,6 +111,36 @@ class WebsiteInquiryConcurrencyPostgresTest {
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void lifecycleViewsFilterBeforePagingAndPreserveTheSharedInboxReadPermission() throws Exception {
+        Inquiry fresh = inquiry();
+        Inquiry following = inquiry();
+        Inquiry closed = inquiry();
+        Inquiry converted = inquiry();
+        String keyword = "LIFECYCLE-" + UUID.randomUUID();
+        for (Inquiry row : java.util.List.of(fresh, following, closed, converted)) {
+            jdbc.update("UPDATE website_inquiries SET message = ?, received_at = '2026-10-15T08:00:00Z'::timestamptz WHERE id = ?", keyword, row.id());
+        }
+        as(second, () -> service.updateStatus(following.id(), new StatusUpdateRequest("following", null, true)));
+        as(first, () -> service.updateStatus(closed.id(), new StatusUpdateRequest("closed", null, false)));
+        as(first, () -> service.convert(converted.id()));
+        var activeFirst = as(first, () -> controller.list("ACTIVE", keyword, 1, 1));
+        var activeSecond = as(second, () -> controller.list(null, keyword, 2, 1));
+        assertThat(activeFirst.getTotal()).isEqualTo(2);
+        assertThat(activeFirst.getTotalPages()).isEqualTo(2);
+        assertThat(java.util.Set.of(activeFirst.getItems().getFirst().id(), activeSecond.getItems().getFirst().id()))
+                .containsExactlyInAnyOrder(fresh.id(), following.id());
+        var historyFirst = as(first, () -> controller.list("HISTORY", keyword, 1, 1));
+        var historySecond = as(second, () -> controller.list("HISTORY", keyword, 2, 1));
+        assertThat(historyFirst.getTotal()).isEqualTo(2);
+        assertThat(historyFirst.getTotalPages()).isEqualTo(2);
+        assertThat(java.util.Set.of(historyFirst.getItems().getFirst().id(), historySecond.getItems().getFirst().id()))
+                .containsExactlyInAnyOrder(closed.id(), converted.id());
+        assertThat(jdbc.queryForObject("SELECT assignee_employee_id FROM website_inquiries WHERE id = ?", UUID.class, following.id())).isEqualTo(second.employee());
+        Actor noRead = actor("no-read", Set.of());
+        assertThatThrownBy(() -> as(noRead, () -> controller.list("HISTORY", keyword, 1, 20))).isInstanceOf(AccessDeniedException.class);
     }
 
     @Test

@@ -24,12 +24,14 @@ class FinanceWorkbenchBadgeSources implements WorkbenchBadgeSources {
 
     private final ProcurementFinanceApprovalController procurementApprovals;
     private final ProcurementIqcRejectionController iqcRejections;
+    private final com.uten.imp.features.finance.expense.FinanceExpenseController expenseConfirmations;
 
     @Override
     public List<Source> sources() {
         return List.of(
                 new Source("procurementApproval", () -> WorkbenchBadgeSources.numbers(procurementApprovals.count())),
-                new Source("iqcRejection", () -> iqcRejectionFacts(iqcRejections.counts(null, null))));
+                new Source("iqcRejection", () -> iqcRejectionFacts(iqcRejections.counts(null, null))),
+                new Source("financeExpenseConfirmation", expenseConfirmations::confirmationCounts));
     }
 
     /**

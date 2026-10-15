@@ -20,13 +20,18 @@
 ```bash
 cd server
 cp .env.example .env            # 模板已连接 Docker 宿主端口 localhost:5433
-docker compose up -d postgres   # 起开发用 Postgres（含 pgcrypto）
+docker compose up -d --wait --wait-timeout 600 postgres # 起开发用 Postgres，并等健康检查通过
 mvn spring-boot:run             # 读取 .env，Flyway 自动建表 + 种子
 ```
 
 `docker-compose.yml` 将容器内 PostgreSQL `5432` 映射为宿主机 `5433`，因此直接运行 Maven/IDE
 时必须连接 `jdbc:postgresql://localhost:5433/uten_imp`；`.env.example` 已与该映射保持一致。若改用
 本机原生 PostgreSQL，需在私有 `.env` 中显式改成实际端口，不要修改共享模板来适配个人环境。
+
+`--wait` 等待 PostgreSQL 的健康检查通过，而不仅是容器进程已创建。数据库异常退出后的恢复可能持续数分钟；
+此时直接启动 Maven/IDE 会报 `Connection refused` 或 SQLSTATE `57P03`（`the database system is starting up`），
+并连带出现 Flyway、JPA 和 Tomcat 初始化失败。先等数据库就绪，再启动后端；若超过十分钟仍未就绪，
+查看 `docker compose logs --tail 100 postgres` 的恢复进度，不要清理数据卷或反复重启恢复中的数据库。
 
 > **V400 非空库启动门禁**：Flyway 会先对 `legacy_id` 非空且 `currency_id` 为空的旧账户按已审规则桥接：
 > `OFFSHORE` → 唯一使用中、未删除的 `currencies.legacy_id=3` 美金 UUID，其它 legacy 账户 →

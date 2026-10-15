@@ -19,5 +19,9 @@ public record PlanQueryFilter(
         Short status,
         Boolean closed,
         LocalDate dateFrom,
-        LocalDate dateTo) {
+        LocalDate dateTo,
+        String lifecycle) {
+    public PlanQueryFilter(String keyword, UUID departmentId, Short status, Boolean closed, LocalDate dateFrom, LocalDate dateTo) {
+        this(keyword, departmentId, status, closed, dateFrom, dateTo, null);
+    }
 }

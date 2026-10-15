@@ -30,9 +30,8 @@ import '../providers/visitor_session_provider.dart';
 import '../widgets/visitor_status_ui.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 
-// 「申请中」段与审批端待办同口径（pending + hostReviewing，经后端多状态下推）；
-// 「已签到」独立分段，签到后的单子不再从「已批准」段消失。
-enum VisitorFilter { all, pending, approved, checkedIn, rejected }
+// 在办仅含申请中和已批准待来访；签到、拒绝和取消均进入历史单据。
+enum VisitorFilter { all, pending, approved, history }
 
 class VisitorHomePage extends ConsumerStatefulWidget {
   const VisitorHomePage({super.key});
@@ -47,11 +46,10 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
   final _retainedPage = RetainedAsyncPage<PagedResult<VisitorApplication>>();
 
   String? get _status => switch (_filter) {
-    VisitorFilter.all => null,
+    VisitorFilter.all => 'pending,hostReviewing,approved',
     VisitorFilter.pending => 'pending,hostReviewing',
     VisitorFilter.approved => 'approved',
-    VisitorFilter.checkedIn => 'checkedIn',
-    VisitorFilter.rejected => 'rejected',
+    VisitorFilter.history => 'checkedIn,rejected,cancelled',
   };
 
   VisitorApplicationsQuery get _query => (status: _status, page: _page);
@@ -112,10 +110,7 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                   _page = 1;
                 }),
                 segments: [
-                  UtenSegment(
-                    value: VisitorFilter.all,
-                    label: l10n.visitorFilterAll,
-                  ),
+                  const UtenSegment(value: VisitorFilter.all, label: '全部在办'),
                   UtenSegment(
                     value: VisitorFilter.pending,
                     label: l10n.visitorFilterPending,
@@ -124,13 +119,9 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                     value: VisitorFilter.approved,
                     label: l10n.visitorFilterApproved,
                   ),
-                  UtenSegment(
-                    value: VisitorFilter.checkedIn,
-                    label: l10n.visitorStatusCheckedIn,
-                  ),
-                  UtenSegment(
-                    value: VisitorFilter.rejected,
-                    label: l10n.visitorFilterRejected,
+                  const UtenSegment(
+                    value: VisitorFilter.history,
+                    label: '历史单据',
                   ),
                 ],
               ),

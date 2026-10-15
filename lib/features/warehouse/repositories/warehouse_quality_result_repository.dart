@@ -3,14 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/warehouse/warehouse_task_view.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/warehouse_iqc_stock_in.dart';
 import '../models/warehouse_quality_result.dart';
+
+export '../../../shared/warehouse/warehouse_task_view.dart';
 
 abstract interface class WarehouseQualityResultGateway {
   Future<PagedResult<WarehouseQualityResultTask>> list({
     int page,
     int size,
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
@@ -24,6 +28,7 @@ abstract interface class WarehouseQualityResultGateway {
 
   /// 收货单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径。
   Future<List<MasterFacetBucket>> billNoFacets({
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
@@ -33,6 +38,7 @@ abstract interface class WarehouseQualityResultGateway {
   });
 
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
     String? scopeWarehouseId,
@@ -58,6 +64,7 @@ class WarehouseQualityResultRepository
   Future<PagedResult<WarehouseQualityResultTask>> list({
     int page = 1,
     int size = 40,
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
@@ -74,6 +81,7 @@ class WarehouseQualityResultRepository
       query: {
         'page': page < 1 ? 1 : page,
         'size': size.clamp(1, 100),
+        'view': view.apiValue,
         'receiptType': receiptType?.apiValue ?? 'ALL',
         if (workStatus != null) 'status': workStatus.apiValue,
         if (normalizedKeyword?.isNotEmpty == true) 'keyword': normalizedKeyword,
@@ -92,6 +100,7 @@ class WarehouseQualityResultRepository
 
   @override
   Future<List<MasterFacetBucket>> billNoFacets({
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
@@ -103,6 +112,7 @@ class WarehouseQualityResultRepository
     final json = await api.get(
       ApiEndpoints.warehouseQualityResultFacets,
       query: {
+        'view': view.apiValue,
         'receiptType': receiptType?.apiValue ?? 'ALL',
         if (workStatus != null) 'status': workStatus.apiValue,
         if (normalizedKeyword?.isNotEmpty == true) 'keyword': normalizedKeyword,
@@ -116,6 +126,7 @@ class WarehouseQualityResultRepository
 
   @override
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
     String? scopeWarehouseId,
@@ -124,6 +135,7 @@ class WarehouseQualityResultRepository
     final json = await api.get(
       ApiEndpoints.warehouseQualityResultStatusCounts,
       query: {
+        'view': view.apiValue,
         'receiptType': receiptType?.apiValue ?? 'ALL',
         if (normalizedKeyword?.isNotEmpty == true) 'keyword': normalizedKeyword,
         'scopeWarehouseId': ?scopeWarehouseId,

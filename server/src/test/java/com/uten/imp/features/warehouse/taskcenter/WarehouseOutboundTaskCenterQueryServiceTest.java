@@ -45,7 +45,7 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
         Query bills = query(); when(bills.getResultList()).thenReturn(Collections.singletonList(new Object[]{"SAME-NUMBER", 4L}));
         when(f.em.createNativeQuery(anyString())).thenReturn(count, rows, states, bills);
 
-        Page result = f.service.list(new Filter("ALL", null, null, null, null, null, null, 2, 2, "billNo", "asc"));
+        Page result = f.service.list(new Filter("ALL", null, null, null, null, null, null, 2, 2, "billNo", "asc", TaskView.ALL));
         assertThat(result.page()).isEqualTo(2);
         assertThat(result.total()).isEqualTo(4);
         assertThat(result.items()).extracting(Row::rowKey).containsExactly(

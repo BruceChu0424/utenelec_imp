@@ -273,6 +273,7 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
 
   @override
   Future<PagedResult<WmRequisition>> requisitions({
+    WarehouseTaskView view = WarehouseTaskView.active,
     String? status,
     String? kind,
     String? workshopId,

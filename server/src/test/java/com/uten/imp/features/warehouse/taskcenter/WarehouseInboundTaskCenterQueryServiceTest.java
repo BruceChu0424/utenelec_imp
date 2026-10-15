@@ -27,6 +27,17 @@ import static org.mockito.Mockito.doReturn;
 
 class WarehouseInboundTaskCenterQueryServiceTest {
     @Test
+    void taskViewsDefaultToActiveAndPublicRequestsCannotSelectInternalAll() {
+        assertThat(filter("ALL","").view()).isEqualTo(WarehouseTaskCenterContracts.TaskView.ACTIVE);
+        assertThat(WarehouseTaskCenterContracts.TaskView.requested("history"))
+                .isEqualTo(WarehouseTaskCenterContracts.TaskView.HISTORY);
+        assertThatThrownBy(()->WarehouseTaskCenterContracts.TaskView.requested("ALL"))
+                .isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->WarehouseTaskCenterContracts.TaskView.requested("future"))
+                .isInstanceOf(ApiException.class);
+    }
+
+    @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void authorizedListUsesAReadLeaseWithoutEnteringTheCommandCallback() {
         var jdbc=mock(NamedParameterJdbcTemplate.class);

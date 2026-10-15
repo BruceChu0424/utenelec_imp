@@ -179,6 +179,22 @@ class StockCountReviewWarehouseScopePostgresTest {
         assertThat(((Number)controller.counts(null).get("warehousePending")).longValue()).isEqualTo(2);
     }
 
+    @Test void completedCountHistoryIsSeparatedBeforeScopePagingAndTotals() {
+        UUID approved=request(binA,"WAREHOUSE","APPROVED",actorA);
+        UUID cancelled=request(binA,"WAREHOUSE","CANCELLED",actorA);
+        request(binB,"WAREHOUSE","APPROVED",actorA);
+        defaultScope=new WarehouseTaskScope(true,subtree(parentA),false);
+        var history=controller.list("WAREHOUSE","HISTORY",null,null,null,1,1);
+        assertThat(history.getTotal()).isEqualTo(3);
+        assertThat(history.getItems()).extracting(row->row.get("id")).containsExactly(cancelled);
+        assertThat(controller.list("WAREHOUSE","HISTORY",null,null,null,2,1).getItems())
+                .extracting(row->row.get("id")).containsExactly(approved);
+        assertThat(controller.list("WAREHOUSE","PENDING",null,null,null,1,50).getItems())
+                .extracting(row->row.get("id")).containsExactlyInAnyOrder(firstA,secondA);
+        assertThat(((Number)controller.counts(null).get("warehousePending")).longValue()).isEqualTo(2);
+        assertThat(controller.list("WAREHOUSE","HISTORY",null,parentB,null,1,50).getTotal()).isEqualTo(1);
+    }
+
     private List<UUID> subtree(UUID warehouse) {
         return db.queryForList("SELECT unnest(fn_warehouse_scope_ids(ARRAY[CAST(? AS uuid)]))",UUID.class,warehouse);
     }

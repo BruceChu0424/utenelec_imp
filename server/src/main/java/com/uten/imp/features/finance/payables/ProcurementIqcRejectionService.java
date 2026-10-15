@@ -57,7 +57,7 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     private static final Set<String> TYPES = Set.of("PURCHASE", "SUBCONTRACT");
     private static final Set<String> FILTER_STATUSES = Set.of(
             "PENDING_RETURN", "RETURN_RECORDED", "CREDIT_CONFIRMED",
-            "CLOSED_NO_CREDIT", "FINANCE_EXCEPTION", "REVERSED","TERMINAL");
+            "CLOSED_NO_CREDIT", "FINANCE_EXCEPTION", "REVERSED","TERMINAL", "ACTIVE");
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -327,7 +327,9 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
         Map<String, Object> params = new LinkedHashMap<>();
         if (receiptType != null) add(where, params, "rejection.receipt_type=:receiptType",
                 "receiptType", receiptType);
-        if ("TERMINAL".equals(status)) {
+        if ("ACTIVE".equals(status)) {
+            where.append(" AND rejection.status IN ('PENDING_RETURN','RETURN_RECORDED','FINANCE_EXCEPTION')");
+        } else if ("TERMINAL".equals(status)) {
             where.append(" AND rejection.status IN(")
                     .append("'CREDIT_CONFIRMED','CLOSED_NO_CREDIT','REVERSED')");
         } else if (status != null) {

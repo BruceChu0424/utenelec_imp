@@ -184,7 +184,9 @@ public class PayrollService {
                 predicates.add(cb.equal(root.get("payrollMonth"), normalizedMonth));
             }
             if (status != null) {
-                predicates.add(cb.equal(root.get("status"), status));
+                predicates.add("ACTIVE".equals(status)
+                        ? cb.notEqual(root.get("status"), "PUBLISHED")
+                        : cb.equal(root.get("status"), "HISTORY".equals(status) ? "PUBLISHED" : status));
             }
             if (departmentId != null) {
                 predicates.add(cb.equal(root.get("departmentId"), departmentId));
@@ -663,7 +665,8 @@ public class PayrollService {
             return null;
         }
         String normalized = rawStatus.trim().toUpperCase(Locale.ROOT);
-        if (!BATCH_STATUSES.contains(normalized)) {
+        if (!BATCH_STATUSES.contains(normalized)
+                && !"ACTIVE".equals(normalized) && !"HISTORY".equals(normalized)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知工资批次状态");
         }
         return normalized;

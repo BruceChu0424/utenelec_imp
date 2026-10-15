@@ -116,6 +116,9 @@ public class ProductionPlanService {
     @Transactional(readOnly = true)
     public PageResponse<PlanListItem> list(PlanQueryFilter f, int page, int size, String sort, String order,
                                          boolean includeDeleted, boolean onlyDeleted) {
+        if (f.lifecycle() != null && !"ACTIVE".equals(f.lifecycle())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "生产计划生命周期筛选不正确");
+        }
         var readScope = access.scope("production_plan:approve");
         Specification<ProductionPlan> spec = (Root<ProductionPlan> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                               CriteriaBuilder cb) -> {
@@ -129,6 +132,12 @@ public class ProductionPlanService {
             if (f.departmentId() != null) ps.add(cb.equal(root.get("departmentId"), f.departmentId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
             if (f.closed() != null) ps.add(cb.equal(root.get("closed"), f.closed()));
+            if ("ACTIVE".equals(f.lifecycle())) {
+                ps.add(cb.equal(root.get("status"), STATUS_APPROVED));
+                ps.add(cb.isFalse(root.get("closed")));
+                ps.add(cb.isFalse(root.get("stopped")));
+                ps.add(cb.isFalse(root.get("canceled")));
+            }
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             return cb.and(ps.toArray(new Predicate[0]));
@@ -1338,10 +1347,12 @@ public class ProductionPlanService {
         return """
                 FROM production_plans p
                 LEFT JOIN production_plan_items i ON i.plan_id = p.id AND i.is_deleted = false
-                WHERE p.is_deleted = false AND p.status = 1
-                  AND p.is_stopped = false AND p.is_canceled = false
+                WHERE p.is_deleted = false
+                  AND ((:closed = false AND p.status = 1 AND p.is_closed = false
+                        AND p.is_stopped = false AND p.is_canceled = false)
+                       OR (:closed = true AND (p.status = -1 OR p.is_stopped = true OR p.is_canceled = true
+                                               OR (p.status = 1 AND p.is_closed = true))))
                   AND p.id NOT IN (SELECT subplan_id FROM subplan_links WHERE is_deleted = false)
-                  AND p.is_closed = :closed
                 """
                 + "  AND " + ownerPredicate + "\n"
                 + (kw.isEmpty() ? ""
@@ -1351,7 +1362,7 @@ public class ProductionPlanService {
                 + (dateTo == null ? "" : "  AND p.bill_date <= :dateTo\n")
                 + """
                 GROUP BY p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
-                         p.is_pinned, p.is_important
+                         p.is_pinned, p.is_important, p.status, p.is_closed, p.is_stopped, p.is_canceled
                 """;
     }
 
@@ -1367,7 +1378,7 @@ public class ProductionPlanService {
     }
 
     /**
-     * 计划聚合进度（看板：进行中 closed=false / 已完成 closed=true，<b>服务端分页</b>）。
+     * 计划聚合进度（看板：进行中 closed=false / 终态历史 closed=true，<b>服务端分页</b>）。
      * 顶层只列父计划（排除作为子计划的单），每个计划分别返回报工、成品入库进度，
      * 并带 subplans 嵌套进度与今日成品入库量；
      * 排序：置顶恒最前 + 白名单 sort（默认 billDate 开单远→近）；keyword 模糊单号/车间、
@@ -1402,7 +1413,8 @@ public class ProductionPlanService {
                        COALESCE(SUM(i.iqty),0),
                        MIN(i.plan_begin_date), MAX(i.plan_end_date),
                        p.is_pinned, p.is_important,
-                       COALESCE(SUM(fn_plan_original_inbound_qty(i.id)),0)
+                       COALESCE(SUM(fn_plan_original_inbound_qty(i.id)),0),
+                       p.status, p.is_closed, p.is_stopped, p.is_canceled
                 """ + filters + " ORDER BY p.is_pinned DESC, " + orderBy + " LIMIT :lim OFFSET :off");
         bindProgressFilters(dataQ, closed, kw, ws, dateFrom, dateTo);
         ownerScope.bind(dataQ);
@@ -1504,14 +1516,15 @@ public class ProductionPlanService {
                     material.canStartNow(),
                     r[10] == null ? null : NativeValueConverters.toLocalDate(r[10]),
                     r[11] == null ? null : NativeValueConverters.toLocalDate(r[11]),
-                    Math.min(pct, 1.0), closed,
+                    Math.min(pct, 1.0), Boolean.TRUE.equals(r[16]),
                     deliver != null && !deliver.isAfter(warn),
                     deliver != null && deliver.isBefore(today),
                     Boolean.TRUE.equals(r[12]),
                     Boolean.TRUE.equals(r[13]),
                     todayByPlan.getOrDefault((UUID) r[0], BigDecimal.ZERO),
                     subsByPlan.getOrDefault((UUID) r[0], List.of()),
-                    plannedInbound, inbound.subtract(plannedInbound)));
+                    plannedInbound, inbound.subtract(plannedInbound),
+                    ((Number) r[15]).shortValue(), Boolean.TRUE.equals(r[17]), Boolean.TRUE.equals(r[18])));
         }
         return new PageResponse<>(out, p, sz, total, totalPages);
     }
@@ -1645,7 +1658,7 @@ public class ProductionPlanService {
         return out;
     }
 
-    /** 进度看板车间筛选选项（同进行中/已完成口径的去重车间名，不受当前筛选影响）。 */
+    /** 进度看板车间筛选选项（同进行中/终态历史口径的去重车间名，不受当前筛选影响）。 */
     @Transactional(readOnly = true)
     public List<Map<String, String>> progressWorkshops(boolean closed) {
         var ownerScope = access.nativeReadScope("p.maker_id", "progressOwners");

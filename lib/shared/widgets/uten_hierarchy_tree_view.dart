@@ -455,10 +455,25 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
                       : const BoxDecoration(),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
-                      minHeight: UtenControlMetrics.controlHeight(context),
+                      minHeight: flat
+                          ? UtenFilterRow.heightOf(context)
+                          : UtenControlMetrics.controlHeight(context),
                     ),
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(8 + indent, 6, 8, 6),
+                      padding: EdgeInsets.fromLTRB(
+                        8 + indent,
+                        flat
+                            ? (UtenControlMetrics.usesTouchTargets(context)
+                                  ? 0
+                                  : 2)
+                            : 6,
+                        8,
+                        flat
+                            ? (UtenControlMetrics.usesTouchTargets(context)
+                                  ? 0
+                                  : 2)
+                            : 6,
+                      ),
                       child: Row(
                         children: [
                           // A leaf keeps the same expand slot as its siblings, so

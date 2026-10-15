@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
+import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -435,9 +436,6 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
     );
   }
 
-  ButtonStyle get _actionStyle =>
-      TextButton.styleFrom(minimumSize: const Size(64, 48));
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -478,32 +476,20 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
           ),
           Expanded(child: _listBody(l10n)),
           UtenBottomActionBar(
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                TextButton(
-                  key: const Key('uten-position-entry-clear'),
-                  style: _actionStyle,
-                  onPressed: _clearDraft,
-                  child: Text(l10n.positionPickerClear),
-                ),
-                TextButton(
-                  key: const Key('uten-position-entry-cancel'),
-                  style: _actionStyle,
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text(l10n.commonCancel),
-                ),
-                FilledButton(
-                  key: const Key('uten-position-entry-confirm'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(72, 48),
-                  ),
-                  onPressed: _confirm,
-                  child: Text(l10n.commonConfirm),
-                ),
-              ],
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: UtenPickerActions(
+                showClear: true,
+                onClear: _clearDraft,
+                onCancel: () => Navigator.of(context).pop(),
+                onConfirm: _confirm,
+                clearLabel: l10n.positionPickerClear,
+                cancelLabel: l10n.commonCancel,
+                confirmLabel: l10n.commonConfirm,
+                clearButtonKey: const Key('uten-position-entry-clear'),
+                cancelButtonKey: const Key('uten-position-entry-cancel'),
+                confirmButtonKey: const Key('uten-position-entry-confirm'),
+              ),
             ),
           ),
         ],

@@ -5,6 +5,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -13,6 +15,12 @@ import 'package:uten_imp/features/stock/counts/repositories/stock_count_request_
 import 'package:uten_imp/features/stock/counts/widgets/stock_count_candidate_picker.dart';
 import 'package:uten_imp/features/stock/counts/widgets/stock_count_inline_editor.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+
+import '../../support/audit_screenshot_support.dart';
+
+const _capturePicker = bool.fromEnvironment('UTEN_CAPTURE_PICKER');
+final _previewBoundary = GlobalKey();
 
 const warehouse = StockCountWarehouse(
   id: 'bin',
@@ -106,6 +114,7 @@ Future<void> _open(
   List<List<CountStockRow>> results, {
   Size size = const Size(1600, 1000),
   double textScale = 1,
+  bool preview = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -113,26 +122,39 @@ Future<void> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [stockCountRequestRepositoryProvider.overrideWithValue(repo)],
-      child: MaterialApp(
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
-        home: Consumer(
-          builder: (context, ref, _) => Scaffold(
-            body: TextButton(
-              onPressed: () async {
-                results.add(
-                  await showStockCountCandidatePicker(
-                    context,
-                    ref,
-                    warehouse: warehouse,
+      child: RepaintBoundary(
+        key: preview ? _previewBoundary : null,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: preview
+              ? auditScreenshotTheme(
+                  buildLightTheme().copyWith(
+                    platform: size.width < 600
+                        ? TargetPlatform.android
+                        : TargetPlatform.windows,
                   ),
-                );
-              },
-              child: const Text('打开'),
+                )
+              : null,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
+          home: Consumer(
+            builder: (context, ref, _) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  results.add(
+                    await showStockCountCandidatePicker(
+                      context,
+                      ref,
+                      warehouse: warehouse,
+                    ),
+                  );
+                },
+                child: const Text('打开'),
+              ),
             ),
           ),
         ),
@@ -151,6 +173,37 @@ Future<void> _open(
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets(
+    'capture real desktop and compact stock-count picker layouts',
+    (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      for (final compact in [false, true]) {
+        await _open(
+          tester,
+          _PreviewRepo(),
+          <List<CountStockRow>>[],
+          size: compact ? const Size(390, 844) : const Size(1920, 960),
+          preview: true,
+        );
+        for (final name in ['PC面板料B-24', 'PC面板料E-15', 'PC支架料']) {
+          await tester.tap(find.text(name));
+          await tester.pump();
+        }
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await saveAuditScreenshot(
+          tester,
+          _previewBoundary,
+          compact ? 'picker-compact' : 'picker-desktop',
+        );
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+      }
+    },
+    skip: !_capturePicker,
+  );
+
   testWidgets('宽屏分页与已选清空确定共用底栏，页码垂直居中', (tester) async {
     final repo = _Repo();
     await _open(
@@ -173,10 +226,7 @@ void main() {
       ),
       findsNothing,
     );
-    final input = find.descendant(
-      of: paging,
-      matching: find.byType(TextFormField),
-    );
+    final input = find.descendant(of: paging, matching: find.byType(TextField));
     expect(
       tester.getCenter(input).dy,
       closeTo(tester.getCenter(find.text('/ 2')).dy, 1),
@@ -331,7 +381,7 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .widget<FilledButton>(
+          .widget<UtenButton>(
             find.byKey(const Key('goods-picker-multi-confirm')),
           )
           .onPressed,
@@ -384,4 +434,50 @@ void main() {
     editor.addAll([row('旧弹窗')], expectedSession: session);
     expect(editor.rows, isEmpty);
   });
+}
+
+class _PreviewRepo extends _Repo {
+  @override
+  Future<PagedResult<CountStockRow>> candidates({
+    required String warehouseId,
+    String? keyword,
+    String? categoryId,
+    List<String> goodsIds = const [],
+    bool stockedOnly = false,
+    bool sheet = false,
+    int page = 1,
+    int size = 50,
+  }) async => PagedResult(
+    items: [
+      for (final (index, name) in [
+        'PC面板料B-24',
+        'PC面板料E-15',
+        'PC支架料',
+        'PC水瓶料',
+        'PC深灰色（丰润兴）',
+        'PC面料（明装用）',
+        'PC黑色料',
+        'PC黑色料（安全门专用阻燃）',
+        'PC茶色',
+        'PC红料',
+      ].indexed)
+        CountStockRow(
+          goodsId: 'pc-$index',
+          goodsName: name,
+          goodsCode: '${280501001 + index}',
+          colorId: 'raw',
+          colorName: '原色',
+          categoryId: 'raw',
+          unitId: 'kg',
+          unitName: 'kg',
+          qty: '0',
+          goodsVersion: 1,
+          allowedActions: const ['EDIT'],
+        ),
+    ],
+    page: page,
+    size: 10,
+    total: 20,
+    totalPages: 2,
+  );
 }

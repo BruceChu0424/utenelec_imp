@@ -87,7 +87,7 @@ void main() {
       );
       Finder segment(String label) =>
           find.descendant(of: toolbar, matching: find.text(label));
-      for (final label in const ['草稿', '等待财务审核', '财务已退回', '已审', '已反审']) {
+      for (final label in const ['草稿', '等待财务审核', '财务已退回', '进行中', '历史记录']) {
         expect(segment(label), findsOneWidget, reason: '分段「$label」');
       }
 
@@ -117,8 +117,10 @@ void main() {
       );
       expect(find.text('(3)'), findsNothing);
       // 已审 7 / 红冲 1 已经结束，仍是中性括号。
-      expect(find.text('(7)'), findsOneWidget);
-      expect(find.text('(1)'), findsOneWidget);
+      expect(segment('已审'), findsNothing);
+      expect(segment('已反审'), findsNothing);
+      expect(find.text('(7)'), findsNothing);
+      expect(find.text('(1)'), findsNothing);
 
       // 点选「财务已退回」段：列表请求带 status=0 + financeApproval=REJECTED。
       api.listQueries.clear();
@@ -152,6 +154,18 @@ void main() {
       );
       expect(listQuery['financeApproval'], 'PENDING');
       expect(find.text('改量待财务复核'), findsOneWidget);
+      api.listQueries.clear();
+      await tester.tap(segment('进行中'));
+      await tester.pumpAndSettle();
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      expect(listQuery['financeApproval'], 'IN_PROGRESS');
+      expect(listQuery.containsKey('status'), isFalse);
+      api.listQueries.clear();
+      await tester.tap(segment('历史记录'));
+      await tester.pumpAndSettle();
+      listQuery = api.listQueries.lastWhere((q) => q['size'] == 20);
+      expect(listQuery.containsKey('financeApproval'), isFalse);
+      expect(listQuery.containsKey('status'), isFalse);
       expect(tester.takeException(), isNull);
     },
   );

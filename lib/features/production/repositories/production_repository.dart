@@ -57,6 +57,7 @@ class ProductionPlanFilter {
     this.departmentId,
     this.status,
     this.closed,
+    this.lifecycle,
     this.dateFrom,
     this.dateTo,
   });
@@ -64,6 +65,7 @@ class ProductionPlanFilter {
   final String? keyword; // 模糊匹配 bill_no
   final String? departmentId;
   final int? status; // 0/1/-1
+  final String? lifecycle;
   final bool? closed; // is_closed
   final String? dateFrom; // yyyy-MM-dd
   final String? dateTo;
@@ -74,6 +76,7 @@ class ProductionPlanFilter {
     if (departmentId != null) 'departmentId': departmentId,
     if (status != null) 'status': status,
     if (closed != null) 'closed': closed,
+    if (lifecycle != null) 'lifecycle': lifecycle,
     if (dateFrom != null) 'dateFrom': dateFrom,
     if (dateTo != null) 'dateTo': dateTo,
   };
@@ -1768,6 +1771,9 @@ class PlanProgressRow {
     this.planEndDate,
     this.percent = 0,
     this.closed = false,
+    this.status = 1,
+    this.stopped = false,
+    this.canceled = false,
     this.urgent = false,
     this.overdue = false,
     this.pinned = false,
@@ -1798,6 +1804,10 @@ class PlanProgressRow {
   final String? planEndDate;
   final double percent;
   final bool closed;
+  final int status;
+  final bool stopped;
+  final bool canceled;
+  bool get terminal => closed || stopped || canceled || status == -1;
   final bool urgent;
   final bool overdue;
   final bool pinned;
@@ -1831,6 +1841,9 @@ class PlanProgressRow {
     planEndDate: j['planEndDate'] as String?,
     percent: (j['percent'] as num?)?.toDouble() ?? 0,
     closed: j['closed'] == true,
+    status: (j['status'] as num?)?.toInt() ?? 1,
+    stopped: j['stopped'] == true,
+    canceled: j['canceled'] == true,
     urgent: j['urgent'] == true,
     overdue: j['overdue'] == true,
     pinned: j['pinned'] == true,
@@ -1867,6 +1880,9 @@ class PlanProgressRow {
     planEndDate: planEndDate,
     percent: percent,
     closed: closed,
+    status: status,
+    stopped: stopped,
+    canceled: canceled,
     urgent: urgent,
     overdue: overdue,
     pinned: pinned ?? this.pinned,

@@ -24,6 +24,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../helpers/badge_summary_fixture.dart';
+import '../support/filter_segment_tap.dart';
 
 class _Session extends SessionNotifier {
   @override
@@ -131,6 +132,8 @@ void main() {
           FinanceDocListPage(docType: type),
           extraPermissions: {FinanceDocConfig.by(type).listPerm},
         );
+        await selectFilterSegment(tester, '历史单据');
+        await tester.pumpAndSettle();
         final table = tester.widget<MasterDataTableView<FinanceDocListItem>>(
           find.byWidgetPredicate(
             (widget) => widget is MasterDataTableView<FinanceDocListItem>,
@@ -194,6 +197,8 @@ void main() {
           FinanceDocListPage(docType: type),
           extraPermissions: {FinanceDocConfig.by(type).listPerm},
         );
+        await selectFilterSegment(tester, '历史单据');
+        await tester.pumpAndSettle();
         final table = tester.widget<MasterDataTableView<FinanceDocListItem>>(
           find.byWidgetPredicate(
             (widget) => widget is MasterDataTableView<FinanceDocListItem>,

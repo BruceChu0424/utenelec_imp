@@ -57,6 +57,7 @@ public class ProductionPlanController {
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Short status,
             @RequestParam(required = false) Boolean closed,
+            @RequestParam(required = false) String lifecycle,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
@@ -65,12 +66,12 @@ public class ProductionPlanController {
             @RequestParam(required = false) String order,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
             @RequestParam(defaultValue = "false") boolean onlyDeleted) {
-        return service.list(new PlanQueryFilter(keyword, departmentId, status, closed, dateFrom, dateTo), page, size, sort, order,
+        return service.list(new PlanQueryFilter(keyword, departmentId, status, closed, dateFrom, dateTo, lifecycle), page, size, sort, order,
                 includeDeleted, onlyDeleted);
     }
 
     /**
-     * 生产进度看板（服务端分页）：closed=false 进行中（默认）/ true 已完成；父计划带子计划嵌套进度。
+     * 生产进度看板（服务端分页）：closed=false 进行中（默认）/ true 终态历史；父计划带子计划嵌套进度。
      * sort=billDate（开单远→近，默认）| billDateDesc | deliveryDate | progress；
      * keyword 模糊单号/车间；workshop 精确；dateFrom/dateTo 开单日期范围。
      */

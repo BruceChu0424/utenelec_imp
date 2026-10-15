@@ -871,5 +871,7 @@ abstract final class RoutePath {
   /// 钱流单据：新建 / 详情。
   /// [seg] = receipts|payments|expenses|incomes|bank-transfers。
   static String financeDocNew(String seg) => '/finance/$seg/new';
+  static const financeExpenseConfirmation =
+      '/finance/expenses?status=pending-gl-confirmation';
   static String financeDocDetail(String seg, String id) => '/finance/$seg/$id';
 }

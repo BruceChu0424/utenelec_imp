@@ -1,7 +1,7 @@
 // 采购单据列表页（按 docType 参数化）。
 //
 // 2026-09-03 起统一「分类分段」范式（原 DocKpiBar 状态卡条退役）：
-// UtenFilterToolbar 状态分段（草稿/已审/红冲，无「全部」段）+ 末尾「历史记录」段——
+// 活动分类只放草稿、财审待办和未结案履约；完成/反审通过末尾历史记录查阅。
 // - 默认不选：进页面不预选、不发请求，内容区显示引导占位（UtenFilterPlaceholder）；
 // - 计数只挂待处理段（申请页=计划已下达待分解；订货/收货/退货页=草稿），
 //   取后端 list(size:1) 全量口径，形态是中性括号 `(N)` 而非红徽章——
@@ -310,6 +310,12 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
             supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
             warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
             status: seg.history ? null : seg.status,
+            closed:
+                !seg.history &&
+                    widget.docType == PurchaseDocType.request &&
+                    seg.status == kPurchaseStatusApproved
+                ? false
+                : null,
             financeApproval: seg.history ? null : seg.financeApproval,
             dateFrom: range == null
                 ? null
@@ -337,6 +343,12 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                 supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
                 warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
                 status: seg.history ? null : seg.status,
+                closed:
+                    !seg.history &&
+                        widget.docType == PurchaseDocType.request &&
+                        seg.status == kPurchaseStatusApproved
+                    ? false
+                    : null,
                 financeApproval: seg.history ? null : seg.financeApproval,
                 dateFrom: range == null
                     ? null
@@ -452,7 +464,10 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
       final repo = ref.read(purchaseRepositoryProvider(widget.docType));
       final r = await repo.list(
         size: 1,
-        filter: PurchaseDocFilter(status: _actionableStatus),
+        filter: PurchaseDocFilter(
+          status: _actionableStatus,
+          closed: widget.docType == PurchaseDocType.request ? false : null,
+        ),
       );
       if (!mounted || requestId != _badgeRequestId || widget.docType != type) {
         return;
@@ -630,12 +645,8 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                         segmentsKey: Key(
                           'purchase-doc-segments-${_cfg.type.pathSegment}',
                         ),
-                        // 计数形态(2026-09-21 用户口径: 父分类 hub 卡有红徽章, 子分类也要有数):
-                        // 草稿 / 财务已退回 = 等本人动手 → 红徽章(与 hub 卡「草稿 + 财务已退回」
-                        // 同源同数); 等待财务审核 = 单已交出去、球在财务手上还没完 → 黄色在办
-                        // 徽章(ADR-100); 已审 / 红冲 = 已结束 → 中性括号数; 申请页「计划已下达」
-                        // 的待处理量已由采购任务中心「待分解」徽章承担, 仍是中性数
-                        // (docs/00-项目准则/14-徽章与计数口径.md)。
+                        // 草稿/财务退回仍是待办，等待财审和未结案履约仍在进行中。
+                        // 审批通过不是履约完成；终态从历史进入，不给历史挂待办数字。
                         segments: [
                           UtenFilterSegment(
                             value: _draftSeg,
@@ -676,26 +687,23 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                                 countForm: UtenSegmentCountForm.actionable,
                               ),
                             ],
-                            UtenFilterSegment(
-                              value: const _PurchaseDocSeg.stage(
-                                kPurchaseStatusApproved,
+                            if (widget.docType == PurchaseDocType.order)
+                              const UtenFilterSegment(
+                                value: _PurchaseDocSeg.stage(
+                                  null,
+                                  'IN_PROGRESS',
+                                ),
+                                label: '进行中',
+                                countForm: UtenSegmentCountForm.inProgress,
                               ),
-                              label: approvedLabel,
-                              count: staged
-                                  ? bucket(DocumentStatusBucket.approved)
-                                  : (_actionableStatus ==
-                                            kPurchaseStatusApproved
-                                        ? _actionableCount
-                                        : null),
-                            ),
-                            UtenFilterSegment(
-                              value: const _PurchaseDocSeg.stage(
-                                kPurchaseStatusReversed,
+                            if (widget.docType == PurchaseDocType.request)
+                              UtenFilterSegment(
+                                value: const _PurchaseDocSeg.stage(
+                                  kPurchaseStatusApproved,
+                                ),
+                                label: approvedLabel,
+                                count: _actionableCount,
                               ),
-                              label: '已反审',
-                              count:
-                                  statusCounts?[DocumentStatusBucket.reversed],
-                            ),
                             const UtenFilterSegment(
                               value: _PurchaseDocSeg.history(),
                               label: '历史记录',

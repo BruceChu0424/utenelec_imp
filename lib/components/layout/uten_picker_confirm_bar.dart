@@ -6,6 +6,7 @@
 // 与部门选择器既有底栏一致。
 import 'package:flutter/material.dart';
 
+import '../buttons/uten_button.dart';
 import 'uten_bottom_action_bar.dart';
 import 'uten_picker_footer_layout.dart';
 
@@ -20,6 +21,10 @@ class UtenPickerConfirmBar extends StatelessWidget {
     this.confirmLabel = '确定',
     this.hint,
     this.pagination,
+    this.summary,
+    this.confirmEnabled,
+    this.confirmButtonKey,
+    this.clearLabel = '清空',
   });
 
   /// 已选条数；0 时「确定」禁用、左侧显示引导文案。
@@ -44,6 +49,15 @@ class UtenPickerConfirmBar extends StatelessWidget {
   final String? hint;
   final Widget? pagination;
 
+  /// Keeps richer selection summaries, such as the expandable selected list.
+  final Widget? summary;
+
+  /// Some pickers deliberately confirm an empty selection to clear a field.
+  /// Their authorization/loading checks remain owned by the caller.
+  final bool? confirmEnabled;
+  final Key? confirmButtonKey;
+  final String clearLabel;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -56,45 +70,86 @@ class UtenPickerConfirmBar extends StatelessWidget {
             ? '已选择：$selectedLabel'
             : '已选择 $selectedCount 项');
     return UtenBottomActionBar(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final summary = Text(
-            label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: hasSelection
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.onSurfaceVariant,
+      child: UtenPickerFooterLayout(
+        summary:
+            summary ??
+            Text(
+              label,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: hasSelection
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
             ),
-          );
-          final actions = Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (onClear != null)
-                TextButton(
-                  onPressed: hasSelection ? onClear : null,
-                  child: const Text('清空'),
-                ),
-              TextButton(
-                onPressed: onCancel ?? () => Navigator.of(context).pop(),
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: hasSelection ? onConfirm : null,
-                child: Text(confirmLabel),
-              ),
-            ],
-          );
-          return UtenPickerFooterLayout(
-            summary: summary,
-            pagination: pagination,
-            actions: actions,
-          );
-        },
+        pagination: pagination,
+        actions: UtenPickerActions(
+          showClear: onClear != null,
+          onClear: hasSelection ? onClear : null,
+          clearLabel: clearLabel,
+          onCancel: onCancel,
+          onConfirm: (confirmEnabled ?? hasSelection) ? onConfirm : null,
+          confirmLabel: confirmLabel,
+          confirmButtonKey: confirmButtonKey,
+        ),
       ),
     );
   }
+}
+
+/// Shared visual actions without imposing a picker's business validity rules.
+/// Clear only changes the local draft; Cancel discards it; Confirm commits it.
+class UtenPickerActions extends StatelessWidget {
+  const UtenPickerActions({
+    super.key,
+    required this.onConfirm,
+    this.onCancel,
+    this.onClear,
+    this.showClear = false,
+    this.clearLabel = '清空',
+    this.cancelLabel = '取消',
+    this.confirmLabel = '确定',
+    this.clearButtonKey,
+    this.cancelButtonKey,
+    this.confirmButtonKey,
+  });
+
+  final VoidCallback? onConfirm;
+  final VoidCallback? onCancel;
+  final VoidCallback? onClear;
+  final bool showClear;
+  final String clearLabel;
+  final String cancelLabel;
+  final String confirmLabel;
+  final Key? clearButtonKey;
+  final Key? cancelButtonKey;
+  final Key? confirmButtonKey;
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    alignment: WrapAlignment.end,
+    spacing: 8,
+    runSpacing: 8,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      if (showClear)
+        UtenButton(
+          key: clearButtonKey,
+          type: UtenButtonType.danger,
+          onPressed: onClear,
+          child: Text(clearLabel),
+        ),
+      UtenButton(
+        key: cancelButtonKey,
+        type: UtenButtonType.secondary,
+        onPressed: onCancel ?? () => Navigator.of(context).pop(),
+        child: Text(cancelLabel),
+      ),
+      UtenButton(
+        key: confirmButtonKey,
+        onPressed: onConfirm,
+        child: Text(confirmLabel),
+      ),
+    ],
+  );
 }

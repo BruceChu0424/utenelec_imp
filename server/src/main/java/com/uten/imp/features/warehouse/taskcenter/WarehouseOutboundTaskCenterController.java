@@ -26,6 +26,7 @@ public class WarehouseOutboundTaskCenterController {
             + "'warehouse_subcontract_outbound_history:view','stock_doc:view')")
     public WarehouseTaskCenterContracts.Page list(
             @RequestParam(defaultValue = "ALL") String source,
+            @RequestParam(defaultValue = "ACTIVE") String view,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String billNo,
@@ -37,7 +38,8 @@ public class WarehouseOutboundTaskCenterController {
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return queries.list(new WarehouseTaskCenterContracts.Filter(source, status, keyword, billNo,
-                dateFrom, dateTo, scopeWarehouseId, page, size, sort, order));
+                dateFrom, dateTo, scopeWarehouseId, page, size, sort, order,
+                WarehouseTaskCenterContracts.TaskView.requested(view)));
     }
 
     @GetMapping("/{rowKey}/detail")

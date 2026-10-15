@@ -32,13 +32,13 @@ enum HrTaskType {
     taskType: 'birthday',
     title: '生日关怀',
     icon: Icons.cake_outlined,
-    emptyText: '近 30 天没有员工生日',
+    emptyText: '近 30 天没有待办理的生日关怀',
   ),
   anniversary(
     taskType: 'anniversary',
     title: '入职周年',
     icon: Icons.emoji_events_outlined,
-    emptyText: '今天没有入职周年的员工',
+    emptyText: '今天没有待办理的入职周年祝福',
   ),
   newhire(
     taskType: 'newhire',
@@ -84,8 +84,12 @@ List<HrTaskItem> hrTaskItemsOf(HrTaskSummary s, HrTaskType type) {
       ...s.confirmToday,
       ...s.confirmUpcoming,
     ],
-    HrTaskType.birthday => [...s.birthdayToday, ...s.birthdayUpcoming],
-    HrTaskType.anniversary => s.anniversaryToday,
+    HrTaskType.birthday => [
+      ...s.birthdayToday,
+      ...s.birthdayUpcoming,
+    ].where((item) => !item.blessed).toList(),
+    HrTaskType.anniversary =>
+      s.anniversaryToday.where((item) => !item.blessed).toList(),
     HrTaskType.newhire => s.newHires,
     HrTaskType.identity => s.identityReview,
   };

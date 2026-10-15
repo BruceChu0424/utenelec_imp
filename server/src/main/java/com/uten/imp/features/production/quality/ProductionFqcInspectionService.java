@@ -56,6 +56,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -239,6 +240,7 @@ public class ProductionFqcInspectionService
         String statusPredicate = switch (status) {
             case "ALL" -> "1=1";
             case "ACTIVE" -> "inspection.status IN ('PENDING','PARTIAL')";
+            case "HISTORY" -> "inspection.status IN ('RESOLVED','CANCELLED')";
             default -> "inspection.status = :status";
         };
         String keywordPredicate = """
@@ -291,7 +293,7 @@ public class ProductionFqcInspectionService
             String keyword,
             SheetScope sheetScope) {
         if (ownerScope != null) ownerScope.bind(query);
-        if (!"ALL".equals(status) && !"ACTIVE".equals(status)) {
+        if (!Set.of("ALL", "ACTIVE", "HISTORY").contains(status)) {
             query.setParameter("status", status);
         }
         query.setParameter("keyword", keyword);
@@ -2557,7 +2559,7 @@ public class ProductionFqcInspectionService
         String value = raw == null || raw.isBlank()
                 ? "ACTIVE" : raw.strip().toUpperCase(Locale.ROOT);
         if (!List.of(
-                "ACTIVE", "PENDING", "PARTIAL",
+                "ACTIVE", "HISTORY", "PENDING", "PARTIAL",
                 "RESOLVED", "CANCELLED", "ALL")
                 .contains(value)) {
             throw validation("生产质检状态筛选值不正确");

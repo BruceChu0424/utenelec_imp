@@ -48,6 +48,12 @@ public class FinanceExpenseController {
     private final SecurityContextCurrentUser currentUser;
     private final AuditDetailViewRecorder detailViewAudit;
 
+    @GetMapping("/gl-confirmation-count")
+    @PreAuthorize("hasAuthority('finance_expense:view') and hasAuthority('finance_expense:gl_confirm')")
+    public java.util.Map<String, Long> confirmationCounts() {
+        return service.confirmationCounts();
+    }
+
     @GetMapping
     @PreAuthorize("hasAuthority('finance_expense:view')")
     public PageResponse<FinanceExpenseListItem> list(
@@ -55,6 +61,7 @@ public class FinanceExpenseController {
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Short status,
+            @RequestParam(defaultValue = "ACTIVE") String view,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
@@ -65,7 +72,7 @@ public class FinanceExpenseController {
             @RequestParam(defaultValue = "false") boolean includeDeleted,
             @RequestParam(defaultValue = "false") boolean onlyDeleted,
             @RequestParam java.util.Map<String, String> headerParams) {
-        return service.list(new FinanceExpenseQueryFilter(keyword, accountId, departmentId, status, dateFrom, dateTo, billNo).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
+        return service.list(new FinanceExpenseQueryFilter(keyword, accountId, departmentId, status, dateFrom, dateTo, billNo).withView(view).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)), page, size, sort, order);
     }
 
     /** 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。 */
@@ -76,12 +83,13 @@ public class FinanceExpenseController {
             @RequestParam(required = false) UUID accountId,
             @RequestParam(required = false) UUID departmentId,
             @RequestParam(required = false) Short status,
+            @RequestParam(defaultValue = "ACTIVE") String view,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "false") boolean includeDeleted,
             @RequestParam(defaultValue = "false") boolean onlyDeleted,
             @RequestParam java.util.Map<String, String> headerParams) {
-        return service.facets(new FinanceExpenseQueryFilter(keyword, accountId, departmentId, status, dateFrom, dateTo, null).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
+        return service.facets(new FinanceExpenseQueryFilter(keyword, accountId, departmentId, status, dateFrom, dateTo, null).withView(view).withHistory(includeDeleted, onlyDeleted).withHeaders(com.uten.imp.common.web.HeaderColumnFilter.from(headerParams)));
     }
 
     @GetMapping("/{id}")

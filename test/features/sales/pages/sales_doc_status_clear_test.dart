@@ -121,31 +121,36 @@ void main() {
   });
 
   for (final type in [SalesDocType.quote, SalesDocType.returnDoc]) {
-    testWidgets('${type.name} clear status selects all without history dates', (
-      tester,
-    ) async {
-      final api = await pump(tester, type);
-      table(tester).onFilterChanged(
-        'status',
-        type == SalesDocType.quote ? SalesQuoteStage.financeRejected : '1',
-      );
-      await tester.pumpAndSettle();
-      final queryCount = api.queries.length;
-      table(tester).onFilterChanged('status', null);
-      await tester.pumpAndSettle();
-      expect(api.queries.length, greaterThan(queryCount));
-      expect(api.queries.last.containsKey('status'), isFalse);
-      expect(api.queries.last.containsKey('bucket'), isFalse);
-      expect(api.queries.last.containsKey('stage'), isFalse);
-      expect(api.queries.last.containsKey('dateFrom'), isFalse);
-      expect(api.queries.last.containsKey('dateTo'), isFalse);
-      expect(
-        find.byKey(Key('sales-doc-history-time-${type.pathSegment}')),
-        findsNothing,
-      );
-      expect(table(tester).filters['status'], isNull);
-      expect(table(tester).selectable, isFalse);
-      expect(tester.takeException(), isNull);
-    });
+    testWidgets(
+      '${type.name} clear status retains its active or history parent',
+      (tester) async {
+        final api = await pump(tester, type);
+        table(tester).onFilterChanged(
+          'status',
+          type == SalesDocType.quote ? SalesQuoteStage.financeRejected : '1',
+        );
+        await tester.pumpAndSettle();
+        final queryCount = api.queries.length;
+        table(tester).onFilterChanged('status', null);
+        await tester.pumpAndSettle();
+        expect(api.queries.length, greaterThan(queryCount));
+        expect(api.queries.last.containsKey('status'), isFalse);
+        if (type == SalesDocType.quote) {
+          expect(api.queries.last['bucket'], 'ACTIVE');
+        } else {
+          expect(api.queries.last.containsKey('bucket'), isFalse);
+        }
+        expect(api.queries.last.containsKey('stage'), isFalse);
+        expect(api.queries.last.containsKey('dateFrom'), isFalse);
+        expect(api.queries.last.containsKey('dateTo'), isFalse);
+        expect(
+          find.byKey(Key('sales-doc-history-time-${type.pathSegment}')),
+          type == SalesDocType.quote ? findsNothing : findsOneWidget,
+        );
+        expect(table(tester).filters['status'], isNull);
+        expect(table(tester).selectable, isFalse);
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 }

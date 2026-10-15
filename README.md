@@ -110,11 +110,13 @@
 ```bash
 cd server
 cp .env.example .env              # 私有配置: 数据库、JWT 密钥、UTEN_PROFILE=dev 等; 不得提交
-docker compose up -d postgres     # PostgreSQL 16, 宿主端口 5433
+docker compose up -d --wait --wait-timeout 600 postgres # 等 PostgreSQL 健康，宿主端口 5433
 mvn spring-boot:run               # 启动时 Flyway 自动迁移到最新
 ```
 
 API 位于 `http://localhost:8080/api`, dev 下 Swagger 位于 `/swagger-ui.html`。首次引导超管、端口约定与排错见[后端说明](server/README.md)。
+
+数据库异常退出后的恢复可能持续数分钟。先等上述 Docker 命令成功，再启动 Maven；若等待超时，检查数据库日志，确认恢复完成后重试。
 
 等日志出现应用启动完成后，再确认 `http://localhost:8080/actuator/health/readiness` 返回 `UP`。仅看到编译成功或端口监听不等于应用就绪。并行测试使用独立 `-Duten.build.directory=target-任务名`，避免覆盖正在运行的类目录。
 

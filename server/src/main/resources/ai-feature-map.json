@@ -757,7 +757,7 @@
       "title": "钱流管理",
       "aliases": [],
       "module": "钱流管理",
-      "purpose": "包含：业务审核中心、普通仓盘点审核、报价核价、报销审批、新建销售收款、新建银行存取款、新建采购付款、新建一般费用。",
+      "purpose": "包含：业务审核中心、报销审批、普通仓盘点审核、费用单财务确认、报价核价、新建销售收款、新建银行存取款、新建采购付款。",
       "paths": [
         [
           "工作台",
@@ -776,6 +776,7 @@
         "finance_asset:view",
         "finance_bank_transfer:create",
         "finance_expense:create",
+        "finance_expense:view",
         "finance_order_approval:view",
         "finance_other_income:create",
         "finance_payment:create",
@@ -792,6 +793,7 @@
       ],
       "allOf": [],
       "hubOf": [
+        "/finance/expenses",
         "/finance/audits",
         "/finance/quote-review",
         "/finance/stock-count-review",
@@ -935,12 +937,19 @@
     },
     {
       "route": "/finance/expenses",
-      "title": "一般费用列表",
+      "title": "费用单财务确认",
       "aliases": [],
       "module": "钱流管理",
-      "purpose": "",
-      "paths": [],
-      "parent": "/finance",
+      "purpose": "核对一般费用已过账凭证，完成财务确认",
+      "paths": [
+        [
+          "工作台",
+          "财税部",
+          "钱流管理",
+          "费用单财务确认"
+        ]
+      ],
+      "parent": null,
       "record": false,
       "anyOf": [
         "finance_expense:view"

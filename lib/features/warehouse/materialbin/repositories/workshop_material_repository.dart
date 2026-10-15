@@ -12,8 +12,11 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/network/api_endpoints.dart';
 import '../../../../core/utils/idempotency_key.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/warehouse/warehouse_task_view.dart';
 import '../models/workshop_material_models.dart';
 import '../models/workshop_source_warehouse_option.dart';
+
+export '../../../../shared/warehouse/warehouse_task_view.dart';
 
 /// 一次用户动作的幂等键: `wm-<动作>-<16 位指纹>`; [nonce] 为页面 (或对话框) 会话随机串。
 String wmIdempotencyKey(String action, String nonce, Object? payload) =>
@@ -227,6 +230,7 @@ class WorkshopMaterialRepository {
   // ---------------------------------------------------------------- 领料单
 
   Future<PagedResult<WmRequisition>> requisitions({
+    WarehouseTaskView view = WarehouseTaskView.active,
     String? status,
     String? kind,
     String? workshopId,
@@ -238,6 +242,7 @@ class WorkshopMaterialRepository {
     final json = await api.get(
       ApiEndpoints.workshopMaterialRequisitions,
       query: {
+        'view': view.apiValue,
         if (status != null && status.isNotEmpty) 'status': status,
         if (kind != null && kind.isNotEmpty) 'kind': kind,
         if (workshopId != null && workshopId.isNotEmpty)

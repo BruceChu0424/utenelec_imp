@@ -12,15 +12,16 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
-import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/data_display/doc_status_badge.dart';
 import '../../../components/data_display/paged_list_controller.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
-import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/layout/uten_document_lifecycle_filter.dart';
+import '../../../components/layout/uten_history_time_filter.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../components/layout/uten_list_two_pane.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -69,6 +70,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   /// 「返回即刷新」onPageResume 用，见 build。
   String? _myLocation;
   int? _statusFilter; // null=全部
+  bool _historyMode = false;
+  UtenHistoryTimeValue _historyTime = const UtenHistoryTimeValue.all();
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
   String? _partyIdFilter;
   String? _accountIdFilter;
@@ -86,6 +89,10 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     // 深链 ?status=draft：预选「草稿」段（新建页「草稿(N)」按钮的落点）。
     if (isDraftStatusQuery(widget.initialStatus)) {
       _statusFilter = kFinanceStatusDraft;
+      _statusFilterSelected = true;
+    } else if (widget.docType == FinanceDocType.expense &&
+        widget.initialStatus == 'pending-gl-confirmation') {
+      _statusFilter = kFinanceStatusApproved;
       _statusFilterSelected = true;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -111,8 +118,13 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     _myLocation = null;
     _statusFilter = isDraftStatusQuery(widget.initialStatus)
         ? kFinanceStatusDraft
+        : widget.docType == FinanceDocType.expense &&
+              widget.initialStatus == 'pending-gl-confirmation'
+        ? kFinanceStatusApproved
         : null;
-    _statusFilterSelected = isDraftStatusQuery(widget.initialStatus);
+    _statusFilterSelected = _statusFilter != null;
+    _historyMode = false;
+    _historyTime = const UtenHistoryTimeValue.all();
     _partyIdFilter = null;
     _accountIdFilter = null;
     _receiptKindFilter = null;
@@ -127,6 +139,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
   }
 
   bool get _canSelectDrafts =>
+      !_historyMode &&
       _statusFilterSelected &&
       _statusFilter == kFinanceStatusDraft &&
       _cfg.deletePerm != null &&
@@ -188,11 +201,22 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         ? _accountIdFilter
         : null,
     status: _statusFilter,
+    view: widget.docType == FinanceDocType.expense
+        ? (_historyMode ? 'HISTORY' : 'ACTIVE')
+        : null,
     receiptKind: _cfg.type == FinanceDocType.receipt
         ? _receiptKindFilter
         : null,
     billNo: withBillNo ? _columnFilters['billNo'] : null,
-    recordOrigin: _recordOriginFilter,
+    recordOrigin: _historyMode
+        ? _recordOriginFilter
+        : FinanceRecordOrigin.current,
+    dateFrom: _historyMode && _historyTime.range != null
+        ? ChinaDateTime.formatDate(_historyTime.range!.start)
+        : null,
+    dateTo: _historyMode && _historyTime.range != null
+        ? ChinaDateTime.formatDate(_historyTime.range!.end)
+        : null,
   );
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
@@ -224,10 +248,19 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     final generation = ++_reloadGeneration;
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     ref.invalidate(documentStatusCountsProvider(_statusScope));
+    if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) return;
     unawaited(_loadBillNoFacets());
     await _list.load(page ?? _list.pageNum, silent: silent, fetch: _fetch);
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
+    }
+    final result = _list.page;
+    if (widget.docType == FinanceDocType.expense &&
+        result != null &&
+        result.page > (result.totalPages > 0 ? result.totalPages : 1)) {
+      // Confirmation can remove the last row on a later pending page. Requery
+      // the current lifecycle scope at its last valid page.
+      return _reload(result.totalPages > 0 ? result.totalPages : 1);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || generation != _reloadGeneration) return;
@@ -239,14 +272,49 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     });
   }
 
-  void _onStatus(int? s) {
+  void _onCategory(int? status) {
     clearDraftSelection();
     setState(() {
-      _statusFilter = s;
+      _historyMode = status == null;
+      _statusFilter = status;
       _statusFilterSelected = true;
+      _recordOriginFilter = null;
     });
     _reload(1);
   }
+
+  void _onHistoryStatus(int? status) {
+    clearDraftSelection();
+    setState(() => _statusFilter = status);
+    _reload(1);
+  }
+
+  Widget _lifecycleFilters(Map<String, int>? counts) =>
+      UtenDocumentLifecycleFilter(
+        selected: _statusFilterSelected,
+        history: _historyMode,
+        status: _statusFilter,
+        hasOngoing: widget.docType == FinanceDocType.expense,
+        ongoingLabel: '待财务确认',
+        ongoingCount: counts?[DocumentStatusBucket.pendingGlConfirmation],
+        historyIncludesDrafts: widget.docType != FinanceDocType.expense,
+        draftCount: counts?[DocumentStatusBucket.draft],
+        onCategoryChanged: _onCategory,
+        onHistoryStatusChanged: _onHistoryStatus,
+        historyTime: _historyTime,
+        onHistoryTimeChanged: (value) {
+          clearDraftSelection();
+          setState(() => _historyTime = value);
+          _reload(1);
+        },
+        searchHint: '搜索单据号',
+        searchValue: _list.keyword,
+        onSearchChanged: (value) {
+          clearDraftSelection();
+          _list.keyword = value;
+          _reload(1);
+        },
+      );
 
   void _onColumnFilterChanged(String key, String? value) {
     clearDraftSelection();
@@ -260,12 +328,24 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     }
     setState(() {
       if (key == 'status') {
-        _statusFilter = value == null ? null : int.tryParse(value);
-        _statusFilterSelected = true;
+        _statusFilter = value == null
+            ? (_historyMode ? null : _statusFilter ?? kFinanceStatusDraft)
+            : int.tryParse(value);
+        if (_statusFilter != kFinanceStatusDraft &&
+            !(widget.docType == FinanceDocType.expense &&
+                _statusFilter == kFinanceStatusApproved)) {
+          _historyMode = true;
+        }
+        _statusFilterSelected = _historyMode || _statusFilter != null;
       } else if (key == 'accountId') {
         _accountIdFilter = value;
       } else if (key == 'recordOrigin') {
         _recordOriginFilter = FinanceRecordOrigin.fromWire(value);
+        if (_recordOriginFilter == FinanceRecordOrigin.legacy) {
+          _historyMode = true;
+          _statusFilterSelected = true;
+          _statusFilter = null;
+        }
       } else if (key == 'receiptKind') {
         _receiptKindFilter = value;
       } else if (key == 'clientId' || key == 'supplierId') {
@@ -295,11 +375,23 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
         key: 'status',
         label: '状态',
         width: 72,
-        value: (it) => financeStatusLabel(it.status),
+        value: (it) =>
+            widget.docType == FinanceDocType.expense &&
+                !it.legacyImported &&
+                it.status == kFinanceStatusApproved &&
+                it.glStatus == 1
+            ? '待财务确认'
+            : financeStatusLabel(it.status),
         // 状态分类色（草稿中性/已审绿/红冲红）铺整格底色，替代原格内胶囊
         // （2026-09-27 用户口径）；value 仍是纯文本供列宽/排序/筛选。
-        cellColor: (context, it) =>
-            utenStatusBadgeCellColor(docStatusBadgeType(it.status)),
+        cellColor: (context, it) => utenStatusBadgeCellColor(
+          widget.docType == FinanceDocType.expense &&
+                  !it.legacyImported &&
+                  it.status == kFinanceStatusApproved &&
+                  it.glStatus == 1
+              ? UtenStatusBadgeType.warning
+              : docStatusBadgeType(it.status),
+        ),
       ),
       MasterColumnDef(
         // 2026-09-25 单号列统一：可排序 + 表头值筛选（服务端 billNo 白名单/桶）。
@@ -370,7 +462,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
       FormDraftCategoryScope(kind: _cfg.draftKind.name);
 
   Widget _withFormDraftRows(MasterDataTableView<FinanceDocListItem> table) =>
-      _statusFilter == kFinanceStatusDraft
+      !_historyMode && _statusFilter == kFinanceStatusDraft
       ? FormDraftCategoryTable<FinanceDocListItem>(
           scope: _formDraftScope,
           table: table,
@@ -455,63 +547,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                   ),
                   // 桌面：左筛选侧栏（搜索 + 状态 Chip）+ 右表格；手机：垂直堆叠
                   body: UtenListTwoPane(
-                    filterPane: Padding(
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: UtenSearchBar(
-                              hint: '搜索单据号',
-                              initialValue: _list.keyword,
-                              onChanged: (v) {
-                                clearDraftSelection();
-                                _list.keyword = v;
-                                _reload(1);
-                              },
-                            ),
-                          ),
-                          const SizedBox(height: UtenSpacing.s12),
-                          // 全平台统一筛选工具条：单据状态分段（纯分类无搜索）。
-                          // 2026-09-21 用户口径: hub 卡有草稿红徽章, 子分类也要有数——
-                          // 草稿红徽章(与卡面同源同数), 已审 / 红冲中性括号, 「全部」不挂。
-                          UtenFilterToolbar<int?>(
-                            segments: [
-                              const UtenFilterSegment<int?>(
-                                value: null,
-                                label: '全部',
-                              ),
-                              UtenFilterSegment<int?>(
-                                value: kFinanceStatusDraft,
-                                label: '草稿',
-                                count:
-                                    statusCounts?[DocumentStatusBucket.draft],
-                                countForm: UtenSegmentCountForm.actionable,
-                              ),
-                              UtenFilterSegment<int?>(
-                                value: kFinanceStatusApproved,
-                                label: '已审',
-                                count:
-                                    statusCounts?[DocumentStatusBucket
-                                        .approved],
-                              ),
-                              UtenFilterSegment<int?>(
-                                value: kFinanceStatusReversed,
-                                label: '已反审',
-                                count:
-                                    statusCounts?[DocumentStatusBucket
-                                        .reversed],
-                              ),
-                            ],
-                            selected: _statusFilterSelected
-                                ? {_statusFilter}
-                                : const {},
-                            onSelectionChanged: _onStatus,
-                          ),
-                        ],
-                      ),
-                    ),
+                    filterPane: _lifecycleFilters(statusCounts),
                     tablePane: _withFormDraftRows(
                       MasterDataTableView<FinanceDocListItem>(
                         rowsController: _tableRows,
@@ -567,7 +603,27 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                               label: '历史记录（只读）',
                             ),
                           ],
-                          'status': financeDocumentStatusFacets,
+                          'status': widget.docType == FinanceDocType.expense
+                              ? [
+                                  if (!_historyMode)
+                                    const MasterFacetBucket(
+                                      value: '0',
+                                      count: 0,
+                                      label: '草稿',
+                                    ),
+                                  MasterFacetBucket(
+                                    value: '1',
+                                    count: 0,
+                                    label: _historyMode ? '已审' : '待财务确认',
+                                  ),
+                                  if (_historyMode)
+                                    const MasterFacetBucket(
+                                      value: '-1',
+                                      count: 0,
+                                      label: '已反审',
+                                    ),
+                                ]
+                              : financeDocumentStatusFacets,
                         },
                         nullCounts: const {},
                         filters: {
@@ -600,6 +656,8 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
                           widget.docType,
                           _list.normalizedKeyword,
                           _statusFilter,
+                          _historyMode,
+                          _historyTime,
                           _recordOriginFilter,
                         ),
                         onPageChange: (p) => _reload(p),

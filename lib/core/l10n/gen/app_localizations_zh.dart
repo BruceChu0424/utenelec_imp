@@ -9,6 +9,21 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get release2517PickerLayout =>
+      '选择滑窗的清空、取消、确定统一放在右下角；清空用红色提示，页码输入与分类列表更紧凑、易操作。';
+
+  @override
+  String get release2517Lifecycle =>
+      '日常列表集中显示进行中和即将办理的业务；已完成、已取消等记录统一进入“历史单据”，仍可随时查看。';
+
+  @override
+  String get release2517Paging =>
+      '查看历史时，清除状态筛选、翻页和刷新仍停留在历史范围；询盘末页最后一条办结后自动返回有效页。';
+
+  @override
+  String get release2517Drafts => '历史记录不再混入待办草稿或办理操作；未完成的草稿仍关联原任务，可继续填写。';
+
+  @override
   String get editorDocumentIdentityChanged => '单据或来源已变化，请重新进入页面';
 
   @override

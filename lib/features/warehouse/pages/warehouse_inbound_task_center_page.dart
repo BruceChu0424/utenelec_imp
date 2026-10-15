@@ -74,7 +74,8 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
             _ => null,
           },
         ),
-      const WarehouseTaskSegmentSpec(value: 'ALL', label: '全部单据'),
+      const WarehouseTaskSegmentSpec(value: 'ALL', label: '全部任务'),
+      const WarehouseTaskSegmentSpec(value: 'HISTORY', label: '历史单据'),
     ];
     final initial = switch (initialSection) {
       'purchase' => 'PURCHASE',
@@ -82,6 +83,7 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
       'finishedIn' => 'FINISHED',
       'otherIn' => 'OTHER',
       'wdraw' || 'productionReturn' => 'RETURN',
+      'history' || 'HISTORY' => 'HISTORY',
       final String value when sources.containsKey(value) || value == 'ALL' =>
         value,
       _ => null,
@@ -101,7 +103,10 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
           WarehouseTaskRecordsView(
             key: ValueKey(('inbound', source)),
             direction: WarehouseTaskDirection.inbound,
-            source: source,
+            source: source == 'HISTORY' ? 'ALL' : source,
+            view: source == 'HISTORY'
+                ? WarehouseTaskView.history
+                : WarehouseTaskView.active,
             sources: sources,
             keyword: keyword,
             refreshTick: refresh,

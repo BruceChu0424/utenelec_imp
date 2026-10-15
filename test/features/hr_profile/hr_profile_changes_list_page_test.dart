@@ -43,6 +43,7 @@ class _FakeProfileChangeRepository extends Fake
       'applied' => ProfileChangeStatus.applied,
       'rejected' => ProfileChangeStatus.rejected,
       'cancelled' => ProfileChangeStatus.cancelled,
+      'history' => ProfileChangeStatus.applied,
       _ => ProfileChangeStatus.pending,
     };
     return ProfileChangePage(
@@ -191,7 +192,12 @@ void main() {
     await tester.pumpWidget(_app(repo, preferences, router: router));
     await tester.pumpAndSettle();
     final segments = find.byKey(const Key('hr-profile-changes-segments'));
-    await tester.tap(find.descendant(of: segments, matching: find.text('已撤销')));
+    await tester.tap(
+      find.descendant(of: segments, matching: find.text('历史单据')),
+    );
+    await tester.pumpAndSettle();
+    expect(repo.listCalls.last['status'], 'history');
+    _table(tester).onFilterChanged('status', 'cancelled');
     await tester.pumpAndSettle();
     expect(repo.listCalls.last['status'], 'cancelled');
     expect(repo.listCalls.last['page'], 1);
@@ -243,10 +249,10 @@ void main() {
     await tester.pumpWidget(_app(repo, preferences));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('已生效'));
+    await tester.tap(find.text('历史单据'));
     await tester.pumpAndSettle();
 
-    expect(repo.listCalls.last['status'], 'applied');
+    expect(repo.listCalls.last['status'], 'history');
     expect(repo.listCalls.last['page'], 1, reason: '换分段回第 1 页');
     // 非待审段只读：不再开多选批量
     expect(_table(tester).selectable, isFalse);

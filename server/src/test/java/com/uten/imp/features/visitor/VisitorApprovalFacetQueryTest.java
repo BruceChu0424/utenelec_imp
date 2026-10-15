@@ -67,6 +67,17 @@ class VisitorApprovalFacetQueryTest {
     }
 
     @Test
+    void historyStatusSetScopesBothFacetsWithoutJoiningStatusesAsOneValue() {
+        EntityManager entityManager = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        when(entityManager.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(), any())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        new VisitorApprovalFacetQuery(entityManager).facets(" checkedIn,rejected,cancelled,checkedIn ");
+        verify(query, times(2)).setParameter("statuses", List.of("checkedIn", "rejected", "cancelled"));
+    }
+
+    @Test
     void explicitStatusNarrowsBothBucketsToThatStatus() {
         EntityManager entityManager = mock(EntityManager.class);
         Query statuses = mock(Query.class);

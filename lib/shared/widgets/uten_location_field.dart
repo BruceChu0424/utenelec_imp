@@ -7,9 +7,9 @@
 //  UtenDepartmentTreeView）由调用方作为 childBuilder 传入，保留领域差异。
 import 'package:flutter/material.dart';
 
-import '../../components/buttons/uten_button.dart';
 import '../../components/layout/uten_adaptive_panel.dart';
 import '../../components/layout/uten_bottom_action_bar.dart';
+import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../../core/theme/uten_tokens.dart';
 
 /// 位置选择结果。
@@ -300,27 +300,14 @@ class _UtenLocationPickerSheetState<T>
           ),
         ),
         UtenBottomActionBar(
-          child: Row(
-            children: [
-              Expanded(
-                child: UtenButton(
-                  type: UtenButtonType.ghost,
-                  size: UtenButtonSize.large,
-                  isExpanded: true,
-                  onPressed: _cancel,
-                  child: Text(widget.cancelLabel),
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: UtenButton(
-                  size: UtenButtonSize.large,
-                  isExpanded: true,
-                  onPressed: _canConfirm ? _confirm : null,
-                  child: Text(widget.confirmLabel),
-                ),
-              ),
-            ],
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: UtenPickerActions(
+              onCancel: _cancel,
+              onConfirm: _canConfirm ? _confirm : null,
+              cancelLabel: widget.cancelLabel,
+              confirmLabel: widget.confirmLabel,
+            ),
           ),
         ),
       ],

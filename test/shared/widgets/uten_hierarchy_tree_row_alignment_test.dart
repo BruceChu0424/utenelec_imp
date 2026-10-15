@@ -6,6 +6,27 @@ import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
 
 void main() {
+  testWidgets(
+    'flat category rows use 36 desktop pixels and retain 48 touch targets',
+    (tester) async {
+      for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+        await tester.pumpWidget(
+          _app(_categories(), width: 240, platform: platform),
+        );
+        await tester.pumpAndSettle();
+        final title = find.text('外贸钟(KF000001)');
+        final row = find
+            .ancestor(of: title, matching: find.byType(InkWell))
+            .first;
+        expect(
+          tester.getSize(row).height,
+          platform == TargetPlatform.windows ? 36 : 48,
+        );
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
   testWidgets('分类同层父节点和叶节点的名称起点一致', (tester) async {
     await tester.pumpWidget(_app(_categories(), width: 240));
 

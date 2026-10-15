@@ -83,6 +83,7 @@ public class WarehouseOutboundTaskCenterQueryService {
         }
         List<StatusFacet> facets = new ArrayList<>();
         STATES.forEach((key, value) -> {
+            if (!WarehouseOutboundTaskCenterSql.visibleStatus(key,filter.view())) return;
             String source = key.substring(0, key.indexOf('_'));
             if (!allowed.contains(source) || (!"ALL".equals(filter.source()) && !source.equals(filter.source()))) return;
             if (source.equals("SUBCONTRACT") && !access.subcontractHistory() && !key.equals("SUBCONTRACT_PENDING")) return;
@@ -133,7 +134,8 @@ public class WarehouseOutboundTaskCenterQueryService {
             var access = access();
             if (!allowedSources(access).contains(parts[0])) throw notFound();
             var scope = warehouseScopes.current(requestedWarehouse);
-            var filter = normalize(new Filter(parts[0], null, null, null, null, null, requestedWarehouse, 1, 1));
+            var filter = normalize(new Filter(parts[0], null, null, null, null, null, requestedWarehouse, 1, 1,
+                    null, null, TaskView.ALL));
             var sql = WarehouseOutboundTaskCenterSql.build(filter, access, scope,
                     requestedWarehouse == null ? currentUser.employeeId().map(UUID::toString).orElse("") : "");
             Query rowQuery = bind(em.createNativeQuery(sql.identitySql()), sql)
@@ -240,7 +242,7 @@ public class WarehouseOutboundTaskCenterQueryService {
         order = order == null ? "desc" : order.toLowerCase(Locale.ROOT);
         if (!Set.of("asc", "desc").contains(order)) throw new ApiException(ErrorCode.VALIDATION_FAILED, "排序方向不正确");
         return new Filter(source, status, keyword, billNo, filter.dateFrom(), filter.dateTo(), filter.scopeWarehouseId(),
-                Math.max(1, filter.page()), Math.max(1, Math.min(100, filter.size())), sort, order);
+                Math.max(1, filter.page()), Math.max(1, Math.min(100, filter.size())), sort, order, filter.view());
     }
 
     private static String clean(String value) { return value == null || value.isBlank() ? null : value.trim(); }

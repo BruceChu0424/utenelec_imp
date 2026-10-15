@@ -224,6 +224,9 @@ class _WarehouseStockDocSegmentState
         .list(
           page: _list.pageNum,
           filter: StockDocFilter(
+            view: seg.history
+                ? WarehouseTaskView.history
+                : WarehouseTaskView.active,
             productionReturnRequests:
                 widget.productionReturnRequests && !seg.history ? true : null,
             keyword: _list.normalizedKeyword,
@@ -254,6 +257,9 @@ class _WarehouseStockDocSegmentState
             .read(stockDocRepositoryProvider(widget.docType))
             .billNoFacets(
               filter: StockDocFilter(
+                view: seg.history
+                    ? WarehouseTaskView.history
+                    : WarehouseTaskView.active,
                 productionReturnRequests:
                     widget.productionReturnRequests && !seg.history
                     ? true
@@ -396,8 +402,13 @@ class _WarehouseStockDocSegmentState
     _reload(1);
   }
 
+  List<FormDraft> _taskDrafts(StockDocListItem document) =>
+      _seg?.history == true
+      ? const []
+      : stockTaskDrafts(ref.read(formDraftsProvider), document.id);
+
   Future<void> _openStockTask(StockDocListItem document) async {
-    final drafts = stockTaskDrafts(ref.read(formDraftsProvider), document.id);
+    final drafts = _taskDrafts(document);
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
       if (mounted) await _reload();
@@ -417,11 +428,8 @@ class _WarehouseStockDocSegmentState
         key: 'status',
         label: '状态',
         width: 72,
-        value: (it) =>
-            stockTaskDrafts(ref.read(formDraftsProvider), it.id).isNotEmpty
-            ? taskDraftStatus(
-                stockTaskDrafts(ref.read(formDraftsProvider), it.id),
-              )
+        value: (it) => _taskDrafts(it).isNotEmpty
+            ? taskDraftStatus(_taskDrafts(it))
             : widget.docType == StockDocType.wdraw
             ? switch (it.status) {
                 0 => '待仓库收料',
@@ -435,7 +443,7 @@ class _WarehouseStockDocSegmentState
         // （灰），「仓库已收料」=绿、「已红冲」=红；该段的行动性由分段上的
         // 可办徽章计数表达，状态列只讲单据状态机。
         cellColor: (context, it) => utenStatusBadgeCellColor(
-          stockTaskDrafts(ref.read(formDraftsProvider), it.id).isEmpty
+          _taskDrafts(it).isEmpty
               ? docStatusBadgeType(it.status)
               : UtenStatusBadgeType.neutral,
         ),
@@ -587,14 +595,11 @@ class _WarehouseStockDocSegmentState
                       count: isReturn ? widget.pendingReturnCount : draftCount,
                       countForm: UtenSegmentCountForm.actionable,
                     ),
-                    UtenFilterSegment(
-                      value: const _StockSegSeg.stage(1),
-                      label: isReturn ? '仓库已收料' : '已审',
-                    ),
-                    const UtenFilterSegment(
-                      value: _StockSegSeg.stage(-1),
-                      label: '已撤回',
-                    ),
+                    if (widget.docType == StockDocType.draw)
+                      const UtenFilterSegment(
+                        value: _StockSegSeg.stage(1),
+                        label: '进行中',
+                      ),
                     const UtenFilterSegment(
                       value: _StockSegSeg.history(),
                       label: '历史单据',
@@ -760,7 +765,6 @@ class _WarehouseStockDocSegmentState
                             count: 0,
                             label: '部分出库',
                           ),
-                          MasterFacetBucket(value: '2', count: 0, label: '已出完'),
                         ],
                     },
                     nullCounts: const {},
@@ -771,7 +775,9 @@ class _WarehouseStockDocSegmentState
                     },
                     onFilterChanged: (key, value) {
                       if (key == 'issueStatus' && showIssueStatus) {
-                        final next = int.tryParse(value ?? '');
+                        final next = const {'0', '1'}.contains(value)
+                            ? int.parse(value!)
+                            : null;
                         if (_issueStatus == next) return;
                         clearDraftSelection();
                         setState(() => _issueStatus = next);

@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.materialbin;
 
+import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.TaskView;
 import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.CancelRequest;
@@ -45,13 +46,15 @@ public class WorkshopMaterialRequisitionController {
     @GetMapping("/requisitions")
     @PreAuthorize("hasAuthority('workshop_material:view')")
     public PageResponse<RequisitionView> list(@RequestParam(required = false) String status,
+                                              @RequestParam(defaultValue = "ACTIVE") String view,
                                               @RequestParam(required = false) String kind,
                                               @RequestParam(required = false) UUID workshopId,
                                               @RequestParam(required = false) UUID scopeWarehouseId,
                                               @RequestParam(defaultValue = "1") int page,
-                                              @RequestParam(defaultValue = "20") int size) {
+                                              @RequestParam(defaultValue = "20") int size,
+                                              @RequestParam(required = false) String keyword) {
         return requisitions.list(status, kind, workshopId, warehouseScopes.current(scopeWarehouseId),
-                page, size);
+                page, size, TaskView.requested(view), keyword);
     }
 
     @GetMapping("/requisitions/{requisitionId}")

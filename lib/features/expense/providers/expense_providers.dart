@@ -20,15 +20,21 @@ enum ExpenseFilter { all, draft, rejected, processing, finished }
 
 extension ExpenseFilterValue on ExpenseFilter {
   String get label => switch (this) {
-    ExpenseFilter.all => '全部',
+    ExpenseFilter.all => '待办与进行中',
     ExpenseFilter.draft => '草稿',
     ExpenseFilter.rejected => '待修订',
     ExpenseFilter.processing => '处理中',
-    ExpenseFilter.finished => '已完成',
+    ExpenseFilter.finished => '历史单据',
   };
 
   Iterable<ExpenseClaimStatus>? get apiStatuses => switch (this) {
-    ExpenseFilter.all => null,
+    ExpenseFilter.all => const [
+      ExpenseClaimStatus.draft,
+      ExpenseClaimStatus.submitted,
+      ExpenseClaimStatus.reviewing,
+      ExpenseClaimStatus.approved,
+      ExpenseClaimStatus.rejected,
+    ],
     ExpenseFilter.draft => const [ExpenseClaimStatus.draft],
     ExpenseFilter.rejected => const [ExpenseClaimStatus.rejected],
     ExpenseFilter.processing => const [
@@ -67,7 +73,11 @@ final expenseMineFacetsProvider =
       ref.watch(masterDataSessionKeyProvider);
       return ref
           .watch(expenseRepositoryProvider)
-          .facets(ApprovalFacetQueue.mine);
+          .facets(
+            ref.watch(expenseFilterProvider) == ExpenseFilter.finished
+                ? ApprovalFacetQueue.mineHistory
+                : ApprovalFacetQueue.mineActive,
+          );
     });
 
 /// 某状态所属的分段（表头筛选选中状态时同步切换顶部分段）。

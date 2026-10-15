@@ -25,6 +25,7 @@ import 'package:uten_imp/shared/drafts/form_draft_category.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/drafts/form_drafts_page.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_view.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 
@@ -319,7 +320,8 @@ void main() {
       expect(find.text('其它出库'), findsOneWidget);
       expect(find.text('产成品出库'), findsOneWidget);
       expect(find.text('生产领料'), findsOneWidget);
-      expect(find.text('全部单据'), findsOneWidget);
+      expect(find.text('全部任务'), findsOneWidget);
+      expect(find.text('历史单据'), findsOneWidget);
       // fixture 的生产领料红数为3，会按真实规则自动选中DRAW待办来源。
       expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
       expect(
@@ -329,6 +331,14 @@ void main() {
             )
             .source,
         'DRAW',
+      );
+      expect(
+        tester
+            .widget<WarehouseTaskRecordsView>(
+              find.byType(WarehouseTaskRecordsView),
+            )
+            .view,
+        WarehouseTaskView.active,
       );
       await tester.pump(const Duration(seconds: 61));
       await tester.pumpWidget(const SizedBox.shrink());
@@ -403,11 +413,12 @@ void main() {
   testWidgets('outbound task center filters segments by permission', (
     tester,
   ) async {
+    final api = _FakeApi();
     await tester.pumpWidget(
       app(const WarehouseOutboundTaskCenterPage(initialSection: 'ALL'), const {
         Perm.warehouseSalesOutboundView,
         Perm.stockDocView,
-      }),
+      }, api: api),
     );
     await tester.pump();
 
@@ -420,10 +431,18 @@ void main() {
     final scaffold = tester.widget<WarehouseTaskCenterScaffold>(
       find.byType(WarehouseTaskCenterScaffold),
     );
-    expect(scaffold.segments.last.value, 'ALL');
-    expect(scaffold.segments.last.label, '全部单据');
+    expect(scaffold.segments.map((segment) => segment.value), [
+      'SALES',
+      'DRAW',
+      'OTHER',
+      'FINISHED',
+      'ALL',
+      'HISTORY',
+    ]);
+    expect(scaffold.segments[scaffold.segments.length - 2].label, '全部任务');
+    expect(scaffold.segments.last.label, '历史单据');
 
-    // 选来源后直接查询全状态；不再挂第三行草稿/已审/历史分类。
+    // 来源直接查询进行中；历史是同一导航行入口，不增加第三层状态分类。
     await tester.tap(find.text('其它出库'));
     await tester.pump();
     await tester.pump();
@@ -433,7 +452,24 @@ void main() {
       find.byKey(const Key('stock-doc-segment-status-OTHER_OUT')),
       findsNothing,
     );
-    expect(find.text('历史单据'), findsNothing);
+    expect(find.text('历史单据'), findsOneWidget);
+    expect(api.lastTaskListQuery?['source'], 'OTHER');
+    expect(api.lastTaskListQuery?['view'], 'ACTIVE');
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
+    final history = tester.widget<WarehouseTaskRecordsView>(
+      find.byType(WarehouseTaskRecordsView),
+    );
+    expect(history.source, 'ALL');
+    expect(history.view, WarehouseTaskView.history);
+    expect(history.sources.keys, ['SALES', 'DRAW', 'OTHER', 'FINISHED']);
+    expect(api.lastTaskListQuery?['source'], 'ALL');
+    expect(api.lastTaskListQuery?['view'], 'HISTORY');
+    expect(find.text('委外出库'), findsNothing);
+    await tester.tap(find.text('其它出库'));
+    await tester.pumpAndSettle();
+    expect(api.lastTaskListQuery?['source'], 'OTHER');
+    expect(api.lastTaskListQuery?['view'], 'ACTIVE');
     // 分段切换会触达 60s 轮询计数的重建，推进时钟排空再卸载页面。
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
@@ -454,7 +490,7 @@ void main() {
     expect(find.text('待出库'), findsNothing);
     expect(find.text('5'), findsOneWidget);
     expect(find.text('(12)'), findsNothing);
-    expect(find.text('历史单据'), findsNothing);
+    expect(find.text('历史单据'), findsOneWidget);
     expect(find.text('(0)'), findsNothing);
     // 小类随红数自动选中并加载(不再有引导占位).
     expect(find.text('在上方选择分类后开始办理'), findsNothing);
@@ -532,12 +568,13 @@ void main() {
   });
 
   testWidgets(
-    'inbound source row filters permissions and loads all stages directly',
+    'inbound source row filters permissions and separates active from history',
     (tester) async {
+      final api = _FakeApi();
       await tester.pumpWidget(
         app(const WarehouseInboundTaskCenterPage(), const {
           Perm.warehouseInboundView,
-        }),
+        }, api: api),
       );
       await tester.pump();
 
@@ -550,7 +587,7 @@ void main() {
       expect(find.text('在上方选择分类后开始办理'), findsOneWidget);
       expect(find.text('预计到货'), findsNothing);
 
-      // 来源后直接进统一表；预计到货、异常、收货历史是行状态/记录类型。
+      // 来源后直接进进行中统一表；已办结单据由同一导航行历史入口承接。
       await tester.tap(find.text('采购入库'));
       await tester.pump();
       expect(find.text('预计到货'), findsNothing);
@@ -560,8 +597,28 @@ void main() {
       final scaffold = tester.widget<WarehouseTaskCenterScaffold>(
         find.byType(WarehouseTaskCenterScaffold),
       );
-      expect(scaffold.segments.last.value, 'ALL');
-      expect(scaffold.segments.last.label, '全部单据');
+      expect(scaffold.segments.map((segment) => segment.value), [
+        'PURCHASE',
+        'SUBCONTRACT',
+        'ALL',
+        'HISTORY',
+      ]);
+      expect(scaffold.segments[scaffold.segments.length - 2].label, '全部任务');
+      expect(scaffold.segments.last.label, '历史单据');
+      expect(api.lastTaskListQuery?['source'], 'PURCHASE');
+      expect(api.lastTaskListQuery?['view'], 'ACTIVE');
+      await tester.tap(find.text('历史单据'));
+      await tester.pumpAndSettle();
+      final history = tester.widget<WarehouseTaskRecordsView>(
+        find.byType(WarehouseTaskRecordsView),
+      );
+      expect(history.source, 'ALL');
+      expect(history.view, WarehouseTaskView.history);
+      expect(history.sources.keys, ['PURCHASE', 'SUBCONTRACT']);
+      expect(api.lastTaskListQuery?['source'], 'ALL');
+      expect(api.lastTaskListQuery?['view'], 'HISTORY');
+      expect(find.text('产成品入库'), findsNothing);
+      expect(find.text('其它入库'), findsNothing);
     },
   );
 
@@ -632,7 +689,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('领料单'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('已审'));
+    await tester.tap(find.text('进行中'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('stock-doc-segment-issue-DRAW')), findsNothing);
     MasterDataTableView<StockDocListItem> table() =>
@@ -640,8 +697,8 @@ void main() {
     expect(table().facets['issueStatus']?.map((bucket) => bucket.value), [
       '0',
       '1',
-      '2',
     ]);
+    expect(api.lastStockListQuery?['view'], 'ACTIVE');
     table().onFilterChanged('issueStatus', '1');
     await tester.pumpAndSettle();
     expect(api.lastStockListQuery?['status'], 1);
@@ -651,6 +708,12 @@ void main() {
     table().onFilterChanged('issueStatus', null);
     await tester.pumpAndSettle();
     expect(api.lastStockListQuery?.containsKey('issueStatus'), isFalse);
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
+    expect(api.lastStockListQuery?['view'], 'HISTORY');
+    expect(api.lastStockListQuery?.containsKey('status'), isFalse);
+    expect(api.lastStockListQuery?.containsKey('issueStatus'), isFalse);
+    expect(table().facets.containsKey('issueStatus'), isFalse);
     expect(tester.takeException(), isNull);
   });
 }

@@ -1578,7 +1578,7 @@ void main() {
       await tester.tap(find.text('张三(UT001)'));
       await tester.tap(find.text('李四(UT002)'));
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, '确定'));
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
 
       expect(find.text('张三(UT001)'), findsOneWidget);

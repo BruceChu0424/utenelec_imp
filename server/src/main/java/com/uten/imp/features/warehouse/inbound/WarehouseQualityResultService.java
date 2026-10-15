@@ -1,5 +1,6 @@
 package com.uten.imp.features.warehouse.inbound;
 
+import com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.TaskView;
 import com.uten.imp.application.port.PreplanInboundAllocationReadPort;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.util.NativeValueConverters;
@@ -291,6 +292,17 @@ public class WarehouseQualityResultService {
             String order,
             String billNo,
             WarehouseTaskScope warehouseScope) {
+        return list(keyword, receiptType, status, dateFrom, dateTo, page, size, sort, order, billNo,
+                warehouseScope, TaskView.ACTIVE);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
+            + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
+    public PageResponse<TaskSummary> list(String keyword, String receiptType, String status,
+            LocalDate dateFrom, LocalDate dateTo, int page, int size, String sort, String order, String billNo,
+            WarehouseTaskScope warehouseScope,
+            TaskView view) {
         int normalizedPage = Math.max(page, 1);
         int normalizedSize = Math.min(Math.max(size, 1), 100);
         String workStatus = normalizeStatus(status);
@@ -300,7 +312,8 @@ public class WarehouseQualityResultService {
         String trimmedBillNo = billNo == null ? "" : billNo.strip();
         String billNoFilter = trimmedBillNo.isEmpty()
                 ? "" : "AND COALESCE(scope.bill_no, '') = :bill_no\n";
-        String filters = KEYWORD_WHERE + scopeFilter(warehouseScope) + statusFilter + DATE_WHERE + billNoFilter;
+        String filters = KEYWORD_WHERE + scopeFilter(warehouseScope) + lifecycleFilter(view)
+                + statusFilter + DATE_WHERE + billNoFilter;
 
         Query data = aggregateQuery(type, search, workStatus, warehouseScope, """
                 SELECT (%s) AS work_status,
@@ -383,10 +396,20 @@ public class WarehouseQualityResultService {
     public Map<String, List<Map<String, Object>>> facets(
             String keyword, String receiptType, String status,
             LocalDate dateFrom, LocalDate dateTo, WarehouseTaskScope warehouseScope) {
+        return facets(keyword, receiptType, status, dateFrom, dateTo, warehouseScope,
+                TaskView.ACTIVE);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('" + WarehouseQualityResultPermissions.STOCK_IN_VIEW + "')"
+            + " or hasAuthority('" + WarehouseQualityResultPermissions.RETURN_VIEW + "')")
+    public Map<String, List<Map<String, Object>>> facets(String keyword, String receiptType, String status,
+            LocalDate dateFrom, LocalDate dateTo, WarehouseTaskScope warehouseScope,
+            TaskView view) {
         String workStatus = normalizeStatus(status);
         String type = normalizeFilterType(receiptType);
         String search = normalizeSearch(keyword);
-        String filters = KEYWORD_WHERE + scopeFilter(warehouseScope) + statusFilter(workStatus) + DATE_WHERE;
+        String filters = KEYWORD_WHERE + scopeFilter(warehouseScope) + lifecycleFilter(view) + statusFilter(workStatus) + DATE_WHERE;
         List<Map<String, Object>> buckets = NativeFacets.rowsOf(
                 aggregateQuery(type, search, workStatus, warehouseScope, """
                                 SELECT COALESCE(scope.bill_no, ''), COUNT(*)
@@ -397,6 +420,13 @@ public class WarehouseQualityResultService {
                         .setParameter("date_to", dateTo)
                         .setMaxResults(500));
         return Map.of("billNo", buckets);
+    }
+
+    private static String lifecycleFilter(
+            TaskView view) {
+        return "AND (" + STATUS_CASE + ") "
+                + (view == TaskView.HISTORY ? "=" : "<>")
+                + " 'COMPLETED'\n";
     }
 
     /** 顶部状态分段计数：与列表同口径的全量分组计数（按类型/关键字过滤后）。 */

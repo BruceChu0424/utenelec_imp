@@ -102,6 +102,19 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                 com.uten.imp.common.web.TableFacets.groupCount(em, FinanceExpense.class, expenseSpec(f), "billNo"));
     }
 
+    /** Same lifecycle/read boundary as the list, then the glConfirm writable-owner guard. */
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('finance_expense:view') and hasAuthority('finance_expense:gl_confirm')")
+    public Map<String, Long> confirmationCounts() {
+        Specification<FinanceExpense> pending = expenseSpec(new FinanceExpenseQueryFilter(
+                null, null, null, STATUS_APPROVED, null, null, null).withView("ACTIVE"));
+        // requireScopedOperationWritable first requires normal read scope, then
+        // the operation authority grants its pooled write scope; ownerless rows
+        // remain unwritable even for a super administrator.
+        return Map.of("count", expenseRepo.count(pending.and((root, query, cb) ->
+                cb.isNotNull(root.get("makerId")))));
+    }
+
     /** 列表谓词（list 与 facets 共用，2026-09-25 单号列统一抽出；billNo=表头单据号精确匹配）。 */
     private Specification<FinanceExpense> expenseSpec(FinanceExpenseQueryFilter f) {
         var readScope = access.scope();
@@ -111,6 +124,13 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             if (f.onlyDeleted()) ps.add(cb.isTrue(root.get("deleted")));
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
+            // Approval posts the expense, but GL confirmation is a separate required
+            // step. Legacy is_closed is not a glConfirm completion guard.
+            Predicate active = cb.and(cb.isNull(root.get("legacyId")), cb.isFalse(root.get("deleted")),
+                    cb.or(cb.equal(root.get("status"), STATUS_DRAFT),
+                            cb.and(cb.equal(root.get("status"), STATUS_APPROVED),
+                                    cb.equal(root.get("glStatus"), (short) 1))));
+            ps.add("HISTORY".equals(f.view()) ? cb.not(active) : active);
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 引用主档名称
                 //（经 NameRefKeyword 转外键 IN 子查询，count 同谓词派生）。
@@ -537,7 +557,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
 
     private FinanceExpenseListItem toList(FinanceExpense e) {
         return new FinanceExpenseListItem(e.getId(), e.getBillNo(), e.getBillDate(),
-                e.getAccountId(), e.getAmountLocal(), e.getStatus(), e.getLegacyId());
+                e.getAccountId(), e.getAmountLocal(), e.getStatus(), e.getLegacyId(), e.getGlStatus());
     }
 
     private FinanceExpenseDetail toDetail(FinanceExpense e, List<FinanceExpenseItemDto> items) {

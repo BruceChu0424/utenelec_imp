@@ -902,34 +902,50 @@ class _FinanceProcurementApprovalTasksPageState
   }
 
   Widget _buildToolbar() {
-    // 保留审批工作阶段；采购/委外由每行状态与状态表头区分。
-    return UtenFilterToolbar<String>(
-      enabled: !_busyDecision,
-      segmentsKey: const Key('finance-approval-status-segments'),
-      searchKey: const Key('finance-approval-search'),
-      segments: [
-        UtenFilterSegment(
-          value: 'PENDING',
-          label: '待审批',
-          count: ref.watch(
-            badgeFactOrNullProvider(BadgeFact.procurementApproval),
+    final history = _status == 'ALL' || _status == 'APPROVED';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        UtenFilterToolbar<String>(
+          enabled: !_busyDecision,
+          segmentsKey: const Key('finance-approval-status-segments'),
+          searchKey: const Key('finance-approval-search'),
+          segments: [
+            UtenFilterSegment(
+              value: 'PENDING',
+              label: '待审批',
+              count: ref.watch(
+                badgeFactOrNullProvider(BadgeFact.procurementApproval),
+              ),
+              countForm: UtenSegmentCountForm.actionable,
+            ),
+            const UtenFilterSegment(
+              value: 'REJECTED',
+              label: '已驳回',
+              countForm: UtenSegmentCountForm.inProgress,
+            ),
+            const UtenFilterSegment(value: 'ALL', label: '历史单据'),
+          ],
+          selected: {history ? 'ALL' : _status},
+          onSelectionChanged: _selectStatus,
+          searchHint: '搜索订货单号 / 供应商 / 提交人',
+          initialSearchValue: _keyword,
+          onSearchInputChanged: (_) => _requestVersion++,
+          onSearchChanged: _applyKeyword,
+        ),
+        if (history) ...[
+          const SizedBox(height: UtenSpacing.s8),
+          UtenFilterToolbar<String>(
+            autoSelectBadge: false,
+            segments: const [
+              UtenFilterSegment(value: 'ALL', label: '全部记录'),
+              UtenFilterSegment(value: 'APPROVED', label: '已批准'),
+            ],
+            selected: {_status},
+            onSelectionChanged: _selectStatus,
           ),
-          countForm: UtenSegmentCountForm.actionable,
-        ),
-        const UtenFilterSegment(value: 'APPROVED', label: '已批准'),
-        const UtenFilterSegment(
-          value: 'REJECTED',
-          label: '已驳回',
-          countForm: UtenSegmentCountForm.inProgress,
-        ),
-        const UtenFilterSegment(value: 'ALL', label: '全部记录'),
+        ],
       ],
-      selected: {_status},
-      onSelectionChanged: _selectStatus,
-      searchHint: '搜索订货单号 / 供应商 / 提交人',
-      initialSearchValue: _keyword,
-      onSearchInputChanged: (_) => _requestVersion++,
-      onSearchChanged: _applyKeyword,
     );
   }
 

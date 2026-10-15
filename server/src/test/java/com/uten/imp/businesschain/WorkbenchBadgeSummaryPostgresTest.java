@@ -154,6 +154,7 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("productionDraw", "/api/operations/workbench/warehouse/count");
         ORIGINAL_ENDPOINTS.put("productionReturn", "/api/stock/production-materials/return-requests/warehouse/count");
         ORIGINAL_ENDPOINTS.put("drafts", "/api/documents/drafts/count");
+        ORIGINAL_ENDPOINTS.put("financeExpenseConfirmation", "/api/finance/expenses/gl-confirmation-count");
         ORIGINAL_ENDPOINTS.put("financeRejected", "/api/documents/finance-rejected/count");
         ORIGINAL_ENDPOINTS.put("subcontractShortDelivery", "/api/subcontract/short-deliveries/count");
         // ADR-131 车间内料仓: 新入口, 没有迁移前的旧口径, 原端点即本次新增的计数端点。
@@ -184,6 +185,7 @@ class WorkbenchBadgeSummaryPostgresTest {
                 "procurementApproval.count", "financeArrivalException.count",
                 "iqcRejection.open"), List.of());
         legacy("financeQuoteReview", List.of("salesQuoteFinance.pending"), List.of());
+        legacy("financeExpenseConfirmation", List.of("financeExpenseConfirmation.count"), List.of());
         // 2026-10-02 盘点审批(ADR/库存盘点)：普通仓交财务审核的入口（红=待审）。
         legacy("financeStockCountReview", List.of("stockCountFinance.count"), List.of());
         legacy("expenseFinance", List.of("expense.pendingApprovalCount", "expense.pendingPaymentCount"), List.of());

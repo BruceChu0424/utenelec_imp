@@ -73,7 +73,7 @@ class StockDocToWarehouseFilterTest {
         verify(root).get("toWarehouseId");
     }
 
-    private static StockDocService service(
+    static StockDocService service(
             StockDocumentRepository docRepo,
             StockDocAccessPolicy access,
             ProductionStockTaskAccessPolicy taskAccess) {

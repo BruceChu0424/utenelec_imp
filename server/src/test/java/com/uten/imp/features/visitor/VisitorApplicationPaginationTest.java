@@ -169,6 +169,44 @@ class VisitorApplicationPaginationTest {
     }
 
     @Test
+    void approvalHistoryStatusSetIsAppliedBeforePagingAndKeepsDepartmentScope() {
+        AuthUser staff = mock(AuthUser.class);
+        when(currentUser.get()).thenReturn(Optional.of(staff));
+        stubPage(42);
+        UUID departmentId = UUID.randomUUID();
+        VisitorHrApprovalService service = new VisitorHrApprovalService(repository,
+                applicationService, mock(VisitorGateService.class), new VisitorGuard(currentUser),
+                mock(TxSessionVars.class), mock(HrNoticeService.class));
+        service.listForApproval("checkedIn, rejected,cancelled", departmentId, 2, 20);
+        CriteriaFixture criteria = new CriteriaFixture();
+        Path<Object> department = mock(Path.class);
+        when(criteria.root.get("hostDepartmentId")).thenReturn(department);
+        capturedSpecification().toPredicate(criteria.root, criteria.query, criteria.builder);
+        verify(criteria.status).in(List.of("checkedIn", "rejected", "cancelled"));
+        verify(criteria.builder).equal(department, departmentId);
+        verify(criteria.builder).equal(criteria.deleted, false);
+        assertEquals(1, capturedPageable().getPageNumber());
+    }
+
+    @Test
+    void hostHistoryUsesStatusSetWithoutDroppingEmployeeOwnership() {
+        UUID employeeId = UUID.randomUUID();
+        AuthUser staff = mock(AuthUser.class);
+        when(staff.getEmployeeId()).thenReturn(employeeId);
+        when(currentUser.get()).thenReturn(Optional.of(staff));
+        stubPage(42);
+        new VisitorHostConfirmService(repository, applicationService, currentUser,
+                mock(TxSessionVars.class), mock(HrNoticeService.class))
+                .myAsHost("checkedIn,rejected,cancelled", 2, 20);
+        CriteriaFixture criteria = new CriteriaFixture();
+        capturedSpecification().toPredicate(criteria.root, criteria.query, criteria.builder);
+        verify(criteria.status).in(List.of("checkedIn", "rejected", "cancelled"));
+        verify(criteria.builder).equal(criteria.hostEmployeeId, employeeId);
+        verify(criteria.builder).equal(criteria.deleted, false);
+        assertEquals(1, capturedPageable().getPageNumber());
+    }
+
+    @Test
     void hostCannotReadAnotherEmployeesApplicationById() {
         UUID employeeId = UUID.randomUUID();
         AuthUser staff = mock(AuthUser.class);

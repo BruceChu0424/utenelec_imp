@@ -211,7 +211,16 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 if (Set.of("PENDING", "REJECTED").contains(financeApproval)) {
                     ps.add(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED));
                 }
-                if ("PENDING".equals(financeApproval)) {
+                if ("IN_PROGRESS".equals(financeApproval)) {
+                    // 实物已收齐后仍可能有改量财审，必须继续保留在活动队列。
+                    Set<UUID> financeIds = new java.util.HashSet<>(pendingFinanceIds);
+                    financeIds.addAll(rejectedFinanceIds);
+                    Predicate financePending = financeIds.isEmpty() ? cb.disjunction()
+                            : cb.and(root.get("status").in(STATUS_DRAFT, STATUS_APPROVED), root.get("id").in(financeIds));
+                    Predicate executing = cb.and(cb.equal(root.get("status"), STATUS_APPROVED),
+                            cb.isFalse(root.get("closed")), cb.notEqual(cb.coalesce(root.get("isStopped"), false), true));
+                    ps.add(cb.or(financePending, executing));
+                } else if ("PENDING".equals(financeApproval)) {
                     // 空集时 in() 会生成非法 SQL：无在审单 → 恒假。
                     if (pendingFinanceIds.isEmpty()) {
                         ps.add(cb.disjunction());
@@ -587,7 +596,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
     private static String normalizeFinanceApprovalSlice(String raw) {
         String value = raw == null ? "" : raw.trim().toUpperCase(Locale.ROOT);
         return switch (value) {
-            case "", "NONE", "PENDING", "REJECTED" -> value.isEmpty() ? null : value;
+            case "", "NONE", "PENDING", "REJECTED", "IN_PROGRESS" -> value.isEmpty() ? null : value;
             default -> throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "财务审批状态的筛选值不正确，请刷新后重试");
         };

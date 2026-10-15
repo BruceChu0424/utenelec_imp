@@ -44,6 +44,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(api.lastQuery, isNull, reason: '未选分类不能加载全部已过账凭证');
+    await tester.tap(find.text('草稿'));
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['status'], 0);
+    expect(api.lastQuery?['hf.recordOrigin'], 'CURRENT');
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<FinanceDocListItem>>(
       find.byWidgetPredicate(
@@ -78,6 +85,12 @@ void main() {
     statusTable.onFilterChanged('status', '1');
     await tester.pumpAndSettle();
     expect(api.lastQuery?['status'], 1);
+    expect(
+      api.lastQuery?.containsKey('hf.recordOrigin'),
+      isFalse,
+      reason: '历史内保留迁移只读记录',
+    );
+    expect(find.text('历史单据'), findsOneWidget);
 
     // 2026-09-16 收款类型表头筛选：固定枚举桶 + 回传 receiptKind 参数。
     final kindTable = tester.widget<MasterDataTableView<FinanceDocListItem>>(

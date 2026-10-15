@@ -94,6 +94,7 @@ class _WorkshopMaterialBinPageState
 
   static const _viewStock = 'stock';
   static const _viewHistory = 'history';
+  static const _viewPending = 'pending';
 
   final _nonce = const Uuid().v4();
   List<WmSetting>? _settings;
@@ -391,7 +392,7 @@ class _WorkshopMaterialBinPageState
     if (closeStatus != null && closeStatus.settling && statusPeriod != null) {
       if (!_poller.active) _poller.start();
     }
-    if (_view == _viewHistory) _loadHistory(1);
+    if (_view != _viewStock) _loadHistory(1);
   }
 
   WmPeriod? _periodById(List<WmPeriod> periods, String? id) {
@@ -417,6 +418,9 @@ class _WorkshopMaterialBinPageState
     });
     try {
       final result = await _repo.requisitions(
+        view: _view == _viewHistory
+            ? WarehouseTaskView.history
+            : WarehouseTaskView.active,
         workshopId: workshopId,
         page: page,
       );
@@ -788,7 +792,8 @@ class _WorkshopMaterialBinPageState
             segmentsKey: const Key('wm-bin-view'),
             segments: [
               UtenFilterSegment(value: _viewStock, label: l10n.wmOnHand),
-              UtenFilterSegment(value: _viewHistory, label: l10n.wmHistory),
+              const UtenFilterSegment(value: _viewPending, label: '待处理'),
+              const UtenFilterSegment(value: _viewHistory, label: '历史单据'),
             ],
             selected: {_view},
             onSelectionChanged: (value) {
@@ -796,8 +801,14 @@ class _WorkshopMaterialBinPageState
                 context.appInfo('请先送审或退出盘点，再查看记录');
                 return;
               }
-              setState(() => _view = value);
-              if (value == _viewHistory && _history == null) _loadHistory(1);
+              if (value == _view) return;
+              setState(() {
+                _view = value;
+                _history = null;
+                _historyError = null;
+                _historyLoadGeneration++;
+              });
+              if (value != _viewStock) _loadHistory(1);
             },
           ),
         ),
@@ -807,7 +818,7 @@ class _WorkshopMaterialBinPageState
           const SizedBox(height: UtenSpacing.s12),
         ],
         Expanded(
-          child: _view == _viewHistory
+          child: _view != _viewStock
               ? _historyTable(l10n)
               : _stockTable(l10n, position),
         ),
@@ -1212,9 +1223,11 @@ class _WorkshopMaterialBinPageState
       onRetry: () => _loadHistory(page?.page ?? 1),
       currentPage: page?.page ?? 1,
       totalPages: page?.totalPages ?? 1,
-      paginationScope: _current?.workshopDepartmentId,
+      paginationScope: (_current?.workshopDepartmentId, _view),
       onPageChange: _loadHistory,
-      emptyMessage: '还没有领料、退回记录',
+      emptyMessage: _view == _viewHistory
+          ? '还没有已完成或取消的领料、退回单据'
+          : '没有待处理的领料、退回申请',
     );
   }
 }

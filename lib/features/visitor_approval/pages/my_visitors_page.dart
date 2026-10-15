@@ -59,6 +59,8 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
 
   /// 表头「状态」筛选（null = 后端默认 hostReviewing「待我确认」）。
   String? _status;
+  bool _history = false;
+  static const _historyStatuses = 'checkedIn,rejected,cancelled';
 
   /// 多选：申请 id（仅「待我确认」口径开放）。换筛选清空。
   Set<String> _selectedIds = {};
@@ -67,9 +69,11 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   bool _batchBusy = false;
 
   /// 「待我确认」口径（默认或显式选中 hostReviewing）才开多选批量。
-  bool get _isHostReviewing => _status == null || _status == 'hostReviewing';
+  bool get _isHostReviewing =>
+      !_history && (_status == null || _status == 'hostReviewing');
 
-  VisitorHostQuery get _query => (status: _status, page: _page);
+  VisitorHostQuery get _query =>
+      (status: _status ?? (_history ? _historyStatuses : null), page: _page);
 
   Future<void> _confirm(
     BuildContext context,
@@ -102,7 +106,15 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   void _onFilterChanged(String key, String? value) {
     if (key != 'status') return;
     setState(() {
-      _status = value;
+      if (value == 'history') {
+        _history = true;
+        _status = null;
+      } else {
+        if (value != null) {
+          _history = _historyStatuses.split(',').contains(value);
+        }
+        _status = value;
+      }
       _page = 1;
       _selectedIds = {};
     });
@@ -111,14 +123,18 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   /// 「状态」列筛选桶：后端 as-host 支持的状态集（value = 状态码）。
   /// 桶不带计数（按页拉取，无全量计数口径）。
   List<MasterFacetBucket> _statusFacets(AppLocalizations l10n) => [
-    for (final status in const [
-      VisitorApplicationStatus.hostReviewing,
-      VisitorApplicationStatus.pending,
-      VisitorApplicationStatus.approved,
-      VisitorApplicationStatus.rejected,
-      VisitorApplicationStatus.checkedIn,
-      VisitorApplicationStatus.cancelled,
-    ])
+    for (final status
+        in _history
+            ? const [
+                VisitorApplicationStatus.rejected,
+                VisitorApplicationStatus.checkedIn,
+                VisitorApplicationStatus.cancelled,
+              ]
+            : const [
+                VisitorApplicationStatus.hostReviewing,
+                VisitorApplicationStatus.pending,
+                VisitorApplicationStatus.approved,
+              ])
       MasterFacetBucket(
         value: status.name,
         count: 0,
@@ -238,7 +254,11 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final paginationScope = (_status, ref.watch(masterDataSessionKeyProvider));
+    final paginationScope = (
+      _history,
+      _status,
+      ref.watch(masterDataSessionKeyProvider),
+    );
     final list = _retainedPage.resolve(
       paginationScope,
       ref.watch(myAsHostProvider(_query)),
@@ -272,7 +292,9 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
               rowsController: _tableRows,
               facets: {'status': _statusFacets(l10n)},
               nullCounts: const {},
-              filters: {'status': _status ?? 'hostReviewing'},
+              filters: {
+                'status': _status ?? (_history ? null : 'hostReviewing'),
+              },
               onFilterChanged: _onFilterChanged,
               // 「待我确认」口径开多选 + 悬浮批量确认接待；其余口径只读浏览。
               selectable: _isHostReviewing,
@@ -361,29 +383,9 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
                       count: counts.awaitingVisit,
                       countForm: UtenSegmentCountForm.inProgress,
                     ),
-                    UtenFilterSegment(
-                      value: 'rejected',
-                      label: visitorStatusLabel(
-                        VisitorApplicationStatus.rejected,
-                        l10n,
-                      ),
-                    ),
-                    UtenFilterSegment(
-                      value: 'checkedIn',
-                      label: visitorStatusLabel(
-                        VisitorApplicationStatus.checkedIn,
-                        l10n,
-                      ),
-                    ),
-                    UtenFilterSegment(
-                      value: 'cancelled',
-                      label: visitorStatusLabel(
-                        VisitorApplicationStatus.cancelled,
-                        l10n,
-                      ),
-                    ),
+                    const UtenFilterSegment(value: 'history', label: '历史单据'),
                   ],
-                  selected: {_status ?? 'hostReviewing'},
+                  selected: {_history ? 'history' : _status ?? 'hostReviewing'},
                   onSelectionChanged: (value) =>
                       _onFilterChanged('status', value),
                 ),

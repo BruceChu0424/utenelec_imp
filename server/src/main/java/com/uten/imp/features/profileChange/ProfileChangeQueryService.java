@@ -46,7 +46,9 @@ public class ProfileChangeQueryService {
     public ProfileChangeDto.Page<ProfileChangeDto.MyListItem> myList(int page, int size, String status) {
         UUID employeeId = requireEmployeeId();
         Pageable pageable = Pageables.of(page, size);
-        Page<UUID> p = repo.findBatchIds(normalizeStatus(status), employeeId, null, null, pageable);
+        String effectiveStatus = normalizeStatus(status);
+        if (effectiveStatus == null) effectiveStatus = "pending";
+        Page<UUID> p = repo.findBatchIds(effectiveStatus, employeeId, null, null, pageable);
         List<ProfileChangeDto.MyListItem> items = new ArrayList<>();
         for (var e : pageBatches(p, employeeId).entrySet()) {
             List<ProfileChangeRequest> rs = e.getValue();

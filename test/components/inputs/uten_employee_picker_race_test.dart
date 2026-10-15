@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
@@ -175,7 +176,7 @@ void main() {
             if (change == 'scope') scope = 'second-scope';
           });
           await tester.pump();
-          await tester.tap(find.widgetWithText(FilledButton, '确定'));
+          await tester.tap(find.widgetWithText(UtenButton, '确定'));
           await tester.pumpAndSettle();
           if (change == 'equivalent rebuild') {
             expect(changed?.map((item) => item.id), ['first']);
@@ -227,7 +228,7 @@ void main() {
       expect(find.text('已选择：旧选择'), findsNothing);
       expect(
         tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '确定'))
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
             .onPressed,
         isNull,
       );

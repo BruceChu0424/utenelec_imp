@@ -22,9 +22,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
-import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
@@ -855,34 +855,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         ),
       ),
     );
-    final actions = <Widget>[
-      TextButton(
-        onPressed: count > 0 ? () => setState(_selected.clear) : null,
-        child: const Text('清空'),
-      ),
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('取消'),
-      ),
-      const SizedBox(width: 8),
-      FilledButton(
-        key: const Key('goods-picker-multi-confirm'),
-        onPressed: count > 0
-            ? () => Navigator.of(context).pop(_selected.values.toList())
-            : null,
-        child: Text('确定($count)'),
-      ),
-    ];
-    return UtenBottomActionBar(
-      child: UtenPickerFooterLayout(
-        summary: summary,
-        pagination: UtenPickerPageControls(controller: _pickerRows),
-        actions: Wrap(
-          alignment: WrapAlignment.end,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: actions,
-        ),
-      ),
+    return UtenPickerConfirmBar(
+      selectedCount: count,
+      summary: summary,
+      pagination: UtenPickerPageControls(controller: _pickerRows),
+      onClear: () => setState(_selected.clear),
+      onConfirm: () => Navigator.of(context).pop(_selected.values.toList()),
+      confirmLabel: '确定($count)',
+      confirmButtonKey: const Key('goods-picker-multi-confirm'),
     );
   }
 
@@ -947,7 +927,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                                     ),
                                   ),
                                 ),
-                                TextButton(
+                                UtenButton(
+                                  type: UtenButtonType.danger,
+                                  size: UtenButtonSize.small,
                                   onPressed: _selected.isEmpty
                                       ? null
                                       : () => setState(_selected.clear),
@@ -998,6 +980,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                                             'goods-picker-selected-remove-${g.id}',
                                           ),
                                           tooltip: '取消选择',
+                                          color: theme.colorScheme.error,
                                           icon: const Icon(Icons.close_rounded),
                                           onPressed: () => setState(
                                             () => _selected.remove(g.id),

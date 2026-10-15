@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -77,7 +78,7 @@ void main() {
       await tester.tap(row);
       await tester.pumpAndSettle();
     }
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
     expect(selected?.map((row) => row.planNo), [
       'SJ-sales-page-two',
@@ -188,7 +189,7 @@ void main() {
     );
     expect(
       tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, '确定'))
+          .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
           .onPressed,
       isNull,
     );
@@ -198,7 +199,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(rework);
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
 
     expect(find.text('已选返工再检 · recovery-rework'), findsOneWidget);
@@ -252,7 +253,7 @@ void main() {
       await tester.tap(row);
       await tester.pumpAndSettle();
     }
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
     expect(selected?.map((line) => line.planNo), [
       'SJ-sales-b',

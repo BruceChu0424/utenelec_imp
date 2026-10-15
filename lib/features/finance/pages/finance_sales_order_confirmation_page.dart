@@ -130,7 +130,6 @@ class _FinanceSalesOrderConfirmationPageState
   /// 「已驳回」段的全量张数(中性括号, 下一步在销售手上; 2026-09-21 父有红徽章子也要有数)。
   /// null = 尚未取到, 不渲染数字。
   int? _rejectedCount;
-  int? _confirmedCount;
 
   /// 表头排序 + 销售单号列值筛选 + facets 桶 + 防串台代数
   /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
@@ -179,7 +178,6 @@ class _FinanceSalesOrderConfirmationPageState
     setState(() {
       _result = null;
       _rejectedCount = null;
-      _confirmedCount = null;
       _columnFilters.reset();
       _clearSelectionState();
     });
@@ -247,11 +245,6 @@ class _FinanceSalesOrderConfirmationPageState
             _columnFilters['billNo'] == null) {
           _rejectedCount = result.total;
         }
-        if (_showConfirmed &&
-            _keyword.isEmpty &&
-            _columnFilters['billNo'] == null) {
-          _confirmedCount = result.total;
-        }
       });
       // 分段计数与列表同源, 随列表加载一并失效(页内专用, 不连带整份徽章汇总)。
       ref.invalidate(salesOrderFinanceQueueCountProvider);
@@ -270,18 +263,14 @@ class _FinanceSalesOrderConfirmationPageState
     }
   }
 
-  /// 历史状态的全量计数(size=1 只取 total; 失败保持未知, 不把未知伪装成 0)。
+  /// 财务退回仍是未完成的修订工作；仅取其全量计数，不给已完成历史挂计数。
   Future<void> _loadHistoryCounts(int requestVersion) async {
     try {
       final repo = ref.read(salesOrderFinanceConfirmationRepositoryProvider);
-      final pages = await Future.wait([
-        repo.pending(size: 1, rejected: true),
-        repo.pending(size: 1, confirmed: true),
-      ]);
+      final rejected = await repo.pending(size: 1, rejected: true);
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
-        _rejectedCount = pages[0].total;
-        _confirmedCount = pages[1].total;
+        _rejectedCount = rejected.total;
       });
     } catch (_) {
       // 计数失败静默: 分段不显示数字, 不影响列表。
@@ -1109,16 +1098,12 @@ class _FinanceSalesOrderConfirmationPageState
           countForm: UtenSegmentCountForm.actionable,
         ),
         UtenFilterSegment(
-          value: 'confirmed',
-          label: '已批准',
-          count: _confirmedCount,
-        ),
-        UtenFilterSegment(
           value: 'rejected',
           label: '已驳回',
           count: _rejectedCount,
           countForm: UtenSegmentCountForm.inProgress,
         ),
+        const UtenFilterSegment(value: 'confirmed', label: '历史单据'),
       ],
       selected: {_state},
       onSelectionChanged: (value) {

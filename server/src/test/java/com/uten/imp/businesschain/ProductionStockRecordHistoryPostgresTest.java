@@ -77,7 +77,9 @@ class ProductionStockRecordHistoryPostgresTest {
         equal("7",history.path("items").get(0).path("qty").decimalValue());
         read("/api/stock/docs/"+original.getId(),actor,404);
         assertEquals(0,read("/api/stock/docs?docType=OTHER_IN&billNo="+original.getBillNo(),actor,200).path("total").asInt());
-        JsonNode only=read("/api/stock/docs?docType=OTHER_IN&onlyDeleted=true&billNo="+original.getBillNo(),actor,200);
+        assertEquals(0,read("/api/stock/docs?docType=OTHER_IN&view=ACTIVE&onlyDeleted=true&billNo="+original.getBillNo(),actor,200).path("total").asInt());
+        assertEquals(0,read("/api/stock/docs?docType=OTHER_IN&view=HISTORY&billNo="+original.getBillNo(),actor,200).path("total").asInt());
+        JsonNode only=read("/api/stock/docs?docType=OTHER_IN&view=HISTORY&onlyDeleted=true&billNo="+original.getBillNo(),actor,200);
         assertEquals(1,only.path("total").asInt());assertTrue(only.path("items").get(0).path("deleted").asBoolean());
     }
 

@@ -325,7 +325,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.returnRequired);
     expect(table().items.map((row) => row.receiptId), ['receipt-2']);
-    await selectFilterSegment(tester, '全部');
+    await selectFilterSegment(tester, '进行中');
     await tester.pumpAndSettle();
     expect(gateway.lastWorkStatus, isNull);
     expect(table().items.map((row) => row.receiptId), [
@@ -520,7 +520,7 @@ void main() {
       _app(const WarehouseQualityResultsPage(), gateway, preferences),
     );
     await tester.pumpAndSettle();
-    await selectFilterSegment(tester, '历史记录');
+    await selectFilterSegment(tester, '历史单据');
     await tester.pumpAndSettle();
     tester
         .widget<UtenHistoryTimeFilter>(
@@ -537,18 +537,68 @@ void main() {
     await tester.pumpAndSettle();
     MasterDataTableView<WarehouseQualityResultTask> table() =>
         tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
-    table().onFilterChanged('workStatus', 'ALL_PASSED');
+    table().onFilterChanged('workStatus', 'COMPLETED');
     await tester.pumpAndSettle();
-    expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.allPassed);
+    expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.completed);
+    expect(gateway.lastView, WarehouseTaskView.history);
     table().onFilterChanged('workStatus', null);
     await tester.pumpAndSettle();
     expect(gateway.lastWorkStatus, isNull);
+    expect(gateway.lastView, WarehouseTaskView.history);
     expect(gateway.lastDateFrom, '2026-10-01');
     expect(gateway.lastDateTo, '2026-10-07');
     expect(
       find.byKey(const Key('warehouse-quality-result-history-time')),
       findsOneWidget,
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('终态只在历史单据中显示，清除状态不离开历史范围', (tester) async {
+    _viewport(tester, const Size(1200, 900));
+    final gateway = _QualityGateway([
+      WarehouseQualityResultTask.fromJson(
+        _summaryJson('ALL_PASSED', receiptId: 'active', billNo: 'ACTIVE-ONLY'),
+      ),
+      WarehouseQualityResultTask.fromJson(
+        _summaryJson('COMPLETED', receiptId: 'closed', billNo: 'HISTORY-ONLY'),
+      ),
+    ]);
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(
+      _app(const WarehouseQualityResultsPage(), gateway, preferences),
+    );
+    await tester.pumpAndSettle();
+    MasterDataTableView<WarehouseQualityResultTask> table() =>
+        tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
+    expect(gateway.lastView, WarehouseTaskView.active);
+    expect(table().items.single.receiptId, 'active');
+    expect(
+      table().facets['workStatus']!.any((b) => b.value == 'COMPLETED'),
+      isFalse,
+    );
+    await selectFilterSegment(tester, '历史单据');
+    await tester.pumpAndSettle();
+    expect(gateway.lastView, WarehouseTaskView.history);
+    expect(table().items.single.receiptId, 'closed');
+    table().onFilterChanged('workStatus', 'WAITING_INSPECTION');
+    await tester.pumpAndSettle();
+    expect(gateway.lastView, WarehouseTaskView.history);
+    expect(gateway.lastWorkStatus, isNull);
+    table().onFilterChanged('workStatus', 'COMPLETED');
+    await tester.pumpAndSettle();
+    table().onFilterChanged('workStatus', null);
+    await tester.pumpAndSettle();
+    expect(gateway.lastView, WarehouseTaskView.history);
+    expect(table().items.single.receiptId, 'closed');
+    await selectFilterSegment(tester, '进行中');
+    await tester.pumpAndSettle();
+    expect(gateway.lastView, WarehouseTaskView.active);
+    expect(table().items.single.receiptId, 'active');
+    table().onFilterChanged('workStatus', 'COMPLETED');
+    await tester.pumpAndSettle();
+    expect(gateway.lastView, WarehouseTaskView.active);
+    expect(gateway.lastWorkStatus, isNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -848,6 +898,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   bool failNextBatch = false;
   int statusCountsCalls = 0;
   WarehouseQualityWorkStatus? lastWorkStatus;
+  WarehouseTaskView? lastView;
   String? lastDateFrom;
   String? lastDateTo;
   final List<WarehouseIqcStockInReceiptType?> listReceiptTypes = [];
@@ -879,6 +930,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 
   @override
   Future<List<MasterFacetBucket>> billNoFacets({
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     WarehouseQualityWorkStatus? workStatus,
     String? keyword,
@@ -888,6 +940,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   @override
   Future<PagedResult<WarehouseQualityResultTask>> list({
+    WarehouseTaskView view = WarehouseTaskView.active,
     int page = 1,
     int size = 40,
     WarehouseIqcStockInReceiptType? receiptType,
@@ -901,12 +954,15 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? scopeWarehouseId,
   }) async {
     listReceiptTypes.add(receiptType);
+    lastView = view;
     lastWorkStatus = workStatus;
     lastDateFrom = dateFrom;
     lastDateTo = dateTo;
     final filtered = tasks
         .where(
           (task) =>
+              (task.workStatus.isCompleted ==
+                  (view == WarehouseTaskView.history)) &&
               (receiptType == null || task.receiptType == receiptType) &&
               (workStatus == null || task.workStatus == workStatus),
         )
@@ -922,6 +978,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
 
   @override
   Future<Map<WarehouseQualityWorkStatus, int>> statusCounts({
+    WarehouseTaskView view = WarehouseTaskView.active,
     WarehouseIqcStockInReceiptType? receiptType,
     String? keyword,
     String? scopeWarehouseId,

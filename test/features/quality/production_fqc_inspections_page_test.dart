@@ -16,6 +16,7 @@ import 'package:uten_imp/features/quality/pages/production_fqc_handling_page.dar
 import 'package:uten_imp/features/quality/pages/production_fqc_inspections_page.dart';
 import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/drafts/task_form_draft_recovery_notice.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 const _inspectionId = '10000000-0000-0000-0000-000000000001';
@@ -392,25 +393,25 @@ void main() {
     await tester.pump();
     expect(_taskTable(tester).selectedIds, {_inspectionId});
 
-    await selectFilterSegment(tester, '已决定');
+    await selectFilterSegment(tester, '历史单据');
     await tester.pumpAndSettle();
-    expect(api.listQueries.last['status'], 'RESOLVED');
+    expect(api.listQueries.last['status'], 'HISTORY');
+    expect(find.byType(TaskDraftRecoveryNotice), findsNothing);
     expect(api.listQueries.last['page'], 1);
     expect(_taskTable(tester).currentPage, 1);
     expect(_taskTable(tester).selectedIds, isEmpty);
     expect(_taskTable(tester).selectable, isFalse);
     expect(find.text('RB-RESOLVED'), findsOneWidget);
 
-    await selectFilterSegment(tester, '已取消');
-    await tester.pumpAndSettle();
-    expect(api.listQueries.last['status'], 'CANCELLED');
-    expect(api.listQueries.last['page'], 1);
     expect(find.text('RB-CANCELLED'), findsOneWidget);
 
-    await selectFilterSegment(tester, '全部');
+    await selectFilterSegment(tester, '待处理');
     await tester.pumpAndSettle();
-    expect(api.listQueries.last['status'], 'ALL');
+    expect(api.listQueries.last['status'], 'ACTIVE');
     expect(api.listQueries.last['page'], 1);
+    expect(find.text('RB-RESOLVED'), findsNothing);
+    expect(find.text('RB-CANCELLED'), findsNothing);
+    expect(find.byType(TaskDraftRecoveryNotice), findsOneWidget);
   });
 
   testWidgets('search uses the built-in 300ms debounce and resets page', (
@@ -539,6 +540,11 @@ class _FqcApi extends ApiClient {
 
   List<Map<String, dynamic>> _itemsFor(String status) {
     return switch (status) {
+      'HISTORY' => [
+        if (decided) _decidedInspection,
+        _resolvedInspection,
+        _cancelledInspection,
+      ],
       'RESOLVED' => [if (decided) _decidedInspection, _resolvedInspection],
       'CANCELLED' => [_cancelledInspection],
       'ALL' => [

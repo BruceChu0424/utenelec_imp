@@ -11,7 +11,14 @@ import '../models/expense_payment.dart';
 
 /// 审批列表筛选桶所属队列（与后端 /expense-claims/facets?queue= 对齐）。
 /// mine=我的报销（单号桶，2026-09-25 单号列统一）。
-enum ApprovalFacetQueue { pending, payable, history, mine }
+enum ApprovalFacetQueue {
+  pending,
+  payable,
+  history,
+  mine,
+  mineActive,
+  mineHistory,
+}
 
 abstract interface class ExpenseRepository {
   /// 2026-09-25 单号列统一：[sort]/[order] 报销单号表头排序（claimNo 白名单）；

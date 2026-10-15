@@ -12,6 +12,7 @@ import java.util.UUID;
  * warehouseScope 为仓库数据范围(ADR-149，服务端按本人范围强制)，发出仓或调入仓落在范围内即算；
  * ownDraftsInScope 为真(本人默认范围, 页面没挑仓)时，当前账号自己还没提交的草稿不论仓都算在范围内
  * (建单不限仓, 草稿不能从制单人自己的列表里消失)。
+ * view 默认为 ACTIVE(草稿与未发完领料)，HISTORY 仅取原有授权范围内的终态，不自动显示已删除记录。
  */
 public record StockDocQueryFilter(
         String docType,
@@ -29,12 +30,27 @@ public record StockDocQueryFilter(
         String billNo,
         boolean ownDraftsInScope,
         /** 仅 true 时收敛为未删除、status=0 且非生产自动来源的独立草稿；不放宽归属或仓库权限。 */
-        Boolean standaloneDrafts) {
+        Boolean standaloneDrafts,
+        String view) {
     public StockDocQueryFilter {
         warehouseScope = warehouseScope == null ? WarehouseTaskScope.ALL : warehouseScope;
+        view = view == null || view.isBlank() ? "ACTIVE" : view.strip().toUpperCase(java.util.Locale.ROOT);
+        if (!java.util.Set.of("ACTIVE", "HISTORY").contains(view)) {
+            throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,
+                    "单据视图不正确");
+        }
     }
 
-    /** 兼容原列表/任务查询：省略独立草稿模式时维持全部旧过滤语义。 */
+    public StockDocQueryFilter(String docType, String keyword, UUID warehouseId, Short status,
+                              LocalDate dateFrom, LocalDate dateTo, UUID departmentId, Short issueStatus,
+                              Boolean productionReturnRequests, UUID toWarehouseId,
+                              WarehouseTaskScope warehouseScope, String billNo, boolean ownDraftsInScope,
+                              Boolean standaloneDrafts) {
+        this(docType, keyword, warehouseId, status, dateFrom, dateTo, departmentId, issueStatus,
+                productionReturnRequests, toWarehouseId, warehouseScope, billNo, ownDraftsInScope, standaloneDrafts, "ACTIVE");
+    }
+
+    /** 兼容原列表/任务查询签名：省略视图时只取进行中的单据。 */
     public StockDocQueryFilter(String docType, String keyword, UUID warehouseId, Short status,
                               LocalDate dateFrom, LocalDate dateTo, UUID departmentId, Short issueStatus,
                               Boolean productionReturnRequests, UUID toWarehouseId,

@@ -252,13 +252,15 @@ class _WarehouseQualityResultsPageState
 
   void _selectWorkStatusFilter(String? value) {
     final normalized = value?.trim().toUpperCase();
-    final status = WarehouseQualityWorkStatus.values
+    final parsed = WarehouseQualityWorkStatus.values
         .where((status) => status.apiValue == normalized)
         .firstOrNull;
+    final history = _statusSeg?.history == true;
+    final status = parsed?.isCompleted == history ? parsed : null;
     // A cleared/obsolete header value means every work status; never use the
     // model's unknown-value fallback (completed) as a query filter.
     _selectStatus(
-      _statusSeg?.history == true
+      history
           ? _QStatusSeg.history(status)
           : status == null
           ? const _QStatusSeg.all()
@@ -307,6 +309,9 @@ class _WarehouseQualityResultsPageState
       final range = seg.history ? _historyTime.range : null;
       final result = await repo.list(
         page: page,
+        view: seg.history
+            ? WarehouseTaskView.history
+            : WarehouseTaskView.active,
         receiptType: _receiptType,
         workStatus: seg.status,
         keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
@@ -376,6 +381,9 @@ class _WarehouseQualityResultsPageState
         'billNo': await ref
             .read(warehouseQualityResultRepositoryProvider)
             .billNoFacets(
+              view: seg.history
+                  ? WarehouseTaskView.history
+                  : WarehouseTaskView.active,
               receiptType: _receiptType,
               workStatus: seg.status,
               keyword: _effectiveKeyword.isEmpty ? null : _effectiveKeyword,
@@ -461,12 +469,18 @@ class _WarehouseQualityResultsPageState
 
   /// 双击行 / 右键「查看检查结果」：进入完整详情页（单据信息 + 逐行判定表 +
   /// 就地办理入库 / 退回 / 查看历史），返回后重拉列表。
+  List<FormDraft> _taskDrafts(WarehouseQualityResultTask task) =>
+      _statusSeg?.history == true || task.workStatus.isCompleted
+      ? const []
+      : qualityStockInTaskDrafts(
+          ref.read(formDraftsProvider),
+          task.receiptTypeValue,
+          task.receiptId,
+        );
+
   Future<void> _openDetail(WarehouseQualityResultTask task) async {
-    final drafts = qualityStockInTaskDrafts(
-      ref.read(formDraftsProvider),
-      task.receiptTypeValue,
-      task.receiptId,
-    );
+    if (_loading) return;
+    final drafts = _taskDrafts(task);
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
       if (mounted) await _load(_result?.page ?? 1);
@@ -544,7 +558,12 @@ class _WarehouseQualityResultsPageState
                 // 收货单号表头值筛选（2026-09-25 单号列统一）：服务端分组计数桶。
                 facets: {
                   'workStatus': [
-                    for (final status in WarehouseQualityWorkStatus.values)
+                    for (final status
+                        in WarehouseQualityWorkStatus.values.where(
+                          (status) =>
+                              status.isCompleted ==
+                              (_statusSeg?.history == true),
+                        ))
                       MasterFacetBucket(
                         value: status.apiValue,
                         label: status.label,
@@ -702,7 +721,7 @@ class _WarehouseQualityResultsPageState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!widget.embedded)
+        if (!widget.embedded && seg?.history != true)
           const TaskDraftRecoveryNotice(
             scope: FormDraftCategoryScope(
               module: BadgeModule.warehouse,
@@ -720,8 +739,10 @@ class _WarehouseQualityResultsPageState
           autoSelectBadge: false,
           searchKey: const Key('warehouse-quality-result-search'),
           segments: [
-            const UtenFilterSegment(value: _QStatusSeg.all(), label: '全部'),
-            for (final status in WarehouseQualityWorkStatus.values)
+            const UtenFilterSegment(value: _QStatusSeg.all(), label: '进行中'),
+            for (final status in WarehouseQualityWorkStatus.values.where(
+              (status) => !status.isCompleted,
+            ))
               UtenFilterSegment(
                 value: _QStatusSeg.stage(status),
                 label: status.shortLabel,
@@ -737,7 +758,7 @@ class _WarehouseQualityResultsPageState
               ),
             const UtenFilterSegment(
               value: _QStatusSeg.history(),
-              label: '历史记录',
+              label: '历史单据',
             ),
           ],
           selected: seg == null
@@ -780,11 +801,7 @@ class _WarehouseQualityResultsPageState
       width: 190,
       // 先入库后检(V596)：等待结果时补「已上架 n 行」，仓库一眼看出实物已在库位。
       value: (task) {
-        final drafts = qualityStockInTaskDrafts(
-          ref.read(formDraftsProvider),
-          task.receiptTypeValue,
-          task.receiptId,
-        );
+        final drafts = _taskDrafts(task);
         final source =
             task.receiptType == WarehouseIqcStockInReceiptType.purchase
             ? '采购'
@@ -797,11 +814,7 @@ class _WarehouseQualityResultsPageState
       // 等待结果=黄 / 全部合格=绿 / 部分合格=橙 / 不合格退回=红 / 已完结=灰，
       // 与详情页头部徽章同一份映射（见模型 warehouseQualityWorkStatusBadgeType）。
       cellColor: (context, task) => utenStatusBadgeCellColor(
-        qualityStockInTaskDrafts(
-              ref.read(formDraftsProvider),
-              task.receiptTypeValue,
-              task.receiptId,
-            ).isEmpty
+        _taskDrafts(task).isEmpty
             ? warehouseQualityWorkStatusBadgeType(task.workStatus)
             : UtenStatusBadgeType.neutral,
       ),

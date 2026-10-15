@@ -236,6 +236,7 @@ Future<void> _pump(
   bool embedded = false,
   WarehouseTaskScope warehouseScope = const WarehouseTaskScope.all(),
   String? keyword,
+  String initialStatus = 'PENDING',
   List<Override> extraOverrides = const [],
 }) async {
   await tester.binding.setSurfaceSize(size);
@@ -273,6 +274,7 @@ Future<void> _pump(
           embedded: embedded,
           warehouseScope: warehouseScope,
           keyword: keyword,
+          initialStatus: initialStatus,
         ),
       ),
     ),
@@ -291,6 +293,40 @@ const _materialReviewPermissions = {
 };
 
 void main() {
+  testWidgets('内料仓盘点历史清筛仍查询历史且不开放批量审核', (tester) async {
+    final repo = _Repo();
+    await _pump(
+      tester,
+      repo,
+      requestId: null,
+      reviewRoute: 'WAREHOUSE',
+      embedded: true,
+      initialStatus: 'HISTORY',
+      permissions: {Perm.stockCountWarehouseReview},
+      warehouseScope: const WarehouseTaskScope.warehouse('warehouse-1'),
+    );
+    MasterDataTableView<StockCountRequest> table() =>
+        tester.widget(find.byType(MasterDataTableView<StockCountRequest>));
+    expect(repo.queries.last.status, 'HISTORY');
+    expect(table().selectable, isFalse);
+    table().onFilterChanged('status', 'APPROVED');
+    await tester.pumpAndSettle();
+    expect(repo.queries.last.status, 'APPROVED');
+    table().onFilterChanged('status', null);
+    await tester.pumpAndSettle();
+    expect(repo.queries.last.status, 'HISTORY');
+    table().onFilterChanged('status', 'PENDING');
+    await tester.pumpAndSettle();
+    expect(repo.queries.last.status, 'HISTORY');
+    expect(repo.lastScopeWarehouseId, 'warehouse-1');
+    expect(table().facets['status']!.map((bucket) => bucket.value), [
+      'APPROVED',
+      'REJECTED',
+      'CANCELLED',
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('仓库盘点多选先核对明细，取消不写库，确认后整批审批并清空选择', (tester) async {
     final repo = _Repo(requestCount: 2, reviewRoute: 'WAREHOUSE');
     await _pump(
@@ -394,13 +430,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.queries.last, (
       reviewRoute: 'WAREHOUSE',
-      status: 'REJECTED',
+      status: 'PENDING',
       page: 1,
     ));
     expect(table().selectedIds, isEmpty);
     table().onFilterChanged('status', null);
     await tester.pumpAndSettle();
-    expect(repo.queries.last.status, isNull);
+    expect(repo.queries.last.status, 'PENDING');
     expect(repo.lastScopeWarehouseId, 'warehouse-1');
     expect(repo.lastKeyword, 'PD01');
     expect(tester.takeException(), isNull);
@@ -417,19 +453,23 @@ void main() {
       status: 'PENDING',
       page: 1,
     ));
-    await tester.tap(find.descendant(of: toolbar, matching: find.text('已驳回')));
+    await tester.tap(find.descendant(of: toolbar, matching: find.text('历史单据')));
     await tester.pumpAndSettle();
     expect(repo.queries.last, (
       reviewRoute: 'FINANCE',
-      status: 'REJECTED',
+      status: 'HISTORY',
       page: 1,
     ));
     expect(tester.widget<UtenFilterToolbar<String>>(toolbar).selected, {
-      'REJECTED',
+      'HISTORY',
     });
-    await tester.tap(find.descendant(of: toolbar, matching: find.text('全部')));
+    await tester.tap(find.descendant(of: toolbar, matching: find.text('待审核')));
     await tester.pumpAndSettle();
-    expect(repo.queries.last, (reviewRoute: 'FINANCE', status: null, page: 1));
+    expect(repo.queries.last, (
+      reviewRoute: 'FINANCE',
+      status: 'PENDING',
+      page: 1,
+    ));
   });
 
   // 2026-10-09 口径：审核队列「待审核」段挂红色通知徽章（与 HR 信息变更审核页、
@@ -463,12 +503,12 @@ void main() {
       ],
     );
     expect(redCounts(tester, '待审核'), [3]);
-    expect(redCounts(tester, '已通过'), isEmpty);
+    expect(redCounts(tester, '历史单据'), isEmpty);
     // 切到浏览段：选中段给列表全量中性括号数，红徽章仍在待审核段。
-    await tester.tap(segmentLabel('已通过'));
+    await tester.tap(segmentLabel('历史单据'));
     await tester.pumpAndSettle();
     expect(redCounts(tester, '待审核'), [3]);
-    expect(find.text('(1)'), findsOneWidget);
+    expect(redCounts(tester, '历史单据'), isEmpty);
 
     // 盘点历史（reviewRoute 为空，本人提交的等待审核 = 等别人动手）不挂数。
     await _pump(

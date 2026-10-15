@@ -323,6 +323,9 @@ void main() {
       ),
     ]);
     await _pumpPage(tester, repository);
+    expect(find.text('已批准'), findsNothing);
+    await tester.tap(find.text('历史单据'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('已批准'));
     await tester.pumpAndSettle();
     final table = tester

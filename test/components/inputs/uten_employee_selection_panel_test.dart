@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
@@ -52,7 +53,7 @@ void main() {
     );
     await tester.pump();
     expect(changed, isNull);
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
     expect(changed?.id, _sales.id);
   });
@@ -166,7 +167,7 @@ void main() {
     );
     await tester.pump();
     expect(find.text('已选 2 人'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     expect(result?.map((item) => item.id), ['sales-1', 'production-1']);
   });
 
@@ -197,7 +198,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('清空'));
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, '确定'));
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
       expect(changed, isEmpty);
       expect(find.text(_sales.displayName), findsNothing);
@@ -236,7 +237,7 @@ void main() {
       expect(find.text('缺少手机号'), findsOneWidget);
       expect(
         tester
-            .widget<FilledButton>(find.widgetWithText(FilledButton, '确定'))
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '确定'))
             .onPressed,
         isNull,
       );

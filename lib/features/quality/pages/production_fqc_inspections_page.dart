@@ -123,7 +123,11 @@ class _ProductionFqcInspectionsPageState
 
   Future<void> _switchStatus(String status) async {
     if (_status == status) return;
-    setState(() => _status = status);
+    setState(() {
+      _status = status;
+      _result = null;
+      _selectedIds.clear();
+    });
     await _load(page: 1);
   }
 
@@ -145,11 +149,14 @@ class _ProductionFqcInspectionsPageState
     ProductionFqcInspection inspection, {
     required bool canApprove,
   }) async {
-    final drafts = qualityTaskDrafts(
-      ref.read(formDraftsProvider),
-      sheetId: inspection.sheetId,
-      inspectionId: inspection.id,
-    );
+    if (_loading || (_status == 'ACTIVE') != inspection.active) return;
+    final drafts = _status == 'ACTIVE' && inspection.active
+        ? qualityTaskDrafts(
+            ref.read(formDraftsProvider),
+            sheetId: inspection.sheetId,
+            inspectionId: inspection.id,
+          )
+        : const <FormDraft>[];
     if (drafts.isNotEmpty) {
       await resumeTaskFormDraft(context, ref, drafts);
       if (mounted) await _load(page: _result?.page ?? 1);
@@ -198,6 +205,7 @@ class _ProductionFqcInspectionsPageState
   bool _matchesCurrentFilter(ProductionFqcInspection item) {
     final statusMatch = switch (_status) {
       'ACTIVE' => item.active,
+      'HISTORY' => !item.active,
       'ALL' => true,
       _ => item.status == _status,
     };
@@ -324,9 +332,10 @@ class _ProductionFqcInspectionsPageState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const TaskDraftRecoveryNotice(
-              scope: FormDraftCategoryScope(module: BadgeModule.quality),
-            ),
+            if (_status == 'ACTIVE')
+              const TaskDraftRecoveryNotice(
+                scope: FormDraftCategoryScope(module: BadgeModule.quality),
+              ),
             _buildToolbar(result, canBatchPass: canBatchPass),
             const SizedBox(height: UtenSpacing.s8),
             const _FqcProcessHint(),
@@ -414,9 +423,7 @@ class _ProductionFqcInspectionsPageState
             count: fqcPending,
             countForm: UtenSegmentCountForm.actionable,
           ),
-          const UtenFilterSegment(value: 'RESOLVED', label: '已决定'),
-          const UtenFilterSegment(value: 'CANCELLED', label: '已取消'),
-          const UtenFilterSegment(value: 'ALL', label: '全部'),
+          const UtenFilterSegment(value: 'HISTORY', label: '历史单据'),
         ],
         selected: {_status},
         onSelectionChanged: _switchStatus,

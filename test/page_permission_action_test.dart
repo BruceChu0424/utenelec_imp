@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
@@ -256,7 +257,7 @@ void main() {
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, '确定'));
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
 
       // 普通页面（单根组）：不重复分组头，族行直接铺开。
@@ -314,7 +315,7 @@ void main() {
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
 
     // hub 树：根面组保留没被认领的码，子面组各成一个分组条。
@@ -339,7 +340,7 @@ void main() {
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
 
     // 编辑族三态开关：一键全开 = 新增+修改两颗都进待提交集合。
@@ -410,7 +411,7 @@ void main() {
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('编辑（含新增与修改）'));
@@ -502,7 +503,7 @@ void main() {
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, '确定'));
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
 
       expect(
@@ -538,7 +539,7 @@ void main() {
       find.byKey(const ValueKey('page-permission-staff-employee-1')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确定'));
+    await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
 
     expect(find.text('开通账号确认'), findsOneWidget);
@@ -576,7 +577,7 @@ void main() {
         find.byKey(const ValueKey('page-permission-staff-employee-1')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, '确定'));
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const ValueKey('provision-selected-employee-confirm')),

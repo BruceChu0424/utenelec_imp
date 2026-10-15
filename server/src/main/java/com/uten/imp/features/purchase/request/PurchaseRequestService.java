@@ -124,6 +124,10 @@ public class PurchaseRequestService {
             }
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
+            if (f.closed() != null) {
+                ps.add(cb.equal(root.get("closed"), f.closed()));
+                if (!f.closed()) ps.add(cb.notEqual(cb.coalesce(root.get("isStopped"), false), true));
+            }
             if (f.dateFrom() != null) ps.add(cb.greaterThanOrEqualTo(root.get("billDate"), f.dateFrom()));
             if (f.dateTo() != null) ps.add(cb.lessThanOrEqualTo(root.get("billDate"), f.dateTo()));
             if (f.billNo() != null && !f.billNo().isBlank()) {

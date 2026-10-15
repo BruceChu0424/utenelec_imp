@@ -538,7 +538,7 @@ public class StockCountRequestService {
     public PageResponse<Map<String,Object>> list(String route,String status,UUID warehouseId,int page,int size,
                                                WarehouseTaskScope taskWarehouseScope,String keyword) {
         if(route!=null&&!Set.of("FINANCE","WAREHOUSE").contains(route))throw invalid("审核归属不正确");
-        if(status!=null&&!Set.of("PENDING","APPROVED","REJECTED","CANCELLED").contains(status))throw invalid("盘点状态不正确");
+        if(status!=null&&!Set.of("PENDING","APPROVED","REJECTED","CANCELLED","HISTORY").contains(status))throw invalid("盘点状态不正确");
         if(route!=null)require("WAREHOUSE".equals(route)?WAREHOUSE:FINANCE);
         var allowed=warehouses(false).stream().map(w->(UUID)w.get("id")).filter(w->warehouseId==null||warehouseId.equals(w)).toList();
         var paging=Pageables.of(page,size);if(allowed.isEmpty())return new PageResponse<>(List.of(),paging.getPageNumber()+1,paging.getPageSize(),0,0);
@@ -552,7 +552,8 @@ public class StockCountRequestService {
             params.addValue("taskWarehouseScope",taskWarehouseScope.idsCsv());
         }
         if(route==null)where+=" AND r.submitted_by=:actor";else{where+=" AND r.review_route=:route";params.addValue("route",route);}
-        if(status!=null){where+=" AND r.status=:status";params.addValue("status",status);}
+        if("HISTORY".equals(status)){where+=" AND r.status IN ('APPROVED','REJECTED','CANCELLED')";}
+        else if(status!=null){where+=" AND r.status=:status";params.addValue("status",status);}
         if(keyword!=null&&!keyword.isBlank()) {
             params.addValue("keyword",keyword.strip());
             where+="\n"+"""

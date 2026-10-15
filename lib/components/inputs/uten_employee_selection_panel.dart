@@ -9,7 +9,7 @@ import '../../shared/models/uten_tree_node.dart';
 import '../../shared/widgets/uten_hierarchy_tree_view.dart';
 import '../feedback/uten_empty.dart';
 import '../layout/uten_adaptive_panel.dart';
-import '../layout/uten_bottom_action_bar.dart';
+import '../layout/uten_picker_confirm_bar.dart';
 import '../layout/uten_split_view.dart';
 import '../layout/uten_table_column_kit.dart' show utenTableSelectedRowColor;
 import 'uten_employee_picker_models.dart';
@@ -587,39 +587,15 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
       overflow: TextOverflow.ellipsis,
       style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
     );
-    final actions = Wrap(
-      spacing: 8,
-      alignment: WrapAlignment.end,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        if (widget.multiple)
-          TextButton(
-            onPressed: _selected.isEmpty
-                ? null
-                : () => setState(_selected.clear),
-            child: Text(widget.clearLabel),
-          ),
-        TextButton(onPressed: _cancel, child: const Text('取消')),
-        FilledButton(
-          onPressed: canConfirm ? _confirm : null,
-          child: Text(widget.confirmLabel),
-        ),
-      ],
-    );
-    return UtenBottomActionBar(
-      child: LayoutBuilder(
-        builder: (_, constraints) => constraints.maxWidth < 480
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [status, const SizedBox(height: 8), actions],
-              )
-            : Row(
-                children: [
-                  Expanded(child: status),
-                  actions,
-                ],
-              ),
-      ),
+    return UtenPickerConfirmBar(
+      selectedCount: _selected.length,
+      summary: status,
+      confirmEnabled: canConfirm,
+      onClear: widget.multiple ? () => setState(_selected.clear) : null,
+      clearLabel: widget.clearLabel,
+      onCancel: _cancel,
+      onConfirm: _confirm,
+      confirmLabel: widget.confirmLabel,
     );
   }
 }

@@ -15,6 +15,7 @@ import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
@@ -22,6 +23,7 @@ import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/draft_counts_provider.dart';
+import '../../../support/filter_segment_tap.dart';
 
 Future<_RecordingApi> _pumpOrderList(
   WidgetTester tester, {
@@ -62,7 +64,11 @@ Future<_RecordingApi> _pumpOrderList(
         currentPermissionsProvider.overrideWithValue(permissions),
         draftCountsProvider.overrideWith((ref) => counts),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -70,6 +76,83 @@ Future<_RecordingApi> _pumpOrderList(
 }
 
 void main() {
+  testWidgets(
+    'completed shipment stages stay under history and history status clearing keeps its parent',
+    (tester) async {
+      final api = await _pumpOrderList(
+        tester,
+        docType: SalesDocType.shipment,
+        counts: DraftCounts.empty,
+      );
+      expect(find.text('已出库'), findsNothing);
+      expect(find.text('已反审'), findsNothing);
+      expect(find.text('全部'), findsNothing);
+      await tester.tap(find.text('历史记录'));
+      await tester.pumpAndSettle();
+      MasterDataTableView<SalesDocListItem> table() =>
+          tester.widget(find.byType(MasterDataTableView<SalesDocListItem>));
+      table().onFilterChanged('status', SalesShipmentStage.shipped);
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['stage'], SalesShipmentStage.shipped);
+      expect(
+        find.byKey(const Key('sales-doc-history-time-shipments')),
+        findsOneWidget,
+      );
+      table().onFilterChanged('status', null);
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last.containsKey('stage'), isFalse);
+      expect(
+        find.byKey(const Key('sales-doc-history-time-shipments')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('已审'));
+      await tester.pumpAndSettle();
+      expect(
+        api.listQueries.last['stage'],
+        SalesShipmentStage.financeApproved,
+        reason: '财务已通过但尚未出库必须保留活动入口',
+      );
+      table().onFilterChanged('status', null);
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['stage'], 'ACTIVE');
+      expect(table().filters['status'], isNull);
+      expect(
+        find.byKey(const Key('sales-doc-history-time-shipments')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'quote activity keeps customer and conversion work while completed pricing buckets are historical',
+    (tester) async {
+      final api = await _pumpOrderList(
+        tester,
+        docType: SalesDocType.quote,
+        counts: DraftCounts.empty,
+      );
+      await selectFilterSegment(tester, '待办与进行中');
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['bucket'], 'ACTIVE');
+      MasterDataTableView<SalesDocListItem> table() =>
+          tester.widget(find.byType(MasterDataTableView<SalesDocListItem>));
+      table().onFilterChanged('status', SalesQuoteStage.approved);
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last['bucket'], SalesQuoteStage.approved);
+      expect(
+        find.byKey(const Key('sales-doc-history-time-quotes')),
+        findsOneWidget,
+      );
+      table().onFilterChanged('status', null);
+      await tester.pumpAndSettle();
+      expect(api.listQueries.last.containsKey('bucket'), isFalse);
+      expect(
+        find.byKey(const Key('sales-doc-history-time-quotes')),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets(
     'ordinary order list preserves exact amount digits and masks stale Exact',
     (tester) async {
@@ -277,7 +360,10 @@ class _RecordingApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/sales/orders' || path == '/sales/other-shipments') {
+    if (path == '/sales/orders' ||
+        path == '/sales/other-shipments' ||
+        path == '/sales/shipments' ||
+        path == '/sales/quotes') {
       listQueries.add(Map<String, dynamic>.from(query ?? const {}));
       return const <String, dynamic>{
         'items': <Map<String, dynamic>>[

@@ -48,6 +48,7 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -71,6 +72,7 @@ import '../models/hr_reconcile_form_draft.dart';
 import '../providers/hr_task_summary_provider.dart';
 import '../repositories/hr_task_repository.dart';
 import '../widgets/hr_task_widgets.dart';
+import '../widgets/hr_celebration_history_panel.dart';
 
 /// 单次批量上限：逐人循环单条 API，超过则提示分批（无后端批量端点）。
 const int kHrTaskBatchLimit = 50;
@@ -148,6 +150,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
 
   /// 「自动发送祝福」开关切换进行中（防并发 + Switch 置灰）。
   bool _autoToggling = false;
+  bool _celebrationHistory = false;
 
   HrTaskType get _type => widget.type;
 
@@ -164,6 +167,11 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
     final isSuperAdmin = ref.watch(isSuperAdminProvider);
     if (_type == HrTaskType.identity) ref.watch(formDraftsProvider);
     final canPublish = isSuperAdmin || perms.contains(Perm.noticePublish);
+    final canReadCelebrationHistory =
+        isSuperAdmin ||
+        (perms.contains(Perm.noticeRead) &&
+            (_type != HrTaskType.birthday ||
+                perms.contains(Perm.employeePiiView)));
     // 批量登记转正只走 confirm（后端覆盖试用期转正与在职未登记补登，无 PUT 回退）。
     final canBatchConfirm = perms.contains(Perm.employeeConfirm);
     // 证件核对「批量处理」入口与 /hr/tasks/reconcile 路由守卫同源(ADR-160)：能改
@@ -263,7 +271,40 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           ),
         ],
       ),
-      body: body,
+      body: !_isCelebration
+          ? body
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+                  child: UtenFilterToolbar<bool>(
+                    segmentsKey: const Key('hr-celebration-scope'),
+                    autoSelectBadge: false,
+                    selected: {
+                      _celebrationHistory && canReadCelebrationHistory,
+                    },
+                    segments: [
+                      const UtenFilterSegment(value: false, label: '待办理'),
+                      if (canReadCelebrationHistory)
+                        const UtenFilterSegment(value: true, label: '历史单据'),
+                    ],
+                    onSelectionChanged: (value) => setState(() {
+                      _celebrationHistory = value;
+                      _selectedIds = {};
+                      _filters = {};
+                    }),
+                  ),
+                ),
+                Expanded(
+                  child: _celebrationHistory && canReadCelebrationHistory
+                      ? HrCelebrationHistoryPanel(
+                          key: ValueKey(_type),
+                          type: _type.taskType,
+                        )
+                      : body,
+                ),
+              ],
+            ),
     );
   }
 
@@ -457,15 +498,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
       info: '软认领（ADR-021）：显示认领人与租约到期时间；他人处理中的事项不可批量操作。',
       value: _claimText,
     ),
-    if (_isCelebration)
-      MasterColumnDef(
-        key: 'blessed',
-        label: '已祝福',
-        width: 90,
-        type: 'bool',
-        info: '本类型本年是否已发布庆典祝福卡（已祝福者不计入徽标，也不会被批量重复祝福）。',
-        value: (item) => item.blessed ? '已祝福' : null,
-      ),
   ];
 
   List<FormDraft> _draftsFor(HrTaskItem item) => taskDraftsFor(
@@ -602,8 +634,6 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
           items.map((item) => hrTaskWindowOf(s, _type, item).label),
         ),
       'claim': bucketsOf(items.map((item) => hrTaskClaimStateOf(item).label)),
-      if (_isCelebration)
-        'blessed': bucketsOf(items.map((item) => item.blessed ? '已祝福' : '')),
     };
   }
 

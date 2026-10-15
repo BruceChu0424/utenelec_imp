@@ -46,7 +46,7 @@ class SubcontractKitBatchAuthorityPostgresTest {
     @BeforeAll static void start() { DB.start(); }
     @AfterAll static void stop() { DB.stop(); }
 
-    @BeforeEach void fixture() throws Exception {
+    @BeforeEach void fixture(org.junit.jupiter.api.TestInfo testInfo) throws Exception {
         connection = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         connection.setAutoCommit(false);
         execute("CREATE SCHEMA kit_test; SET LOCAL search_path TO kit_test; SET LOCAL jit TO off");
@@ -126,7 +126,9 @@ class SubcontractKitBatchAuthorityPostgresTest {
             }
             execute(definition);
         }
-        execute(migration("V868__subcontract_kit_batch_authority.sql"));
+        // This one forward-DDL test must start at the actual pre-V868 bodies.
+        if (!testInfo.getTestMethod().orElseThrow().getName().equals("legacyNonSuperuserMigratorPreservesOldAclAndCreatesCallableInvokerBatchFunctions"))
+            execute(migration("V868__subcontract_kit_batch_authority.sql"));
 
         update("INSERT INTO warehouses(id) VALUES (?)", WAREHOUSE);
         update("INSERT INTO goods(id) VALUES (?), (?)", PARENT_GOODS, MATERIAL);
@@ -462,6 +464,51 @@ class SubcontractKitBatchAuthorityPostgresTest {
         long delta=needCalls()-before;
         assertThat(delta).as("one authoritative leaf call per relevant order/dimension, independent of A=202").isEqualTo(orders);
         assertThat(actual).hasSize(applications);
+        // Exercise the actual Java detail API as well as the SQL aggregate.
+        // These extra descriptive relations do not replace any quantity leaf.
+        execute("CREATE TABLE colors(id uuid PRIMARY KEY,name text); CREATE TABLE units(id uuid PRIMARY KEY,name text)");
+        execute("ALTER TABLE goods ADD COLUMN code text,ADD COLUMN name text,ADD COLUMN unit_id uuid; ALTER TABLE subcontract_applications ADD COLUMN bill_no text; ALTER TABLE subcontract_application_items ADD COLUMN unit_id uuid");
+        var details = new SubcontractKitService(new org.springframework.jdbc.core.JdbcTemplate(
+                new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true)),
+                org.mockito.Mockito.mock(com.uten.imp.application.port.SubcontractOutboundWakePort.class));
+        before=needCalls();
+        var detailRows=details.applicationKits(java.util.Arrays.asList(ids));
+        assertThat(needCalls()-before).as("full detail batch also materializes a global pool once").isEqualTo(orders);
+        assertThat(detailRows).hasSize(applications);
+        assertThat(detailRows.values()).allSatisfy(kit->{
+            assertThat(kit.openQty()).isEqualByComparingTo("1000");assertThat(kit.kitQty()).isEqualByComparingTo("599");
+            assertThat(kit.orderableQty()).isEqualByComparingTo("599");assertThat(kit.bomMissing()).isFalse();
+            assertThat(kit.materials()).hasSize(1);var material=kit.materials().getFirst();
+            assertThat(material.neededQty()).isEqualByComparingTo("1000");assertThat(material.freeQty()).isEqualByComparingTo("599");
+            assertThat(material.shortQty()).isEqualByComparingTo("401");
+        });
+        assertThat(details.applicationKit(ids[0])).isEqualTo(detailRows.get(ids[0]));
+        assertThat(details.applicationKits(java.util.Arrays.asList(ids[0],ids[0],id(999999),null))).hasSize(1);
+        assertThat(details.applicationKits(null)).isEmpty();
+        update("UPDATE subcontract_applications SET is_closed=true WHERE id=?",id(10001));
+        update("UPDATE subcontract_application_items SET ordered_qty=qty WHERE id=?",ids[1]);
+        var historical=details.applicationKits(List.of(ids[0],ids[1]));
+        for(UUID closed:List.of(ids[0],ids[1])) {
+            var kit=historical.get(closed);
+            assertThat(kit.openQty()).isZero();assertThat(kit.orderableQty()).isZero();
+            assertThat(kit.kitQty()).isEqualByComparingTo(scalar("SELECT oracle_fn_subcontract_application_kit_qty(?,NULL)",closed));
+            assertThat(kit.kitQty()).isEqualByComparingTo("599");
+            assertThat(kit.materials()).hasSize(1);assertThat(kit.bomMissing()).isFalse();
+            assertThat(kit.materials().getFirst().neededQty()).isZero();assertThat(kit.materials().getFirst().shortQty()).isZero();
+            assertThat(kit.materials().getFirst().freeQty()).isEqualByComparingTo("599");
+            assertThat(details.applicationKit(closed)).isEqualTo(kit);
+        }
+        update("UPDATE subcontract_application_items SET goods_id=? WHERE id=?",MATERIAL,ids[2]);
+        var noBom=details.applicationKit(ids[2]);
+        assertThat(noBom.openQty()).isEqualByComparingTo("1000");assertThat(noBom.orderableQty()).isZero();
+        assertThat(noBom.kitQty()).isZero();assertThat(noBom.bomMissing()).isTrue();assertThat(noBom.materials()).isEmpty();
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->details.applicationKit(id(999999)))
+            .isInstanceOf(com.uten.imp.common.web.ApiException.class).extracting(error->((com.uten.imp.common.web.ApiException)error).getCode())
+            .isEqualTo(com.uten.imp.common.web.ErrorCode.NOT_FOUND);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->details.applicationKit((UUID)null))
+            .isInstanceOf(com.uten.imp.common.web.ApiException.class).extracting(error->((com.uten.imp.common.web.ApiException)error).getCode())
+            .isEqualTo(com.uten.imp.common.web.ErrorCode.NOT_FOUND);
+
         assertThat(actual).allSatisfy(row->assertThat((BigDecimal)row.get("orderable_qty")).isEqualByComparingTo("599"));
         // The same 202-ID oracle comparison is retained in the dense diagnostic
         // evidence. This routine regression checks every result above and three
@@ -617,6 +664,31 @@ class SubcontractKitBatchAuthorityPostgresTest {
     private void assertMark(NoticeRuntime runtime,int application,String expected,int epoch) {
         var mark=runtime.jdbc.queryForMap("SELECT notified_orderable,epoch FROM subcontract_application_kit_notice_marks WHERE application_item_id=?",app(application));
         assertThat((BigDecimal)mark.get("notified_orderable")).isEqualByComparingTo(expected);assertThat(mark.get("epoch")).isEqualTo(epoch);
+    }
+
+    @Test void legacyNonSuperuserMigratorPreservesOldAclAndCreatesCallableInvokerBatchFunctions() throws Exception {
+        application(1,"10");publicStock("30");
+        execute("CREATE ROLE kit_legacy_migrator NOSUPERUSER NOINHERIT; CREATE ROLE kit_legacy_app NOSUPERUSER NOINHERIT");
+        execute("GRANT USAGE,CREATE ON SCHEMA kit_test TO kit_legacy_migrator; GRANT USAGE ON SCHEMA kit_test TO kit_legacy_app; GRANT SELECT ON ALL TABLES IN SCHEMA kit_test TO kit_legacy_app");
+        for(String signature:List.of("fn_subcontract_component_pool_demands(uuid,uuid,uuid)",
+            "fn_subcontract_component_public_free(uuid,uuid,uuid)","fn_subcontract_application_kit_facts(uuid,uuid)",
+            "fn_subcontract_application_kit_qty(uuid,uuid)","fn_subcontract_application_orderable_qty(uuid)",
+            "fn_subcontract_order_kit_shortages(uuid)")) execute("ALTER FUNCTION "+signature+" OWNER TO kit_legacy_migrator");
+        String oldNames="'fn_subcontract_component_pool_demands','fn_subcontract_component_public_free','fn_subcontract_application_kit_facts','fn_subcontract_application_kit_qty','fn_subcontract_application_orderable_qty','fn_subcontract_order_kit_shortages'";
+        String shape="SELECT p.proname,p.proacl::text AS acl,p.prosecdef,pg_get_userbyid(p.proowner) AS owner,has_function_privilege('kit_legacy_app',p.oid,'EXECUTE') AS app_exec FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='kit_test' AND p.proname IN ("+oldNames+") ORDER BY p.proname";
+        var baseline=rows(shape);assertThat(baseline).hasSize(6);
+        assertThat(baseline).allSatisfy(row->{assertThat(row.get("owner")).isEqualTo("kit_legacy_migrator");assertThat(row.get("app_exec")).isEqualTo(true);assertThat(row.get("prosecdef")).isEqualTo(false);});
+        execute("SET LOCAL ROLE kit_legacy_migrator");
+        assertThat(rows("SELECT rolsuper FROM pg_roles WHERE rolname=current_user").getFirst().get("rolsuper")).isEqualTo(false);
+        execute(migration("V868__subcontract_kit_batch_authority.sql"));
+        execute("RESET ROLE");
+        assertThat(rows(shape)).as("all six existing ACL/owners/invoker flags remain byte-for-byte equivalent").isEqualTo(baseline);
+        var created=rows("SELECT p.proname,p.prosecdef,pg_get_userbyid(p.proowner) AS owner,has_function_privilege('kit_legacy_app',p.oid,'EXECUTE') AS app_exec FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='kit_test' AND p.proname IN ('fn_subcontract_component_pool_demands_batch','fn_subcontract_kit_pool_facts','fn_subcontract_application_kit_facts_batch','fn_subcontract_application_orderable_batch') ORDER BY p.proname");
+        assertThat(created).hasSize(4).allSatisfy(row->{assertThat(row.get("owner")).isEqualTo("kit_legacy_migrator");assertThat(row.get("app_exec")).isEqualTo(true);assertThat(row.get("prosecdef")).isEqualTo(false);});
+        execute("SET LOCAL ROLE kit_legacy_app");
+        assertThat(scalar("SELECT orderable_qty FROM fn_subcontract_application_orderable_batch(ARRAY[?::uuid])",app(1))).isEqualByComparingTo("10");
+        assertThat(scalar("SELECT fn_subcontract_application_orderable_qty(?)",app(1))).isEqualByComparingTo("10");
+        execute("RESET ROLE");
     }
 
 }

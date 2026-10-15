@@ -219,8 +219,10 @@ Future<GoRouter> _pumpReviewPage(
   _FakeWorkflowRepo repository, {
   bool withApprovePerms = true,
   FinanceClaimFixture? claims,
+  Size size = const Size(1400, 1000),
+  double? textScale,
 }) async {
-  tester.view.physicalSize = const Size(1400, 1000);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -267,6 +269,14 @@ Future<GoRouter> _pumpReviewPage(
       ],
       child: MaterialApp.router(
         routerConfig: router,
+        builder: textScale == null
+            ? null
+            : (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('zh'),
@@ -926,6 +936,182 @@ void main() {
     return tester.widget<UtenRevisionTable<FinanceProcurementReviewLine>>(
       finder,
     );
+  }
+
+  for (final mayApprove in [true, false]) {
+    testWidgets('375px 2x 财审横滚、税汇权限、商业只读和紧贴汇总 approve=$mayApprove', (
+      tester,
+    ) async {
+      final repository = _ExactWorkflowRepo(
+        _pendingReview(allowedActions: {'APPROVE', 'REJECT', 'EDIT'}),
+      );
+      await _pumpReviewPage(
+        tester,
+        repository,
+        withApprovePerms: mayApprove,
+        size: const Size(375, 1000),
+        textScale: 2,
+      );
+      final revision = find.byKey(
+        const Key('procurement-approval-revision-table'),
+      );
+      final table = await revisionTableOf(tester);
+      expect(table.rows, hasLength(1));
+      final original = table.rows.single.value;
+      for (final key in ['qty', 'price', 'amountOriginal']) {
+        expect(table.cellBuilders?.containsKey(key), isFalse);
+      }
+      expect(
+        find.byKey(const ValueKey('finance-order-review-price-order-item-1')),
+        findsNothing,
+      );
+      expect(find.text('保存审核修改'), findsNothing);
+
+      final horizontal = find.descendant(
+        of: revision,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              (widget.axisDirection == AxisDirection.left ||
+                  widget.axisDirection == AxisDirection.right),
+        ),
+      );
+      const unobscuredScreen = Rect.fromLTRB(16, 100, 359, 800);
+      Finder movableHorizontal() {
+        final movable = horizontal.evaluate().where((element) {
+          final state = (element as StatefulElement).state as ScrollableState;
+          return state.position.hasContentDimensions &&
+              state.position.maxScrollExtent > 0 &&
+              tester
+                      .getSize(
+                        find.byElementPredicate((e) => identical(e, element)),
+                      )
+                      .height >=
+                  40;
+        }).toList();
+        expect(movable, isNotEmpty, reason: '真实财审共享表在375px应提供横向滚动');
+        // The final horizontal Scrollable is the 11px scrollbar strip. Drag
+        // visible table content/header rather than that unrelated tiny track.
+        movable.sort((left, right) {
+          Rect bounds(Element element) => tester.getRect(
+            find.byElementPredicate((e) => identical(e, element)),
+          );
+          return bounds(left)
+              .intersect(unobscuredScreen)
+              .height
+              .compareTo(bounds(right).intersect(unobscuredScreen).height);
+        });
+        return find.byElementPredicate(
+          (element) => identical(element, movable.last),
+        );
+      }
+
+      // The compact page scrolls its review cards before the table. Its large
+      // horizontal viewport may extend below the screen even after the table
+      // header is visible, so a viewport-center drag must use the intersection.
+      await tester.dragFrom(const Offset(187.5, 650), const Offset(0, -400));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(movableHorizontal());
+      await tester.pumpAndSettle();
+      var visible = tester
+          .getRect(movableHorizontal())
+          .intersect(unobscuredScreen);
+      for (var attempt = 0; attempt < 8 && visible.height < 40; attempt++) {
+        await tester.dragFrom(const Offset(187.5, 650), const Offset(0, -350));
+        await tester.pumpAndSettle();
+        visible = tester
+            .getRect(movableHorizontal())
+            .intersect(unobscuredScreen);
+      }
+      expect(visible.height, greaterThanOrEqualTo(40));
+      expect(visible.width, greaterThan(160));
+      final before = tester
+          .state<ScrollableState>(movableHorizontal())
+          .position
+          .pixels;
+      await tester.dragFrom(visible.center, const Offset(-160, 0));
+      await tester.pumpAndSettle();
+      expect(
+        tester.state<ScrollableState>(movableHorizontal()).position.pixels,
+        greaterThan(before),
+      );
+
+      final tax = find.byKey(const Key('finance-order-review-tax-field'));
+      final rate = find.byKey(const Key('finance-order-review-rate-field'));
+      final rowBottomAnchor = mayApprove
+          ? rate
+          : find.byKey(const Key('finance-order-review-rate-readonly'));
+      if (mayApprove) {
+        await tester.ensureVisible(tax);
+        await tester.pumpAndSettle();
+        await tester.enterText(tax, '13.1234');
+        await tester.pump();
+        await tester.ensureVisible(rate);
+        await tester.pumpAndSettle();
+        await tester.enterText(rate, '6.5');
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(tax).controller!.text, '13.1234');
+        expect(tester.widget<TextField>(rate).controller!.text, '6.5');
+      } else {
+        expect(tax, findsNothing);
+        expect(rate, findsNothing);
+        expect(
+          find.byKey(const Key('finance-order-review-tax-readonly')),
+          findsOneWidget,
+        );
+        expect(rowBottomAnchor, findsOneWidget);
+        expect(
+          tester
+              .widget<UtenButton>(
+                find.byKey(const Key('finance-order-review-approve')),
+              )
+              .onPressed,
+          isNull,
+        );
+      }
+
+      final totals = find.byType(UtenTotalsSummaryBar);
+      await tester.ensureVisible(totals);
+      await tester.pumpAndSettle();
+      final gap =
+          tester.getTopLeft(totals).dy -
+          tester.getBottomLeft(rowBottomAnchor).dy;
+      expect(gap, inInclusiveRange(0, 80), reason: '单行真实财审合计应紧接明细，不能停在屏幕底部');
+      final current = tester
+          .widget<UtenRevisionTable<FinanceProcurementReviewLine>>(revision)
+          .rows
+          .single
+          .value;
+      expect(current.qty, original.qty);
+      expect(current.price, original.price);
+      expect(current.amountOriginal, original.amountOriginal);
+      if (mayApprove) {
+        expect(
+          find.descendant(of: totals, matching: find.text('65000.00 元')),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+        await tester.pumpAndSettle();
+        final submit = find.byKey(
+          const Key('finance-order-review-approve-submit'),
+        );
+        await tester.ensureVisible(submit);
+        await tester.tap(submit);
+        await tester.pumpAndSettle();
+        expect(repository.exactRates, ['6.5']);
+        expect(repository.exactTaxes, ['13.1234']);
+      } else {
+        await tester.tap(find.byKey(const Key('finance-order-review-approve')));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('finance-order-review-approve-submit')),
+          findsNothing,
+        );
+        expect(repository.exactRates, isEmpty);
+        expect(repository.exactTaxes, isEmpty);
+      }
+      expect(tester.takeException(), isNull);
+    });
   }
 
   testWidgets('采购：独立 tableKey + 新默认列序，单位/换算率列退役', (tester) async {

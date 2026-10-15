@@ -68,7 +68,7 @@ class SubcontractApplicationKitPostgresTest {
                 CREATE TABLE subcontract_order_item_sources(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
                     order_item_id uuid, application_item_id uuid, alloc_qty numeric(18,4), line_no integer);
                 CREATE TABLE procurement_order_approval_cases(order_type text, order_id uuid, status text,
-                    attempt integer DEFAULT 1, UNIQUE(order_type,order_id,attempt));
+                    attempt integer DEFAULT 1, finance_tax_rate numeric(7,4), UNIQUE(order_type,order_id,attempt));
                 CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text DEFAULT 'OPEN',
                     is_deleted boolean DEFAULT false);
                 CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
@@ -244,15 +244,15 @@ class SubcontractApplicationKitPostgresTest {
         assertThat(scalar("SELECT fn_subcontract_application_orderable_qty(?)", app(1))).isEqualByComparingTo("50");
         update("UPDATE procurement_order_approval_cases SET status='REJECTED' WHERE order_id=?",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("50");
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'REJECTED', 2)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT', ?, 'REJECTED', 2)",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
                 .as("重复驳回保留同一份额一次").isEqualByComparingTo("50");
         update("UPDATE subcontract_order_item_sources SET alloc_qty=10 WHERE order_item_id=?",orderItemId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("60");
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'CANCELED', 3)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT', ?, 'CANCELED', 3)",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
                 .as("新轮已撤回时旧驳回不得复活").isEqualByComparingTo("70");
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'PENDING', 4)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT', ?, 'PENDING', 4)",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("60");
         update("UPDATE subcontract_orders SET is_deleted=true WHERE id=?",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("70");

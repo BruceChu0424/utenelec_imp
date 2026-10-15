@@ -3,13 +3,19 @@ package com.uten.imp.businesschain;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uten.imp.features.admin.serveroperations.HostOperationsClient;
+import com.uten.imp.features.admin.serveroperations.HostOperationsException;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -31,6 +37,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -53,6 +61,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
                 "uten.bootstrap.admin-login=http-bootstrap-admin-test",
                 "uten.bootstrap.admin-password=HttpBootstrapPass-1!"
         })
+@Import(CriticalHttpContractEndToEndTest.HostBridgeConfiguration.class)
 class CriticalHttpContractEndToEndTest {
 
     private static final Set<String> HTTP_METHODS = Set.of(
@@ -65,6 +74,12 @@ class CriticalHttpContractEndToEndTest {
             "/api/production/overproduction-rate/requests/facets", List.of("plan", "segment"),
             "/api/procurement/inspection/records/facets", List.of("sourceNo", "referenceNo", "sheetNo"));
     private static final String PROBE_UUID = "00000000-0000-0000-0000-000000000001";
+    private static final List<String> HOST_BACKED_READ_PATHS = List.of(
+            "/api/admin/server-operations/source",
+            "/api/admin/server-storage/resources?kind=SYSTEM",
+            "/api/admin/server-storage/cleanup/" + PROBE_UUID,
+            "/api/admin/server-operations/updates/" + PROBE_UUID,
+            "/api/admin/server-operations/updates/latest");
 
     // 夹具身份固定与上面 bootstrap 属性一致；env 覆盖只服务于 CI 轮换测试机密。
     private static final String ADMIN_LOGIN = fixtureSecret(
@@ -113,6 +128,77 @@ class CriticalHttpContractEndToEndTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private ReadOnlyHostBridge hostBridge;
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class HostBridgeConfiguration {
+        @Bean
+        @Primary
+        ReadOnlyHostBridge httpContractHostBridge(ObjectMapper mapper) {
+            return new ReadOnlyHostBridge(mapper);
+        }
+    }
+
+    /** External root daemon fixture only; authentication, controllers, services and PostgreSQL are real. */
+    static final class ReadOnlyHostBridge implements HostOperationsClient {
+        private final ObjectMapper mapper;
+        private final AtomicInteger protectedReads = new AtomicInteger();
+        private volatile boolean unavailable;
+
+        ReadOnlyHostBridge(ObjectMapper mapper) {
+            this.mapper = mapper;
+        }
+
+        @Override
+        public JsonNode call(Operation operation, Map<String, Object> payload, UUID actorId, UUID requestId) {
+            if (!Set.of(Operation.STATUS, Operation.CONFIG_READ, Operation.UPDATE_JOB,
+                    Operation.STORAGE_SUMMARY, Operation.STORAGE_LIST, Operation.STORAGE_RESULT).contains(operation)) {
+                throw new AssertionError("HTTP smoke must not perform a root host mutation or schedule request: " + operation);
+            }
+            if (operation != Operation.STATUS && operation != Operation.STORAGE_SUMMARY) {
+                protectedReads.incrementAndGet();
+            }
+            if (unavailable) {
+                throw new HostOperationsException("UNAVAILABLE");
+            }
+            return switch (operation) {
+                case STATUS -> mapper.createObjectNode()
+                        .put("available", true).put("manualOnly", true)
+                        .put("timerActive", false).put("timerEnabled", false)
+                        .put("currentVersion", "v2.5.18").put("sourceRevision", "0".repeat(64))
+                        .put("sourceConfigured", false).put("updateAvailable", false)
+                        .put("serverTimeZone", "UTC").put("serverTime", "2026-01-01T00:00:00Z");
+                case CONFIG_READ -> mapper.createObjectNode()
+                        .put("revision", "0".repeat(64))
+                        .put("endpoint", "oss-cn-shenzhen.aliyuncs.com")
+                        .put("bucket", "http-contract-fixture").put("objectPrefix", "")
+                        .put("accessKeyConfigured", false);
+                case UPDATE_JOB -> mapper.nullNode();
+                case STORAGE_SUMMARY -> {
+                    ObjectNode summary = mapper.createObjectNode()
+                            .put("sampledAt", "2026-01-01T00:00:00Z").put("status", "NORMAL")
+                            .put("revision", "0".repeat(64));
+                    summary.set("capabilities", mapper.createObjectNode()
+                            .put("available", true).put("canCleanup", false));
+                    summary.putArray("volumes");
+                    summary.putArray("categories");
+                    yield summary;
+                }
+                case STORAGE_LIST -> {
+                    if (!"RELEASES".equals(payload.get("kind"))) {
+                        throw new HostOperationsException("INVALID_REQUEST");
+                    }
+                    yield mapper.createObjectNode().put("sampledAt", "2026-01-01T00:00:00Z")
+                            .put("revision", "0".repeat(64)).put("kind", "RELEASES")
+                            .put("total", 0).set("items", mapper.createArrayNode());
+                }
+                case STORAGE_RESULT -> throw new HostOperationsException("NOT_FOUND");
+                default -> throw new AssertionError("Unhandled read-only root operation: " + operation);
+            };
+        }
+    }
 
     private final HttpClient http = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NEVER)
@@ -203,6 +289,40 @@ class CriticalHttpContractEndToEndTest {
         }
 
         smokeEveryDocumentedHttpOperation(adminToken);
+        verifyHostBackedReadContracts(adminToken, employeeToken);
+    }
+
+    private void verifyHostBackedReadContracts(String adminToken, String employeeToken) throws Exception {
+        HttpResponse<byte[]> source = request("GET", "/api/admin/server-operations/source", null, adminToken);
+        assertStatus(source, 200);
+        assertFalse(json(source).path("accessKeyConfigured").asBoolean());
+        assertEquals("", json(source).path("objectPrefix").asText());
+        assertFalse(json(source).has("accessKeyId"));
+        assertFalse(json(source).has("accessKeySecret"));
+        HttpResponse<byte[]> latest = request("GET", "/api/admin/server-operations/updates/latest", null, adminToken);
+        assertStatus(latest, 200);
+        assertTrue(json(latest).path("job").isNull());
+        assertStatus(request("GET", "/api/admin/server-operations/updates/" + PROBE_UUID, null, adminToken), 404);
+        assertStatus(request("GET", "/api/admin/server-storage/cleanup/" + PROBE_UUID, null, adminToken), 404);
+        HttpResponse<byte[]> resources = request("GET", "/api/admin/server-storage/resources?kind=RELEASES", null, adminToken);
+        assertStatus(resources, 200);
+        assertTrue(json(resources).path("items").isArray());
+        assertEquals(0, json(resources).path("total").asLong());
+
+        hostBridge.unavailable = true;
+        int beforeDenied = hostBridge.protectedReads.get();
+        for (String path : HOST_BACKED_READ_PATHS) {
+            assertStatus(request("GET", path, null, null), 401);
+            assertStatus(request("GET", path, null, employeeToken), 403);
+        }
+        assertEquals(beforeDenied, hostBridge.protectedReads.get(),
+                "Anonymous or unprivileged users must not reach the root bridge, even when unavailable");
+        for (String path : HOST_BACKED_READ_PATHS) {
+            HttpResponse<byte[]> unavailable = request("GET", path, null, adminToken);
+            assertStatus(unavailable, 503);
+            assertEquals("SERVER_OPERATIONS_UNAVAILABLE", json(unavailable).path("code").asText());
+        }
+        assertEquals(beforeDenied + HOST_BACKED_READ_PATHS.size(), hostBridge.protectedReads.get());
     }
 
     private JsonNode login(String loginAccount, String password) throws Exception {

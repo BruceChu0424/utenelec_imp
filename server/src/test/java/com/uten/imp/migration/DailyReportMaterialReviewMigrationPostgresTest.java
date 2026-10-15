@@ -13,7 +13,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** V840 preserves legacy commands and exact schema sets; later V852 deltas are explicit and bounded. */
+/** V840 preserves legacy commands; later V852 and V867 schema deltas are explicit and bounded. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class DailyReportMaterialReviewMigrationPostgresTest {
     private static final PostgreSQLContainer<?> pg=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("material_review_upgrade");
@@ -68,20 +68,24 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(db.queryForObject("SELECT material_review_snapshot FROM production_daily_report_commands WHERE actor_user_id=?",Object.class,actor));
         assertEquals(tables,tablesAfterV840);assertEquals(indexes,indexesAfterV840);assertEquals(resetPolicy,resetPolicyAfterV840);
     }
-    @Test void laterForwardMigrationsHaveOnlyTheExactDeclaredV852SchemaDelta() {
+    @Test void laterForwardMigrationsHaveOnlyTheExactDeclaredV852AndV867SchemaDelta() {
         TreeSet<String> expectedTables=new TreeSet<>(tablesAfterV840);
         assertTrue(expectedTables.add("document_unapprovals"));
         assertTrue(expectedTables.add("purchase_request_qty_revisions"));
+        assertTrue(expectedTables.add("sms_gateway_settings"));
         assertEquals(expectedTables.stream().toList(),tables());
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
         assertEquals("CREATE UNIQUE INDEX procurement_inspection_items_item_uk ON public.procurement_inspection_items USING btree (receipt_type, receipt_item_id)",
                 expectedIndexes.remove("procurement_inspection_items_item_uk"));
         V852_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A declared new index must not replace an existing index: "+name));
+        assertNull(expectedIndexes.put("sms_gateway_settings_pkey",
+                "CREATE UNIQUE INDEX sms_gateway_settings_pkey ON public.sms_gateway_settings USING btree (id)"));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
         assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
         assertNull(expectedPolicy.put("purchase_request_qty_revisions","CLEAR"));
+        assertNull(expectedPolicy.put("sms_gateway_settings","PRESERVE"));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,
                 db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));

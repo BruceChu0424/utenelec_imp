@@ -50,45 +50,18 @@ class SubcontractKitBatchAuthorityPostgresTest {
         connection = DriverManager.getConnection(DB.getJdbcUrl(), DB.getUsername(), DB.getPassword());
         connection.setAutoCommit(false);
         execute("CREATE SCHEMA kit_test; SET LOCAL search_path TO kit_test; SET LOCAL jit TO off");
+        // Keep every real column/default/key synchronized with the migrated catalog;
+        // only the three private stock/card probes below are hand-written relations.
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(
+                new org.springframework.jdbc.core.JdbcTemplate(
+                        new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection, true)),
+                "warehouses", "goods", "goods_bom_items", "subcontract_applications", "subcontract_application_items",
+                "subcontract_orders", "subcontract_order_items", "subcontract_order_item_sources",
+                "procurement_order_approval_cases", "subcontract_material_plans", "subcontract_material_plan_items",
+                "subcontract_material_issues", "subcontract_material_issue_items", "preplan_supply_actions",
+                "preplan_supply_action_allocations", "production_material_analysis_materials", "stock_reservations",
+                "colors", "units");
         execute("""
-                CREATE TABLE warehouses(id uuid PRIMARY KEY, is_deleted boolean DEFAULT false,
-                    is_defective boolean DEFAULT false, is_line_side boolean DEFAULT false);
-                CREATE TABLE goods(id uuid PRIMARY KEY, color_id uuid, is_deleted boolean DEFAULT false,
-                    auto_created boolean DEFAULT false, issue_method text DEFAULT 'PER_ORDER');
-                CREATE TABLE goods_bom_items(id uuid PRIMARY KEY, goods_id uuid, component_goods_id uuid, color_id uuid,
-                    qty numeric(18,6), is_deleted boolean DEFAULT false, consumption_basis text DEFAULT 'PER_UNIT',
-                    control_stage text DEFAULT 'START', sort_order integer DEFAULT 1);
-                CREATE TABLE subcontract_applications(id uuid PRIMARY KEY, status smallint DEFAULT 1,
-                    is_deleted boolean DEFAULT false, is_closed boolean DEFAULT false);
-                CREATE TABLE subcontract_application_items(id uuid PRIMARY KEY, application_id uuid, goods_id uuid,
-                    color_id uuid, unit_rate numeric(18,6) DEFAULT 1, qty numeric(18,4), ordered_qty numeric(18,4) DEFAULT 0,
-                    is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_orders(id uuid PRIMARY KEY, status smallint DEFAULT 0,
-                    is_deleted boolean DEFAULT false, is_closed boolean DEFAULT false);
-                CREATE TABLE subcontract_order_items(id uuid PRIMARY KEY, order_id uuid, goods_id uuid, color_id uuid,
-                    qty numeric(18,4), unit_rate numeric(18,6) DEFAULT 1, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_order_item_sources(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-                    order_item_id uuid, application_item_id uuid, alloc_qty numeric(18,4), line_no integer);
-                CREATE TABLE procurement_order_approval_cases(order_type text, order_id uuid, status text,
-                    attempt integer DEFAULT 1, UNIQUE(order_type,order_id,attempt));
-                CREATE TABLE subcontract_material_plans(id uuid PRIMARY KEY, status text DEFAULT 'OPEN',
-                    is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_material_plan_items(id uuid PRIMARY KEY, plan_id uuid, order_item_id uuid,
-                    line_no integer, goods_id uuid, color_id uuid, bom_unit_qty numeric(18,6), planned_qty numeric(18,4),
-                    issued_qty numeric(18,4) DEFAULT 0, is_deleted boolean DEFAULT false, draw_closed_at timestamptz);
-                CREATE TABLE subcontract_material_issues(id uuid PRIMARY KEY, status smallint, is_deleted boolean DEFAULT false);
-                CREATE TABLE subcontract_material_issue_items(id uuid PRIMARY KEY, issue_id uuid, plan_item_id uuid,
-                    qty numeric(18,4), is_deleted boolean DEFAULT false);
-                CREATE TABLE preplan_supply_actions(id uuid PRIMARY KEY, analysis_id uuid, route text, operation_type text,
-                    status text, external_document_type text, external_document_id uuid, public_surplus_external_item_id uuid);
-                CREATE TABLE preplan_supply_action_allocations(id uuid PRIMARY KEY, action_id uuid, analysis_id uuid,
-                    analysis_material_id uuid, external_item_id uuid, allocated_qty numeric(18,4));
-                CREATE TABLE production_material_analysis_materials(id uuid PRIMARY KEY, analysis_id uuid,
-                    analysis_item_id uuid, node_key text, parent_node_key text, node_role text DEFAULT 'BOM_COMPONENT',
-                    depth integer, goods_id uuid, color_id uuid, active boolean DEFAULT true);
-                CREATE TABLE stock_reservations(id uuid PRIMARY KEY, warehouse_id uuid, goods_id uuid, color_id uuid,
-                    owner_type text, status smallint DEFAULT 0, is_deleted boolean DEFAULT false,
-                    qty numeric(18,4), consumed_qty numeric(18,4) DEFAULT 0, released_qty numeric(18,4) DEFAULT 0);
                 CREATE TABLE fixture_entitlement_lots(entitlement_event_id uuid PRIMARY KEY, stock_reservation_id uuid,
                     beneficiary_analysis_id uuid, beneficiary_analysis_material_id uuid, remaining_qty numeric(18,4));
                 CREATE VIEW v_preplan_stock_entitlement_lot_balance AS SELECT * FROM fixture_entitlement_lots;
@@ -132,7 +105,7 @@ class SubcontractKitBatchAuthorityPostgresTest {
 
         update("INSERT INTO warehouses(id) VALUES (?)", WAREHOUSE);
         update("INSERT INTO goods(id) VALUES (?), (?)", PARENT_GOODS, MATERIAL);
-        update("INSERT INTO goods_bom_items(id, goods_id, component_goods_id, qty) VALUES (?, ?, ?, 1)",
+        update("INSERT INTO goods_bom_items(id, goods_id, component_goods_id, qty, sort_order) VALUES (?, ?, ?, 1, 1)",
                 id(50), PARENT_GOODS, MATERIAL);
     }
 
@@ -264,20 +237,20 @@ class SubcontractKitBatchAuthorityPostgresTest {
         source(1, 1, "20");
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
                 .as("未送审的草稿不扣剩余").isEqualByComparingTo("70");
-        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status) VALUES ('SUBCONTRACT', ?, 'PENDING')", orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT', ?, 'PENDING',1)", orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("50");
         assertThat(scalar("SELECT fn_subcontract_application_orderable_qty(?)", app(1))).isEqualByComparingTo("50");
         update("UPDATE procurement_order_approval_cases SET status='REJECTED' WHERE order_id=?",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("50");
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'REJECTED', 2)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT', ?, 'REJECTED', 2)",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
                 .as("重复驳回保留同一份额一次").isEqualByComparingTo("50");
         update("UPDATE subcontract_order_item_sources SET alloc_qty=10 WHERE order_item_id=?",orderItemId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("60");
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'CANCELED', 3)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT', ?, 'CANCELED', 3)",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1)))
                 .as("新轮已撤回时旧驳回不得复活").isEqualByComparingTo("70");
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT', ?, 'PENDING', 4)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT', ?, 'PENDING', 4)",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("60");
         update("UPDATE subcontract_orders SET is_deleted=true WHERE id=?",orderId(1));
         assertThat(scalar("SELECT fn_subcontract_application_open_qty(?)", app(1))).isEqualByComparingTo("70");
@@ -288,7 +261,7 @@ class SubcontractKitBatchAuthorityPostgresTest {
     // =====================================================================================
 
     private void application(int number, String qty) throws Exception {
-        update("INSERT INTO subcontract_applications(id) VALUES (?)", applicationHeader(number));
+        update("INSERT INTO subcontract_applications(id,status) VALUES (?,1)", applicationHeader(number));
         update("INSERT INTO subcontract_application_items(id, application_id, goods_id, qty) VALUES (?, ?, ?, ?)",
                 app(number), applicationHeader(number), PARENT_GOODS, new BigDecimal(qty));
         update("""
@@ -424,8 +397,8 @@ class SubcontractKitBatchAuthorityPostgresTest {
     @Test void batchKeepsLatestAttemptsClosedDeletedMissingAndDuplicateIdSemantics() throws Exception {
         for(int n=1;n<=7;n++) application(n,"100");
         publicStock("999");order(1,(short)0);orderItem(1,1,"10");source(1,1,"10");
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT',?,'PENDING',1)",orderId(1));
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT',?,'REJECTED',2)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT',?,'PENDING',1)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT',?,'REJECTED',2)",orderId(1));
         update("UPDATE subcontract_applications SET is_closed=true WHERE id=?",applicationHeader(2));
         update("UPDATE subcontract_application_items SET is_deleted=true WHERE id=?",app(3));
         update("UPDATE subcontract_applications SET is_deleted=true WHERE id=?",applicationHeader(4));
@@ -437,7 +410,7 @@ class SubcontractKitBatchAuthorityPostgresTest {
         assertThat(scalar("SELECT fn_subcontract_application_orderable_qty(?)",id(999999))).isZero();
         assertThat(rows("SELECT * FROM fn_subcontract_component_public_free(NULL,NULL,NULL)"))
             .isEqualTo(rows("SELECT * FROM oracle_fn_subcontract_component_public_free(NULL,NULL,NULL)"));
-        update("INSERT INTO procurement_order_approval_cases VALUES ('SUBCONTRACT',?,'CANCELED',3)",orderId(1));
+        update("INSERT INTO procurement_order_approval_cases(order_type,order_id,status,attempt) VALUES ('SUBCONTRACT',?,'CANCELED',3)",orderId(1));
         assertBatchEqualsOracle(new UUID[]{app(1),app(2),app(3)});
     }
 
@@ -446,7 +419,7 @@ class SubcontractKitBatchAuthorityPostgresTest {
         // Many independent ordinary order headers share one component; fan-in is
         // not dependent on a single unusual 401-line document.
         for(int n=1;n<=applications;n++)
-            update("INSERT INTO subcontract_applications(id) VALUES (?);",id(10000+n));
+            update("INSERT INTO subcontract_applications(id,status) VALUES (?,1);",id(10000+n));
         for(int n=1;n<=applications;n++)
             update("INSERT INTO subcontract_application_items(id,application_id,goods_id,qty) VALUES (?,?,?,1000)",
                    id(20000+n),id(10000+n),PARENT_GOODS);
@@ -466,8 +439,7 @@ class SubcontractKitBatchAuthorityPostgresTest {
         assertThat(actual).hasSize(applications);
         // Exercise the actual Java detail API as well as the SQL aggregate.
         // These extra descriptive relations do not replace any quantity leaf.
-        execute("CREATE TABLE colors(id uuid PRIMARY KEY,name text); CREATE TABLE units(id uuid PRIMARY KEY,name text)");
-        execute("ALTER TABLE goods ADD COLUMN code text,ADD COLUMN name text,ADD COLUMN unit_id uuid; ALTER TABLE subcontract_applications ADD COLUMN bill_no text; ALTER TABLE subcontract_application_items ADD COLUMN unit_id uuid");
+        // Descriptive columns and identities are already supplied by the same current catalog projection.
         var details = new SubcontractKitService(new org.springframework.jdbc.core.JdbcTemplate(
                 new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection,true)),
                 org.mockito.Mockito.mock(com.uten.imp.application.port.SubcontractOutboundWakePort.class));
@@ -633,7 +605,13 @@ class SubcontractKitBatchAuthorityPostgresTest {
         SubcontractKitService kit,com.uten.imp.application.port.SubcontractChainNoticePort notices,
         org.springframework.transaction.support.TransactionTemplate tx) {}
     private NoticeRuntime noticeRuntime() throws Exception {
-        execute("CREATE TABLE subcontract_application_kit_notice_marks(application_item_id uuid PRIMARY KEY REFERENCES subcontract_application_items(id),notified_orderable numeric(18,4) NOT NULL DEFAULT 0,epoch integer NOT NULL DEFAULT 0,updated_at timestamptz DEFAULT now())");
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(
+                new org.springframework.jdbc.core.JdbcTemplate(
+                        new org.springframework.jdbc.datasource.SingleConnectionDataSource(connection, true)),
+                "subcontract_application_kit_notice_marks");
+        // The catalog helper deliberately omits business FKs; retain this real V809
+        // parent key-share/ON DELETE CASCADE relationship for watermark concurrency.
+        execute("ALTER TABLE subcontract_application_kit_notice_marks ADD CONSTRAINT subcontract_application_kit_notice_marks_application_item_id_fkey FOREIGN KEY(application_item_id) REFERENCES subcontract_application_items(id) ON DELETE CASCADE");
         execute("CREATE TABLE fixture_cards(application_item_id uuid PRIMARY KEY,shown_qty numeric(18,4))");
         connection.commit();
         var dataSource=new org.postgresql.ds.PGSimpleDataSource();dataSource.setURL(DB.getJdbcUrl());

@@ -53,10 +53,10 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
     @Test void realExistingSourcesAndAppliedHistoryRemainByteForByteAndTheirReversalStillWorks() {
         var support=new RootSupplyActualWarehouseEndToEndTest();beans.autowireBean(support);support.prepare();
         try {
-            // Seed historical BUY records through the existing explicit full-order
-            // command. Automatic public-source adoption belongs to the current
-            // schema and is covered by the ordinary full-head companion tests.
-            var fixture=support.manualFixture(false,true);support.passManual(fixture);
+            // Prepare versioned V854 procurement facts, then run real receipt/IQC/stock
+            // commands. The historical amount authority is restored before migrations;
+            // current-schema receipt reversal below always uses the production bean.
+            var fixture=new LegacyV854RootSupplyFixture(support).createAndPass();
             assertThat(db.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class)).isEqualTo(854);
             assertThat(db.queryForObject("SELECT pg_get_functiondef('fn_guard_root_output_event()'::regprocedure)",String.class))
                     .contains("a.warehouse_id=NEW.warehouse_id");

@@ -167,7 +167,7 @@ Future<_FakeApi> _open(WidgetTester tester, Set<String> permissions) async {
 Future<void> _pickWasher(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('weigh-count-pick-goods')));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('五金(HW)'));
+  await tester.tap(find.text('五金'));
   await tester.pumpAndSettle();
   // 2026-09-29 货品选择器选项=名称主行，点名称行。
   await tester.tap(find.text('垫片M5'));

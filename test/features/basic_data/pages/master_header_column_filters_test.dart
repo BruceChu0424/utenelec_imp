@@ -66,7 +66,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('五金类(S-HW)'));
+      await tester.tap(find.text('五金类'));
       await tester.pumpAndSettle();
 
       final table = _tableOf<SupplierListItem>(tester);

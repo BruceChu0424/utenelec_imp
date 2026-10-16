@@ -24,7 +24,7 @@ import java.util.UUID;
  * ADR-156 委外申请物料齐套才解锁下单。
  *
  * <p>委外加工价每天不一样, 直属物料不齐时不让生成委外订货单; 现有物料够做一部分或全部时才解锁,
- * 而且只能按现有物料够做的套数下单。齐套数量只在库里算一处(V809 {@code fn_subcontract_application_kit_facts}
+ * 而且只能按现有物料够做的套数下单。齐套数量只在库里算一处(V868 批量物料池权威; 旧单条入口 {@code fn_subcontract_application_kit_facts}
  * / {@code fn_subcontract_order_kit_shortages}), 这里只读:
  * <ul>
  *   <li>{@link #requireOrderKit}: 建单、改单、送审、批准、批准后加量的守卫, 不够就 409 点名缺哪种物料;</li>
@@ -139,6 +139,20 @@ public class SubcontractKitService {
     /** 委外申请明细的齐套情况(任务中心「物料齐套情况」)。 */
     @Transactional(readOnly = true)
     public ApplicationKit applicationKit(UUID applicationItemId) {
+        if (applicationItemId == null) throw new ApiException(ErrorCode.NOT_FOUND, "委外申请明细不存在");
+        ApplicationKit result = applicationKits(List.of(applicationItemId))
+                .get(applicationItemId);
+        if (result == null) throw new ApiException(ErrorCode.NOT_FOUND, "委外申请明细不存在");
+        return result;
+    }
+
+    /** Complete detail facts for existing visible heads, using one shared material-pool projection. */
+    @Transactional(readOnly = true)
+    public Map<UUID, ApplicationKit> applicationKits(Collection<UUID> applicationItemIds) {
+        if (applicationItemIds == null || applicationItemIds.isEmpty()) return Map.of();
+        String ids = applicationItemIds.stream().filter(Objects::nonNull).distinct().sorted()
+                .map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        if (ids.isEmpty()) return Map.of();
         List<Map<String, Object>> heads = jdbc.queryForList("""
                 SELECT item.id, application.id AS application_id, application.bill_no,
                        item.goods_id, goods.code AS goods_code, goods.name AS goods_name,
@@ -149,24 +163,34 @@ public class SubcontractKitService {
                 JOIN goods ON goods.id = item.goods_id
                 LEFT JOIN colors color ON color.id = item.color_id
                 LEFT JOIN units unit ON unit.id = item.unit_id
-                WHERE item.id = ? AND NOT item.is_deleted AND NOT application.is_deleted
-                """, applicationItemId);
-        if (heads.isEmpty()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "委外申请明细不存在");
-        }
-        Map<String, Object> head = heads.getFirst();
-        BigDecimal openQty = decimal(head.get("open_qty"));
-        List<MaterialFact> materials = new ArrayList<>();
-        BigDecimal kit = null;
-        for (Map<String, Object> row : jdbc.queryForList("""
+                WHERE item.id = ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[])) AND NOT item.is_deleted AND NOT application.is_deleted
+                """, ids);
+        if (heads.isEmpty()) return Map.of();
+        Map<UUID, List<Map<String, Object>>> facts = new HashMap<>();
+        for (Map<String, Object> fact : jdbc.queryForList("""
                 SELECT fact.*, goods.code AS goods_code, goods.name AS goods_name,
                        color.name AS color_name, unit.name AS unit_name
-                FROM fn_subcontract_application_kit_facts(?, NULL) fact
+                FROM fn_subcontract_application_kit_facts_batch(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]), NULL) fact
                 JOIN goods ON goods.id = fact.component_goods_id
                 LEFT JOIN colors color ON color.id = fact.color_id
                 LEFT JOIN units unit ON unit.id = goods.unit_id
-                ORDER BY fact.sort_order, fact.edge_id
-                """, applicationItemId)) {
+                ORDER BY fact.application_item_id, fact.sort_order, fact.edge_id
+                """, ids)) {
+            facts.computeIfAbsent((UUID) fact.get("application_item_id"), ignored -> new ArrayList<>()).add(fact);
+        }
+        Map<UUID, ApplicationKit> result = new LinkedHashMap<>();
+        for (Map<String, Object> head : heads) {
+            UUID id = (UUID) head.get("id");
+            result.put(id, applicationKit(head, facts.getOrDefault(id, List.of())));
+        }
+        return result;
+    }
+
+    private ApplicationKit applicationKit(Map<String, Object> head, List<Map<String, Object>> factRows) {
+        BigDecimal openQty = decimal(head.get("open_qty"));
+        List<MaterialFact> materials = new ArrayList<>();
+        BigDecimal kit = null;
+        for (Map<String, Object> row : factRows) {
             BigDecimal bomUnitQty = decimal(row.get("bom_unit_qty"));
             BigDecimal needed = ceil4(openQty.multiply(bomUnitQty));
             BigDecimal free = decimal(row.get("free_qty"));
@@ -199,13 +223,20 @@ public class SubcontractKitService {
         if (lines == null || lines.isEmpty()) {
             return result;
         }
+        String ids = lines.stream().map(SelectionLine::applicationItemId).filter(Objects::nonNull)
+                .distinct().sorted().map(UUID::toString).collect(java.util.stream.Collectors.joining(","));
+        Map<UUID, List<Map<String, Object>>> factsByApplication = new HashMap<>();
+        for (Map<String, Object> fact : jdbc.queryForList("""
+                SELECT application_item_id, component_goods_id, color_id, bom_unit_qty, exact_free_qty, public_free_qty
+                FROM fn_subcontract_application_kit_facts_batch(
+                    CAST(string_to_array(CAST(? AS text), ',') AS uuid[]), NULL)
+                ORDER BY application_item_id, sort_order, edge_id
+                """, ids)) {
+            factsByApplication.computeIfAbsent((UUID) fact.get("application_item_id"), ignored -> new ArrayList<>()).add(fact);
+        }
         Map<String, BigDecimal> publicLeft = new HashMap<>();
         for (SelectionLine line : lines) {
-            List<Map<String, Object>> facts = jdbc.queryForList("""
-                    SELECT component_goods_id, color_id, bom_unit_qty, exact_free_qty, public_free_qty
-                    FROM fn_subcontract_application_kit_facts(?, NULL)
-                    ORDER BY sort_order, edge_id
-                    """, line.applicationItemId());
+            List<Map<String, Object>> facts = factsByApplication.getOrDefault(line.applicationItemId(), List.of());
             if (facts.isEmpty()) {
                 result.put(line.applicationItemId(), new SelectionKit(BigDecimal.ZERO, BigDecimal.ZERO));
                 continue;
@@ -303,9 +334,9 @@ public class SubcontractKitService {
             return result;
         }
         jdbc.query("""
-                SELECT item.id, fn_subcontract_application_orderable_qty(item.id)
-                FROM subcontract_application_items item
-                WHERE item.id = ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]))
+                SELECT quantity.application_item_id, quantity.orderable_qty
+                FROM fn_subcontract_application_orderable_batch(
+                    CAST(string_to_array(CAST(? AS text), ',') AS uuid[])) quantity
                 """, rs -> {
             result.put(rs.getObject(1, UUID.class), decimal(rs.getBigDecimal(2)).max(BigDecimal.ZERO));
         }, ids);

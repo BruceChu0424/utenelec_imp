@@ -178,6 +178,7 @@ class _SubcontractDecompositionPageState
   String? _drawError;
   int _drawRequestId = 0;
   int _drawCountRequestId = 0;
+  int _drawPage = 1;
 
   /// 领料红数(可领行数)；null = 未知(加载中/失败，不伪装成 0)。
   int? _drawCount;
@@ -190,6 +191,9 @@ class _SubcontractDecompositionPageState
   String? _drawOrderId;
   String? _drawOrderLabel;
   String? _drawOrderItemId;
+  Set<String> _drawApplicationItemIds = const {};
+  String? _drawApplicationId;
+  String? _drawApplicationLabel;
   final Set<String> _selectedDrawIds = <String>{};
   bool _drawNavigating = false;
 
@@ -418,6 +422,7 @@ class _SubcontractDecompositionPageState
     _categoryCounts = null;
     _acceptedCategoryScope = null;
     _drawData = null;
+    _drawPage = 1;
     _error = null;
     _drawError = null;
     _loading = false;
@@ -436,6 +441,9 @@ class _SubcontractDecompositionPageState
     _drawOrderId = null;
     _drawOrderItemId = null;
     _drawOrderLabel = null;
+    _drawApplicationItemIds = const {};
+    _drawApplicationId = null;
+    _drawApplicationLabel = null;
     _historyTime = const UtenHistoryTimeValue.all();
   }
 
@@ -509,6 +517,10 @@ class _SubcontractDecompositionPageState
         ? orderId!.trim()
         : null;
     _drawOrderLabel = null;
+    _drawApplicationItemIds = const {};
+    _drawApplicationId = null;
+    _drawApplicationLabel = null;
+    _drawPage = 1;
     return true;
   }
 
@@ -633,22 +645,32 @@ class _SubcontractDecompositionPageState
     }
   }
 
-  /// 领料行(「待处理」拍平表顶部)：一次拉全(服务端上限 200)，不走表格分页。
-  Future<void> _loadDraw() async {
-    if (!mounted) return;
+  /// 领料行与申请行分别使用真实服务端分页，申请定位先筛范围再计数、分页。
+  Future<void> _loadDraw({int? page}) async {
+    if (!mounted || !_pendingSeg || !_drawVisible) return;
     final requestId = ++_drawRequestId;
+    final requestedPage = page ?? _drawPage;
     setState(() {
+      _drawPage = requestedPage;
       _drawLoading = true;
       _drawError = null;
+      _drawData = null;
     });
     try {
       final next = await _drawRepository.list(
+        page: requestedPage,
         size: SubcontractDrawRepository.listLimit,
         keyword: _keyword,
         orderId: _drawOrderId,
         orderItemIds: _drawOrderItemId == null ? const [] : [_drawOrderItemId!],
+        applicationItemIds: _drawApplicationItemIds.toList(growable: false),
+        applicationId: _drawApplicationId,
       );
       if (!mounted || requestId != _drawRequestId) return;
+      if (requestedPage > 1 && next.page.totalPages < requestedPage) {
+        await _loadDraw(page: next.page.totalPages.clamp(1, requestedPage));
+        return;
+      }
       final selectable = next.canSubmitDraw
           ? next.page.items
                 .where((row) => row.canDraw)
@@ -702,6 +724,11 @@ class _SubcontractDecompositionPageState
       if (!seg.history) _historyTime = const UtenHistoryTimeValue.all();
       _selectedIds.clear();
       _columnFilters.clear();
+      _drawRequestId++;
+      _drawData = null;
+      _drawLoading = false;
+      _drawPage = 1;
+      _selectedDrawIds.clear();
     });
     // 「待处理」= 申请行 + 领料行两个数据源一起拉。
     if (seg.code == _waitingOrderStage) {
@@ -738,7 +765,10 @@ class _SubcontractDecompositionPageState
   void _applyKeyword(String value) {
     final normalized = value.trim();
     if (normalized == _keyword) return;
-    setState(() => _keyword = normalized);
+    setState(() {
+      _keyword = normalized;
+      _drawPage = 1;
+    });
     _load(page: 1);
     // 领料行有自己的关键字匹配面(订货单号/委外商/委外件)，在「待处理」里一起搜。
     if (_pendingSeg) _loadDraw();
@@ -753,10 +783,15 @@ class _SubcontractDecompositionPageState
       _exception = null;
       _selectedIds.clear();
       _columnFilters.clear();
+      _drawApplicationItemIds = const {};
+      _drawApplicationId = null;
+      _drawApplicationLabel = null;
       _drawOrderId = orderId;
       _drawOrderItemId = null;
       final number = task.actionDocument?.number.trim() ?? '';
       _drawOrderLabel = number.isEmpty ? null : number;
+      _drawPage = 1;
+      _selectedDrawIds.clear();
     });
     _load(page: 1);
     _loadDraw();
@@ -768,6 +803,11 @@ class _SubcontractDecompositionPageState
       _drawOrderId = null;
       _drawOrderItemId = null;
       _drawOrderLabel = null;
+      _drawApplicationItemIds = const {};
+      _drawApplicationId = null;
+      _drawApplicationLabel = null;
+      _drawPage = 1;
+      _selectedDrawIds.clear();
     });
     _loadDraw();
   }
@@ -1166,7 +1206,9 @@ class _SubcontractDecompositionPageState
               key: const Key('subcontract-draw-scope'),
               avatar: const Icon(Icons.filter_alt_outlined, size: 18),
               label: Text(
-                _drawOrderItemId != null
+                _drawApplicationItemIds.isNotEmpty || _drawApplicationId != null
+                    ? '领料行只看申请 $_drawApplicationLabel 的关联任务'
+                    : _drawOrderItemId != null
                     ? '领料行只看通知里的这条委外任务'
                     : _drawOrderLabel != null
                     ? '领料行只看订货单 $_drawOrderLabel 的委外任务'
@@ -1177,6 +1219,10 @@ class _SubcontractDecompositionPageState
             ),
           ),
         ],
+        if (_pendingSeg &&
+            _drawVisible &&
+            (_drawData?.page.totalPages ?? 0) > 1)
+          _buildDrawPager(),
         // 独立异常手动筛选：默认「全部」，财务退回只在状态列筛选。
         // 每一项都是「不处理会出事」（逾期/缺料/延期/待挂接）→ 一律红徽章。
         if (seg != null && !seg.history && exceptionOptions.isNotEmpty) ...[
@@ -1461,16 +1507,57 @@ class _SubcontractDecompositionPageState
 
   // —— 「待处理」领料行(ADR-171 修订二：拍平进待处理表) ——
 
-  bool get _drawScoped => _drawOrderId != null || _drawOrderItemId != null;
+  bool get _drawScoped =>
+      _drawOrderId != null ||
+      _drawOrderItemId != null ||
+      _drawApplicationId != null ||
+      _drawApplicationItemIds.isNotEmpty;
 
   /// 领料行是否允许勾选(批量领料)：领料行可见且账号有提交权、服务端标了可领。
   bool get _canSubmitDraw =>
-      _drawVisible && (_drawData?.canSubmitDraw ?? false);
+      _pendingSeg &&
+      _drawVisible &&
+      !_drawLoading &&
+      _drawError == null &&
+      (_drawData?.canSubmitDraw ?? false);
+
+  Widget _buildDrawPager() {
+    final page = _drawData!.page;
+    return Wrap(
+      key: const Key('subcontract-draw-pagination'),
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: UtenSpacing.s8,
+      children: [
+        Text('领料任务 ${page.page} / ${page.totalPages} · 共 ${page.total} 条'),
+        TextButton.icon(
+          key: const Key('subcontract-draw-previous'),
+          onPressed: _drawLoading || page.page <= 1
+              ? null
+              : () => _changeDrawPage(page.page - 1),
+          icon: const Icon(Icons.chevron_left_rounded),
+          label: const Text('上一页领料任务'),
+        ),
+        TextButton.icon(
+          key: const Key('subcontract-draw-next'),
+          onPressed: _drawLoading || page.page >= page.totalPages
+              ? null
+              : () => _changeDrawPage(page.page + 1),
+          icon: const Icon(Icons.chevron_right_rounded),
+          label: const Text('下一页领料任务'),
+        ),
+      ],
+    );
+  }
+
+  void _changeDrawPage(int page) {
+    _selectedDrawIds.clear();
+    _loadDraw(page: page);
+  }
 
   bool _actionableDraw(SubcontractDrawTaskRow row) =>
       _canSubmitDraw && row.canDraw && row.status.isDrawable;
 
-  /// 「待处理」拍平表：领料行(钉顶，一次拉全) + 委外申请行(工作台投影服务端分页)。
+  /// 「待处理」拍平表：领料当前页钉顶，申请行沿原工作台投影独立分页。
   Widget _buildPendingTable(OperationsWorkbenchData data) {
     final canOrder =
         _hasDecomposePermissions && data.capabilities.canCreateSubcontractOrder;
@@ -1635,6 +1722,7 @@ class _SubcontractDecompositionPageState
         MasterColumnDef(
           key: 'requiredQty',
           label: '需求量',
+          info: '申请行是原申请需求；领料行是该订货明细的需求，数量均使用本行单位。',
           width: 110,
           type: 'number',
           value: (row) => switch (row) {
@@ -1643,7 +1731,10 @@ class _SubcontractDecompositionPageState
                   ? '—'
                   : '${formatWorkbenchQuantity(task.requiredQty)} ${task.unitName}'
                         .trim(),
-            SubcontractPendingDrawRow() => '—',
+            SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+              row.orderQty,
+              row.unitName,
+            ),
           },
         ),
         MasterColumnDef(
@@ -1657,8 +1748,22 @@ class _SubcontractDecompositionPageState
                   ? '${task.openLineCount} 行'
                   : '${formatWorkbenchQuantity(task.openQty)} ${task.unitName}'
                         .trim(),
-            SubcontractPendingDrawRow() => '—',
+            SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+              0,
+              row.unitName,
+            ),
           },
+          cellBuilder: (context, row) =>
+              _pendingQuantityCell(context, switch (row) {
+                SubcontractApplicationRow(:final task) =>
+                  task.isDocumentGrouped
+                      ? '${task.openLineCount} 行'
+                      : formatQtyWithUnit(task.openQty, task.unitName),
+                SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+                  0,
+                  row.unitName,
+                ),
+              }, row is SubcontractApplicationRow && row.task.openQty > 0),
         ),
         // ADR-156：紧挨数量列，「可部分下单 | 4 / 剩余 6 件」一眼读完。
         MasterColumnDef(
@@ -1672,8 +1777,24 @@ class _SubcontractDecompositionPageState
           value: (row) => switch (row) {
             SubcontractApplicationRow(:final task) =>
               task.orderableQtyText ?? '—',
-            SubcontractPendingDrawRow() => '—',
+            SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+              0,
+              row.unitName,
+            ),
           },
+          cellBuilder: (context, row) => _pendingQuantityCell(
+            context,
+            switch (row) {
+              SubcontractApplicationRow(:final task) =>
+                task.orderableQtyText ?? '—',
+              SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+                0,
+                row.unitName,
+              ),
+            },
+            row is SubcontractApplicationRow &&
+                (row.task.orderableQty ?? 0) > 0,
+          ),
         ),
         _pendingDrawQtyColumn('orderQty', '订货数量', (row) => row.orderQty),
         _pendingDrawQtyColumn('drawnQty', '已领', (row) => row.drawnQty),
@@ -1801,13 +1922,109 @@ class _SubcontractDecompositionPageState
     // 2026-10-10 数量+单位口径：单位(订货单位=委外件单位)内联进数字，
     // 独立「单位」列已删除；排序由表格组件剥单位后缀兜底。
     value: (row) => switch (row) {
-      SubcontractApplicationRow() => '—',
+      SubcontractApplicationRow(:final task) => _applicationDrawQtyText(
+        task,
+        key,
+      ),
       SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
         qty(row),
         row.unitName,
       ),
     },
+    cellBuilder: (context, row) {
+      final text = switch (row) {
+        SubcontractApplicationRow(:final task) => _applicationDrawQtyText(
+          task,
+          key,
+        ),
+        SubcontractPendingDrawRow(:final row) => formatQtyWithUnit(
+          qty(row),
+          row.unitName,
+        ),
+      };
+      if (row is SubcontractApplicationRow &&
+          key != 'orderQty' &&
+          row.task.allocatedQty > 0 &&
+          _drawVisible) {
+        return InkWell(
+          onTap: () => _showApplicationDrawTasks(row.task),
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: MasterDataTableCellScope.maybeOf(context)?.selected == true
+                  ? MasterDataTableCellScope.maybeOf(context)?.foregroundColor
+                  : Theme.of(context).colorScheme.primary,
+            ),
+          ),
+        );
+      }
+      final value = switch (row) {
+        SubcontractApplicationRow(:final task) =>
+          key == 'orderQty' ? task.allocatedQty : 0,
+        SubcontractPendingDrawRow(:final row) => qty(row),
+      };
+      return _pendingQuantityCell(
+        context,
+        text,
+        const {'orderQty', 'drawableQty', 'shortQty'}.contains(key) &&
+            value > 0,
+      );
+    },
   );
+
+  String _applicationDrawQtyText(OperationsWorkbenchTask task, String key) {
+    if (task.isDocumentGrouped) return '查看明细';
+    if (key == 'orderQty') {
+      return formatQtyWithUnit(task.allocatedQty, task.unitName);
+    }
+    if (task.allocatedQty <= 0) return '下单后领料';
+    return _drawVisible ? '见领料任务' : '受限';
+  }
+
+  void _showApplicationDrawTasks(OperationsWorkbenchTask task) {
+    if (!_pendingSeg || _loading || !_drawVisible) return;
+    final parentId = task.isDocumentGrouped ? task.actionDocument?.id : null;
+    final ids = parentId == null
+        ? _applicationItemIdsOf(task).toSet()
+        : <String>{};
+    if (ids.isEmpty && (parentId == null || parentId.isEmpty)) {
+      context.appInfo('当前申请缺少可定位的明细来源，请刷新后重试。');
+      return;
+    }
+    setState(() {
+      _drawOrderId = null;
+      _drawOrderItemId = null;
+      _drawOrderLabel = null;
+      _drawApplicationItemIds = ids;
+      _drawApplicationId = parentId;
+      _drawApplicationLabel = task.actionDocument?.number ?? task.planNo;
+      _drawPage = 1;
+      // 从申请检索结果进入领料时以来源身份定位，不让旧申请号搜索挡住真实订货任务。
+      _keyword = '';
+      _selectedDrawIds.clear();
+    });
+    _load(page: 1);
+    _loadDraw(page: 1);
+  }
+
+  Widget _pendingQuantityCell(BuildContext context, String text, bool urgent) {
+    final scope = MasterDataTableCellScope.maybeOf(context);
+    return Text(
+      text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: urgent
+          ? TextStyle(
+              color: scope?.selected == true
+                  ? scope?.foregroundColor
+                  : Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w700,
+            )
+          : null,
+    );
+  }
 
   static String _label(String? value) =>
       value?.trim().isNotEmpty == true ? value!.trim() : '—';

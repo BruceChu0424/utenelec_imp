@@ -36,7 +36,7 @@ import java.util.UUID;
  * 申请单要有查看委外申请权限(申请是计划系统生成的需求单, 不按归属隔离); 不可见与不存在一样回答。
  *
  * <p>申请单回答 ADR-156 的锁: 直属物料不齐时申请锁住不能生成订货单, 只能按现有物料够做的套数下单, 逐种物料
- * 说清差多少; 数量全部来自 V809 齐套函数(经 {@link SubcontractKitService}), 这里不另算。草稿订货单同样
+ * 说清差多少; 数量全部来自 V868 齐套批量权威(经 {@link SubcontractKitService}), 这里不另算。草稿订货单同样
  * 读齐套检查, 提前说明提交财务或财务批准时会被拦。已批准订货单读订货单进度(ADR-143 时间线与物料段)。
  *
  * <p>回答里只有状态、日期、数量、货品与物料编码和名称; 不带委外商名、人员姓名、价格金额和退回原因原文。
@@ -281,8 +281,11 @@ public class SubcontractOrderAiChatTool implements AiChatToolPort {
         boolean bomMissing = false;
         boolean anyLocked = false;
         List<String> missing = new ArrayList<>();
+        Map<UUID, SubcontractKitService.ApplicationKit> applicationKits = kits.applicationKits(
+                items.stream().map(item -> (UUID) item.get("id")).toList());
         for (Map<String, Object> item : items) {
-            SubcontractKitService.ApplicationKit kit = kits.applicationKit((UUID) item.get("id"));
+            SubcontractKitService.ApplicationKit kit = applicationKits.get((UUID) item.get("id"));
+            if (kit == null) throw new ApiException(ErrorCode.NOT_FOUND, "委外申请明细不存在");
             String unit = unit(kit.unitName());
             BigDecimal itemOpen = zero(kit.openQty());
             BigDecimal itemOrderable = zero(kit.orderableQty());

@@ -253,7 +253,12 @@ class FulfillmentWorkbenchQueryServiceTest {
         assertTrue(rowsSql.contains(
                 "AND base.open_line_count > 0 AND NOT COALESCE(bom_gap.bom_missing, FALSE)"
                         + " AND COALESCE(kit.orderable_lines, 0) > 0) AS can_create_order"));
-        assertTrue(rowsSql.contains("fn_subcontract_application_kit_qty(kit_ref.item_id::uuid, NULL)"));
+        assertTrue(rowsSql.contains("WITH kit_base AS MATERIALIZED"));
+        assertTrue(rowsSql.contains("WHERE department = 'SUBCONTRACT'"));
+        assertTrue(rowsSql.contains("kit_quantities AS MATERIALIZED"));
+        assertTrue(rowsSql.contains("fn_subcontract_application_orderable_batch(ARRAY("));
+        assertTrue(rowsSql.contains("JOIN kit_quantities quantity ON quantity.application_item_id = kit_ref.item_id::uuid"));
+        assertFalse(rowsSql.contains("fn_subcontract_application_kit_qty("), "no per-ID global pool rescan");
         assertTrue(rowsSql.contains("kit.orderable_qty AS orderable_qty"));
         assertTrue(rowsSql.contains("NOT EXISTS (SELECT 1 FROM fn_subcontract_draw_edges(gap_item.goods_id))"));
         assertTrue(rowsSql.contains("bom_gap.rd_task_no AS rd_task_no"));

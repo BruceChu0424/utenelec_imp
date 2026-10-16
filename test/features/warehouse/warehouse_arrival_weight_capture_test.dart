@@ -188,7 +188,20 @@ void main() {
       grid.columns.singleWhere((column) => column.key == 'physicalQty').label,
       '实物数量',
     );
-    expect(find.text('5 个'), findsNWidgets(2));
+    final totals = find.byKey(const Key('warehouse-arrival-totals'));
+    final footerText = find
+        .descendant(of: totals, matching: find.byType(Text))
+        .evaluate()
+        .toSet();
+    // The shared footer also renders received/physical totals with units. Check
+    // the two actual row cells without counting those independent summaries.
+    expect(
+      find
+          .descendant(of: _grid(), matching: find.text('5 个'))
+          .evaluate()
+          .where((element) => !footerText.contains(element)),
+      hasLength(2),
+    );
     expect(
       tester
           .widget<TextField>(
@@ -214,7 +227,6 @@ void main() {
       findsOneWidget,
     );
     // 表尾: 实称 20 g, 称重偏差 1 行。
-    final totals = find.byKey(const Key('warehouse-arrival-totals'));
     expect(
       find.descendant(of: totals, matching: find.text('20 g')),
       findsOneWidget,

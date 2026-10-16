@@ -1,8 +1,8 @@
-// 库存详情页 (/stock/item/:goodsId?tab=balance|ledger|weight) —— 即时库存双击货品行进入。
+// 库存详情页 (/stock/item/:goodsId?tab=balance|ledger|weight|trace) —— 即时库存双击货品行进入。
 //
 // 本页只是单货品库存面板 (lib/shared/stock_ledger/goods_stock_ledger_panel.dart) 的宿主:
 // 标题 (货品名 · 编号 · 系列 · 库位) + 刷新 + 返回即刷新; 余额 / 出入库流水 / 单重学习
-// 三个分段与货品详情「库存与出入库」页签完全同一套。
+// 四个分段与货品详情「库存与出入库」页签完全同一套。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

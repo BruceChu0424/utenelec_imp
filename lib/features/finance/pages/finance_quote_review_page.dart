@@ -1552,7 +1552,6 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       onFilterChanged: (_, _) {},
       emptyMessage: '—',
       summaryBar: items.isEmpty ? null : _summary(l10n, review),
-      summaryBarInline: true,
     );
   }
 

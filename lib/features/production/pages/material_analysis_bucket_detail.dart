@@ -1189,7 +1189,7 @@ class _MaterialAnalysisBucketPageState
       }
       if (product.canSchedule) {
         return (
-          label: '等待下达车间',
+          label: _waitingPlanningOrderLabel,
           style: MaterialPreparationStatusStyle.resolve(
             phase: MaterialPreparationStatusPhase.pending,
           ),
@@ -1218,7 +1218,7 @@ class _MaterialAnalysisBucketPageState
     }
     return (
       label: _host._canArrangePendingMakeCandidate(candidate)
-          ? '等待下达车间'
+          ? _waitingPlanningOrderLabel
           : '当前状态不可创建',
       style: MaterialPreparationStatusStyle.resolve(
         phase: _host._canArrangePendingMakeCandidate(candidate)

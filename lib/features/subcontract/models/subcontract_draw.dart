@@ -72,6 +72,7 @@ class SubcontractDrawTaskRow {
     required this.deliverDate,
     required this.canDraw,
     this.planNo,
+    this.applicationItemIds = const [],
   });
 
   final String orderItemId;
@@ -118,6 +119,7 @@ class SubcontractDrawTaskRow {
 
   /// 来源计划(WL 分析编号，为空时服务端回落订货单号)；「待处理」拍平表与申请行同列显示。
   final String? planNo;
+  final List<String> applicationItemIds;
 
   factory SubcontractDrawTaskRow.fromJson(Map<String, dynamic> json) =>
       SubcontractDrawTaskRow(
@@ -147,6 +149,9 @@ class SubcontractDrawTaskRow {
         deliverDate: _string(json, 'deliverDate'),
         canDraw: json['canDraw'] == true,
         planNo: _string(json, 'planNo'),
+        applicationItemIds: (json['applicationItemIds'] as List? ?? const [])
+            .map((id) => id.toString())
+            .toList(growable: false),
       );
 }
 

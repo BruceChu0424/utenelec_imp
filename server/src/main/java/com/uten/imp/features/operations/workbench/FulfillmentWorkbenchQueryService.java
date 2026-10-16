@@ -956,25 +956,33 @@ public class FulfillmentWorkbenchQueryService {
                            COALESCE(SUM(kit_line.orderable), 0) AS orderable_qty,
                            COALESCE(SUM(kit_line.open_qty), 0) AS open_qty
                     FROM unnest(base.action_item_ids) kit_ref(item_id)
+                    JOIN kit_quantities quantity ON quantity.application_item_id = kit_ref.item_id::uuid
                     CROSS JOIN LATERAL (
-                        SELECT fn_subcontract_application_open_qty(kit_ref.item_id::uuid) AS open_qty
-                    ) kit_open
-                    CROSS JOIN LATERAL (
-                        SELECT kit_open.open_qty,
-                               CASE WHEN kit_open.open_qty > 0
-                                    THEN LEAST(kit_open.open_qty,
-                                               fn_subcontract_application_kit_qty(kit_ref.item_id::uuid, NULL))
-                                    ELSE 0 END AS orderable
+                        SELECT quantity.open_qty, quantity.orderable_qty AS orderable
                     ) kit_line
                     WHERE base.action_doc_type = 'SUBCONTRACT_APPLICATION'
                       AND base.task_status = 'WAITING_ORDER'
                       AND NOT COALESCE(bom_gap.bom_missing, FALSE)
                 ) kit ON TRUE
                 """ : "";
+        // Materialize the existing department/source rows before projecting kit
+        // quantities. One batch serves every grouped application and every count;
+        // the authority still accounts for ALL global orders, not only these rows.
+        String kitPrefix = subcontract ? """
+                WITH kit_base AS MATERIALIZED (SELECT * FROM %s WHERE department = 'SUBCONTRACT'),
+                kit_quantities AS MATERIALIZED (
+                    SELECT quantity.* FROM fn_subcontract_application_orderable_batch(ARRAY(
+                        SELECT DISTINCT reference.item_id::uuid
+                        FROM kit_base base CROSS JOIN LATERAL unnest(base.action_item_ids) reference(item_id)
+                        WHERE base.action_doc_type = 'SUBCONTRACT_APPLICATION' AND base.task_status = 'WAITING_ORDER'
+                    )) quantity
+                )
+                """.formatted(source) : "";
+        if (subcontract) source = "kit_base";
         // A grouped order can contain several real source issues. Its earliest source issue
         // remains the displayed date; later application creation never substitutes for it.
         return """
-                (SELECT base.department, base.task_id, base.package_id, base.plan_id, base.plan_no,
+                (%sSELECT base.department, base.task_id, base.package_id, base.plan_id, base.plan_no,
                         base.warehouse_id, base.warehouse_name, base.goods_id, base.goods_code,
                         base.goods_name, base.spec, base.color_id, base.color_name, base.unit_id, base.unit_name,
                         base.supply_route, base.required_qty, base.allocated_qty, base.fulfilled_qty,
@@ -995,7 +1003,7 @@ public class FulfillmentWorkbenchQueryService {
                         %s AS orderable_qty,
                         base.supplier_name
                  FROM %s base %s %s %s %s)
-                """.formatted(exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
+                """.formatted(kitPrefix, exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
                         subcontract ? " AND NOT COALESCE(bom_gap.bom_missing, FALSE)"
                                 + " AND COALESCE(kit.orderable_lines, 0) > 0" : "",

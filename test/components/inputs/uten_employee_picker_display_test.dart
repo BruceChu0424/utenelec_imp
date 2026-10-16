@@ -5,6 +5,9 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
+import 'package:uten_imp/components/inputs/uten_date_field.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/features/employee/widgets/department_employee_picker.dart';
 import 'package:uten_imp/shared/formatters/employee_display.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -25,6 +28,62 @@ void main() {
     expect(
       const UtenEmployeePickerItem(id: 'legacy', name: '历史员工').displayName,
       '历史员工',
+    );
+  });
+
+  testWidgets('单选和多选员工字段与日期共用主题高度', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLightTheme().copyWith(platform: TargetPlatform.windows),
+        home: Scaffold(
+          body: UtenControlTheme(
+            child: Row(
+              children: [
+                Expanded(
+                  child: UtenEmployeePicker(
+                    label: '经办人',
+                    initial: employee,
+                    loader: (_) async => const [employee],
+                    onChanged: (_) {},
+                  ),
+                ),
+                Expanded(
+                  child: UtenEmployeeMultiPicker(
+                    label: '参与人',
+                    loader: (_) async => const [employee],
+                    onChanged: (_) {},
+                  ),
+                ),
+                Expanded(
+                  child: UtenDateField(
+                    label: '交货日期',
+                    value: DateTime(2026, 10, 15),
+                    onChanged: (_) {},
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    double outlineHeight(Type picker) => tester
+        .getSize(
+          find
+              .descendant(
+                of: find.byType(picker),
+                matching: find.byType(InputDecorator),
+              )
+              .first,
+        )
+        .height;
+    expect(outlineHeight(UtenEmployeePicker), outlineHeight(UtenDateField));
+    expect(
+      outlineHeight(UtenEmployeeMultiPicker),
+      outlineHeight(UtenDateField),
     );
   });
 

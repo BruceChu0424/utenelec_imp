@@ -30,7 +30,7 @@ public final class ProcurementReceiptHeaderAuthority {
                 : orderItemIds.stream().filter(Objects::nonNull).distinct().toList();
         if (ids.isEmpty()) return supplied;
         @SuppressWarnings("unchecked") List<Object[]> sources = em.createNativeQuery(
-                "SELECT i.id,h.currency_id,h.tax_rate,h.settlement_method_id FROM " + prefix + "_order_items i "
+                "SELECT i.id,h.currency_id,fn_procurement_approved_tax_rate('" + kind + "',h.id,h.tax_rate),h.settlement_method_id FROM " + prefix + "_order_items i "
                 + "JOIN " + prefix + "_orders h ON h.id=i.order_id WHERE i.id IN (:ids) "
                 + "AND NOT i.is_deleted AND NOT h.is_deleted ORDER BY i.id")
                 .setParameter("ids", ids).getResultList();

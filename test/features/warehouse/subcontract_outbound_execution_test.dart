@@ -47,7 +47,7 @@ void main() {
     expect(draft.toPayload(), containsPair('id', 'issue-item'));
     expect(draft.toPayload(), containsPair('planItemId', 'plan-item'));
     expect(draft.toPayload(), containsPair('orderItemId', 'order-item'));
-    expect(draft.toPayload(), containsPair('qty', 10000));
+    expect(draft.toPayload(), containsPair('qty', '10000'));
     // 原单已记的实称重量随草稿带回可编辑格, 不改就原样保存 (ADR-135 §3.8)。
     expect(draft.toPayload(), containsPair('weight', 2.75));
     expect(draft.toPayload(), containsPair('qtyFromWeight', false));
@@ -74,6 +74,9 @@ void main() {
       'id': 'issue-item',
       'planItemId': 'plan-item',
       'qty': 5373,
+      'qtyExact': '5373',
+      'unitRate': 1,
+      'unitRateExact': '1',
       'weight': 10.75,
       'qtyFromWeight': true,
     });
@@ -116,6 +119,7 @@ void main() {
           id: 'line',
           planItemId: 'plan-line',
           qty: qty,
+          qtyText: qty.toString(),
           weight: weight,
           qtyFromWeight: qtyFromWeight,
         ),

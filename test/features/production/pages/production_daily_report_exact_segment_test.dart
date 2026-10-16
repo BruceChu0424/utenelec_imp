@@ -1960,8 +1960,27 @@ void main() {
     final api = _api();
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
+    // Product details reuse the grid too; their repeated labels belong to
+    // separate tables whose column settings are intentionally disabled.
+    bool belongsToMainGrid(Element element) {
+      var matches = false;
+      element.visitAncestorElements((ancestor) {
+        final owner = ancestor.widget;
+        if (owner is UtenEditableGrid<EditableGridRow>) {
+          matches = owner.tableKey == 'production.daily.items';
+          return false;
+        }
+        return true;
+      });
+      return matches;
+    }
+
     Finder mainHeader(String label) => find.descendant(
-      of: find.byType(UtenColumnHeaderMenuRegion),
+      of: find.byElementPredicate(
+        (element) =>
+            element.widget is UtenColumnHeaderMenuRegion &&
+            belongsToMainGrid(element),
+      ),
       matching: find.text(label),
     );
 

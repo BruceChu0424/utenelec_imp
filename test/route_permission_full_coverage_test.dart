@@ -80,8 +80,9 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 205，新增路径另由下方精确登记；当前 236 条守卫 / 17 条豁免。
-/// 两表共 32 项 any/all 登记，/workshop-material/count 同时登记两类守卫，去重为 31 条路径。
+/// 原守卫基数 205，新增路径另由下方精确登记；当前 239 条守卫 / 17 条豁免。
+/// 两表共 35 项 any/all 登记，/workshop-material/count 同时登记两类守卫，去重为 34 条路径。
+/// 2026-10-15 三条运维设置路径逐条登记，写动作仍由各自服务端能力校验；
 /// 2026-10-13 货品价格分析独立页登记，分析查看码与货品/分类查看码同时要求；
 /// 2026-10-12 仓库三条批量办理地址登记，查看守卫与原任务一致；
 /// 2026-10-06 V816 AI 用量看板：
@@ -153,6 +154,19 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   // V839: the route additionally requires super-admin identity through the
   // shared platform-settings capability policy; its permission grant stays explicit.
   '/admin/platform-settings': [Perm.authorizationManage],
+  // SMS configuration additionally requires current super-admin identity;
+  // operations readers may inspect status while mutations require their own grant.
+  '/admin/sms-settings': [Perm.authorizationManage],
+  '/admin/server-operations': [
+    Perm.serverStatusView,
+    Perm.serverUpdate,
+    Perm.serverCleanup,
+  ],
+  '/admin/server-storage': [
+    Perm.serverStatusView,
+    Perm.serverUpdate,
+    Perm.serverCleanup,
+  ],
   '/production/over-limit-dispositions': [Perm.productionPlanApprove],
   '/production/over-limit-dispositions/:id': [
     Perm.productionPlanApprove,

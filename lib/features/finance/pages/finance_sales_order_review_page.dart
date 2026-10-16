@@ -1192,7 +1192,6 @@ class _FinanceSalesOrderReviewPageState
       // 2026-09-15 用户口径：合计条属于表格那一块——渲染进表体滚动内容
       // 末尾（最后一行数据之下），不钉在表体外/按钮上方。
       summaryBar: _itemsSummary(r),
-      summaryBarInline: true,
     );
   }
 

@@ -5,7 +5,6 @@ import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.config.props.SmsProperties;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.visitor.dto.VisitorAuthDto;
 import com.uten.imp.security.AuthUser;
@@ -69,7 +68,6 @@ class VisitorAuthSessionPropagationTest {
                 jwt,
                 mock(SecurityContextCurrentUser.class),
                 tx,
-                mock(SmsProperties.class),
                 audit,
                 mock(LoginRateLimiter.class),
                 mock(MasterCodeService.class),
@@ -118,7 +116,6 @@ class VisitorAuthSessionPropagationTest {
                 mock(JwtService.class),
                 currentUser,
                 mock(TxSessionVars.class),
-                mock(SmsProperties.class),
                 mock(AuditService.class),
                 mock(LoginRateLimiter.class),
                 mock(MasterCodeService.class),

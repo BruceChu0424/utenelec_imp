@@ -118,6 +118,35 @@
       "doc": "docs/03-页面/平台设置页.md"
     },
     {
+      "route": "/admin/server-operations",
+      "title": "服务器更新",
+      "aliases": [
+        "发布源配置",
+        "服务器更新页",
+        "版本检查",
+        "预约更新"
+      ],
+      "module": "系统管理",
+      "purpose": "为授权运维人员提供版本检查、预约更新和更新进度核对。",
+      "paths": [
+        [
+          "工作台",
+          "系统管理",
+          "服务器更新"
+        ]
+      ],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "server:cleanup",
+        "server:update",
+        "server_status:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/服务器更新页.md"
+    },
+    {
       "route": "/admin/server-status",
       "title": "服务器状态",
       "aliases": [
@@ -135,11 +164,57 @@
       "parent": null,
       "record": false,
       "anyOf": [
+        "server:cleanup",
+        "server:update",
         "server_status:view"
       ],
       "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/服务器状态页.md"
+    },
+    {
+      "route": "/admin/server-storage",
+      "title": "服务器存储管理",
+      "aliases": [
+        "受控清理",
+        "存储管理",
+        "服务器存储",
+        "服务器存储页",
+        "资源管理"
+      ],
+      "module": "系统管理",
+      "purpose": "查看服务器实际资源占用，核对保护原因后清理允许删除的资源。",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "server:cleanup",
+        "server:update",
+        "server_status:view"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/服务器存储页.md"
+    },
+    {
+      "route": "/admin/sms-settings",
+      "title": "短信网关设置",
+      "aliases": [
+        "短信接入",
+        "短信接入设置页",
+        "短信服务商配置"
+      ],
+      "module": "系统管理",
+      "purpose": "为本公司配置验证码短信服务，核对来源与生效状态。",
+      "paths": [],
+      "parent": null,
+      "record": false,
+      "anyOf": [
+        "authorization:manage"
+      ],
+      "allOf": [],
+      "hubOf": [],
+      "doc": "docs/03-页面/短信接入设置页.md"
     },
     {
       "route": "/admin/system-settings",

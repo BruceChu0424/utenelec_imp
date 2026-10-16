@@ -1,0 +1,13 @@
+{
+  "storage": {
+    "system_root": "/opt/uten-imp",
+    "releases_root": "/opt/uten-imp/releases",
+    "preactivation_backup_root": "/srv/uten-backup/pre-activation",
+    "paired_backup_root": "/data/uten-imp-backups/paired",
+    "database_root": "/data/postgresql/16/main",
+    "uploads_root": "/var/lib/uten-imp-media/attachments",
+    "legacy_uploads_root": null,
+    "logs_root": "/var/log/uten-imp",
+    "cache_root": "/var/lib/uten-imp-media/attachments/preview"
+  }
+}

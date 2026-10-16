@@ -16,6 +16,8 @@ abstract interface class SubcontractDrawGateway {
     String? status,
     String? orderId,
     List<String> orderItemIds = const [],
+    List<String> applicationItemIds = const [],
+    String? applicationId,
   });
 
   /// 领料计数(ADR-171 修订二): 红 = 调用者可动手的可领行数; 黄 = 已提交领料、
@@ -47,8 +49,7 @@ class SubcontractDrawRepository implements SubcontractDrawGateway {
   /// 一次批量领料最多带入的委外任务数(与服务端预览/提交上限一致)。
   static const batchLimit = 50;
 
-  /// 「待处理」拍平表的领料行一次拉全的上限(与服务端 MAX_PAGE_SIZE 一致)；
-  /// 领料行钉在表格顶部不走分页，超过上限属于数据异常，服务端计数口径可对账。
+  /// 领料任务每页上限(与服务端 MAX_PAGE_SIZE 一致)，总数更大时按服务端分页。
   static const listLimit = 200;
   static const base = '/subcontract/draw-tasks';
 
@@ -62,6 +63,8 @@ class SubcontractDrawRepository implements SubcontractDrawGateway {
     String? status,
     String? orderId,
     List<String> orderItemIds = const [],
+    List<String> applicationItemIds = const [],
+    String? applicationId,
   }) async {
     final ids = orderItemIds
         .map((id) => id.trim())
@@ -77,6 +80,10 @@ class SubcontractDrawRepository implements SubcontractDrawGateway {
         if (status != null && status.isNotEmpty) 'status': status,
         if (orderId != null && orderId.isNotEmpty) 'orderId': orderId,
         if (ids.isNotEmpty) 'orderItemIds': ids.join(','),
+        if (applicationItemIds.isNotEmpty)
+          'applicationItemIds': applicationItemIds.join(','),
+        if (applicationId != null && applicationId.isNotEmpty)
+          'applicationId': applicationId,
       },
     );
     return SubcontractDrawTaskList.fromJson(json);

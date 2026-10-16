@@ -220,7 +220,10 @@ class _InterruptibleAlertRouteState extends State<_InterruptibleAlertRoute> {
   void _interrupt() {
     final route = _route;
     if (!mounted || route == null || !route.isActive) return;
-    Navigator.of(context).removeRoute(route);
+    // The owner can be replaced while this route is being deactivated. Use
+    // this exact route's navigator, without looking up a disappearing context.
+    final navigator = route.navigator;
+    if (navigator?.mounted == true) navigator!.removeRoute(route);
   }
 
   @override

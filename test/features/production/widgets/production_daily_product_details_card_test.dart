@@ -360,16 +360,8 @@ void main() {
         }
         expect(target.width, greaterThanOrEqualTo(48));
         expect(target.height, greaterThanOrEqualTo(48));
-        final table = tester.widget<Table>(
-          find.descendant(
-            of: find.byKey(
-              const ValueKey('daily-product-allocation-table-product'),
-            ),
-            matching: find.byType(Table),
-          ),
-        );
         expect(
-          (table.columnWidths![5] as FixedColumnWidth).value,
+          _resizeWidth(tester, DailyRowGroup.allocations, 5),
           greaterThanOrEqualTo(tester.getSize(button).width + 4),
         );
         // Hit near the edge, where the old36 target did not cover the row slot.
@@ -548,9 +540,18 @@ void main() {
         const ValueKey('daily-product-materials-card-product'),
       );
       final table = find
-          .descendant(of: card, matching: find.byType(Table))
+          .descendant(
+            of: card,
+            matching: find.byWidgetPredicate(
+              (widget) => widget is UtenEditableGrid<dynamic>,
+            ),
+          )
           .first;
-      final width = tester.getSize(table).width;
+      final detailGrid = tester.widget<UtenEditableGrid<dynamic>>(table);
+      final width = List.generate(
+        detailGrid.columns.length,
+        (column) => _resizeWidth(tester, DailyRowGroup.materials, column),
+      ).fold(0.0, (sum, value) => sum + value);
       expect(width, lessThan(1000));
       expect(width, lessThan(tester.getSize(card).width - 400));
       final name = find.text('V5一开单控10A后座（带UTEN）');
@@ -743,10 +744,15 @@ void main() {
         final allocation = find.byKey(
           const ValueKey('daily-product-allocation-table-product'),
         );
-        final table = tester.widget<Table>(
-          find.descendant(of: allocation, matching: find.byType(Table)),
+        final table = tester.widget<UtenEditableGrid<dynamic>>(
+          find.descendant(
+            of: allocation,
+            matching: find.byWidgetPredicate(
+              (widget) => widget is UtenEditableGrid<dynamic>,
+            ),
+          ),
         );
-        expect(table.columnWidths, hasLength(5));
+        expect(table.columns, hasLength(5));
         expect(removed, isEmpty);
         expect(tester.takeException(), isNull);
       },

@@ -10,6 +10,7 @@ import '../../../shared/widgets/warehouse_selection.dart';
 
 import '../../../shared/models/procurement_finance_approval.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
+import '../../../shared/measurement/document_quantity.dart';
 
 /// 委外单据类型。pathSegment 对齐后端 /api/subcontract/{inquiries|applications|orders|
 /// receipts|returns|material-issues|material-returns|wastes}。
@@ -273,10 +274,10 @@ class SubcontractDocItem {
         goodsId: json['goodsId'] as String?,
         colorId: json['colorId'] as String?,
         unitId: json['unitId'] as String?,
-        unitRate: (json['unitRate'] as num?)?.toDouble(),
+        unitRate: double.tryParse(json['unitRate']?.toString() ?? ''),
         unitRateText: receiptRecordedDecimal(json, 'unitRate'),
-        qty: (json['qty'] as num?)?.toDouble(),
-        qtyText: receiptRecordedDecimal(json, 'qty'),
+        qty: double.tryParse(json['qty']?.toString() ?? ''),
+        qtyText: recordedDocumentDecimal(json, 'qty'),
         price: (json['price'] as num?)?.toDouble(),
         priceText: receiptRecordedDecimal(json, 'price'),
         totalAmountInputText: receiptRecordedDecimal(json, 'totalAmountInput'),

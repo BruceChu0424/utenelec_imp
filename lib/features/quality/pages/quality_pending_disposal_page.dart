@@ -958,27 +958,26 @@ class _QualityPendingDisposalPageState
             ),
     ),
     // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列。
-    // 本表是混合行：检查单行是「多货品汇总」、收货单行没有单一货品，这两类
-    // 在编号/颜色列如实显示「—」，不拿汇总串冒充单件身份。
+    // 单据行展示服务端按真实待检明细去重的编号/颜色集合；不从名称摘要反解析身份。
     MasterColumnDef(
       key: 'goodsCode',
       label: '编号',
       width: 130,
-      value: (row) => row.isFqc
-          ? UtenGoodsAttributeCell.text(row.inspection!.goodsCode)
-          : null,
-      cellBuilder: (_, row) =>
-          UtenGoodsAttributeCell(row.isFqc ? row.inspection!.goodsCode : null),
+      value: (row) => UtenGoodsAttributeCell.text(row.goodsCode),
+      cellBuilder: (_, row) => Tooltip(
+        message: row.identitySummary ?? '—',
+        child: UtenGoodsAttributeCell(row.goodsCode),
+      ),
     ),
     MasterColumnDef(
       key: 'colorName',
       label: '颜色',
       width: 96,
-      value: (row) => row.isFqc
-          ? UtenGoodsAttributeCell.text(row.inspection!.colorName)
-          : null,
-      cellBuilder: (_, row) =>
-          UtenGoodsAttributeCell(row.isFqc ? row.inspection!.colorName : null),
+      value: (row) => UtenGoodsAttributeCell.text(row.colorName),
+      cellBuilder: (_, row) => Tooltip(
+        message: row.identitySummary ?? '—',
+        child: UtenGoodsAttributeCell(row.colorName),
+      ),
     ),
     // 先入库后检(V596 IQC / V597 FQC)：仓库把货先落到库位的单，品质部要到储放区域
     // 检验（2026-09-18 用户口径：直接给「仓库 / 库位号」两列，不用逐单点进明细找位置）。
@@ -1076,6 +1075,17 @@ class _DisposalRow {
 
   bool get isSheet => sheet != null;
   bool get isFqc => inspection != null;
+
+  String? get goodsCode =>
+      sheet?.goodsCodeSummary ??
+      inspection?.goodsCode ??
+      receipt?.goodsCodeSummary;
+  String? get colorName =>
+      sheet?.colorNameSummary ??
+      inspection?.colorName ??
+      receipt?.colorNameSummary;
+  String? get identitySummary =>
+      sheet?.goodsSummary ?? inspection?.goodsName ?? receipt?.goodsSummary;
 
   String get identity => isSheet
       ? 'sheet:${sheet!.id}'

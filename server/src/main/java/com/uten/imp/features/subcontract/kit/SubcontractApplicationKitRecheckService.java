@@ -59,19 +59,30 @@ public class SubcontractApplicationKitRecheckService {
                 ORDER BY item.id
                 ON CONFLICT (application_item_id) DO NOTHING
                 """, idList);
+        Map<UUID, BigDecimal> previousMarks = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                SELECT application_item_id, notified_orderable FROM subcontract_application_kit_notice_marks
+                WHERE application_item_id = ANY(CAST(string_to_array(CAST(? AS text), ',') AS uuid[]))
+                ORDER BY application_item_id FOR UPDATE
+                """, rs -> {
+            previousMarks.put(rs.getObject(1, UUID.class), rs.getBigDecimal(2));
+        }, idList);
+        // Read after acquiring the sorted watermark locks: a queued recheck must
+        // not overwrite a newer committed watermark with its pre-wait snapshot.
         Map<UUID, BigDecimal> orderable = kit.orderableNow(ids);
+        List<UUID> rising = ids.stream().filter(orderable::containsKey)
+                .filter(id -> orderable.get(id).compareTo(previousMarks.getOrDefault(id, BigDecimal.ZERO)) > 0).toList();
+        // Re-read once at publication time, independently of the first recheck
+        // snapshot. Watermarks must record the actual shown quantity, including
+        // a fall to zero between these two reads.
+        Map<UUID, BigDecimal> shownQuantities = rising.isEmpty() ? Map.of()
+                : chainNotice.refreshSubcontractOrderKitReadyBatch(rising);
         for (UUID applicationItemId : ids) {
-            if (!orderable.containsKey(applicationItemId)) {
-                continue;
-            }
+            if (!orderable.containsKey(applicationItemId)) continue;
             BigDecimal now = orderable.get(applicationItemId).max(BigDecimal.ZERO);
-            BigDecimal mark = jdbc.queryForObject("""
-                    SELECT notified_orderable FROM subcontract_application_kit_notice_marks
-                    WHERE application_item_id = ? FOR UPDATE
-                    """, BigDecimal.class, applicationItemId);
-            BigDecimal previous = mark == null ? BigDecimal.ZERO : mark;
+            BigDecimal previous = previousMarks.getOrDefault(applicationItemId, BigDecimal.ZERO);
             if (now.compareTo(previous) > 0) {
-                BigDecimal shown = chainNotice.refreshSubcontractOrderKitReady(applicationItemId).max(BigDecimal.ZERO);
+                BigDecimal shown = shownQuantities.getOrDefault(applicationItemId, BigDecimal.ZERO).max(BigDecimal.ZERO);
                 jdbc.update("""
                         UPDATE subcontract_application_kit_notice_marks
                         SET notified_orderable = ?, epoch = epoch + ?, updated_at = now()
@@ -83,9 +94,7 @@ public class SubcontractApplicationKitRecheckService {
                         SET notified_orderable = ?, epoch = epoch + 1, updated_at = now()
                         WHERE application_item_id = ?
                         """, now, applicationItemId);
-                if (now.signum() == 0) {
-                    chainNotice.resolveSubcontractOrderKitReady(applicationItemId);
-                }
+                if (now.signum() == 0) chainNotice.resolveSubcontractOrderKitReady(applicationItemId);
             }
         }
     }

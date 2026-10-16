@@ -482,6 +482,8 @@ abstract final class ApiEndpoints {
   // 单货品出入库流水 (库存明细账：流水行 + 重量调整行，服务端算结存/期初期末，ADR-135 §7.1)。
   static String stockGoodsLedger(String goodsId) =>
       '/stock/goods/${Uri.encodeComponent(goodsId)}/ledger';
+  static String stockGoodsProductionTrace(String goodsId) =>
+      '/stock/goods/${Uri.encodeComponent(goodsId)}/production-trace';
 
   // 仓库重量账与单重学习 (ADR-135 §7.2)：单重参数批量取 (一页一次，客户端自算件数/偏差)、
   // 单货品单重详情/称重记录、称样校准、单重设置、排除/恢复记录、重新学习、核重。

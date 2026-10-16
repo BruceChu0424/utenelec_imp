@@ -8,7 +8,6 @@ import com.uten.imp.common.util.HashUtil;
 import com.uten.imp.common.util.ChinaMobileNumber;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.config.props.SmsProperties;
 import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.visitor.dto.VisitorAuthDto;
@@ -44,7 +43,6 @@ public class VisitorAuthService {
     private final JwtService jwtService;
     private final SecurityContextCurrentUser currentUser;
     private final TxSessionVars tx;
-    private final SmsProperties smsProps;
     private final AuditService audit;
     private final LoginRateLimiter rateLimiter;
     private final MasterCodeService masterCodes;
@@ -70,10 +68,9 @@ public class VisitorAuthService {
                     exception.getCode().name().toLowerCase(java.util.Locale.ROOT));
             throw exception;
         }
-        String devCode = smsProps.isExposeCode()
-                && "log".equalsIgnoreCase(smsProps.getProvider())
-                ? code
-                : null;
+        // The SMS service returns a code only when the SAME pinned sender is an
+        // explicitly enabled development simulation; static env props may be stale.
+        String devCode = code;
         audit.logExplicit(null, maskPhone(phone), "visitor_send_code",
                 "visitor_auth", null, "success");
         return new VisitorAuthDto.SendCodeResponse(

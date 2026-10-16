@@ -25,6 +25,7 @@ class SimpleReleaseBackupTest(unittest.TestCase):
         env = dict(os.environ, UTEN_BACKUP_DIR=directory.as_posix(), UTEN_PG_DATABASE="uten_fixture")
         script = ("set -euo pipefail\numask 022\nlog() { :; }\n"
                   "date() { printf 20260912-000000; }\n"
+                  "timeout() { [[ \"$1 $2\" == '--kill-after=10s 900s' ]] || return 99; shift 2; \"$@\"; }\n"
                   "runuser() { " + producer + "; }\n" + backup_helper() + "\n" +
                   (command or 'create_database_backup v1.33.3'))
         return subprocess.run([bash_path(), "-c", script], env=env,

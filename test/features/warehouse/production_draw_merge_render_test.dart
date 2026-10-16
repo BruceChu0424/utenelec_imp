@@ -43,9 +43,48 @@ const _sameGoods = StockDocItem(
   colorId: 'c1',
   unitId: 'kg',
   qty: 10,
+  qtyText: '10',
+  issuedQty: 0,
+  issuedQtyText: '0',
 );
 
 void main() {
+  test(
+    'same goods in different or unknown units retain separate source rows',
+    () {
+      for (final units in [
+        ['kg', 'pcs'],
+        ['', ''],
+        [null, null],
+      ]) {
+        final table = ProductionDrawDetailTable(
+          documents: [
+            _doc('a', 'SL-1', 'PC-1', [
+              StockDocItem(
+                id: 'a',
+                goodsId: 'g',
+                unitId: units[0],
+                qtyText: '99999999999999.9999',
+              ),
+            ]),
+            _doc('b', 'SL-2', 'PC-1', [
+              StockDocItem(
+                id: 'b',
+                goodsId: 'g',
+                unitId: units[1],
+                qtyText: '0.0001',
+              ),
+            ]),
+          ],
+          names: _Names(),
+          permissions: const {},
+          mergeBatchGoods: true,
+        );
+        expect(table.viewRows, hasLength(2), reason: '$units');
+      }
+    },
+  );
+
   testWidgets('同批次同货品合并行能正常渲染不崩溃', (tester) async {
     final documents = [
       _doc('a', 'SL-1', 'PC-1', [_sameGoods]),
@@ -56,6 +95,9 @@ void main() {
           goodsId: 'g2',
           unitId: 'kg',
           qty: 7,
+          qtyText: '7',
+          issuedQty: 0,
+          issuedQtyText: '0',
         ),
       ]),
     ];

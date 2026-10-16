@@ -1,10 +1,20 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/production/widgets/where_used_product_detail_dialog.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+
+final _detailIdentity = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'detail-viewer'),
+);
 
 class _FakeGoodsRepository extends Fake implements GoodsRepository {
   _FakeGoodsRepository({this.shouldFail = false, this.error});
@@ -12,10 +22,12 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
   final bool shouldFail;
   final Object? error;
   int detailCalls = 0;
+  Completer<void>? gate;
 
   @override
   Future<GoodsDetail> detail(String id) async {
     detailCalls += 1;
+    if (gate != null) await gate!.future;
     final failure = error;
     if (failure != null) throw failure;
     if (shouldFail) throw StateError('not found');
@@ -97,6 +109,7 @@ Future<void> _pumpLauncher(
   required bool canViewStock,
   required ValueChanged<WhereUsedProductDetailResult?> onResult,
   double textScale = 1,
+  bool settle = true,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -106,7 +119,19 @@ Future<void> _pumpLauncher(
   });
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [goodsRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        goodsRepositoryProvider.overrideWithValue(repository),
+        apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        authenticatedScopeProvider.overrideWith(
+          (ref) => ref.watch(_detailIdentity),
+        ),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionWhereUsedView,
+          if (canViewGoods) Perm.goodsView,
+          if (canViewStock) Perm.stockView,
+        }),
+        isSuperAdminProvider.overrideWithValue(false),
+      ],
       child: MaterialApp(
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
@@ -139,10 +164,48 @@ Future<void> _pumpLauncher(
     ),
   );
   await tester.tap(find.text('打开'));
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump(const Duration(milliseconds: 300));
+  }
 }
 
 void main() {
+  testWidgets(
+    'account change closes old relationship evidence before delayed goods resolve',
+    (tester) async {
+      final repo = _FakeGoodsRepository()..gate = Completer<void>();
+      WhereUsedProductDetailResult? result;
+      await _pumpLauncher(
+        tester,
+        repo,
+        size: const Size(390, 844),
+        canViewGoods: true,
+        canViewStock: true,
+        settle: false,
+        onResult: (value) => result = value,
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(
+          find.byKey(const Key('where-used-product-detail-dialog')),
+        ),
+      );
+      container.read(_detailIdentity.notifier).state = const AuthenticatedScope(
+        userId: 'other-viewer',
+      );
+      await tester.pumpAndSettle();
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('where-used-product-detail-dialog')),
+        findsNothing,
+      );
+      expect(find.text('墙壁插座成品'), findsNothing);
+      expect(result, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'shows separated relationship sources and current goods, then returns BOM link',
     (tester) async {

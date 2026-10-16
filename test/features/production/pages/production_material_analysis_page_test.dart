@@ -2192,7 +2192,7 @@ void main() {
       expect(find.text('第二测试产品'), findsOneWidget);
       expect(_bucketShortageText(tester, '测试产品'), '10');
       expect(_bucketShortageText(tester, '第二测试产品'), '6');
-      expect(find.text('等待下达车间'), findsNWidgets(2));
+      expect(find.text('等待计划下单'), findsNWidgets(2));
       await _tapBucketRowCheckbox(tester, '测试产品');
       await _tapBucketRowCheckbox(tester, '第二测试产品');
       expect(find.textContaining(RegExp(r'创建生产计划.*\(2\)')), findsOneWidget);
@@ -3028,7 +3028,7 @@ void main() {
       expect(find.text('待自制壳体'), findsOneWidget);
       // 2026-09-06 统一流程词表：未下达自制任务显示「等待下达车间」。
       // 可勾选+可创建生产计划即证明下层缺料不构成硬卡。
-      expect(find.text('等待下达车间'), findsWidgets);
+      expect(find.text('等待计划下单'), findsWidgets);
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
@@ -3083,7 +3083,7 @@ void main() {
       _expectBucketCount(tester, 'subcontract', 1);
       await _openBucketDetail(tester, 'subcontract');
       expect(find.text('待自制壳体'), findsOneWidget);
-      expect(find.text('等待下发委外'), findsWidgets);
+      expect(find.text('等待计划下单'), findsWidgets);
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(find.textContaining(RegExp(r'下达委外.*\(1\)')), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -3113,7 +3113,7 @@ void main() {
       _expectBucketCount(tester, 'subcontract', 1);
       await _openBucketDetail(tester, 'subcontract');
       expect(find.text('待自制壳体'), findsOneWidget);
-      expect(find.textContaining('本批需求待通知'), findsOneWidget);
+      expect(find.textContaining('等待计划下单'), findsOneWidget);
       await _tapBucketRowCheckbox(tester, '待自制壳体');
       expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
       expect(find.textContaining(RegExp(r'下达委外.*\(1\)')), findsOneWidget);
@@ -3138,7 +3138,7 @@ void main() {
 
     await _openBucketDetail(tester, 'workshop');
     // 2026-09-06 统一流程词表：未下达候选行显示「等待下达车间」。
-    expect(find.text('等待下达车间'), findsWidgets);
+    expect(find.text('等待计划下单'), findsWidgets);
     await _tapBucketRowCheckbox(tester, '待自制壳体');
     expect(_bucketRowCheckboxValue(tester, '待自制壳体'), isTrue);
     expect(find.textContaining(RegExp(r'创建生产计划.*\(1\)')), findsOneWidget);
@@ -6181,7 +6181,7 @@ void main() {
     await _openBucketDetail(tester, 'workshop');
     final readyRow = _frozenRowOf('第二测试产品');
     expect(
-      find.descendant(of: readyRow, matching: find.text('等待下达车间')),
+      find.descendant(of: readyRow, matching: find.text('等待计划下单')),
       findsOneWidget,
     );
     expect(
@@ -6250,7 +6250,7 @@ void main() {
         reason: '数量列 2026-10-10 起内联单位',
       );
       expect(
-        find.descendant(of: sharedRow, matching: find.text('等待下发采购')),
+        find.descendant(of: sharedRow, matching: find.text('等待计划下单')),
         findsOneWidget,
       );
       expect(
@@ -7468,7 +7468,7 @@ void main() {
       // 2026-10-09 口径：聚合物料行进度与顶层同一词表（真实单据阶段/未下达
       // 第一步），覆盖率「0/10」降级到悬浮与路径详情，不再顶替进度。
       expect(
-        find.descendant(of: aggregate, matching: find.text('等待下发采购')),
+        find.descendant(of: aggregate, matching: find.text('等待计划下单')),
         findsOneWidget,
       );
       await tester.tap(
@@ -7835,7 +7835,7 @@ void main() {
       );
       // 2026-09-06 统一流程词表：未下达自制任务一律「等待下达车间」。
       expect(
-        find.descendant(of: row, matching: find.text('等待下达车间')),
+        find.descendant(of: row, matching: find.text('等待计划下单')),
         findsOneWidget,
       );
       final childRoot = find.byKey(
@@ -7875,7 +7875,7 @@ void main() {
         'make-missing-id',
       );
       expect(
-        find.descendant(of: missingIdRow, matching: find.text('等待下达车间')),
+        find.descendant(of: missingIdRow, matching: find.text('等待计划下单')),
         findsOneWidget,
       );
       expect(
@@ -8106,7 +8106,7 @@ void main() {
       // 齐套拆批由执行段 WAITING/READY 完成), 整批可勾选下达。
       expect(find.text('建议首批'), findsNothing);
       expect(find.text('当前齐套'), findsNothing);
-      expect(find.text('等待下达车间'), findsWidgets);
+      expect(find.text('等待计划下单'), findsWidgets);
       expect(_bucketShortageText(tester, '测试产品'), '1000');
       await _tapBucketRowCheckbox(tester, '测试产品');
       expect(find.text('创建生产计划(1)…'), findsOneWidget);
@@ -8177,7 +8177,7 @@ void main() {
 
       await _openBucketDetail(tester, 'workshop');
       expect(_bucketShortageText(tester, '测试产品'), '1200');
-      expect(find.text('等待下达车间'), findsWidgets);
+      expect(find.text('等待计划下单'), findsWidgets);
       await _tapBucketRowCheckbox(tester, '测试产品');
       expect(find.text('创建生产计划(1)…'), findsOneWidget);
       // ADR-71：建议首批列已下线(计划不管齐套)，刷新后也不回来。
@@ -8236,7 +8236,7 @@ void main() {
       // 2026-09-05 顶层与子层自制同构：服务端授权的待料产品仍可全额排产，
       // 未下达统一「等待下达车间」(齐套由执行段自动判断)。2026-09-22 起桶表
       // 只读: 「缺口」列 = 剩余需求 10 (readyNow 0 不压量), 行可勾选下达。
-      expect(find.text('等待下达车间'), findsWidgets);
+      expect(find.text('等待计划下单'), findsWidgets);
       expect(_bucketShortageText(tester, '测试产品'), '10 个');
       await _tapBucketRowCheckbox(tester, '测试产品');
       expect(_bucketRowCheckboxValue(tester, '测试产品'), isTrue);

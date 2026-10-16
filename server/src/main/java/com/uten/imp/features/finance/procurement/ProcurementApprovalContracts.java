@@ -64,18 +64,27 @@ public final class ProcurementApprovalContracts {
      * 财务审批时填写当日汇率。exchangeRate 为选填的整批共用财务汇率
      * （&gt;0、≤6 位小数）；缺省视为 1。审批时填写的汇率落 case 新列
      * {@code finance_exchange_rate}，不回写订单表头（V438 商业冻结）。
+     * taxRate 是同一审批决定下的可选核定税率（0..100、最多4位小数）；
+     * 缺省沿用既有财务核定税率，再退提交税率。它不改原提交税率、价格或金额。
      */
     public record BatchApprovalRequest(
             @NotEmpty @Size(max = 100) List<@Valid BatchDecisionItem> items,
             @Size(max = 500) String remark,
             @DecimalMin(value = "0", inclusive = false)
             @Digits(integer = 12, fraction = 6)
-            BigDecimal exchangeRate) {
+            BigDecimal exchangeRate,
+            @DecimalMin("0") @jakarta.validation.constraints.DecimalMax("100")
+            @Digits(integer = 3, fraction = 4) BigDecimal taxRate) {
+
+        public BatchApprovalRequest(List<@Valid BatchDecisionItem> items, String remark,
+                BigDecimal exchangeRate) {
+            this(items, remark, exchangeRate, null);
+        }
 
         /** 兼容旧调用（无财务汇率）：视为缺省。 */
         public BatchApprovalRequest(
                 List<@Valid BatchDecisionItem> items, String remark) {
-            this(items, remark, null);
+            this(items, remark, null, null);
         }
     }
 
@@ -185,7 +194,13 @@ public final class ProcurementApprovalContracts {
             List<ReviewLine> previousItems,
             Map<String, Object> headerSnapshot,
             Map<String, Object> previousHeaderSnapshot,
-            List<ReviewHistoryEntry> history) {
+            List<ReviewHistoryEntry> history,
+            /** Only this case's actual finance decision; never inherited into a historical round. */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal financeTaxRate,
+            /** Current pending case's prior approved decision, for confirmation rather than historical fact. */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal referenceFinanceTaxRate,
+            /** Prior finance exchange rate is a current pending reference, never this case's decision. */
+            @JsonSerialize(using = ExactDecimalText.class) BigDecimal referenceFinanceExchangeRate) {
         public ApprovalReview {
             items = List.copyOf(items);
             previousItems = List.copyOf(previousItems);

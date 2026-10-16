@@ -112,8 +112,11 @@ class _StockRepository extends StockDocRepository {
           goodsId: 'normal',
           unitId: 'kg',
           qty: 10,
+          qtyText: '10',
           requestedQty: 8,
+          requestedQtyText: '8',
           issuedQty: allIssued ? 8 : 3,
+          issuedQtyText: allIssued ? '8' : '3',
         ),
       ],
     );
@@ -1315,12 +1318,15 @@ void main() {
       const item = StockDocItem(
         id: 'line',
         qty: 10,
+        qtyText: '10',
         requestedQty: 8,
+        requestedQtyText: '8',
         issuedQty: 3,
+        issuedQtyText: '3',
       );
       const row = ProductionDrawDetailRow(StockDocDetail(id: 'normal'), item);
       expect(drawIssueQtyError(row, '5'), isNull);
-      expect(drawIssueQtyError(row, '5.1'), '不能超过待出库 5.0');
+      expect(drawIssueQtyError(row, '5.1'), '不能超过待出库 5');
       expect(drawIssueQtyError(row, '0'), '出库数量需大于 0');
     },
   );

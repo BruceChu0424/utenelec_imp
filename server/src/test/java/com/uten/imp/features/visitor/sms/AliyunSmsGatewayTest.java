@@ -83,6 +83,39 @@ class AliyunSmsGatewayTest {
                 .hasMessageContaining("UTEN_SMS_ACCESS_KEY_ID");
     }
 
+    @Test void oneGatewayKeepsTheWholeConfigurationSnapshotDuringConcurrentSettingsChanges() throws Exception {
+        SmsProperties properties = configuredProperties();
+        when(client.sendSmsWithOptions(any(), any())).thenReturn(new SendSmsResponse().setBody(new SendSmsResponseBody().setCode("OK")));
+        AliyunSmsGateway gateway = new AliyunSmsGateway(properties, new ObjectMapper(), client);
+        properties.setSignName("changed-sign");
+        properties.setTemplateCode("SMS_CHANGED");
+        gateway.sendCode("13800138000", "123456");
+        ArgumentCaptor<SendSmsRequest> sent = ArgumentCaptor.forClass(SendSmsRequest.class);
+        org.mockito.Mockito.verify(client).sendSmsWithOptions(sent.capture(), any());
+        assertThat(sent.getValue().getSignName()).isEqualTo("优藤");
+        assertThat(sent.getValue().getTemplateCode()).isEqualTo("SMS_123");
+    }
+    @Test void missingProviderAcknowledgementIsUncertainRatherThanInvalidatingPossiblyDeliveredOtp() throws Exception {
+        for(SendSmsResponse response:new SendSmsResponse[]{null,new SendSmsResponse(),new SendSmsResponse().setBody(new SendSmsResponseBody())}) {
+            when(client.sendSmsWithOptions(any(),any())).thenReturn(response);
+            assertThat(new AliyunSmsGateway(configuredProperties(),new ObjectMapper(),client).sendCode("13800138000","123456"))
+                    .isEqualTo(SmsSendResult.UNCERTAIN);
+        }
+        org.mockito.Mockito.verify(client,org.mockito.Mockito.times(3)).sendSmsWithOptions(any(),any());
+    }
+    @Test void sdkExceptionCannotLeakCredentialsOtpOrFullPhoneIntoLogs() throws Exception {
+        var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(AliyunSmsGateway.class);
+        var appender=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        var previous=logger.getLevel();appender.start();logger.addAppender(appender);logger.setLevel(ch.qos.logback.classic.Level.INFO);
+        try {
+            when(client.sendSmsWithOptions(any(),any())).thenThrow(new RuntimeException("fixture-secret 123456 13800138000"));
+            assertThat(new AliyunSmsGateway(configuredProperties(),new ObjectMapper(),client).sendCode("13800138000","123456"))
+                    .isEqualTo(SmsSendResult.UNCERTAIN);
+            assertThat(appender.list).isNotEmpty();
+            appender.list.forEach(event->assertThat(event.getFormattedMessage()).doesNotContain("fixture-secret","123456","13800138000"));
+        } finally { logger.detachAppender(appender);logger.setLevel(previous);appender.stop(); }
+    }
+
     private static SmsProperties configuredProperties() {
         SmsProperties properties = new SmsProperties();
         properties.setAccessKeyId("test-id");

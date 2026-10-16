@@ -54,18 +54,23 @@ class NoticeMarkFollowsShownCardTest {
     }
 
     @Test
-    void orderKitMarkRecordsWhatTheCardShowsNotTheRecheckRead() {
+    void orderKitMarkRecordsWhatTheCardShowsNotTheRecheckRead() throws Exception {
         SubcontractKitService kit = mock(SubcontractKitService.class);
         when(kit.orderableNow(List.of(item))).thenReturn(Map.of(item, new BigDecimal("10")));
-        when(jdbc.queryForObject(contains("FROM subcontract_application_kit_notice_marks"), eq(BigDecimal.class), eq(item)))
-                .thenReturn(new BigDecimal("4"));
+        ResultSet mark = mock(ResultSet.class);
+        when(mark.getObject(1, UUID.class)).thenReturn(item);
+        when(mark.getBigDecimal(2)).thenReturn(new BigDecimal("4"));
+        doAnswer(invocation -> {
+            invocation.<RowCallbackHandler>getArgument(1).processRow(mark);
+            return null;
+        }).when(jdbc).query(contains("FROM subcontract_application_kit_notice_marks"), any(RowCallbackHandler.class), any(Object[].class));
         var recheck = new SubcontractApplicationKitRecheckService(jdbc, kit, notices);
 
-        when(notices.refreshSubcontractOrderKitReady(item)).thenReturn(BigDecimal.ZERO);
+        when(notices.refreshSubcontractOrderKitReadyBatch(List.of(item))).thenReturn(Map.of(item, BigDecimal.ZERO));
         recheck.recheck(List.of(item));
         verify(jdbc).update(contains("SET notified_orderable = ?, epoch = epoch + ?"), eq(BigDecimal.ZERO), eq(1), eq(item));
 
-        when(notices.refreshSubcontractOrderKitReady(item)).thenReturn(new BigDecimal("12"));
+        when(notices.refreshSubcontractOrderKitReadyBatch(List.of(item))).thenReturn(Map.of(item, new BigDecimal("12")));
         recheck.recheck(List.of(item));
         verify(jdbc).update(contains("SET notified_orderable = ?, epoch = epoch + ?"), eq(new BigDecimal("12")), eq(0), eq(item));
     }

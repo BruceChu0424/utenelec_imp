@@ -3,6 +3,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/system_setting_entry.dart';
 import 'package:uten_imp/features/admin/models/system_updater_status.dart';
@@ -22,6 +24,8 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiBaseUrlProvider.overrideWithValue('/api'),
+        authenticatedScopeProvider.overrideWithValue(null),
         systemSettingRepositoryProvider.overrideWithValue(_Repo()),
         currentPermissionsProvider.overrideWithValue(
           platformAdmin ? const {Perm.authorizationManage} : const {},

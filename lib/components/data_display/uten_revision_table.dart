@@ -323,7 +323,6 @@ class UtenRevisionTable<T> extends StatelessWidget {
             : child,
       ),
       summaryBar: summaryBar,
-      summaryBarInline: true,
     );
   }
 }

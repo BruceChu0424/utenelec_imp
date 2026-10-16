@@ -50,6 +50,18 @@ class ProcurementFinanceApprovalExchangeRateTest {
     private static final BigDecimal SEVEN_DECIMALS = new BigDecimal("1.2345678");
 
     @Test
+    void illegalTaxFailsBeforeClaimsOrDatabaseMutation() {
+        Fixture fixture = fixture();
+        var items = List.of(new BatchDecisionItem(UUID.randomUUID(),1L));
+        for (String value : List.of("-0.0001","100.0001","13.12345")) {
+            ApiException error = assertThrows(ApiException.class, () ->
+                    fixture.service().approveBatch(items,null,BigDecimal.ONE,new BigDecimal(value)));
+            assertEquals(ErrorCode.VALIDATION_FAILED,error.getCode());
+        }
+        verifyNoInteractions(fixture.jdbc());
+    }
+
+    @Test
     void decimalTextRequestPreservesAllLegalRateDigitsWithoutBinaryConversion() throws Exception {
         var request = new ObjectMapper().readValue("""
                 {"items":[{"caseId":"00000000-0000-0000-0000-000000000001","expectedVersion":1}],

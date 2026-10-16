@@ -1,0 +1,294 @@
+package com.uten.imp.features.purchase.receipt;
+
+import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.finance.MoneyPolicy;
+import com.uten.imp.common.finance.ProcurementIqcReplacementAllocationService;
+import com.uten.imp.common.finance.PurchaseOverReceiptTolerance;
+import jakarta.persistence.EntityManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
+/**
+ * Frozen test-only source: fa6db52451c19b9ab52247ef905dbb8f400faa17; SHA256 9d33355f87ee1abd6e6347552680ba42b1fe562dc4302132c2a17e0e4d9bf6c9.
+ * Derives purchase receipt AP and stock values from finance-approved order facts.
+ *
+ * <p>ADR-144: the line's over-receipt tolerance T is optional headroom, never part of the
+ * pro-rata base. Authorized qty = Q + posted excess + this receipt's approved excess + T_used,
+ * T_used = clamp(cumulative effective receipts after this one - (Q + both excesses), 0, T); the
+ * used tolerance is priced like approved excess ({@link MoneyPolicy#orderOverageAmount}). Receiving
+ * exactly Q therefore posts exactly the order amount, extra columns included.
+ */
+public class LegacyV854PurchaseReceiptAmountAuthority extends PurchaseReceiptAmountAuthority {
+    private static final short APPROVED = 1;
+
+    private final EntityManager em;
+    private final PurchaseReceiptItemRepository itemRepo;
+    private final ProcurementIqcReplacementAllocationService replacementAllocation;
+
+    /** Test-only frozen Mfa/V854 authority; real SQL and amounts, never mocked. */
+    public LegacyV854PurchaseReceiptAmountAuthority(EntityManager em,
+            PurchaseReceiptItemRepository itemRepo,
+            ProcurementIqcReplacementAllocationService replacementAllocation) {
+        super(em, itemRepo, replacementAllocation);
+        this.em = em;
+        this.itemRepo = itemRepo;
+        this.replacementAllocation = replacementAllocation;
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void apply(PurchaseReceipt receipt, List<PurchaseReceiptItem> items) {
+        List<UUID> sourceIds = items.stream().map(PurchaseReceiptItem::getOrderItemId).toList();
+        requireDistinctOrderItems(sourceIds);
+        List<PurchaseReceiptItem> ordered = items.stream()
+                .sorted(Comparator.comparing(PurchaseReceiptItem::getOrderItemId))
+                .toList();
+        BigDecimal totalOriginal = BigDecimal.ZERO;
+        BigDecimal totalLocal = BigDecimal.ZERO;
+        for (PurchaseReceiptItem item : ordered) {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows = em.createNativeQuery("""
+                    SELECT source_item.price, source_order.supplier_id,
+                           source_order.currency_id, source_order.exchange_rate,
+                           source_order.settlement_method_id, source_order.tax_rate,
+                           source_order.status,
+                           COALESCE(source_order.is_stopped,FALSE),
+                           COALESCE(source_item.arrival_overage_posted_qty,0),
+                           source_item.qty, source_item.amount_original, source_item.amount_local, source_item.total_amount_input,
+                           source_item.allowed_over_receipt_pct, source_order.id,source_item.quantity_semantics,source_item.gift_qty
+                    FROM purchase_order_items source_item
+                    JOIN purchase_orders source_order ON source_order.id=source_item.order_id
+                    WHERE source_item.id=:itemId
+                      AND COALESCE(source_item.is_deleted,FALSE)=FALSE
+                      AND COALESCE(source_order.is_deleted,FALSE)=FALSE
+                    FOR UPDATE OF source_item, source_order
+                    """).setParameter("itemId", item.getOrderItemId()).getResultList();
+            if (rows.size() != 1) throw conflict("采购收货来源订单明细不存在、已删除或重复");
+            Object[] source = rows.getFirst();
+            BigDecimal sourcePrice = decimal(source[0]);
+            UUID sourceSupplierId = (UUID) source[1];
+            UUID sourceCurrencyId = (UUID) source[2];
+            BigDecimal sourceRate = decimal(source[3]);
+            UUID sourceSettlementMethodId = (UUID) source[4];
+            BigDecimal sourceTaxRate = decimal(source[5]);
+            short sourceStatus = ((Number) source[6]).shortValue();
+            boolean sourceStopped = Boolean.TRUE.equals(source[7]);
+            BigDecimal postedOverageQty = decimal(source[8]);
+            BigDecimal sourceQty = decimal(source[9]);
+            BigDecimal sourceOriginal = decimal(source[10]);
+            BigDecimal sourceLocal = decimal(source[11]);
+            var financialTerms=com.uten.imp.common.finance.ProcurementApprovedExchangeRate.read(
+                    em,"PURCHASE",(UUID)source[14],sourceRate);
+            sourceRate=financialTerms.rate();
+            sourceLocal=financialTerms.local(sourceOriginal,sourceLocal);
+            com.uten.imp.common.finance.ProcurementApprovedExchangeRate.requireHistoricalReceiptRate(
+                    em,"PURCHASE",item.getOrderItemId(),receipt.getId(),sourceRate);
+            if (sourceStatus != APPROVED || sourceStopped
+                    || sourcePrice == null || sourcePrice.signum() < 0
+                    || sourceCurrencyId == null || sourceRate == null || sourceRate.signum() <= 0
+                    || sourceSettlementMethodId == null || sourceQty == null || sourceQty.signum()<0
+                    || (sourceQty.signum()==0 && (item.getQty().signum()!=0 || !com.uten.imp.common.finance.ProcurementQuantities.isExtraGift((String)source[15])
+                        ||decimal(source[16])==null || decimal(source[16]).signum()<=0 || sourcePrice.signum()!=0 || sourceOriginal.signum()!=0 || sourceLocal.signum()!=0))
+                    || sourceTaxRate == null || sourceTaxRate.signum() < 0
+                    || sourceTaxRate.compareTo(new BigDecimal("100")) > 0
+                    || sourceOriginal == null || sourceOriginal.signum() < 0
+                    || sourceLocal == null || sourceLocal.signum() < 0) {
+                throw conflict("采购收货来源订单未财务批准、已中止或商业数据不完整");
+            }
+            requireHeaderMatches(receipt.getSupplierId(), receipt.getCurrencyId(),
+                    receipt.getExchangeRate(), receipt.getSettlementMethodId(), receipt.getTaxRate(),
+                    sourceSupplierId, sourceCurrencyId, sourceRate, sourceSettlementMethodId,
+                    sourceTaxRate);
+            if(item.getQty().signum()==0){
+                item.setPrice(sourcePrice);item.setAmountOriginal(BigDecimal.ZERO);item.setAmountLocal(BigDecimal.ZERO);
+                item.setReplacementIntent("NORMAL");itemRepo.saveAndFlush(item);
+                com.uten.imp.common.finance.ProcurementApprovedExchangeRate.pinReceiptCase(em,"PURCHASE",item.getId(),financialTerms.caseId());
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            List<BigDecimal> currentAllowance = em.createNativeQuery("""
+                    SELECT approved_excess_qty FROM procurement_arrival_exceptions
+                    WHERE order_type='PURCHASE' AND receipt_id=:receiptId
+                      AND receipt_item_id=:receiptItemId AND order_item_id=:itemId
+                      AND status='RECEIPT_ADJUSTED'
+                      AND decision IN('APPROVE_ALL','APPROVE_CUSTOM')
+                      AND approved_excess_qty>0
+                    ORDER BY id FOR UPDATE
+                    """).setParameter("receiptId", receipt.getId())
+                    .setParameter("receiptItemId", item.getId())
+                    .setParameter("itemId", item.getOrderItemId()).getResultList();
+            if (currentAllowance.size() > 1) throw conflict("采购到货超量财务授权缺失或重复");
+            BigDecimal currentApproved = currentAllowance.isEmpty()
+                    ? BigDecimal.ZERO : decimal(currentAllowance.getFirst());
+            Object[] prior = (Object[]) em.createNativeQuery("""
+                    SELECT COALESCE(SUM(receipt_item.qty),0),
+                           COALESCE(SUM(receipt_item.amount_original),0),
+                           COALESCE(SUM(receipt_item.amount_local),0),
+                           COUNT(*) FILTER(WHERE receipt_item.qty IS NULL OR receipt_item.qty<0 OR (receipt_item.qty=0 AND (receipt_item.quantity_semantics<>'CHARGED_PLUS_GIFT_V1' OR receipt_item.gift_qty<=0))
+                             OR receipt_item.amount_original IS NULL OR receipt_item.amount_original<0
+                             OR receipt_item.amount_local IS NULL OR receipt_item.amount_local<0)
+                    FROM purchase_receipt_items receipt_item
+                    JOIN purchase_receipts receipt_doc ON receipt_doc.id=receipt_item.receipt_id
+                    WHERE receipt_item.order_item_id=:itemId
+                      AND receipt_doc.id<>:currentReceiptId AND receipt_doc.status=1
+                      AND COALESCE(receipt_item.is_deleted,FALSE)=FALSE
+                      AND COALESCE(receipt_doc.is_deleted,FALSE)=FALSE
+                    """).setParameter("itemId", item.getOrderItemId())
+                    .setParameter("currentReceiptId", receipt.getId()).getSingleResult();
+            if (((Number) prior[3]).longValue() != 0) {
+                throw conflict("采购订单历史有效收货数量或金额不完整，必须先专项核对");
+            }
+            BigDecimal rawPriorQty=decimal(prior[0]);
+            BigDecimal rawPriorOriginal=decimal(prior[1]);
+            BigDecimal rawPriorLocal=decimal(prior[2]);
+            var released=replacementAllocation.releasedCapacity(
+                    "PURCHASE",item.getOrderItemId());
+            BigDecimal effectivePriorQty=rawPriorQty.subtract(released.qty());
+            boolean exactPriceBasis=MoneyPolicy.exactProduct(sourceQty,sourcePrice).compareTo(sourceOriginal)==0
+                    &&MoneyPolicy.local(sourceOriginal,sourceRate).compareTo(sourceLocal)==0;
+            if(!exactPriceBasis&&(released.amountOriginal()==null||released.amountLocal()==null))
+                throw conflict("历史原单金额与单价不一致且退回金额没有有限表示，请保留来源待核对");
+            BigDecimal effectivePriorOriginal=released.amountOriginal()==null
+                    ?MoneyPolicy.exactProduct(effectivePriorQty,sourcePrice)
+                    :rawPriorOriginal.subtract(released.amountOriginal());
+            BigDecimal effectivePriorLocal=released.amountLocal()==null
+                    ?MoneyPolicy.local(effectivePriorOriginal,sourceRate)
+                    :rawPriorLocal.subtract(released.amountLocal());
+            if(effectivePriorQty.signum()<0||effectivePriorOriginal.signum()<0
+                    ||effectivePriorLocal.signum()<0){
+                throw conflict("采购IQC失败退回释放额度超过历史有效收货累计");
+            }
+            BigDecimal toleranceQty = PurchaseOverReceiptTolerance.toleranceQty(sourceQty, decimal(source[13]));
+            BigDecimal authorizedBaseQty = sourceQty.add(postedOverageQty).add(currentApproved);
+            BigDecimal toleranceUsedQty = PurchaseOverReceiptTolerance.usedTolerance(
+                    item.getQty() == null ? effectivePriorQty : effectivePriorQty.add(item.getQty()),
+                    authorizedBaseQty, toleranceQty);
+            AuthorizedSource authorized = legacyAuthorizedSource(
+                    sourceQty, sourceOriginal, sourceLocal, sourcePrice, sourceRate,
+                    postedOverageQty, currentApproved, decimal(source[12]), toleranceUsedQty);
+            ReceiptAmounts amounts = item.getQty().signum()==0
+                    ?new ReceiptAmounts(BigDecimal.ZERO,BigDecimal.ZERO):legacySourceAmounts(
+                    item.getQty(), sourcePrice, sourceRate,
+                    authorized.qty(), authorized.original(), authorized.local(),
+                    effectivePriorQty,effectivePriorOriginal,effectivePriorLocal);
+            item.setPrice(sourcePrice);
+            item.setAmountOriginal(amounts.original());
+            item.setAmountLocal(amounts.local());
+            itemRepo.saveAndFlush(item);
+            com.uten.imp.common.finance.ProcurementApprovedExchangeRate.pinReceiptCase(
+                    em,"PURCHASE",item.getId(),financialTerms.caseId());
+            if(item.getQty().signum()>0) item.setReplacementIntent(replacementAllocation.allocateForReceiptItem(
+                    "PURCHASE",receipt.getId(),item.getId(),item.getOrderItemId(),
+                    item.getQty(),item.getUnitRate(),amounts.original(),amounts.local(),
+                    authorizedBaseQty,toleranceQty,rawPriorQty,item.getReplacementIntent()));
+            totalOriginal = totalOriginal.add(amounts.original());
+            totalLocal = totalLocal.add(amounts.local());
+        }
+        itemRepo.saveAll(items);
+        itemRepo.flush();
+        receipt.setTotalOriginal(money(totalOriginal));
+        receipt.setTotalLocal(money(totalLocal));
+    }
+
+    static void requireDistinctOrderItems(List<UUID> sourceIds) {
+        if (sourceIds == null || sourceIds.stream().anyMatch(Objects::isNull)
+                || new HashSet<>(sourceIds).size() != sourceIds.size()) {
+            throw conflict("同一采购订单明细不能在一张收货单中重复引用，且来源不能为空");
+        }
+    }
+
+    static void requireHeaderMatches(
+            UUID supplierId, UUID currencyId, BigDecimal rate, UUID settlementMethodId,
+            BigDecimal taxRate,
+            UUID sourceSupplierId, UUID sourceCurrencyId, BigDecimal sourceRate,
+            UUID sourceSettlementMethodId, BigDecimal sourceTaxRate) {
+        if (!Objects.equals(supplierId, sourceSupplierId)
+                || !Objects.equals(currencyId, sourceCurrencyId)
+                || rate == null || sourceRate == null || rate.compareTo(sourceRate) != 0
+                || !Objects.equals(settlementMethodId, sourceSettlementMethodId)
+                || taxRate == null || sourceTaxRate == null
+                || taxRate.compareTo(sourceTaxRate) != 0) {
+            throw conflict("采购收货供应商、币种、汇率、税率或结算方式与财务批准订单不一致");
+        }
+    }
+
+    static AuthorizedSource legacyAuthorizedSource(
+            BigDecimal baseQty, BigDecimal baseOriginal, BigDecimal baseLocal,
+            BigDecimal sourcePrice, BigDecimal sourceRate,
+            BigDecimal postedOverageQty, BigDecimal currentApprovedOverageQty) {
+        return legacyAuthorizedSource(baseQty, baseOriginal, baseLocal, sourcePrice, sourceRate,
+                postedOverageQty, currentApprovedOverageQty, null, BigDecimal.ZERO);
+    }
+
+    static AuthorizedSource legacyAuthorizedSource(
+            BigDecimal baseQty, BigDecimal baseOriginal, BigDecimal baseLocal,
+            BigDecimal sourcePrice, BigDecimal sourceRate,
+            BigDecimal postedOverageQty, BigDecimal currentApprovedOverageQty, BigDecimal totalInput,
+            BigDecimal toleranceUsedQty) {
+        if (baseQty == null || baseQty.signum() <= 0
+                || baseOriginal == null || baseOriginal.signum() < 0
+                || baseLocal == null || baseLocal.signum() < 0
+                || sourcePrice == null || sourcePrice.signum() < 0
+                || sourceRate == null || sourceRate.signum() <= 0
+                || postedOverageQty == null || postedOverageQty.signum() < 0
+                || currentApprovedOverageQty == null || currentApprovedOverageQty.signum() < 0
+                || toleranceUsedQty == null || toleranceUsedQty.signum() < 0) {
+            throw conflict("采购到货的授权数量或金额数据不正确，请刷新后重试");
+        }
+        BigDecimal overageQty = postedOverageQty.add(currentApprovedOverageQty).add(toleranceUsedQty);
+        BigDecimal overageOriginal = MoneyPolicy.orderOverageAmount(overageQty, sourcePrice, totalInput, baseQty);
+        BigDecimal overageLocal = MoneyPolicy.local(overageOriginal, sourceRate);
+        return new AuthorizedSource(baseQty.add(overageQty),
+                baseOriginal.add(overageOriginal), baseLocal.add(overageLocal));
+    }
+
+    static ReceiptAmounts legacySourceAmounts(
+            BigDecimal receiptQty, BigDecimal sourcePrice, BigDecimal sourceRate,
+            BigDecimal sourceQty, BigDecimal sourceOriginal, BigDecimal sourceLocal,
+            BigDecimal priorQty, BigDecimal priorOriginal, BigDecimal priorLocal) {
+        if (receiptQty == null || receiptQty.signum() <= 0 || sourcePrice == null || sourcePrice.signum() < 0
+                || sourceRate == null || sourceRate.signum() <= 0 || sourceQty == null || sourceQty.signum() <= 0
+                || sourceOriginal == null || sourceOriginal.signum() < 0
+                || sourceLocal == null || sourceLocal.signum() < 0
+                || priorQty == null || priorQty.signum() < 0
+                || priorOriginal == null || priorOriginal.signum() < 0
+                || priorLocal == null || priorLocal.signum() < 0) {
+            throw conflict("采购收货的来源数量、单价、汇率或历史收货累计不正确，请刷新后重试");
+        }
+        BigDecimal remainingQty = sourceQty.subtract(priorQty);
+        BigDecimal remainingOriginal = sourceOriginal.subtract(priorOriginal);
+        BigDecimal remainingLocal = sourceLocal.subtract(priorLocal);
+        if (remainingQty.signum() < 0 || remainingOriginal.signum() < 0
+                || remainingLocal.signum() < 0 || receiptQty.compareTo(remainingQty) > 0) {
+            throw conflict("采购收货数量或金额超过财务批准订单行剩余额度");
+        }
+        // 累计量对应金额 − 已收金额; 末批(收满授权量)取全部剩余, 不丢也不造尾差。
+        MoneyPolicy.LineAmounts amounts = MoneyPolicy.prorateBatch(
+                receiptQty, priorQty, sourceQty, sourceOriginal, sourceLocal, priorOriginal, priorLocal);
+        return new ReceiptAmounts(money(amounts.original()), money(amounts.local()));
+    }
+
+    private static BigDecimal decimal(Object value) {
+        return value == null ? null : value instanceof BigDecimal decimal
+                ? decimal : new BigDecimal(value.toString());
+    }
+
+    private static BigDecimal money(BigDecimal value) {
+        return com.uten.imp.common.util.FinancialExactAmount.canonicalMoney(value,"采购收货金额");
+    }
+
+    private static ApiException conflict(String message) {
+        return new ApiException(ErrorCode.CONFLICT, message);
+    }
+
+    record ReceiptAmounts(BigDecimal original, BigDecimal local) {}
+
+    record AuthorizedSource(BigDecimal qty, BigDecimal original, BigDecimal local) {}
+}

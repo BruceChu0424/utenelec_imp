@@ -18,6 +18,7 @@ import '../../components/feedback/uten_busy_overlay.dart';
 import '../../components/inputs/uten_input.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/step_up_coordinator.dart';
+import '../../core/ui/opportunistic_dialog_coordinator.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -31,13 +32,23 @@ Future<String?> showReauthDialog(
   BuildContext context, {
   required Future<String> Function(String password) verify,
 }) {
+  DialogPriorityReservation? priority;
+  try {
+    priority = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(opportunisticDialogCoordinatorProvider).prioritize();
+  } on StateError {
+    // This public dialog also works in standalone widget hosts without any
+    // Riverpod scope; those hosts cannot contain our optional reminder.
+  }
   return UtenBusyOverlay.yieldWhile(
     () => showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (_) => ReauthDialog(verify: verify),
     ),
-  );
+  ).whenComplete(() => priority?.release());
 }
 
 class ReauthDialog extends StatefulWidget {

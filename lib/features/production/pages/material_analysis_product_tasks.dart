@@ -1773,6 +1773,14 @@ abstract class _MaterialAnalysisProductTasksState
       );
     }
     if (material.requiredQty <= 0) {
+      if (_notifiedTargetOf(material) == null &&
+          material.requirementState ==
+              MaterialRequirementState.delegatedToMakeChild) {
+        return const _StatusView(
+          _waitingPlanningOrderLabel,
+          facetKey: 'pendingIssue',
+        );
+      }
       return _StatusView(
         _requirementStateView(material).title,
         facetKey: 'inactive',
@@ -1864,7 +1872,10 @@ abstract class _MaterialAnalysisProductTasksState
     }
     // 未通知：先看路线是否确认（ADR-029 §6.1 硬门槛）。
     if (material.confirmedRoute == null) {
-      return const _StatusView('路线待确认', facetKey: 'routePending');
+      return const _StatusView(
+        _waitingPlanningOrderLabel,
+        facetKey: 'routePending',
+      );
     }
     if (material.lowerLevelPending) {
       // 2026-09-05 下达车间做减法：下层齐不齐不影响下达（计划只管下发，
@@ -1880,14 +1891,14 @@ abstract class _MaterialAnalysisProductTasksState
       return const _StatusView('本版本仅采购路线支持公共安全补库', facetKey: 'blocked');
     }
     if (demandGap > 0) {
-      return _StatusView(
-        '本批需求待通知 ${_qty(demandGap)}',
+      return const _StatusView(
+        _waitingPlanningOrderLabel,
         facetKey: 'pendingIssue',
       );
     }
     if (confirmedRoute == MaterialSupplyRoute.buy && safetyGap > 0) {
-      return _StatusView(
-        '本批需求已覆盖 · 待提交公共安全补库 ${_qty(safetyGap)}',
+      return const _StatusView(
+        _waitingPlanningOrderLabel,
         facetKey: 'pendingIssue',
       );
     }
@@ -1944,20 +1955,14 @@ abstract class _MaterialAnalysisProductTasksState
         target.unitId == material.unitId;
   }
 
-  /// 未下达的第一步文案：按路线显示「等待下发采购 / 等待下发委外 /
-  /// 等待下达车间」，与流程词表第一步同名。路线不明确（null）显示「未下达」。
+  /// 三条供应路线的初始进度使用同一计划待办文案；实际路线和阻塞原因仍在对应列。
   String _pendingIssueLabelOf(ProductionMaterialAnalysisMaterial material) =>
       _pendingIssueLabelOfRoute(
         material.confirmedRoute ?? material.sourceSuggestion,
       );
 
   String _pendingIssueLabelOfRoute(MaterialSupplyRoute? route) =>
-      switch (route) {
-        MaterialSupplyRoute.make => '等待下达车间',
-        MaterialSupplyRoute.subcontract => '等待下发委外',
-        MaterialSupplyRoute.buy => '等待下发采购',
-        null => '未下达',
-      };
+      _waitingPlanningOrderLabel;
 
   /// 该物料组当前有效的「已下达通知」目标（跳过已撤销 CANCELLED）。
 

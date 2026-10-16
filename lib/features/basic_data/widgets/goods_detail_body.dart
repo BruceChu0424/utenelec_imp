@@ -22,7 +22,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../shared/pricing/price_analysis_l10n.dart';
 
-import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -34,7 +35,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
-import '../../../shared/auth/page_permission_action.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
@@ -830,7 +830,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
               ),
             _header(theme, title),
             const Divider(height: 1),
-            // 基础资料详情统一页签条（2026-09-25：选中指示条加高到 12px）。
+            // 基础资料详情共用分类栏，保持 TabController 与正文同步。
             buildUtenDetailTabBar(context, tabs: tabs),
             const Divider(height: 1),
             Flexible(
@@ -942,47 +942,29 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     ),
   );
 
-  Widget _header(ThemeData theme, String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-        UtenSpacing.s8,
-        UtenSpacing.s8,
-      ),
-      child: Row(
-        children: [
-          // 统一返回键（pop 回来源列表页）。
-          const UtenBackButton(),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-              overflow: TextOverflow.ellipsis,
+  Widget _header(ThemeData theme, String title) => SizedBox(
+    height: 56,
+    child: UtenAppBar(
+      title: title,
+      showBackButton: true,
+      showBottomBorder: false,
+      actions: [
+        if (_goodsId != null &&
+            (ref.watch(isSuperAdminProvider) ||
+                ref.watch(currentPermissionsProvider).containsAll({
+                  Perm.goodsView,
+                  Perm.goodsPriceAnalysisView,
+                })))
+          UtenAppBarActionButton(
+            key: const Key('goods-price-analysis-entry'),
+            label: priceText(context, 'title'),
+            onPressed: () => context.push(
+              '/basicinfo/goods/${Uri.encodeComponent(_goodsId!)}/price-analysis',
             ),
           ),
-          if (_goodsId != null &&
-              (ref.watch(isSuperAdminProvider) ||
-                  ref.watch(currentPermissionsProvider).containsAll({
-                    Perm.goodsView,
-                    Perm.goodsPriceAnalysisView,
-                  })))
-            IconButton(
-              key: const Key('goods-price-analysis-entry'),
-              tooltip: priceText(context, 'title'),
-              icon: const Icon(Icons.query_stats),
-              onPressed: () => context.push(
-                '/basicinfo/goods/${Uri.encodeComponent(_goodsId!)}/price-analysis',
-              ),
-            ),
-          const PagePermissionAction(),
-        ],
-      ),
-    );
-  }
+      ],
+    ),
+  );
 
   // ---- 基本信息 Tab ----
   Widget _buildBasicTab(ThemeData theme) {

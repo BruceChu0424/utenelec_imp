@@ -183,8 +183,11 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
         };
         UUID defaultWarehouseId = access.role() == Role.KEEPER && selectable.size() == 1
                 ? selectable.getFirst().id() : null;
+        boolean participant = currentUser.get().map(actor -> !actor.isVisitor()
+                && (actor.isSuperAdmin() || actor.getEmployeeId() != null && access.warehouseParticipant()))
+                .orElse(false);
         return new MyWarehouseScope(access.role().name(), access.role() == Role.SUPERVISOR,
-                selectable, keepers, defaultWarehouseId);
+                selectable, keepers, defaultWarehouseId, participant);
     }
 
     // ---- helpers -------------------------------------------------------------------

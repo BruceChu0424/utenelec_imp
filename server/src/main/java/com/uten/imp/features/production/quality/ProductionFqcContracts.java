@@ -117,7 +117,9 @@ public final class ProductionFqcContracts {
             /** 先入库后检(V597)：本单仍等结论且已上架的行数(0 = 原流程)。 */
             int preStockedItemCount,
             /** 登记库位去重清单（2026-09-17）：待检队列「库位号」列，品质部按此到储放区域检验。 */
-            String placeSummary) {
+            String placeSummary,
+            String goodsCodeSummary,
+            String colorNameSummary) {
     }
 
     /**

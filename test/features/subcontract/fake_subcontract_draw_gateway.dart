@@ -9,6 +9,7 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
     this.count = 0,
     this.submittedCount = 0,
     Map<String, int>? statusCounts,
+    this.applicationParents = const {},
   }) : rows = rows ?? [],
        statusCounts = statusCounts ?? const {};
 
@@ -17,6 +18,7 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
   int count;
   int submittedCount;
   Map<String, int> statusCounts;
+  final Map<String, String> applicationParents;
 
   /// 非空时 drawCounts 抛出它(模拟无订货查看权限等)。
   Object? countError;
@@ -39,6 +41,8 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
   )?
   onSubmit;
 
+  Future<SubcontractDrawTaskList> Function(Map<String, Object?> query)? onList;
+
   @override
   Future<SubcontractDrawTaskList> list({
     int page = 1,
@@ -47,21 +51,40 @@ class FakeSubcontractDrawGateway implements SubcontractDrawGateway {
     String? status,
     String? orderId,
     List<String> orderItemIds = const [],
+    List<String> applicationItemIds = const [],
+    String? applicationId,
   }) async {
-    listQueries.add({
+    final query = <String, Object?>{
       'page': page,
+      'size': size,
       'keyword': keyword,
       'status': status,
       'orderId': orderId,
       'orderItemIds': orderItemIds,
-    });
+      'applicationItemIds': applicationItemIds,
+      'applicationId': applicationId,
+    };
+    listQueries.add(query);
+    if (onList != null) return onList!(query);
+    final scoped = rows
+        .where(
+          (row) =>
+              (applicationItemIds.isEmpty ||
+                  row.applicationItemIds.any(applicationItemIds.contains)) &&
+              (applicationId == null ||
+                  row.applicationItemIds.any(
+                    (id) => applicationParents[id] == applicationId,
+                  )),
+        )
+        .toList();
+    final pageItems = scoped.skip((page - 1) * size).take(size);
     return SubcontractDrawTaskList.fromJson(<String, dynamic>{
       'page': <String, dynamic>{
-        'items': [for (final row in rows) drawRowJson(row)],
+        'items': [for (final row in pageItems) drawRowJson(row)],
         'page': page,
         'size': size,
-        'total': rows.length,
-        'totalPages': 1,
+        'total': scoped.length,
+        'totalPages': (scoped.length / size).ceil(),
       },
       'statusCounts': statusCounts,
       'capabilities': <String, dynamic>{'canSubmitDraw': canSubmitDraw},
@@ -148,6 +171,7 @@ SubcontractDrawTaskRow drawRow(
   int unplannedShortKindCount = 0,
   bool canDraw = true,
   String? planNo,
+  List<String> applicationItemIds = const [],
 }) => SubcontractDrawTaskRow.fromJson(<String, dynamic>{
   'orderItemId': orderItemId,
   'orderId': orderId,
@@ -175,6 +199,7 @@ SubcontractDrawTaskRow drawRow(
   'deliverDate': '2026-10-20',
   'canDraw': canDraw,
   'planNo': ?planNo,
+  'applicationItemIds': applicationItemIds,
 });
 
 Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
@@ -205,6 +230,7 @@ Map<String, dynamic> drawRowJson(SubcontractDrawTaskRow row) =>
       'deliverDate': row.deliverDate,
       'canDraw': row.canDraw,
       'planNo': ?row.planNo,
+      'applicationItemIds': row.applicationItemIds,
     };
 
 /// 预览任务行。

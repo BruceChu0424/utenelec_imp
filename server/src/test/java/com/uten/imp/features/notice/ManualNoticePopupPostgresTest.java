@@ -181,6 +181,19 @@ class ManualNoticePopupPostgresTest {
                 .extracting(Notice::getId).containsExactly(ackUrgent.getId(), ackNormalTop.getId());
     }
 
+    @Test
+    void sourceBoundServerUpdateNotificationIsStoredButDoesNotMasqueradeAsAManualLoginPopup() {
+        String event = ServerUpdateNoticePublisher.sourceEvent("source-revision", "v2.5.18");
+        Notice update = manual("system", "selected", ME, "normal", Instant.now(), event);
+        assertThat(notices.findById(update.getId())).get().satisfies(notice -> {
+            assertThat(notice.getKind()).isEqualTo("NORMAL");
+            assertThat(notice.getSourceEvent()).isEqualTo(event);
+            assertThat(notice.getPriority()).isEqualTo("normal");
+        });
+        assertThat(pending(ME)).isEmpty();
+        assertThat(pending(OTHER)).isEmpty();
+    }
+
     private List<UUID> pending(UUID user) {
         em.clear();
         return notices.findVisiblePendingManualNotices(user, NONE_SINCE, PageRequest.of(0, 20))

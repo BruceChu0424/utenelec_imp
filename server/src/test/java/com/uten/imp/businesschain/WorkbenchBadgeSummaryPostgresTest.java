@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WorkbenchBadgeReadPort;
 import com.uten.imp.application.port.WorkbenchBadgeSources;
+import com.uten.imp.features.admin.serveroperations.HostOperationsClient;
+import com.uten.imp.features.admin.serveroperations.HostOperationsException;
 import com.uten.imp.features.notice.NoticeService;
 import com.uten.imp.features.notice.ServerStatusAlertScheduler;
 import org.junit.jupiter.api.AfterEach;
@@ -17,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -160,6 +163,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         // ADR-131 车间内料仓: 新入口, 没有迁移前的旧口径, 原端点即本次新增的计数端点。
         ORIGINAL_ENDPOINTS.put("workshopMaterial", "/api/workshop-material/badge-counts");
         ORIGINAL_ENDPOINTS.put("serverStatus", "/api/admin/server-status");
+        // Manual server operations is a registered source, independently gated by its real status endpoint.
+        ORIGINAL_ENDPOINTS.put("serverOperations", "/api/admin/server-operations/status");
         ORIGINAL_ENDPOINTS.put("stockCountFinance", "/api/stock/count-review-badges/finance");
         ORIGINAL_ENDPOINTS.put("stockCountWarehouse", "/api/stock/count-review-badges/warehouse");
         ORIGINAL_ENDPOINTS.put("notices", "/api/notices/unread-index");
@@ -237,6 +242,8 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("salesDrafts", List.of("drafts.salesOrder", "drafts.salesShipment", "drafts.salesReturn",
                 "drafts.salesQuote"), List.of());
         legacy("serverStatusAlert", List.of("serverStatus.alerts"), List.of());
+        // A new registered entry: its independent contract is the manual status endpoint above.
+        legacy("serverUpdateAvailable", List.of("serverOperations.updates"), List.of());
     }
 
     private static void legacy(String entry, List<String> todo, List<String> inProgress) {
@@ -266,6 +273,9 @@ class WorkbenchBadgeSummaryPostgresTest {
     void prepare() {
         fixture = new FullChainEndToEndTest();
         beans.autowireBean(fixture);
+        snapshotSource.hostAvailable = true;
+        snapshotSource.hostUpdateAvailable = false;
+        snapshotSource.hostStatusCalls.set(0);
     }
 
     @AfterEach
@@ -364,6 +374,57 @@ class WorkbenchBadgeSummaryPostgresTest {
             assertThat(names(summary.path("entries"))).as("用户 %s 可见入口", user).isEqualTo(expectedEntries);
             assertRollups(summary);
         }
+    }
+
+    @Test
+    void registeredServerUpdateUsesRealPermissionsAndOnlyItsEntryBecomesStaleWhenHostIsUnavailable() throws Exception {
+        var world = fixture.seedWorld("BADGEHOST" + tag());
+        Authentication updater = auth(fixture.createUserWithPerms(world, "updater-" + tag(), "server:update"));
+        Authentication monitor = auth(fixture.createUserWithPerms(world, "monitor-" + tag(), "server_status:view"));
+        Authentication unrelated = auth(fixture.createUserWithPerms(world, "unrelated-" + tag(), "rd_task:view"));
+        snapshotSource.hostUpdateAvailable = true;
+
+        JsonNode updateStatus = getJson("/api/admin/server-operations/status", updater);
+        assertThat(updateStatus.path("available").asBoolean()).isTrue();
+        assertThat(updateStatus.path("canUpdate").asBoolean()).isTrue();
+        JsonNode updateSummary = getJson("/api/workbench/badges", updater);
+        assertThat(facts(updateSummary)).containsEntry("serverOperations.updates", 1L);
+        assertThat(updateSummary.path("entries").path("serverUpdateAvailable").path("todo").asLong()).isEqualTo(1L);
+        assertThat(texts(updateSummary.path("staleEntries"))).isEmpty();
+        assertThat(texts(updateSummary.path("staleSources"))).containsExactly(BrokenSourceConfiguration.KEY);
+        assertRollups(updateSummary);
+
+        JsonNode monitorStatus = getJson("/api/admin/server-operations/status", monitor);
+        assertThat(monitorStatus.path("available").asBoolean()).isTrue();
+        assertThat(monitorStatus.path("canUpdate").asBoolean()).isFalse();
+        JsonNode monitorSummary = getJson("/api/workbench/badges", monitor);
+        assertThat(facts(monitorSummary)).containsEntry("serverOperations.updates", 0L);
+        assertThat(monitorSummary.path("entries").path("serverUpdateAvailable").path("todo").asLong()).isZero();
+        assertThat(texts(monitorSummary.path("staleEntries"))).isEmpty();
+        assertThat(texts(monitorSummary.path("staleSources"))).containsExactly(BrokenSourceConfiguration.KEY);
+        assertRollups(monitorSummary);
+
+        snapshotSource.hostAvailable = false;
+        JsonNode unavailableStatus = getJson("/api/admin/server-operations/status", updater);
+        assertThat(unavailableStatus.path("available").asBoolean()).isFalse();
+        assertThat(unavailableStatus.path("canUpdate").asBoolean()).as("Host availability never grants or removes the update authority").isTrue();
+        JsonNode unavailableSummary = getJson("/api/workbench/badges", updater);
+        assertThat(facts(unavailableSummary)).doesNotContainKey("serverOperations.updates");
+        assertThat(texts(unavailableSummary.path("staleSources")))
+                .containsExactlyInAnyOrder(BrokenSourceConfiguration.KEY, "serverOperations");
+        assertThat(texts(unavailableSummary.path("staleEntries"))).containsExactly("serverUpdateAvailable");
+        assertRollups(unavailableSummary);
+
+        int callsBeforeDenial = snapshotSource.hostStatusCalls.get();
+        var denied = http.perform(get("/api/admin/server-operations/status").with(authentication(unrelated)))
+                .andReturn().getResponse();
+        assertThat(denied.getStatus()).isEqualTo(403);
+        JsonNode unrelatedSummary = getJson("/api/workbench/badges", unrelated);
+        assertThat(facts(unrelatedSummary).keySet()).noneMatch(key -> key.startsWith("serverOperations."));
+        assertThat(names(unrelatedSummary.path("entries"))).doesNotContain("serverUpdateAvailable");
+        assertThat(texts(unrelatedSummary.path("staleEntries"))).isEmpty();
+        assertThat(texts(unrelatedSummary.path("staleSources"))).containsExactly(BrokenSourceConfiguration.KEY);
+        assertThat(snapshotSource.hostStatusCalls.get()).as("An unauthorized reader cannot invoke the host boundary").isEqualTo(callsBeforeDenial);
     }
 
     @Test
@@ -530,6 +591,10 @@ class WorkbenchBadgeSummaryPostgresTest {
         JsonNode body = json.readTree(response.getContentAsByteArray());
         Map<String, Long> out = new TreeMap<>();
         switch (source) {
+            case "serverOperations" -> {
+                assertThat(body.path("available").asBoolean()).as("The normal endpoint comparison uses the controlled healthy host").isTrue();
+                out.put("updates", body.path("canUpdate").asBoolean() && body.path("updateAvailable").asBoolean() ? 1L : 0L);
+            }
             case "serverStatus" -> {
                 long alerts = 0;
                 for (JsonNode alert : body.path("alerts")) {
@@ -630,6 +695,29 @@ class WorkbenchBadgeSummaryPostgresTest {
     static class BrokenSourceConfiguration {
         static final String KEY = "aaBrokenForTest";
         volatile UUID snapshotUser;
+        volatile boolean hostAvailable = true;
+        volatile boolean hostUpdateAvailable;
+        final java.util.concurrent.atomic.AtomicInteger hostStatusCalls = new java.util.concurrent.atomic.AtomicInteger();
+
+        /** Only the external host dependency is controlled; controllers, SQL and gates remain real. */
+        @Bean
+        @Primary
+        HostOperationsClient badgeHostOperations(ObjectMapper mapper) {
+            return (operation, payload, actorId, requestId) -> {
+                if (operation != HostOperationsClient.Operation.STATUS || !payload.isEmpty()) {
+                    throw new AssertionError("Badge aggregation must only read local host status");
+                }
+                hostStatusCalls.incrementAndGet();
+                if (!hostAvailable) throw new HostOperationsException("UNAVAILABLE");
+                return mapper.createObjectNode()
+                        .put("available", true).put("manualOnly", true)
+                        .put("timerActive", false).put("timerEnabled", false)
+                        .put("currentVersion", "v2.5.18").put("sourceRevision", "0".repeat(64))
+                        .put("sourceConfigured", true).put("updateAvailable", hostUpdateAvailable)
+                        .put("serverTimeZone", "UTC")
+                        .put("serverTime", java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).toString());
+            };
+        }
 
         @Bean
         WorkbenchBadgeSources snapshotWorkbenchBadgeSource(JdbcTemplate jdbc) {

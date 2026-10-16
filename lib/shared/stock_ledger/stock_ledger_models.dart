@@ -15,11 +15,12 @@ import '../../features/basic_data/models/master_facet.dart';
 import '../measurement/weight_predictor.dart';
 import '../../features/stock/models/instant_inventory_scope.dart';
 
-/// 库存面板三个分段 (路由 ?tab= 用 [key])。
+/// 库存面板四个分段 (路由 ?tab= 用 [key])。
 enum GoodsStockLedgerSegment {
   balance('balance', '库存余额'),
   ledger('ledger', '出入库流水'),
-  weight('weight', '单重学习');
+  weight('weight', '单重学习'),
+  trace('trace', '用料追溯');
 
   const GoodsStockLedgerSegment(this.key, this.label);
 

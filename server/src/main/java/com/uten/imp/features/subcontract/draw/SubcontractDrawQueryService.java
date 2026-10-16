@@ -66,10 +66,23 @@ public class SubcontractDrawQueryService {
     @Transactional(readOnly = true)
     public DrawTaskPage tasks(int page, int size, String keyword, String status,
                               UUID orderId, List<UUID> orderItemIds) {
+        return tasks(page, size, keyword, status, orderId, orderItemIds, List.of());
+    }
+
+    @Transactional(readOnly = true)
+    public DrawTaskPage tasks(int page, int size, String keyword, String status,
+                              UUID orderId, List<UUID> orderItemIds, List<UUID> applicationItemIds) {
+        return tasks(page, size, keyword, status, orderId, orderItemIds, applicationItemIds, null);
+    }
+
+    @Transactional(readOnly = true)
+    public DrawTaskPage tasks(int page, int size, String keyword, String status,
+                              UUID orderId, List<UUID> orderItemIds, List<UUID> applicationItemIds,
+                              UUID applicationId) {
         String statusFilter = statusFilter(status);
         int pageSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         int pageNo = Math.max(page, 1);
-        Filters filters = filters(keyword, orderId, orderItemIds);
+        Filters filters = filters(keyword, orderId, orderItemIds, applicationItemIds, applicationId);
         String sql = (classifiedCte(SubcontractDrawSql.OPEN_ITEM_PREDICATE + filters.sql()) + """
                 , counts AS (
                     SELECT COUNT(*) FILTER (WHERE status IN ('DRAWABLE','DRAWABLE_PARTIAL')) AS drawable_rows,
@@ -397,7 +410,7 @@ public class SubcontractDrawQueryService {
                 task.drawnQty(), task.pendingQty(), BigDecimal.ZERO, shortQty, task.materialKindCount(),
                 task.readyKindCount(), task.shortKindCount(), task.unplannedShortKindCount(),
                 task.pendingQty().signum() > 0 ? "DRAW_SUBMITTED" : "WAITING_MATERIAL",
-                task.deliverDate(), false, task.materialQty(), task.planNo());
+                task.deliverDate(), false, task.materialQty(), task.planNo(), task.applicationItemIds());
     }
 
     /** 选中的开放任务(范围内), 带行级可领/已领/已覆盖套数。 */
@@ -581,7 +594,7 @@ public class SubcontractDrawQueryService {
                 alias + ".drawable_qty", alias + ".short_qty", alias + ".material_kind_count",
                 alias + ".ready_kind_count", alias + ".unplanned_short_kind_count", alias + ".status",
                 alias + ".deliver_date", alias + ".maker_id", alias + ".material_qty",
-                alias + ".plan_no")) + "\n";
+                alias + ".plan_no", alias + ".application_item_ids")) + "\n";
     }
 
     private static final int ROW_MAKER = 23;
@@ -596,7 +609,24 @@ public class SubcontractDrawQueryService {
                 uuid(r[o + 11]), str(r[o + 12]), decimal(r[o + 13]), decimal(r[o + 14]), decimal(r[o + 15]),
                 drawable, decimal(r[o + 17]), kinds, ready, Math.max(kinds - ready, 0),
                 (int) number(r[o + 20]), str(r[o + 21]), localDate(r[o + 22]),
-                canSubmit && makerId != null && drawable.signum() > 0, decimal(r[o + 24]), str(r[o + 25]));
+                canSubmit && makerId != null && drawable.signum() > 0, decimal(r[o + 24]), str(r[o + 25]),
+                access.hasAuthority("subcontract_application:view")
+                        ? sourceIds(r[o + 26])
+                        : List.of());
+    }
+
+    private static List<UUID> sourceIds(Object value) {
+        if (value instanceof java.sql.Array array) {
+            try {
+                return sourceIds(array.getArray());
+            } catch (java.sql.SQLException error) {
+                throw new ApiException(ErrorCode.CONFLICT, "委外任务来源读取失败，请刷新重试");
+            }
+        }
+        return value instanceof Object[] sources
+                ? java.util.Arrays.stream(sources).filter(Objects::nonNull)
+                    .map(SubcontractDrawQueryService::uuid).distinct().toList()
+                : List.of();
     }
 
     /** 状态筛选白名单(固定 SQL 片段, 不拼用户输入)。 */
@@ -616,7 +646,8 @@ public class SubcontractDrawQueryService {
     private record Filters(String sql, Consumer<Query> binder) {
     }
 
-    private Filters filters(String keyword, UUID orderId, List<UUID> orderItemIds) {
+    private Filters filters(String keyword, UUID orderId, List<UUID> orderItemIds,
+                            List<UUID> applicationItemIds, UUID applicationId) {
         DocumentAccessPolicy.NativeReadScope scope = access.nativeReadScope("o.maker_id", "readOwners");
         StringBuilder sql = new StringBuilder(" AND ").append(scope.predicate()).append(' ');
         String pattern = keyword == null || keyword.isBlank() ? null : "%" + keyword.strip() + "%";
@@ -640,6 +671,43 @@ public class SubcontractDrawQueryService {
         if (!itemIds.isEmpty()) {
             sql.append(" AND oi.id IN (:filterItemIds) ");
         }
+        List<UUID> sourceIds = applicationItemIds == null ? List.of()
+                : applicationItemIds.stream().filter(Objects::nonNull).distinct().toList();
+        if (sourceIds.size() > MAX_PAGE_SIZE) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "一次最多按 200 个委外申请明细筛选");
+        }
+        if (!sourceIds.isEmpty() || applicationId != null) {
+            if (!access.hasAuthority("subcontract_application:view")) {
+                throw new ApiException(ErrorCode.FORBIDDEN, "没有查看委外申请来源的权限");
+            }
+        }
+        if (!sourceIds.isEmpty()) {
+            // 与响应 applicationItemIds 同一真实来源：合并来源存在时，不使用旧主锚点。
+            // 该范围与原 OPEN/owner/keyword 条件共同进入 classified，计数与分页不会跨申请。
+            sql.append("""
+                     AND (EXISTS (
+                         SELECT 1 FROM subcontract_order_item_sources source
+                         WHERE source.order_item_id = oi.id
+                           AND source.application_item_id IN (:filterApplicationItemIds))
+                       OR (oi.application_item_id IN (:filterApplicationItemIds)
+                           AND NOT EXISTS (SELECT 1 FROM subcontract_order_item_sources source
+                                           WHERE source.order_item_id = oi.id)))
+                    """);
+        }
+        if (applicationId != null) {
+            // 整张申请可能超过 200 行，用稳定父身份做关系筛选，不枚举/截断明细 IDs。
+            sql.append("""
+                     AND (EXISTS (
+                         SELECT 1 FROM subcontract_order_item_sources source
+                         JOIN subcontract_application_items application_item ON application_item.id=source.application_item_id
+                         WHERE source.order_item_id=oi.id AND application_item.application_id=:filterApplicationId)
+                       OR (EXISTS (SELECT 1 FROM subcontract_application_items application_item
+                                   WHERE application_item.id=oi.application_item_id
+                                     AND application_item.application_id=:filterApplicationId)
+                           AND NOT EXISTS (SELECT 1 FROM subcontract_order_item_sources source
+                                           WHERE source.order_item_id=oi.id)))
+                    """);
+        }
         return new Filters(sql.toString(), query -> {
             scope.bind(query);
             if (pattern != null) {
@@ -650,6 +718,12 @@ public class SubcontractDrawQueryService {
             }
             if (!itemIds.isEmpty()) {
                 query.setParameter("filterItemIds", itemIds);
+            }
+            if (!sourceIds.isEmpty()) {
+                query.setParameter("filterApplicationItemIds", sourceIds);
+            }
+            if (applicationId != null) {
+                query.setParameter("filterApplicationId", applicationId);
             }
         });
     }

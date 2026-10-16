@@ -23,7 +23,10 @@ bool platformSettingsAllowedFor(Set<String> permissions, bool superAdmin) =>
 String? employeePermissionRedirect(AppUser? user, String location) {
   if (user == null) return RouteName.dashboard;
 
-  if (hubCardPath(location) == RouteName.adminPlatformSettings &&
+  if (const {
+        RouteName.adminPlatformSettings,
+        RouteName.adminSmsSettings,
+      }.contains(hubCardPath(location)) &&
       !platformSettingsAllowedFor(user.permissions.toSet(), user.superAdmin)) {
     return RouteName.accessDenied;
   }
@@ -62,7 +65,10 @@ bool locationAllowedFor(
   bool superAdmin,
   String location,
 ) {
-  if (hubCardPath(location) == RouteName.adminPlatformSettings) {
+  if (const {
+    RouteName.adminPlatformSettings,
+    RouteName.adminSmsSettings,
+  }.contains(hubCardPath(location))) {
     return platformSettingsAllowedFor(permissions, superAdmin);
   }
   if (superAdmin) return true;

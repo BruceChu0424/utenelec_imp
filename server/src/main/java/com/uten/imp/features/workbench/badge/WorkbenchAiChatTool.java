@@ -139,7 +139,7 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
             case qualityIqcPending->"来料待检"; case qualityFqcPending->"产成品待检"; case salesAttention->"销售待处理";
             case salesOrderInFlight->"销售在途订单"; case salesShipmentFinanceRejected->"发货财务退回"; case salesQuoteFinanceRejected->"报价财务退回";
             case salesQuoteAwaitingCustomerConfirmation->"报价待客户确认"; case salesQuoteAwaitingConversion->"报价待转订货"; case salesDrafts->"销售单据草稿";
-            case serverStatusAlert->"服务器告警"; case expenseMine,expenseFinance->throw invalid();
+            case serverStatusAlert->"服务器告警"; case serverUpdateAvailable->"服务器新版本"; case expenseMine,expenseFinance->throw invalid();
         };
     }
     private static ApiException invalid() { return new ApiException(ErrorCode.VALIDATION_FAILED,"任务查询只能选择已登记业务模块"); }

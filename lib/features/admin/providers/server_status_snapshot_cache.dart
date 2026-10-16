@@ -22,9 +22,17 @@
 // 常驻不 autoDispose：它就是一份「最后已知值」，被清掉等于回到原样。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/network/server_config.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/server_status.dart';
 
 /// 最近一次成功读到的服务器状态快照；null = 本次启动还没读到过。
-final serverStatusSnapshotCacheProvider = StateProvider<ServerStatusSnapshot?>(
-  (ref) => null,
-);
+final serverStatusSnapshotCacheProvider = StateProvider<ServerStatusSnapshot?>((
+  ref,
+) {
+  // A fresh measurement belongs to one endpoint and authenticated identity.
+  // Never paint another company's last measurement while the new request runs.
+  ref.watch(apiBaseUrlProvider);
+  ref.watch(authenticatedScopeProvider);
+  return null;
+});

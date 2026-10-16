@@ -1577,11 +1577,13 @@ abstract class _MaterialAnalysisMaterialTableState
       key: 'handle',
       label: _l10n.materialHandle,
       width: UtenControlMetrics.usesTouchTargets(context)
-          ? UtenControlMetrics.minimumHitExtent(context, desktop: 32) * 2 +
-                UtenSpacing.s8 +
-                UtenSpacing.s24 +
-                1
-          : 110,
+          ? math.max(
+              88,
+              UtenControlMetrics.minimumHitExtent(context, desktop: 32) +
+                  UtenSpacing.s24 +
+                  1,
+            )
+          : 88,
       minimumWidthOf: (context) => UtenControlMetrics.usesTouchTargets(context)
           ? UtenControlMetrics.minimumHitExtent(context, desktop: 32) +
                 UtenSpacing.s24 +
@@ -6626,10 +6628,7 @@ abstract class _MaterialAnalysisMaterialTableState
           product.scheduleBlockedReason ??
           _l10n.materialTaskBlocked;
     }
-    // 2026-09-06 词表：未下达产品显示「等待下达车间」，不区分下层齐不齐
-    // ——计划只管下发任务，物料齐不齐由车间执行段 WAITING→READY 自动判断；
-    // 齐套数量仍在本表「齐套缺口/现货分配」列如实施示。
-    return '等待下达车间';
+    return _waitingPlanningOrderLabel;
   }
 
   bool _rootExternalSupplyRow(_MaterialTableRow row) =>

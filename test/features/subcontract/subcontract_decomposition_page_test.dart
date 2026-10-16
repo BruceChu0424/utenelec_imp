@@ -41,6 +41,442 @@ const _decomposePermissions = {
 
 void main() {
   testWidgets(
+    'history never adopts a pending picking response or exposes active draw pagination',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final draw = FakeSubcontractDrawGateway(
+        rows: [
+          drawRow('linked', applicationItemIds: ['application-item-1']),
+        ],
+      );
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(
+                _data(capability: true, firstAllocatedQty: 4),
+              ),
+              drawRepository: draw,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final finder = find.byKey(
+        const Key('subcontract-decomposition-pending-table'),
+      );
+      final initial = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        finder,
+      );
+      final late = Completer<SubcontractDrawTaskList>();
+      draw.onList = (_) => late.future;
+      final link =
+          initial.columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
+                tester.element(finder),
+                initial.items.first,
+              )
+              as InkWell;
+      link.onTap!();
+      await tester.pump();
+      await selectFilterSegment(tester, '历史记录');
+      await tester.pumpAndSettle();
+      final requests = draw.listQueries.length;
+      late.complete(
+        SubcontractDrawTaskList.fromJson({
+          'page': {
+            'items': [drawRowJson(draw.rows.first)],
+            'page': 1,
+            'size': 200,
+            'total': 201,
+            'totalPages': 2,
+          },
+          'capabilities': {'canSubmitDraw': true},
+        }),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('subcontract-draw-scope')), findsNothing);
+      expect(
+        find.byKey(const Key('subcontract-draw-pagination')),
+        findsNothing,
+      );
+      await tester.tap(find.byTooltip('刷新委外任务'));
+      await tester.pumpAndSettle();
+      expect(
+        draw.listQueries,
+        hasLength(requests),
+        reason: 'history refresh must not request active picking tasks',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'grouped application with 201 source lines navigates by one parent identity',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final ids = [for (var i = 0; i < 201; i++) 'source-$i'];
+      final grouped = OperationsWorkbenchTask.fromJson({
+        'taskId': 'application-group',
+        'planNo': 'PP-GROUP',
+        'supplyRoute': 'SUBCONTRACT',
+        'taskStatus': 'WAITING_ORDER',
+        'allocatedQty': 4,
+        'openQty': 201,
+        'goodsCount': 201,
+        'openLineCount': 201,
+        'actionItemIds': ids,
+        'actionDocType': 'SUBCONTRACT_APPLICATION',
+        'actionDocId': 'application-parent',
+        'actionDocNo': 'EA-PARENT',
+        'actionDocCanView': true,
+        'actionDocStatus': '1',
+      }, OperationsWorkbenchDepartment.subcontract);
+      final template = _data(capability: true);
+      final gateway = _Gateway(
+        OperationsWorkbenchData(
+          department: template.department,
+          summary: template.summary,
+          items: [grouped],
+          page: 1,
+          size: 20,
+          total: 1,
+          totalPages: 1,
+          capabilities: template.capabilities,
+        ),
+      );
+      final draw = FakeSubcontractDrawGateway(
+        applicationParents: {for (final id in ids) id: 'application-parent'},
+        rows: [
+          for (final id in ids) drawRow('draw-$id', applicationItemIds: [id]),
+          drawRow('other-application', applicationItemIds: ['other-source']),
+        ],
+      );
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: gateway,
+              drawRepository: draw,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final finder = find.byKey(
+        const Key('subcontract-decomposition-pending-table'),
+      );
+      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        finder,
+      );
+      final link =
+          table.columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
+                tester.element(finder),
+                table.items.first,
+              )
+              as InkWell;
+      link.onTap!();
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.last['applicationId'], 'application-parent');
+      expect(draw.listQueries.last['applicationItemIds'], isEmpty);
+      expect(find.text('领料任务 1 / 2 · 共 201 条'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('subcontract-draw-next')));
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.last['applicationId'], 'application-parent');
+      expect(draw.listQueries.last['page'], 2);
+      final next = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        finder,
+      );
+      expect(
+        (next.unpagedItems.single as SubcontractPendingDrawRow).row.orderItemId,
+        'draw-source-200',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'application picking beyond the first 200 uses an exact server scope',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final draw = FakeSubcontractDrawGateway(
+        rows: [
+          for (var i = 0; i < 200; i++)
+            drawRow('unrelated-$i', applicationItemIds: ['application-item-2']),
+          drawRow(
+            'linked-after-page-one',
+            applicationItemIds: ['application-item-1'],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(
+                _data(capability: true, firstAllocatedQty: 4),
+              ),
+              drawRepository: draw,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<SubcontractPendingRow> table() => tester.widget(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      expect(table().unpagedItems, hasLength(200));
+      expect(find.text('领料任务 1 / 2 · 共 201 条'), findsOneWidget);
+      final link =
+          table().columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
+                tester.element(
+                  find.byKey(
+                    const Key('subcontract-decomposition-pending-table'),
+                  ),
+                ),
+                table().items.first,
+              )
+              as InkWell;
+      link.onTap!();
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.last['applicationItemIds'], [
+        'application-item-1',
+      ]);
+      expect(draw.listQueries.last['page'], 1);
+      expect(table().unpagedItems, hasLength(1));
+      expect(
+        (table().unpagedItems.single as SubcontractPendingDrawRow)
+            .row
+            .orderItemId,
+        'linked-after-page-one',
+      );
+      await tester.tap(find.byTooltip('刷新委外任务'));
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.last['applicationItemIds'], [
+        'application-item-1',
+      ]);
+      final chip = tester.widget<InputChip>(
+        find.byKey(const Key('subcontract-draw-scope')),
+      );
+      chip.onDeleted!();
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.last['applicationItemIds'], isEmpty);
+      expect(find.byKey(const Key('subcontract-draw-scope')), findsNothing);
+      expect(table().unpagedItems, hasLength(200));
+      await tester.tap(find.byKey(const Key('subcontract-draw-next')));
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.last['page'], 2);
+      expect(
+        (table().unpagedItems.single as SubcontractPendingDrawRow)
+            .row
+            .orderItemId,
+        'linked-after-page-one',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'over 200 related picking tasks paginate within the source and refresh clamps a removed last page',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final draw = FakeSubcontractDrawGateway(
+        rows: [
+          for (var i = 0; i < 201; i++)
+            drawRow('linked-$i', applicationItemIds: ['application-item-1']),
+          drawRow('other-source', applicationItemIds: ['application-item-2']),
+        ],
+      );
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(
+                _data(capability: true, firstAllocatedQty: 4),
+              ),
+              drawRepository: draw,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<SubcontractPendingRow> table() => tester.widget(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      final link =
+          table().columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
+                tester.element(
+                  find.byKey(
+                    const Key('subcontract-decomposition-pending-table'),
+                  ),
+                ),
+                table().items.first,
+              )
+              as InkWell;
+      link.onTap!();
+      await tester.pumpAndSettle();
+      expect(find.text('领料任务 1 / 2 · 共 201 条'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('subcontract-draw-next')));
+      await tester.pumpAndSettle();
+      expect(draw.listQueries.last['applicationItemIds'], [
+        'application-item-1',
+      ]);
+      expect(draw.listQueries.last['page'], 2);
+      expect(
+        (table().unpagedItems.single as SubcontractPendingDrawRow)
+            .row
+            .orderItemId,
+        'linked-200',
+      );
+      draw.rows.removeWhere((row) => row.orderItemId == 'linked-200');
+      await tester.tap(find.byTooltip('刷新委外任务'));
+      await tester.pumpAndSettle();
+      expect(draw.listQueries[draw.listQueries.length - 2]['page'], 2);
+      expect(draw.listQueries.last['page'], 1);
+      expect(draw.listQueries.last['applicationItemIds'], [
+        'application-item-1',
+      ]);
+      expect(table().unpagedItems, hasLength(200));
+      expect(
+        find.byKey(const Key('subcontract-draw-pagination')),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'clearing an application scope fences its older picking response',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      final draw = FakeSubcontractDrawGateway(
+        rows: [
+          drawRow('linked', applicationItemIds: ['application-item-1']),
+          drawRow('other', applicationItemIds: ['application-item-2']),
+        ],
+      );
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(
+                _data(capability: true, firstAllocatedQty: 4),
+              ),
+              drawRepository: draw,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<SubcontractPendingRow> table() => tester.widget(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      final initial = table();
+      final late = Completer<SubcontractDrawTaskList>();
+      draw.onList = (_) => late.future;
+      final link =
+          initial.columns.singleWhere((c) => c.key == 'drawnQty').cellBuilder!(
+                tester.element(
+                  find.byKey(
+                    const Key('subcontract-decomposition-pending-table'),
+                  ),
+                ),
+                initial.items.first,
+              )
+              as InkWell;
+      link.onTap!();
+      await tester.pump();
+      expect(table().unpagedItems, isEmpty, reason: '旧的全量行不能冒充新申请范围');
+      draw.onList = null;
+      tester
+          .widget<InputChip>(find.byKey(const Key('subcontract-draw-scope')))
+          .onDeleted!();
+      await tester.pumpAndSettle();
+      expect(table().unpagedItems, hasLength(2));
+      late.complete(
+        SubcontractDrawTaskList.fromJson({
+          'page': {
+            'items': [drawRowJson(draw.rows.first)],
+            'page': 1,
+            'size': 200,
+            'total': 1,
+            'totalPages': 1,
+          },
+          'capabilities': {'canSubmitDraw': true},
+        }),
+      );
+      await tester.pumpAndSettle();
+      expect(table().unpagedItems, hasLength(2));
+      expect(find.byKey(const Key('subcontract-draw-scope')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'partially ordered application links to actual picking tasks without inventing per-source picking',
+    (tester) async {
+      _desktop(tester, const Size(1600, 1000));
+      await tester.pumpWidget(
+        _scope(
+          child: MaterialApp(
+            home: SubcontractDecompositionPage(
+              repository: _Gateway(
+                _data(capability: true, firstAllocatedQty: 4),
+              ),
+              drawRepository: FakeSubcontractDrawGateway(
+                rows: [
+                  drawRow(
+                    'linked-order',
+                    applicationItemIds: ['application-item-1'],
+                  ),
+                  drawRow(
+                    'other-order',
+                    applicationItemIds: ['application-item-2'],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<SubcontractPendingRow> table() => tester.widget(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      final initial = table();
+      final applicationRow = initial.items.first;
+      String? value(String key) => initial.columns
+          .singleWhere((column) => column.key == key)
+          .value(applicationRow);
+      expect(value('orderQty'), '4 件');
+      for (final key in ['drawnQty', 'pendingQty', 'drawableQty', 'shortQty']) {
+        expect(value(key), '见领料任务');
+      }
+      final context = tester.element(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      final link =
+          initial.columns
+                  .singleWhere((column) => column.key == 'drawnQty')
+                  .cellBuilder!(context, applicationRow)
+              as InkWell;
+      link.onTap!();
+      await tester.pumpAndSettle();
+      expect(table().unpagedItems, hasLength(1));
+      expect(
+        (table().unpagedItems.single as SubcontractPendingDrawRow)
+            .row
+            .orderItemId,
+        'linked-order',
+      );
+      expect(find.byKey(const Key('subcontract-draw-scope')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'return to the task center reloads once and drops stale answers',
     (tester) async {
       _desktop(tester, const Size(1600, 1000));
@@ -1174,6 +1610,39 @@ void main() {
               .value(table.unpagedItems.first),
           '100 个',
         );
+        final firstDrawRow = table.unpagedItems.first;
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'requiredQty')
+              .value(firstDrawRow),
+          '100 个',
+        );
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'openQty')
+              .value(firstDrawRow),
+          '0 个',
+        );
+        expect(
+          table.columns
+              .singleWhere((column) => column.key == 'orderableQty')
+              .value(firstDrawRow),
+          '0 个',
+        );
+        final applicationRow = table.items.first;
+        for (final key in [
+          'drawnQty',
+          'pendingQty',
+          'drawableQty',
+          'shortQty',
+        ]) {
+          expect(
+            table.columns
+                .singleWhere((column) => column.key == key)
+                .value(applicationRow),
+            '下单后领料',
+          );
+        }
         expect(
           table.columns.where((column) => column.key == 'unitName'),
           isEmpty,
@@ -1712,6 +2181,7 @@ OperationsWorkbenchData _data({
   required bool capability,
   bool withSources = false,
   bool onlyFirst = false,
+  num firstAllocatedQty = 0,
 }) => OperationsWorkbenchData(
   department: OperationsWorkbenchDepartment.subcontract,
   summary: const OperationsWorkbenchSummary(
@@ -1729,6 +2199,7 @@ OperationsWorkbenchData _data({
       // 2026-10-10 V836：申请行的委外商由投影下发；本行有商，task-2 留空
       // （未定商是业务事实，列显「—」）。
       supplierName: '华信加工',
+      allocatedQty: firstAllocatedQty,
       sources: withSources
           ? SubcontractTaskSource.listFromJson([
               _sourceJson(1, 3),
@@ -1974,6 +2445,7 @@ OperationsWorkbenchTask _task(
   String? rdTaskNo,
   num? orderableQty,
   String? supplierName,
+  num allocatedQty = 0,
 }) => OperationsWorkbenchTask(
   displayStage: displayStage,
   rdTaskNo: rdTaskNo,
@@ -1991,7 +2463,7 @@ OperationsWorkbenchTask _task(
   unitName: '件',
   supplyRoute: 'SUBCONTRACT',
   requiredQty: 10,
-  allocatedQty: 0,
+  allocatedQty: allocatedQty,
   fulfilledQty: 0,
   supplyPeggedQty: 0,
   openQty: 6,

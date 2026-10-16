@@ -9,6 +9,22 @@ class AppLocalizationsKo extends AppLocalizations {
   AppLocalizationsKo([String locale = 'ko']) : super(locale);
 
   @override
+  String get release2518ServerUpdates =>
+      '권한이 있는 직원은 서버 새 버전을 직접 확인한 뒤 즉시 업데이트하거나 서버 현지 시간으로 예약할 수 있습니다. 새 버전이 확인되면 알림과 배지가 표시되며, 정기적인 자동 확인은 실행하지 않습니다.';
+
+  @override
+  String get release2518Storage =>
+      '서버의 메모리, 디스크, 데이터베이스, 업로드 및 백업 내역을 확인할 수 있습니다. 권한에 따라 정리 대상을 미리 확인하고 삭제하며, 현재 버전과 롤백·복구에 필요한 백업 및 업로드 원본은 보호됩니다.';
+
+  @override
+  String get release2518CompanyConnections =>
+      '최고 관리자는 회사별 OSS 업데이트 소스와 SMS 게이트웨이를 설정할 수 있습니다. 키는 저장만 가능하며 다시 표시하지 않고, SMS 설정은 다음 인증번호 발급부터 적용됩니다.';
+
+  @override
+  String get release2518LayoutAndTrace =>
+      '표와 편집 화면의 배치를 통일하고 재무 세율 검토 및 작업장 자재 식별 정보 재사용을 개선했습니다. 양방향 자재 추적은 실제 수량·단위·출처를 유지하며, 관련 외주 출고 작업을 정확히 찾아 페이지별로 확인할 수 있습니다.';
+
+  @override
   String get release2517PickerLayout =>
       '선택 패널의 초기화·취소·확인 버튼을 오른쪽 아래에 모았습니다. 초기화는 빨간색으로 표시하며, 페이지 입력과 분류 목록을 더 간결하게 정리했습니다.';
 

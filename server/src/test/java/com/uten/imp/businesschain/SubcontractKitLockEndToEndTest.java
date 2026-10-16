@@ -499,4 +499,49 @@ class SubcontractKitLockEndToEndTest {
         assertNotNull(actual, what + ": 现状 null, 期望 " + expected);
         qty(expected, actual instanceof BigDecimal decimal ? decimal : new BigDecimal(actual.toString()), what);
     }
+    /** Real Hibernate/native query, full migrations, global shared stock and existing action masking. */
+    @Test
+    void batchWorkbenchKeepsListTotalsStatusFacetsAndActionPermissionsBeforePagination() {
+        assertEquals(868,db.queryForObject("SELECT max(version::int) FROM flyway_schema_history WHERE success",Integer.class));
+        String tag="sckit-batch-wb";
+        var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
+        UUID f=goods(w,tag,"F","自制"),p=goods(w,tag,"P","委外"),m=goods(w,tag,"M","采购");
+        fixture.insertBom(f,p,"1");fixture.insertBom(p,m,"1");
+        var demand1=new PreviewItem("OTHER",null,f,null,w.unitId(),tag+"-one","batch workbench",BusinessTime.today().plusDays(5),new BigDecimal("20"));
+        var demand2=new PreviewItem("OTHER",null,f,null,w.unitId(),tag+"-two","batch workbench",BusinessTime.today().plusDays(6),new BigDecimal("10"));
+        UUID first=applicationItemOf(notifySubcontract(w,demand1,p,tag+"-a1"),p);
+        UUID second=applicationItemOf(notifySubcontract(w,demand2,p,tag+"-a2"),p);
+        otherIn(w,w.warehouseId(),m,"15");
+        var table=new com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTableQuery("status","asc",Map.of(),null,null,null,null);
+        var one=workbench.query("SUBCONTRACT","WAITING_ORDER",tag,"",null,null,1,1,table);
+        var two=workbench.query("SUBCONTRACT","WAITING_ORDER",tag,"",null,null,2,1,table);
+        assertEquals(2,one.total());assertEquals(2,one.totalPages());assertEquals(1,one.items().size());assertEquals(1,two.items().size());
+        assertFalse(one.items().getFirst().taskId().equals(two.items().getFirst().taskId()),"batch before LIMIT keeps both independent headers");
+        assertEquals(2L,one.summary().statusCounts().get("WAITING_ORDER"));assertEquals(2L,one.summary().pendingTasks());
+        var all=workbench.query("SUBCONTRACT","WAITING_ORDER",tag,"",null,null,1,20,table);
+        assertEquals(Set.of("KIT_PARTIAL","WAITING_ORDER"),all.facets().get("status").stream()
+                .map(com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPage.Facet::value).collect(Collectors.toSet()));
+        assertEquals(2L,all.facets().get("status").stream().mapToLong(com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPage.Facet::count).sum());
+        qty("15",applicationRow(first).orderableQty(),"shared global stock for the first application");
+        qty("10",applicationRow(second).orderableQty(),"second application's own open cap, without slicing global demands");
+        var filteredTable=new com.uten.imp.features.operations.workbench.FulfillmentWorkbenchTableQuery("status","asc",Map.of("status","KIT_PARTIAL"),null,null,null,null);
+        var filtered=workbench.query("SUBCONTRACT","WAITING_ORDER",tag,"",null,null,1,1,filteredTable);
+        assertEquals(1,filtered.total());assertEquals("KIT_PARTIAL",filtered.items().getFirst().displayStage());
+        assertEquals(2L,filtered.summary().statusCounts().get("WAITING_ORDER"),"status summary ignores a header's column filter");
+        assertEquals(2,filtered.facets().get("status").size(),"facet excludes its own column filter");
+        assertTrue(all.items().stream().allMatch(FulfillmentTaskRow::canCreateOrder));
+
+        UUID restricted=fixture.createUserWithPerms(w,tag+"-restricted","subcontract_order:view");
+        fixture.loginAs(restricted);
+        var masked=workbench.query("SUBCONTRACT","WAITING_ORDER",tag,"",null,null,1,20,table);
+        assertEquals(2,masked.total(),"existing common-task visibility remains; do not introduce an owner/permission row filter");
+        assertEquals(2L,masked.summary().statusCounts().get("WAITING_ORDER"));
+        assertFalse(masked.capabilities().canCreateSubcontractOrder());
+        for(var row:masked.items()) {
+            org.junit.jupiter.api.Assertions.assertNull(row.actionDocId());org.junit.jupiter.api.Assertions.assertNull(row.actionDocType());
+            org.junit.jupiter.api.Assertions.assertNull(row.orderableQty());assertTrue(row.actionItemIds().isEmpty());
+            assertTrue(row.sources().isEmpty());assertFalse(row.canCreateOrder());assertTrue(row.actionDocRestricted());
+        }
+    }
+
 }

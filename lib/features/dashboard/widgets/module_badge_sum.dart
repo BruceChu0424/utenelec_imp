@@ -29,6 +29,7 @@ enum WorkbenchBadgeKind {
   sales, // 销售管理
   qualityInspection, // 品质任务中心（IQC 待检收货单 + FQC 待检行）
   serverStatus, // 服务器状态(越过警告或危急阈值的告警条数)
+  serverUpdate, // 上次手动检查发现的待更新版本
   none, // 暂无角标数据源（预留：以后接入时新增枚举值）
 }
 
@@ -61,6 +62,7 @@ BadgeCounts workbenchBadgeCounts(
     WorkbenchBadgeKind.sales => module(BadgeModule.sales),
     WorkbenchBadgeKind.qualityInspection => module(BadgeModule.quality),
     WorkbenchBadgeKind.serverStatus => entry(BadgeEntry.serverStatusAlert),
+    WorkbenchBadgeKind.serverUpdate => entry(BadgeEntry.serverUpdateAvailable),
     WorkbenchBadgeKind.none => BadgeCounts.zero,
   };
 }

@@ -1142,6 +1142,7 @@ void batchBusyOverlayTests() {
     WidgetTester tester, {
     _WorkshopLoadGate? loadGate,
     ProductionExecutionWorkbenchRepository? repository,
+    _DiscoveryRequests? discoveryRequests,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -1160,6 +1161,11 @@ void batchBusyOverlayTests() {
             repository ?? _repository(withWaitingRow: true, loadGate: loadGate),
           ),
           productionPlanRepositoryProvider.overrideWithValue(plans),
+          if (discoveryRequests != null) ...[
+            apiClientProvider.overrideWithValue(discoveryRequests.api),
+            productionMaterialDiscoveryRequestRepositoryProvider
+                .overrideWithValue(discoveryRequests),
+          ],
         ],
         child: MaterialApp.router(
           routerConfig: router,
@@ -1290,8 +1296,10 @@ void batchBusyOverlayTests() {
     'batch unknown-material draw shows destination loading and refreshes only after returning',
     (tester) async {
       final loadGate = _WorkshopLoadGate();
+      final requests = _DiscoveryRequests();
       await mountReady(
         tester,
+        discoveryRequests: requests,
         repository: _repository(
           readyIssued: false,
           loadGate: loadGate,
@@ -1322,6 +1330,7 @@ void batchBusyOverlayTests() {
       loadGate.pending = null;
       await tester.pumpAndSettle();
       expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(requests.contexts, ['segment-a']);
       expect(
         find.byKey(const Key('discovery-request-submit')).hitTestable(),
         findsOneWidget,
@@ -2990,8 +2999,19 @@ class _CountingBadgeSummary extends BadgeSummaryNotifier {
 
 class _DiscoveryRequests extends ProductionMaterialDiscoveryRequestRepository {
   _DiscoveryRequests() : super(ApiClient(Dio()));
+  final contexts = <String>[];
   final requested = <String>[];
   final cancelled = <String>[];
+  @override
+  Future<Map<String, dynamic>> context(String id) async {
+    contexts.add(id);
+    return {
+      'canRequest': true,
+      'expectedVersion': 1,
+      'rememberedItems': const <Object>[],
+    };
+  }
+
   @override
   Future<void> request(
     String id,
@@ -3015,8 +3035,20 @@ void discoveryMaterialTests() {
       (tester) async {
         await tester.binding.setSurfaceSize(size);
         addTearDown(() => tester.binding.setSurfaceSize(null));
+        final requests = _DiscoveryRequests();
         await tester.pumpWidget(
           ProviderScope(
+            overrides: [
+              sharedPreferencesProvider.overrideWithValue(_preferences),
+              apiClientProvider.overrideWithValue(requests.api),
+              isSuperAdminProvider.overrideWithValue(false),
+              currentPermissionsProvider.overrideWithValue(const {
+                Perm.productionExecutionView,
+                Perm.productionExecutionStart,
+              }),
+              productionMaterialDiscoveryRequestRepositoryProvider
+                  .overrideWithValue(requests),
+            ],
             child: MaterialApp(
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
@@ -3038,6 +3070,7 @@ void discoveryMaterialTests() {
           ),
         );
         await tester.pumpAndSettle();
+        expect(requests.contexts, ['one']);
         expect(
           find.byKey(const Key('discovery-request-submit')),
           findsOneWidget,
@@ -3059,6 +3092,8 @@ void discoveryMaterialTests() {
           ProviderScope(
             overrides: [
               sharedPreferencesProvider.overrideWithValue(_preferences),
+              apiClientProvider.overrideWithValue(requests.api),
+              isSuperAdminProvider.overrideWithValue(false),
               currentPermissionsProvider.overrideWithValue(const {
                 Perm.productionExecutionView,
                 Perm.productionExecutionStart,

@@ -11,9 +11,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
-import '../providers/authenticated_scope_provider.dart';
+import '../providers/sensitive_read_boundary_provider.dart';
 import '../providers/uten_page_prefs_notifier.dart';
 
 /// 一个仓库(范围选择器的选项 / 我负责的仓)。
@@ -54,11 +53,13 @@ class MyWarehouseScope {
     this.selectable = const [],
     this.keeperWarehouses = const [],
     this.defaultWarehouseId,
+    this.warehouseParticipant = false,
   });
 
   static const empty = MyWarehouseScope();
 
   final WarehouseScopeRole role;
+  final bool warehouseParticipant;
 
   /// 能选「全部仓库」(只有主管)。
   final bool canSelectAll;
@@ -107,12 +108,18 @@ class MyWarehouseScope {
         _ => WarehouseScopeRole.other,
       },
       canSelectAll: json['canSelectAll'] == true,
+      warehouseParticipant: json['warehouseParticipant'] == true,
       selectable: options(json['selectable']),
       keeperWarehouses: options(json['keeperWarehouses']),
       defaultWarehouseId: json['defaultWarehouseId']?.toString(),
     );
   }
 }
+
+/// A previous result retained during refresh is not current authorization.
+MyWarehouseScope? confirmedMyWarehouseScope(
+  AsyncValue<MyWarehouseScope> value,
+) => value.isLoading || value.hasError ? null : value.asData?.value;
 
 /// 列表请求用的仓库范围：[all] = 本人默认范围(不带参数，服务端按本人范围过滤)；
 /// [warehouse] = 在可选范围内挑的一个仓(带 scopeWarehouseId)。
@@ -190,12 +197,10 @@ final warehouseTaskScopePrefProvider =
 
 /// 当前账号的仓库数据范围。随身份重建；失败按「其他人」处理(不显示选择器, 列表仍由服务端过滤)。
 final myWarehouseScopeProvider = FutureProvider<MyWarehouseScope>((ref) async {
-  final scope = ref.watch(authenticatedScopeProvider);
-  if (scope == null) return MyWarehouseScope.empty;
+  final boundary = ref.watch(sensitiveReadBoundaryProvider);
+  if (boundary.identity == null) return MyWarehouseScope.empty;
   try {
-    final json = await ref
-        .read(apiClientProvider)
-        .get(ApiEndpoints.myWarehouseScope);
+    final json = await boundary.api.get(ApiEndpoints.myWarehouseScope);
     return MyWarehouseScope.fromJson(json);
   } catch (_) {
     return MyWarehouseScope.empty;
@@ -210,7 +215,7 @@ final warehouseTaskScopeProvider = Provider<WarehouseTaskScope>((ref) {
   final pref = ref.watch(warehouseTaskScopePrefProvider);
   final id = pref.warehouseId;
   if (id == null) return const WarehouseTaskScope.all();
-  final mine = ref.watch(myWarehouseScopeProvider).valueOrNull;
+  final mine = confirmedMyWarehouseScope(ref.watch(myWarehouseScopeProvider));
   if (mine == null || !mine.showsSelector) {
     return const WarehouseTaskScope.all();
   }

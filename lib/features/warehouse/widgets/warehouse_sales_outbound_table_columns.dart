@@ -285,6 +285,7 @@ warehouseSalesOutboundTableColumns({
             value: selected,
             allowClear: false,
             enabled: editingEnabled,
+            autofilled: !draft.confirmedWarehouses.contains(row.line.id),
             // 无可发仓的行级警示保留；其余空格不再复述列头（默认「请选择」）。
             hintText: choices.isEmpty ? '暂无可供货仓库' : null,
             errorMessage: draft.lineErrors[row.line.id],

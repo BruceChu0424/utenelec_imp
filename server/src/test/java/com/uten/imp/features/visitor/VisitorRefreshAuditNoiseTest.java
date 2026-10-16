@@ -4,7 +4,6 @@ import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.mastercode.MasterCodeService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.config.props.SmsProperties;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.features.visitor.dto.VisitorAuthDto;
 import com.uten.imp.security.JwtService;
@@ -84,7 +83,6 @@ class VisitorRefreshAuditNoiseTest {
                 jwt,
                 mock(SecurityContextCurrentUser.class),
                 mock(TxSessionVars.class),
-                mock(SmsProperties.class),
                 audit,
                 mock(LoginRateLimiter.class),
                 mock(MasterCodeService.class),

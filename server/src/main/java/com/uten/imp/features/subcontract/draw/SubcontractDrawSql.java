@@ -57,7 +57,12 @@ public final class SubcontractDrawSql {
             COALESCE(oi.goods_name_snapshot, goods.name) AS goods_name,
             oi.color_id, color.name AS color_name, oi.unit_id, unit.name AS unit_name,
             COALESCE(oi.deliver_date, o.deliver_date) AS deliver_date, o.maker_id,
-            COALESCE(NULLIF(oi.source_doc_no, ''), o.bill_no) AS plan_no
+            COALESCE(NULLIF(oi.source_doc_no, ''), o.bill_no) AS plan_no,
+            COALESCE((SELECT array_agg(DISTINCT source.application_item_id)
+                      FROM subcontract_order_item_sources source
+                      WHERE source.order_item_id = oi.id),
+                     CASE WHEN oi.application_item_id IS NULL THEN ARRAY[]::uuid[]
+                          ELSE ARRAY[oi.application_item_id] END) AS application_item_ids
             """;
 
     /** 本订货明细是否挂着仓库还没发出的领料草稿行。 */

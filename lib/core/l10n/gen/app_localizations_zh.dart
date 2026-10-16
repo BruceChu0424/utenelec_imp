@@ -9,6 +9,22 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get release2518ServerUpdates =>
+      '有权限人员可手动检查服务器新版本，选择立即更新或按服务器当地时间预约；发现更新后显示提醒和徽章，平时不自动检查更新源。';
+
+  @override
+  String get release2518Storage =>
+      '服务器存储可查看内存、磁盘、数据库、上传和备份明细；经授权预览并清理符合条件的资源，当前版本、回滚与恢复所需备份和上传原件受保护。';
+
+  @override
+  String get release2518CompanyConnections =>
+      '超级管理员可配置每家公司的 OSS 更新源与短信网关；密钥只写不回显，短信网关配置用于下一次发码。';
+
+  @override
+  String get release2518LayoutAndTrace =>
+      '统一表格和编辑区布局，完善财务核税与车间物料身份沿用；双向物料追溯保留真实数量、单位和来源，关联委外领料支持准确定位与分页。';
+
+  @override
   String get release2517PickerLayout =>
       '选择滑窗的清空、取消、确定统一放在右下角；清空用红色提示，页码输入与分类列表更紧凑、易操作。';
 

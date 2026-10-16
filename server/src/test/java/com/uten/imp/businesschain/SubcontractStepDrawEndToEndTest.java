@@ -199,6 +199,138 @@ class SubcontractStepDrawEndToEndTest {
     // =====================================================================================
 
     @Test
+    void applicationSourceFilterPrecedesPagingAndCountsAndKeepsTaskAuthority() {
+        String tag = "scstep-source-page";
+        var w = fixture.seedWorld(tag);
+        fixture.loginAs(w.superAdminUserId());
+        UUID product = goods(w, tag, "P", "委外");
+        UUID material = goods(w, tag, "M", "采购");
+        UUID unrelatedProduct = goods(w, tag, "UNRELATED", "委外");
+        fixture.insertBom(product, material, "1");
+        var stage = fixture.stageSubcontractKit(w, Map.of(product, "401"));
+        // Stock arrival legitimately wakes the kit-notice worker. Finish that
+        // existing side effect before creating 201 new sources; this test owns
+        // read scope/paging, not a race against notification FK key-share locks.
+        drainOutboxFor(Set.of(product, material));
+        var applicationDocument = sourceScopeApplication(w, product, unrelatedProduct, 201);
+        var otherDocument = sourceScopeApplication(w, product, unrelatedProduct, 1);
+        UUID application = applicationDocument.applicationId();
+        UUID target = db.queryForObject(
+                "SELECT id FROM subcontract_application_items WHERE application_id=? AND goods_id=?",
+                UUID.class, application, product);
+        UUID unrelated = otherDocument.lines().getFirst().applicationItemId();
+        var request = orderRequest(w, product, "1", BusinessTime.today().plusDays(5), null);
+        List<OrderItemLine> lines = new ArrayList<>();
+        for (int i = 0; i <= 400; i++) {
+            var line = new OrderItemLine();
+            line.setLineNo(i + 1);
+            line.setGoodsId(product);
+            line.setUnitId(w.unitId());
+            line.setUnitRate(BigDecimal.ONE);
+            line.setQty(BigDecimal.ONE);
+            line.setPrice(new BigDecimal("50"));
+            UUID source = i == 0 || i > 200 ? target : unrelated;
+            line.setApplicationItemId(source);
+            line.setApplicationItemIds(i == 400 ? List.of(target, unrelated) : List.of(source));
+            lines.add(line);
+        }
+        request.setItems(lines);
+        var order = orders.create(request);
+        UUID orderId = order.getId();
+        UUID originalItem = order.getItems().getFirst().getId();
+        Set<UUID> phaseAggregates = new LinkedHashSet<>(Set.of(product, material, orderId, application,
+                otherDocument.applicationId(), target, unrelated));
+        applicationDocument.lines().forEach(line -> phaseAggregates.add(line.applicationItemId()));
+        otherDocument.lines().forEach(line -> phaseAggregates.add(line.applicationItemId()));
+        order.getItems().forEach(line -> phaseAggregates.add(line.getId()));
+        drainOutboxFor(phaseAggregates);
+        // Legitimate pre-review legacy shape: the validated primary source remains,
+        // but older rows have no multi-source table entry. Never mutate approved facts.
+        db.update("DELETE FROM subcontract_order_item_sources WHERE order_item_id=?", originalItem);
+        fixture.stageSubcontractKitUntilApproval(orderId, stage);
+        approveSubcontract(w, orderId);
+        drainOutboxFor(phaseAggregates);
+        List<UUID> linked = order.getItems().stream()
+                .filter(row -> row.getLineNo() == 1 || row.getLineNo() > 201)
+                .map(row -> row.getId()).toList();
+        DrawTaskPage broad = drawQueries.tasks(1, 200, "", "", orderId, null);
+        assertEquals(401, broad.page().getTotal());
+        assertEquals(200, broad.page().getItems().size());
+        DrawTaskPage first = drawQueries.tasks(1, 200, "", "", orderId, null, List.of(target));
+        assertEquals(201, first.page().getTotal(), "source filtering must happen before total and LIMIT");
+        assertEquals(2, first.page().getTotalPages());
+        assertEquals(200, first.page().getItems().size());
+        assertEquals(201L, first.statusCounts().get("ALL"));
+        assertEquals(201L, first.statusCounts().get("WAITING_PLANNING"));
+        DrawTaskPage parent = drawQueries.tasks(2, 200, "", "", orderId, null, null, application);
+        assertEquals(201, parent.page().getTotal(), "parent navigation supports applications with over 200 source lines");
+        assertEquals(List.of(linked.getLast()), parent.page().getItems().stream().map(DrawTaskRow::orderItemId).toList());
+        DrawTaskPage last = drawQueries.tasks(2, 200, "", "", orderId, null, List.of(target));
+        assertEquals(201, last.page().getTotal());
+        assertEquals(List.of(linked.getLast()), last.page().getItems().stream().map(DrawTaskRow::orderItemId).toList());
+        assertEquals(Set.of(target, unrelated), Set.copyOf(last.page().getItems().getFirst().applicationItemIds()),
+                "merged source IDs remain exact, without counting one task twice");
+        DrawTaskPage other = drawQueries.tasks(1, 200, "", "", orderId, null, List.of(unrelated));
+        assertEquals(201, other.page().getTotal(), "200 unrelated tasks and the one genuinely merged task");
+        assertFalse(other.page().getItems().stream().anyMatch(row -> originalItem.equals(row.orderItemId())),
+                "legacy-only target source is not in the other application");
+        DrawTaskPage drawable = drawQueries.tasks(1, 200, "", "DRAWABLE", orderId, null, List.of(target));
+        assertEquals(0, drawable.page().getTotal());
+        assertEquals(201L, drawable.statusCounts().get("ALL"), "status facets retain the same source scope");
+        assertEquals(0, drawQueries.tasks(1, 200, "", "", UUID.randomUUID(), null, List.of(target)).page().getTotal());
+        assertEquals(1, drawQueries.tasks(1, 200, "", "", orderId, List.of(originalItem), List.of(target)).page().getTotal());
+        assertEquals(ErrorCode.VALIDATION_FAILED, assertThrows(ApiException.class, () ->
+                drawQueries.tasks(1, 200, "", "", orderId, null,
+                        java.util.stream.IntStream.range(0, 201).mapToObj(i -> UUID.randomUUID()).toList())).getCode());
+
+        UUID ownerRestricted = fixture.createUserWithPerms(w, tag + "-owner-restricted",
+                "subcontract_order:view", "subcontract_application:view");
+        fixture.loginAs(ownerRestricted);
+        assertEquals(0, drawQueries.tasks(1, 200, "", "", orderId, null, List.of(target)).page().getTotal(),
+                "knowing a source ID cannot bypass the existing task owner scope");
+        assertEquals(0, drawQueries.tasks(1, 200, "", "", orderId, null, null, application).page().getTotal(),
+                "knowing the parent application does not bypass the task owner scope either");
+        UUID noSourcePermission = fixture.createUserWithPerms(w, tag + "-no-source",
+                "subcontract_order:view", "subcontract:view:all");
+        fixture.loginAs(noSourcePermission);
+        assertEquals(ErrorCode.FORBIDDEN, assertThrows(ApiException.class, () ->
+                drawQueries.tasks(1, 200, "", "", orderId, null, List.of(target))).getCode());
+        assertEquals(ErrorCode.FORBIDDEN, assertThrows(ApiException.class, () ->
+                drawQueries.tasks(1, 200, "", "", orderId, null, null, application)).getCode());
+        UUID viewer = fixture.createUserWithPerms(w, tag + "-source-viewer",
+                "subcontract_order:view", "subcontract_application:view", "subcontract:view:all");
+        fixture.loginAs(viewer);
+        DrawTaskPage readOnly = drawQueries.tasks(2, 200, "", "", orderId, null, List.of(target));
+        assertEquals(201, readOnly.page().getTotal());
+        assertFalse(readOnly.capabilities().canSubmitDraw(), "source navigation does not grant draw authority");
+        assertFalse(readOnly.page().getItems().getFirst().canDraw());
+        fixture.loginAs(w.superAdminUserId());
+        db.update("UPDATE subcontract_orders SET is_closed=true WHERE id=?", orderId);
+        assertEquals(0, drawQueries.tasks(1, 200, "", "", orderId, null, List.of(target)).page().getTotal(),
+                "source navigation retains the active/open task boundary");
+    }
+
+    private com.uten.imp.application.port.ProductionSubcontractRequestPort.DraftResult sourceScopeApplication(
+            FullChainEndToEndTest.World w, UUID product, UUID unrelatedProduct, int lineCount) {
+        List<com.uten.imp.application.port.ProductionSubcontractRequestPort.DraftLine> items = new ArrayList<>();
+        for (int i = 1; i <= lineCount; i++) {
+            items.add(new com.uten.imp.application.port.ProductionSubcontractRequestPort.DraftLine(
+                    UUID.randomUUID(), i == 1 ? product : unrelatedProduct, null, w.unitId(), new BigDecimal("200.5"),
+                    BusinessTime.today().plusDays(5), "source scope pagination fixture"));
+        }
+        return new TransactionTemplate(transactions).execute(ignored -> {
+            beans.getBean(com.uten.imp.security.TxSessionVars.class).bind();
+            var locks = beans.getBean(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class);
+            var plan = new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan(
+                    Set.of(), Set.of(), Set.of(w.warehouseId()), Set.of(), "source-scope-create");
+            locks.acquire(() -> plan).verifyUnchanged();
+            return beans.getBean(com.uten.imp.application.port.ProductionSubcontractRequestPort.class)
+                    .createProductionDraft("SOURCE-SCOPE", null, BusinessTime.today().plusDays(5),
+                            w.warehouseId(), items, w.employeeId(), w.employeeId());
+        });
+    }
+
+    @Test
     void twoMaterialsDrawInBatchesWarehouseShortIssueTopsUpAndBatchReturnsCloseWithFinalCost() {
         String tag = "scstep-main";
         var w = fixture.seedWorld(tag);
@@ -1296,6 +1428,10 @@ class SubcontractStepDrawEndToEndTest {
         assertEquals(2, count("SELECT COUNT(*) FROM subcontract_order_item_sources WHERE order_item_id=?", item),
                 "一个订货明细合并了两张申请");
         qty("20", planLines(item).get(m).get("planned_qty"), "M 计划量 = 20");
+        DrawTaskRow linkedTask = drawQueries.tasks(1, 50, "", "", orderId, null)
+                .page().getItems().getFirst();
+        assertEquals(Set.of(application1, application2), Set.copyOf(linkedTask.applicationItemIds()),
+                "领料任务保留全部真实申请来源，不能只认主锚点或按比例伪造逐申请领料数量");
 
         // M 公共库存 10: 领 10 套(全部来自公共库存, 没有专属交接)并发出; 委外商交回 10 个 P, 合格入库。
         otherIn(w, wh, m, null, "10", "5");
@@ -1323,6 +1459,32 @@ class SubcontractStepDrawEndToEndTest {
     // =====================================================================================
     // 停用叶仓里还有货(例如停用后被红冲退回): 领料候选仓、锁发现、草稿占用同一个仓谓词
     // =====================================================================================
+
+    @Test
+    void automaticOutboundDeliveryDateFreezesOnlyWithCommittedApprovalAndManualDatesStayFixed() {
+        String tag="scstep-delivery-day";
+        var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
+        UUID p=goods(w,tag,"P","委外"),m=goods(w,tag,"M","采购"),leaf=warehouse(tag+"-leaf");
+        fixture.insertBom(p,m,"1");otherIn(w,leaf,m,null,"10","5");
+        UUID order=subcontractOrder(w,p,"10",BusinessTime.today().plusDays(9),null);approveSubcontract(w,order);
+        UUID item=itemOf(order);
+        UUID automatic=drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item,new BigDecimal("5"))),"scstep-auto-day-"+item)).issueIds().getFirst();
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"自动日期在服务器草稿里应保持未指定");
+        warehousePick(automatic,m,"5");
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"保存拣货草稿不能提前冻结自动日期");
+        new TransactionTemplate(beans.getBean(PlatformTransactionManager.class)).executeWithoutResult(transaction->{
+            assertEquals(BusinessTime.today(),materialIssues.approve(automatic).getDeliverDate());
+            transaction.setRollbackOnly(); // A later part of the outbound command failed.
+        });
+        assertNull(materialIssues.detail(automatic).getDeliverDate(),"失败事务必须连自动日期一起回滚");
+        assertEquals(0,materialIssues.detail(automatic).getStatus().intValue());qty("10",onHand(m,leaf),"失败不能留下出库");
+        var approved=materialIssues.approve(automatic);assertEquals(BusinessTime.today(),approved.getDeliverDate());
+        LocalDate recorded=approved.getDeliverDate();assertThrows(ApiException.class,()->materialIssues.approve(automatic));
+        assertEquals(recorded,materialIssues.detail(automatic).getDeliverDate(),"重复动作不能改已审单据日期");
+        UUID manual=drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item,new BigDecimal("5"))),"scstep-manual-day-"+item)).issueIds().getFirst();
+        LocalDate chosen=BusinessTime.today().minusDays(3);warehousePick(manual,m,"5",chosen);
+        assertEquals(chosen,materialIssues.approve(manual).getDeliverDate(),"明确填写的日期始终保留");
+    }
 
     @Test
     void aDisabledLeafStillHoldingStockIsDrawableAndItsDraftCanBeEditedAndIssuedInPlace() {
@@ -1663,12 +1825,16 @@ class SubcontractStepDrawEndToEndTest {
 
     /** 仓库在拣货页把某种物料改成实发量(其余行原样回传, 回传行身份)。 */
     private void warehousePick(UUID issueId, UUID goodsId, String qty) {
+        warehousePick(issueId,goodsId,qty,materialIssues.detail(issueId).getDeliverDate());
+    }
+
+    private void warehousePick(UUID issueId,UUID goodsId,String qty,LocalDate deliveryDate) {
         MaterialIssueDetail draft = materialIssues.detail(issueId);
         var request = new MaterialIssueSaveRequest();
         request.setBillDate(draft.getBillDate());
         request.setSupplierId(draft.getSupplierId());
         request.setWarehouseId(draft.getWarehouseId());
-        request.setDeliverDate(draft.getDeliverDate());
+        request.setDeliverDate(deliveryDate);
         request.setRemark(draft.getRemark());
         List<MaterialIssueItemLine> lines = new ArrayList<>();
         for (MaterialIssueItemDto item : draft.getItems()) {

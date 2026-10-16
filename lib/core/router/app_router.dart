@@ -21,8 +21,12 @@ import '../../features/admin/pages/admin_ai_usage_page.dart';
 import '../../features/admin/pages/admin_ai_usage_records_page.dart';
 import '../../features/admin/pages/admin_ai_usage_person_page.dart';
 import '../../features/admin/pages/admin_system_settings_page.dart';
+import '../../features/admin/pages/admin_sms_settings_page.dart';
 import '../../features/admin/pages/admin_platform_settings_page.dart';
 import '../../features/admin/pages/server_status_page.dart';
+import '../../features/admin/pages/server_operations_page.dart';
+import '../../features/admin/pages/server_storage_page.dart';
+import '../../features/admin/widgets/server_update_popup_gate.dart';
 import '../../features/admin/pages/admin_permissions_page.dart';
 import '../../features/auth/pages/login_page.dart';
 import '../../features/basic_data/pages/basic_data_hub_page.dart';
@@ -454,7 +458,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         // 动态内容重建时 _flushInactiveSelections 抛 ConcurrentModificationError），
         // 全局包裹会让轮询/表格刷新在拖选文字时崩掉整个调度帧，表现为"点了没反应"。
         // 后续如需复制功能，改为在静态内容页局部包 SelectionArea，勿全局包裹。
-        builder: (context, state, child) => MainShellPage(child: child),
+        builder: (context, state, child) => MainShellPage(
+          reminderBuilder: ServerUpdatePopupGate.new,
+          child: child,
+        ),
         routes: [
           DraftAwareGoRoute(
             path: RouteName.home,
@@ -2109,6 +2116,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, _) => const AdminSystemSettingsPage(),
           ),
           DraftAwareGoRoute(
+            path: RouteName.adminSmsSettings,
+            name: 'admin-sms-settings',
+            builder: (_, _) => const AdminSmsSettingsPage(),
+          ),
+          DraftAwareGoRoute(
             path: RouteName.adminPlatformSettings,
             name: 'admin-platform-settings',
             builder: (_, _) => const AdminPlatformSettingsPage(),
@@ -2117,6 +2129,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.adminServerStatus,
             name: 'admin-server-status',
             builder: (_, _) => const ServerStatusPage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.adminServerOperations,
+            name: 'admin-server-operations',
+            builder: (_, _) => const ServerOperationsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.adminServerStorage,
+            name: 'admin-server-storage',
+            builder: (_, _) => const ServerStoragePage(),
           ),
           // AI 服务设置(ADR-133): 不是表单草稿页, 密钥绝不进草稿快照。
           DraftAwareGoRoute(

@@ -57,7 +57,8 @@ public final class SubcontractDrawContracts {
             LocalDate deliverDate,
             boolean canDraw,
             BigDecimal materialQty,
-            String planNo) {
+            String planNo,
+            List<UUID> applicationItemIds) {
     }
 
     /** 列表能力位: 是否持有委外领料权限(新页面一律读它, 不在页面里判断权限常量)。 */

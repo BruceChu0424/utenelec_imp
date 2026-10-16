@@ -91,6 +91,50 @@ Widget _app({
 );
 
 void main() {
+  test('warehouse participation is an explicit server capability', () {
+    expect(
+      MyWarehouseScope.fromJson(const {'role': 'OTHER'}).warehouseParticipant,
+      isFalse,
+    );
+    expect(
+      MyWarehouseScope.fromJson(const {
+        'role': 'OTHER',
+        'warehouseParticipant': true,
+      }).warehouseParticipant,
+      isTrue,
+    );
+    expect(
+      MyWarehouseScope.fromJson(const {
+        'role': 'SUPERVISOR',
+        'warehouseParticipant': 'true',
+      }).warehouseParticipant,
+      isFalse,
+    );
+  });
+
+  test(
+    'refreshing or failed warehouse scopes cannot reuse old authorization',
+    () {
+      const previous = AsyncData(MyWarehouseScope(warehouseParticipant: true));
+      expect(confirmedMyWarehouseScope(previous)?.warehouseParticipant, isTrue);
+      expect(
+        confirmedMyWarehouseScope(
+          const AsyncLoading<MyWarehouseScope>().copyWithPrevious(previous),
+        ),
+        isNull,
+      );
+      expect(
+        confirmedMyWarehouseScope(
+          AsyncError<MyWarehouseScope>(
+            StateError('revoked'),
+            StackTrace.empty,
+          ).copyWithPrevious(previous),
+        ),
+        isNull,
+      );
+    },
+  );
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();

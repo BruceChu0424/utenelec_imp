@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * 访客短信网关部署配置。开发期 provider=log (打印日志, 不真实发送)。验证码有效期、发送间隔、
+ * 访客短信网关的部署回退配置；页面覆盖后由运行时配置选择网关。开发期 provider=log 不真实发送。验证码有效期、发送间隔、
  * 每日上限属于运行时策略, 只登记在系统设置 (SystemSettingKey.SMS_*)。
  */
 @Getter

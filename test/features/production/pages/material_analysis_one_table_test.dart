@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -87,6 +88,33 @@ Finder _issueButton(String line) =>
 
 bool _enabled(WidgetTester tester, Finder finder) =>
     tester.widget<InkWell>(finder).onTap != null;
+
+Future<Finder> _resizeMaterialHandlingColumn(
+  WidgetTester tester,
+  double width,
+) async {
+  final handle = find.byWidgetPredicate(
+    (widget) => widget is UtenColumnResizeHandle && widget.label == '物料办理',
+  );
+  expect(handle, findsOneWidget);
+  // Start at the shared column handle, rather than a label's inner container.
+  // Its public resize contract leaves the host's desktop/touch minimum intact.
+  final column = find
+      .ancestor(
+        of: handle,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Container &&
+              widget.constraints?.hasBoundedWidth == true,
+        ),
+      )
+      .first;
+  tester
+      .widget<UtenColumnResizeHandle>(handle)
+      .onResize(width - tester.getSize(column).width);
+  await tester.pumpAndSettle();
+  return column;
+}
 
 /// 这一行的勾选框此刻勾没勾(行必须有勾选框, 没有就直接失败)。
 ///
@@ -234,6 +262,46 @@ void main() {
   materialOrderAuthorityCases();
   materialQuantityPresentationCases();
   materialPolicyCases();
+  testWidgets(
+    'initial planning progress is unified across product and material views',
+    (tester) async {
+      await _pump(tester);
+      final table = tester.widget<MasterDataTableView<dynamic>>(
+        find.byKey(const Key('material-analysis-material-table')),
+      );
+      final dynamic progress = table.columns.singleWhere(
+        (column) => column.key == 'status',
+      );
+      final initialLabels = table.items
+          // ignore: avoid_dynamic_calls
+          .map((row) => progress.value(row))
+          .toList();
+      expect(initialLabels, contains('等待计划下单'));
+      expect(initialLabels, isNot(contains('等待下达车间')));
+      expect(initialLabels, isNot(contains('本批需求待通知 800')));
+      expect(
+        table.columns.singleWhere((column) => column.key == 'handle').width,
+        88,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('material-bom-layout-material')),
+      );
+      await tester.pumpAndSettle();
+      final aggregateTable = tester.widget<MasterDataTableView<dynamic>>(
+        find.byKey(const Key('material-analysis-material-table')),
+      );
+      final dynamic aggregateProgress = aggregateTable.columns.singleWhere(
+        (column) => column.key == 'status',
+      );
+      final aggregateLabels = aggregateTable.items
+          // ignore: avoid_dynamic_calls
+          .map((row) => aggregateProgress.value(row))
+          .toList();
+      expect(aggregateLabels, contains('等待计划下单'));
+      expect(aggregateLabels, isNot(contains('等待下发采购')));
+      expect(tester.takeException(), isNull);
+    },
+  );
   Map<String, dynamic> withCoveredAppendPool(Map<String, dynamic> data) {
     _fixtureMaterial(data, 'm-3').addAll({
       'planningUncoveredQty': 0,
@@ -5128,36 +5196,7 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       // 共享表格可拖到 48px：统一文字按钮须受列宽约束并保持单行。
-      final handleHeader = find
-          .ancestor(
-            of: find.text('物料办理'),
-            matching: find.byWidgetPredicate(
-              (widget) =>
-                  widget is Container &&
-                  widget.constraints?.hasBoundedWidth == true,
-            ),
-          )
-          .first;
-      final grip = tester.widget<GestureDetector>(
-        find.descendant(
-          of: handleHeader,
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is GestureDetector &&
-                widget.onHorizontalDragUpdate != null &&
-                widget.child is MouseRegion &&
-                (widget.child! as MouseRegion).cursor ==
-                    SystemMouseCursors.resizeColumn,
-          ),
-        ),
-      );
-      grip.onHorizontalDragUpdate!(
-        DragUpdateDetails(
-          delta: Offset(48 - tester.getSize(handleHeader).width, 0),
-          globalPosition: tester.getCenter(handleHeader),
-        ),
-      );
-      await tester.pumpAndSettle();
+      final handleHeader = await _resizeMaterialHandlingColumn(tester, 48);
       expect(tester.getSize(handleHeader).width, 48);
       expect(tester.getSize(row).height, lessThanOrEqualTo(64));
       expect(tester.takeException(), isNull, reason: '最窄列也不横向溢出或折成两行');
@@ -5218,34 +5257,7 @@ void main() {
           find.byKey(const ValueKey('material-bom-layout-material')),
         );
         await tester.pumpAndSettle();
-        final header = find
-            .ancestor(
-              of: find.text('物料办理'),
-              matching: find.byWidgetPredicate(
-                (w) => w is Container && w.constraints?.hasBoundedWidth == true,
-              ),
-            )
-            .first;
-        final grip = tester.widget<GestureDetector>(
-          find.descendant(
-            of: header,
-            matching: find.byWidgetPredicate(
-              (w) =>
-                  w is GestureDetector &&
-                  w.onHorizontalDragUpdate != null &&
-                  w.child is MouseRegion &&
-                  (w.child! as MouseRegion).cursor ==
-                      SystemMouseCursors.resizeColumn,
-            ),
-          ),
-        );
-        grip.onHorizontalDragUpdate!(
-          DragUpdateDetails(
-            delta: Offset(48 - tester.getSize(header).width, 0),
-            globalPosition: tester.getCenter(header),
-          ),
-        );
-        await tester.pumpAndSettle();
+        await _resizeMaterialHandlingColumn(tester, 48);
         final actions = find.byKey(
           const ValueKey('material-top-level-cancel-plan'),
         );

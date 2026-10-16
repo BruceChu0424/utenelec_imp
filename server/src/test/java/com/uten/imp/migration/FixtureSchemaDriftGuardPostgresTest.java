@@ -191,7 +191,9 @@ class FixtureSchemaDriftGuardPostgresTest {
             "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_child",
             "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_link",
             "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_race_parent",
-            "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_race_child");
+            "com/uten/imp/migration/PermanentRecordHistoryPostgresTest.java#history_race_child",
+            // Only this V868 publication oracle's private shown-card sink; not a business table.
+            "com/uten/imp/features/subcontract/kit/SubcontractKitBatchAuthorityPostgresTest.java#fixture_cards");
     private static final Set<String> CLASS_SCOPED_FIXTURE_COLUMNS = Set.of(
             // Exact V783 miniature source view: original task fact marker and trusted/unknown owner classification.
             "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.history_note",

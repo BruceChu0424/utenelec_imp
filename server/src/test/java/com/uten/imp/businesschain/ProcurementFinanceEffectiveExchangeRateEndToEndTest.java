@@ -195,6 +195,59 @@ class ProcurementFinanceEffectiveExchangeRateEndToEndTest {
                 .containsExactly("procurement_order_approval_cases","purchase_receipt_items","subcontract_receipt_items");
     }
 
+    @ParameterizedTest @ValueSource(strings={"PURCHASE","SUBCONTRACT"})
+    void financialTaxFollowsReceiptsWithoutRewritingSubmittedTermsAndCannotRevaluePostedReceipts(String kind) {
+        Fixture f=fixture(kind,"3.125",false);
+        var decision=submit(f);
+        String hash=db.queryForObject("SELECT snapshot_hash FROM procurement_order_approval_cases WHERE id=?",String.class,decision.caseId());
+        finance.approveBatch(List.of(decision),"核定税率",RATE,new BigDecimal("13.1234"));
+        assertThat(finance.review(decision.caseId()).financeTaxRate()).isEqualByComparingTo("13.1234");
+        assertThat(finance.review(decision.caseId()).taxRate()).isZero();
+        assertThat(decimal("SELECT tax_rate FROM "+f.prefix()+"_orders WHERE id=?",f.order())).isZero();
+        assertThat(db.queryForObject("SELECT snapshot_hash FROM procurement_order_approval_cases WHERE id=?",String.class,decision.caseId())).isEqualTo(hash);
+        assertThat(db.queryForObject("SELECT event_snapshot->>'financeTaxRate' FROM procurement_order_approval_events WHERE case_id=? AND event_type='APPROVED'",String.class,decision.caseId())).isEqualTo("13.1234");
+        harness.loginAs(f.world().superAdminUserId());
+        if(kind.equals("PURCHASE")) assertThat(purchaseOrders.detail(f.order()).getTaxRate()).isEqualByComparingTo("13.1234");
+        else assertThat(subcontractOrders.detail(f.order()).getTaxRate()).isEqualByComparingTo("13.1234");
+        UUID received=receipt(f,"1.125");
+        assertThat(decimal("SELECT tax_rate FROM "+f.prefix()+"_receipts WHERE id=?",received)).isEqualByComparingTo("13.1234");
+        approveReceipt(f,received);
+        assertThat(decimal("SELECT total_original FROM "+f.prefix()+"_receipts WHERE id=?",received)).isEqualByComparingTo(new BigDecimal("1.125").multiply(new BigDecimal("13.123457")));
+        if(kind.equals("PURCHASE")) purchaseOrders.changeQty(f.order(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(f.item(),new BigDecimal("4.125")))));
+        else subcontractOrders.changeQty(f.order(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(f.item(),new BigDecimal("4.125")))));
+        harness.loginAs(f.reviewer());
+        var repeat=pending(f);
+        assertThat(finance.review(repeat.caseId()).financeTaxRate()).isNull();
+        assertThat(finance.review(repeat.caseId()).referenceFinanceTaxRate()).isEqualByComparingTo("13.1234");
+        assertThat(finance.review(repeat.caseId()).referenceFinanceExchangeRate()).isEqualByComparingTo(RATE);
+        assertThat(finance.review(decision.caseId()).referenceFinanceTaxRate()).isNull();
+        assertThatThrownBy(()->finance.approveBatch(List.of(repeat),null,RATE,new BigDecimal("9"))).isInstanceOf(ApiException.class);
+        assertThat(db.queryForObject("SELECT status FROM procurement_order_approval_cases WHERE id=?",String.class,repeat.caseId())).isEqualTo("PENDING");
+        finance.approveBatch(List.of(repeat),null,RATE);
+        assertThat(decimal("SELECT finance_tax_rate FROM procurement_order_approval_cases WHERE id=?",repeat.caseId())).isEqualByComparingTo("13.1234");
+        assertThat(decimal("SELECT tax_rate FROM "+f.prefix()+"_receipts WHERE id=?",received)).isEqualByComparingTo("13.1234");
+    }
+
+    @Test void warehouseGeneratedReceiptUsesFinancialTaxAndMixedTaxSourcesCannotSave() {
+        Fixture f=fixture("PURCHASE","3.125",false);
+        var decision=submit(f);finance.approveBatch(List.of(decision),null,RATE,new BigDecimal("13"));
+        harness.loginAs(f.world().superAdminUserId());
+        var request=new WarehouseArrivalRegisterRequest("tax-arrival-"+f.order(),"PURCHASE",BusinessTime.today(),f.world().supplierId(),
+                f.world().warehouseId(),null,f.world().employeeId(),null,List.of(new WarehouseArrivalRegisterRequest.ArrivalLine(
+                f.world().goodsD(),new BigDecimal("1.125"),f.item(),null,f.world().unitId(),BigDecimal.ONE,null)));
+        var arrival=arrivals.register(request);
+        assertThat(decimal("SELECT tax_rate FROM purchase_receipts WHERE id=?",arrival.receiptId())).isEqualByComparingTo("13");
+        UUID otherOrder=purchaseOrder(f.world(),f.purchaseSource(),f.currency(),"3.125");
+        UUID otherItem=db.queryForObject("SELECT id FROM purchase_order_items WHERE order_id=?",UUID.class,otherOrder);
+        Fixture other=new Fixture(f.world(),f.reviewer(),f.currency(),"PURCHASE",otherOrder,otherItem,f.purchaseSource());
+        approve(other,RATE);
+        var receipt=purchaseReceipt(f,"1");
+        var line=new com.uten.imp.features.purchase.receipt.dto.ReceiptItemLine();
+        line.setGoodsId(f.world().goodsD());line.setUnitId(f.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.ONE);line.setOrderItemId(otherItem);
+        receipt.setItems(List.of(receipt.getItems().getFirst(),line));
+        assertThatThrownBy(()->purchaseReceipts.create(receipt)).isInstanceOf(ApiException.class);
+    }
+
     private record Fixture(FullChainEndToEndTest.World world,UUID reviewer,UUID currency,String kind,UUID order,UUID item,UUID purchaseSource){
         String prefix(){return kind.equals("PURCHASE")?"purchase":"subcontract";}
     }

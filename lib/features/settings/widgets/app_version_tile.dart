@@ -104,6 +104,12 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release2517Paging,
         l10n.release2517Drafts,
       ],
+      '2.5.18' => [
+        l10n.release2518ServerUpdates,
+        l10n.release2518Storage,
+        l10n.release2518CompanyConnections,
+        l10n.release2518LayoutAndTrace,
+      ],
       _ => <String>[],
     };
     final theme = Theme.of(context);

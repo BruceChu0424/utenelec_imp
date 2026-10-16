@@ -80,6 +80,14 @@ class ScheduledTaskCatalogTest {
     }
 
     @Test
+    void serverUpdateTasksDescribeLocalAppointmentsAndManualCheckResults() {
+        var appointment = ScheduledTaskCatalog.describe("ScheduledServerUpdateDispatcher.dispatchDue").orElseThrow();
+        assertThat(appointment.purpose()).contains("本机", "预约", "权限", "未预约时不检查云端版本");
+        var notification = ScheduledTaskCatalog.describe("ServerUpdateNoticeScheduler.scan").orElseThrow();
+        assertThat(notification.purpose()).contains("本机", "手动", "更新权限", "不自动检查云端版本");
+    }
+
+    @Test
     void unknownNamesFallBackToThemselvesInsteadOfCrashing() {
         assertThat(ScheduledTaskCatalog.describe("Nope.run")).isEmpty();
         assertThat(ScheduledTaskCatalog.describe(null)).isEmpty();

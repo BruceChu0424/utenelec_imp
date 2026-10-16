@@ -9,6 +9,22 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get release2518ServerUpdates =>
+      'Authorized staff can check for server updates manually, then update now or schedule an update in the server\'s local time. Available updates show a reminder and badge; there are no periodic update checks.';
+
+  @override
+  String get release2518Storage =>
+      'Server storage shows memory, disks, database, upload and backup details. Authorized staff can preview cleanup of eligible resources; current versions, required rollback and recovery backups, and uploaded originals remain protected.';
+
+  @override
+  String get release2518CompanyConnections =>
+      'Super administrators can configure each company\'s OSS update source and SMS gateway. Keys are write-only, and SMS gateway changes apply to the next code request.';
+
+  @override
+  String get release2518LayoutAndTrace =>
+      'Tables and editors share a consistent layout, with improved finance tax review and workshop material identity reuse. Bidirectional material tracing preserves actual quantities, units and sources; related subcontract picking tasks support exact navigation and pagination.';
+
+  @override
   String get release2517PickerLayout =>
       'Selection panels keep Clear, Cancel and Confirm together at the bottom right. Clear is marked in red, with tidier page inputs and more compact category rows.';
 

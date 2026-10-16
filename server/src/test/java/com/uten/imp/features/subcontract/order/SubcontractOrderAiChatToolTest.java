@@ -115,6 +115,36 @@ class SubcontractOrderAiChatToolTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
+
+    @Test void anApplicationReadsEveryLineInOneBatchEvenWhenOnlyTwentyAreShown() {
+        Fixture fixture=new Fixture();UUID application=fixture.application("EB20261006000011",null);
+        var items=new java.util.ArrayList<Map<String,Object>>();var facts=new java.util.LinkedHashMap<UUID,SubcontractKitService.ApplicationKit>();
+        for(int n=0;n<201;n++) {
+            UUID id=UUID.randomUUID();items.add(Map.of("id",id,"qty",java.math.BigDecimal.ONE,"ordered_qty",java.math.BigDecimal.ZERO));
+            facts.put(id,new SubcontractKitService.ApplicationKit(id,application,"EB20261006000011",UUID.randomUUID(),"P-"+n,"部件",null,"个",
+                java.math.BigDecimal.ONE,java.math.BigDecimal.ONE,java.math.BigDecimal.ONE,false,List.of()));
+        }
+        when(fixture.jdbc.queryForList(contains("FROM subcontract_application_items"),eq(application))).thenReturn(items);
+        when(fixture.kits.applicationKits(any())).thenReturn(facts);
+        when(fixture.kits.applicationKit(any())).thenAnswer(invocation->facts.get(invocation.<UUID>getArgument(0)));
+        var result=fixture.tool.execute(Map.of("documentNo","EB20261006000011"));
+        assertThat((String)result.get("reply")).contains("现在可下单 201");
+        verify(fixture.kits).applicationKits(items.stream().map(item->(UUID)item.get("id")).toList());
+        verify(fixture.kits,never()).applicationKit(any());
+        verify(fixture.audit).record("view_subcontract_application_detail","subcontract_applications",application,
+            "EB20261006000011",null,"委外申请单(AI 助手查询)");
+    }
+
+    @Test void aLineRemovedBetweenTheHeadAndDetailBatchKeepsTheExistingNotFoundFailure() {
+        Fixture fixture=new Fixture();UUID application=fixture.application("EB20261006000012",null),item=UUID.randomUUID();
+        when(fixture.jdbc.queryForList(contains("FROM subcontract_application_items"),eq(application)))
+            .thenReturn(List.of(Map.of("id",item,"qty",java.math.BigDecimal.ONE,"ordered_qty",java.math.BigDecimal.ZERO)));
+        when(fixture.kits.applicationKits(any())).thenReturn(Map.of());
+        assertThatThrownBy(()->fixture.tool.execute(Map.of("documentNo","EB20261006000012")))
+            .isInstanceOf(ApiException.class).extracting(error->((ApiException)error).getCode()).isEqualTo(ErrorCode.NOT_FOUND);
+        verifyNoInteractions(fixture.audit);
+    }
+
     /** The tool's own evidence map, copied with typed keys (no unchecked cast). */
     private static Map<String, Object> evidence(Map<String, Object> result) {
         Map<String, Object> evidence = new java.util.HashMap<>();
@@ -131,8 +161,9 @@ class SubcontractOrderAiChatToolTest {
         final SubcontractOrderProgressService progress = mock(SubcontractOrderProgressService.class);
         final JdbcTemplate jdbc = mock(JdbcTemplate.class);
         final AuditDetailViewRecorder audit = mock(AuditDetailViewRecorder.class);
+        final SubcontractKitService kits = mock(SubcontractKitService.class);
         final SubcontractOrderAiChatTool tool = new SubcontractOrderAiChatTool(access, current, documents, progress,
-                mock(SubcontractKitService.class), jdbc, new ObjectMapper(),
+                kits, jdbc, new ObjectMapper(),
                 Clock.fixed(Instant.parse("2026-10-06T01:00:00Z"), ZoneOffset.UTC), audit);
 
         Fixture() {

@@ -228,7 +228,7 @@ class _ProductionDrawBatchIssuePageState
     for (final document in documents) {
       for (final item in document.items) {
         final id = item.id;
-        if (id == null || item.remainingQty <= 0) continue;
+        if (id == null || item.remainingQtyText == '0') continue;
         _issueWeights[id] = drawRemainingWeightEntry(item, unit: unit);
       }
     }
@@ -565,7 +565,8 @@ class _ProductionDrawBatchIssuePageState
     }
     if (_discoveryRows.isEmpty &&
         !_documents!.any(
-          (document) => document.items.any((item) => item.remainingQty > 0),
+          (document) =>
+              document.items.any((item) => item.remainingQtyText != '0'),
         )) {
       return '所选领料单均已出完，请返回任务中心刷新';
     }
@@ -603,6 +604,7 @@ class _ProductionDrawBatchIssuePageState
         () => row.values.addAll({
           'warehouseId': selected.id,
           'warehouseName': selected.label,
+          'warehouseConfirmed': true,
         }),
       );
       _ensureWeightParams();
@@ -638,6 +640,7 @@ class _ProductionDrawBatchIssuePageState
     }
     final initial = Map<String, dynamic>.from(row.values)
       ..remove('qty')
+      ..remove('qtyExact')
       ..remove('warehouseId')
       ..remove('warehouseName');
     setState(

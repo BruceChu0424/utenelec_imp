@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -106,8 +107,10 @@ void main() {
       expect(find.text('编辑'), findsOneWidget);
       expect(find.text('删除'), findsOneWidget);
       expect(find.text('启用'), findsOneWidget);
-      final tabs = tester.widget<TabBar>(find.byType(TabBar));
-      expect(tabs.tabs.cast<Tab>().map((tab) => tab.text), [
+      final tabs = tester.widget<UtenSegmentRow<int>>(
+        find.byType(UtenSegmentRow<int>),
+      );
+      expect(tabs.segments.map((segment) => (segment.label as Text).data), [
         '基本信息',
         '组装信息',
         '图片和文件',

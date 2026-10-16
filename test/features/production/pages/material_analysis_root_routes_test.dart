@@ -425,7 +425,7 @@ void main() {
       final productRow = _frozenRowOf('根产品 1');
       // 2026-09-06 统一流程词表：未下达的自制任务显示第一步「等待下达车间」，
       // 不区分下层齐套（齐套与否由计划审批后的执行段 WAITING/READY 自动判断）。
-      expect(find.text('等待下达车间'), findsWidgets);
+      expect(find.text('等待计划下单'), findsWidgets);
       await tester.tap(
         find.descendant(of: productRow, matching: find.byType(Checkbox)),
       );

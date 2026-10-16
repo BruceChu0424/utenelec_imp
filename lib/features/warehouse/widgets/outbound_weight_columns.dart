@@ -17,6 +17,8 @@ import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../shared/measurement/weight_params.dart';
 import '../../../shared/measurement/weight_predictor.dart';
 import '../../../shared/measurement/weight_unit.dart';
+import '../../../shared/measurement/exact_measurement_totals.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/measurement/widgets/weigh_count_dialog.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
@@ -276,32 +278,102 @@ Future<void> weighOutboundEntry(
   }
 }
 
-/// 表尾「明细 N 行 · 实称 X (未称 N 行) · 称重偏差 N 行」: 随重量/数量/参数变化就地重算
-/// (编辑中的采集表格合计在客户端算)。
+/// A recorded row's identity and quantity; display totals never change its unit.
+class OutboundProductQuantity {
+  const OutboundProductQuantity({
+    required this.goodsId,
+    required this.quantity,
+    required this.unitId,
+    this.unitName,
+  });
+  final String? goodsId;
+  final String? quantity;
+  final String? unitId;
+  final String? unitName;
+}
+
+/// One quantity policy for sales, workshop, subcontract and return operations.
+/// Unit UUIDs establish compatibility. Unidentified units stay separate rows.
+List<UtenTotalEntry> outboundProductTotalEntries(
+  Iterable<OutboundProductQuantity> products,
+) {
+  final rows = products.toList();
+  final known = rows
+      .where((row) => row.unitId?.trim().isNotEmpty == true)
+      .toList();
+  final goods = rows
+      .map((row) => row.goodsId)
+      .whereType<String>()
+      .where((id) => id.isNotEmpty)
+      .toSet();
+  final unknownGoods = rows
+      .where((row) => row.goodsId?.trim().isNotEmpty != true)
+      .length;
+  return [
+    UtenTotalEntry(
+      '货品种类',
+      [
+        if (goods.isNotEmpty) '${goods.length} 种',
+        if (unknownGoods > 0) '$unknownGoods 行货品待核对',
+      ].join(' · '),
+    ),
+    UtenTotalEntry(
+      '合计数量',
+      [
+        if (known.isNotEmpty)
+          exactMeasurementTotalsText(
+            known.map(
+              (row) => ExactMeasuredAmount(
+                value: row.quantity,
+                unitId: row.unitId,
+                unitName: row.unitName,
+              ),
+            ),
+          ),
+        for (final row in rows.where(
+          (row) => row.unitId?.trim().isNotEmpty != true,
+        ))
+          '${financeExactTrimmed(row.quantity) ?? '数量未留存'} ${row.unitName?.trim().isNotEmpty == true ? row.unitName : '单位未维护'}',
+      ].join(' · '),
+    ),
+  ];
+}
+
+/// Shared table footer for product kinds, exact unit quantities and weighing.
 class OutboundWeightSummaryBar extends StatelessWidget {
   const OutboundWeightSummaryBar({
     super.key,
     required this.entries,
     this.params,
     this.mode = WeightCaptureMode.outbound,
+    this.productsOf,
+    this.quantityListenables = const [],
   });
 
   final List<OutboundWeightEntry> entries;
   final WeightParamsCache? params;
   final WeightCaptureMode mode;
+  final Iterable<OutboundProductQuantity> Function()? productsOf;
+  final Iterable<Listenable> quantityListenables;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: Listenable.merge([
       for (final entry in entries) ...[entry.weight, ?entry.qtyListenable],
       ?params,
+      ...quantityListenables,
     ]),
     builder: (context, _) {
       final summary = outboundWeightTotals(entries, params: params, mode: mode);
+      final products = productsOf?.call().toList();
       return UtenTotalsSummaryBar(
         key: const Key('outbound-weight-summary'),
-        rowCount: entries.length,
-        entries: [...weightTotalEntries(summary)],
+        rowCount: products?.length ?? entries.length,
+        entries: [
+          if (products?.isNotEmpty == true)
+            ...outboundProductTotalEntries(products!),
+          ...weightTotalEntries(summary),
+        ],
       );
     },
   );

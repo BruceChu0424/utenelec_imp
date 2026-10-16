@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_colors.dart';
 import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 
@@ -209,11 +210,8 @@ class StockDocItem {
 
   String? get remainingQtyText {
     final requested =
-        requestedQtyText ??
-        requestedQty?.toString() ??
-        qtyText ??
-        qty?.toString();
-    final issued = issuedQtyText ?? issuedQty?.toString();
+        requestedQtyText ?? (requestedQty == null ? qtyText : null);
+    final issued = issuedQtyText;
     if (requested == null || issued == null) return null;
     final negativeIssued = financeExactMultiplyTexts(['-1', issued]);
     final difference = financeExactSumTexts([requested, negativeIssued]);
@@ -227,8 +225,8 @@ class StockDocItem {
     goodsId: json['goodsId'] as String?,
     colorId: json['colorId'] as String?,
     unitId: json['unitId'] as String?,
-    qty: (json['qty'] as num?)?.toDouble(),
-    qtyText: receiptRecordedDecimal(json, 'qty'),
+    qty: double.tryParse(json['qty']?.toString() ?? ''),
+    qtyText: recordedDocumentDecimal(json, 'qty'),
     reportedQty: (json['reportedQty'] as num?)?.toDouble(),
     reportedQtyText: receiptRecordedDecimal(json, 'reportedQty'),
     baseQty: (json['baseQty'] as num?)?.toDouble(),
@@ -243,10 +241,10 @@ class StockDocItem {
     place: json['place'] as String?,
     warehouseId: json['warehouseId'] as String?,
     remark: json['remark'] as String?,
-    issuedQty: (json['issuedQty'] as num?)?.toDouble(),
-    issuedQtyText: receiptRecordedDecimal(json, 'issuedQty'),
-    requestedQty: (json['requestedQty'] as num?)?.toDouble(),
-    requestedQtyText: receiptRecordedDecimal(json, 'requestedQty'),
+    issuedQty: double.tryParse(json['issuedQty']?.toString() ?? ''),
+    issuedQtyText: recordedDocumentDecimal(json, 'issuedQty'),
+    requestedQty: double.tryParse(json['requestedQty']?.toString() ?? ''),
+    requestedQtyText: recordedDocumentDecimal(json, 'requestedQty'),
     unitRate: (json['unitRate'] as num?)?.toDouble(),
     unitRateText: receiptRecordedDecimal(json, 'unitRate'),
     upstreamItemId: json['upstreamItemId'] as String?,

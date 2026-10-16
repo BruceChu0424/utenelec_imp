@@ -399,3 +399,14 @@ da45c3b5af181a7f2275c88dc9a3d69298d6e4d9:deploy/setup/server.env.internal-storag
 # UI 布局缓存键（MasterDataTableView tableKey），版本号字符串不是凭据：
 # 2026-10-10 列序变更 bump v2 时 generic-api-key 误报，人工复核登记。
 a4061969d5fc9b6c17fe9469287a4ea4e2abeced:lib/features/purchase/pages/purchase_order_edit_page.dart:generic-api-key:1740
+
+# 2026-10-15 reviewed: generated tableKey/onAddColumn source evidence and
+# official public Aliyun SMS endpoint allowlist are not credentials.
+6b14c7b84c120019912d1dc0daba02f62b93dbec:docs/99-项目治理/platform_table_inventory.json:generic-api-key:13089
+6b14c7b84c120019912d1dc0daba02f62b93dbec:test/features/admin/admin_sms_settings_page_test.dart:generic-api-key:494
+a0f46e93151112a71fe40bf663c3103f8e20a22e:docs/99-项目治理/platform_table_inventory.json:generic-api-key:13089
+
+# Fixed synthetic idempotency UUID in exact-quantity Jackson regressions;
+# it is a request replay identity, not an authentication or provider secret.
+7a760a8efddcafc469a592a7302aa7a3f54aeba2:server/src/test/java/com/uten/imp/features/stock/OutboundQuantityTextJsonTest.java:generic-api-key:95
+7a760a8efddcafc469a592a7302aa7a3f54aeba2:server/src/test/java/com/uten/imp/features/stock/OutboundQuantityTextJsonTest.java:generic-api-key:98

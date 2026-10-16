@@ -563,6 +563,12 @@ const _allGroups = <_ModuleGroup>[
         badge: WorkbenchBadgeKind.serverStatus,
       ),
       _ModuleItem(
+        icon: Icons.system_update_alt_rounded,
+        label: '服务器更新',
+        location: RouteName.adminServerOperations,
+        badge: WorkbenchBadgeKind.serverUpdate,
+      ),
+      _ModuleItem(
         icon: Icons.admin_panel_settings_outlined,
         label: '权限管理',
         location: RouteName.adminPermissions,

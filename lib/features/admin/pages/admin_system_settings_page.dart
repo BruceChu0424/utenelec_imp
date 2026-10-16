@@ -15,6 +15,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -27,11 +28,14 @@ import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/providers/idle_timeout_controller.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/audit/audit_retention_presentation.dart';
 import '../../../shared/repositories/public_settings_repository.dart';
 import '../models/system_setting_entry.dart';
@@ -41,16 +45,32 @@ import '../widgets/ai_settings_entry_card.dart';
 import '../widgets/platform_settings_entry_card.dart';
 import '../widgets/system_updater_status_card.dart';
 
-class AdminSystemSettingsPage extends ConsumerStatefulWidget {
+class AdminSystemSettingsPage extends ConsumerWidget {
   const AdminSystemSettingsPage({super.key});
 
   @override
-  ConsumerState<AdminSystemSettingsPage> createState() =>
+  Widget build(BuildContext context, WidgetRef ref) => _SystemSettingsSession(
+    key: ValueKey((
+      ref.watch(authenticatedScopeProvider),
+      ref.watch(apiBaseUrlProvider),
+    )),
+  );
+}
+
+class _SystemSettingsSession extends ConsumerStatefulWidget {
+  const _SystemSettingsSession({super.key});
+  @override
+  ConsumerState<_SystemSettingsSession> createState() =>
       _AdminSystemSettingsPageState();
 }
 
 class _AdminSystemSettingsPageState
-    extends ConsumerState<AdminSystemSettingsPage> {
+    extends ConsumerState<_SystemSettingsSession> {
+  late final Object _owner;
+  bool get _current =>
+      mounted &&
+      _owner ==
+          (ref.read(authenticatedScopeProvider), ref.read(apiBaseUrlProvider));
   List<SystemSettingEntry>? _all;
   final Map<String, TextEditingController> _controllers = {};
   final Set<String> _dirty = {};
@@ -76,6 +96,10 @@ class _AdminSystemSettingsPageState
   @override
   void initState() {
     super.initState();
+    _owner = (
+      ref.read(authenticatedScopeProvider),
+      ref.read(apiBaseUrlProvider),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -88,13 +112,14 @@ class _AdminSystemSettingsPageState
   }
 
   Future<void> _load() async {
+    if (!_current) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final list = await ref.read(systemSettingRepositoryProvider).list();
-      if (!mounted) return;
+      if (!_current) return;
       for (final c in _controllers.values) {
         c.dispose();
       }
@@ -110,17 +135,17 @@ class _AdminSystemSettingsPageState
       if (list.any((entry) => entry.category == 'audit')) {
         unawaited(_refreshAuditCapability());
       }
-      if (list.any((entry) => entry.category == 'updates')) {
+      if (list.any((entry) => entry.category == 'updates' && entry.editable)) {
         await _loadUpdaterStatus();
       }
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!_current) return;
       setState(() {
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!_current) return;
       setState(() {
         _error = '加载系统设置失败';
         _loading = false;
@@ -138,6 +163,7 @@ class _AdminSystemSettingsPageState
   }
 
   Future<void> _loadUpdaterStatus() async {
+    if (!_current) return;
     final requestId = ++_updaterRequestId;
     setState(() {
       _updaterLoading = true;
@@ -148,23 +174,26 @@ class _AdminSystemSettingsPageState
       final status = await ref
           .read(systemSettingRepositoryProvider)
           .updaterStatus();
-      if (!mounted || requestId != _updaterRequestId) return;
+      if (!_current || requestId != _updaterRequestId) return;
       setState(() => _updaterStatus = status);
     } on ApiException catch (error) {
-      if (!mounted || requestId != _updaterRequestId) return;
+      if (!_current || requestId != _updaterRequestId) return;
       setState(() => _updaterError = error.message);
     } catch (_) {
-      if (!mounted || requestId != _updaterRequestId) return;
+      if (!_current || requestId != _updaterRequestId) return;
       setState(() => _updaterError = '暂时无法确认更新计划，请刷新状态后重试');
     } finally {
-      if (mounted && requestId == _updaterRequestId) {
+      if (_current && requestId == _updaterRequestId) {
         setState(() => _updaterLoading = false);
       }
     }
   }
 
   void _markDirty(String key) {
-    final original = _all!.firstWhere((entry) => entry.key == key).value;
+    if (!_current) return;
+    final entry = _all!.firstWhere((entry) => entry.key == key);
+    if (!entry.editable) return;
+    final original = entry.value;
     setState(() {
       if (_controllers[key]!.text.trim() == original) {
         _dirty.remove(key);
@@ -186,12 +215,17 @@ class _AdminSystemSettingsPageState
   }
 
   Future<void> _save() async {
-    if (_dirty.isEmpty || _saving || _loading || _error != null) return;
+    if (!_current || _dirty.isEmpty || _saving || _loading || _error != null) {
+      return;
+    }
     if (!(_formKey.currentState?.validate() ?? false)) {
       context.appWarning(AppLocalizations.of(context).systemSettingFixFields);
       return;
     }
-    final keys = _dirty.toList();
+    final keys = _dirty
+        .where((key) => _all!.firstWhere((entry) => entry.key == key).editable)
+        .toList();
+    if (keys.isEmpty) return;
     final changes = [
       for (final key in keys)
         (
@@ -205,18 +239,18 @@ class _AdminSystemSettingsPageState
       // Confirm against a fresh installed capability, not the months being saved.
       if (keys.any((key) => key.startsWith('audit_'))) {
         await _refreshAuditCapability();
-        if (!mounted) return;
+        if (!mounted || !_current) return;
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (_) => const _RetentionConfirmDialog(),
         );
-        if (confirmed != true || !mounted) return;
+        if (confirmed != true || !_current) return;
       }
       // 不挂整页遮罩：服务端要求再认证时网络层会弹统一密码框 (ADR-110)，遮罩不能盖住它。
       final saved = await ref
           .read(systemSettingRepositoryProvider)
           .updateBatch(changes);
-      if (!mounted) return;
+      if (!mounted || !_current) return;
       final byKey = {for (final entry in saved) entry.key: entry};
       setState(() {
         _all = [for (final entry in _all!) byKey[entry.key] ?? entry];
@@ -228,7 +262,11 @@ class _AdminSystemSettingsPageState
       context.appSuccess(
         keys.contains('updater_check_interval_days')
             ? '已保存 ${keys.length} 项设置；更新计划等待服务器确认'
-            : '已保存 ${keys.length} 项设置',
+            : '已保存 ${keys.length} 项设置${saved.any((entry) => entry.applyMode == 'NEXT_ISSUANCE')
+                  ? '；令牌与凭据期限用于下次签发，已有期限保持原值'
+                  : saved.any((entry) => entry.applyMode == 'NEXT_SCHEDULED_RUN')
+                  ? '；定时任务将在下次运行时使用新设置'
+                  : '；后续请求使用新设置'}',
       );
       // Reuse the public-settings refresh for idle, receipt and badge consumers.
       if (keys.contains('session_idle_timeout_minutes') ||
@@ -238,13 +276,13 @@ class _AdminSystemSettingsPageState
       }
       await _load(); // 重载拿最新 updatedAt
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_current) return;
       context.appError(e.message); // 如 CONFLICT 已被修改 / VALIDATION_FAILED 越界
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_current) return;
       context.appError('保存失败，请稍后重试');
     } finally {
-      if (mounted) {
+      if (_current) {
         setState(() => _saving = false);
       }
     }
@@ -316,13 +354,50 @@ class _AdminSystemSettingsPageState
                                     onChanged: _markDirty,
                                     enabled: !_saving && !_loading,
                                     footer: g.$1 == 'updates'
-                                        ? SystemUpdaterStatusCard(
-                                            status: _updaterStatus,
-                                            loading: _updaterLoading,
-                                            error: _updaterError,
-                                            onRefresh: !_saving && !_loading
-                                                ? _loadUpdaterStatus
-                                                : null,
+                                        ? Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.stretch,
+                                            children: [
+                                              if (_all!.any(
+                                                (entry) =>
+                                                    entry.category ==
+                                                        'updates' &&
+                                                    entry.editable,
+                                              ))
+                                                SystemUpdaterStatusCard(
+                                                  status: _updaterStatus,
+                                                  loading: _updaterLoading,
+                                                  error: _updaterError,
+                                                  onRefresh:
+                                                      !_saving && !_loading
+                                                      ? _loadUpdaterStatus
+                                                      : null,
+                                                ),
+                                              const SizedBox(
+                                                height: UtenSpacing.s12,
+                                              ),
+                                              UtenButton(
+                                                type: UtenButtonType.secondary,
+                                                icon: Icons
+                                                    .system_update_alt_rounded,
+                                                onPressed: () => context.push(
+                                                  RouteName
+                                                      .adminServerOperations,
+                                                ),
+                                                child: const Text(
+                                                  '打开服务器更新与发布源配置',
+                                                ),
+                                              ),
+                                            ],
+                                          )
+                                        : g.$1 == 'sms'
+                                        ? UtenButton(
+                                            type: UtenButtonType.secondary,
+                                            icon: Icons.sms_outlined,
+                                            onPressed: () => context.push(
+                                              RouteName.adminSmsSettings,
+                                            ),
+                                            child: const Text('短信网关与凭据'),
                                           )
                                         : null,
                                   ),
@@ -478,10 +553,12 @@ class _SettingGroupCard extends StatelessWidget {
                 onChanged: () => onChanged(e.key),
                 enabled: enabled,
               ),
-            if (group.$1 == 'updates')
+            if (group.$1 == 'updates' && items.any((entry) => entry.editable))
               const Text(
                 '填 0 为仅手动更新，填 7 为每周日 05:00；其他天数从设置修改当天起计算，每隔相应天数在 05:00 检查（服务器当地时间）。',
               ),
+            if (group.$1 == 'updates' && !items.any((entry) => entry.editable))
+              const Text('旧自动检查周期仅保留为升级记录。实际更新方式与运行状态请在服务器更新中查看。'),
             ?footer,
           ],
         ),
@@ -540,7 +617,8 @@ class _AuditRetentionNotice extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
-                    mode == AuditArchivePurgeMode.preserveUnclassified
+                    mode == AuditArchivePurgeMode.preserveUnclassified ||
+                            mode == AuditArchivePurgeMode.permanentRetain
                         ? Icons.shield_outlined
                         : Icons.help_outline,
                     size: 20,
@@ -560,6 +638,13 @@ class _AuditRetentionNotice extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(policy, style: theme.textTheme.bodyMedium),
+                        if (ref.watch(auditEffectiveRetentionMonthsProvider)
+                            case final int months)
+                          Text(
+                            mode == AuditArchivePurgeMode.permanentRetain
+                                ? '服务器确认的在线与归档阶段合计：$months 个月；日志继续永久保留。'
+                                : '最近服务器确认的有效总期限：$months 个月；修改后以服务器读回为准。',
+                          ),
                         const SizedBox(height: 4),
                         Text(
                           '${AuditRetentionPresentation.modeConsequence(mode)}'
@@ -629,7 +714,7 @@ class _SettingRow extends StatelessWidget {
                       value: controller.text.toLowerCase(),
                       allowClear: false,
                       searchable: false,
-                      enabled: enabled,
+                      enabled: enabled && entry.editable,
                       info: description,
                       // 改动态（原 filled 高亮）由黄框 + 字段内提醒承接。
                       warningMessage: dirty ? '已修改，尚未保存' : null,
@@ -656,7 +741,7 @@ class _SettingRow extends StatelessWidget {
                   : TextFormField(
                       key: ValueKey('system-setting-${entry.key}'),
                       controller: controller,
-                      enabled: enabled,
+                      enabled: enabled && entry.editable,
                       keyboardType: numeric
                           ? TextInputType.number
                           : TextInputType.text,
@@ -698,6 +783,17 @@ class _SettingRow extends StatelessWidget {
               );
             },
           ),
+          if (entry.effectiveValue != null)
+            Text(
+              '当前有效值：${entry.effectiveValue}${entry.unit ?? ''}',
+              key: ValueKey('system-setting-effective-${entry.key}'),
+            ),
+          if (entry.effectiveNote?.isNotEmpty == true)
+            Text(
+              entry.effectiveNote!,
+              key: ValueKey('system-setting-effect-${entry.key}'),
+              style: theme.textTheme.bodySmall,
+            ),
           if (updated.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 1),

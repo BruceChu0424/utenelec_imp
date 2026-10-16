@@ -184,9 +184,18 @@ public class ProcurementFinanceApprovalService {
             List<BatchDecisionItem> rawItems,
             String remark,
             BigDecimal exchangeRate) {
+        return approveBatch(rawItems, remark, exchangeRate, null);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('finance_order_approval:approve')")
+    public BatchDecisionResponse approveBatch(
+            List<BatchDecisionItem> rawItems, String remark,
+            BigDecimal exchangeRate, BigDecimal taxRate) {
         tx.bind();
         requireEligibleReviewer();
         BigDecimal explicitRate = normalizeFinanceExchangeRate(exchangeRate);
+        BigDecimal explicitTax = com.uten.imp.common.finance.ProcurementApprovedTaxRate.normalize(taxRate);
         List<ResolvedBatchItem> items = resolveBatchItems(rawItems);
         var mutationGuard=mutationLocks.orders(items.stream().map(item ->
                 new com.uten.imp.common.concurrency.ProcurementMutationFootprint.OrderRef(item.orderType(),item.orderId())).toList());
@@ -201,7 +210,7 @@ public class ProcurementFinanceApprovalService {
                     item.caseId(),
                     normalizeOptionalRemark(remark),
                     exchangeRate,
-                    explicitRate));
+                    explicitRate, explicitTax));
         }
         return new BatchDecisionResponse(decisions.size(), decisions);
     }
@@ -213,7 +222,7 @@ public class ProcurementFinanceApprovalService {
             UUID expectedCaseId,
             String remark,
             BigDecimal rawExchangeRate,
-            BigDecimal explicitRate) {
+            BigDecimal explicitRate, BigDecimal explicitTax) {
         String orderType = ProcurementApprovalProjectionQuery.requireOrderType(rawOrderType);
         ProcurementOrderApprovalPort port = requirePort(orderType);
         // V486 批准后改量复核：订单已批准时本 case 是「改后待复核」，数量变化
@@ -239,6 +248,11 @@ public class ProcurementFinanceApprovalService {
                         currentSnapshot.totalOriginal(), financeRate);
         com.uten.imp.common.finance.ProcurementApprovedExchangeRate.requireReviewedRate(
                 jdbc,orderType,orderId,currentSnapshot.currencyId(),financeRate);
+        BigDecimal financeTax = explicitTax != null ? explicitTax
+                : com.uten.imp.common.finance.ProcurementApprovedTaxRate.read(
+                        jdbc, orderType, orderId, currentSnapshot.taxRate());
+        com.uten.imp.common.finance.ProcurementApprovedTaxRate.requireReviewedTax(
+                jdbc, orderType, orderId, financeTax);
         UUID actorUser = currentUser.requireId();
         UUID actorEmployee = currentUser.requireEmployeeId();
         if (!reconfirmation) {
@@ -256,13 +270,15 @@ public class ProcurementFinanceApprovalService {
                     version = version + 1,
                     updated_at = now(),
                     finance_exchange_rate = ?,
-                    finance_total_local = ?
+                    finance_total_local = ?,
+                    finance_tax_rate = ?
                 WHERE id = ? AND status = 'PENDING' AND version = ?
                 """,
                 actorUser,
                 actorEmployee,
                 financeRate,
                 financeTotalLocal,
+                financeTax,
                 approvalCase.caseId(),
                 expectedVersion);
         if (changed != 1) {
@@ -276,7 +292,7 @@ public class ProcurementFinanceApprovalService {
                 null,
                 null,
                 null,
-                approvedEventSnapshot(approvalCase, remark, rawExchangeRate));
+                approvedEventSnapshot(approvalCase, remark, rawExchangeRate, financeTax));
         if (!reconfirmation) {
             createInboundExpectation(
                     approvalCase.caseId(), currentSnapshot, actorUser);
@@ -727,8 +743,21 @@ public class ProcurementFinanceApprovalService {
                        CASE WHEN c.display_snapshot IS NOT NULL THEN c.display_snapshot ->> 'makerName' ELSE maker.full_name END AS maker_name,
                        CAST(c.submission_snapshot ->> 'supplierId' AS uuid) AS supplier_id,
                        CAST(c.submission_snapshot ->> 'currencyId' AS uuid) AS currency_id,
-                       c.finance_exchange_rate
+                       c.finance_exchange_rate,
+                       c.finance_tax_rate,
+                       reference.finance_tax_rate AS reference_finance_tax_rate,
+                       reference.finance_exchange_rate AS reference_finance_exchange_rate
                 FROM procurement_order_approval_cases c
+                LEFT JOIN LATERAL (
+                    SELECT prior.finance_tax_rate,prior.finance_exchange_rate
+                    FROM procurement_order_approval_cases prior
+                    WHERE prior.order_type=c.order_type AND prior.order_id=c.order_id
+                      AND prior.attempt<c.attempt AND prior.status='APPROVED'
+                      AND c.status='PENDING' AND NOT EXISTS(
+                          SELECT 1 FROM procurement_order_approval_cases newer
+                          WHERE newer.order_type=c.order_type AND newer.order_id=c.order_id AND newer.attempt>c.attempt)
+                    ORDER BY prior.attempt DESC LIMIT 1
+                ) reference ON TRUE
                 LEFT JOIN purchase_orders po
                   ON c.order_type = 'PURCHASE' AND po.id = c.order_id
                 LEFT JOIN subcontract_orders so
@@ -775,7 +804,8 @@ public class ProcurementFinanceApprovalService {
                         rs.getString("maker_name"),
                         rs.getObject("supplier_id", UUID.class),
                         rs.getObject("currency_id", UUID.class),
-                        rs.getBigDecimal("finance_exchange_rate")},
+                        rs.getBigDecimal("finance_exchange_rate"), rs.getBigDecimal("finance_tax_rate"),
+                        rs.getBigDecimal("reference_finance_tax_rate"),rs.getBigDecimal("reference_finance_exchange_rate")},
                 caseId);
         if (headers.isEmpty()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "审批任务不存在或已被清理");
@@ -867,7 +897,7 @@ public class ProcurementFinanceApprovalService {
                 previousItems,
                 loadReviewHeader(caseId, false),
                 loadReviewHeader(caseId, true),
-                history);
+                history, (BigDecimal) h[26], (BigDecimal) h[27], (BigDecimal) h[28]);
     }
 
     /**
@@ -1073,7 +1103,7 @@ public class ProcurementFinanceApprovalService {
     /** 通过事件快照：快照哈希 + 可选审批备注（无备注时保持旧形，便于历史一致性比对）。
      *  V835：财务明确填写汇率时把决定值一并留痕（缺省 1 不写，保持旧事件形）。 */
     private static Map<String, Object> approvedEventSnapshot(
-            ApprovalCase approvalCase, String remark, BigDecimal rawExchangeRate) {
+            ApprovalCase approvalCase, String remark, BigDecimal rawExchangeRate, BigDecimal financeTax) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("snapshotHash", approvalCase.snapshotHash());
         if (remark != null) {
@@ -1082,6 +1112,7 @@ public class ProcurementFinanceApprovalService {
         if (rawExchangeRate != null) {
             snapshot.put("financeExchangeRate", rawExchangeRate.toPlainString());
         }
+        snapshot.put("financeTaxRate", financeTax.toPlainString());
         return snapshot;
     }
 

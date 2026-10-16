@@ -8,6 +8,36 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 
 void main() {
   test(
+    'financial tax is exact, permits zero and rejects invalid values before HTTP',
+    () async {
+      final requests = <RequestOptions>[];
+      final repository = DioFinanceProcurementWorkflowRepository(
+        _api((request) {
+          requests.add(request);
+          return <String, dynamic>{};
+        }),
+      );
+      const items = [
+        FinanceProcurementDecisionItem(caseId: 'case-tax', expectedVersion: 2),
+      ];
+      await repository.approveOrdersWithExactRate(
+        items,
+        exchangeRate: '7.123456',
+        taxRate: '13.1234',
+      );
+      await repository.approveOrdersWithExactRate(items, taxRate: '0');
+      expect((requests.first.data as Map)['taxRate'], '13.1234');
+      expect((requests.last.data as Map)['taxRate'], '0');
+      for (final value in ['', '-1', '100.0001', '13.12345']) {
+        await expectLater(
+          repository.approveOrdersWithExactRate(items, taxRate: value),
+          throwsFormatException,
+        );
+      }
+      expect(requests, hasLength(2));
+    },
+  );
+  test(
     'approval tasks accept compatible envelopes and preserve deep links',
     () async {
       late RequestOptions captured;

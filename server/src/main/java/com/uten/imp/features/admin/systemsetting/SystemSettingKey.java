@@ -98,9 +98,9 @@ public enum SystemSettingKey {
 
     // ===== 系统更新 =====
     UPDATER_CHECK_INTERVAL_DAYS("updater_check_interval_days", Type.INT, "7", 0L, 365L,
-            Category.UPDATES, false, "服务器自动检查更新间隔", "天", 510,
-            "0 仅手动更新；7 每周日 05:00 检查阿里云 OSS；其他数值从修改当天起每隔 N 天 05:00 检查。"
-                    + "按服务器当地时区执行，保存后请查看调度状态确认已生效。");
+            Category.UPDATES, false, "旧自动检查更新间隔", "天", 510,
+            "历史配置只读保留；请在服务器运维页手动检查新版本并选择立即更新或显式预约。"
+                    + "实际手动模式及旧定时器是否停用，以服务器运维状态为准。");
 
     /** 值类型: 决定解析与校验方式。 */
     public enum Type {

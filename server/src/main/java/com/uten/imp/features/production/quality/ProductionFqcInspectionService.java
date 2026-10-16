@@ -463,7 +463,11 @@ public class ProductionFqcInspectionService
                            -- 成品登记时逐行必填库位，品质部按此到储放区域检验。
                            string_agg(DISTINCT NULLIF(reg_place.place_snapshot, ''), '、')
                                FILTER (WHERE inspection.status IN ('PENDING', 'PARTIAL'))
-                               AS place_summary
+                               AS place_summary,
+                           string_agg(DISTINCT NULLIF(goods.code, ''), '、'
+                               ORDER BY NULLIF(goods.code, '')) AS goods_code_summary,
+                           string_agg(DISTINCT NULLIF(line_color.name, ''), '、'
+                               ORDER BY NULLIF(line_color.name, '')) AS color_name_summary
                     FROM production_fqc_inspection_sheets sheet
                     JOIN production_fqc_inspection_sheet_items sheet_item
                       ON sheet_item.sheet_id = sheet.id
@@ -523,7 +527,7 @@ public class ProductionFqcInspectionService
                 activeCount > 0 ? "ACTIVE" : "CLOSED",
                 NativeValueConverters.toOffsetDateTime(row[8]),
                 ((Number) row[11]).intValue(),
-                string(row[15]));
+                string(row[15]), string(row[16]), string(row[17]));
     }
 
     @Transactional(readOnly = true)

@@ -248,7 +248,7 @@ void main() {
       'plan-item-1',
       'plan-item-b',
     ]);
-    expect(items.map((item) => item['qty']), [100, 60]);
+    expect(items.map((item) => item['qty']), ['100', '60']);
     expect(items.last['colorId'], 'color-1');
     expect(items.last['unitId'], 'unit-1');
     expect(api.approvals, isEmpty);

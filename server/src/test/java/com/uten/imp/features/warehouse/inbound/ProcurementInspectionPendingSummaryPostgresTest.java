@@ -114,6 +114,8 @@ class ProcurementInspectionPendingSummaryPostgresTest {
         // string_agg(DISTINCT …) 无 ORDER BY，两件货品摘要的先后不保证——分别断言包含。
         assertThat(row.goodsSummary()).contains("盒装零件 (WL001 · 蓝色)");
         assertThat(row.goodsSummary()).contains("编织袋 (WL002)");
+        assertThat(row.goodsCodeSummary()).isEqualTo("WL001、WL002");
+        assertThat(row.colorNameSummary()).isEqualTo("蓝色");
         // 待检数量按货品基本单位分组（跨单位不相加），结案行不计入。
         assertThat(row.pendingQtyText()).contains("30 个");
         assertThat(row.pendingQtyText()).contains("10 只");

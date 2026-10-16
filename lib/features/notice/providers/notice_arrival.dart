@@ -19,6 +19,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/uten_notify.dart';
+import '../../../core/ui/opportunistic_dialog_coordinator.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../components/feedback/uten_center_alert.dart';
@@ -36,16 +37,22 @@ typedef NoticeArrivalLoader =
     Future<NoticeArrivalPage> Function(NoticeArrivalCursor? after);
 
 final _serverAlertQueueProvider = Provider<_ServerAlertQueue>((ref) {
-  return _ServerAlertQueue();
+  return _ServerAlertQueue(ref.watch(opportunisticDialogCoordinatorProvider));
 });
 
 class _ServerAlertQueue {
+  _ServerAlertQueue(this._dialogs);
+  final OpportunisticDialogCoordinator _dialogs;
   Future<void> _tail = Future<void>.value();
 
   void add(Future<void> Function() delivery, void Function(Object) failed) {
-    _tail = _tail.then((_) => delivery()).catchError((Object error) {
-      failed(error);
-    });
+    final priority = _dialogs.prioritize();
+    _tail = _tail
+        .then((_) => delivery())
+        .catchError((Object error) {
+          failed(error);
+        })
+        .whenComplete(priority.release);
   }
 }
 

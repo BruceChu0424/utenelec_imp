@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_filter_picker_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -369,13 +371,34 @@ void main() {
       }
       expect(find.textContaining('客户型号C-9'), findsOneWidget);
       expect(find.textContaining('货品主档纸张备注'), findsOneWidget);
-      expect(find.textContaining('主档归属仓库：主档归属仓'), findsOneWidget);
+      final warehousePicker = find.byKey(
+        const ValueKey('stock-inventory-warehouse'),
+      );
+      final colorPicker = find.byKey(const ValueKey('stock-inventory-color'));
+      expect(tester.widget<UtenFilterPickerField>(warehousePicker).value, '总仓');
+      expect(tester.widget<UtenDropdownField>(colorPicker).value, 'red');
+      expect(find.textContaining('主档归属仓库：主档归属仓'), findsNothing);
       expect(find.textContaining('全局生产计划'), findsOneWidget);
       expect(find.textContaining('999999'), findsNothing);
       expect(find.textContaining('888888'), findsNothing);
-      await tester.tap(find.byTooltip('刷新'));
+      final beforeRefresh = {
+        for (final suffix in ['/inventory-context', '/stock/balances'])
+          suffix: api.requests.where((r) => r.$1.endsWith(suffix)).length,
+      };
+      await tester.tap(find.byTooltip('刷新').hitTestable());
       await tester.pumpAndSettle();
-      expect(api.last('/inventory-context')['warehouseId'], 'parent');
+      for (final suffix in beforeRefresh.keys) {
+        expect(
+          api.requests.where((r) => r.$1.endsWith(suffix)).length,
+          greaterThan(beforeRefresh[suffix]!),
+          reason: '刷新应重新读取库存概况和余额，不能仅保留上次请求',
+        );
+        expect(api.last(suffix), containsPair('warehouseId', 'parent'));
+        expect(api.last(suffix), containsPair('colorId', 'red'));
+        expect(api.last(suffix), containsPair('inventoryOnly', true));
+        expect(api.last(suffix), containsPair('includeDefective', false));
+        expect(api.last(suffix), containsPair('includeLineSide', false));
+      }
       await tester.tap(find.text('出入库流水').first);
       await tester.pumpAndSettle();
       expect(api.last('/ledger')['colorId'], 'red');
@@ -387,18 +410,32 @@ void main() {
         find.byKey(const ValueKey('stock-inventory-all-warehouses')),
       );
       await tester.pumpAndSettle();
-      expect(api.last('/inventory-context')['inventoryOnly'], false);
-      expect(api.last('/stock/balances')['inventoryOnly'], false);
-      expect(api.last('/stock/balances').containsKey('warehouseId'), isFalse);
-      await tester.ensureVisible(
-        find.byKey(
-          const ValueKey('stock-inventory-scope-label'),
-          skipOffstage: false,
-        ),
-      );
+      for (final suffix in ['/inventory-context', '/stock/balances']) {
+        expect(api.last(suffix), containsPair('inventoryOnly', false));
+        expect(api.last(suffix).containsKey('warehouseId'), isFalse);
+        expect(api.last(suffix), containsPair('colorId', 'red'));
+        expect(api.last(suffix), containsPair('includeDefective', false));
+        expect(api.last(suffix), containsPair('includeLineSide', true));
+      }
+      await tester.ensureVisible(warehousePicker);
       await tester.pumpAndSettle();
-      expect(find.textContaining('全部仓库（含非核算仓）'), findsWidgets);
+      final allWarehouses = tester.widget<UtenFilterPickerField>(
+        warehousePicker,
+      );
+      expect(allWarehouses.value, isNull);
+      expect(allWarehouses.placeholder, '全部仓库');
+      expect(
+        find.descendant(of: warehousePicker, matching: find.text('全部仓库')),
+        findsOneWidget,
+      );
+      expect(tester.widget<UtenDropdownField>(colorPicker).value, 'red');
       expect(env.router.state.uri.queryParameters['inventoryOnly'], 'false');
+      expect(env.router.state.uri.queryParameters['includeLineSide'], 'true');
+      expect(env.router.state.uri.queryParameters['colorId'], 'red');
+      expect(
+        env.router.state.uri.queryParameters.containsKey('warehouseId'),
+        false,
+      );
       expect(
         api.requests.where(
           (r) => r.$1.contains('departments') || r.$1.contains('goods/lookup'),

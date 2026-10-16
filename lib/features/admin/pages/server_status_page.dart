@@ -4,7 +4,9 @@ import 'dart:math' as math;
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../components/buttons/uten_button.dart';
 import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_animated_number.dart';
 import '../../../components/data_display/uten_gauge_ring.dart';
@@ -18,27 +20,47 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/server_config.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/server_status.dart';
 import '../providers/server_status_snapshot_cache.dart';
+import '../providers/server_operations_access.dart';
 import '../repositories/server_status_repository.dart';
 
-class ServerStatusPage extends ConsumerStatefulWidget {
+class ServerStatusPage extends ConsumerWidget {
   const ServerStatusPage({super.key});
 
   @override
-  ConsumerState<ServerStatusPage> createState() => _ServerStatusPageState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final owner = (
+      ref.watch(authenticatedScopeProvider),
+      ref.watch(apiBaseUrlProvider),
+    );
+    return _ServerStatusSession(key: ValueKey(owner));
+  }
 }
 
-class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
+class _ServerStatusSession extends ConsumerStatefulWidget {
+  const _ServerStatusSession({super.key});
+
+  @override
+  ConsumerState<_ServerStatusSession> createState() => _ServerStatusPageState();
+}
+
+class _ServerStatusPageState extends ConsumerState<_ServerStatusSession>
     with WidgetsBindingObserver {
+  late final Object _owner;
+  bool get _current =>
+      mounted &&
+      _owner ==
+          (ref.read(authenticatedScopeProvider), ref.read(apiBaseUrlProvider));
   ServerStatusSnapshot? _snapshot;
   Timer? _timer;
   Timer? _staleTimer;
@@ -56,10 +78,9 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
   final ScrollController _pageScroll = ScrollController();
   final ValueNotifier<bool> _jobsPinned = ValueNotifier<bool>(false);
 
-  bool get _hasPermission =>
-      ref.read(currentPermissionsProvider).contains(Perm.serverStatusView);
+  bool get _hasPermission => ref.read(serverOperationsVisibleProvider);
   bool get _active =>
-      mounted &&
+      _current &&
       _foreground &&
       (_routeVisible ?? true) &&
       _hasPermission &&
@@ -71,6 +92,10 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
   @override
   void initState() {
     super.initState();
+    _owner = (
+      ref.read(authenticatedScopeProvider),
+      ref.read(apiBaseUrlProvider),
+    );
     WidgetsBinding.instance.addObserver(this);
     final state = WidgetsBinding.instance.lifecycleState;
     _foreground = state == null || state == AppLifecycleState.resumed;
@@ -116,7 +141,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
     _scheduleStaleState();
     try {
       final next = await ref.read(serverStatusRepositoryProvider).load();
-      if (!mounted || generation != _generation || !_hasPermission) return;
+      if (!_current || generation != _generation || !_hasPermission) return;
       // 回写缓存：下次进页面第一帧直接用，不必再等一趟。
       ref.read(serverStatusSnapshotCacheProvider.notifier).state = next;
       setState(() {
@@ -126,7 +151,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
       });
       _scheduleStaleState();
     } catch (error) {
-      if (!mounted || generation != _generation) return;
+      if (!_current || generation != _generation) return;
       setState(() {
         _failed = true;
         if (error is ApiException &&
@@ -136,7 +161,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
         }
       });
     } finally {
-      if (mounted) {
+      if (_current) {
         setState(() => _loading = false);
         // One-shot scheduling after completion guarantees a single request,
         // including slow responses, manual refresh and foreground changes.
@@ -177,16 +202,14 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
 
   @override
   Widget build(BuildContext context) {
-    final allowed = ref
-        .watch(currentPermissionsProvider)
-        .contains(Perm.serverStatusView);
-    ref.listen(currentPermissionsProvider, (previous, next) {
-      if (!next.contains(Perm.serverStatusView)) {
+    final allowed = ref.watch(serverOperationsVisibleProvider);
+    ref.listen(serverOperationsVisibleProvider, (previous, next) {
+      if (!next) {
         _timer?.cancel();
         _staleTimer?.cancel();
         _generation++;
         setState(() => _snapshot = null);
-      } else if (previous?.contains(Perm.serverStatusView) != true) {
+      } else if (previous != true) {
         _denied = false;
         if (_active) unawaited(_refresh());
       }
@@ -251,6 +274,28 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           _overview(),
+                          const SizedBox(height: UtenSpacing.s16),
+                          Wrap(
+                            spacing: UtenSpacing.s12,
+                            runSpacing: UtenSpacing.s8,
+                            children: [
+                              UtenButton(
+                                type: UtenButtonType.secondary,
+                                icon: Icons.system_update_alt_rounded,
+                                onPressed: () => context.push(
+                                  RouteName.adminServerOperations,
+                                ),
+                                child: const Text('服务器更新'),
+                              ),
+                              UtenButton(
+                                type: UtenButtonType.secondary,
+                                icon: Icons.storage_rounded,
+                                onPressed: () =>
+                                    context.push(RouteName.adminServerStorage),
+                                child: const Text('存储管理'),
+                              ),
+                            ],
+                          ),
                           if (_fresh && _snapshot!.alerts.isNotEmpty) ...[
                             const SizedBox(height: UtenSpacing.s16),
                             _alerts(),
@@ -500,7 +545,8 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
     final title = switch (key) {
       'cpu' => _l10n.serverStatusCpu,
       'memory' => _l10n.serverStatusMemory,
-      'jvm_memory' => _l10n.serverStatusAppMemory,
+      'jvm_memory' => metric?.label ?? 'Java 堆内存',
+      'process_memory' => metric?.label ?? '应用常驻内存',
       'db_pool' => _l10n.serverStatusDbPool,
       _ => metric?.label ?? key,
     };
@@ -511,6 +557,7 @@ class _ServerStatusPageState extends ConsumerState<ServerStatusPage>
         'cpu' => Icons.memory_rounded,
         'memory' => Icons.storage_rounded,
         'jvm_memory' => Icons.layers_outlined,
+        'process_memory' => Icons.memory_rounded,
         _ => Icons.hub_outlined,
       },
       status: status,

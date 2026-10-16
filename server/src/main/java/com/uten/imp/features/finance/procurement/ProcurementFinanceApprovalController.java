@@ -97,7 +97,7 @@ public class ProcurementFinanceApprovalController {
     public BatchDecisionResponse approveBatch(
             @Valid @RequestBody BatchApprovalRequest request) {
         return service.approveBatch(
-                request.items(), request.remark(), request.exchangeRate());
+                request.items(), request.remark(), request.exchangeRate(), request.taxRate());
     }
 
     /** 整批使用同一退回原因；任一项失败则全部回滚。 */

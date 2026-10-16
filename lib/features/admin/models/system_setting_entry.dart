@@ -18,6 +18,10 @@ class SystemSettingEntry {
     this.minValue,
     this.maxValue,
     this.defaultValue,
+    this.effectiveValue,
+    this.effectiveNote,
+    this.applyMode,
+    this.editable = true,
   });
 
   final String key;
@@ -32,6 +36,8 @@ class SystemSettingEntry {
   final int? minValue; // 数值项允许的最小值 (服务端登记)
   final int? maxValue; // 数值项允许的最大值 (服务端登记)
   final String? defaultValue; // 出厂默认值
+  final String? effectiveValue, effectiveNote, applyMode;
+  final bool editable;
 
   factory SystemSettingEntry.fromJson(Map<String, dynamic> j) =>
       SystemSettingEntry(
@@ -47,5 +53,9 @@ class SystemSettingEntry {
         minValue: (j['minValue'] as num?)?.toInt(),
         maxValue: (j['maxValue'] as num?)?.toInt(),
         defaultValue: j['defaultValue']?.toString(),
+        effectiveValue: j['effectiveValue']?.toString(),
+        effectiveNote: j['effectiveNote']?.toString(),
+        applyMode: j['applyMode']?.toString(),
+        editable: j['editable'] != false,
       );
 }

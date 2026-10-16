@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -37,9 +40,15 @@ Future<void> _pump(
   Set<String> permissions = const {Perm.authorizationManage},
   bool superAdmin = true,
 }) async {
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sharedPreferencesProvider.overrideWithValue(preferences),
+        apiBaseUrlProvider.overrideWithValue(
+          'https://platform-entry-test.invalid/api',
+        ),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(superAdmin),
         if (repository != null)

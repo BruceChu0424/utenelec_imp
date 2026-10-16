@@ -120,8 +120,18 @@ void main() {
       before.fail.text = '2';
       before.disposition = 'SCRAP';
       final key = before.idempotencyKey;
-      await tester.tap(find.byTooltip('刷新').last);
+      final detailCalls = api.detailCalls;
+      final moreActions = find
+          .byKey(const Key('uten-app-bar-more-actions'))
+          .hitTestable();
+      expect(moreActions, findsOneWidget);
+      await tester.tap(moreActions);
       await tester.pumpAndSettle();
+      final refresh = find.byTooltip('刷新').hitTestable();
+      expect(refresh, findsOneWidget);
+      await tester.tap(refresh);
+      await tester.pumpAndSettle();
+      expect(api.detailCalls, detailCalls + 1);
       expect(row().pass.text, '1.');
       expect(row().fail.text, '2');
       expect(row().disposition, 'SCRAP');

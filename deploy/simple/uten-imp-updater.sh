@@ -2,8 +2,9 @@
 # Uten IMP 单维护者简化发布链 —— 服务器端更新器（ADR-060）
 #
 # 用法（root 的 systemd oneshot / 手动）：
-#   uten-imp-updater check              # 手动或本机调度器到期调用（默认每周日当地 05:00）：拉 LATEST → 验签 → 暂存；
-#                                       # 纯代码版本自动激活；含迁移版本仅暂存并提示
+#   uten-imp-updater latest             # 显式联网读取版本号
+#   uten-imp-updater stage <version>    # 显式下载、验签、暂存，不激活
+#   uten-imp-updater check              # 人工检查并暂存，不激活
 #   uten-imp-updater activate <version> # 人工激活含迁移版本：先 pg_dump 全量备份再执行
 #   uten-imp-updater status             # 查看当前/最新/已暂存版本
 #
@@ -11,7 +12,11 @@
 # 验签失败、SHA256 不符、路径含 .. 一律拒装。配置见 /etc/uten-imp-updater.env。
 set -euo pipefail
 
-CONFIG=${UTEN_UPDATER_CONFIG:-/etc/uten-imp-updater.env}
+log() { echo "[uten-imp-updater] $*"; }
+die() { echo "[uten-imp-updater][ERROR] $*" >&2; exit 1; }
+
+CONFIG=${UTEN_UPDATER_CONFIG:-/etc/uten-imp-updater/source.env}
+[ -e "$CONFIG" ] || CONFIG=${UTEN_UPDATER_CONFIG:-/etc/uten-imp-updater.env}
 # shellcheck source=/dev/null
 [ -r "$CONFIG" ] || { echo "缺少配置 $CONFIG（参考 deploy/simple/updater.env.example）" >&2; exit 1; }
 . "$CONFIG"
@@ -22,17 +27,24 @@ CONFIG=${UTEN_UPDATER_CONFIG:-/etc/uten-imp-updater.env}
    "${UTEN_SIGNER_ID:=uten-imp-release}" "${UTEN_NAMESPACE:=uten-imp-release}" \
    "${UTEN_HEALTH_URL:=http://127.0.0.1:8080/actuator/health/readiness}" \
    "${UTEN_APP_SERVICE:=uten-imp}" "${UTEN_BACKUP_DIR:=/srv/uten-backup/pre-activation}" \
-   "${UTEN_PG_DATABASE:=uten_imp}" "${UTEN_KEEP_RELEASES:=5}" "${UTEN_BACKUP_KEEP_DAYS:=14}" \
-   "${UTEN_AUTO_ACTIVATE_CODE_ONLY:=1}" "${UTEN_MIGRATOR_ENV:=/etc/uten-imp/migrator.env}"
+   "${UTEN_PG_DATABASE:=uten_imp}" "${UTEN_PG_PORT:=5432}" "${UTEN_KEEP_RELEASES:=5}" "${UTEN_BACKUP_KEEP_DAYS:=14}" \
+   "${UTEN_AUTO_ACTIVATE_CODE_ONLY:=0}" "${UTEN_MIGRATOR_ENV:=/etc/uten-imp/migrator.env}" \
+   "${UTEN_OSS_OBJECT_PREFIX:=}"
 
 # 会被拼进命令/文件名的值一律限定字符白名单（root 配置文件之外无输入面）
 [[ "$UTEN_APP_SERVICE" =~ ^[a-zA-Z0-9@._-]+$ ]] || die "UTEN_APP_SERVICE 含非法字符"
 [[ "$UTEN_PG_DATABASE" =~ ^[a-zA-Z0-9_]+$ ]] || die "UTEN_PG_DATABASE 含非法字符"
+[[ "$UTEN_PG_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$UTEN_PG_PORT" -le 65535 ] || die "UTEN_PG_PORT 非法"
+[[ "$UTEN_OSS_BUCKET" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]] || die "OSS bucket 非法"
+[[ "$UTEN_OSS_ENDPOINT" =~ ^oss-[a-z0-9-]+\.aliyuncs\.com$ ]] || die "OSS endpoint 非法"
+[[ "$UTEN_OSS_OBJECT_PREFIX" =~ ^([A-Za-z0-9_-]+/)*[A-Za-z0-9_-]*$ ]] || die "OSS prefix 非法"
 
 RELEASES_DIR="$UTEN_BASE/releases"
 ACTIVE_FILE="$UTEN_BASE/active-version.txt"
-# /run/lock 是 tmpfs 上的公共锁目录; 更新器 unit 用 ProtectSystem=strict 时只放开它, 不放开整个 /run。
-LOCK_FILE=/run/lock/uten-imp-updater.lock
+# Private root directory prevents a local user pre-creating a lock symlink.
+LOCK_FILE=/run/uten-imp-updater/updater.lock
+[ ! -L /run/uten-imp-updater ] || die "更新锁目录不能是符号链接"
+install -d -o root -g root -m 0700 /run/uten-imp-updater
 LOG_TAG=uten-imp-updater
 # 发行目录属组: 应用账号组可读整个版本; nginx (www-data) 只加入 WEB_GROUP,
 # 只能读发行目录里的 web/, server/ 下的 JAR 对它不可见。
@@ -75,13 +87,29 @@ sys.stdout.write(base64.b64encode(digest).decode())'
 # 把换行写在格式串里（2026-09-03 回带仓库时踩过，见 RUNBOOK 已知坑⑥）。
 oss_get() {
   local key=$1 date sig
+  [ -z "${UTEN_OSS_OBJECT_PREFIX:-}" ] || key="${UTEN_OSS_OBJECT_PREFIX%/}/$key"
   date=$(date -u "+%a, %d %b %Y %H:%M:%S GMT")
   sig=$(printf 'GET\n\n\n%s\n/%s/%s' "$date" "$UTEN_OSS_BUCKET" "$key" | oss_sign) \
     || die "OSS 请求签名失败"
-  curl -fsSL --retry 3 --retry-delay 2 \
-    -H "Date: ${date}" \
-    -H "Authorization: OSS ${UTEN_OSS_KEY_ID}:${sig}" \
-    "https://${UTEN_OSS_BUCKET}.${UTEN_OSS_ENDPOINT}/${key}"
+  # Never forward credentials to redirects or expose authorization in argv.
+  printf 'header = "Date: %s"\nheader = "Authorization: OSS %s:%s"\n' \
+    "$date" "$UTEN_OSS_KEY_ID" "$sig" | \
+    curl -fsS --proto '=https' --max-redirs 0 --connect-timeout 10 --max-time 300 \
+      --retry 3 --retry-delay 2 --config - \
+      "https://${UTEN_OSS_BUCKET}.${UTEN_OSS_ENDPOINT}/${key}"
+}
+
+# Unverified channel/signature metadata is small. Bound it before buffering or
+# writing; an oversized response must not exhaust host memory/disk.
+oss_get_small() {
+  local key=$1 maximum=$2
+  oss_get "$key" | python3 -I -c '
+import sys
+maximum = int(sys.argv[1])
+data = sys.stdin.buffer.read(maximum + 1)
+if len(data) > maximum:
+    raise SystemExit("release metadata is too large")
+sys.stdout.buffer.write(data)' "$maximum"
 }
 
 # 校验 SHA256SUMS 的每一行：路径必须相对、无 ..，文件哈希必须一致
@@ -91,7 +119,7 @@ verify_sums() {
     || die "SHA256SUMS 校验失败：$dir"
 }
 
-# 比较两个 JAR 的 Flyway 迁移集（文件名清单哈希）；判定"纯代码"还是"含迁移"。
+# 比较两个 JAR 的 Flyway 迁移集及内容；已应用迁移的字节变化也必须进入迁移校验。
 # server JAR 是 Spring Boot fat jar，资源在 BOOT-INF/classes/db/migration/ 下，
 # 必须剥掉前缀再匹配——否则两边都匹配 0 条、哈希恒等，含迁移版本会被误判
 # 成纯代码而自动激活（2026-09-03 v2026.09.03-1 事故根因）。
@@ -100,11 +128,16 @@ migration_digest() {
 import hashlib, sys, zipfile
 def entry_name(e):
     return e[len("BOOT-INF/classes/"):] if e.startswith("BOOT-INF/classes/") else e
-names = sorted(
-    n for n in (entry_name(e) for e in zipfile.ZipFile(sys.argv[1]).namelist())
-    if n.startswith("db/migration/")
-)
-print(hashlib.sha256("\n".join(names).encode()).hexdigest())
+with zipfile.ZipFile(sys.argv[1]) as jar:
+    names = sorted(e for e in jar.namelist()
+                   if entry_name(e).startswith("db/migration/") and not e.endswith("/"))
+    if not names:
+        raise SystemExit("JAR contains no database migrations")
+    digest = hashlib.sha256()
+    for name in names:
+        digest.update(entry_name(name).encode() + b"\0")
+        digest.update(hashlib.sha256(jar.read(name)).digest())
+    print(digest.hexdigest())
 PY
 }
 
@@ -157,9 +190,11 @@ wait_health() {
 
 # ---------------------------------------------------------------- check ----
 do_check() {
-  local latest active staged sig_ok tmp key path sum
-  latest=$(oss_get "LATEST.txt" | tr -d '[:space:]') || die "无法读取 LATEST.txt"
-  [[ "$latest" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+  local latest=${1:-} active staged sig_ok tmp key path sum
+  if [ -z "$latest" ]; then
+    latest=$(oss_get_small "LATEST.txt" 128 | tr -d '[:space:]') || die "无法读取 LATEST.txt"
+  fi
+  [ "${#latest}" -le 32 ] && [[ "$latest" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
     || die "LATEST.txt 内容非法：$latest"
   active=$(current_version)
   [ "$latest" = "$active" ] && { log "已最新（$active）"; return 0; }
@@ -170,16 +205,18 @@ do_check() {
     require_web_group
     log "发现新版本 $latest（active=$active），开始下载暂存"
     tmp=$(mktemp -d "$RELEASES_DIR/.stage-$latest.XXXXXX")
-    trap 'rm -rf "$tmp"' RETURN
+    trap 'rm -rf -- "${tmp:?}"' EXIT
     ( cd "$tmp"
-      oss_get "releases/$latest/SHA256SUMS" > SHA256SUMS
-      oss_get "releases/$latest/SHA256SUMS.sig" > SHA256SUMS.sig
+      oss_get_small "releases/$latest/SHA256SUMS" 1048576 > SHA256SUMS
+      oss_get_small "releases/$latest/SHA256SUMS.sig" 16384 > SHA256SUMS.sig
       ssh-keygen -Y verify -f "$UTEN_ALLOWED_SIGNERS" -I "$UTEN_SIGNER_ID" \
         -n "$UTEN_NAMESPACE" -s SHA256SUMS.sig < SHA256SUMS 2>/dev/null \
         || die "签名验证失败：$latest"
       while read -r sum path; do
         path=${path#./}
+        [[ "$sum" =~ ^[a-fA-F0-9]{64}$ ]] || die "SHA256SUMS 哈希格式错误"
         [[ "$path" =~ ^[A-Za-z0-9._/-]+$ ]] || die "SHA256SUMS 含非法路径：$path"
+        [[ "$path" != /* ]] || die "SHA256SUMS 不允许绝对路径"
         [[ "$path" == *".."* ]] && die "SHA256SUMS 含越界/可疑路径：$path"
         [ "$path" = "SHA256SUMS" ] && continue
         mkdir -p "$(dirname "$path")"
@@ -188,29 +225,12 @@ do_check() {
     )
     verify_sums "$tmp"
     mv "$tmp" "$RELEASES_DIR/$latest"
+    trap - EXIT
     publish_release_permissions "$RELEASES_DIR/$latest"
     log "暂存完成：$RELEASES_DIR/$latest"
   fi
 
-  if [ ! -L "$UTEN_BASE/current" ] || [ ! -d "$UTEN_BASE/current/server" ]; then
-    log "首装状态：请人工执行 uten-imp-updater activate $latest"
-    return 0
-  fi
-
-  local cur_digest new_digest
-  cur_digest=$(migration_digest "$UTEN_BASE/current/server/uten-imp-server.jar")
-  new_digest=$(migration_digest "$RELEASES_DIR/$latest/server/uten-imp-server.jar")
-  if [ "$cur_digest" = "$new_digest" ]; then
-    if [ "$UTEN_AUTO_ACTIVATE_CODE_ONLY" = "1" ]; then
-      log "$latest 为纯代码更新，自动激活"
-      do_activate "$latest" code-only
-    else
-      log "$latest 已暂存（自动激活已关闭），请人工 activate"
-    fi
-  else
-    log "$latest 含数据库迁移（迁移集有变化），仅暂存。"
-    log "维护窗口执行：uten-imp-updater activate $latest（会自动先 pg_dump 备份）"
-  fi
+  log "$latest 已验签暂存，等待授权激活"
 }
 
 # Dumps contain the full business database, including account hashes. Create
@@ -227,7 +247,7 @@ create_database_backup() {
     || return 1
   backup_file=${partial%.partial}
   log "数据库有变化：先全量备份 → $backup_file" >&2
-  if runuser -u postgres -- pg_dump -Fc -d "$UTEN_PG_DATABASE" > "$partial" && [ -s "$partial" ] \
+  if timeout --kill-after=10s 900s runuser -u postgres -- pg_dump -Fc -h /var/run/postgresql -p "${UTEN_PG_PORT:-5432}" -d "$UTEN_PG_DATABASE" > "$partial" && [ -s "$partial" ] \
       && ln -T -- "$partial" "$backup_file"; then
     rm -f -- "$partial"
     printf '%s\n' "$backup_file"
@@ -244,6 +264,12 @@ create_database_backup() {
 # 保留」只在已完成的非空 dump 里选, .partial 和空文件不算, 只按日期清理。
 # 人工 dump、子目录和其它名字一律不碰; 任何异常只记日志, 不影响激活结果。
 prune_database_backups() {
+  # The operations inventory owns recovery-point/rollback protection. The legacy
+  # age-only pruner cannot see those facts and must not bypass them.
+  if [ -e /etc/uten-imp/operations.json ]; then
+    log "升级前备份由服务器存储页面预览并清理（保护实际恢复点与回滚依赖）"
+    return 0
+  fi
   local keep_days=$UTEN_BACKUP_KEEP_DAYS dir=$UTEN_BACKUP_DIR oldest newest="" path name stamp day size
   local pattern="^${UTEN_PG_DATABASE}-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-([0-9]{8})-([0-9]{6})\.[A-Za-z0-9]{6}\.dump(\.partial)?$"
   if ! [[ "$keep_days" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$keep_days" -gt 365 ]; then
@@ -289,9 +315,39 @@ prune_database_backups() {
   return 0
 }
 
+validate_migrator_config() {
+  # The standalone migrator does not read Spring datasource overrides. Keep
+  # its actual fixed database target aligned with the final cutover dump.
+  [ "${UTEN_PG_DATABASE:-uten_imp}" = uten_imp ] && [ "${UTEN_PG_PORT:-5432}" = 5432 ] \
+    || die "迁移程序仅支持本机标准数据库 uten_imp:5432，未停应用、未改数据库"
+  python3 -I - "$UTEN_MIGRATOR_ENV" <<'PY' \
+    || die "迁移环境文件必须为私有普通文件且仅包含有效迁移密码，未停应用、未改数据库"
+import os
+import re
+import stat
+import sys
+
+try:
+    fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'r', encoding='utf-8') as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077 or info.st_nlink != 1 or info.st_size > 16384):
+            raise ValueError()
+        lines = [line.strip() for line in stream.read(16385).splitlines()
+                 if line.strip() and not line.lstrip().startswith('#')]
+    value = r'[A-Za-z0-9]{20,512}'
+    if len(lines) != 1 or not re.fullmatch(
+            r'(?:export\s+)?UTEN_MIGRATOR_DB_PASSWORD=(?:' + value + r'|\x27' + value + r'\x27|"' + value + r'")', lines[0]):
+        raise ValueError()
+except (OSError, UnicodeError, ValueError):
+    sys.exit(1)
+PY
+}
+
 # ------------------------------------------------------------- activate ----
 do_activate() {
-  local version=$1 mode=${2:-auto} prev prev_ver code_only backup_file rc
+  local version=$1 mode=${2:-auto} expected=${3:-} prev prev_ver code_only backup_file rc
   [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
     || die "版本号非法：$version"
   [ -d "$RELEASES_DIR/$version" ] || die "版本未暂存：$RELEASES_DIR/$version"
@@ -304,6 +360,10 @@ do_activate() {
     prev_ver=$(basename "$(readlink -f "$UTEN_BASE/current")")
   else
     prev_ver=none
+  fi
+  if [ -n "$expected" ] && { [ "$prev_ver" != "$expected" ] || [ "$(current_version)" != "$expected" ]; }; then
+    printf '%s\n' '当前版本已变化；未停服、未执行迁移，请重新检查。' >&2
+    return 42
   fi
   if [ "$mode" = code-only ] || { [ "$prev_ver" != none ] \
       && [ "$(migration_digest "$UTEN_BASE/current/server/uten-imp-server.jar")" \
@@ -328,18 +388,31 @@ do_activate() {
       || die "升级前备份目录不可写：$UTEN_BACKUP_DIR (备份盘没挂载?), 未停应用、未改数据库"
     runuser -u uten-imp -- test -r "$RELEASES_DIR/$version/server/uten-imp-migrator.jar" \
       || die "应用账号无法读取迁移程序，未停应用、未改数据库"
-    [ -f "$UTEN_MIGRATOR_ENV" ] && [ ! -L "$UTEN_MIGRATOR_ENV" ] \
-      || die "迁移环境文件不存在或不是普通文件，未停应用、未改数据库"
+    validate_migrator_config
   fi
 
   systemctl stop "$UTEN_APP_SERVICE"
 
   if [ "$code_only" = 0 ]; then
-    backup_file=$(create_database_backup "$version") \
-      || die "数据库备份失败或为空，中止激活（数据库未改动）"
+    if ! backup_file=$(create_database_backup "$version"); then
+      # Stopping was necessary for the final DB cutover dump, but no migration
+      # happened. Restore the still-current service instead of leaving it down.
+      if systemctl start "$UTEN_APP_SERVICE" && wait_health; then
+        printf '%s\n' '数据库备份失败，数据库未改动，原服务已恢复' >&2
+        return 43
+      fi
+      die "数据库备份失败，数据库未改动，但原服务恢复失败，请管理员处理"
+    fi
+    printf '%s\n' 'UTEN_PHASE:MIGRATING'
     log "运行 migrator（${UTEN_MIGRATOR_ENV}）"
     (
-      set -a; . "$UTEN_MIGRATOR_ENV"; set +a
+      # Do not pass release OSS credentials or inherited JVM startup options to
+      # the application account. Bash builtins remove export attributes without
+      # placing the dedicated password in a command's argv.
+      while IFS= read -r variable; do export -n "$variable"; done < <(compgen -e)
+      export PATH=/usr/bin:/bin LANG=C.UTF-8
+      . "$UTEN_MIGRATOR_ENV"
+      export UTEN_MIGRATOR_DB_PASSWORD
       cd "$RELEASES_DIR/$version"
       timeout 900 runuser -u uten-imp -- /usr/bin/java \
         -Dlogging.file.name=/var/log/uten-imp/migrator.log \
@@ -351,6 +424,7 @@ do_activate() {
   mv -T "$UTEN_BASE/current.new" "$UTEN_BASE/current"
   # A failed systemctl start must use the same recovery path as an unhealthy
   # process; an unguarded command would exit here under set -e.
+  printf '%s\n' 'UTEN_PHASE:HEALTH_CHECK'
   if systemctl start "$UTEN_APP_SERVICE" && wait_health; then
     echo "$version" > "$ACTIVE_FILE"
     log "激活成功：$version（健康检查通过）"
@@ -417,6 +491,10 @@ current_link_version() {
 }
 
 prune_old() {
+  if [ -e /etc/uten-imp/operations.json ]; then
+    log "历史版本由服务器存储页面受控清理（保护运行与回滚版本）"
+    return 0
+  fi
   local keep=$UTEN_KEEP_RELEASES active actual dirs
   [[ "$keep" =~ ^[1-9][0-9]{0,3}$ ]] || {
     log "跳过清理：UTEN_KEEP_RELEASES 必须为 1 至 9999 的整数"
@@ -454,7 +532,7 @@ prune_old() {
 do_status() {
   echo "active : $(current_version)"
   echo "current -> $(readlink -f "$UTEN_BASE/current" 2>/dev/null || echo 未设置)"
-  echo "latest  : $(oss_get "LATEST.txt" 2>/dev/null | tr -d '[:space:]' || echo 无法读取)"
+  echo "latest  : 仅显式 latest/check 时联网查询"
   echo "staged  :"
   local staged
   staged=$(release_versions)
@@ -466,9 +544,16 @@ do_status() {
   echo "health  : $(health_ok && echo UP || echo DOWN)"
 }
 
-case "${1:-check}" in
-  check)    do_check ;;
-  activate) [ $# -ge 2 ] || die "用法：uten-imp-updater activate <version>"; do_activate "$2" manual ;;
+case "${1:-status}" in
+  latest) latest=$(oss_get_small "LATEST.txt" 128 | tr -d '[:space:]') || die "无法读取 LATEST.txt";
+          [ "${#latest}" -le 32 ] && [[ "$latest" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "版本号非法";
+          printf '%s\n' "$latest" ;;
+  check)    exec 9>"$LOCK_FILE"; flock -n 9 || die "另一个更新正在进行"; do_check ;;
+  stage)    [ $# -eq 2 ] || die "用法：uten-imp-updater stage <version>";
+            exec 9>"$LOCK_FILE"; flock -n 9 || die "另一个更新正在进行"; do_check "$2" ;;
+  activate) [ $# -eq 2 ] || { [ $# -eq 4 ] && [ "$3" = --expected-current ]; } \
+              || die "用法：uten-imp-updater activate <version> [--expected-current <version|none>]";
+            do_activate "$2" manual "${4:-}" ;;
   status)   do_status ;;
-  *)        die "未知子命令：$1（可用 check / activate / status）" ;;
+  *)        die "未知子命令：$1（可用 latest / check / stage / activate / status）" ;;
 esac

@@ -1,5 +1,7 @@
 package com.uten.imp.businesschain;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uten.imp.features.admin.serveroperations.HostOperationsClient;
 import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.application.port.WarehouseTaskScopePort.Role;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseAccess;
@@ -37,6 +39,9 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.MockMvcPrint;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -75,7 +80,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test", "uten.bootstrap.admin-password=HarnessAdminPass-1!",
         "uten.workshop-material.auto-close.enabled=false"})
 @AutoConfigureMockMvc(print = MockMvcPrint.NONE)
-@Import(ProductionJdbcMeasurement.Configuration.class)
+@Import({ProductionJdbcMeasurement.Configuration.class, WarehouseDataScopeEndToEndTest.HostBridgeFixture.class})
 class WarehouseDataScopeEndToEndTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry) {
         FullChainEndToEndTest.registerDataSource(registry);
@@ -108,6 +113,31 @@ class WarehouseDataScopeEndToEndTest {
     @Autowired StockCountRequestController stockCounts;
     @Autowired DocumentDraftCountController documentCounts;
     @Autowired MockMvc http;
+
+    /** Keep this warehouse-scope fixture independent of an installed root daemon.
+     * The real status controller and its permissions still execute; only the host
+     * RPC boundary supplies a healthy, manually managed host with no update.
+     * Production unavailable/stale behavior is covered by the dedicated operations tests.
+     */
+    @TestConfiguration(proxyBeanMethods = false)
+    static class HostBridgeFixture {
+        @Bean
+        @Primary
+        HostOperationsClient warehouseScopeHostOperations(ObjectMapper mapper) {
+            return (operation, payload, actorId, requestId) -> {
+                if (operation != HostOperationsClient.Operation.STATUS || !payload.isEmpty()) {
+                    throw new AssertionError("Warehouse scope must only read local host status");
+                }
+                return mapper.createObjectNode()
+                        .put("available", true).put("manualOnly", true)
+                        .put("timerActive", false).put("timerEnabled", false)
+                        .put("currentVersion", "v2.5.18").put("sourceRevision", "0".repeat(64))
+                        .put("sourceConfigured", true).put("updateAvailable", false)
+                        .put("serverTimeZone", "UTC")
+                        .put("serverTime", java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).toString());
+            };
+        }
+    }
 
     private FullChainEndToEndTest fixture;
     private FullChainEndToEndTest.World world;
@@ -207,6 +237,7 @@ class WarehouseDataScopeEndToEndTest {
         assertForbidden(() -> badges.badges(warehouseB));
         MyWarehouseScope a = dataScope.myScope();
         assertThat(a.role()).isEqualTo("KEEPER");
+        assertThat(a.warehouseParticipant()).isTrue();
         assertThat(a.canSelectAll()).isFalse();
         assertThat(a.selectable()).extracting(MyWarehouseScope.Option::id).containsExactly(warehouseA);
         assertThat(a.defaultWarehouseId()).isEqualTo(warehouseA);
@@ -221,6 +252,12 @@ class WarehouseDataScopeEndToEndTest {
         fixture.loginAs(member);
         assertForbidden(() -> scopes.current(warehouseC));
         assertThat(dataScope.myScope().selectable()).isEmpty();
+        assertThat(dataScope.myScope().role()).isEqualTo("OTHER");
+        assertThat(dataScope.myScope().warehouseParticipant()).isTrue();
+
+        fixture.loginAs(outsider);
+        assertThat(dataScope.myScope().role()).isEqualTo("OTHER");
+        assertThat(dataScope.myScope().warehouseParticipant()).isFalse();
 
         fixture.loginAs(manager);
         assertThat(scopes.current(warehouseC).warehouseIds()).containsExactly(warehouseC);
@@ -228,6 +265,7 @@ class WarehouseDataScopeEndToEndTest {
         assertForbidden(() -> scopes.current(UUID.randomUUID()));
         MyWarehouseScope supervisor = dataScope.myScope();
         assertThat(supervisor.role()).isEqualTo("SUPERVISOR");
+        assertThat(supervisor.warehouseParticipant()).isTrue();
         assertThat(supervisor.canSelectAll()).isTrue();
         assertThat(supervisor.selectable()).extracting(MyWarehouseScope.Option::id)
                 .contains(root, warehouseA, warehouseB, warehouseC);

@@ -26,7 +26,9 @@ class FinanceDocumentObjectScopeContractTest {
             var helper = Pattern.compile("Specification<[^>]+>\\s+spec\\s*=\\s*(\\w+Spec)\\(f\\)")
                     .matcher(list);
             assertThat(helper.find()).as("list must use its shared scope specification in %s", relative).isTrue();
-            assertThat(list).contains(".findAll(spec,");
+            assertThat(list).as("relevance wraps the original scoped spec before paging in %s", relative)
+                    .contains("var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());")
+                    .contains(".findAll(searchPage.specification(), searchPage.pageable())");
             assertThat(method(source, " " + helper.group(1) + "(")).contains(
                     "var readScope = access.scope();",
                     "access.readablePredicate(root, cb, \"makerId\", readScope)");
@@ -47,6 +49,10 @@ class FinanceDocumentObjectScopeContractTest {
                     .contains("currentUser.requireEmployeeId()")
                     .contains(".setMakerId(");
         }
+        // The shared page wrapper must return the original filter's predicate;
+        // relevance can add ordering but cannot substitute an unscoped query.
+        assertThat(method(source("common/util/NameRefKeyword.java"), " page("))
+                .contains("filter.toPredicate(root, query, cb)", "return predicate;");
     }
 
     @Test

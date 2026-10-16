@@ -4,6 +4,9 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.test.util.ReflectionTestUtils;
+import com.uten.imp.features.sales.report.SalesReportService;
+import com.uten.imp.features.stock.report.StockReportService;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.math.BigDecimal;
@@ -86,5 +89,58 @@ class ReportKeywordSearchPostgresTest {
         assertThat(jdbc.queryForList(rows + "SELECT goods_name FROM doc " + full.sql()
                 + " GROUP BY goods_name ORDER BY " + where.groupedOrderBy("goods_name"), parameters, String.class))
                 .containsExactly("Metric Screw", "Screw");
+    }
+
+    @Test void historicalReportSearchUsesFrozenLabelsAndNeverRenamedMasterNamesOrCodes() {
+        String data = """
+                WITH goods(id,code,name,model) AS (VALUES (1,'MASTER-NEW','主档新名称','仅规格')),
+                o(id,bill_no,bill_date,status,owner_key) AS (VALUES
+                  (1,'单号一',DATE '2026-01-01',1,'A'),
+                  (2,'单号二',DATE '2026-01-02',1,'A'),
+                  (3,'隐藏单号',DATE '2026-01-03',1,'OTHER')),
+                i(id,document_id,goods_id,goods_name_snapshot,goods_code_snapshot,qty) AS (VALUES
+                  (1,1,1,'旧名称螺丝','M3_20%\\A',10),
+                  (2,2,1,'旧名称螺丝','M3X20AZA',20),
+                  (3,3,1,'旧名称螺丝','M3_20%\\A',9999)),
+                c(name) AS (VALUES ('客户甲'))
+                """;
+        String from = " FROM o JOIN i ON i.document_id=o.id CROSS JOIN c ";
+        for (String report : List.of("purchase", "sales", "stock")) {
+            var where = historicalWhere(report, "旧名称\u3000M3_20%\\A");
+            var full = where.build(null);
+            var ranked = new HashMap<String, Object>(full.params());
+            ranked.putAll(where.searchOrderParameters());
+            assertThat(jdbc.queryForList(data + "SELECT i.id" + from + full.sql()
+                    + " ORDER BY " + where.orderBy("i.id"), ranked, Integer.class))
+                    .as("%s historical identity and literal multi-word rows", report).containsExactly(1);
+            assertThat(jdbc.queryForObject(data + "SELECT count(*)" + from + full.sql(), full.params(), Long.class))
+                    .as("%s count retains the same historical and owner predicates", report).isEqualTo(1);
+            assertThat(jdbc.queryForObject(data + "SELECT sum(i.qty)" + from + full.sql(), full.params(), BigDecimal.class))
+                    .as("%s totals exclude the unauthorized historical row", report).isEqualByComparingTo("10");
+            assertThat(jdbc.queryForList(data + "SELECT i.goods_code_snapshot" + from + full.sql()
+                    + " GROUP BY i.goods_code_snapshot", full.params(), String.class)).containsExactly("M3_20%\\A");
+            for (String missing : List.of("主档新名称", "MASTER-NEW", "旧名称 不存在")) {
+                var absent = historicalWhere(report, missing).build(null);
+                assertThat(jdbc.queryForObject(data + "SELECT count(*)" + from + absent.sql(), absent.params(), Long.class))
+                        .as("%s cannot infer a historical label from the renamed master: %s", report, missing).isZero();
+            }
+            var crossField = historicalWhere(report, "单号一 旧名称").build(null);
+            assertThat(jdbc.queryForObject(data + "SELECT count(*)" + from + crossField.sql(), crossField.params(), Long.class))
+                    .as("%s words may cross document number and frozen labels", report).isEqualTo(1);
+        }
+    }
+
+    private ReportQueryKit.WhereBuilder historicalWhere(String report, String keyword) {
+        var where = new ReportQueryKit.WhereBuilder("WHERE o.owner_key='A'");
+        switch (report) {
+            case "purchase" -> ReportQueryKit.addCommonDocFilters(where, null, null, null,
+                    null, null, null, keyword, "o.bill_no", "o.bill_date");
+            case "sales" -> ReflectionTestUtils.invokeMethod(SalesReportService.class, "addCommonDocFilters",
+                    where, null, null, null, null, null, null, keyword, "o.bill_no", "o.bill_date");
+            case "stock" -> ReflectionTestUtils.invokeMethod(StockReportService.class, "addCommonFilters",
+                    where, null, null, null, null, null, null, null, keyword, true);
+            default -> throw new IllegalArgumentException(report);
+        }
+        return where;
     }
 }

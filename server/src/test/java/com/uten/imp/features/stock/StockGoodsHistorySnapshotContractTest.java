@@ -115,11 +115,19 @@ class StockGoodsHistorySnapshotContractTest {
         String report = read(MAIN.resolve(
                 "java/com/uten/imp/features/stock/report/StockReportService.java"));
 
-        assertThat(occurrences(report, "goods_code_snapshot")).isEqualTo(8);
-        assertThat(occurrences(report, "goods_name_snapshot")).isEqualTo(8);
+        // Seven historical projection columns, plus the search predicate and its
+        // relevance fields. The extra rank reference must not hide a lost column.
+        assertThat(occurrences(report, "goods_code_snapshot")).isEqualTo(9);
+        assertThat(occurrences(report, "goods_name_snapshot")).isEqualTo(9);
+        assertThat(occurrences(report,
+                "c(\"goodsCode\", \"编号\", \"text\", 110, \"i.goods_code_snapshot\")")).isEqualTo(7);
+        assertThat(occurrences(report,
+                "c(\"goodsName\", \"货品名称\", \"text\", 180, \"i.goods_name_snapshot\")")).isEqualTo(7);
         assertThat(report)
-                .contains("COALESCE(i.goods_name_snapshot,'')")
-                .contains("COALESCE(i.goods_code_snapshot,'')")
+                .contains("w.search(kw, parameter ->")
+                .contains("i.goods_name_snapshot ILIKE")
+                .contains("i.goods_code_snapshot ILIKE")
+                .contains("\"o.bill_no\", \"i.goods_name_snapshot\", \"i.goods_code_snapshot\"")
                 .doesNotContain("\"g.code\"")
                 .doesNotContain("\"g.name\"")
                 .doesNotContain("gg.code")

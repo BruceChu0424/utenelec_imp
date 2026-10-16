@@ -112,10 +112,12 @@ class SalesGoodsHistorySnapshotContractTest {
         assertThat(occurrences(report, "i.goods_name_snapshot AS \"goodsName\""))
                 .isEqualTo(ITEM_TABLES.size());
         assertThat(report)
-                .contains("COALESCE(i.goods_name_snapshot,'')")
-                .contains("COALESCE(i.goods_code_snapshot,'')")
+                .contains("w.search(kw, parameter ->")
+                .contains("i.goods_name_snapshot ILIKE")
+                .contains("i.goods_code_snapshot ILIKE")
+                .contains("billNoCol, \"c.name\", \"i.goods_name_snapshot\", \"i.goods_code_snapshot\"")
                 .doesNotContain("g.code AS \"goodsCode\"")
-                .doesNotContain("g.name AS \"goodsName\"");
+                .doesNotContain("g.name AS \"goodsName\"", "gg.code", "gg.name");
     }
 
     @Test

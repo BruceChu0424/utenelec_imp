@@ -146,8 +146,11 @@ class PurchaseGoodsHistorySnapshotContractTest {
         String kit = read(MAIN.resolve(
                 "java/com/uten/imp/common/report/ReportQueryKit.java"));
         assertThat(kit)
-                .contains("COALESCE(i.goods_name_snapshot,'')")
-                .contains("COALESCE(i.goods_code_snapshot,'')");
+                .contains("w.search(kw, parameter ->")
+                .contains("i.goods_name_snapshot ILIKE")
+                .contains("i.goods_code_snapshot ILIKE")
+                .contains("billNoCol, \"i.goods_name_snapshot\", \"i.goods_code_snapshot\"")
+                .doesNotContain("gg.name", "gg.code");
     }
 
     @Test
@@ -187,21 +190,23 @@ class PurchaseGoodsHistorySnapshotContractTest {
                 .contains("'goods_snapshot_source','legacy_import'");
 
         Pattern insert = Pattern.compile(
-                "insert\\s+into\\s+purchase_(?:request|order|receipt|return)_items\\s*\\((.*?)\\)\\s*values",
+                "insert\\s+into\\s+purchase_(?:request|order|receipt|return)_items\\s*\\(([^)]*)\\)\\s*(values|select)",
                 Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
         int inserts = 0;
+        int insertSelects = 0;
         for (String fixture : DIRECT_INSERT_FIXTURES) {
             String java = read(Path.of("src/test/java/com/uten/imp").resolve(fixture));
             Matcher matcher = insert.matcher(java);
             while (matcher.find()) {
                 inserts++;
+                if (matcher.group(2).equalsIgnoreCase("select")) insertSelects++;
                 assertThat(matcher.group(1)).containsIgnoringCase("goods_snapshot_source");
             }
         }
-        // V420/V422 BUY split coverage adds one request/order/receipt fixture
-        // for the independent public-safety line; all three carry frozen goods
-        // snapshots and are intentionally included in the exact inventory.
-        assertThat(inserts).isEqualTo(18);
+        // The seven fixture files contain 18 VALUES writers and one INSERT SELECT.
+        // Do not let the column matcher cross ')' into a later statement's VALUES.
+        assertThat(inserts).isEqualTo(19);
+        assertThat(insertSelects).isEqualTo(1);
     }
 
     private static String source(String relative) throws IOException {

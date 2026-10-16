@@ -26,7 +26,7 @@ class UtenControlTheme extends StatelessWidget {
           isDense: true,
           constraints: BoxConstraints(minHeight: fieldHeight),
           contentPadding: EdgeInsets.symmetric(
-            horizontal: UtenFilterRow.cellHorizontalPadding,
+            horizontal: UtenSpacing.s12,
             // A plain field has no icon slot to establish its painted outline.
             // Keep its content tall enough for the touch target as well.
             vertical: (fieldHeight - 24) / 2,

@@ -12,7 +12,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/required_field_decoration.dart';
+import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_hints.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_spec.dart';
@@ -20,6 +22,12 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/shared/widgets/procurement_commercial_grid.dart';
 import 'package:uten_imp/shared/widgets/procurement_supplier_cell.dart';
+
+final _outline = find.byWidgetPredicate(
+  (widget) =>
+      widget is CustomPaint &&
+      widget.foregroundPainter?.runtimeType.toString() == '_InputBorderPainter',
+);
 
 void main() {
   Future<double> measureCell(WidgetTester tester, WidgetBuilder builder) async {
@@ -53,8 +61,15 @@ void main() {
         ),
       ),
     );
-    // 短文本不折行：格子高度即控件自然高度。
-    return tester.getSize(find.byKey(key)).height;
+    final fieldRect = tester.getRect(find.byKey(key));
+    final paintedRect = tester.getRect(
+      find.descendant(of: find.byKey(key), matching: _outline),
+    );
+    // The outer box alone can satisfy minHeight while its actual outline stays
+    // shorter and aligned to the top. Both the paint and its centre must match.
+    expect(paintedRect.height, closeTo(fieldRect.height, .5));
+    expect(paintedRect.center.dy, closeTo(fieldRect.center.dy, .5));
+    return fieldRect.height;
   }
 
   const items = [
@@ -85,10 +100,10 @@ void main() {
             controller: TextEditingController(text: '10'),
             textAlign: TextAlign.end,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const UtenInputDecoration(
+            decoration: UtenInputDecoration(
               InputDecoration(
                 isDense: true,
-                contentPadding: UtenEditableGridCellSpec.contentPadding,
+                contentPadding: UtenEditableGridCellSpec.contentPaddingOf(ctx),
                 hintText: '0',
               ),
             ),
@@ -225,9 +240,9 @@ void main() {
             onTap: () {},
             child: InputDecorator(
               // 名称保持全站身份格字号（bodyMedium w600），垂直 +1 对齐同行输入格。
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 isDense: true,
-                contentPadding: UtenEditableGridCellSpec.pickerCellPadding,
+                contentPadding: UtenEditableGridCellSpec.contentPaddingOf(ctx),
               ),
               child: Row(
                 children: [
@@ -256,7 +271,7 @@ void main() {
         expect(
           baseline,
           platform == TargetPlatform.windows ? 32 : 48,
-          reason: '页外36/48主题不能改变表格原有32/48整体尺寸',
+          reason: '普通页面主题不能改变表格原有32/48整体尺寸',
         );
         final offenders = <String>[
           for (final entry in heights.entries)
@@ -270,6 +285,95 @@ void main() {
               '表格内控件必须同高：${heights.map((k, v) => MapEntry(k, v.toString()))}',
         );
         debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
+
+  for (final touch in [false, true]) {
+    testWidgets(
+      'table host keeps icons, dates and default dropdowns compact without hint registration (touch=$touch)',
+      (tester) async {
+        final controller = TextEditingController(text: '12');
+        addTearDown(controller.dispose);
+        Widget cell(String key, Widget child) =>
+            SizedBox(key: ValueKey(key), width: 180, child: child);
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildLightTheme().copyWith(
+              platform: touch ? TargetPlatform.android : TargetPlatform.windows,
+            ),
+            home: Scaffold(
+              body: UtenControlTheme(
+                child: UtenTableCellInputTheme(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      cell('plain', TextField(controller: controller)),
+                      cell(
+                        'input',
+                        UtenInput(controller: controller, label: '数量'),
+                      ),
+                      cell(
+                        'native-icons',
+                        TextField(
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            suffixIcon: IconButton(
+                              onPressed: controller.clear,
+                              icon: const Icon(Icons.clear),
+                            ),
+                          ),
+                        ),
+                      ),
+                      cell(
+                        'dropdown',
+                        UtenDropdownField(
+                          label: '币种',
+                          value: '1',
+                          items: items,
+                          onChanged: (_) {},
+                        ),
+                      ),
+                      cell(
+                        'date',
+                        UtenDateField(
+                          label: '交货日期',
+                          value: DateTime(2026, 10, 16),
+                          onChanged: (_) {},
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final height = tester
+            .getSize(find.byKey(const ValueKey('plain')))
+            .height;
+        expect(height, touch ? 48 : 32);
+        for (final key in [
+          'plain',
+          'input',
+          'native-icons',
+          'dropdown',
+          'date',
+        ]) {
+          final fieldRect = tester.getRect(find.byKey(ValueKey(key)));
+          final paintedRect = tester.getRect(
+            find.descendant(of: find.byKey(ValueKey(key)), matching: _outline),
+          );
+          expect(fieldRect.height, closeTo(height, 0.5), reason: key);
+          expect(paintedRect.height, closeTo(height, .5), reason: key);
+          expect(
+            paintedRect.center.dy,
+            closeTo(fieldRect.center.dy, .5),
+            reason: key,
+          );
+        }
+        expect(tester.takeException(), isNull);
       },
     );
   }

@@ -8,12 +8,68 @@ import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/inputs/uten_field_message.dart';
 import 'package:uten_imp/components/inputs/uten_input.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
+import 'package:uten_imp/components/inputs/uten_table_cell_spec.dart';
+import 'package:uten_imp/core/theme/uten_colors.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 
 void main() {
   const info = 'Enter a positive quantity. The original unit is retained.';
   const error = 'Quantity must be greater than zero.';
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'state borders resolve shape in their actual field scope dark=$dark',
+      (tester) async {
+        final pageTheme = dark ? buildDarkTheme() : buildLightTheme();
+        const base = UtenInputDecoration(InputDecoration());
+        // Decoration is deliberately prepared in the page's context, just as a
+        // table's cell callback can close over its parent State.context.
+        final decorations = [
+          applyRequiredEmpty(base, pageTheme, requiredEmpty: true),
+          applyAutofillHint(base, pageTheme, autofilled: true),
+          base.copyWith(error: const UtenFieldMessage.error(error)),
+        ];
+        await tester.pumpWidget(
+          _host(
+            Column(
+              children: [
+                for (final decoration in decorations)
+                  UtenTableCellInputTheme(
+                    child: TextField(decoration: decoration),
+                  ),
+                TextField(decoration: decorations[1]),
+              ],
+            ),
+            dark: dark,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final fields = tester
+            .widgetList<InputDecorator>(find.byType(InputDecorator))
+            .toList();
+        for (var i = 0; i < 3; i++) {
+          final border =
+              fields[i].decoration.enabledBorder as OutlineInputBorder;
+          expect(border.borderRadius, UtenRadius.smAll);
+          expect(
+            border.borderSide.color,
+            i == 1
+                ? UtenColors.warning
+                : i == 2
+                ? pageTheme.inputDecorationTheme.errorBorder!.borderSide.color
+                : pageTheme.colorScheme.error,
+          );
+        }
+        final pageBorder =
+            fields.last.decoration.enabledBorder as OutlineInputBorder;
+        expect(pageBorder.borderRadius, UtenPageField.borderRadius);
+        expect(pageBorder.borderSide.color, UtenColors.warning);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('native validation stays invalid without a bottom error row', (
     tester,

@@ -539,11 +539,11 @@ class _AdminDataHandoverPanelState
             },
             borderRadius: UtenRadius.mdAll,
             child: InputDecorator(
-              decoration: const InputDecoration(
-                labelText: '生效日期',
-                border: OutlineInputBorder(),
+              decoration: const InputDecoration(labelText: '生效日期'),
+              child: Text(
+                DateFormat('yyyy-MM-dd').format(_effectiveDate),
+                style: Theme.of(context).textTheme.bodyLarge,
               ),
-              child: Text(DateFormat('yyyy-MM-dd').format(_effectiveDate)),
             ),
           ),
         ),

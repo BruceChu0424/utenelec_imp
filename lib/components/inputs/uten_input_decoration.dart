@@ -9,6 +9,7 @@ import 'uten_field_hint_icon.dart';
 import 'uten_field_label.dart';
 import 'uten_field_message.dart';
 import 'uten_table_cell_hints.dart';
+import 'uten_table_cell_spec.dart';
 
 /// Moves field guidance and validation messages into one in-field disclosure.
 ///
@@ -120,7 +121,9 @@ class UtenInputDecoration extends InputDecoration {
     final original = _businessAdornment(base.suffixIcon);
     return Builder(
       builder: (context) {
-        final inCell = UtenTableCellHints.contains(context);
+        final inCell =
+            UtenTableCellInputTheme.contains(context) ||
+            UtenTableCellHints.contains(context);
         final height = UtenPageField.heightOf(context);
         final content = original == null
             ? hint
@@ -440,12 +443,33 @@ class UtenInputDecoration extends InputDecoration {
   }
 
   @override
-  UtenInputDecoration applyDefaults(Object inputDecorationTheme) =>
-      UtenInputDecoration(
-        base.applyDefaults(inputDecorationTheme),
-        info: info,
-        autofilled: autofilled,
-      );
+  UtenInputDecoration applyDefaults(Object inputDecorationTheme) {
+    final resolved = base.applyDefaults(inputDecorationTheme);
+    final themeBorder = switch (inputDecorationTheme) {
+      InputDecorationTheme(:final border) => border,
+      InputDecorationThemeData(:final border) => border,
+      _ => null,
+    };
+    // Callers can prepare validation/autofill decoration outside a table's
+    // builder. Bind shape to the actual field scope when Material resolves it,
+    // retaining each state's colour and stroke instead of the caller's radius.
+    InputBorder? shape(InputBorder? border) =>
+        border is OutlineInputBorder && themeBorder is OutlineInputBorder
+        ? border.copyWith(borderRadius: themeBorder.borderRadius)
+        : border;
+    return UtenInputDecoration(
+      resolved.copyWith(
+        border: shape(resolved.border),
+        enabledBorder: shape(resolved.enabledBorder),
+        focusedBorder: shape(resolved.focusedBorder),
+        disabledBorder: shape(resolved.disabledBorder),
+        errorBorder: shape(resolved.errorBorder),
+        focusedErrorBorder: shape(resolved.focusedErrorBorder),
+      ),
+      info: info,
+      autofilled: autofilled,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>

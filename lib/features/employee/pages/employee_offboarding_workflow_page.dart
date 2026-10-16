@@ -584,7 +584,6 @@ class _EmployeeOffboardingWorkflowPageState
               decoration: UtenInputDecoration(
                 InputDecoration(
                   labelText: '离职日期 *',
-                  border: const OutlineInputBorder(),
                   error: utenFieldError(
                     _showDepartureErrors && _effectiveDate == null
                         ? '请选择离职日期'
@@ -596,6 +595,7 @@ class _EmployeeOffboardingWorkflowPageState
                 _effectiveDate == null
                     ? '请选择日期'
                     : DateFormat('yyyy-MM-dd').format(_effectiveDate!),
+                style: Theme.of(context).textTheme.bodyLarge,
               ),
             ),
           ),

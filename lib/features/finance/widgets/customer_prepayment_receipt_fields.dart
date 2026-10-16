@@ -48,27 +48,30 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
         UtenFormGrid(
           children: [
             InputDecorator(
+              key: const ValueKey('customer-prepayment-receipt-order'),
               decoration: UtenInputDecoration(
-                const InputDecoration(labelText: '销售订单(必选)'),
-                info: workflowFieldText(context).workflowPrepaymentOrderHint,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      salesOrderBillNo ?? salesOrderId ?? '尚未选择',
-                      overflow: TextOverflow.ellipsis,
+                InputDecoration(
+                  labelText: '销售订单(必选)',
+                  suffixIcon: Padding(
+                    padding: const EdgeInsets.only(right: UtenSpacing.s4),
+                    child: UtenButton(
+                      type: UtenButtonType.secondary,
+                      size: UtenButtonSize.small,
+                      icon: Icons.search_rounded,
+                      onPressed: enabled
+                          ? () => _pickOrder(context, ref)
+                          : null,
+                      child: Text(salesOrderId == null ? '选择' : '更换'),
                     ),
                   ),
-                  const SizedBox(width: UtenSpacing.s8),
-                  UtenButton(
-                    type: UtenButtonType.secondary,
-                    size: UtenButtonSize.small,
-                    icon: Icons.search_rounded,
-                    onPressed: enabled ? () => _pickOrder(context, ref) : null,
-                    child: Text(salesOrderId == null ? '选择' : '更换'),
-                  ),
-                ],
+                ),
+                info: workflowFieldText(context).workflowPrepaymentOrderHint,
+              ),
+              child: Text(
+                salesOrderBillNo ?? salesOrderId ?? '尚未选择',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyLarge,
               ),
             ),
             Padding(

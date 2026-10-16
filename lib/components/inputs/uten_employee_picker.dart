@@ -18,6 +18,7 @@ import 'uten_employee_picker_access.dart';
 import 'uten_employee_selection_panel.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
+import 'uten_table_cell_spec.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 export 'uten_employee_picker_models.dart';
@@ -278,6 +279,9 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
     final sel = _selected;
     final String? display = sel?.displayName;
     final requiredEmpty = widget.enabled && widget.required && sel == null;
+    final iconExtent = UtenTableCellInputTheme.contains(context)
+        ? UtenEditableGridCellSpec.heightOf(context)
+        : UtenPageField.heightOf(context);
 
     return FormField<UtenEmployeePickerItem?>(
       key: _fieldKey,
@@ -317,7 +321,10 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
                         ? IconButton(
                             tooltip: '清除选择',
                             onPressed: widget.enabled ? _clear : null,
-                            constraints: UtenPageField.iconConstraints,
+                            constraints: BoxConstraints(
+                              minWidth: iconExtent,
+                              minHeight: iconExtent,
+                            ),
                             padding: EdgeInsets.zero,
                             style: const ButtonStyle(
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -329,21 +336,6 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
                             size: 18,
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(UtenRadius.control),
-                      borderSide: BorderSide(color: theme.colorScheme.outline),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(UtenRadius.control),
-                      borderSide: BorderSide(color: theme.colorScheme.outline),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(UtenRadius.control),
-                      borderSide: BorderSide(
-                        color: theme.colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
                   ),
                 ),
                 theme,
@@ -351,7 +343,12 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
               ),
               child: display == null
                   ? null
-                  : Text(display, overflow: TextOverflow.ellipsis),
+                  : Text(
+                      display,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge,
+                    ),
             ),
           ),
         ],

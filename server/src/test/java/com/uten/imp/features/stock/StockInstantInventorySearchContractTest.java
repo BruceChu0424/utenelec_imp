@@ -123,7 +123,7 @@ class StockInstantInventorySearchContractTest {
                 .contains("FROM warehouse_goods_place_preferences p JOIN wh ON wh.id=p.warehouse_id")
                 .contains("COALESCE(NULLIF(BTRIM(pref.place), ''), NULLIF(BTRIM(g.stock_place), ''))")
                 .contains("FROM stock_balances b JOIN wh ON wh.id=b.warehouse_id")
-                .contains("regexp_split_to_table(lower(COALESCE(CAST(:kw AS text),''))",
+                .contains("regexp_split_to_table(", "regexp_replace(COALESCE(CAST(:kw AS text),''), U&'",
                         "AS task_word(value) WHERE task_word.value<>'' AND NOT (")
                 .contains("POSITION(task_word.value IN lower(COALESCE(r.name,'')))>0",
                         "POSITION(task_word.value IN lower(COALESCE(r.code,'')))>0",

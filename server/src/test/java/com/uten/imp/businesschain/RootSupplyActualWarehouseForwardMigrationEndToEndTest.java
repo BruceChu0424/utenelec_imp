@@ -7,6 +7,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -27,7 +28,7 @@ import static com.uten.imp.migration.MigrationRehearsalSupport.migrationFileCoun
 
 /** Nonempty V854 -> V855 proof, then current-schema application reversal of those same historical slices. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
-@SpringBootTest(properties={"spring.profiles.active=dev","spring.flyway.target=854","uten.audit.retention.enabled=false",
+@SpringBootTest(properties={"spring.profiles.active=dev","spring.flyway.target=854","spring.jpa.hibernate.ddl-auto=none","uten.audit.retention.enabled=false",
         "uten.reporting.materialized-view-refresh.enabled=false","uten.production.readiness-reconcile.enabled=false",
         "uten.features.goods-owner-scope-enabled=false","uten.storage.uploads-enabled=false"})
 @DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
@@ -49,6 +50,8 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired PurchaseReceiptService receipts;
+    @Autowired EntityManagerFactoryBuilder entityManagerFactoryBuilder;
+    @Autowired javax.sql.DataSource dataSource;
 
     @Test void realExistingSourcesAndAppliedHistoryRemainByteForByteAndTheirReversalStillWorks() {
         var support=new RootSupplyActualWarehouseEndToEndTest();beans.autowireBean(support);support.prepare();
@@ -88,6 +91,10 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version IS NOT NULL AND success",Integer.class))
                     .isEqualTo(CURRENT_MIGRATION_COUNT);
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE NOT success",Integer.class)).isZero();
+            // Historical preparation intentionally uses V854, before columns in
+            // today's entity mappings exist. Once all forward migrations are
+            // applied, validate every current mapping before using current beans.
+            validateCurrentApplicationSchema();
             assertThat(db.queryForObject("SELECT to_regprocedure('public.fn_preplan_make_public_supply_sources(uuid,uuid,uuid[])') IS NOT NULL",Boolean.class))
                     .isTrue();
             assertThat(businessFacts(fixture)).containsExactlyElementsOf(before);
@@ -119,6 +126,20 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
                          original.sales_order_item_id,original.sales_reservation_id,original.source_receipt_type,original.source_receipt_id))
                     """,Integer.class,fixture.analysis())).isZero();
         } finally { support.clear(); }
+    }
+
+    private void validateCurrentApplicationSchema() {
+        var validation = entityManagerFactoryBuilder.dataSource(dataSource)
+                .packages("com.uten.imp")
+                .persistenceUnit("root-supply-forward-current-schema")
+                .properties(java.util.Map.of("hibernate.hbm2ddl.auto", "validate"))
+                .build();
+        try {
+            validation.afterPropertiesSet();
+            assertThat(validation.getObject()).isNotNull();
+        } finally {
+            validation.destroy();
+        }
     }
 
     private List<String> businessFacts(RootSupplyActualWarehouseEndToEndTest.Fixture fixture) {

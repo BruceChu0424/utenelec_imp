@@ -27,7 +27,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestContext;
+import org.springframework.test.context.TestExecutionListeners;
+import org.springframework.test.context.support.AbstractTestExecutionListener;
+import org.springframework.test.context.support.DirtiesContextTestExecutionListener;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.containers.PostgreSQLContainer;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -49,8 +55,31 @@ import static org.junit.jupiter.api.Assertions.*;
         "uten.crypto.pgp-master-key=full-chain-harness-pgp-master-key-test-only-0123456789","uten.crypto.hmac-key=full-chain-harness-hmac-key-test-only",
         "uten.bootstrap.admin-login=full-chain-bootstrap-admin-test","uten.bootstrap.admin-password=HarnessAdminPass-1!",
 })
+@DirtiesContext(classMode=DirtiesContext.ClassMode.AFTER_CLASS)
+@TestExecutionListeners(listeners=SubcontractLossValueEndToEndTest.Cleanup.class,
+        mergeMode=TestExecutionListeners.MergeMode.MERGE_WITH_DEFAULTS)
 class SubcontractLossValueEndToEndTest {
-    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){FullChainEndToEndTest.registerDataSource(registry);}
+    // Period regeneration is a whole-ledger operation. A confirmed expense left
+    // by another E2E class in the shared database must not contaminate this world;
+    // the production protection for that expense remains fully enforced.
+    private static final PostgreSQLContainer<?> DATABASE=new PostgreSQLContainer<>("postgres:16-alpine")
+            .withDatabaseName("uten_imp");
+    @DynamicPropertySource static void database(DynamicPropertyRegistry registry){
+        DATABASE.start();
+        registry.add("spring.datasource.url",DATABASE::getJdbcUrl);
+        registry.add("spring.datasource.username",DATABASE::getUsername);
+        registry.add("spring.datasource.password",DATABASE::getPassword);
+        try {
+            var attachments=java.nio.file.Files.createTempDirectory("uten-loss-value-attachments-");
+            registry.add("uten.storage.local-dir",attachments::toString);
+        } catch (java.io.IOException failure) {
+            throw new java.io.UncheckedIOException(failure);
+        }
+    }
+    static class Cleanup extends AbstractTestExecutionListener {
+        @Override public int getOrder() { return new DirtiesContextTestExecutionListener().getOrder()-1; }
+        @Override public void afterTestClass(TestContext ignored) { DATABASE.stop(); }
+    }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
     @Autowired StockDocService stockDocs;

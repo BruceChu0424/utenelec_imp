@@ -502,7 +502,8 @@ class SubcontractKitLockEndToEndTest {
     /** Real Hibernate/native query, full migrations, global shared stock and existing action masking. */
     @Test
     void batchWorkbenchKeepsListTotalsStatusFacetsAndActionPermissionsBeforePagination() {
-        assertEquals(868,db.queryForObject("SELECT max(version::int) FROM flyway_schema_history WHERE success",Integer.class));
+        assertEquals(Integer.parseInt(com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERSION),
+                db.queryForObject("SELECT max(version::int) FROM flyway_schema_history WHERE success",Integer.class));
         String tag="sckit-batch-wb";
         var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
         UUID f=goods(w,tag,"F","自制"),p=goods(w,tag,"P","委外"),m=goods(w,tag,"M","采购");

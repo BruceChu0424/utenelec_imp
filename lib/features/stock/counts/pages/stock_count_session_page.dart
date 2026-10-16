@@ -39,6 +39,7 @@ import '../../../../shared/models/paged_result.dart';
 import '../../../basic_data/models/product_category_node.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../../../basic_data/widgets/product_category_picker_panel.dart';
+import '../../../basic_data/widgets/goods_related_search_control.dart';
 import '../models/stock_count_request.dart';
 import '../repositories/stock_count_request_repository.dart';
 import '../widgets/stock_count_candidate_picker.dart';
@@ -74,6 +75,8 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
   /// 「有库存」只是可选筛段（只看账上有数的）。
   bool _stockedOnly = false;
   String _keyword = '';
+  bool _includeRelated = false;
+  bool _acceptPendingSearch = false;
   PagedResult<CountStockRow>? _page;
   int _pageNum = 1;
   bool _loading = false;
@@ -257,6 +260,8 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       _warehouse = next;
       _page = null;
       _keyword = '';
+      _includeRelated = false;
+      _acceptPendingSearch = false;
       _categoryId = null;
       _categoryTree = const [];
       _error = null;
@@ -308,6 +313,7 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       final result = await _repo.candidates(
         warehouseId: warehouse.id,
         keyword: _keyword.isEmpty ? null : _keyword,
+        includeRelated: _includeRelated,
         categoryId: _categoryId,
         stockedOnly: _stockedOnly,
         sheet: true,
@@ -543,6 +549,21 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
       label: '货品名称',
       width: 220,
       value: (row) => row.goodsName,
+      cellBuilder: (context, row) => Row(
+        children: [
+          Expanded(
+            child: Text(
+              row.goodsName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (row.isRelatedSearchMatch) ...[
+            const SizedBox(width: UtenSpacing.s8),
+            Text('相关', style: Theme.of(context).textTheme.labelSmall),
+          ],
+        ],
+      ),
     ),
     MasterColumnDef<CountStockRow>(
       key: 'goodsCode',
@@ -655,8 +676,23 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
                 },
                 searchController: _search,
                 searchHint: '搜索货品名称 / 编号 / 颜色',
+                onSearchInputChanged: (raw) {
+                  _loadGeneration++;
+                  setState(() {
+                    _keyword = raw.trim();
+                    _acceptPendingSearch = true;
+                    _page = null;
+                    _pageNum = 1;
+                    _loading = false;
+                    _error = null;
+                    if (_keyword.isEmpty) _includeRelated = false;
+                  });
+                },
                 onSearchChanged: (keyword) {
-                  _keyword = keyword.trim();
+                  if (!_acceptPendingSearch || keyword.trim() != _keyword) {
+                    return;
+                  }
+                  _acceptPendingSearch = false;
                   _load(1);
                 },
                 trailing: Wrap(
@@ -664,6 +700,22 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
                   runSpacing: UtenSpacing.s8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    if (_keyword.isNotEmpty)
+                      SizedBox(
+                        width: 320,
+                        child: GoodsRelatedSearchControl(
+                          value: _includeRelated,
+                          onChanged: (value) {
+                            _loadGeneration++;
+                            setState(() {
+                              _includeRelated = value;
+                              _acceptPendingSearch = false;
+                              _page = null;
+                            });
+                            _load(1);
+                          },
+                        ),
+                      ),
                     // 2026-10-08 用户口径：换仓库用平台自研下拉列表，只显仓库名
                     // （审核路由是默认信息，不占列表文案）。
                     SizedBox(
@@ -789,7 +841,13 @@ class _StockCountSessionPageState extends ConsumerState<StockCountSessionPage>
           : '没有符合条件的物料',
       currentPage: _page?.page ?? 1,
       totalPages: _page?.totalPages ?? 1,
-      paginationScope: (warehouse.id, _stockedOnly, _categoryId, _keyword),
+      paginationScope: (
+        warehouse.id,
+        _stockedOnly,
+        _categoryId,
+        _keyword,
+        _includeRelated,
+      ),
       onPageChange: (page) => _load(page),
       bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
     );

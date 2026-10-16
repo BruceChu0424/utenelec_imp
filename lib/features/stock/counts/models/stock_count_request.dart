@@ -76,6 +76,8 @@ class CountStockRow {
     this.kgPerBaseUnit,
     this.issueMethod = 'ORDER',
     this.allowedActions = const [],
+    this.searchRank,
+    this.searchMatchKind,
   });
   final String goodsId;
   final String goodsCode;
@@ -96,6 +98,9 @@ class CountStockRow {
   final int goodsVersion;
   final String issueMethod;
   final List<String> allowedActions;
+  final int? searchRank;
+  final String? searchMatchKind;
+  bool get isRelatedSearchMatch => searchMatchKind == 'RELATED';
   String get key => stockCountRowKey(goodsId, colorId);
   bool get canEdit => allowedActions.contains('EDIT');
   bool get weightExact => kgPerBaseUnit != null;
@@ -121,6 +126,8 @@ class CountStockRow {
     goodsVersion: (json['goodsVersion'] as num).toInt(),
     issueMethod: json['issueMethod'] as String? ?? 'ORDER',
     allowedActions: _actions(json['allowedActions']),
+    searchRank: (json['searchRank'] as num?)?.toInt(),
+    searchMatchKind: json['searchMatchKind'] as String?,
   );
 }
 

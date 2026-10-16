@@ -112,6 +112,7 @@ class _InstantInventoryOverviewPageState
           includeDefective: scope.includeDefective,
           includeLineSide: scope.includeLineSide,
           keyword: scope.keyword,
+          includeRelated: scope.includeRelated,
           owningWarehouse: scope.owningWarehouse,
           owningWarehouseNull: scope.owningWarehouseNull,
           colorId: scope.colorId,

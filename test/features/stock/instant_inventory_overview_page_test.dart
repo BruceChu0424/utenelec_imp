@@ -23,6 +23,7 @@ const _scope = InstantInventoryScope(
   includeDefective: true,
   includeLineSide: true,
   keyword: '端子 & 螺丝',
+  includeRelated: true,
   owningWarehouseNull: true,
   colorId: 'color-1',
   series: 'GD',
@@ -260,6 +261,7 @@ void _expectScope(Map<String, dynamic> query) {
   expect(query['includeDefective'], true);
   expect(query['includeLineSide'], true);
   expect(query['keyword'], '端子 & 螺丝');
+  expect(query['includeRelated'], true);
   expect(query['owningWarehouseNull'], true);
   expect(query['colorId'], 'color-1');
   expect(query['series'], 'GD');

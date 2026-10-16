@@ -5,6 +5,89 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/stock/repositories/stock_query_repository.dart';
 
 void main() {
+  test('相关模式与完整筛选同源进入库存列表和分类定位', () async {
+    final requests = <RequestOptions>[];
+    final dio = Dio();
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (r, h) {
+          requests.add(r);
+          h.resolve(
+            Response(
+              requestOptions: r,
+              statusCode: 200,
+              data: r.path.endsWith('search-category-ids')
+                  ? ['category']
+                  : {
+                      'items': [
+                        {
+                          'goodsId': 'g',
+                          'qty': 1,
+                          'searchRank': 20,
+                          'searchMatchKind': 'PRIMARY',
+                        },
+                      ],
+                      'page': 1,
+                      'size': 20,
+                      'total': 1,
+                      'totalPages': 1,
+                    },
+            ),
+          );
+        },
+      ),
+    );
+    final repo = StockQueryRepository(ApiClient(dio));
+    final rows = await repo.instantInventory(
+      keyword: '螺丝',
+      categoryId: 'category',
+      warehouseId: 'warehouse',
+      includeDefective: true,
+      includeLineSide: true,
+      includeRelated: true,
+      owningWarehouseNull: true,
+      colorId: 'red',
+      series: 'M3',
+      unitId: 'unit',
+      attention: 'NEGATIVE_BALANCE',
+    );
+    await repo.instantInventorySearchCategoryIds(
+      '螺丝',
+      categoryRootIds: {'root'},
+      categoryId: 'category',
+      warehouseId: 'warehouse',
+      includeDefective: true,
+      includeLineSide: true,
+      includeRelated: true,
+      owningWarehouseNull: true,
+      colorId: 'red',
+      series: 'M3',
+      unitId: 'unit',
+      attention: 'NEGATIVE_BALANCE',
+    );
+    for (final key in [
+      'keyword',
+      'categoryId',
+      'warehouseId',
+      'includeDefective',
+      'includeLineSide',
+      'includeRelated',
+      'owningWarehouseNull',
+      'colorId',
+      'series',
+      'unitId',
+      'attention',
+    ]) {
+      expect(
+        requests.last.queryParameters[key],
+        requests.first.queryParameters[key],
+        reason: key,
+      );
+    }
+    expect(rows.items.single.searchRank, 20);
+    expect(rows.items.single.isRelatedSearchMatch, isFalse);
+    expect(requests.last.path, '/stock/instant-inventory/search-category-ids');
+  });
   test(
     'attention drilldown forwards the whole inventory scope and page',
     () async {
@@ -40,6 +123,7 @@ void main() {
             includeDefective: true,
             includeLineSide: true,
             keyword: '螺丝',
+            includeRelated: true,
             owningWarehouse: 'owning',
             owningWarehouseNull: true,
             colorId: 'color',
@@ -60,6 +144,7 @@ void main() {
         'includeDefective': true,
         'includeLineSide': true,
         'keyword': '螺丝',
+        'includeRelated': true,
         'owningWarehouse': 'owning',
         'owningWarehouseNull': true,
         'colorId': 'color',

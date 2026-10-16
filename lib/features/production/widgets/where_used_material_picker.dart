@@ -34,6 +34,9 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
   static const _basePath = '/production/reports/where-used';
 
   @override
+  bool get supportsRelatedSearch => true;
+
+  @override
   Future<List<ProductCategoryNode>> tree() async {
     final json = await api.get('$_basePath/material-categories');
     return (json['items'] as List? ?? const [])
@@ -58,10 +61,24 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
     required int page,
   }) => _load(page: page, keyword: keyword);
 
+  @override
+  Future<PagedResult<GoodsListItem>> searchWithOptions(
+    String keyword, {
+    required int page,
+    String? categoryId,
+    bool includeRelated = false,
+  }) => _load(
+    page: page,
+    keyword: keyword,
+    categoryId: categoryId,
+    includeRelated: includeRelated,
+  );
+
   Future<PagedResult<GoodsListItem>> _load({
     required int page,
     String? categoryId,
     String? keyword,
+    bool includeRelated = false,
   }) async {
     final json = await api.get(
       '$_basePath/materials',
@@ -69,6 +86,8 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
         'categoryId': ?categoryId,
         if (keyword != null && keyword.trim().isNotEmpty)
           'keyword': keyword.trim(),
+        if (includeRelated && keyword?.trim().isNotEmpty == true)
+          'includeRelated': true,
         'page': page,
         'size': 50,
       },
@@ -83,9 +102,22 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
 
   @override
   Future<Set<String>> searchCategoryIds(String keyword) async {
+    return searchCategoryIdsWithOptions(keyword);
+  }
+
+  @override
+  Future<Set<String>> searchCategoryIdsWithOptions(
+    String keyword, {
+    String? categoryId,
+    bool includeRelated = false,
+  }) async {
     final json = await api.get(
       '$_basePath/material-category-matches',
-      query: {'keyword': keyword.trim()},
+      query: {
+        'keyword': keyword.trim(),
+        'categoryId': ?categoryId,
+        if (includeRelated && keyword.trim().isNotEmpty) 'includeRelated': true,
+      },
     );
     return (json['items'] as List? ?? const [])
         .map((item) => item.toString())
@@ -109,6 +141,7 @@ class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
       if (item.code.isNotEmpty) item.code,
       if (item.categoryName.isNotEmpty) item.categoryName,
       if (item.status.isNotEmpty && !inactive) '状态：${item.status}',
+      if (goods.isRelatedSearchMatch) '相关结果',
     ];
     final hasEvidence =
         item.currentBom ||
@@ -212,6 +245,8 @@ class _WhereUsedMaterial {
     required this.bomIssue,
     required this.productionHistory,
     required this.subcontractHistory,
+    this.searchRank,
+    this.searchMatchKind,
   });
 
   final String id;
@@ -229,6 +264,8 @@ class _WhereUsedMaterial {
   final bool bomIssue;
   final bool productionHistory;
   final bool subcontractHistory;
+  final int? searchRank;
+  final String? searchMatchKind;
 
   factory _WhereUsedMaterial.fromJson(Map<String, dynamic> json) =>
       _WhereUsedMaterial(
@@ -247,6 +284,8 @@ class _WhereUsedMaterial {
         bomIssue: _asBool(json['bomIssue']),
         productionHistory: _asBool(json['productionHistory']),
         subcontractHistory: _asBool(json['subcontractHistory']),
+        searchRank: (json['searchRank'] as num?)?.toInt(),
+        searchMatchKind: json['searchMatchKind'] as String?,
       );
 
   GoodsListItem toGoodsListItem() => GoodsListItem(
@@ -259,6 +298,8 @@ class _WhereUsedMaterial {
     sourceType: sourceType.isEmpty ? null : sourceType,
     autoCreated: autoCreated,
     categoryId: categoryId,
+    searchRank: searchRank,
+    searchMatchKind: searchMatchKind,
   );
 }
 

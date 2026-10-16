@@ -1,5 +1,5 @@
 // 即时库存与货品资料共用左右分类导航；小屏在抽屉内使用同一棵树。
-// 搜索始终为全局扁平列表，分类树仅提示；清空搜索恢复原浏览分类。
+// 搜索默认跨分类平铺，明确点类收窄范围；清空搜索恢复原浏览分类。
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -281,9 +281,12 @@ void main() {
       final callsBeforeTap = stock.calls;
       await tester.tap(_categoryText('成品'));
       await tester.pumpAndSettle();
+      expect(stock.lastCategoryId, 'finished');
+      expect(stock.lastKeyword, 'HV-001');
       await tester.tap(find.byKey(const Key('instant-inventory-category-all')));
       await tester.pumpAndSettle();
-      expect(stock.calls, callsBeforeTap);
+      expect(stock.calls, callsBeforeTap + 2);
+      expect(stock.lastCategoryId, isNull);
       expect(_searchText(tester), 'HV-001');
       await tester.tap(_clearSearch());
       await tester.pumpAndSettle();
@@ -335,7 +338,7 @@ void main() {
     },
   );
 
-  testWidgets('category clicks cannot narrow an in-flight global search', (
+  testWidgets('explicit category scope supersedes in-flight global hints', (
     tester,
   ) async {
     final slow = Completer<Set<String>>();
@@ -346,15 +349,15 @@ void main() {
     final calls = stock.calls;
     await tester.tap(_categoryText('成品'));
     await tester.pump();
-    expect(stock.calls, calls);
+    expect(stock.calls, calls + 1);
     slow.complete({'raw'});
     await tester.pumpAndSettle();
-    expect(stock.lastCategoryId, isNull);
+    expect(stock.lastCategoryId, 'finished');
     expect(stock.lastKeyword, '成品');
   });
 
   testWidgets(
-    'compact drawer selection closes the drawer but preserves global search',
+    'compact drawer selection closes the drawer and applies explicit query scope',
     (tester) async {
       final stock = _RecordingStockRepository();
       await pumpPage(tester, stock: stock, size: const Size(375, 812));
@@ -371,7 +374,7 @@ void main() {
         find.byKey(const Key('instant-inventory-category-tree')),
         findsNothing,
       );
-      expect(stock.lastCategoryId, isNull);
+      expect(stock.lastCategoryId, 'socket');
       expect(stock.lastKeyword, 'HV-001');
       await tester.tap(
         find.byKey(const Key('instant-inventory-open-categories')),
@@ -724,6 +727,17 @@ class _RecordingStockRepository extends StockQueryRepository {
   Future<Set<String>> instantInventorySearchCategoryIds(
     String keyword, {
     required Set<String> categoryRootIds,
+    String? categoryId,
+    bool includeRelated = false,
+    String? warehouseId,
+    bool includeDefective = false,
+    bool includeLineSide = false,
+    String? owningWarehouse,
+    bool owningWarehouseNull = false,
+    String? colorId,
+    String? series,
+    String? unitId,
+    String? attention,
   }) async {
     searchQueries.add(keyword);
     searchRootScopes.add(Set<String>.from(categoryRootIds));
@@ -732,6 +746,7 @@ class _RecordingStockRepository extends StockQueryRepository {
       throw ApiException('SEARCH_UNAVAILABLE', '定位服务暂不可用');
     }
     final pending = delayedSearches[keyword];
+    if (categoryId != null) return {categoryId};
     if (pending != null) return pending.future;
     return keyword == 'HV-001' ? {'socket'} : <String>{};
   }
@@ -753,6 +768,7 @@ class _RecordingStockRepository extends StockQueryRepository {
     String? sort,
     String? order,
     String? attention,
+    bool includeRelated = false,
   }) {
     calls++;
     lastCategoryId = categoryId;

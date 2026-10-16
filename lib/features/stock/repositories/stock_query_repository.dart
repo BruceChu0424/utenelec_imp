@@ -16,6 +16,17 @@ class StockQueryRepository {
   Future<Set<String>> instantInventorySearchCategoryIds(
     String keyword, {
     required Set<String> categoryRootIds,
+    String? categoryId,
+    bool includeRelated = false,
+    String? warehouseId,
+    bool includeDefective = false,
+    bool includeLineSide = false,
+    String? owningWarehouse,
+    bool owningWarehouseNull = false,
+    String? colorId,
+    String? series,
+    String? unitId,
+    String? attention,
   }) async {
     if (keyword.trim().isEmpty || categoryRootIds.isEmpty) return {};
     final ids = await api.getStringList(
@@ -23,6 +34,17 @@ class StockQueryRepository {
       query: {
         'keyword': keyword.trim(),
         'categoryRootIds': categoryRootIds.toList(growable: false),
+        'categoryId': ?categoryId,
+        if (includeRelated) 'includeRelated': true,
+        'warehouseId': ?warehouseId,
+        'includeDefective': includeDefective,
+        if (includeLineSide) 'includeLineSide': true,
+        'owningWarehouse': ?owningWarehouse,
+        if (owningWarehouseNull) 'owningWarehouseNull': true,
+        'colorId': ?colorId,
+        'series': ?series,
+        'unitId': ?unitId,
+        'attention': ?attention,
       },
     );
     return ids.toSet();
@@ -106,6 +128,7 @@ class StockQueryRepository {
     bool includeDefective = false,
     bool includeLineSide = false,
     String? keyword,
+    bool includeRelated = false,
     String? owningWarehouse,
     bool owningWarehouseNull = false,
     String? colorId,
@@ -128,6 +151,8 @@ class StockQueryRepository {
         // V595：线边仓(车间直送料架)默认不算进现实库存，显式打开才计入。
         if (includeLineSide) 'includeLineSide': true,
         if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+        if (includeRelated && keyword?.trim().isNotEmpty == true)
+          'includeRelated': true,
         // V587/V590 归属表头筛选：UUID 等值 / 未登记。
         'owningWarehouse': ?owningWarehouse,
         if (owningWarehouseNull) 'owningWarehouseNull': true,

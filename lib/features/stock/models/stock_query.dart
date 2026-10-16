@@ -123,6 +123,8 @@ class InstantInventoryRow {
     this.owningWarehouseId,
     this.owningWarehouseName,
     this.defectiveQty,
+    this.searchRank,
+    this.searchMatchKind,
   });
 
   final String? goodsId;
@@ -170,6 +172,9 @@ class InstantInventoryRow {
 
   /// 本行数量里在不良品仓的部分(ADR-146; 只有打开「含不良品仓」或直接查不良品仓时非 0)。
   final double? defectiveQty;
+  final int? searchRank;
+  final String? searchMatchKind;
+  bool get isRelatedSearchMatch => searchMatchKind == 'RELATED';
 
   factory InstantInventoryRow.fromJson(Map<String, dynamic> json) =>
       InstantInventoryRow(
@@ -202,5 +207,7 @@ class InstantInventoryRow {
         owningWarehouseId: json['owningWarehouseId'] as String?,
         owningWarehouseName: json['owningWarehouseName'] as String?,
         defectiveQty: (json['defectiveQty'] as num?)?.toDouble(),
+        searchRank: (json['searchRank'] as num?)?.toInt(),
+        searchMatchKind: json['searchMatchKind'] as String?,
       );
 }

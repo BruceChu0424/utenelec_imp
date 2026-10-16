@@ -73,8 +73,12 @@ class _Repo extends StockCountRequestRepository {
   @override
   Future<Set<String>> candidateCategoryIds(
     String warehouseId,
-    String keyword,
-  ) async => {'raw'};
+    String keyword, {
+    String? categoryId,
+    bool includeRelated = false,
+    bool stockedOnly = false,
+    bool sheet = false,
+  }) async => {'raw'};
 
   @override
   Future<PagedResult<CountStockRow>> candidates({
@@ -86,6 +90,7 @@ class _Repo extends StockCountRequestRepository {
     bool sheet = false,
     int page = 1,
     int size = 50,
+    bool includeRelated = false,
   }) async {
     expectSync(warehouseId, 'bin');
     requests.add('$categoryId|$keyword|$page');
@@ -447,6 +452,7 @@ class _PreviewRepo extends _Repo {
     bool sheet = false,
     int page = 1,
     int size = 50,
+    bool includeRelated = false,
   }) async => PagedResult(
     items: [
       for (final (index, name) in [

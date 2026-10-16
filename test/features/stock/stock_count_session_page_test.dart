@@ -14,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -64,6 +65,7 @@ class _SessionRepo extends StockCountRequestRepository {
   final Map<String, List<CountStockRow>> stock;
   final warehouses = <StockCountWarehouse>[_warehouseA, _warehouseB];
   bool canSubmit = true;
+  final relatedQueries = <bool>[];
   final candidateQueries =
       <({String warehouse, bool stockedOnly, bool sheet, String? keyword})>[];
   final categoryQueries = <({String warehouse, bool sheet})>[];
@@ -88,7 +90,9 @@ class _SessionRepo extends StockCountRequestRepository {
     bool sheet = false,
     int page = 1,
     int size = 50,
+    bool includeRelated = false,
   }) async {
+    relatedQueries.add(includeRelated);
     candidateQueries.add((
       warehouse: warehouseId,
       stockedOnly: stockedOnly,
@@ -220,6 +224,89 @@ Future<void> _confirmSubmit(WidgetTester tester, {String? reason}) async {
 }
 
 void main() {
+  testWidgets('相关查询切换和清空不丢已填数，换仓复位模式并保持送审身份', (tester) async {
+    final repo = _SessionRepo({
+      'leaf-a': [_row(_screw, qty: '10')],
+      'leaf-b': [_row(_nut)],
+    });
+    await _mount(tester, repo, warehouseId: 'leaf-a');
+    final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
+    await tester.enterText(qty, '11');
+    final search = find.descendant(
+      of: find.byType(UtenSearchBar),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(search, '螺丝');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(repo.relatedQueries.last, isFalse);
+    await tester.tap(find.byKey(const ValueKey('goods-search-related')));
+    await tester.pumpAndSettle();
+    expect(repo.relatedQueries.last, isTrue);
+    expect(repo.candidateQueries.last.sheet, isTrue);
+    expect(tester.widget<TextField>(qty).controller!.text, '11');
+    await tester.tap(find.byKey(const Key('stock-count-warehouse')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('原料仓 B'));
+    await tester.pumpAndSettle();
+    expect(repo.relatedQueries.last, isFalse);
+    expect(repo.candidateQueries.last.keyword, isNull);
+    await tester.tap(find.byKey(const Key('stock-count-warehouse')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('原料仓 A'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(qty).controller!.text, '11');
+    await tester.enterText(search, '螺丝');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('goods-search-related')));
+    await tester.pumpAndSettle();
+    await tester.enterText(search, '');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(repo.relatedQueries.last, isFalse);
+    expect(find.byKey(const ValueKey('goods-search-related')), findsNothing);
+    await _confirmSubmit(tester);
+    expect(repo.submissions.single.warehouse, 'leaf-a');
+    expect(repo.submissions.single.lines.single['goodsId'], _screw);
+    expect(repo.submissions.single.lines.single['targetQty'], '11');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('盘点相关模式ABA忽略旧页且不覆盖已填数量', (tester) async {
+    final repo = _RelatedModeRepo();
+    await _mount(tester, repo, warehouseId: 'leaf-a');
+    final qty = find.byKey(const ValueKey('stock-count-qty-$_screw|'));
+    await tester.enterText(qty, '11');
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(UtenSearchBar),
+        matching: find.byType(TextField),
+      ),
+      '螺丝',
+    );
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    final toggle = find.byKey(const ValueKey('goods-search-related'));
+    await tester.tap(toggle);
+    await tester.pump();
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(repo.held, hasLength(2));
+    repo.held.last.complete(_candidatePage([_row(_screw, qty: '10')], page: 1));
+    await tester.pumpAndSettle();
+    repo.held.first.complete(_candidatePage([_row(_nut)], page: 2));
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<CountStockRow>>(
+      find.byType(MasterDataTableView<CountStockRow>),
+    );
+    expect(table.items.map((r) => r.goodsId), [_screw]);
+    expect(table.currentPage, 1);
+    expect(tester.widget<TextField>(qty).controller!.text, '11');
+    expect(tester.takeException(), isNull);
+  });
   for (final oldFails in [false, true]) {
     testWidgets('同仓慢旧筛选不能覆盖快新筛选或输入，旧请求失败=$oldFails', (tester) async {
       final repo = _DelayedFilterRepo();
@@ -501,6 +588,7 @@ class _DelayedFilterRepo extends _SessionRepo {
     bool sheet = false,
     int page = 1,
     int size = 50,
+    bool includeRelated = false,
   }) {
     calls++;
     if (calls == 2) return older.future;
@@ -514,6 +602,44 @@ class _DelayedFilterRepo extends _SessionRepo {
       sheet: sheet,
       page: page,
       size: size,
+      includeRelated: includeRelated,
+    );
+  }
+}
+
+class _RelatedModeRepo extends _SessionRepo {
+  _RelatedModeRepo()
+    : super({
+        'leaf-a': [_row(_screw, qty: '10')],
+      });
+  final held = <Completer<PagedResult<CountStockRow>>>[];
+  @override
+  Future<PagedResult<CountStockRow>> candidates({
+    required String warehouseId,
+    String? keyword,
+    String? categoryId,
+    List<String> goodsIds = const [],
+    bool stockedOnly = false,
+    bool sheet = false,
+    int page = 1,
+    int size = 50,
+    bool includeRelated = false,
+  }) {
+    if (includeRelated) {
+      final completer = Completer<PagedResult<CountStockRow>>();
+      held.add(completer);
+      return completer.future;
+    }
+    return super.candidates(
+      warehouseId: warehouseId,
+      keyword: keyword,
+      categoryId: categoryId,
+      goodsIds: goodsIds,
+      stockedOnly: stockedOnly,
+      sheet: sheet,
+      page: page,
+      size: size,
+      includeRelated: includeRelated,
     );
   }
 }

@@ -18,6 +18,7 @@ class StockCountRequestRepository {
     required String warehouseId,
     String? keyword,
     String? categoryId,
+    bool includeRelated = false,
     List<String> goodsIds = const [],
     bool stockedOnly = false,
     bool sheet = false,
@@ -30,6 +31,8 @@ class StockCountRequestRepository {
         'warehouseId': warehouseId,
         'keyword': ?keyword,
         'categoryId': ?categoryId,
+        if (includeRelated && keyword?.trim().isNotEmpty == true)
+          'includeRelated': true,
         'stockedOnly': stockedOnly,
         // 盘点单口径：只列 主档归属本仓 ∪ 本仓有余额（false=全库候选，添加物料用）。
         'sheet': sheet,
@@ -50,10 +53,21 @@ class StockCountRequestRepository {
 
   Future<Set<String>> candidateCategoryIds(
     String warehouseId,
-    String keyword,
-  ) async => (await api.getStringList(
+    String keyword, {
+    String? categoryId,
+    bool includeRelated = false,
+    bool stockedOnly = false,
+    bool sheet = false,
+  }) async => (await api.getStringList(
     '$base/candidate-category-ids',
-    query: {'warehouseId': warehouseId, 'keyword': keyword},
+    query: {
+      'warehouseId': warehouseId,
+      'keyword': keyword,
+      'categoryId': ?categoryId,
+      'stockedOnly': stockedOnly,
+      'sheet': sheet,
+      if (includeRelated && keyword.trim().isNotEmpty) 'includeRelated': true,
+    },
   )).toSet();
   Future<StockCountRequest> submit({
     required String warehouseId,

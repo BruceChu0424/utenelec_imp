@@ -37,6 +37,9 @@ class _StockCountPickerSource extends UtenGoodsPickerDataSource {
   final snapshots = <GoodsListItem, CountStockRow>{};
 
   @override
+  bool get supportsRelatedSearch => true;
+
+  @override
   Future<List<ProductCategoryNode>> tree() =>
       repository.candidateCategories(warehouseId);
 
@@ -57,15 +60,42 @@ class _StockCountPickerSource extends UtenGoodsPickerDataSource {
   Future<Set<String>> searchCategoryIds(String keyword) =>
       repository.candidateCategoryIds(warehouseId, keyword);
 
+  @override
+  Future<PagedResult<GoodsListItem>> searchWithOptions(
+    String keyword, {
+    required int page,
+    String? categoryId,
+    bool includeRelated = false,
+  }) => _load(
+    page: page,
+    keyword: keyword,
+    categoryId: categoryId,
+    includeRelated: includeRelated,
+  );
+
+  @override
+  Future<Set<String>> searchCategoryIdsWithOptions(
+    String keyword, {
+    String? categoryId,
+    bool includeRelated = false,
+  }) => repository.candidateCategoryIds(
+    warehouseId,
+    keyword,
+    categoryId: categoryId,
+    includeRelated: includeRelated,
+  );
+
   Future<PagedResult<GoodsListItem>> _load({
     String? categoryId,
     String? keyword,
     required int page,
+    bool includeRelated = false,
   }) async {
     final result = await repository.candidates(
       warehouseId: warehouseId,
       categoryId: categoryId,
       keyword: keyword,
+      includeRelated: includeRelated,
       page: page,
     );
     return PagedResult(
@@ -88,6 +118,8 @@ class _StockCountPickerSource extends UtenGoodsPickerDataSource {
       unitId: row.unitId,
       unitName: row.unitName,
       categoryId: row.categoryId,
+      searchRank: row.searchRank,
+      searchMatchKind: row.searchMatchKind,
     );
     snapshots[goods] = row;
     return goods;
@@ -97,9 +129,53 @@ class _StockCountPickerSource extends UtenGoodsPickerDataSource {
   bool isSelectable(GoodsListItem goods) => snapshots[goods]?.canEdit ?? false;
 
   @override
+  Widget? buildSubtitle(BuildContext context, GoodsListItem goods) {
+    final row = snapshots[goods];
+    if (row == null) return null;
+    final style = Theme.of(context).textTheme.bodyMedium;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            Text(
+              [
+                row.goodsCode,
+                row.colorName,
+              ].whereType<String>().where((v) => v.isNotEmpty).join(' · '),
+              style: style,
+            ),
+            if (goods.isRelatedSearchMatch)
+              Text(
+                '相关结果',
+                key: ValueKey('count-related-${row.key}'),
+                style: style,
+              ),
+          ],
+        ),
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            Text('当前 ${row.qty} ${row.unitName}', style: style),
+            Text(
+              '重量 ${row.weightKg == null ? '未称' : '${row.weightKg} kg'}',
+              key: ValueKey('count-weight-${row.key}'),
+              style: style,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
   String? subtitleOf(GoodsListItem goods) {
     final row = snapshots[goods]!;
     return '${[row.goodsCode, row.colorName].whereType<String>().where((v) => v.isNotEmpty).join(' · ')}'
-        '\n当前 ${row.qty} ${row.unitName} · 重量 ${row.weightKg == null ? '未称' : '${row.weightKg} kg'}';
+        '\n当前 ${row.qty} ${row.unitName} · 重量 ${row.weightKg == null ? '未称' : '${row.weightKg} kg'}'
+        '${goods.isRelatedSearchMatch ? ' · 相关结果' : ''}';
   }
 }

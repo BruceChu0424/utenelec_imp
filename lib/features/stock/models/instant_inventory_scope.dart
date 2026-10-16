@@ -6,6 +6,7 @@ class InstantInventoryScope {
     this.includeDefective = false,
     this.includeLineSide = false,
     this.keyword,
+    this.includeRelated = false,
     this.owningWarehouse,
     this.owningWarehouseNull = false,
     this.colorId,
@@ -34,6 +35,7 @@ class InstantInventoryScope {
   final bool includeDefective;
   final bool includeLineSide;
   final String? keyword;
+  final bool includeRelated;
   final String? owningWarehouse;
   final bool owningWarehouseNull;
   final String? colorId;
@@ -66,6 +68,8 @@ class InstantInventoryScope {
           ? query['includeLineSide'] == 'true'
           : !inventory,
       keyword: value('keyword'),
+      includeRelated:
+          value('keyword') != null && query['includeRelated'] == 'true',
       owningWarehouse: value('owningWarehouse'),
       owningWarehouseNull: query['owningWarehouseNull'] == 'true',
       colorId: color,
@@ -82,6 +86,8 @@ class InstantInventoryScope {
     'includeDefective': '$includeDefective',
     'includeLineSide': '$includeLineSide',
     'keyword': ?keyword,
+    if (includeRelated && keyword?.trim().isNotEmpty == true)
+      'includeRelated': 'true',
     'owningWarehouse': ?owningWarehouse,
     if (owningWarehouseNull) 'owningWarehouseNull': 'true',
     'colorId': ?colorId,
@@ -154,6 +160,7 @@ class InstantInventoryScope {
       includeDefective == other.includeDefective &&
       includeLineSide == other.includeLineSide &&
       keyword == other.keyword &&
+      includeRelated == other.includeRelated &&
       owningWarehouse == other.owningWarehouse &&
       owningWarehouseNull == other.owningWarehouseNull &&
       colorId == other.colorId &&
@@ -169,6 +176,7 @@ class InstantInventoryScope {
     includeDefective,
     includeLineSide,
     keyword,
+    includeRelated,
     owningWarehouse,
     owningWarehouseNull,
     colorId,
@@ -184,6 +192,7 @@ class InstantInventoryScope {
     includeDefective ? '含不良品仓' : '不含不良品仓',
     includeLineSide ? '含内料仓' : '不含内料仓',
     if (keyword != null) '搜索：$keyword',
+    if (includeRelated && keyword?.trim().isNotEmpty == true) '含相关结果',
     if (owningWarehouse != null) '已筛选归属仓库',
     if (owningWarehouseNull) '归属仓库未登记',
     if (colorId != null) '已筛选颜色',

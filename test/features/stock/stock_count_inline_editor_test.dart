@@ -109,6 +109,7 @@ class _CountRepo extends StockCountRequestRepository {
     bool sheet = false,
     int page = 1,
     int size = 50,
+    bool includeRelated = false,
   }) async {
     candidateWarehouses.add(warehouseId);
     if (deferred != null) return deferred!(warehouseId, goodsIds);

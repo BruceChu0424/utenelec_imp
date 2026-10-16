@@ -1098,7 +1098,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 columnEditingEnabled: _c.canEdit,
                 rowsController: _tableRows,
                 paginationRevision: _page,
-                paginationScope: (widget.categoryId, _keyword),
+                paginationScope: (widget.categoryId, _keyword, _queryVersion),
                 tableKey:
                     'features.basic_data.widgets.master_entity_detail_pane.MasterEntityDetailPaneState.build.1',
                 primary: true,

@@ -147,6 +147,16 @@ class _ReleaseNotesDialog extends StatelessWidget {
                 '직원 상세는 공통 분류 구성요소를 사용하며, 계정 작업은 상단에 배치하고 AI 사용 권한은 권한 상세에서 분류합니다.',
           _ => '员工核对信息分列、只读单条建议与手动填写；详情使用统一分类栏，账号操作外显，AI 使用权限归入权限明细分类。',
         },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Form fields and table editors now share consistent styles. Cost '
+                'budget hierarchies follow assembly components and adapt to '
+                'narrow screens and larger text.',
+          'ko' =>
+            '양식과 표 편집기의 입력 스타일을 통일했습니다. 원가 예산 계층은 조립 구성요소와 '
+                '동일하게 표시되며 좁은 화면과 큰 글꼴에도 대응합니다.',
+          _ => '统一表单输入与表格编辑样式，成本预算层级对齐组装组件，适配窄屏和大字体。',
+        },
         l10n.release2518ServerUpdates,
         l10n.release2518Storage,
         l10n.release2518CompanyConnections,

@@ -19,7 +19,7 @@ void main() {
   for (final dark in [false, true]) {
     for (final touch in [false, true]) {
       testWidgets(
-        'page controls match search outline dark=$dark touch=$touch',
+        'normal fields share their own outline dark=$dark touch=$touch',
         (tester) async {
           tester.view.physicalSize = Size(touch ? 390 : 1280, 900);
           tester.view.devicePixelRatio = 1;
@@ -41,7 +41,14 @@ void main() {
                     children: [
                       field('search', const UtenSearchBar()),
                       field('plain', const TextField()),
-                      field('input', const UtenInput()),
+                      field('input', const UtenInput(label: '货品名称')),
+                      field(
+                        'emptyLabel',
+                        const TextField(
+                          decoration: InputDecoration(labelText: '货品名称'),
+                        ),
+                      ),
+                      field('password', const UtenInput(isPassword: true)),
                       field('hint', const UtenInput(info: '字段说明')),
                       field(
                         'dropdown',
@@ -87,8 +94,20 @@ void main() {
               .height;
           final search = outlineHeight('search');
           expect(search, touch ? 48 : 36);
-          for (final key in ['plain', 'input', 'hint', 'dropdown', 'date']) {
-            expect(outlineHeight(key), closeTo(search, 0.5), reason: key);
+          for (final key in [
+            'plain',
+            'input',
+            'emptyLabel',
+            'password',
+            'hint',
+            'dropdown',
+            'date',
+          ]) {
+            expect(
+              outlineHeight(key),
+              closeTo(touch ? 48 : 44, 0.5),
+              reason: key,
+            );
           }
           expect(
             tester.getSize(find.byKey(const ValueKey('filter'))).height,

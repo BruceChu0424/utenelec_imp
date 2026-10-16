@@ -387,7 +387,7 @@ class StockCountInlineCell extends StatelessWidget {
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            contentPadding: UtenEditableGridCellSpec.contentPadding,
+            contentPadding: UtenEditableGridCellSpec.contentPaddingOf(context),
             suffixText: weight ? null : row.snapshot.unitName,
             hintText: weight ? row.snapshot.weightKg ?? '未称' : row.snapshot.qty,
             error: row.validation == null

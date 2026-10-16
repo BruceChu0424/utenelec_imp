@@ -231,13 +231,19 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker>
                         size: 18,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
-                      border: const OutlineInputBorder(),
                     ),
                   ),
                   theme,
                   requiredEmpty: requiredEmpty,
                 ),
-                child: display == null ? null : Text(display),
+                child: display == null
+                    ? null
+                    : Text(
+                        display,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyLarge,
+                      ),
               ),
             ),
           ),

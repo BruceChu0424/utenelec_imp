@@ -97,7 +97,7 @@ class UtenFilterPickerField extends StatelessWidget {
         onTap: enabled ? onTap : null,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            minHeight: UtenPageField.heightOf(context),
+            minHeight: UtenFilterRow.heightOf(context),
           ),
           child: Padding(
             padding: UtenFilterRow.contentPadding,

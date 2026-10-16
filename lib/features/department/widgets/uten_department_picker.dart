@@ -401,7 +401,9 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
                         InputDecoration(
                           isDense: true,
                           contentPadding:
-                              UtenEditableGridCellSpec.pickerCellPadding,
+                              UtenEditableGridCellSpec.contentPaddingOf(
+                                context,
+                              ),
                           hintText: widget.hint,
                           enabled: widget.enabled,
                           hintMaxLines: 1,
@@ -464,7 +466,9 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
                         display,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: widget.dense ? theme.textTheme.bodyLarge : null,
+                        style: widget.dense
+                            ? theme.textTheme.bodyMedium
+                            : theme.textTheme.bodyLarge,
                       ),
               ),
             ),
@@ -501,32 +505,13 @@ InputDecoration utenPickerFieldDecoration(
   String? errorMessage,
   Widget? suffixIcon,
 }) {
-  final theme = Theme.of(context);
-  final radius = BorderRadius.circular(UtenRadius.control);
   return UtenInputDecoration(
     InputDecoration(
       labelText: labelText,
       hintText: hintText,
       enabled: enabled,
       error: utenFieldError(errorMessage),
-      isDense: true,
       suffixIcon: suffixIcon,
-      suffixIconConstraints: suffixIcon == null
-          ? null
-          : const BoxConstraints(minWidth: 48, minHeight: 48),
-      border: OutlineInputBorder(
-        borderRadius: radius,
-        borderSide: BorderSide(color: theme.colorScheme.outline),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: radius,
-        borderSide: BorderSide(color: theme.colorScheme.outline),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: radius,
-        borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
-      ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
   );
 }

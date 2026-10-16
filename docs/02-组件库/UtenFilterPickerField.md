@@ -36,7 +36,7 @@
 
 视觉约束：
 
-- 圆角固定 `UtenRadius.control`（全平台唯一控件圆角），不开放参数；
+- 筛选入口圆角固定 `UtenRadius.control`（10），不开放参数；表格输入另用 `UtenEditableGridCellSpec` 的6圆角；
 - 高度与 `UtenSearchBar`（内容驱动 ≈44）对齐：纵向内边距 11 + 20 图标 + 1px 边框，
   字号放大时随内容自然增高，不写死高度；
 - **已生效**（`value` 非空）时边框与值文字走 `primary`、底色浅 `primaryContainer`，

@@ -108,26 +108,15 @@ class _UtenPositionPickerState extends ConsumerState<UtenPositionPicker> {
             Icons.unfold_more_rounded,
             color: theme.colorScheme.onSurfaceVariant,
           ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(UtenRadius.control),
-            borderSide: BorderSide(color: theme.colorScheme.outline),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(UtenRadius.control),
-            borderSide: BorderSide(color: theme.colorScheme.outline),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(UtenRadius.control),
-            borderSide: BorderSide(color: theme.colorScheme.primary, width: 2),
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 14,
-          ),
         ),
         child: display == null
             ? null
-            : Text(display, overflow: TextOverflow.ellipsis),
+            : Text(
+                display,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyLarge,
+              ),
       ),
     );
   }

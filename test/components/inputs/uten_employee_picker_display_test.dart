@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
+import 'package:uten_imp/components/inputs/uten_table_cell_spec.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/features/employee/widgets/department_employee_picker.dart';
@@ -85,6 +86,43 @@ void main() {
       outlineHeight(UtenEmployeeMultiPicker),
       outlineHeight(UtenDateField),
     );
+  });
+
+  testWidgets('表格人员选择器与普通输入格同高，清空按钮不带入普通字段高度', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLightTheme().copyWith(platform: TargetPlatform.windows),
+        home: Scaffold(
+          body: UtenControlTheme(
+            child: UtenTableCellInputTheme(
+              child: Row(
+                children: [
+                  const Expanded(child: TextField()),
+                  Expanded(
+                    child: UtenEmployeePicker(
+                      initial: employee,
+                      loader: (_) async => const [employee],
+                      onChanged: (_) {},
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final decorators = find.byType(InputDecorator);
+    final nativeHeight = tester.getSize(decorators.at(0)).height;
+    final pickerHeight = tester.getSize(decorators.at(1)).height;
+    expect(pickerHeight, nativeHeight);
+    expect(pickerHeight, lessThan(44));
+    expect(
+      tester.widget<Text>(find.text(employee.displayName)).style?.fontSize,
+      14,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('单选已选值和弹窗主行显示姓名(工号)，部门显示在下一行', (tester) async {

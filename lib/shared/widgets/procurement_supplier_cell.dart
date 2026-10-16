@@ -12,7 +12,7 @@
 import 'package:flutter/material.dart';
 
 import '../../components/inputs/required_field_decoration.dart';
-import '../../core/theme/uten_tokens.dart';
+import '../../components/inputs/uten_table_cell_spec.dart';
 
 class ProcurementSupplierCell extends StatelessWidget {
   const ProcurementSupplierCell({
@@ -50,7 +50,7 @@ class ProcurementSupplierCell extends StatelessWidget {
     final hasValue = displayId != null && displayId.isNotEmpty;
     return InkWell(
       onTap: onPick,
-      borderRadius: BorderRadius.circular(UtenRadius.control),
+      borderRadius: UtenEditableGridCellSpec.borderRadius,
       child: InputDecorator(
         decoration: applyAutofillHint(
           applyRequiredEmpty(

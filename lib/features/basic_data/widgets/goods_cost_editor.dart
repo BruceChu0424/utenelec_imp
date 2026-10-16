@@ -809,6 +809,19 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     // Fullscreen can briefly retain a row widget while a new calculation replaces
     // its Map object. The BOM occurrence path is the identity across snapshots.
     final treeByPath = {for (final row in all) row['path']: projection[row]!};
+    // Number the full BOM before filtering/collapsing, so the same occurrence has
+    // the same component identity in both the assembly and costing tables.
+    final sequenceByPath = <Object?, String>{};
+    final sequence = <int>[];
+    for (final row in all) {
+      final depth = projection[row]!.depth;
+      while (sequence.length <= depth) {
+        sequence.add(0);
+      }
+      sequence.length = depth + 1;
+      sequence[depth]++;
+      sequenceByPath[row['path']] = sequence.join('.');
+    }
     final visible = <Map<String, dynamic>>[];
     for (var i = 0; i < all.length; i++) {
       final row = all[i];
@@ -855,13 +868,13 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           ? null
           : costText(r[key]),
       exactListenableOf: (_) => _calculationSignal,
-      cellBuilder: (_, r) =>
+      cellBuilder: (cellContext, r) =>
           editable &&
               _editable &&
               (key == 'unitPrice' || _adjustingPaths.contains(r['path'])) &&
               (key != 'unitPrice' ||
                   (r['included'] == true && r['route'] != 'CUSTOMER_SUPPLIED'))
-          ? _lineEditor(r, key)
+          ? _lineEditor(cellContext, r, key)
           : Tooltip(
               message:
                   key == 'unitPrice' &&
@@ -888,19 +901,26 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       MasterColumnDef(
         key: 'goodsName',
         label: _l.costGoodsName,
-        width: 200 + UtenTreeTableCell.toggleExtentOf(context) - 48,
+        width: 340 + UtenTreeTableCell.toggleExtentOf(context) - 48,
         value: (r) => costText(r['goodsName']),
         fillsCellHeight: true,
         cellBuilderHandlesSemantics: true,
         cellBuilder: (context, row) {
           final tree = treeByPath[row['path']];
           if (tree == null) return _oneLine(row['goodsName']);
+          // A product without BOM is calculated as one synthetic ROOT row;
+          // everything else is a component, starting at depth zero like assembly.
+          final isGoodsItself = row['path'] == 'ROOT';
           return UtenTreeTableCell(
+            key: ValueKey('goods-cost-tree-cell-${row['path']}'),
+            toggleKey: ValueKey('goods-cost-tree-toggle-${row['path']}'),
             depth: tree.depth,
-            sequence: '',
+            indent: 24,
+            sequence: isGoodsItself ? '' : sequenceByPath[row['path']] ?? '',
+            levelLabel: isGoodsItself
+                ? _l.costGoodsName
+                : '组件 ${tree.depth + 1} 级',
             title: costText(row['goodsName']) ?? '—',
-            sequenceInline: true,
-            showLeafMarker: false,
             hasChildren: tree.hasChildren,
             expanded: !_collapsed.contains(row['path']),
             childCount: tree.childCount,
@@ -1137,7 +1157,11 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     );
   }
 
-  Widget _lineEditor(Map<String, dynamic> row, String field) {
+  Widget _lineEditor(
+    BuildContext cellContext,
+    Map<String, dynamic> row,
+    String field,
+  ) {
     final path = row['path'].toString();
     final override = costMaps(
       _input['lineOverrides'],
@@ -1178,7 +1202,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
               ? _l.costManual
               : null,
         ),
-        Theme.of(context),
+        Theme.of(cellContext),
         autofilled: automaticPrice,
       ),
       onChanged: (text) => _change(

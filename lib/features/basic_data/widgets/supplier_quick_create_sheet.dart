@@ -217,7 +217,9 @@ class _SupplierCategoryPickerFieldState
         ),
         child: Text(
           _error ?? (empty ? '请选择分类' : _selectedName!),
-          style: TextStyle(
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyLarge?.copyWith(
             color: empty
                 ? theme.colorScheme.onSurfaceVariant
                 : theme.colorScheme.onSurface,

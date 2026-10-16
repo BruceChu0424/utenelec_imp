@@ -26,7 +26,7 @@ OutlineInputBorder requiredEmptyBorder(
   bool focused = false,
 }) {
   return OutlineInputBorder(
-    borderRadius: const BorderRadius.all(Radius.circular(UtenRadius.control)),
+    borderRadius: _borderRadius(theme),
     borderSide: BorderSide(
       color: theme.colorScheme.error,
       width: focused ? 2 : 1.5,
@@ -52,9 +52,16 @@ InputDecoration applyRequiredEmpty(
 /// 「预填默认值」黄色提醒描边（值来自学习/主档带入，语义 warning 色；宽度 1.5，聚焦 2）。
 OutlineInputBorder autofillHintBorder(ThemeData theme, {bool focused = false}) {
   return OutlineInputBorder(
-    borderRadius: const BorderRadius.all(Radius.circular(UtenRadius.control)),
+    borderRadius: _borderRadius(theme),
     borderSide: BorderSide(color: UtenColors.warning, width: focused ? 2 : 1.5),
   );
+}
+
+BorderRadius _borderRadius(ThemeData theme) {
+  final border = theme.inputDecorationTheme.border;
+  return border is OutlineInputBorder
+      ? border.borderRadius
+      : UtenPageField.borderRadius;
 }
 
 /// Marks a prefilled value with a yellow border, tint and in-field disclosure.

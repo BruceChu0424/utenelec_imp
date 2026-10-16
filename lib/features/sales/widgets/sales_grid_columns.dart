@@ -654,10 +654,11 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
               decoration: review == null
                   // 选择格统一内边距（2026-10-06 表格控件统一口径）：
                   // 与同行输入格等高。
-                  ? const InputDecoration(
+                  ? InputDecoration(
                       isDense: true,
-                      contentPadding:
-                          UtenEditableGridCellSpec.pickerCellPadding,
+                      contentPadding: UtenEditableGridCellSpec.contentPaddingOf(
+                        context,
+                      ),
                     )
                   // 原因走 UtenFieldMessage.autofill(格内黄标披露, 与带记忆的框同款)。
                   : applyAutofillHint(
@@ -665,7 +666,9 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                         InputDecoration(
                           isDense: true,
                           contentPadding:
-                              UtenEditableGridCellSpec.pickerCellPadding,
+                              UtenEditableGridCellSpec.contentPaddingOf(
+                                context,
+                              ),
                           helper: UtenFieldMessage.autofill(
                             priceMasked
                                 ? intakeText.salesIntakeStatusReview

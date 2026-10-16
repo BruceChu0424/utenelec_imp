@@ -1702,6 +1702,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                         _currencyId == null
                             ? '随应收或销售订单锁定'
                             : names.currency(_currencyId),
+                        style: Theme.of(context).textTheme.bodyLarge,
                       ),
                     ),
                     _instantField(
@@ -1852,7 +1853,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
               ? theme.textTheme.bodyLarge?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 )
-              : null,
+              : theme.textTheme.bodyLarge,
         ),
       ),
     );
@@ -1933,7 +1934,10 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             labelText: label,
             suffixIcon: const Icon(Icons.schedule_outlined),
           ),
-          child: Text(ChinaDateTime.formatDateTime(value)),
+          child: Text(
+            ChinaDateTime.formatDateTime(value),
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
         ),
       ),
     );

@@ -8,7 +8,7 @@
 
 | 参数 | 说明 |
 | --- | --- |
-| `label` | 框外上方标签；`required: true` 时附红 `*` |
+| `label` | 框内标签；填写或聚焦时浮起，与下拉、日期和选择器保持一致；`required: true` 时附红 `*` |
 | `hint` | 框内占位文字，输入后消失 |
 | `info` | 字段静态说明，收进框内信息图标，悬停、点击或键盘聚焦查看 |
 | `errorMessage` | 外部字段错误，显示框内错误图标和红框，完整内容保留 live-region 语义 |
@@ -35,6 +35,9 @@
 图标支持悬停、点击和键盘聚焦，不影响原有输入、清空或密码按钮。详见 [UtenFieldMessage](UtenFieldMessage.md)。
 
 ## 使用约束
+
+- 普通页面、卡片和弹窗使用 `UtenPageField`：桌面单行框体最小高 44、横向内距 12、16 号正文、10 圆角；触控最小 48，文字放大或多行内容可自然增高。搜索和筛选栏保留独立的 36 高度。
+- 表格使用 `UtenTableCellInputTheme`（2026-10-16）：桌面视觉最小高 32、触控至少 48、横向内距 10、14 号正文和 6 圆角；竖向内距通过 `UtenEditableGridCellSpec.contentPaddingOf(context)` 按正文行高与视觉密度补偿，使真实轮廓与点击盒同高、同中线。下拉自动识别表格作用域；表外显式 `dense: true` 也使用同一紧凑规范。普通表单无需传 `dense`。
 
 - 优先复用本组件，不在框下额外拼接说明或错误文字。
 - 直接 `TextFormField` 必须使用 `UtenInputDecoration`，并配置 `errorBuilder: utenTextFieldErrorBuilder`。

@@ -276,7 +276,12 @@ class _PickerRow extends StatelessWidget {
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        child: Text(hasValue ? value! : '', style: theme.textTheme.bodyMedium),
+        child: Text(
+          hasValue ? value! : '',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodyLarge,
+        ),
       ),
     );
   }

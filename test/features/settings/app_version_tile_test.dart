@@ -149,6 +149,8 @@ void main() {
             final currentNotes = switch (language) {
               'en' => [
                 'Search shows one list across categories',
+                'Related description matches start collapsed',
+                'Use the + beside category search',
                 'Input, dropdown and date fields share consistent heights',
                 'Mould manufacture months can be selected and corrected',
                 'Employee records load the complete roster',
@@ -158,6 +160,8 @@ void main() {
               ],
               'ko' => [
                 '검색 결과를 오른쪽에 분류에 관계없이 한 목록으로',
+                '설명에만 관련된 결과는 기본적으로 접고',
+                '분류 검색 옆의 + 버튼으로',
                 '입력칸, 선택 목록과 날짜 필드의 높이',
                 '금형 제조 연월을 선택하거나 수정',
                 '직원 기록에서 전체 직원 명단을',
@@ -167,6 +171,8 @@ void main() {
               ],
               _ => [
                 '搜索结果在右侧跨分类统一显示',
+                '描述相关结果默认收起',
+                '分类搜索框旁新增 + 按钮',
                 '统一表单输入框、下拉和日期控件',
                 '模具制造年月可正常选择和修改',
                 '员工档案显示完整人员名单',

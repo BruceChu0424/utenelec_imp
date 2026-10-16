@@ -184,14 +184,32 @@ class _ReleaseNotesDialog extends StatelessWidget {
       '2.5.20' => [
         switch (Localizations.localeOf(context).languageCode) {
           'en' =>
-            'Search shows one list across categories on the right, with item-name '
-                'matches first, followed by codes, product details and categories. '
-                'Multiple keywords, filters and paging use the same result scope.',
+            'Search shows one list across categories on the right. Product names, '
+                'codes and matching product categories take priority. Multiple '
+                'keywords, filters and paging use the same result scope.',
           'ko' =>
-            '검색 결과를 오른쪽에 분류에 관계없이 한 목록으로 표시합니다. 품목명 일치를 '
-                '우선하고 코드, 주요 품목 정보, 분류 순으로 정렬하며 여러 검색어와 필터, '
-                '페이지 이동에 같은 조회 범위를 적용합니다.',
-          _ => '搜索结果在右侧跨分类统一显示，货品名称优先，其次为编号、主要资料及分类；支持多词组合，筛选与翻页保持同一范围。',
+            '검색 결과를 오른쪽에 분류에 관계없이 한 목록으로 표시합니다. 품목명, 코드와 '
+                '해당 품목 분류를 우선하며 여러 검색어와 필터, 페이지 이동에 같은 조회 범위를 적용합니다.',
+          _ => '搜索结果在右侧跨分类统一显示，优先匹配货品名称、编号和对应货品分类；支持多词组合，筛选与翻页保持同一范围。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Related description matches start collapsed and can be expanded below '
+                'the main results. Component picking can switch between component '
+                'categories and all goods.',
+          'ko' =>
+            '설명에만 관련된 결과는 기본적으로 접고 필요할 때 주요 결과 아래에 펼칩니다. '
+                '구성요소 선택 시 구성요소 분류와 전체 품목 범위를 전환할 수 있습니다.',
+          _ => '描述相关结果默认收起，按需展开后排在主要结果下方；添加组件可切换组件分类与全部货品范围。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Use the + beside category search to add a top-level category in goods, '
+                'customers, suppliers, moulds and payment methods.',
+          'ko' =>
+            '품목, 고객, 공급업체, 금형 및 결제 방식에서 분류 검색 옆의 + 버튼으로 '
+                '최상위 분류를 추가할 수 있습니다.',
+          _ => '货品、客户、供应商、模具及付款方式的分类搜索框旁新增 + 按钮，可直接添加最外层分类。',
         },
         switch (Localizations.localeOf(context).languageCode) {
           'en' =>

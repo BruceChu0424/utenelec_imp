@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../components/layout/uten_hierarchy_content_width.dart';
+import '../../core/responsive/breakpoint.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../models/uten_tree_node.dart';
@@ -142,6 +143,8 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
 class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     extends State<UtenHierarchyTreeView<T>> {
   late TextEditingController _searchCtl;
+  final _headerKey = GlobalKey();
+  final _scrollController = ScrollController();
   bool _ownsSearchController = false;
   late Set<String> _expanded;
   String _query = '';
@@ -206,6 +209,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     _widthController = null;
     _searchCtl.removeListener(_onSearchChanged);
     if (_ownsSearchController) _searchCtl.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -596,68 +600,100 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
         !widget.externalSearchLoading &&
         widget.externalSearchError == null &&
         (visibleFilter?.isEmpty ?? false);
-    return Column(
-      children: [
-        ?widget.header,
-        if (widget.showSearch)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            // 本地过滤：_searchCtl 的监听器随每次输入(含内置清除按钮)刷新 _query。
-            child: UtenHierarchySearchHeader(
-              search: KeyedSubtree(
-                key: ObjectKey(_searchCtl),
-                child: UtenSearchBar(
-                  key: widget.searchFieldKey,
-                  controller: _searchCtl,
-                  hint: widget.searchHint,
+    final header = KeyedSubtree(
+      key: _headerKey,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ?widget.header,
+          if (widget.showSearch)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              // 本地过滤：_searchCtl 的监听器随每次输入(含内置清除按钮)刷新 _query。
+              child: UtenHierarchySearchHeader(
+                search: KeyedSubtree(
+                  key: ObjectKey(_searchCtl),
+                  child: UtenSearchBar(
+                    key: widget.searchFieldKey,
+                    controller: _searchCtl,
+                    hint: widget.searchHint,
+                  ),
+                ),
+                trailing: widget.searchTrailing,
+              ),
+            ),
+          if (widget.externalSearchLoading)
+            const LinearProgressIndicator(minHeight: 2),
+          if (widget.externalSearchError != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Semantics(
+                liveRegion: true,
+                child: Text(
+                  widget.externalSearchError!,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
                 ),
               ),
-              trailing: widget.searchTrailing,
             ),
-          ),
-        if (widget.externalSearchLoading)
-          const LinearProgressIndicator(minHeight: 2),
-        if (widget.externalSearchError != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+        ],
+      ),
+    );
+    final rows = <Widget>[
+      for (final r in roots) _buildNode(r, 0, visibleFilter),
+      if ((_searching && (visibleFilter?.isEmpty ?? false)) ||
+          showExternalEmpty)
+        Padding(
+          padding: const EdgeInsets.all(24),
+          child: Center(
             child: Semantics(
               liveRegion: true,
               child: Text(
-                widget.externalSearchError!,
+                widget.emptySearchText ??
+                    '未找到匹配「${externalSearching ? externalQuery : _query}」的${widget.emptyNoun}', // TODO(l10n): 补 arb
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.error,
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
           ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.only(bottom: 8),
-            children: [
-              for (final r in roots) _buildNode(r, 0, visibleFilter),
-              if ((_searching && (visibleFilter?.isEmpty ?? false)) ||
-                  showExternalEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Center(
-                    child: Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        widget.emptySearchText ??
-                            '未找到匹配「${externalSearching ? externalQuery : _query}」的${widget.emptyNoun}', // TODO(l10n): 补 arb
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
         ),
-      ],
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Match the shared collapsing layout's short-viewport contract: let
+        // all controls, status/error text and nodes scroll together. A fixed
+        // header must never consume a short directory's entire viewport.
+        if (constraints.maxHeight < UtenBreakpoints.mediumStart) {
+          return CustomScrollView(
+            controller: _scrollController,
+            primary: false,
+            slivers: [
+              SliverToBoxAdapter(child: header),
+              SliverPadding(
+                padding: const EdgeInsets.only(bottom: 8),
+                sliver: SliverList.list(children: rows),
+              ),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            header,
+            Expanded(
+              child: ListView(
+                controller: _scrollController,
+                primary: false,
+                padding: const EdgeInsets.only(bottom: 8),
+                children: rows,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

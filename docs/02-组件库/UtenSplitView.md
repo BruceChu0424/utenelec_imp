@@ -58,6 +58,7 @@ UtenSplitView(
 
 ## 四、边界与注意
 
+- 界面与交互修改默认使用 `frontend-design`，沿用现有 Uten 组件、主题及业务约束。
 - 回退由共享`UtenAdaptiveHierarchyPane`统一处理，判定使用`LayoutBuilder`实际内容宽度，
   不是整屏宽度。两栏所需宽度至少为`max(minTwoPaneWidth, 实际左栏下限 + 12 + minTrailingWidth)`。
   主档页使用840；选择器默认600并继续检查左右最低宽度。空间不足不再压窄树或产生负宽度。
@@ -66,6 +67,11 @@ UtenSplitView(
   搜索自动定位、计数返回、权限刷新不会自动关闭目录；大缩放后按新的有效宽度重排。
 - `leadingNoun`、`selectedLeadingLabel`、`compactHeader`、`openLeadingButtonKey`
   为窄屏入口的配置；分类、部门、权限资源及事实面板应使用各自准确文案。
+- 窄屏正文可用高度小于共享断点600时，`compactHeader`与目录入口复用
+  `UtenCollapsingHeaderScrollView`的整页滚动契约，正文保留至少360高度及独立内滚。
+  `UtenHierarchyTreeView`在短高度下将完整搜索/加载/错误区与节点一起滚动；
+  正常高度仍固定搜索区。隐藏但保持挂载的目录与正文也必须安全布局。
+  跨高度重排保留输入焦点、中文输入组合、目录展开、选中状态和正文元素。
 - 依赖父容器给出有界宽度（页面 body 天然有界）。
 - 各页面已使用的 persistenceKey：`basicData.goods`、`basicData.client`、
   `basicData.supplier`、`basicData.mould`、`department.manage`、
@@ -87,6 +93,10 @@ UtenSplitView(
 同名不同ID、搜索慢请求、选择后关闭、跨断点展开/内容状态保留、权限撤销、多选确认与取消。
 新增压力回归在`test/components/layout/uten_adaptive_category_layout_test.dart`，
 原刷新/分页/搜索竞态测试继续保留业务断言。
+
+短高度回归见`test/shared/widgets/uten_hierarchy_short_viewport_test.dart`：
+179高度、1.5倍文字、长错误提示、相关开关、目录开关、节点/结果选择及700↔179高度切换。
+完整物料反查交互回归保留844×390横屏场景，覆盖选择物料和返回报表的过程。
 
 
 ## 六、2026-10-13 消费者覆盖

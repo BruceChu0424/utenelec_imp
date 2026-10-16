@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/responsive/breakpoint.dart';
+import 'uten_collapsing_header_scroll_view.dart';
+
 /// Keeps the same hierarchy and detail mounted while available space changes.
 /// A compact hierarchy opens inside this pane, so closing it cannot accidentally
 /// dismiss an outer picker or discard its provisional multi-selection.
@@ -36,6 +39,7 @@ class UtenAdaptiveHierarchyPane extends StatefulWidget {
 class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
   final _leadingKey = GlobalKey();
   final _trailingKey = GlobalKey();
+  final _compactHeaderKey = GlobalKey();
   final _triggerFocus = FocusNode();
   bool _open = false;
 
@@ -56,6 +60,61 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
   void dispose() {
     _triggerFocus.dispose();
     super.dispose();
+  }
+
+  Widget _buildCompactContent(Widget trailing) {
+    final header = KeyedSubtree(
+      key: _compactHeaderKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ?widget.compactHeader,
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: OutlinedButton(
+              key: widget.openButtonKey,
+              focusNode: _triggerFocus,
+              onPressed: () => setState(() => _open = true),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.selectedLabel ?? '选择${widget.noun}',
+                        softWrap: true,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.account_tree_rounded, size: 20),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxHeight < UtenBreakpoints.mediumStart) {
+          // Reuse the existing compact contract: header and directory entry
+          // can scroll away, while results keep their own usable body extent
+          // and independent primary controller (including when offstage).
+          return UtenCollapsingHeaderScrollView(
+            collapsingHeader: header,
+            body: trailing,
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            header,
+            Expanded(child: trailing),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -86,36 +145,7 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
               child: Visibility(
                 visible: !_open,
                 maintainState: true,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ?widget.compactHeader,
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-                      child: OutlinedButton(
-                        key: widget.openButtonKey,
-                        focusNode: _triggerFocus,
-                        onPressed: () => setState(() => _open = true),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  widget.selectedLabel ?? '选择${widget.noun}',
-                                  softWrap: true,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.account_tree_rounded, size: 20),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(child: trailing),
-                  ],
-                ),
+                child: _buildCompactContent(trailing),
               ),
             ),
             Positioned.fill(

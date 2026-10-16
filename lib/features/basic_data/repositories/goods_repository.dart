@@ -87,12 +87,26 @@ abstract interface class GoodsRepository {
     bool excludeStub = false,
     bool disabledOnly = false,
     bool stubOnly = false,
+    bool includeRelated = false,
   });
 
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
-  Future<GoodsFacets> facets(String categoryId);
+  Future<GoodsFacets> facets(
+    String categoryId, {
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  });
 
-  Future<GoodsFacets> globalFacets();
+  Future<GoodsFacets> globalFacets({
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  });
 
   /// 全局搜货品（组装信息「添加组件」选择器用；不限分类，按编号/名称/型号/规格/系列模糊）。
   ///
@@ -103,6 +117,8 @@ abstract interface class GoodsRepository {
     int page = 1,
     int size = 20,
     Set<String> categoryRootIds = const {},
+    String? categoryId,
+    bool includeRelated = false,
     bool excludeDisabled = false,
     bool excludeStub = false,
     String? sort,
@@ -115,6 +131,8 @@ abstract interface class GoodsRepository {
   Future<Set<String>> searchCategoryIds(
     String keyword, {
     required Set<String> categoryRootIds,
+    String? categoryId,
+    bool includeRelated = false,
     bool excludeDisabled = false,
     bool excludeStub = false,
   });
@@ -147,6 +165,7 @@ class DioGoodsRepository implements GoodsRepository {
     bool excludeStub = false,
     bool disabledOnly = false,
     bool stubOnly = false,
+    bool includeRelated = false,
   }) async {
     final query = <String, dynamic>{
       'categoryId': ?categoryId,
@@ -160,6 +179,8 @@ class DioGoodsRepository implements GoodsRepository {
       if (excludeStub) 'excludeStub': true,
       if (disabledOnly) 'disabledOnly': true,
       if (stubOnly) 'stubOnly': true,
+      if (includeRelated && keyword?.trim().isNotEmpty == true)
+        'includeRelated': true,
     };
     // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
     // 其余按 字段=值 发送。
@@ -178,17 +199,57 @@ class DioGoodsRepository implements GoodsRepository {
   }
 
   @override
-  Future<GoodsFacets> facets(String categoryId) async {
-    final json = await api.get(
-      ApiEndpoints.goodsFacets,
-      query: {'categoryId': categoryId},
-    );
-    return GoodsFacets.fromJson(json);
-  }
+  Future<GoodsFacets> facets(
+    String categoryId, {
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  }) => _facets(
+    categoryId: categoryId,
+    keyword: keyword,
+    includeRelated: includeRelated,
+    filters: filters,
+    excludeDisabled: excludeDisabled,
+    excludeStub: excludeStub,
+  );
 
   @override
-  Future<GoodsFacets> globalFacets() async {
-    final json = await api.get(ApiEndpoints.goodsFacets);
+  Future<GoodsFacets> globalFacets({
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  }) => _facets(
+    keyword: keyword,
+    includeRelated: includeRelated,
+    filters: filters,
+    excludeDisabled: excludeDisabled,
+    excludeStub: excludeStub,
+  );
+
+  Future<GoodsFacets> _facets({
+    String? categoryId,
+    String? keyword,
+    required bool includeRelated,
+    required Map<String, String?> filters,
+    required bool excludeDisabled,
+    required bool excludeStub,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.goodsFacets,
+      query: {
+        'categoryId': ?categoryId,
+        if (keyword?.trim().isNotEmpty == true) 'keyword': keyword!.trim(),
+        if (includeRelated && keyword?.trim().isNotEmpty == true)
+          'includeRelated': true,
+        if (excludeDisabled) 'excludeDisabled': true,
+        if (excludeStub) 'excludeStub': true,
+        ...masterFilterQueryParams(filters),
+      },
+    );
     return GoodsFacets.fromJson(json);
   }
 
@@ -198,6 +259,8 @@ class DioGoodsRepository implements GoodsRepository {
     int page = 1,
     int size = 20,
     Set<String> categoryRootIds = const {},
+    String? categoryId,
+    bool includeRelated = false,
     bool excludeDisabled = false,
     bool excludeStub = false,
     String? sort,
@@ -210,6 +273,8 @@ class DioGoodsRepository implements GoodsRepository {
         page: page,
         size: size,
         rootBatches: rootBatches,
+        categoryId: categoryId,
+        includeRelated: includeRelated,
         excludeDisabled: excludeDisabled,
         excludeStub: excludeStub,
         sort: sort,
@@ -221,6 +286,8 @@ class DioGoodsRepository implements GoodsRepository {
       page: page,
       size: size,
       categoryRootIds: rootBatches.isEmpty ? const [] : rootBatches.single,
+      categoryId: categoryId,
+      includeRelated: includeRelated,
       excludeDisabled: excludeDisabled,
       excludeStub: excludeStub,
       sort: sort,
@@ -233,6 +300,8 @@ class DioGoodsRepository implements GoodsRepository {
     required int page,
     required int size,
     required List<String> categoryRootIds,
+    required String? categoryId,
+    required bool includeRelated,
     required bool excludeDisabled,
     required bool excludeStub,
     String? sort,
@@ -245,7 +314,9 @@ class DioGoodsRepository implements GoodsRepository {
         'page': page,
         'size': size,
         if (categoryRootIds.isNotEmpty) 'categoryRootIds': categoryRootIds,
+        'categoryId': ?categoryId,
         if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+        if (includeRelated && keyword.trim().isNotEmpty) 'includeRelated': true,
         if (excludeDisabled) 'excludeDisabled': true,
         if (excludeStub) 'excludeStub': true,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
@@ -274,6 +345,8 @@ class DioGoodsRepository implements GoodsRepository {
     required int page,
     required int size,
     required List<List<String>> rootBatches,
+    required String? categoryId,
+    required bool includeRelated,
     required bool excludeDisabled,
     required bool excludeStub,
     String? sort,
@@ -289,6 +362,8 @@ class DioGoodsRepository implements GoodsRepository {
           page: backendPage,
           size: _goodsSearchMergeFetchSize,
           categoryRootIds: roots,
+          categoryId: categoryId,
+          includeRelated: includeRelated,
           excludeDisabled: excludeDisabled,
           excludeStub: excludeStub,
           sort: sort,
@@ -340,6 +415,8 @@ class DioGoodsRepository implements GoodsRepository {
   Future<Set<String>> searchCategoryIds(
     String keyword, {
     required Set<String> categoryRootIds,
+    String? categoryId,
+    bool includeRelated = false,
     bool excludeDisabled = false,
     bool excludeStub = false,
   }) async {
@@ -352,7 +429,10 @@ class DioGoodsRepository implements GoodsRepository {
         ApiEndpoints.goodsSearchCategoryIds,
         query: {
           'categoryRootIds': roots,
+          'categoryId': ?categoryId,
           if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+          if (includeRelated && keyword.trim().isNotEmpty)
+            'includeRelated': true,
           if (excludeDisabled) 'excludeDisabled': true,
           if (excludeStub) 'excludeStub': true,
         },

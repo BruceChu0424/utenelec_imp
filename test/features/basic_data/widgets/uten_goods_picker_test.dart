@@ -44,7 +44,7 @@ void main() {
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
     );
-    expect(tree.selectedIds, {'section-a'});
+    expect(tree.selectedIds, isEmpty);
     expect(repository.searchPolicies, everyElement((true, true)));
 
     await tester.tap(find.text('连接器乙'));
@@ -127,13 +127,8 @@ void main() {
 
     expect(goodsRepository.searchQueries, ['G-']);
     expect(goodsRepository.searchCategoryIdQueries, ['G-']);
-    // sellable scope 已过滤原材料根，且单根「成品」被提升：后端收到的可见森林根
-    // 是提升后的子类（含长名分类），不是前端取前 20 条后再过滤。
-    expect(goodsRepository.searchRootScopes.single, {
-      'section-a',
-      'section-b',
-      'long-cat',
-    });
+    // 展示提升不改变真实范围，根自身直接归属的货品也仍在授权查询范围内。
+    expect(goodsRepository.searchRootScopes.single, {'finished-root'});
     expect(find.text('连接器甲'), findsOneWidget);
     expect(find.textContaining('G-001'), findsOneWidget);
     expect(find.text('连接器乙'), findsOneWidget);
@@ -152,14 +147,15 @@ void main() {
     );
     expect(tree.showSearch, isFalse);
     expect(tree.visibleFilterIds, {'section-a', 'section-b'});
-    expect(tree.selectedIds, {'section-a'});
+    expect(tree.selectedIds, isEmpty);
 
-    // 搜索期间树只作提示，点分类仍保留全部匹配结果。
+    // 明确点击分类成为实际范围，关键词仍保留，右边仍是单表。
     final listCallsBeforeTap = goodsRepository.listCalls.length;
     await tester.tap(find.text('分区乙'));
     await tester.pumpAndSettle();
     expect(goodsRepository.listCalls.length, listCallsBeforeTap);
-    expect(find.text('连接器甲'), findsOneWidget);
+    expect(goodsRepository.searchCategoryScopes.last, 'section-b');
+    expect(find.text('连接器甲'), findsNothing);
     expect(find.text('连接器乙'), findsOneWidget);
     expect(tester.widget<TextField>(_searchTextField()).controller?.text, 'G-');
 
@@ -213,7 +209,7 @@ void main() {
     expect(find.text('范围外原料(RAW-001)'), findsNothing);
   });
 
-  testWidgets('服务端空结果不回退整类列表，点分类也不截断全局搜索', (tester) async {
+  testWidgets('服务端空结果不回退整类列表，显式分类范围保留关键词', (tester) async {
     final goodsRepository = _FakeGoodsRepository(categoryOnlyQuery: '分区');
     await _pumpPicker(tester, goodsRepository);
 
@@ -235,7 +231,7 @@ void main() {
     expect(
       tester.widget<TextField>(_searchTextField()).controller?.text,
       '分区',
-      reason: '分类词仍应保留在统一搜索框，只是不应下推为货品字段过滤',
+      reason: '明确分类范围不能把关键词悄悄清掉',
     );
   });
 
@@ -295,7 +291,7 @@ void main() {
     expect(find.text('搜索货品失败，请稍后重试'), findsNothing);
   });
 
-  testWidgets('定位未完成时点分类不产生分类请求，仍等待全局关键词结果', (tester) async {
+  testWidgets('定位未完成时点分类使旧全局响应失效，关键词继续带分类范围', (tester) async {
     final repository = _FakeGoodsRepository(delayedQuery: '分区');
     await _pumpPicker(tester, repository);
     await tester.tap(find.byKey(const Key('open-goods-picker')));
@@ -307,13 +303,14 @@ void main() {
     await tester.tap(find.text('分区乙'));
     await tester.pump();
     expect(repository.listCalls, isEmpty);
+    expect(repository.searchCategoryScopes.last, 'section-b');
     repository.completeDelayedSearch(const [_goodsA]);
     await tester.pumpAndSettle();
     expect(repository.listCalls, isEmpty);
     expect(tester.widget<TextField>(_searchTextField()).controller?.text, '分区');
   });
 
-  testWidgets('输入防抖期间点分类不取消全局搜索', (tester) async {
+  testWidgets('输入防抖期间点分类立即查询该范围，旧防抖不重复发起', (tester) async {
     final repository = _FakeGoodsRepository();
     await _pumpPicker(tester, repository);
     await tester.tap(find.byKey(const Key('open-goods-picker')));
@@ -324,7 +321,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.listCalls, isEmpty);
     expect(repository.searchQueries, ['分区']);
-    expect(find.text('连接器甲'), findsOneWidget);
+    expect(repository.searchCategoryScopes, ['section-b']);
+    expect(find.text('连接器甲'), findsNothing);
     expect(find.text('连接器乙'), findsOneWidget);
   });
 
@@ -589,6 +587,7 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
   final searchQueries = <String>[];
   final searchPages = <int>[];
   final searchRootScopes = <Set<String>>[];
+  final searchCategoryScopes = <String?>[];
   final searchSortOrders = <(String?, String?)>[];
   final searchPolicies = <(bool, bool)>[];
   final searchCategoryIdQueries = <String>[];
@@ -619,10 +618,13 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     bool excludeStub = false,
     String? sort,
     String? order,
+    String? categoryId,
+    bool includeRelated = false,
   }) async {
     searchQueries.add(keyword);
     searchPages.add(page);
     searchRootScopes.add({...categoryRootIds});
+    searchCategoryScopes.add(categoryId);
     searchSortOrders.add((sort, order));
     searchPolicies.add((excludeDisabled, excludeStub));
     if (page == failNextPage) {
@@ -630,9 +632,18 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
       throw StateError('page temporarily unavailable');
     }
     if (page == delayedPage) return _delayedPage.future;
-    if (keyword == delayedQuery) return _delayedSearch.future;
+    if (keyword == delayedQuery && categoryId == null) {
+      return _delayedSearch.future;
+    }
     if (keyword == categoryOnlyQuery) {
       return _page(const [], page: page, size: size);
+    }
+    if (categoryId != null) {
+      return _page(
+        categoryId == 'section-b' ? const [_goodsB] : const [_goodsA],
+        page: page,
+        size: size,
+      );
     }
     if (splitAcrossPages) {
       return PagedResult(
@@ -658,10 +669,13 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     required Set<String> categoryRootIds,
     bool excludeDisabled = false,
     bool excludeStub = false,
+    String? categoryId,
+    bool includeRelated = false,
   }) async {
     searchCategoryIdQueries.add(keyword);
     if (returnOutOfScopeItem) return const {'raw-root'};
     if (keyword == categoryOnlyQuery) return const <String>{};
+    if (categoryId != null) return {categoryId};
     return const {'section-a', 'section-b'};
   }
 
@@ -678,6 +692,7 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     bool excludeStub = false,
     bool disabledOnly = false,
     bool stubOnly = false,
+    bool includeRelated = false,
   }) async {
     listCalls.add((categoryId!, keyword));
     listSortOrders.add((sort, order));

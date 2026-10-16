@@ -208,7 +208,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
           MasterEntityDetailPane<ClientListItem, ClientDetail>(
             key: ValueKey('global-search-$query-$_detailEpoch'),
             config: _paneConfig(),
-            categoryId: null,
+            categoryId: shellSearchCategoryId,
             canEditCategory: false,
             canAddCategory: false,
             canDeleteCategory: false,

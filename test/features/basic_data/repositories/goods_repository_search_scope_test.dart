@@ -2,8 +2,139 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
+import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 
 void main() {
+  test('主体与相关模式和显式分类同源传到列表、分类定位及facet', () async {
+    final requests = <RequestOptions>[];
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (r, h) {
+          requests.add(r);
+          h.resolve(
+            Response(
+              requestOptions: r,
+              statusCode: 200,
+              data: r.path.endsWith('/search-category-ids')
+                  ? ['child']
+                  : r.path.endsWith('/facets')
+                  ? <String, dynamic>{}
+                  : {
+                      'items': <Object>[],
+                      'page': 1,
+                      'size': 20,
+                      'total': 0,
+                      'totalPages': 0,
+                    },
+            ),
+          );
+        },
+      ),
+    );
+    final repo = DioGoodsRepository(ApiClient(dio));
+    await repo.list(
+      'child',
+      keyword: ' 螺丝 M3 ',
+      includeRelated: true,
+      excludeStub: true,
+    );
+    await repo.search(
+      ' 螺丝 M3 ',
+      categoryRootIds: {'root'},
+      categoryId: 'child',
+      includeRelated: true,
+      excludeStub: true,
+    );
+    await repo.searchCategoryIds(
+      ' 螺丝 M3 ',
+      categoryRootIds: {'root'},
+      categoryId: 'child',
+      includeRelated: true,
+      excludeStub: true,
+    );
+    await repo.facets(
+      'child',
+      keyword: ' 螺丝 M3 ',
+      includeRelated: true,
+      excludeStub: true,
+      filters: {'paper': kMasterFilterNullValue},
+    );
+    expect(
+      requests.map((r) => r.queryParameters['categoryId']),
+      everyElement('child'),
+    );
+    expect(
+      requests.map((r) => r.queryParameters['keyword']),
+      everyElement('螺丝 M3'),
+    );
+    expect(
+      requests.map((r) => r.queryParameters['includeRelated']),
+      everyElement(true),
+    );
+    expect(requests.last.queryParameters['nullFields'], ['paper']);
+    await repo.list(null, keyword: '', includeRelated: true);
+    expect(requests.last.queryParameters, isNot(contains('includeRelated')));
+  });
+
+  test('超过32根仍带显式分类与相关模式，重叠根按UUID去重且相关排主体之后', () async {
+    final requests = <RequestOptions>[];
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (r, h) {
+          requests.add(r);
+          final first =
+              (r.queryParameters['categoryRootIds'] as List).first == 'root-00';
+          h.resolve(
+            Response(
+              requestOptions: r,
+              statusCode: 200,
+              data: {
+                'items': [
+                  {
+                    ..._goodsJson('overlap'),
+                    'searchRank': 3,
+                    'searchMatchKind': 'PRIMARY',
+                  },
+                  {
+                    ..._goodsJson(first ? 'related' : 'exact'),
+                    'searchRank': first ? 100 : 0,
+                    'searchMatchKind': first ? 'RELATED' : 'PRIMARY',
+                  },
+                ],
+                'page': 1,
+                'size': 100,
+                'total': 2,
+                'totalPages': 1,
+              },
+            ),
+          );
+        },
+      ),
+    );
+    final repo = DioGoodsRepository(ApiClient(dio));
+    final page = await repo.search(
+      '螺丝',
+      categoryRootIds: {
+        for (var i = 0; i < 33; i++) 'root-${i.toString().padLeft(2, '0')}',
+      },
+      categoryId: 'child',
+      includeRelated: true,
+      size: 10,
+    );
+    expect(page.items.map((g) => g.id), ['exact', 'overlap', 'related']);
+    expect(page.total, 3);
+    expect(page.items.last.isRelatedSearchMatch, isTrue);
+    expect(
+      requests.map((r) => r.queryParameters['categoryId']),
+      everyElement('child'),
+    );
+    expect(
+      requests.map((r) => r.queryParameters['includeRelated']),
+      everyElement(true),
+    );
+  });
   test('跨批价格空值与服务端升序末尾降序前置保持一致', () async {
     final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
     dio.interceptors.add(

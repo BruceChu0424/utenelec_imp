@@ -43,7 +43,7 @@ void main() {
     expect(column.label, '英文名称');
     expect(column.info, contains('自动记住'));
     expect(find.text('DOUBLE 3 PIN SOCKET WITH SWITCH'), findsOneWidget);
-    expect(find.text('搜索货品(名称/英文名称/编号/型号/规格/系列)'), findsWidgets);
+    expect(find.text('搜索分类/货品名称、英文名称或编号'), findsOneWidget);
     // Price columns still follow their own permission (none here).
     expect(keys, isNot(contains('price')));
     expect(tester.takeException(), isNull);
@@ -64,7 +64,7 @@ void main() {
       tester
           .widget<UtenCategoryTreeView<ProductCategoryNode>>(tree)
           .selectedIds,
-      {_approximateCategory},
+      isEmpty,
     );
     expect(goods.listCalls.last, (null, 'PART-001'));
     expect(find.text('精确货品'), findsOneWidget);
@@ -79,10 +79,21 @@ void main() {
       'approximate-item',
     ]);
     expect(table.leadingGroups, isEmpty);
-    final callsBeforeTap = goods.listCalls.length;
     await tester.tap(find.text('精确分区'));
     await tester.pumpAndSettle();
-    expect(goods.listCalls.length, callsBeforeTap, reason: '分类树只提示，不能截断右侧全局结果');
+    expect(goods.listCalls.last, (_exactCategory, 'PART-001'));
+    expect(
+      tester
+          .widget<MasterDataTableView<GoodsListItem>>(
+            find.byType(MasterDataTableView<GoodsListItem>),
+          )
+          .items
+          .map((r) => r.id),
+      ['exact-item'],
+    );
+    await tester.tap(find.byTooltip('清除分类范围，搜索全部分类'));
+    await tester.pumpAndSettle();
+    expect(goods.listCalls.last, (null, 'PART-001'));
     await tester.enterText(
       find.descendant(of: tree, matching: find.byType(EditableText)),
       '',
@@ -292,6 +303,8 @@ class _FakeGoodsRepository implements GoodsRepository {
     required Set<String> categoryRootIds,
     bool excludeDisabled = false,
     bool excludeStub = false,
+    String? categoryId,
+    bool includeRelated = false,
   }) async => {_exactCategory, _approximateCategory};
 
   @override
@@ -307,6 +320,7 @@ class _FakeGoodsRepository implements GoodsRepository {
     bool excludeStub = false,
     bool disabledOnly = false,
     bool stubOnly = false,
+    bool includeRelated = false,
   }) async {
     if (!disabledOnly && !stubOnly) listCalls.add((categoryId, keyword));
     if (keyword == delayedKeyword && keyword != null) return delayed.future;
@@ -361,7 +375,13 @@ class _FakeGoodsRepository implements GoodsRepository {
   }
 
   @override
-  Future<GoodsFacets> globalFacets() async {
+  Future<GoodsFacets> globalFacets({
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  }) async {
     globalFacetCalls++;
     return const GoodsFacets(
       fields: {
@@ -372,8 +392,14 @@ class _FakeGoodsRepository implements GoodsRepository {
   }
 
   @override
-  Future<GoodsFacets> facets(String categoryId) async =>
-      const GoodsFacets(fields: {}, nullCounts: {});
+  Future<GoodsFacets> facets(
+    String categoryId, {
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  }) async => const GoodsFacets(fields: {}, nullCounts: {});
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

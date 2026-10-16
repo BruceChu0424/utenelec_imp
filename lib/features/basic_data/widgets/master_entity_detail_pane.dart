@@ -147,6 +147,8 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     required this.loadPage,
     required this.loadFacets,
     this.loadGlobalFacets,
+    this.loadQueryFacets,
+    this.showLocalSearch = true,
     required this.batchEntityPath,
     required this.statusResourceOf,
     required this.canCreate,
@@ -183,6 +185,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   /// 搜索框 key 前缀(切分类/树搜索时按 key 重建搜索框)。
   final String keyPrefix;
   final String searchHint;
+  final bool showLocalSearch;
   final List<MasterColumnDef<TItem>> columns;
   final String Function(TItem row) idOf;
   final String? Function(TItem row) statusOf;
@@ -198,6 +201,8 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final Future<PagedResult<TItem>> Function(MasterPaneQuery query) loadPage;
   final Future<MasterPaneFacets> Function(String categoryId) loadFacets;
   final Future<MasterPaneFacets> Function()? loadGlobalFacets;
+  final Future<MasterPaneFacets> Function(MasterPaneQuery query)?
+  loadQueryFacets;
 
   /// 主档集合路径(ApiEndpoints.clients 等)，批量命令拼 /batch-status、/batch-delete。
   final String batchEntityPath;
@@ -321,6 +326,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   ProductCategoryDetail? _category;
   bool _loading = true;
+  int _queryVersion = 0;
   String? _error;
 
   PagedResult<TItem>? _page;
@@ -352,6 +358,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   void didUpdateWidget(MasterEntityDetailPane<TItem, TDetail> old) {
     super.didUpdateWidget(old);
     if (widget.externalSearchPending) {
+      _queryVersion++;
       _categoryRequests.begin();
       _listRequests.begin();
       _groupRequests.begin();
@@ -372,6 +379,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     }
     if (old.externalKeyword != widget.externalKeyword ||
         old.externalSearchPending) {
+      _queryVersion++;
       setState(() {
         _loading = false;
         _page = null;
@@ -427,7 +435,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   @override
   Future<void> reload({int? page}) async {
     if (!mounted || widget.externalSearchPending) return;
-    await Future.wait([_loadList(page ?? _pageNum), _loadGroups()]);
+    await Future.wait([
+      _loadList(page ?? _pageNum),
+      _loadGroups(),
+      if (_c.loadQueryFacets != null) _loadFacets(),
+    ]);
     // 删空当前页时回退上一页，避免列表空白。
     final current = _page;
     if (mounted &&
@@ -589,6 +601,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   // ---- 加载 -------------------------------------------------------------
 
   Future<void> _load() async {
+    _queryVersion++;
     if (widget.externalSearchPending) return;
     final generation = _categoryRequests.begin();
     // Category-dependent reads from the prior category must stop publishing
@@ -682,10 +695,16 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   Future<void> _loadFacets() async {
     if (widget.externalSearchPending) return;
     final categoryId = widget.categoryId;
-    if (categoryId == null && _c.loadGlobalFacets == null) return;
+    if (_c.loadQueryFacets == null &&
+        categoryId == null &&
+        _c.loadGlobalFacets == null) {
+      return;
+    }
     final generation = _facetRequests.begin();
     try {
-      final facets = await (categoryId == null
+      final facets = await (_c.loadQueryFacets != null
+          ? _c.loadQueryFacets!(_query())
+          : categoryId == null
           ? _c.loadGlobalFacets!()
           : _c.loadFacets(categoryId));
       if (mounted && _facetRequests.isCurrent(generation)) {
@@ -713,6 +732,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   void _onFilterChanged(String column, String? value) {
+    _queryVersion++;
     final param = _c.filterParamOfColumn[column] ?? column;
     setState(() {
       final next = Map<String, String?>.from(_filters);
@@ -727,11 +747,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   }
 
   void _onKeywordChanged(String keyword) {
+    _queryVersion++;
     setState(() => _keyword = keyword);
     reload(page: 1);
   }
 
   void _onSortChange(String? column, bool ascending) {
+    _queryVersion++;
     setState(() {
       _sortKey = column;
       _sortAsc = ascending;
@@ -783,7 +805,11 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   /// 打印预览：按当前分类/筛选口径拉全量(上限 2000 行)，列/格式化与表格一致。
   Future<UtenPrintTable> _printLoader() async {
+    final version = _queryVersion;
     final result = await _c.loadPage(_query(size: 2000, forPrint: true));
+    if (!mounted || version != _queryVersion || widget.externalSearchPending) {
+      throw StateError('查询条件已变化，请重新预览');
+    }
     return UtenPrintTable(
       columnKeys: [for (final c in _c.columns) c.key],
       rowIds: [for (final row in result.items) _c.idOf(row)],
@@ -800,6 +826,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     if (export == null) return const [];
     return [
       UtenPrintPreviewButton(
+        enabled: !widget.externalSearchPending && !_loading && !_listLoading,
         title: export.title,
         subtitle: '最多前 2000 行', // TODO(l10n): 补 arb
         loader: _printLoader,
@@ -813,6 +840,16 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         size: large ? UtenButtonSize.large : UtenButtonSize.small,
       ),
       UtenExportButton(
+        enabled: !widget.externalSearchPending && !_loading && !_listLoading,
+        prepareExport: () async {
+          final version = _queryVersion;
+          return UtenExportSelection(
+            stillCurrent: () =>
+                mounted &&
+                version == _queryVersion &&
+                !widget.externalSearchPending,
+          );
+        },
         endpoint: export.endpoint,
         requiredPermission: export.permission,
         report: '',
@@ -1023,8 +1060,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                     ),
                   ),
                   const SizedBox(width: UtenSpacing.s12),
-                  if (widget.categoryId == null) const Spacer(),
-                  if (widget.categoryId != null)
+                  if (!_c.showLocalSearch ||
+                      widget.categoryId == null ||
+                      widget.externalKeyword != null)
+                    const Spacer(),
+                  if (_c.showLocalSearch &&
+                      widget.categoryId != null &&
+                      widget.externalKeyword == null)
                     Expanded(
                       child: UtenSearchBar(
                         // key 含分类 + 种子：切分类 / 树搜索写入关键词时重建搜索框。

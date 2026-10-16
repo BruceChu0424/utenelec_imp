@@ -29,6 +29,7 @@ import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
+import '../../../components/layout/uten_segment_row.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
 import '../../../core/responsive/breakpoint.dart';
@@ -42,6 +43,7 @@ import '../models/product_category_node.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/product_category_repository.dart';
 import 'category_tree_search.dart';
+import 'goods_related_search_control.dart';
 import 'uten_category_tree_view.dart';
 
 /// 货品选择器排除的根分类 legacyId（来自后端 material_categories 种子）：
@@ -265,6 +267,9 @@ Future<GoodsListItem?> showUtenGoodsPicker(
 /// 供 BOM 组装信息「一个层级添加多个组件」批量录入用。
 /// 业务候选可提供独立数据源，复用分类树、多选清单与分页交互。
 abstract class UtenGoodsPickerDataSource {
+  /// Dedicated inventory/report sources keep their own API and permission scope.
+  /// Sources opting in also implement both option-aware search methods below.
+  bool get supportsRelatedSearch => false;
   Future<List<ProductCategoryNode>> tree();
   Future<PagedResult<GoodsListItem>> list(
     String categoryId, {
@@ -276,6 +281,32 @@ abstract class UtenGoodsPickerDataSource {
     required int page,
   });
   Future<Set<String>> searchCategoryIds(String keyword);
+
+  Future<PagedResult<GoodsListItem>> searchWithOptions(
+    String keyword, {
+    required int page,
+    String? categoryId,
+    bool includeRelated = false,
+  }) {
+    if (includeRelated) {
+      throw UnsupportedError('Related search is not supported by this source');
+    }
+    return categoryId == null
+        ? search(keyword, page: page)
+        : list(categoryId, page: page, keyword: keyword);
+  }
+
+  Future<Set<String>> searchCategoryIdsWithOptions(
+    String keyword, {
+    String? categoryId,
+    bool includeRelated = false,
+  }) {
+    if (includeRelated) {
+      throw UnsupportedError('Related search is not supported by this source');
+    }
+    return searchCategoryIds(keyword);
+  }
+
   bool isSelectable(GoodsListItem goods) => true;
   String? subtitleOf(GoodsListItem goods) => null;
 
@@ -294,6 +325,7 @@ Future<List<GoodsListItem>> showUtenGoodsPickerMulti(
   UtenGoodsPickerDataSource? dataSource,
   String title = '选择货品',
   SensitiveReadBoundary? readBoundary,
+  bool allowScopeExpansion = false,
 }) async {
   final r = await _presentSheet<List<GoodsListItem>>(
     context,
@@ -303,6 +335,7 @@ Future<List<GoodsListItem>> showUtenGoodsPickerMulti(
     dataSource: dataSource,
     title: title,
     readBoundary: readBoundary,
+    allowScopeExpansion: allowScopeExpansion,
   );
   return r ?? const <GoodsListItem>[];
 }
@@ -316,6 +349,7 @@ Future<T?> _presentSheet<T>(
   UtenGoodsPickerDataSource? dataSource,
   String title = '选择货品',
   SensitiveReadBoundary? readBoundary,
+  bool allowScopeExpansion = false,
 }) async {
   // Capture invalidation before awaiting the tree as well as while the panel is
   // open. A revoke/regrant during that await must never reopen an old snapshot.
@@ -330,10 +364,16 @@ Future<T?> _presentSheet<T>(
   try {
     if (boundaryChanged) return null;
     List<ProductCategoryNode> tree;
+    List<ProductCategoryNode>? allTree;
     try {
       final raw =
           await (dataSource?.tree() ??
               ref.read(productCategoryRepositoryProvider).tree());
+      if (allowScopeExpansion &&
+          dataSource == null &&
+          scope == UtenGoodsPickerScope.component) {
+        allTree = raw;
+      }
       tree = switch (scope) {
         UtenGoodsPickerScope.sellable => _filterExcludedTree(raw),
         UtenGoodsPickerScope.material => _keepMaterialTree(raw),
@@ -352,19 +392,22 @@ Future<T?> _presentSheet<T>(
     }
     if (!context.mounted || boundaryChanged) return null;
     // 单根提升：整库只有一个「货品资料」包装根时不占一层。
+    final scopeTree = tree;
     if (dataSource == null) tree = hoistSingleRootTree(tree);
-    if (tree.isEmpty) {
+    if (tree.isEmpty && (allTree?.isEmpty ?? true)) {
       context.appWarning('当前业务范围没有可选择的货品分类');
       return null;
     }
     final sheet = _GoodsPickerSheet(
       tree: tree,
+      scopeTree: scopeTree,
       scope: scope,
       multiSelect: multiSelect,
       requireConfirm: requireConfirm,
       dataSource: dataSource,
       title: title,
       readBoundary: readBoundary,
+      allTree: allTree,
     );
     final screenWidth = MediaQuery.sizeOf(context).width;
     final result = await showUtenAdaptivePanel<T>(
@@ -381,14 +424,18 @@ Future<T?> _presentSheet<T>(
 class _GoodsPickerSheet extends ConsumerStatefulWidget {
   const _GoodsPickerSheet({
     required this.tree,
+    required this.scopeTree,
     required this.scope,
     this.multiSelect = false,
     this.requireConfirm = false,
     this.dataSource,
     this.title = '选择货品',
     this.readBoundary,
+    this.allTree,
   });
   final List<ProductCategoryNode> tree;
+  final List<ProductCategoryNode> scopeTree;
+  final List<ProductCategoryNode>? allTree;
   final UtenGoodsPickerScope scope;
   final bool multiSelect;
   final UtenGoodsPickerDataSource? dataSource;
@@ -404,6 +451,15 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
 
 class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   String? _selectedCategoryId;
+  String? _searchCategoryId;
+  bool _includeRelated = false;
+  bool _expandedScope = false;
+  List<ProductCategoryNode> get _tree =>
+      _expandedScope ? hoistSingleRootTree(widget.allTree!) : widget.tree;
+  List<ProductCategoryNode> get _scopeTree =>
+      _expandedScope ? widget.allTree! : widget.scopeTree;
+  bool get _supportsRelatedSearch =>
+      widget.dataSource?.supportsRelatedSearch ?? true;
   final _keywordCtl = TextEditingController();
   String _query = '';
   Set<String>? _visibleFilterIds;
@@ -451,8 +507,13 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     });
   }
 
-  void _confirm(Object? value) {
-    if (_canRead) Navigator.of(context).pop(value);
+  void _confirm(Object? value, {required int requestVersion}) {
+    if (_canRead &&
+        requestVersion == _requestVersion &&
+        !_loading &&
+        !_searchLoading) {
+      Navigator.of(context).pop(value);
+    }
   }
 
   @override
@@ -501,7 +562,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
-    if (_query.isNotEmpty) return;
+    if (_query.isNotEmpty) {
+      setState(() => _searchCategoryId = node.id);
+      _restartSearch();
+      return;
+    }
     _requestVersion++;
     _acceptPendingSearch = false;
     setState(() {
@@ -523,11 +588,13 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     final query = v.trim();
     setState(() {
       _query = query;
+      if (query.isEmpty) {
+        _includeRelated = false;
+        _searchCategoryId = null;
+      }
       _paged = null;
       _page = 1;
-      _visibleFilterIds = query.isEmpty
-          ? null
-          : categoryHits(widget.tree, query);
+      _visibleFilterIds = query.isEmpty ? null : categoryHits(_tree, query);
       _searchLoading = query.isNotEmpty;
       _searchError = null;
       _globalResolutionQuery = null;
@@ -553,9 +620,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         _searchError = null;
         _globalResolutionQuery = null;
         _globalResolution = null;
-        _selectedCategoryId ??= widget.tree.isEmpty
-            ? null
-            : widget.tree.first.id;
+        _selectedCategoryId ??= _tree.isEmpty ? null : _tree.first.id;
         _page = 1;
       });
       await _reloadCategory();
@@ -571,7 +636,34 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     await _reloadGlobalSearch();
   }
 
-  Set<String> get _scopeRootIds => {for (final root in widget.tree) root.id};
+  void _restartSearch() {
+    ++_requestVersion;
+    _acceptPendingSearch = false;
+    setState(() {
+      _page = 1;
+      _paged = null;
+      _selected.clear();
+      _selectedPanelOpen = false;
+      _globalResolution = null;
+      _globalResolutionQuery = null;
+      _showingGlobalResults = _query.isNotEmpty;
+    });
+    _reloadCurrentPage();
+  }
+
+  void _changeScope(bool expand) {
+    if (expand == _expandedScope) return;
+    setState(() {
+      _expandedScope = expand;
+      _selectedCategoryId = _tree.isEmpty ? null : _tree.first.id;
+      _searchCategoryId = null;
+      _visibleFilterIds = null;
+      _naturalTreeWidth = null;
+    });
+    _restartSearch();
+  }
+
+  Set<String> get _scopeRootIds => {for (final root in _scopeTree) root.id};
 
   Set<String> get _scopeCategoryIds {
     final ids = <String>{};
@@ -582,7 +674,32 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       }
     }
 
-    collect(widget.tree);
+    collect(_scopeTree);
+    return ids;
+  }
+
+  Set<String> get _searchAllowedCategoryIds {
+    if (_searchCategoryId == null) return _scopeCategoryIds;
+    ProductCategoryNode? find(List<ProductCategoryNode> nodes) {
+      for (final node in nodes) {
+        if (node.id == _searchCategoryId) return node;
+        final child = find(node.children);
+        if (child != null) return child;
+      }
+      return null;
+    }
+
+    final node = find(_scopeTree);
+    if (node == null) return const {};
+    final ids = <String>{};
+    void collect(ProductCategoryNode current) {
+      ids.add(current.id);
+      for (final child in current.children) {
+        collect(child);
+      }
+    }
+
+    collect(node);
     return ids;
   }
 
@@ -605,7 +722,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           );
 
   Future<PagedResult<GoodsListItem>> _searchPage(String query, int page) =>
-      widget.dataSource?.search(query, page: page) ??
+      widget.dataSource?.searchWithOptions(
+        query,
+        page: page,
+        categoryId: _searchCategoryId,
+        includeRelated: _includeRelated,
+      ) ??
       ref
           .read(goodsRepositoryProvider)
           .search(
@@ -613,6 +735,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             page: page,
             size: 100,
             categoryRootIds: _scopeRootIds,
+            categoryId: _searchCategoryId,
+            includeRelated: _includeRelated,
             excludeDisabled: true,
             excludeStub: true,
             sort: _goodsPickerSort,
@@ -620,12 +744,18 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           );
 
   Future<Set<String>> _searchCategoryIds(String query) =>
-      widget.dataSource?.searchCategoryIds(query) ??
+      widget.dataSource?.searchCategoryIdsWithOptions(
+        query,
+        categoryId: _searchCategoryId,
+        includeRelated: _includeRelated,
+      ) ??
       ref
           .read(goodsRepositoryProvider)
           .searchCategoryIds(
             query,
             categoryRootIds: _scopeRootIds,
+            categoryId: _searchCategoryId,
+            includeRelated: _includeRelated,
             excludeDisabled: true,
             excludeStub: true,
           );
@@ -688,6 +818,23 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       _searchLoading = true;
       _searchError = null;
     });
+    // An empty business scope is not the repository's unscoped "all" query.
+    // BOM can explicitly expand an empty legacy component range afterwards.
+    if (_scopeTree.isEmpty) {
+      setState(() {
+        _paged = PagedResult(
+          items: const <GoodsListItem>[],
+          page: requestedPage,
+          size: 20,
+          total: 0,
+          totalPages: 0,
+        );
+        _visibleFilterIds = <String>{};
+        _loading = false;
+        _searchLoading = false;
+      });
+      return;
+    }
     try {
       final needsLocation =
           _globalResolutionQuery != query || _globalResolution == null;
@@ -709,7 +856,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
       // 服务端 categoryRootIds 是权威分页范围；客户端再做 fail-closed 校验，避免旧服务端
       // 忽略新参数或旧 DTO 缺 categoryId 时把 scope 外货品展示给当前业务选择器。
-      final allowedCategoryIds = _scopeCategoryIds;
+      final allowedCategoryIds = _searchAllowedCategoryIds;
       if (result.items.any((goods) {
         final categoryId = goods.categoryId;
         return categoryId == null || !allowedCategoryIds.contains(categoryId);
@@ -719,9 +866,16 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
       final HierarchySearchResolution resolution;
       if (needsLocation) {
-        final matchingCategoryIds =
+        var matchingCategoryIds =
             responses[1] as Set<String>? ??
             result.items.map((goods) => goods.categoryId!).toSet();
+        // Some dedicated report APIs offer only global location hints. Keep
+        // those hints inside the explicit scope; rows are never filtered here.
+        if (widget.dataSource != null) {
+          matchingCategoryIds = matchingCategoryIds.intersection(
+            allowedCategoryIds,
+          );
+        }
         if (matchingCategoryIds.any(
           (categoryId) => !allowedCategoryIds.contains(categoryId),
         )) {
@@ -730,7 +884,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
           );
         }
         resolution = resolveHierarchySearch(
-          roots: widget.tree,
+          roots: _tree,
           query: query,
           contentCategoryIds: matchingCategoryIds,
         );
@@ -766,6 +920,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     }
   }
 
+  Set<String>? get _treeVisibleIds {
+    final ids = _visibleFilterIds;
+    if (ids == null || _searchCategoryId == null) return ids;
+    final visible = <String>{...ids};
+    addAncestors(_tree, _searchCategoryId!, visible);
+    return visible;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!_canRead) {
@@ -774,17 +936,17 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     }
     final theme = Theme.of(context);
     final treePane = UtenCategoryTreeView<ProductCategoryNode>(
-      nodes: widget.tree,
+      nodes: _tree,
       mode: UtenCategoryTreeMode.single,
-      selectedIds: _selectedCategoryId == null
-          ? const <String>{}
-          : <String>{_selectedCategoryId!},
+      selectedIds: {
+        ?(_query.isEmpty ? _selectedCategoryId : _searchCategoryId),
+      },
       expandOnRowTap: true,
       // 左树默认全部收起（2026-09-24 用户口径）：只显示一级分类，点了再展开。
       initiallyExpandDepth: 0,
       initiallyCollapsedNames: const {'未分类'},
       showSearch: false,
-      visibleFilterIds: _visibleFilterIds,
+      visibleFilterIds: _treeVisibleIds,
       externalSearchQuery: _query,
       externalSearchLoading: _searchLoading,
       externalSearchError: _searchError,
@@ -798,8 +960,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       minLeadingWidth: 200,
       maxLeadingWidth: 560,
       selectedLeadingLabel:
-          utenTreeSelectionPath(widget.tree, _selectedCategoryId) ?? '全部分类',
-      selectedLeadingKey: _selectedCategoryId,
+          utenTreeSelectionPath(
+            _tree,
+            _query.isEmpty ? _selectedCategoryId : _searchCategoryId,
+          ) ??
+          '全部分类',
+      selectedLeadingKey: _query.isEmpty
+          ? _selectedCategoryId
+          : _searchCategoryId,
       compactHeader: treePane.header,
       leading: treePane,
       trailing: _buildRightPane(theme),
@@ -843,18 +1011,20 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
   Widget _buildConfirmBar(ThemeData theme) {
     if (widget.multiSelect) return _buildMultiSelectBar(theme);
+    final requestVersion = _requestVersion;
     final single = _selected.isEmpty ? null : _selected.values.first;
     return UtenPickerConfirmBar(
       selectedCount: _selected.length,
       pagination: UtenPickerPageControls(controller: _pickerRows),
       selectedLabel: single == null ? null : _goodsLabel(single),
-      onConfirm: () => _confirm(single),
+      onConfirm: () => _confirm(single, requestVersion: requestVersion),
     );
   }
 
   /// 多选底栏：左侧「已选 N 项」胶囊点开已选清单滑层；右侧 清空/取消/确定(N)。
   Widget _buildMultiSelectBar(ThemeData theme) {
     final count = _selected.length;
+    final requestVersion = _requestVersion;
     final summary = InkWell(
       key: const Key('goods-picker-selected-summary'),
       borderRadius: BorderRadius.circular(UtenRadius.md),
@@ -906,7 +1076,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       summary: summary,
       pagination: UtenPickerPageControls(controller: _pickerRows),
       onClear: () => setState(_selected.clear),
-      onConfirm: () => _confirm(_selected.values.toList()),
+      onConfirm: () =>
+          _confirm(_selected.values.toList(), requestVersion: requestVersion),
       confirmLabel: '确定($count)',
       confirmButtonKey: const Key('goods-picker-multi-confirm'),
     );
@@ -1066,17 +1237,68 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         context.breakpoint.isCompact ? 8 : 16,
         8,
       ),
-      child: UtenSearchBar(
-        key: const Key('uten-goods-picker-search'),
-        controller: _keywordCtl,
-        hint: '搜索分类/货品名称或编号',
-        onInputChanged: _onKeywordInputChanged,
-        onChanged: _onKeywordChanged,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.allTree != null) ...[
+            UtenSegmentRow<bool>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: false, label: Text('当前组件范围')),
+                ButtonSegment(value: true, label: Text('全部可选货品')),
+              ],
+              selected: {_expandedScope},
+              onSelectionChanged: (values) => _changeScope(values.single),
+            ),
+            const SizedBox(height: UtenSpacing.s8),
+          ],
+          UtenSearchBar(
+            key: const Key('uten-goods-picker-search'),
+            controller: _keywordCtl,
+            hint: '搜索分类/货品名称或编号',
+            onInputChanged: _onKeywordInputChanged,
+            onChanged: _onKeywordChanged,
+          ),
+          if (_query.isNotEmpty) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _searchCategoryId == null
+                        ? '搜索范围：全部分类'
+                        : '搜索范围：${utenTreeSelectionPath(_tree, _searchCategoryId) ?? '所选分类'}',
+                    key: const ValueKey('goods-picker-search-scope'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                if (_searchCategoryId != null)
+                  IconButton(
+                    tooltip: '清除分类范围，搜索全部分类',
+                    onPressed: () {
+                      setState(() => _searchCategoryId = null);
+                      _restartSearch();
+                    },
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                  ),
+              ],
+            ),
+            if (_supportsRelatedSearch)
+              GoodsRelatedSearchControl(
+                value: _includeRelated,
+                onChanged: (value) {
+                  setState(() => _includeRelated = value);
+                  _restartSearch();
+                },
+              ),
+          ],
+        ],
       ),
     );
   }
 
   Widget _buildGoodsList(ThemeData theme) {
+    final requestVersion = _requestVersion;
     return UtenPagedPickerList<GoodsListItem>(
       key: const Key('goods-picker-paged-list'),
       rowsController: _pickerRows,
@@ -1088,9 +1310,10 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       paginationScope: (
         widget.scope,
         _query,
+        _includeRelated,
+        _expandedScope,
         _showingGlobalResults,
-        // The browsing category never changes the global search scope.
-        _showingGlobalResults ? null : _selectedCategoryId,
+        _showingGlobalResults ? _searchCategoryId : _selectedCategoryId,
       ),
       onPageChange: (page) {
         setState(() => _page = page);
@@ -1100,7 +1323,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       error: _error,
       onRetry: _reloadCurrentPage,
       emptyMessage: _paged == null
-          ? (widget.tree.isEmpty ? '没有可选择的货品分类' : '请选择左侧分类或搜索货品')
+          ? (_tree.isEmpty ? '没有可选择的货品分类' : '请选择左侧分类或搜索货品')
           : (_query.isEmpty ? '该分类暂无可选货品' : '未找到匹配「$_query」的货品'),
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (ctx, g) {
@@ -1139,6 +1362,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                       [
                         g.code,
                         g.colorName,
+                        if (g.isRelatedSearchMatch) '相关结果',
                       ].where((v) => v != null && v.isNotEmpty).join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1151,7 +1375,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                 )
               : null,
           onTap: () {
-            if (!_canRead) return;
+            if (!_canRead ||
+                requestVersion != _requestVersion ||
+                _loading ||
+                _searchLoading) {
+              return;
+            }
             if (widget.multiSelect) {
               setState(() {
                 if (_selected.containsKey(g.id)) {
@@ -1167,7 +1396,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
                   ..[g.id] = g;
               });
             } else {
-              _confirm(g);
+              _confirm(g, requestVersion: requestVersion);
             }
           },
         );

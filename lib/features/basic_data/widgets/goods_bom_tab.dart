@@ -153,7 +153,8 @@ final bomComponentPickerProvider =
       Future<List<GoodsListItem>> Function(BuildContext context, WidgetRef ref)
     >(
       (ref) =>
-          (context, ref) => showUtenGoodsPickerMulti(context, ref),
+          (context, ref) =>
+              showUtenGoodsPickerMulti(context, ref, allowScopeExpansion: true),
     );
 
 class GoodsBomTab extends ConsumerStatefulWidget {

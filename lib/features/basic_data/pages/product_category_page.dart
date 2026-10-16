@@ -39,6 +39,7 @@ import '../widgets/category_edit_dialog.dart';
 import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/goods_import_dialog.dart';
+import '../widgets/goods_related_search_control.dart';
 import '../models/goods_import.dart';
 import '../repositories/goods_import_repository.dart';
 import '../widgets/master_data_table_view.dart';
@@ -60,6 +61,23 @@ class ProductCategoryPage extends ConsumerStatefulWidget {
 class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     with CategoryPageShell<ProductCategoryPage> {
   int _detailEpoch = 0;
+  bool _includeRelated = false;
+
+  @override
+  void shellSearchQueryChanged(String query) {
+    if (query.isEmpty) _includeRelated = false;
+  }
+
+  @override
+  List<Widget> shellSearchOptions(BuildContext context) => [
+    GoodsRelatedSearchControl(
+      value: _includeRelated,
+      onChanged: (value) {
+        setState(() => _includeRelated = value);
+        shellRefreshSearch();
+      },
+    ),
+  ];
 
   /// 导入/撤回后：刷新分类树 + 重挂详情面板（强刷货品列表）。
   void _reloadAll() {
@@ -121,7 +139,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   String get shellTitle => '货品资料'; // TODO(l10n): 补 arb
 
   @override
-  String get shellSearchHint => '搜索分类/货品名称或编号'; // TODO(l10n): 补 arb
+  String get shellSearchHint => '搜索分类/货品名称、英文名称或编号'; // TODO(l10n): 补 arb
 
   @override
   String get shellContentNoun => '货品';
@@ -256,6 +274,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         await repo.searchCategoryIds(
           q,
           categoryRootIds: roots.sublist(offset, end).toSet(),
+          categoryId: shellSearchCategoryId,
+          includeRelated: _includeRelated,
           excludeStub: true,
         ),
       );
@@ -422,7 +442,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           searchPaneBuilder: (query) =>
               MasterEntityDetailPane<GoodsListItem, GoodsDetail>(
                 config: _paneConfig(),
-                categoryId: null,
+                categoryId: shellSearchCategoryId,
                 canEditCategory: false,
                 canAddCategory: false,
                 canDeleteCategory: false,
@@ -537,12 +557,14 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
   /// 行菜单由本页接管(复制/粘贴/组件信息 + 多选批量菜单)。
   MasterEntityPaneConfig<GoodsListItem, GoodsDetail> _paneConfig() {
     final goods = ref.read(goodsRepositoryProvider);
+    final includeRelated = _includeRelated;
     return MasterEntityPaneConfig<GoodsListItem, GoodsDetail>(
       noun: '货品', // TODO(l10n): 补 arb
       icon: Icons.inventory_2_outlined,
       defaultCodePrefix: 'HP',
       keyPrefix: 'goods',
       searchHint: basicDataL10n(context).goodsNameEnSearchHint,
+      showLocalSearch: false,
       columns: _visibleGoodsColumns,
       idOf: (g) => g.id,
       statusOf: (g) => g.status,
@@ -555,6 +577,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         page: q.page,
         size: q.size ?? 20,
         keyword: q.keyword,
+        includeRelated: includeRelated && q.hasKeyword,
         filters: q.filters,
         sort: q.sort,
         order: q.order,
@@ -568,6 +591,25 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       },
       loadGlobalFacets: () async {
         final f = await goods.globalFacets();
+        return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
+      },
+      loadQueryFacets: (query) async {
+        final f = query.categoryId == null
+            ? await goods.globalFacets(
+                keyword: query.keyword,
+                includeRelated: includeRelated && query.hasKeyword,
+                filters: query.filters,
+                excludeDisabled: !query.hasKeyword,
+                excludeStub: true,
+              )
+            : await goods.facets(
+                query.categoryId!,
+                keyword: query.keyword,
+                includeRelated: includeRelated && query.hasKeyword,
+                filters: query.filters,
+                excludeDisabled: !query.hasKeyword,
+                excludeStub: true,
+              );
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
       },
       batchEntityPath: ApiEndpoints.goods,
@@ -585,6 +627,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         queryParamsOf: (query) => {
           'excludeDisabled': !query.hasKeyword,
           'excludeStub': true,
+          if (includeRelated && query.hasKeyword) 'includeRelated': true,
         },
         inCard: true,
       ),
@@ -1442,6 +1485,21 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       label: '货品名称',
       width: 200,
       value: (g) => g.name,
+      cellBuilder: (context, g) => Row(
+        children: [
+          Expanded(
+            child: Text(
+              g.name ?? '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (g.isRelatedSearchMatch) ...[
+            const SizedBox(width: UtenSpacing.s8),
+            Text('相关', style: Theme.of(context).textTheme.labelSmall),
+          ],
+        ],
+      ),
     ),
     MasterColumnDef(
       key: 'code',

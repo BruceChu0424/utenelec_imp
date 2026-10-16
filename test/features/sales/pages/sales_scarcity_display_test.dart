@@ -90,6 +90,7 @@ class _Goods extends Fake implements GoodsRepository {
     bool excludeStub = false,
     bool disabledOnly = false,
     bool stubOnly = false,
+    bool includeRelated = false,
   }) async => const PagedResult(
     items: [GoodsListItem(id: 'goods-b', name: '货品乙', categoryId: 'finished')],
     page: 1,

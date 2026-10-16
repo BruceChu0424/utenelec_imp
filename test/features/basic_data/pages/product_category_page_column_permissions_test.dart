@@ -325,6 +325,7 @@ class _FakeGoodsRepository implements GoodsRepository {
     bool excludeStub = false,
     bool disabledOnly = false,
     bool stubOnly = false,
+    bool includeRelated = false,
   }) async {
     final items = disabledOnly || stubOnly
         ? const <GoodsListItem>[]
@@ -347,8 +348,14 @@ class _FakeGoodsRepository implements GoodsRepository {
   }
 
   @override
-  Future<GoodsFacets> facets(String categoryId) async =>
-      const GoodsFacets(fields: {}, nullCounts: {});
+  Future<GoodsFacets> facets(
+    String categoryId, {
+    String? keyword,
+    bool includeRelated = false,
+    Map<String, String?> filters = const {},
+    bool excludeDisabled = false,
+    bool excludeStub = false,
+  }) async => const GoodsFacets(fields: {}, nullCounts: {});
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

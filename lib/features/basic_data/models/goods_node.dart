@@ -47,6 +47,7 @@ class GoodsListItem {
     this.sourceType,
     this.categoryId,
     this.searchRank,
+    this.searchMatchKind,
     this.autoCreated = false,
     this.stockQty,
     this.stockPlace,
@@ -101,6 +102,11 @@ class GoodsListItem {
 
   /// Server relevance tier, retained when authorized category roots require multiple requests.
   final int? searchRank;
+
+  /// Server-owned search partition; null outside a keyword search.
+  final String? searchMatchKind;
+
+  bool get isRelatedSearchMatch => searchMatchKind == 'RELATED';
 
   final bool autoCreated; // 迁移兜底占位货品标记（auto_created 列）
 
@@ -164,6 +170,7 @@ class GoodsListItem {
     sourceType: json['sourceType'] as String?,
     categoryId: json['categoryId'] as String?,
     searchRank: (json['searchRank'] as num?)?.toInt(),
+    searchMatchKind: json['searchMatchKind'] as String?,
     autoCreated: json['autoCreated'] as bool? ?? false,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
     stockPlace: json['stockPlace'] as String?,

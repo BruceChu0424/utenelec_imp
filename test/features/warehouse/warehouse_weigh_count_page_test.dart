@@ -117,6 +117,7 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     bool excludeStub = false,
     bool disabledOnly = false,
     bool stubOnly = false,
+    bool includeRelated = false,
   }) async => PagedResult(
     items: const [_washer],
     page: page,

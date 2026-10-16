@@ -69,7 +69,16 @@ void main() {
                             _row('near-a', '共同名称扩展', 'cat-a'),
                           ]
                         : [_row('last-b', '其他共同名称', 'cat-b')])
-                  : [_row('category-a', '分类内资料', 'cat-a')];
+                  : [
+                      _row(
+                        request.queryParameters['categoryId'] == 'cat-b'
+                            ? 'category-b'
+                            : 'category-a',
+                        '分类内资料',
+                        request.queryParameters['categoryId'] as String? ??
+                            'cat-a',
+                      ),
+                    ];
               data = {
                 'items': items,
                 'page': page,
@@ -168,6 +177,27 @@ void main() {
             : query.queryParameters['keyword'],
         '共同名称',
       );
+      await tester.tap(find.text('分类B'));
+      await tester.pumpAndSettle();
+      expect(_rowIds(tester), ['category-b']);
+      final scoped = requests.lastWhere(
+        (r) =>
+            (r.path == '/master/${kind}s' ||
+                r.path == '/master/${kind}s/search') &&
+            r.queryParameters['size'] == 20,
+      );
+      expect(scoped.queryParameters['categoryId'], 'cat-b');
+      expect(scoped.queryParameters['page'], 1);
+      expect(
+        scoped.data is Map
+            ? (scoped.data as Map)['keyword']
+            : scoped.queryParameters['keyword'],
+        '共同名称',
+      );
+      await tester.tap(find.byTooltip('清除分类范围，搜索全部分类'));
+      await tester.pumpAndSettle();
+      expect(_rowIds(tester), ['exact-b', 'near-a']);
+      expect(find.text('搜索范围：全部分类'), findsOneWidget);
       await tester.enterText(search, '');
       await tester.pump(const Duration(milliseconds: 450));
       await tester.pumpAndSettle();

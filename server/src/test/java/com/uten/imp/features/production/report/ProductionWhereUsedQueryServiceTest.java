@@ -46,8 +46,9 @@ class ProductionWhereUsedQueryServiceTest {
     }
 
     @Test
-    void materialSearchMapsAllFifteenColumnsIncludingBomIssue() {
+    void materialSearchMapsCategoryIdentityWithoutLosingHistoricalEvidence() {
         UUID materialId = UUID.randomUUID();
+        UUID categoryId = UUID.randomUUID();
         Query query = chainableQuery();
         when(query.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
                 materialId,
@@ -64,7 +65,8 @@ class ProductionWhereUsedQueryServiceTest {
                 true,
                 true,
                 false,
-                37L
+                37L,
+                categoryId.toString()
         }));
         when(em.createNativeQuery(anyString())).thenReturn(query);
 
@@ -80,6 +82,7 @@ class ProductionWhereUsedQueryServiceTest {
             assertThat(option.status()).isEqualTo("DISABLED");
             assertThat(option.sourceType()).isEqualTo("MIGRATED");
             assertThat(option.categoryName()).isEqualTo("Raw material");
+            assertThat(option.categoryId()).isEqualTo(categoryId.toString());
             assertThat(option.autoCreated()).isTrue();
             assertThat(option.deleted()).isTrue();
             assertThat(option.currentBom()).isFalse();
@@ -223,6 +226,169 @@ class ProductionWhereUsedQueryServiceTest {
                 .contains("SELECT COUNT(*) FROM goods")
                 .contains("LIKE :pattern ESCAPE")
                 .doesNotContain("CROSS JOIN LATERAL");
+    }
+
+    @Test
+    void categoryBrowsingUsesCycleSafeDescendantsAndBoundsEvidenceEnrichment() {
+        UUID categoryId = UUID.randomUUID();
+        Query pageQuery = chainableQuery();
+        when(pageQuery.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
+                UUID.randomUUID(), "OLD-1", "Historical good", null, null, "DISABLED", "MIGRATED",
+                "Child category", true, true, false, false, false, false, 1L, categoryId.toString()
+        }));
+        when(em.createNativeQuery(anyString())).thenReturn(pageQuery);
+
+        var result = service().searchWhereUsedMaterials("  ", categoryId.toString(), -3, 500);
+
+        assertThat(result.getPage()).isEqualTo(1);
+        assertThat(result.getSize()).isEqualTo(50);
+        assertThat(result.getItems()).singleElement().satisfies(item -> {
+            assertThat(item.autoCreated()).isTrue();
+            assertThat(item.deleted()).isTrue();
+            assertThat(item.currentBom()).isFalse();
+            assertThat(item.productionHistory()).isFalse();
+        });
+        verify(pageQuery).setParameter("categoryId", categoryId);
+        verify(pageQuery).setParameter("__limit", 50);
+        verify(pageQuery).setParameter("__offset", 0L);
+        verify(pageQuery, never()).setParameter(org.mockito.ArgumentMatchers.eq("pattern"), any());
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        String query = compact(sql.getValue());
+        assertThat(query)
+                .contains("WITH RECURSIVE selected_categories(id) AS (")
+                .contains("WHERE id = :categoryId AND is_deleted = FALSE UNION SELECT child.id")
+                .contains("JOIN selected_categories parent ON child.parent_id = parent.id")
+                .contains("goods.category_id IN (SELECT id FROM selected_categories)")
+                .doesNotContain("UNION ALL");
+        int enrichment = query.indexOf("CROSS JOIN LATERAL");
+        assertThat(query.indexOf("LIMIT :__limit OFFSET :__offset")).isLessThan(enrichment);
+        assertThat(query.substring(0, enrichment))
+                .doesNotContain("goods.is_deleted = FALSE")
+                .doesNotContain("goods.auto_created = FALSE")
+                .doesNotContain("production_plan_costs");
+    }
+
+    @Test
+    void historicalUncategorizedBrowseIncludesMissingAndDeletedCategoryReferences() {
+        Query pageQuery = chainableQuery();
+        when(pageQuery.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
+                UUID.randomUUID(), "OLD", "Old material", null, null, "DISABLED", null,
+                null, true, true, false, false, false, false, 1L, "history-uncategorized"
+        }));
+        when(em.createNativeQuery(anyString())).thenReturn(pageQuery);
+
+        var result = service().searchWhereUsedMaterials(null, "history-uncategorized", 1, 30);
+
+        assertThat(result.getItems()).singleElement().satisfies(item -> {
+            assertThat(item.categoryId()).isEqualTo("history-uncategorized");
+            assertThat(item.deleted()).isTrue();
+        });
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertThat(compact(sql.getValue()))
+                .contains("LEFT JOIN material_categories category ON category.id = goods.category_id AND category.is_deleted = FALSE")
+                .contains("COALESCE(CAST(category.id AS text), 'history-uncategorized') AS category_id")
+                .contains("WHERE category.id IS NULL ORDER BY match_rank")
+                .doesNotContain("selected_categories");
+        verify(pageQuery, never()).setParameter(org.mockito.ArgumentMatchers.eq("categoryId"), any());
+    }
+
+    @Test
+    void categoryOverflowPageCountsTheSameSubtreeAndLiteralSearchWithoutEvidenceQueries() {
+        UUID categoryId = UUID.randomUUID();
+        Query pageQuery = chainableQuery();
+        when(pageQuery.getResultList()).thenReturn(List.of());
+        Query countQuery = chainableQuery();
+        when(countQuery.getSingleResult()).thenReturn(51L);
+        when(em.createNativeQuery(anyString())).thenReturn(pageQuery, countQuery);
+
+        var result = service().searchWhereUsedMaterials("%_\\", categoryId.toString(), 9, 50);
+
+        assertThat(result.getItems()).isEmpty();
+        assertThat(result.getPage()).isEqualTo(9);
+        assertThat(result.getTotal()).isEqualTo(51);
+        assertThat(result.getTotalPages()).isEqualTo(2);
+        verify(pageQuery).setParameter("categoryId", categoryId);
+        verify(countQuery).setParameter("categoryId", categoryId);
+        verify(pageQuery).setParameter("pattern", "%\\%\\_\\\\%");
+        verify(countQuery).setParameter("pattern", "%\\%\\_\\\\%");
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
+        String count = compact(sql.getAllValues().get(1));
+        assertThat(count).contains("WITH RECURSIVE selected_categories(id)")
+                .contains("goods.category_id IN (SELECT id FROM selected_categories)")
+                .doesNotContain("CROSS JOIN LATERAL");
+        for (String field : List.of("code", "name", "model", "spec", "series", "c_number", "material", "require_remark")) {
+            assertThat(count).contains("COALESCE(goods." + field + ", '')");
+        }
+    }
+
+    @Test
+    void invalidCategoryDoesNotFallBackToAnUnfilteredGlobalSearch() {
+        for (String category : List.of("not-a-uuid", "1-1-1-1-1", "' OR TRUE --")) {
+            ApiException exception = assertThrows(ApiException.class,
+                    () -> service().searchWhereUsedMaterials("steel", category, 1, 30));
+            assertThat(exception.getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+        }
+        verifyNoInteractions(em);
+    }
+
+    @Test
+    void categoryMatchesCoverEveryResultCategoryWithoutCandidatePageOrHistoricalJoins() {
+        String categoryId = UUID.randomUUID().toString();
+        Query query = chainableQuery();
+        when(query.getResultList()).thenReturn(List.of(categoryId, "history-uncategorized"));
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+
+        assertThat(service().whereUsedMaterialCategoryMatches("  %_\\  "))
+                .containsExactly(categoryId, "history-uncategorized");
+
+        verify(query).setParameter("pattern", "%\\%\\_\\\\%");
+        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertThat(compact(sql.getValue()))
+                .contains("SELECT DISTINCT COALESCE(CAST(category.id AS text), 'history-uncategorized')")
+                .contains("category.is_deleted = FALSE")
+                .contains("COALESCE(goods.require_remark, '')")
+                .doesNotContain("LIMIT", "CROSS JOIN LATERAL", "goods.is_deleted = FALSE", "goods.auto_created = FALSE");
+    }
+
+    @Test
+    void blankCategoryMatchSearchDoesNotScanGoods() {
+        assertThat(service().whereUsedMaterialCategoryMatches("  ")).isEmpty();
+        assertThat(service().whereUsedMaterialCategoryMatches(null)).isEmpty();
+        verifyNoInteractions(em);
+    }
+
+    @Test
+    void categoryTreeKeepsNestedOrphanedAndCyclicCategoriesReachableExactlyOnce() {
+        UUID root = UUID.randomUUID(), child = UUID.randomUUID(), orphan = UUID.randomUUID();
+        UUID cycleA = UUID.randomUUID(), cycleB = UUID.randomUUID(), cycleChild = UUID.randomUUID();
+        Query query = org.mockito.Mockito.mock(Query.class);
+        when(query.getResultList()).thenReturn(List.<Object[]>of(
+                new Object[]{root, "ROOT", "Root", null, 0},
+                new Object[]{child, "CHILD", "Child", root, 1},
+                new Object[]{orphan, "ORPHAN", "Orphan", UUID.randomUUID(), 2},
+                new Object[]{cycleA, "A", "Cycle A", cycleB, 3},
+                new Object[]{cycleB, "B", "Cycle B", cycleA, 4},
+                new Object[]{cycleChild, "NESTED", "Cycle child", cycleA, 5}));
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+
+        var tree = service().whereUsedMaterialCategories();
+
+        assertThat(tree).extracting(WhereUsedMaterialCategory::id)
+                .containsExactly(root.toString(), orphan.toString(), cycleA.toString(), cycleB.toString(), "history-uncategorized");
+        assertThat(tree.get(0).children()).singleElement().satisfies(item -> {
+            assertThat(item.id()).isEqualTo(child.toString());
+            assertThat(item.parentId()).isEqualTo(root.toString());
+            assertThat(item.level()).isEqualTo(1);
+        });
+        assertThat(tree.get(1).parentId()).isNull();
+        assertThat(tree.get(2).children()).singleElement()
+                .extracting(WhereUsedMaterialCategory::id).isEqualTo(cycleChild.toString());
+        assertThat(tree.get(3).children()).isEmpty();
+        assertThat(tree.getLast().name()).isEqualTo("历史未分类");
     }
 
     @Test

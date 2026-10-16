@@ -118,9 +118,25 @@ public class ProductionReportController {
     @PreAuthorize("hasAuthority('production_where_used:view')")
     public PageResponse<WhereUsedMaterialOption> whereUsedMaterials(
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String categoryId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "30") int size) {
-        return whereUsedQuery.searchWhereUsedMaterials(keyword, page, size);
+        return whereUsedQuery.searchWhereUsedMaterials(keyword, categoryId, page, size);
+    }
+
+    /** Picker categories share the report's dedicated scope, including historical uncategorized goods. */
+    @GetMapping("/where-used/material-categories")
+    @PreAuthorize("hasAuthority('production_where_used:view')")
+    public Map<String, List<WhereUsedMaterialCategory>> whereUsedMaterialCategories() {
+        return Map.of("items", whereUsedQuery.whereUsedMaterialCategories());
+    }
+
+    /** Full search category matches let the shared picker navigate beyond the first candidate page. */
+    @GetMapping("/where-used/material-category-matches")
+    @PreAuthorize("hasAuthority('production_where_used:view')")
+    public Map<String, List<String>> whereUsedMaterialCategoryMatches(
+            @RequestParam(required = false) String keyword) {
+        return Map.of("items", whereUsedQuery.whereUsedMaterialCategoryMatches(keyword));
     }
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------

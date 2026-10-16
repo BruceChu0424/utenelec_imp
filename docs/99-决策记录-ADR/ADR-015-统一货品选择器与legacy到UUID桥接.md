@@ -100,6 +100,6 @@ fail-closed 防线。
 2. 浏览仍使用单个 `categoryId` 子树；跨分类统一搜索使用当前可见根 `categoryRootIds` 的子树并集。服务端单次上限 32 个根，repository 分批拉完、按货品 ID 去重并重新分页；分类定位 `GET /api/master/goods/search-category-ids` 同样分批取并集。任一批失败则整体失败，无效根零命中，禁止回退全库。
 3. 客户端对返回货品及定位 ID 再做授权树内 fail-closed 校验。分类黑/白名单仍由 scope 可见树定义；服务端 `excludeDisabled/excludeStub` 强制选择器排除禁用品与历史 stub。
 4. 每次输入立即让旧请求失效，300ms 后才启动新搜索；手动点分类取消待执行和在途定位。加载、错误、无结果和 compact 布局均保持可见且语义一致。
-5. 物料反查后来改用专用 `showWhereUsedMaterialPicker`：它必须在 `production_where_used:view` 下保留禁用/stub/软删历史物料，权限和数据口径不同于通用选择器。2026-07-28 背景中的“物料反查接入”仅记录当时状态，不再代表当前调用链。
+5. 物料反查使用专用 `showWhereUsedMaterialPicker`：它必须在 `production_where_used:view` 下保留禁用/stub/软删历史物料，权限和数据口径不同于普通货品数据源。2026-10-16 起，它通过 `UtenGoodsPickerDataSource` 直接复用通用单选选择壳、分类树、分页和确认栏；分类树、分类浏览及全局搜索定位仍走反查专用接口，不调用要求基础资料权限的通用接口。真实分类树及历史未分类入口保持全部历史候选可达；账号、服务器或权限变化立即关闭选择面板并丢弃旧请求。2026-07-28 背景仅记录当时状态。
 
 因此，原“后端不支持排除分类”仍指不接受任意黑名单；它不再意味着统一搜索只能在前端对全库结果事后过滤。现行后端支持的是 fail-closed 的可见根白名单。

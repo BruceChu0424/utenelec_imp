@@ -584,7 +584,16 @@ void registerDailyReportPrecisionTests() {
       } else {
         expect(previewed, isNull);
         expect(sent, isEmpty);
-        expect(find.textContaining('转送数量对不上原来的分配'), findsOneWidget);
+        // Precision errors remain actionable in the product's details even
+        // when no allocation rows could be built; saving also explains them.
+        expect(
+          find.descendant(
+            of: find.byType(ProductionDailyProductDetailsCard),
+            matching: find.textContaining('转送数量对不上原来的分配'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('以下 1 项转送需要先改正'), findsOneWidget);
       }
       expect(row.qty.text, quantity);
       expect(tester.takeException(), isNull);

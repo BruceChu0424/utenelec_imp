@@ -136,6 +136,7 @@ class _PendingAttachmentSectionState
                         : _countBadge(theme, items.length),
                   );
                   final actions = Wrap(
+                    alignment: WrapAlignment.end,
                     spacing: UtenSpacing.s8,
                     runSpacing: UtenSpacing.s8,
                     children: [
@@ -164,7 +165,12 @@ class _PendingAttachmentSectionState
                     children: [
                       Expanded(child: heading),
                       const SizedBox(width: UtenSpacing.s8),
-                      Flexible(child: actions),
+                      Flexible(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: actions,
+                        ),
+                      ),
                     ],
                   );
                 },

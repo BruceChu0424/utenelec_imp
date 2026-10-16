@@ -753,6 +753,7 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
     this.showColumnSettings = true,
     this.toolbarActions = const <Widget>[],
     this.initialColumnOrder,
+    this.defaultColumnOrderAnchors = const {},
     this.initialHiddenColumnKeys,
     this.initialPinnedColumnKeys,
     this.onColumnSettingsChanged,
@@ -780,6 +781,11 @@ class UtenEditableGrid<T extends EditableGridRow> extends StatefulWidget {
   final bool columnEditingEnabled;
   final UtenEditableGridController<T> controller;
   final List<EditableGridColumn<T>> columns;
+
+  /// Default predecessor for a newly introduced column (column key → anchor
+  /// key). Applies only while that column has no saved position; an explicit
+  /// user order always wins. Missing anchors keep the usual append behavior.
+  final Map<String, String> defaultColumnOrderAnchors;
 
   /// Optional independent content immediately below its owning data row.
   ///
@@ -1091,10 +1097,20 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (_platform.layout.order.isNotEmpty ||
         _platform.binding?.defaultColumnOrder != null ||
         _platform.binding?.defaultVisibleColumnKeys != null) {
-      _columnOrder = [
-        ...saved.order.where(keys.contains),
-        ...columns.map((c) => c.key).where((key) => !saved.order.contains(key)),
-      ];
+      // localLayout has already appended unknown columns. Compare against the
+      // original saved keys so those defaults can still use their predecessor.
+      final savedKeys = _platform.layout.order
+          .map(_platform.canonicalKey)
+          .toSet();
+      _columnOrder = _mergeDefaultColumnOrder(
+        saved.order.where(
+          (key) =>
+              keys.contains(key) &&
+              (!widget.defaultColumnOrderAnchors.containsKey(key) ||
+                  savedKeys.contains(_platform.canonicalKey(key))),
+        ),
+        columns.map((c) => c.key),
+      );
       _hiddenColumnKeys
         ..clear()
         ..addAll(saved.hidden.where(keys.contains))
@@ -1111,12 +1127,10 @@ class _UtenEditableGridState<T extends EditableGridRow>
           ),
         );
     } else {
-      _columnOrder = [
-        ..._columnOrder.where(keys.contains),
-        ...columns
-            .map((c) => c.key)
-            .where((key) => !_columnOrder.contains(key)),
-      ];
+      _columnOrder = _mergeDefaultColumnOrder(
+        _columnOrder,
+        columns.map((c) => c.key),
+      );
     }
     for (final column in columns) {
       if (_platform.binding?.revealPopulatedColumnKeys.contains(
@@ -1590,7 +1604,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _sticky.pinnedSink = widget.stickyHeaderPinned;
     }
     // 新增业务列保留既有列宽、顺序与筛选，添加费用不会抹掉用户刚调好的表格。
-    // 删除/替换列集合仍重新应用该业务模式的持久化设置。
+    // 宿主声明的条件列显隐也只改布局差集，其余删除/替换仍重放业务模式设置。
     if (!_sameColumnKeys(oldWidget.columns, widget.columns)) {
       final oldKeys = previousColumns.map((c) => c.key).toSet();
       final newKeys = _columns.map((c) => c.key).toSet();
@@ -1598,29 +1612,61 @@ class _UtenEditableGridState<T extends EditableGridRow>
           newKeys.length > oldKeys.length &&
           oldKeys.every(newKeys.contains) &&
           identical(oldWidget.controller, widget.controller);
+      final changedKeys = {
+        ...oldKeys.difference(newKeys),
+        ...newKeys.difference(oldKeys),
+      };
+      final conditionalOnly =
+          identical(oldWidget.controller, widget.controller) &&
+          changedKeys.isNotEmpty &&
+          changedKeys.every(
+            (key) =>
+                widget.defaultColumnOrderAnchors.containsKey(key) ||
+                oldWidget.defaultColumnOrderAnchors.containsKey(key),
+          );
+      final preserveLayout = addedOnly || conditionalOnly;
       final oldWidths = <String, double>{
         for (var i = 0; i < previousColumns.length; i++)
           previousColumns[i].key: _widths[i],
       };
       _widths = _columns
           .map(
-            (c) => addedOnly
+            (c) => preserveLayout
                 ? oldWidths[c.key] ??
                       c.width.clamp(_minColWidth, double.infinity)
                 : c.width.clamp(_minColWidth, double.infinity),
           )
           .toList();
-      if (addedOnly) {
-        _columnOrder = [
-          ..._columnOrder,
-          for (final column in _columns)
-            if (!oldKeys.contains(column.key)) column.key,
-        ];
+      if (preserveLayout) {
+        final initialOrder = widget.initialColumnOrder;
+        final restoreSavedPositions =
+            !_userTouchedColumns &&
+            initialOrder != null &&
+            widget.defaultColumnOrderAnchors.keys.any(
+              (key) =>
+                  !oldKeys.contains(key) &&
+                  newKeys.contains(key) &&
+                  initialOrder.contains(key),
+            );
+        _columnOrder = _mergeDefaultColumnOrder(
+          restoreSavedPositions
+              ? [
+                  ...initialOrder,
+                  ..._columnOrder.where((key) => !initialOrder.contains(key)),
+                ]
+              : _columnOrder,
+          _columns.map((column) => column.key),
+        );
         _hiddenColumnKeys.addAll(
           _columns
               .where((c) => !oldKeys.contains(c.key) && !c.defaultVisible)
               .map((c) => c.key),
         );
+        _hiddenColumnKeys.retainAll(newKeys);
+        _pinnedColumnKeys.retainAll(newKeys);
+        _pinOriginIndex.removeWhere((key, _) => !newKeys.contains(key));
+        _manualResized.retainAll(newKeys);
+        _columnFilters.removeWhere((key, _) => !newKeys.contains(key));
       } else {
         _manualResized.clear();
         _columnOrder = _columns.map((column) => column.key).toList();
@@ -1720,7 +1766,47 @@ class _UtenEditableGridState<T extends EditableGridRow>
     );
   }
 
-  /// 应用宿主注入的持久化列设置：未知 key 忽略、缺失列按默认序追加；若持久化
+  /// Merge missing columns without moving any existing user-ordered columns.
+  /// Children are emitted with their anchor so multiple/chained defaults keep
+  /// declaration order. Unknown anchors and cycles safely fall back to append.
+  List<String> _mergeDefaultColumnOrder(
+    Iterable<String> order,
+    Iterable<String> knownKeys,
+  ) {
+    final known = knownKeys.toList();
+    final knownSet = known.toSet();
+    final retained = <String>{
+      for (final key in order)
+        if (knownSet.contains(key)) key,
+    };
+    final missing = known.where((key) => !retained.contains(key)).toList();
+    final children = <String, List<String>>{};
+    final unanchored = <String>[];
+    for (final key in missing) {
+      final anchor = widget.defaultColumnOrderAnchors[key];
+      if (anchor != null && anchor != key && knownSet.contains(anchor)) {
+        (children[anchor] ??= []).add(key);
+      } else {
+        unanchored.add(key);
+      }
+    }
+    final merged = <String>[];
+    final emitted = <String>{};
+    void emit(String key) {
+      if (!emitted.add(key)) return;
+      merged.add(key);
+      for (final child in children[key] ?? const <String>[]) {
+        emit(child);
+      }
+    }
+
+    retained.forEach(emit);
+    unanchored.forEach(emit);
+    missing.forEach(emit);
+    return merged;
+  }
+
+  /// 应用宿主注入的持久化列设置：未知 key 忽略、缺失列按默认锚点或默认序追加；若持久化
   /// 状态把所有列都隐藏了则回落为全显示（与「至少保留一列」兜底同口径）。
   /// 只重放不回写——宿主回调更新 prefs 后传回的新 initial 值走到这里时，
   /// 值与当前一致，不会形成通知回环。固定列在隐藏列上的条目自动解除。
@@ -1730,13 +1816,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final pinned = widget.initialPinnedColumnKeys;
     final known = _columns.map((column) => column.key).toList();
     final knownSet = known.toSet();
-    final seen = <String>{};
-    final merged = <String>[
-      for (final key in order ?? const <String>[])
-        if (knownSet.contains(key) && seen.add(key)) key,
-      for (final key in known)
-        if (!seen.contains(key)) key,
-    ];
+    final merged = _mergeDefaultColumnOrder(order ?? known, known);
     final hiddenKeys = <String>{
       for (final key
           in hidden ??

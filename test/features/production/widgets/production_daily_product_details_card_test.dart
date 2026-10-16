@@ -1535,7 +1535,7 @@ void main() {
   );
 
   testWidgets(
-    'warehouse-only and failed empty candidate states remain visible',
+    'confirmed warehouse hides only its allocation card while failed candidates remain visible',
     (tester) async {
       final data = _DetailsData();
       data.allocations.removeRange(0, 2);
@@ -1543,8 +1543,11 @@ void main() {
       data.product.directTransferBlockedText = '本产品不能车间内流转，做好后交仓库送检';
       data.product.qty.text = '1000';
       await _pump(tester, data, materialsOpen: false);
-      expect(find.text('已分配 1,000 / 1,000 个'), findsOneWidget);
-      expect(find.text('送入仓库'), findsOneWidget);
+      expect(find.text('产出去向'), findsNothing);
+      expect(find.text('送入仓库'), findsNothing);
+      expect(find.text('子件用料'), findsOneWidget);
+      expect(data.allocations.single.allocationQty.text, '1000');
+      expect(data.product.qty.text, '1000');
       expect(find.byType(UtenDropdownField), findsNothing);
       data.product.directTransferBlockedText = null;
       data.product.directTransferLoadFailed = true;

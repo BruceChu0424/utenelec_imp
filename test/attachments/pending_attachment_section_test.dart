@@ -79,6 +79,7 @@ Future<void> _pump(
   PendingAttachmentController controller, {
   required Set<String> permissions,
   bool canManage = true,
+  Widget? headerExtra,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -110,6 +111,7 @@ Future<void> _pump(
               canManage: canManage,
               title: '附件（合同/客户确认/图片）',
               categories: const ['合同', '客户确认', '图片', '其他'],
+              draftHeaderExtra: headerExtra,
             ),
           ),
         ),
@@ -121,6 +123,85 @@ Future<void> _pump(
 
 void main() {
   tearDown(() => FilePicker.platform = _Picker(const []));
+
+  testWidgets('wide draft attachment add stays at the section right edge', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller = PendingAttachmentController();
+    for (final width in [1440.0, 800.0]) {
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      await _pump(tester, controller, permissions: {Perm.attachmentUpload});
+
+      final section = tester.getRect(find.byType(PendingAttachmentSection));
+      final add = tester.getRect(
+        find.byKey(const ValueKey('pending-attachment-add')),
+      );
+      final heading = tester.getRect(find.text('附件（合同/客户确认/图片）'));
+      expect(add.right, closeTo(section.right, 0.1));
+      expect(add.top, lessThan(heading.bottom));
+      expect(add.bottom, greaterThan(heading.top));
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('narrow draft attachment add wraps below the heading on the right', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    final controller = PendingAttachmentController();
+    await _pump(tester, controller, permissions: {Perm.attachmentUpload});
+
+    final section = tester.getRect(find.byType(PendingAttachmentSection));
+    final add = tester.getRect(
+      find.byKey(const ValueKey('pending-attachment-add')),
+    );
+    final heading = tester.getRect(find.text('附件（合同/客户确认/图片）'));
+    expect(add.right, closeTo(section.right, 0.1));
+    expect(add.top, greaterThanOrEqualTo(heading.bottom));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('extra draft attachment actions remain right aligned when wrapping', (
+    tester,
+  ) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final controller = PendingAttachmentController();
+    for (final width in [1440.0, 800.0, 390.0]) {
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      await _pump(
+        tester,
+        controller,
+        permissions: {Perm.attachmentUpload},
+        headerExtra: SizedBox(
+          width: 300,
+          child: FilledButton.tonal(
+            key: const ValueKey('attachment-batch-action'),
+            onPressed: () {},
+            child: const Text('确认识别（3）'),
+          ),
+        ),
+      );
+
+      final section = tester.getRect(find.byType(PendingAttachmentSection));
+      final add = tester.getRect(
+        find.byKey(const ValueKey('pending-attachment-add')),
+      );
+      final extra = tester.getRect(
+        find.byKey(const ValueKey('attachment-batch-action')),
+      );
+      expect(add.right, closeTo(section.right, 0.1));
+      if (width == 1440) {
+        expect(extra.right, lessThan(add.left));
+        expect(extra.top, closeTo(add.top, 0.1));
+      } else {
+        expect(extra.right, closeTo(section.right, 0.1));
+        expect(add.top, greaterThanOrEqualTo(extra.bottom));
+      }
+      expect(tester.takeException(), isNull);
+    }
+  });
 
   testWidgets('draft area is hidden without upload permission or page write', (
     tester,

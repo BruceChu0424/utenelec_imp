@@ -97,11 +97,13 @@ class _ProductionDailyProductDetailsCardState
 
   Widget _buildCard(BuildContext context) {
     final showAllocations =
-        allocationRows.isNotEmpty ||
-        product.directTransferCandidates.isNotEmpty ||
-        product.directTransferLoadFailed ||
-        (enabled && onAddAllocation != null) ||
-        product.directTransferBlockedText != null;
+        !showsWarehouseOnlyDestination(product) &&
+        (allocationRows.isNotEmpty ||
+            product.directTransferCandidates.isNotEmpty ||
+            product.directTransferLoadFailed ||
+            product.directTransferPrecisionIssue != null ||
+            (enabled && onAddAllocation != null) ||
+            product.directTransferBlockedText != null);
     if (!showAllocations && materialRows.isEmpty) {
       return const SizedBox.shrink();
     }

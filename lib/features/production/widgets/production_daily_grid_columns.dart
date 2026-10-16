@@ -543,6 +543,21 @@ bool showsOutputAllocations(DailyGridRow product) {
       visible.any((row) => row.allocationDemandId != null);
 }
 
+/// Only a successful candidate read can establish the inline warehouse view.
+/// Keep every saved receiver (including temporarily hidden fixed quantities)
+/// and actionable allocation error in the details so the user can resolve it.
+/// This changes presentation only; allocation rows remain owned by the page.
+bool showsWarehouseOnlyDestination(DailyGridRow product) =>
+    product.directTransferUnavailable &&
+    product.directTransferCandidates.isEmpty &&
+    !showsOutputAllocations(product) &&
+    product.directTransferPrecisionIssue == null &&
+    !product.allocationRows.any(
+      (row) =>
+          row.allocationDemandId != null ||
+          (outputAllocationVisible(row) && row.allocationIssue.value != null),
+    );
+
 /// 这条去向要不要显示：工人定过、但被变小的完工申报量压到 0 的条目先藏起来(不提交、不报问题)，
 /// 产量回升时按工人原来要的数回来；正在输入的那条即使是 0 也照常显示。
 bool outputAllocationVisible(DailyGridRow allocation) =>
@@ -1236,7 +1251,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
     EditableGridColumn<DailyGridRow>(
       key: 'destination',
       label: '产出去向',
-      width: 300,
+      width: standaloneDetails ? 140 : 300,
       headerInfo:
           '实际产量分到哪里：「转下一道工序」= 班组自检合格后不入库，直接交给本车间的上层工单'
           '(父件)，审核时自动放行、入本车间内料仓并投入，不用再走领料。\n'
@@ -1254,6 +1269,8 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               ? _allocationOptionText(r)
               : r.isMaterialRow
               ? ''
+              : standaloneDetails
+              ? _inlineProductDestinationText(r)
               : _productDestinationText(r)),
       listenableOf: (r) =>
           r.isAllocationRow ? r.allocationDemandNotifier : r.allocationRevision,
@@ -1279,7 +1296,9 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
               if (row.directTransferLoadFailed && blocked != null) {
                 text = DirectTransferBlockedText(blocked);
               } else {
-                final summary = _productDestinationText(row);
+                final summary = standaloneDetails
+                    ? _inlineProductDestinationText(row)
+                    : _productDestinationText(row);
                 // Tooltip 恒定包裹 + 兜底文案：按内容条件切换包裹会拆掉子树重建，
                 // 悬停/焦点态丢失（docs/02-组件库/WeightGridColumn.md 同口径）。
                 // 收起态的去向子行不在表格里：悬停给逐条「去向全名：数量」全文，
@@ -1291,7 +1310,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
                 text = Tooltip(
                   message: blocked != null && blocked.isNotEmpty
                       ? blocked
-                      : expanded
+                      : expanded && !standaloneDetails
                       ? fallback
                       : _collapsedDestinationDetail(row, fallback),
                   child: Align(
@@ -1536,6 +1555,19 @@ String? _unitSuffixText(String? unitId, Map<String, String> unitEntries) {
 
 /// 去向下拉里「送入仓库」那一项的值(下拉值不能为空，用它代表「不转给任何上层工单」)。
 const outputAllocationWarehouseValue = '__WAREHOUSE__';
+
+/// In a mixed table, receivers are edited in the product's details. The inline
+/// column names the sole warehouse choice without repeating its quantity.
+String _inlineProductDestinationText(DailyGridRow product) {
+  if (showsWarehouseOnlyDestination(product)) return '送入仓库';
+  if (showsOutputAllocations(product) ||
+      product.directTransferLoadFailed ||
+      product.directTransferPrecisionIssue != null ||
+      product.allocationRows.any((row) => row.allocationDemandId != null)) {
+    return '下方分配';
+  }
+  return '—';
+}
 
 /// 成品行正文与列宽测量共用实际去向；不可转原因只放悬停提示，读取失败仍直接报错。
 String _productDestinationText(DailyGridRow product) {

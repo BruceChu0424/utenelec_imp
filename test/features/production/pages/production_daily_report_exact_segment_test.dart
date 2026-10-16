@@ -47,6 +47,7 @@ import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
+import 'package:uten_imp/shared/attachments/pending_attachment_section.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
@@ -69,6 +70,7 @@ part 'production_daily_report_session_boundary_cases.dart';
 part 'production_daily_report_product_card_cases.dart';
 part 'production_daily_report_manual_destination_cases.dart';
 part 'production_daily_report_partial_quantity_cases.dart';
+part 'production_daily_report_destination_layout_cases.dart';
 
 class _ExactSegmentSession extends SessionNotifier {
   int intentEpoch = 0;
@@ -97,6 +99,7 @@ class _ExactSegmentSnapshot extends SessionSnapshotNotifier {
 }
 
 void main() {
+  registerDailyReportDestinationLayoutTests();
   registerDailyReportPartialQuantityTests();
   registerDailyReportProductCardTests();
   registerDailyReportManualDestinationTests();
@@ -289,12 +292,13 @@ void main() {
             'goodsCode',
             'color',
             'qty',
+            'destination',
             'overLimitReason',
             'defectQty',
             'planNo',
             'remark',
           ],
-          reason: '移到卡片的四列从主表移除，剩余表头顺序保持原样',
+          reason: '只有送仓去向时紧跟完工量显示，其余用料字段由卡片承载',
         );
         final material = _materialRows(
           tester,
@@ -2831,6 +2835,8 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
   WidgetTester tester, {
   void Function(Map<String, dynamic>)? onCreate,
   ProductionMaterialRepository Function(ApiClient api)? materialRepository,
+  Map<String, dynamic>? candidatesOverride,
+  bool attachmentUpload = false,
   GlobalKey? captureKey,
   ThemeData? theme,
 }) async {
@@ -2846,36 +2852,37 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
             {'id': 'unit-1', 'name': '个'},
           ]
         : request.path.endsWith('/direct-transfers/candidates')
-        ? const {
-            'candidates': [
-              {
-                'demandId': 'A',
-                'executionSegmentId': 'segment-a',
-                'executionSegmentCode': 'ZX-A',
-                'receivingGoodsName': '成品甲',
-                'remainingQty': 6,
-              },
-              {
-                'demandId': 'B',
-                'executionSegmentId': 'segment-b',
-                'executionSegmentCode': 'ZX-B',
-                'receivingGoodsName': '成品乙',
-                'remainingQty': 3,
-              },
-            ],
-            'blockedTargets': [
-              {
-                'demandId': 'C',
-                'executionSegmentCode': 'ZX-C',
-                'receivingGoodsName': '跨车间接收产品',
-                'receivingGoodsCode': 'REC-C',
-                'receivingColorName': '接收蓝色',
-                'reasonCode': 'DIFFERENT_WORKSHOP',
-                'reason': '上层工单 ZX-C 在二车间，跨车间必须送入仓库',
-              },
-            ],
-            'receiverLimit': 30,
-          }
+        ? (candidatesOverride ??
+              const {
+                'candidates': [
+                  {
+                    'demandId': 'A',
+                    'executionSegmentId': 'segment-a',
+                    'executionSegmentCode': 'ZX-A',
+                    'receivingGoodsName': '成品甲',
+                    'remainingQty': 6,
+                  },
+                  {
+                    'demandId': 'B',
+                    'executionSegmentId': 'segment-b',
+                    'executionSegmentCode': 'ZX-B',
+                    'receivingGoodsName': '成品乙',
+                    'remainingQty': 3,
+                  },
+                ],
+                'blockedTargets': [
+                  {
+                    'demandId': 'C',
+                    'executionSegmentCode': 'ZX-C',
+                    'receivingGoodsName': '跨车间接收产品',
+                    'receivingGoodsCode': 'REC-C',
+                    'receivingColorName': '接收蓝色',
+                    'reasonCode': 'DIFFERENT_WORKSHOP',
+                    'reason': '上层工单 ZX-C 在二车间，跨车间必须送入仓库',
+                  },
+                ],
+                'receiverLimit': 30,
+              })
         : null,
   );
   await tester.pumpWidget(
@@ -2898,6 +2905,7 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
         currentPermissionsProvider.overrideWithValue({
           Perm.productionDailyReportCreate,
           Perm.productionDailyReportView,
+          if (attachmentUpload) Perm.attachmentUpload,
         }),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_ExactSegmentSession.new),
@@ -2909,6 +2917,9 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
       ],
       child: MaterialApp(
         theme: theme,
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: RepaintBoundary(
           key: captureKey,
           child: const Column(
@@ -2945,6 +2956,8 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpEditDraftPage(
   Map<String, dynamic>? candidatesOverride,
   Map<String, List<Map<String, dynamic>>>? materialsBySegment,
   Map<String, Map<String, dynamic>>? candidatesBySegment,
+  Object? Function(RequestOptions request)? candidatesResponseOverride,
+  bool attachmentUpload = false,
   Size surfaceSize = const Size(1800, 1000),
   GlobalKey? captureKey,
   ThemeData? theme,
@@ -3001,6 +3014,10 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpEditDraftPage(
   };
   final api = _api(
     responseOverride: (request) {
+      if (request.path.endsWith('/direct-transfers/candidates') &&
+          candidatesResponseOverride != null) {
+        return candidatesResponseOverride(request);
+      }
       if (itemsOverride != null && request.path.endsWith('/units/dict')) {
         return [
           {'id': 'unit-1', 'name': '个'},
@@ -3121,6 +3138,7 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpEditDraftPage(
           Perm.productionDailyReportCreate,
           Perm.productionDailyReportView,
           Perm.productionDailyReportEdit,
+          if (attachmentUpload) Perm.attachmentUpload,
         }),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         sessionProvider.overrideWith(_ExactSegmentSession.new),
@@ -3141,6 +3159,9 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpEditDraftPage(
       ],
       child: MaterialApp(
         theme: theme,
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: RepaintBoundary(
           key: captureKey,
           child: const Column(

@@ -3828,6 +3828,7 @@ class _ProductionDailyReportEditPageState
       colorEntries: colorEntries,
       unitEntries: unitEntries,
       standaloneDetails: true,
+      isGroupExpanded: _isGroupExpanded,
       onMaterialChanged: () => setState(() {}),
       onAllocationDestinationChanged: _onAllocationDestinationChanged,
       onAllocationQtyChanged: _onAllocationQtyChanged,
@@ -3847,14 +3848,24 @@ class _ProductionDailyReportEditPageState
         .cellBuilder;
     final editable =
         !_loading && !_saving && !_resumeBlocked && _createdReportId == null;
+    final showDestinationColumn = _productRows.any(
+      showsWarehouseOnlyDestination,
+    );
+    final destinationColumn = pool.firstWhere(
+      (column) => column.key == 'destination',
+    );
     return UtenEditableGrid<DailyGridRow>(
       columnEditingEnabled: editable && (_isCreate || _detailLoaded),
       tableKey: 'production.daily.items',
       controller: _grid,
       stickyHeaderPinned: _gridPinned,
+      defaultColumnOrderAnchors: const {'destination': 'qty'},
+      forceVisibleColumnKeys: {if (showDestinationColumn) 'destination'},
       columns: [
-        for (final column in pool)
+        for (final column in pool) ...[
           if (!detailOnlyKeys.contains(column.key)) column,
+          if (column.key == 'qty' && showDestinationColumn) destinationColumn,
+        ],
       ],
       rowDetailsBuilder: (context, product) {
         final detailEditable =
@@ -3865,8 +3876,12 @@ class _ProductionDailyReportEditPageState
             .where(outputAllocationVisible)
             .toList();
         if (materials.isEmpty &&
-            allocations.isEmpty &&
-            !product.directTransferLoadFailed) {
+            (showsWarehouseOnlyDestination(product) ||
+                (allocations.isEmpty &&
+                    product.directTransferCandidates.isEmpty &&
+                    !product.directTransferLoadFailed &&
+                    product.directTransferPrecisionIssue == null &&
+                    product.directTransferBlockedText == null))) {
           return null;
         }
         return ProductionDailyProductDetailsCard(

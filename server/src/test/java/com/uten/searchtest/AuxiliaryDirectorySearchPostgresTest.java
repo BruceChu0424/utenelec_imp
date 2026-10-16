@@ -3,6 +3,7 @@ package com.uten.searchtest;
 import com.uten.imp.features.notice.NoticeAudienceService;
 import com.uten.imp.features.webinquiry.WebsiteInquiry;
 import com.uten.imp.features.webinquiry.WebsiteInquiryRepository;
+import com.uten.imp.support.MigratedProjectionSchema;
 import jakarta.persistence.EntityManager;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
@@ -40,10 +41,10 @@ class AuxiliaryDirectorySearchPostgresTest {
                 .setProperty("hibernate.connection.username", PG.getUsername())
                 .setProperty("hibernate.connection.password", PG.getPassword())
                 .setProperty("hibernate.hbm2ddl.auto", "create-drop").buildSessionFactory();
-        // Only columns consumed by the unchanged, read-only candidate query are needed here.
-        db.getJdbcTemplate().execute("CREATE TABLE departments(id uuid PRIMARY KEY,name text)");
-        db.getJdbcTemplate().execute("CREATE TABLE employees(id uuid PRIMARY KEY,full_name text,code text,department_id uuid,status text,is_deleted boolean)");
-        db.getJdbcTemplate().execute("CREATE TABLE users(id uuid PRIMARY KEY,employee_id uuid,status text,is_deleted boolean)");
+        // Query-only fixtures retain the complete current migration column shapes;
+        // the projection intentionally omits unrelated business CHECK/FK/triggers.
+        MigratedProjectionSchema.createCurrentTables(db.getJdbcTemplate(),
+                "departments", "employees", "users");
         audience = new NoticeAudienceService(JdbcClient.create(source));
     }
     @AfterAll static void stop() { if(factory!=null)factory.close(); PG.stop(); }

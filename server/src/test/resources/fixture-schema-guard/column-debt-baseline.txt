@@ -4411,7 +4411,6 @@ com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.client_legacy_id
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.code_managed
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.code_prefix_category_id
-com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.code_sequence
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.color_legacy_id
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.created_at
 com/uten/imp/features/stock/count/StockCountCandidateCategoriesPostgresTest.java#goods.created_by

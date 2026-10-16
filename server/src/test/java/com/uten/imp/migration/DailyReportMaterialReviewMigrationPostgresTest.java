@@ -13,7 +13,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** V840 preserves legacy commands; later V852 and V867 schema deltas are explicit and bounded. */
+/** V840 preserves legacy commands; later table/index/reset-policy deltas are explicit and bounded. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 class DailyReportMaterialReviewMigrationPostgresTest {
     private static final PostgreSQLContainer<?> pg=new PostgreSQLContainer<>("postgres:16-alpine").withDatabaseName("material_review_upgrade");
@@ -68,7 +68,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertNull(db.queryForObject("SELECT material_review_snapshot FROM production_daily_report_commands WHERE actor_user_id=?",Object.class,actor));
         assertEquals(tables,tablesAfterV840);assertEquals(indexes,indexesAfterV840);assertEquals(resetPolicy,resetPolicyAfterV840);
     }
-    @Test void laterForwardMigrationsHaveOnlyTheExactDeclaredV852AndV867SchemaDelta() {
+    @Test void laterForwardMigrationsHaveOnlyTheExactDeclaredTableIndexAndResetPolicyDelta() {
         TreeSet<String> expectedTables=new TreeSet<>(tablesAfterV840);
         assertTrue(expectedTables.add("document_unapprovals"));
         assertTrue(expectedTables.add("purchase_request_qty_revisions"));
@@ -81,6 +81,10 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "A declared new index must not replace an existing index: "+name));
         assertNull(expectedIndexes.put("sms_gateway_settings_pkey",
                 "CREATE UNIQUE INDEX sms_gateway_settings_pkey ON public.sms_gateway_settings USING btree (id)"));
+        // V870 adds a nullable correction-source relationship to append-only
+        // employment events; its one new partial index is an explicit delta.
+        assertNull(expectedIndexes.put("idx_employment_history_correction_source",
+                "CREATE INDEX idx_employment_history_correction_source ON public.employment_history USING btree (corrects_history_id) WHERE (corrects_history_id IS NOT NULL)"));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
         assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));

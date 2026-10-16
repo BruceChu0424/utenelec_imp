@@ -159,6 +159,17 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.goodsPriceAnalysisView': 1, 'Perm.goodsView': 1},
   ),
+  // The data-scope entry and its asynchronous boundary both require superAdmin
+  // AND authorizationManage. clientViewAll identifies the permission row rather
+  // than granting access. Backend admin guards/CAS and credit scope remain final.
+  'lib/features/admin/widgets/page_permission_drawer.dart': (
+    legacyCount: 2,
+    tokens: {
+      'Perm.accountSupport': 2,
+      'Perm.authorizationManage': 2,
+      'Perm.clientViewAll': 1,
+    },
+  ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -257,7 +268,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      35, // Original 33 plus the two precisely registered history read guards.
+      38, // Original 33 + two history read guards + three data-scope references.
     );
   });
 }

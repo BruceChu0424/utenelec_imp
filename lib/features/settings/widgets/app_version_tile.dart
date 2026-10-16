@@ -157,6 +157,15 @@ class _ReleaseNotesDialog extends StatelessWidget {
                 '동일하게 표시되며 좁은 화면과 큰 글꼴에도 대응합니다.',
           _ => '统一表单输入与表格编辑样式，成本预算层级对齐组装组件，适配窄屏和大字体。',
         },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Category code prefixes are checked as you type across the shared '
+                'numbering namespace, then checked again when saving.',
+          'ko' =>
+            '분류 코드 접두어를 입력할 때 공통 번호 공간의 중복을 확인하고, '
+                '저장 시 다시 검증합니다.',
+          _ => '分类编号前缀输入时自动检查全系统占用，保存时再次校验，避免重复编号。',
+        },
         l10n.release2518ServerUpdates,
         l10n.release2518Storage,
         l10n.release2518CompanyConnections,

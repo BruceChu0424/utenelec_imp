@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/ui/capsule_nav_metrics.dart';
@@ -66,6 +67,329 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets('picker list retains bounded batch actions and clear selection', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(375, 480);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await loadAuditScreenshotFonts(tester);
+    var selected = <String>{'b'};
+    final calls = <Set<String>>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: auditScreenshotTheme(
+          buildLightTheme().copyWith(platform: TargetPlatform.android),
+        ),
+        home: Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 178, 28, 12),
+            child: ClipRect(
+              key: const Key('picker-batch-stage'),
+              child: StatefulBuilder(
+                builder: (context, update) => MasterDataTableView<String>(
+                  columns: const [],
+                  items: const ['a', 'b'],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  listItemBuilder: (_, id) => SizedBox(
+                    key: ValueKey('picker-row-$id'),
+                    height: 64,
+                    child: Center(child: Text('记录 $id')),
+                  ),
+                  selectable: true,
+                  idOf: (id) => id,
+                  selectedIds: selected,
+                  onSelectedIdsChanged: (next) => update(() => selected = next),
+                  batchActionsBuilder: (_, ids) => [
+                    UtenButton(
+                      key: const Key('picker-batch-action'),
+                      size: UtenButtonSize.large,
+                      onPressed: () => calls.add(Set.of(ids)),
+                      child: Text('办理 ${ids.length} 项'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final group = find.byType(UtenFloatingActionGroup);
+    expect(group, findsOneWidget);
+    final row = find.byKey(const ValueKey('picker-row-b'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final stage = tester.getRect(find.byKey(const Key('picker-batch-stage')));
+    expect(
+      tester.getRect(row).bottom,
+      lessThanOrEqualTo(tester.getRect(group).top),
+    );
+    for (final control in [
+      find.byKey(const Key('picker-batch-action')),
+      find.byKey(const Key('master-table-clear-selection')),
+    ]) {
+      await tester.ensureVisible(control);
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(control);
+      expect(rect.left, greaterThanOrEqualTo(stage.left));
+      expect(rect.right, lessThanOrEqualTo(stage.right));
+      expect(rect.top, greaterThanOrEqualTo(stage.top));
+      expect(rect.bottom, lessThanOrEqualTo(stage.bottom));
+      expect(control.hitTestable(), findsOneWidget);
+      await tester.tap(control);
+      await tester.pumpAndSettle();
+    }
+    expect(calls, [
+      {'b'},
+    ]);
+    expect(selected, isEmpty);
+    expect(find.text('已选 0 项'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('local filter releases the previous tall-row action budget', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 600,
+            height: 420,
+            child: MasterDataTableView<String>(
+              columns: [
+                MasterColumnDef<String>(
+                  key: 'kind',
+                  label: '分类',
+                  width: 260,
+                  filterFromRows: true,
+                  value: (id) => id,
+                  cellBuilder: (_, id) =>
+                      SizedBox(height: id == '高行' ? 180 : 32, child: Text(id)),
+                ),
+              ],
+              items: const ['短行', '高行'],
+              facets: const {},
+              nullCounts: const {},
+              filters: const {},
+              onFilterChanged: (_, _) {},
+              selectable: true,
+              idOf: (id) => id,
+              batchActionsBuilder: (_, _) => [
+                for (var i = 0; i < 6; i++)
+                  UtenButton(
+                    size: UtenButtonSize.large,
+                    onPressed: () {},
+                    child: Text('操作 $i'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final before = tester
+        .widget<UtenFloatingActionGroup>(find.byType(UtenFloatingActionGroup))
+        .maxHeight!;
+    await tester.tap(find.text('分类').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('短行 (1)'));
+    await tester.pumpAndSettle();
+    expect(find.text('高行'), findsNothing);
+    final after = tester
+        .widget<UtenFloatingActionGroup>(find.byType(UtenFloatingActionGroup))
+        .maxHeight!;
+    expect(after, greaterThan(before + 60));
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final scenario in [
+    (scale: 1.0, occlusion: 0.0),
+    (scale: 1.6, occlusion: 0.0),
+    (scale: 1.6, occlusion: 70.0),
+  ]) {
+    testWidgets(
+      'local row budget keeps an editor and long actions usable $scenario',
+      (tester) async {
+        tester.view.physicalSize = const Size(375, 480);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await loadAuditScreenshotFonts(tester);
+        final controllers = {
+          for (final id in ['a', 'b', 'c']) id: TextEditingController(text: id),
+        };
+        final focus = {for (final id in controllers.keys) id: FocusNode()};
+        addTearDown(() {
+          for (final controller in controllers.values) {
+            controller.dispose();
+          }
+          for (final node in focus.values) {
+            node.dispose();
+          }
+        });
+        final calls = <int>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: auditScreenshotTheme(
+              buildLightTheme().copyWith(platform: TargetPlatform.android),
+            ),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scenario.scale)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: Padding(
+                padding: const EdgeInsets.fromLTRB(28, 178, 28, 12),
+                child: UtenCapsuleNavScope(
+                  occlusion: scenario.occlusion,
+                  child: ClipRect(
+                    key: const Key('short-row-stage'),
+                    child: MasterDataTableView<String>(
+                      columns: [
+                        MasterColumnDef<String>(
+                          key: 'id',
+                          label: '填写',
+                          width: 240,
+                          value: (id) => id,
+                          cellBuilder: (context, id) => TextField(
+                            key: ValueKey('short-editor-$id'),
+                            controller: controllers[id],
+                            focusNode: focus[id],
+                          ),
+                        ),
+                      ],
+                      items: const ['a', 'b', 'c'],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      selectable: true,
+                      idOf: (id) => id,
+                      rowWidgetKeyOf: (id) => ValueKey('short-data-row-$id'),
+                      selectedIds: const {'c'},
+                      batchActionsBuilder: (_, _) => [
+                        for (var i = 0; i < 6; i++)
+                          UtenButton(
+                            key: ValueKey('short-action-$i'),
+                            size: UtenButtonSize.large,
+                            icon: i == 2 ? Icons.fact_check_outlined : null,
+                            onPressed: () => calls.add(i),
+                            child: Text(
+                              i == 2 ? '确认更正 128 人 256 处员工证件信息并提交' : '办理操作 $i',
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final field = find.byKey(const ValueKey('short-editor-c'));
+        await tester.ensureVisible(field);
+        await tester.pumpAndSettle();
+        // If chrome must scroll to fit a full row and action, reveal it with the
+        // same ordinary toolbar drag available to a user, not a controller jump.
+        final toolbar = find.textContaining('表头设置').first;
+        if (scenario.occlusion > 0 &&
+            toolbar.hitTestable().evaluate().isNotEmpty) {
+          await tester.drag(toolbar, const Offset(0, -160));
+          await tester.pumpAndSettle();
+        }
+        final stage = tester.getRect(find.byKey(const Key('short-row-stage')));
+        void expectRowClear() {
+          final row = tester.getRect(
+            find.byKey(const ValueKey('short-data-row-c')),
+          );
+          final group = tester.getRect(find.byType(UtenFloatingActionGroup));
+          expect(row.top, greaterThanOrEqualTo(stage.top));
+          expect(row.bottom, lessThanOrEqualTo(group.top));
+          expect(field.hitTestable(), findsOneWidget);
+        }
+
+        expectRowClear();
+        await tester.tap(field);
+        await tester.pumpAndSettle();
+        expect(focus['c']!.hasFocus, isTrue);
+        focus['c']!.unfocus();
+        await tester.pumpAndSettle();
+        final actionScroll = find.descendant(
+          of: find.byType(UtenFloatingActionGroup),
+          matching: find.byType(Scrollable),
+        );
+        expect(actionScroll, findsOneWidget);
+        final scrollbar = tester.widget<Scrollbar>(
+          find.descendant(
+            of: find.byType(UtenFloatingActionGroup),
+            matching: find.byType(Scrollbar),
+          ),
+        );
+        expect(scrollbar.thumbVisibility, isTrue);
+        expect(
+          tester.state<ScrollableState>(actionScroll).position.maxScrollExtent,
+          greaterThan(0),
+        );
+        var drags = 0;
+        for (var i = 0; i < 6; i++) {
+          final action = find.byKey(ValueKey('short-action-$i'));
+          for (var attempt = 0; attempt < 4; attempt++) {
+            final viewport = tester.getRect(actionScroll);
+            final target = tester.getRect(action);
+            if (action.hitTestable().evaluate().isNotEmpty &&
+                target.top >= viewport.top - 0.5 &&
+                target.bottom <= viewport.bottom + 0.5) {
+              break;
+            }
+            final direction = target.center.dy > viewport.center.dy
+                ? -1.0
+                : 1.0;
+            final gesture = await tester.startGesture(viewport.center);
+            await gesture.moveBy(Offset(0, direction * 24));
+            await tester.pump();
+            await gesture.moveBy(
+              Offset(0, viewport.center.dy - tester.getRect(action).center.dy),
+            );
+            await tester.pump(const Duration(milliseconds: 200));
+            await gesture.up();
+            await tester.pumpAndSettle();
+            drags++;
+          }
+          expect(action.hitTestable(), findsOneWidget);
+          final rect = tester.getRect(action);
+          if (i == 2 && scenario.scale > 1) {
+            expect(rect.height, greaterThan(48 * scenario.scale + 8));
+          }
+          final actionViewport = tester.getRect(actionScroll);
+          expect(rect.top, greaterThanOrEqualTo(actionViewport.top - 0.5));
+          expect(rect.bottom, lessThanOrEqualTo(actionViewport.bottom + 0.5));
+          expect(rect.top, greaterThanOrEqualTo(stage.top));
+          expect(
+            rect.bottom,
+            lessThanOrEqualTo(stage.bottom - scenario.occlusion),
+          );
+          await tester.tap(action);
+          await tester.pumpAndSettle();
+          expectRowClear();
+        }
+        expect(drags, greaterThan(0));
+        expect(calls, [0, 1, 2, 3, 4, 5]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final scenario in [
     (dark: false, scale: 1.0, rtl: false, selected: true, occlusion: 0.0),
     (dark: true, scale: 1.6, rtl: false, selected: false, occlusion: 0.0),

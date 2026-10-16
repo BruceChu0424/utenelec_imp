@@ -85,6 +85,11 @@ class UtenTableCellInputTheme extends StatelessWidget {
     final theme = Theme.of(context);
     final height = UtenEditableGridCellSpec.heightOf(context);
     final decoration = theme.inputDecorationTheme;
+    ButtonStyle commandStyle(ButtonStyle? style) =>
+        (style ?? const ButtonStyle()).copyWith(
+          // 原生按钮的点击高度已经由命令角色给定，不再二次扣减密度。
+          visualDensity: VisualDensity.standard,
+        );
     InputBorder? compactBorder(InputBorder? border) =>
         border is OutlineInputBorder
         ? border.copyWith(borderRadius: UtenEditableGridCellSpec.borderRadius)
@@ -92,11 +97,20 @@ class UtenTableCellInputTheme extends StatelessWidget {
     return _UtenTableCellInputScope(
       child: Theme(
         data: theme.copyWith(
-          visualDensity: UtenControlMetrics.usesTouchTargets(context)
-              ? VisualDensity.standard
-              : VisualDensity.compact,
           textTheme: theme.textTheme.copyWith(
             bodyLarge: theme.textTheme.bodyMedium,
+          ),
+          textButtonTheme: TextButtonThemeData(
+            style: commandStyle(theme.textButtonTheme.style),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: commandStyle(theme.filledButtonTheme.style),
+          ),
+          outlinedButtonTheme: OutlinedButtonThemeData(
+            style: commandStyle(theme.outlinedButtonTheme.style),
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: commandStyle(theme.elevatedButtonTheme.style),
           ),
           iconButtonTheme: IconButtonThemeData(
             style: (theme.iconButtonTheme.style ?? const ButtonStyle())
@@ -109,6 +123,10 @@ class UtenTableCellInputTheme extends StatelessWidget {
                 ),
           ),
           inputDecorationTheme: decoration.copyWith(
+            // 紧凑密度只改变字段轮廓，不能再把格内命令的32/48点击高度扣掉8。
+            visualDensity: UtenControlMetrics.usesTouchTargets(context)
+                ? VisualDensity.standard
+                : VisualDensity.compact,
             isDense: true,
             contentPadding: UtenEditableGridCellSpec.contentPaddingOf(context),
             floatingLabelBehavior: FloatingLabelBehavior.never,

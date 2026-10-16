@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/department/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/features/admin/widgets/page_permission_drawer.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
@@ -19,6 +20,8 @@ import 'package:uten_imp/shared/auth/page_permission_scope.dart';
 import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 
 void main() {
   testWidgets('AI permission shortcut opens the dedicated common drawer', (
@@ -662,6 +665,10 @@ Widget _drawerApp(
 }) {
   return ProviderScope(
     overrides: [
+      // 开号流程使用真实会话/API边界；测试和应用启动一样先提供其依赖，
+      // 而不是绕过敏感读取保护或走默认主机偏好与网络恢复服务。
+      apiClientProvider.overrideWithValue(_DrawerApi()),
+      sessionProvider.overrideWith(() => _DrawerSession(permissions)),
       pagePermissionDelegationRepositoryProvider.overrideWithValue(repository),
       currentPermissionsProvider.overrideWithValue(permissions),
       if (employeeRepository != null)
@@ -674,6 +681,25 @@ Widget _drawerApp(
       home: PagePermissionDrawer(
         scope: PagePermissionScope(surfaceKey: 'sales.order', title: '销售订货'),
       ),
+    ),
+  );
+}
+
+class _DrawerApi extends Fake implements ApiClient {}
+
+class _DrawerSession extends SessionNotifier {
+  _DrawerSession(this.permissions);
+
+  final Set<String> permissions;
+
+  @override
+  SessionState build() => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'permission-operator',
+      code: 'OP1',
+      name: '授权操作人',
+      permissions: permissions.toList(),
     ),
   );
 }

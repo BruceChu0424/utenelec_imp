@@ -8,6 +8,7 @@ import '../../core/theme/uten_tokens.dart';
 import 'uten_field_hint_icon.dart';
 import 'uten_field_label.dart';
 import 'uten_field_message.dart';
+import 'uten_filter_field_theme.dart';
 import 'uten_table_cell_hints.dart';
 import 'uten_table_cell_spec.dart';
 
@@ -124,7 +125,11 @@ class UtenInputDecoration extends InputDecoration {
         final inCell =
             UtenTableCellInputTheme.contains(context) ||
             UtenTableCellHints.contains(context);
-        final height = UtenPageField.heightOf(context);
+        final height = inCell
+            ? UtenEditableGridCellSpec.heightOf(context)
+            : UtenFilterFieldTheme.contains(context)
+            ? UtenFilterRow.heightOf(context)
+            : UtenPageField.heightOf(context);
         final content = original == null
             ? hint
             : Row(

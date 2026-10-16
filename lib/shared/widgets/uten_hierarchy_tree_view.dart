@@ -18,6 +18,7 @@ import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../models/uten_tree_node.dart';
 import '../hierarchy/category_tree_search.dart';
+import 'uten_hierarchy_search_header.dart';
 
 /// 树的选择语义。
 enum UtenTreeSelectMode { none, single, multi }
@@ -43,6 +44,8 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
     this.passThrough,
     this.header,
     this.searchFieldKey,
+    this.searchController,
+    this.searchTrailing,
     this.emptySearchText,
     this.expandOnRowTap = false,
     this.visibleFilterIds,
@@ -101,6 +104,8 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
   /// 顶部标题区。
   final Widget? header;
   final Key? searchFieldKey;
+  final TextEditingController? searchController;
+  final Widget? searchTrailing;
 
   /// 搜索无命中时的文案(覆盖默认「未找到匹配「q」的…」)。
   final String? emptySearchText;
@@ -136,7 +141,8 @@ class UtenHierarchyTreeView<T extends UtenTreeNode<T>> extends StatefulWidget {
 
 class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     extends State<UtenHierarchyTreeView<T>> {
-  final _searchCtl = TextEditingController();
+  late TextEditingController _searchCtl;
+  bool _ownsSearchController = false;
   late Set<String> _expanded;
   String _query = '';
   UtenHierarchyContentWidthController? _widthController;
@@ -160,17 +166,31 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     super.initState();
     PaintingBinding.instance.systemFonts.addListener(_onSystemFontsChanged);
     _expanded = _defaultExpanded();
+    _attachSearchController();
     // 拼音组合中（composing 非空）不过滤：半截拼音把树闪成「未找到」、也打断
     // 组合节奏；组合结束会再通知一次，届时按完整词过滤（2026-10-09 根因修复）。
-    _searchCtl.addListener(() {
-      if (_searchCtl.value.composing != TextRange.empty) return;
-      setState(() => _query = _searchCtl.text);
-    });
+  }
+
+  void _attachSearchController() {
+    _ownsSearchController = widget.searchController == null;
+    _searchCtl = widget.searchController ?? TextEditingController();
+    _query = _searchCtl.text;
+    _searchCtl.addListener(_onSearchChanged);
+  }
+
+  void _onSearchChanged() {
+    if (_searchCtl.value.composing != TextRange.empty) return;
+    setState(() => _query = _searchCtl.text);
   }
 
   @override
   void didUpdateWidget(UtenHierarchyTreeView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.searchController != oldWidget.searchController) {
+      _searchCtl.removeListener(_onSearchChanged);
+      if (_ownsSearchController) _searchCtl.dispose();
+      _attachSearchController();
+    }
     if (widget.nodes != oldWidget.nodes ||
         widget.initiallyExpandDepth != oldWidget.initiallyExpandDepth ||
         widget.initiallyExpandedIds != oldWidget.initiallyExpandedIds) {
@@ -184,7 +204,8 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
     PaintingBinding.instance.systemFonts.removeListener(_onSystemFontsChanged);
     _widthController?.reportLabelWidth(this, null);
     _widthController = null;
-    _searchCtl.dispose();
+    _searchCtl.removeListener(_onSearchChanged);
+    if (_ownsSearchController) _searchCtl.dispose();
     super.dispose();
   }
 
@@ -582,10 +603,16 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             // 本地过滤：_searchCtl 的监听器随每次输入(含内置清除按钮)刷新 _query。
-            child: UtenSearchBar(
-              key: widget.searchFieldKey,
-              controller: _searchCtl,
-              hint: widget.searchHint,
+            child: UtenHierarchySearchHeader(
+              search: KeyedSubtree(
+                key: ObjectKey(_searchCtl),
+                child: UtenSearchBar(
+                  key: widget.searchFieldKey,
+                  controller: _searchCtl,
+                  hint: widget.searchHint,
+                ),
+              ),
+              trailing: widget.searchTrailing,
             ),
           ),
         if (widget.externalSearchLoading)

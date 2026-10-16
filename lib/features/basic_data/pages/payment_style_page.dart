@@ -19,6 +19,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_form_grid.dart';
@@ -28,6 +29,7 @@ import '../../../components/layout/uten_split_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
+import '../../../core/responsive/dialog_size.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -35,6 +37,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/widgets/uten_location_field.dart';
+import '../../../shared/widgets/uten_hierarchy_search_header.dart';
 import '../models/payment_style_node.dart';
 import '../repositories/payment_style_repository.dart';
 import '../widgets/uten_category_tree_view.dart';
@@ -87,6 +90,7 @@ class PaymentStylePage extends ConsumerStatefulWidget {
 
 class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   final _treeRequest = LatestRequestGuard();
+  final _categorySearch = TextEditingController();
 
   PaymentStyleCategory _category = PaymentStyleCategory.expense;
   List<PaymentStyleNode> _tree = const [];
@@ -99,6 +103,12 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _categorySearch.dispose();
+    super.dispose();
   }
 
   bool get _canCreate =>
@@ -179,6 +189,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
 
   void _switchCategory(PaymentStyleCategory category) {
     if (category == _category) return;
+    _categorySearch.clear();
     setState(() {
       _category = category;
       _tree = const [];
@@ -218,6 +229,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   }
 
   Future<bool> _doCreate(_EditResult result) async {
+    if (!_canCreate) {
+      context.appInfo('当前没有新增类别权限');
+      return false;
+    }
     final created = await ref
         .read(paymentStyleRepositoryProvider)
         .create(
@@ -234,6 +249,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
           ),
         );
     if (mounted) {
+      _categorySearch.clear();
+      setState(() => _selectedId = created.id);
       context.appSuccess('类别已创建');
       _invalidatePaymentStyleCaches();
       await _load(preferredSelectionId: created.id);
@@ -372,12 +389,6 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
                     ],
                   ),
                 ),
-                if (_canCreate)
-                  IconButton(
-                    tooltip: '添加顶级类别',
-                    onPressed: () => _showCreate(),
-                    icon: const Icon(Icons.add_rounded),
-                  ),
               ],
             ),
           ),
@@ -400,6 +411,34 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
               ],
               selected: {_category},
               onSelectionChanged: (values) => _switchCategory(values.single),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: UtenHierarchySearchHeader(
+              search: UtenSearchBar(
+                controller: _categorySearch,
+                hint: '搜索类别名称或编号',
+              ),
+              trailing: _canCreate
+                  ? IconButton(
+                      key: const ValueKey('payment-style-add-root'),
+                      tooltip: '新增最外层类别',
+                      constraints: BoxConstraints.tightFor(
+                        width: UtenControlMetrics.minimumHitExtent(
+                          context,
+                          desktop: 36,
+                        ),
+                        height: UtenControlMetrics.minimumHitExtent(
+                          context,
+                          desktop: 36,
+                        ),
+                      ),
+                      padding: EdgeInsets.zero,
+                      onPressed: _treeLoading ? null : () => _showCreate(),
+                      icon: const Icon(Icons.add_rounded, size: 20),
+                    )
+                  : null,
             ),
           ),
           Divider(height: 1, color: theme.colorScheme.outlineVariant),
@@ -456,6 +495,8 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
             Expanded(
               child: UtenCategoryTreeView<PaymentStyleNode>(
                 nodes: _tree,
+                showSearch: false,
+                searchController: _categorySearch,
                 selectedIds: {?_selectedId},
                 expandOnRowTap: true,
                 sortByCode: false,
@@ -528,6 +569,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage> {
   );
 
   Widget _buildDraftHost(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
     final selected = _selectedId == null
         ? null
         : _findById(_tree, _selectedId!);
@@ -1697,8 +1739,8 @@ class _PaymentStyleEditDialogState
       maxWidth: 620,
       scrollable: false,
       title: Text(_isEdit ? '编辑类别' : '新增${widget.category.label}类别'),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 620),
+      content: SizedBox(
+        width: utenDialogWidth(context, 620),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

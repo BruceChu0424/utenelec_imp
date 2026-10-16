@@ -94,7 +94,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       ref.read(mouldCategoryRepositoryProvider).tree();
 
   @override
-  Future<void> shellCreateCategory(CategoryEditResult r) => ref
+  Future<ProductCategoryDetail> shellCreateCategory(CategoryEditResult r) => ref
       .read(mouldCategoryRepositoryProvider)
       .create(
         ProductCategorySaveInput(

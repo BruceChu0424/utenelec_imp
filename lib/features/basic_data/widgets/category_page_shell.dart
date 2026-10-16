@@ -31,6 +31,8 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
+import '../../../shared/widgets/uten_hierarchy_search_header.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
@@ -77,7 +79,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   Future<List<ProductCategoryNode>> shellLoadTree();
 
   /// 创建分类（由 CategoryEditResult 组装页面自己的 SaveInput）。
-  Future<void> shellCreateCategory(CategoryEditResult r);
+  Future<ProductCategoryDetail> shellCreateCategory(CategoryEditResult r);
 
   /// 更新分类。
   Future<void> shellUpdateCategory(String id, CategoryEditResult r);
@@ -348,11 +350,32 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   Widget _buildGlobalSearchBox() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: UtenSearchBar(
-        initialValue: _globalQuery,
-        hint: shellSearchHint, // TODO(l10n): 补 arb
-        onInputChanged: _onGlobalSearchInput,
-        onChanged: _onGlobalSearch,
+      child: UtenHierarchySearchHeader(
+        search: UtenSearchBar(
+          initialValue: _globalQuery,
+          hint: shellSearchHint, // TODO(l10n): 补 arb
+          onInputChanged: _onGlobalSearchInput,
+          onChanged: _onGlobalSearch,
+        ),
+        trailing: shellCanCreate
+            ? IconButton(
+                key: const ValueKey('category-add-root'),
+                tooltip: '新增最外层分类',
+                constraints: BoxConstraints.tightFor(
+                  width: UtenControlMetrics.minimumHitExtent(
+                    context,
+                    desktop: 36,
+                  ),
+                  height: UtenControlMetrics.minimumHitExtent(
+                    context,
+                    desktop: 36,
+                  ),
+                ),
+                padding: EdgeInsets.zero,
+                onPressed: _loading ? null : () => shellShowCreateDialog(),
+                icon: const Icon(Icons.add_rounded, size: 20),
+              )
+            : null,
       ),
     );
   }
@@ -387,8 +410,23 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   Future<bool> _doCreate(CategoryEditResult r) async {
-    await shellCreateCategory(r);
+    if (!shellCanCreate) {
+      context.appInfo('当前没有新增分类权限');
+      return false;
+    }
+    final created = await shellCreateCategory(r);
     if (mounted) {
+      _shellSearchDebounce?.cancel();
+      _searchRequests.begin();
+      setState(() {
+        _globalQuery = '';
+        _treeSearchKeyword = null;
+        _visibleFilterIds = null;
+        _searchLoading = false;
+        _searchError = null;
+        _acceptPendingSearch = false;
+        _selectedId = created.id;
+      });
       context.appSuccess('分类已创建');
       await shellReload();
       if (mounted) shellAfterCategorySaved();
@@ -462,9 +500,9 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     final theme = Theme.of(context);
     final canDelete = shellCanDelete;
     return UtenCategoryTreeView(
-      // 左树视觉与「销售新建订货 → 选货品」滑窗同款（2026-09-25 用户口径，公共
-      // 组件只是参数差异）：单根提升（唯一的包装根不再占一层）+ 无缩进层级色。
-      nodes: hoistSingleRootTree(_tree ?? const <ProductCategoryNode>[]),
+      // Management receives persisted UUID roots. A sole business root is still
+      // a real category, so adding its peer must not change the existing depth.
+      nodes: _tree ?? const <ProductCategoryNode>[],
       flatLevelColors: true,
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},
@@ -557,6 +595,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     required Widget Function(ProductCategoryNode selected) detailPaneBuilder,
     Widget Function(String query)? searchPaneBuilder,
   }) {
+    ref.watch(currentPermissionsProvider);
     final theme = Theme.of(context);
     final bp = context.breakpoint;
     final tree = _tree ?? const <ProductCategoryNode>[];

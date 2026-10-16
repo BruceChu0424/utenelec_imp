@@ -77,6 +77,9 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
     this.header,
     this.searchHint = '搜索分类名称', // TODO(l10n): 补 arb
     this.searchFieldKey,
+    this.searchController,
+    this.searchTrailing,
+    this.passThrough,
     this.emptySearchText,
     this.expandOnRowTap = false,
     this.initiallyCollapsedNames = const {},
@@ -124,6 +127,12 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
   final Widget? header;
   final String searchHint;
   final Key? searchFieldKey;
+  final TextEditingController? searchController;
+  final Widget? searchTrailing;
+
+  /// Only explicitly identified presentation wrappers may be transparent.
+  /// Real persisted roots are never inferred from their name or root count.
+  final bool Function(T node)? passThrough;
   final String? emptySearchText;
 
   @override
@@ -142,6 +151,9 @@ class UtenCategoryTreeView<T extends UtenTreeNode<T>> extends StatelessWidget {
     header: header,
     searchHint: searchHint,
     searchFieldKey: searchFieldKey,
+    searchController: searchController,
+    searchTrailing: searchTrailing,
+    passThrough: passThrough,
     emptySearchText: emptySearchText,
     emptyNoun: '分类或内容', // TODO(l10n): 补 arb
     expandOnRowTap: expandOnRowTap,

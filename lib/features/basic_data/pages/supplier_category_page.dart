@@ -88,7 +88,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       ref.read(supplierCategoryRepositoryProvider).tree();
 
   @override
-  Future<void> shellCreateCategory(CategoryEditResult r) => ref
+  Future<ProductCategoryDetail> shellCreateCategory(CategoryEditResult r) => ref
       .read(supplierCategoryRepositoryProvider)
       .create(
         ProductCategorySaveInput(

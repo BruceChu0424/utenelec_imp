@@ -120,8 +120,15 @@ public class ProductionReportController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String categoryId,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "30") int size) {
-        return whereUsedQuery.searchWhereUsedMaterials(keyword, categoryId, page, size);
+            @RequestParam(defaultValue = "30") int size,
+            @RequestParam(defaultValue = "false") boolean includeRelated) {
+        return includeRelated ? whereUsedQuery.searchWhereUsedMaterials(keyword, categoryId, page, size,true)
+                : whereUsedQuery.searchWhereUsedMaterials(keyword, categoryId, page, size);
+    }
+
+    @PreAuthorize("hasAuthority('production_where_used:view')")
+    public PageResponse<WhereUsedMaterialOption> whereUsedMaterials(String keyword,String categoryId,int page,int size) {
+        return whereUsedQuery.searchWhereUsedMaterials(keyword,categoryId,page,size);
     }
 
     /** Picker categories share the report's dedicated scope, including historical uncategorized goods. */
@@ -135,8 +142,16 @@ public class ProductionReportController {
     @GetMapping("/where-used/material-category-matches")
     @PreAuthorize("hasAuthority('production_where_used:view')")
     public Map<String, List<String>> whereUsedMaterialCategoryMatches(
-            @RequestParam(required = false) String keyword) {
-        return Map.of("items", whereUsedQuery.whereUsedMaterialCategoryMatches(keyword));
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String categoryId,
+            @RequestParam(defaultValue = "false") boolean includeRelated) {
+        return Map.of("items", categoryId==null&&!includeRelated?whereUsedQuery.whereUsedMaterialCategoryMatches(keyword)
+                :whereUsedQuery.whereUsedMaterialCategoryMatches(keyword,categoryId,includeRelated));
+    }
+
+    @PreAuthorize("hasAuthority('production_where_used:view')")
+    public Map<String,List<String>> whereUsedMaterialCategoryMatches(String keyword) {
+        return Map.of("items",whereUsedQuery.whereUsedMaterialCategoryMatches(keyword));
     }
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------

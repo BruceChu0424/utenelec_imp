@@ -2,6 +2,7 @@ package com.uten.imp.features.master.goods;
 
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.CategoryKeywordSearch;
+import com.uten.imp.common.util.GoodsSearchPolicy;
 
 import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
@@ -69,7 +70,7 @@ import java.util.stream.Collectors;
  * {@link MaterialCategoryRepository#findSubtree} 递归 CTE）+ keyword 多字段 OR + 字段精确等值 +
  * {@code nullFields} 空值白名单。
  *
- * <p>facets 用原生 SQL 聚合（字段→列名硬编码白名单，防注入；列名非用户输入）。
+ * <p>facets 复用列表的 JPA 权限、关键词与筛选谓词，字段来自固定白名单。
  *
  * <p>价格从 API、业务计算到 PostgreSQL 均使用 BigDecimal / NUMERIC(18,4)，
  * 不经过二进制浮点转换，也不做会破坏汇总、范围查询和约束的字段级随机加密。
@@ -149,22 +150,13 @@ public class GoodsService {
         return ownerVisibility.evaluate("goods", "goods:view:all");
     }
 
-    /** facets 原生 SQL 片段：归属过滤 AND 子句（参数名 :__ownerEmp；无需绑参时 bindEmp[0]=false）。 */
-    private String ownerClause(boolean[] bindEmp) {
-        var scope = goodsScope();
-        if (scope.seeAll()) { bindEmp[0] = false; return ""; }
-        if (scope.visibleOwners().isEmpty()) { bindEmp[0] = false; return " and owner_employee_id is null"; }
-        bindEmp[0] = true;
-        return " and (owner_employee_id is null or owner_employee_id in (:__ownerEmp))";
-    }
-
     // ===== 列表（Specification 动态筛选） =====
 
     @Transactional(readOnly = true)
     public PageResponse<GoodsListItem> list(GoodsQueryFilter f, int page, int size, String sort, String order) {
         List<UUID> subtreeIds = resolveCategoryScopeIds(f);
         var scope = goodsScope();
-        var keyword = keywordPlan(f.keyword());
+        var keyword = keywordPlan(f);
         // 2026-10-02 恢复编号升序默认（与货品选择弹窗、新建/粘贴后的「跳末页看新货品」
         // 口径一致）：此前临时改成创建时间倒序让新货品置顶，与用户定的「复制落最后面」
         // 相反；显式排序参数仍然覆盖默认值。
@@ -203,10 +195,11 @@ public class GoodsService {
                 .map(g -> {
                     var item = toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods,
                             owningWarehouseNames, owningWorkshopNames);
-                    if (keyword.active()) item.setSearchRank(keyword.rankValue(
-                            g.getCategory() == null ? null : g.getCategory().getId(), g.getCode(), g.getName(),
-                            java.util.Arrays.asList(g.getName(), g.getCode(), g.getModel(), g.getSpec(), g.getSeries(),
-                                    g.getCNumber(), g.getMaterial(), g.getNameEn(), g.getMould() == null ? null : g.getMould().getCode())));
+                    if (keyword.active()) {
+                        UUID category = g.getCategory() == null ? null : g.getCategory().getId();
+                        item.setSearchRank(keyword.rankValue(category, g.getCode(), g.getName(), goodsVisibleValues(g)));
+                        item.setSearchMatchKind(keyword.matchKind(category, g.getCode(), g.getName(), goodsVisibleValues(g)));
+                    }
                     return item;
                 })
                 .toList();
@@ -222,7 +215,7 @@ public class GoodsService {
         if (KeywordSearch.terms(f.keyword()).isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先填写搜索关键词");
         }
-        if (f.categoryId() != null || f.categoryRootIds() == null || f.categoryRootIds().isEmpty()) {
+        if (f.categoryRootIds() == null || f.categoryRootIds().isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择货品分类范围");
         }
         List<UUID> subtreeIds = resolveCategoryScopeIds(f);
@@ -231,7 +224,7 @@ public class GoodsService {
         CriteriaQuery<UUID> query = cb.createQuery(UUID.class);
         Root<Goods> root = query.from(Goods.class);
         Path<UUID> categoryId = root.get("category").get("id");
-        var keyword = keywordPlan(f.keyword());
+        var keyword = keywordPlan(f);
         Predicate filters = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
         var rank = keyword.rank(cb, categoryId, root.get("code"), root.get("name"),
                 goodsVisibleSearchFields(root, mouldCodeForSearch(root)));
@@ -249,7 +242,7 @@ public class GoodsService {
             com.uten.imp.security.OwnerVisibility.OwnerScope scope,
             Root<Goods> root,
             CriteriaBuilder cb,
-            CategoryKeywordSearch.Plan keyword) {
+            GoodsSearchPolicy keyword) {
         List<Predicate> ps = new ArrayList<>();
         ps.add(cb.isFalse(root.get("deleted")));
         // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见；
@@ -274,7 +267,7 @@ public class GoodsService {
         jakarta.persistence.criteria.Expression<String> mouldCodeExpression = keywordPresent || mouldCodeFilter
                 ? mouldCodeForSearch(root) : null;
         if (keywordPresent) {
-            ps.add(keyword.predicate(cb, root.get("category").get("id"),
+            ps.add(keyword.predicate(cb, root.get("category").get("id"), root.get("code"), root.get("name"),
                     goodsVisibleSearchFields(root, mouldCodeExpression),
                     List.of(root.get("requireRemark"), root.get("paper"))));
         }
@@ -321,11 +314,13 @@ public class GoodsService {
         return cb.and(ps.toArray(new Predicate[0]));
     }
 
-    private CategoryKeywordSearch.Plan keywordPlan(String query) {
-        return CategoryKeywordSearch.plan(query, KeywordSearch.terms(query).isEmpty() ? List.of()
+    private GoodsSearchPolicy keywordPlan(GoodsQueryFilter filter) {
+        String query = filter.keyword();
+        return new GoodsSearchPolicy(query, KeywordSearch.terms(query).isEmpty() ? List.of()
                 : categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc().stream()
                 .map(node -> new CategoryKeywordSearch.Node(node.getId(), node.getParent() == null ? null : node.getParent().getId(),
-                        node.getName(), node.getCode())).toList());
+                        node.getName(), node.getCode())).toList(), true, Boolean.TRUE.equals(filter.includeRelated()),
+                filter.categoryId() == null ? GoodsSearchPolicy.SubjectMode.STRICT : GoodsSearchPolicy.SubjectMode.PREFER);
     }
 
     private static jakarta.persistence.criteria.Expression<String> mouldCodeForSearch(Root<Goods> root) {
@@ -340,6 +335,11 @@ public class GoodsService {
                 root.get("cNumber"), root.get("material"), root.get("nameEn"), mouldCode);
     }
 
+    private static List<String> goodsVisibleValues(Goods goods) {
+        return java.util.Arrays.asList(goods.getName(), goods.getCode(), goods.getModel(), goods.getSpec(), goods.getSeries(),
+                goods.getCNumber(), goods.getMaterial(), goods.getNameEn(), goods.getMould() == null ? null : goods.getMould().getCode());
+    }
+
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Goods> root,
                               String field, String value) {
         if (value != null && !value.isBlank()) ps.add(cb.equal(root.get(field), value));
@@ -350,26 +350,23 @@ public class GoodsService {
     }
 
     /**
-     * 解析互斥的单分类/多根分类范围。返回 null 表示调用方没有限定分类；空列表表示调用方
+     * 显式分类与业务根范围求交集。返回 null 表示调用方没有限定分类；空列表表示调用方
      * 限定了范围但所有根都无效，调用方必须按零命中处理。
      */
     private List<UUID> resolveCategoryScopeIds(GoodsQueryFilter f) {
         Set<UUID> roots = f.categoryRootIds();
-        if (f.categoryId() != null && roots != null && !roots.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "分类筛选条件冲突，请只按一种方式选择分类");
-        }
         if (roots != null && roots.size() > MAX_CATEGORY_ROOT_IDS) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "所选分类范围过多，最多 " + MAX_CATEGORY_ROOT_IDS + " 个，请减少后再试");
         }
-        if (f.categoryId() != null) return resolveSubtreeIds(f.categoryId());
-        if (roots == null || roots.isEmpty()) return null;
+        List<UUID> selected = f.categoryId() == null ? null : resolveSubtreeIds(f.categoryId());
+        if (roots == null || roots.isEmpty()) return selected;
 
         Set<UUID> scopedIds = new LinkedHashSet<>();
         for (UUID rootId : roots) {
             if (rootId != null) scopedIds.addAll(resolveSubtreeIds(rootId));
         }
+        if (selected != null) scopedIds.retainAll(selected);
         return List.copyOf(scopedIds);
     }
 
@@ -650,98 +647,64 @@ public class GoodsService {
         return new ExportPayload(cols, rows, rows.size());
     }
 
-    // ===== facets（子树范围内各字段 distinct + 空值计数） =====
+    // ===== facets: the same authorized search/filter predicate as the list =====
 
+    /** Existing category-only callers retain their unfiltered bucket scope. */
     @Transactional(readOnly = true)
     public GoodsFacets facets(UUID categoryId) {
-        List<UUID> ids = categoryId == null ? null : resolveSubtreeIds(categoryId);
-        String categoryClause = ids == null ? "" : " and category_id in (:ids)";
-        // 归属可见性（外贸按人授权）：与 list() 同规则
-        boolean[] bindEmp = new boolean[1];
-        String ownerClause = ownerClause(bindEmp);
-        java.util.Set<java.util.UUID> ownerEmps = goodsScope().visibleOwners();
-        // 颜色/单位 legacy_id → name（全量，表小）；颜色/单位桶 label 用名展示，筛选仍按 legacy id 回传。
+        return queryFacets(new GoodsQueryFilter(categoryId, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null));
+    }
+
+    @Transactional(readOnly = true)
+    public GoodsFacets queryFacets(GoodsQueryFilter filter) {
+        List<UUID> ids = resolveCategoryScopeIds(filter);
+        var scope = goodsScope();
+        GoodsSearchPolicy keyword = keywordPlan(filter);
         Map<Integer, String> colorNames = allColorNames();
         Map<Integer, String> unitNames = allUnitNames();
         Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
-            String field = e.getKey();
-            // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
-            String col = e.getValue();
-            var fq = em.createNativeQuery(
-                    "select " + col + " as v, count(*) as c from goods "
-                            + "where is_deleted = false" + categoryClause + " and " + col + " is not null "
-                            + ownerClause
-                            + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT);
-            if (ids != null) fq.setParameter("ids", ids);
-            if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
-            List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
-            List<FacetBucket> bucketList = new ArrayList<>(rows.size());
+        List<String> fields = new ArrayList<>(FACET_COLUMNS.keySet());
+        fields.add("owningWarehouse");
+        fields.add("owningWorkshop");
+        for (String field : fields) {
+            // Keep the other active filters, but release this field's equality /
+            // null selection so its menu can switch to another value.
+            GoodsQueryFilter facetFilter = filter.forFacet(field);
+            CriteriaBuilder cb = em.getCriteriaBuilder();
+            CriteriaQuery<Object[]> query = cb.createQuery(Object[].class);
+            Root<Goods> root = query.from(Goods.class);
+            boolean reference = field.equals("owningWarehouse") || field.equals("owningWorkshop");
+            jakarta.persistence.criteria.Expression<?> value = reference
+                    ? root.get(field).get("id") : root.get(field);
+            jakarta.persistence.criteria.Expression<String> label = reference ? root.get(field).get("name") : null;
+            var count = cb.count(root);
+            if (reference) query.multiselect(value, count, label).groupBy(value, label);
+            else query.multiselect(value, count).groupBy(value);
+            query.where(cb.and(goodsPredicate(facetFilter, ids, scope, root, cb, keyword), cb.isNotNull(value)));
+            query.orderBy(cb.desc(count), cb.asc(reference ? label : value));
+            List<Object[]> rows = em.createQuery(query).setMaxResults(FACET_LIMIT).getResultList();
+            List<FacetBucket> values = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 String v = String.valueOf(row[0]);
-                long c = ((Number) row[1]).longValue();
-                bucketList.add(new FacetBucket(v, c, labelFor(field, v, colorNames, unitNames)));
+                values.add(new FacetBucket(v, ((Number) row[1]).longValue(),
+                        reference ? String.valueOf(row[2]) : labelFor(field, v, colorNames, unitNames)));
             }
-            buckets.put(field, bucketList);
-            var nq = em.createNativeQuery(
-                    "select count(*) from goods "
-                            + "where is_deleted = false" + categoryClause + " and " + col + " is null"
-                            + ownerClause);
-            if (ids != null) nq.setParameter("ids", ids);
-            if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
-            Long nc = ((Number) nq.getSingleResult()).longValue();
-            nullCounts.put(field, nc);
+            buckets.put(field, values);
+            CriteriaQuery<Long> nullQuery = cb.createQuery(Long.class);
+            Root<Goods> nullRoot = nullQuery.from(Goods.class);
+            nullQuery.select(cb.count(nullRoot)).where(cb.and(
+                    goodsPredicate(facetFilter, ids, scope, nullRoot, cb, keyword), cb.isNull(nullRoot.get(field))));
+            nullCounts.put(field, em.createQuery(nullQuery).getSingleResult());
         }
-        // V587/V590 归属两列：值是 UUID 关系，桶值=UUID、标签=仓库名/车间名
-        //（FACET_COLUMNS 的裸列聚合不适用，单独 JOIN 取名）。
-        buckets.put("owningWarehouse",
-                refFacet("owning_warehouse_id", "warehouses", ids, ownerClause, bindEmp, ownerEmps));
-        nullCounts.put("owningWarehouse", nullCountOf("owning_warehouse_id", ids, ownerClause, bindEmp, ownerEmps));
-        buckets.put("owningWorkshop",
-                refFacet("owning_workshop_department_id", "departments", ids, ownerClause, bindEmp, ownerEmps));
-        nullCounts.put("owningWorkshop", nullCountOf("owning_workshop_department_id", ids, ownerClause, bindEmp, ownerEmps));
         return new GoodsFacets(
                 buckets.get("code"), buckets.get("series"), buckets.get("model"),
                 buckets.get("name"), buckets.get("spec"), buckets.get("material"),
                 buckets.get("rearInsertCode"), buckets.get("paper"),
-                buckets.get("colorLegacyId"), buckets.get("unitLegacyId"),
-                buckets.get("sourceType"),
-                buckets.get("owningWarehouse"), buckets.get("owningWorkshop"),
-                nullCounts);
-    }
-
-    /** 归属 UUID 列的 facet 桶：JOIN 名称表取标签，值=UUID 字符串（筛选按 UUID 回传）。 */
-    private List<FacetBucket> refFacet(String goodsCol, String refTable,
-                                       List<UUID> ids, String ownerClause,
-                                       boolean[] bindEmp, java.util.Set<UUID> ownerEmps) {
-        var fq = em.createNativeQuery(
-                "select goods." + goodsCol + " as v, ref.name as label, count(*) as c "
-                        + "from goods join " + refTable + " ref on ref.id = goods." + goodsCol + " "
-                        + "where goods.is_deleted = false " + (ids == null ? "" : "and goods.category_id in (:ids) ")
-                        + ownerClause
-                        + " group by goods." + goodsCol + ", ref.name "
-                        + "order by c desc, label asc limit " + FACET_LIMIT);
-        if (ids != null) fq.setParameter("ids", ids);
-        if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
-        List<FacetBucket> list = new ArrayList<>(rows.size());
-        for (Object[] row : rows) {
-            list.add(new FacetBucket(String.valueOf(row[0]),
-                    ((Number) row[2]).longValue(), String.valueOf(row[1])));
-        }
-        return list;
-    }
-
-    private Long nullCountOf(String goodsCol, List<UUID> ids, String ownerClause,
-                             boolean[] bindEmp, java.util.Set<UUID> ownerEmps) {
-        var nq = em.createNativeQuery(
-                "select count(*) from goods "
-                        + "where is_deleted = false " + (ids == null ? "" : "and category_id in (:ids) ") + "and " + goodsCol + " is null"
-                        + ownerClause);
-        if (ids != null) nq.setParameter("ids", ids);
-        if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
-        return ((Number) nq.getSingleResult()).longValue();
+                buckets.get("colorLegacyId"), buckets.get("unitLegacyId"), buckets.get("sourceType"),
+                buckets.get("owningWarehouse"), buckets.get("owningWorkshop"), nullCounts);
     }
 
     /** facets 桶展示标签：颜色/单位字段用解析名（解析不到回落 #id），其余字段=label=value。 */

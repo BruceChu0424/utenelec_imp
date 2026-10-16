@@ -1,6 +1,9 @@
 package com.uten.imp.features.production.report;
 
 import com.uten.imp.common.report.ReportSort;
+import com.uten.imp.common.util.CategoryKeywordSearch;
+import com.uten.imp.common.util.GoodsSearchPolicy;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -36,24 +39,11 @@ public class ProductionWhereUsedQueryService {
             "all", "current", "history", "production", "subcontract");
 
     static final String HISTORICAL_UNCATEGORIZED = "history-uncategorized";
+    static final String MATERIAL_CATEGORY_CATALOG = "SELECT id,parent_id,name,code FROM material_categories WHERE NOT is_deleted";
 
     private static final String MATERIAL_CATEGORY_JOIN = """
             LEFT JOIN material_categories category
               ON category.id = goods.category_id AND category.is_deleted = FALSE
-            """;
-
-    // One expression for candidates, overflow-page counts and global category navigation.
-    private static final String MATERIAL_SEARCH = """
-            LOWER(
-                COALESCE(goods.code, '') || ' ' ||
-                COALESCE(goods.name, '') || ' ' ||
-                COALESCE(goods.model, '') || ' ' ||
-                COALESCE(goods.spec, '') || ' ' ||
-                COALESCE(goods.series, '') || ' ' ||
-                COALESCE(goods.c_number, '') || ' ' ||
-                COALESCE(goods.material, '') || ' ' ||
-                COALESCE(goods.require_remark, '')
-            ) LIKE :pattern ESCAPE '\\'
             """;
 
     private static final String MATERIAL_CATEGORY_SUBTREE = """
@@ -559,13 +549,20 @@ public class ProductionWhereUsedQueryService {
     /** Every matched category, independent of candidate pagination; blank search does not scan goods. */
     @Transactional(readOnly = true)
     public List<String> whereUsedMaterialCategoryMatches(String keyword) {
-        String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        return whereUsedMaterialCategoryMatches(keyword,null,false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> whereUsedMaterialCategoryMatches(String keyword,String categoryId,boolean includeRelated) {
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
         if (normalizedKeyword.isEmpty()) return List.of();
-        Query query = em.createNativeQuery("""
-                SELECT DISTINCT COALESCE(CAST(category.id AS text), 'history-uncategorized') AS category_id
-                FROM goods
-                """ + MATERIAL_CATEGORY_JOIN + "WHERE " + MATERIAL_SEARCH + " ORDER BY category_id");
-        query.setParameter("pattern", "%" + escapeLike(normalizedKeyword.toLowerCase(Locale.ROOT)) + "%");
+        String normalizedCategory=normalizeMaterialCategory(categoryId);
+        var search=materialSearch(normalizedKeyword,includeRelated);
+        String categoryCte=normalizedCategory!=null&&!HISTORICAL_UNCATEGORIZED.equals(normalizedCategory)?MATERIAL_CATEGORY_SUBTREE:"";
+        Query query = em.createNativeQuery(categoryCte+"SELECT COALESCE(CAST(category.id AS text),'history-uncategorized') AS category_id FROM goods "
+                +MATERIAL_CATEGORY_JOIN+" WHERE "+materialPredicate(normalizedKeyword,normalizedCategory,search.condition())
+                +" GROUP BY category.id ORDER BY MIN("+search.rank()+"),category_id");
+        bindMaterialFilter(query, search, normalizedCategory);
         @SuppressWarnings("unchecked")
         List<Object> rows = query.getResultList();
         return rows.stream().map(ProductionWhereUsedQueryService::text).toList();
@@ -583,16 +580,23 @@ public class ProductionWhereUsedQueryService {
     @Transactional(readOnly = true)
     public PageResponse<WhereUsedMaterialOption> searchWhereUsedMaterials(
             String keyword, String categoryId, int page, int size) {
+        return searchWhereUsedMaterials(keyword,categoryId,page,size,false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<WhereUsedMaterialOption> searchWhereUsedMaterials(
+            String keyword, String categoryId, int page, int size,boolean includeRelated) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 50);
-        String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedCategory = normalizeMaterialCategory(categoryId);
         if (normalizedKeyword.isEmpty() && normalizedCategory == null) {
             return new PageResponse<>(List.of(), safePage, safeSize, 0L, 0);
         }
         boolean categorySubtree = normalizedCategory != null && !HISTORICAL_UNCATEGORIZED.equals(normalizedCategory);
         String categoryCte = categorySubtree ? MATERIAL_CATEGORY_SUBTREE + ", " : "WITH ";
-        String predicate = materialPredicate(normalizedKeyword, normalizedCategory);
+        var search=materialSearch(normalizedKeyword,includeRelated);
+        String predicate = materialPredicate(normalizedKeyword, normalizedCategory,search.condition());
 
         String sql = categoryCte + """
                 matched_goods AS MATERIALIZED (
@@ -600,17 +604,10 @@ public class ProductionWhereUsedQueryService {
                            goods.status, goods.source_type, goods.auto_created, goods.is_deleted,
                            category.name AS category_name,
                            COALESCE(CAST(category.id AS text), 'history-uncategorized') AS category_id,
-                           CASE
-                               WHEN :exact = '' THEN 4
-                               WHEN LOWER(COALESCE(goods.code, '')) = :exact THEN 0
-                               WHEN LOWER(COALESCE(goods.name, '')) = :exact THEN 1
-                               WHEN LOWER(COALESCE(goods.code, '')) LIKE :prefix ESCAPE '\\' THEN 2
-                               WHEN LOWER(COALESCE(goods.name, '')) LIKE :prefix ESCAPE '\\' THEN 3
-                               ELSE 4
-                           END AS match_rank,
+                """+search.rank()+" AS match_rank,\n"+"""
                            COUNT(*) OVER() AS total_count
                     FROM goods
-                """ + MATERIAL_CATEGORY_JOIN + " WHERE " + predicate + """
+                """ + MATERIAL_CATEGORY_JOIN + " WHERE " + predicate + "\n" + """
                     ORDER BY match_rank,
                              goods.is_deleted ASC,
                              goods.auto_created ASC,
@@ -624,7 +621,7 @@ public class ProductionWhereUsedQueryService {
                        goods.auto_created, goods.is_deleted,
                        source.current_bom, source.bom_issue, source.production_history,
                        source.subcontract_history,
-                       goods.total_count, goods.category_id
+                       goods.total_count, goods.category_id, goods.match_rank
                 FROM matched_goods goods
                 CROSS JOIN LATERAL (
                     SELECT
@@ -746,11 +743,7 @@ public class ProductionWhereUsedQueryService {
                     goods.id ASC
                 """;
         Query query = em.createNativeQuery(sql);
-        String normalizedSearch = normalizedKeyword.toLowerCase(Locale.ROOT);
-        String escapedSearch = escapeLike(normalizedSearch);
-        bindMaterialFilter(query, normalizedKeyword, normalizedCategory);
-        query.setParameter("prefix", escapedSearch + "%");
-        query.setParameter("exact", normalizedSearch);
+        bindMaterialFilter(query, search, normalizedCategory);
         query.setParameter("__limit", safeSize);
         query.setParameter("__offset", (long) (safePage - 1) * safeSize);
         @SuppressWarnings("unchecked")
@@ -762,23 +755,23 @@ public class ProductionWhereUsedQueryService {
                     (UUID) row[0], text(row[1]), text(row[2]), text(row[3]),
                     text(row[4]), text(row[5]), text(row[6]), text(row[7]), text(row[15]),
                     truth(row[8]), truth(row[9]), truth(row[10]), truth(row[11]),
-                    truth(row[12]), truth(row[13])));
+                    truth(row[12]), truth(row[13]),
+                    normalizedKeyword.isEmpty()?null:((Number)row[16]).intValue(),
+                    normalizedKeyword.isEmpty()?null:(((Number)row[16]).intValue()<GoodsSearchPolicy.RELATED_RANK_OFFSET?"PRIMARY":"RELATED")));
         }
         long total = rows.isEmpty()
-                ? (safePage == 1 ? 0L : countWhereUsedMaterials(normalizedKeyword, normalizedCategory))
+                ? (safePage == 1 ? 0L : countWhereUsedMaterials(normalizedKeyword, normalizedCategory,search))
                 : ((Number) rows.get(0)[14]).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }
 
-    private long countWhereUsedMaterials(String keyword, String categoryId) {
+    private long countWhereUsedMaterials(String keyword, String categoryId,GoodsSearchPolicy.NativeSearch search) {
         String categoryCte = categoryId != null && !HISTORICAL_UNCATEGORIZED.equals(categoryId)
                 ? MATERIAL_CATEGORY_SUBTREE : "";
-        Query query = em.createNativeQuery(categoryCte + """
-                SELECT COUNT(*)
-                FROM goods
-                """ + MATERIAL_CATEGORY_JOIN + " WHERE " + materialPredicate(keyword, categoryId));
-        bindMaterialFilter(query, keyword, categoryId);
+        Query query = em.createNativeQuery(categoryCte + "SELECT COUNT(*) FROM (SELECT "+search.rank()+" AS match_rank FROM goods "
+                + MATERIAL_CATEGORY_JOIN + " WHERE " + materialPredicate(keyword, categoryId,search.condition())+") matched");
+        bindMaterialFilter(query, search, categoryId);
         return ((Number) query.getSingleResult()).longValue();
     }
 
@@ -795,21 +788,33 @@ public class ProductionWhereUsedQueryService {
         throw new ApiException(ErrorCode.VALIDATION_FAILED, "物料分类标识无效，请重新选择分类");
     }
 
-    private static String materialPredicate(String keyword, String categoryId) {
+    private static String materialPredicate(String keyword, String categoryId,String condition) {
         String categoryPredicate = categoryId == null ? ""
                 : HISTORICAL_UNCATEGORIZED.equals(categoryId) ? "category.id IS NULL"
                 : "goods.category_id IN (SELECT id FROM selected_categories)";
         if (keyword.isEmpty()) return categoryPredicate;
-        return MATERIAL_SEARCH + (categoryPredicate.isEmpty() ? "" : " AND " + categoryPredicate);
+        return "("+condition+")" + (categoryPredicate.isEmpty() ? "" : " AND " + categoryPredicate);
     }
 
-    private static void bindMaterialFilter(Query query, String keyword, String categoryId) {
-        if (!keyword.isEmpty()) {
-            query.setParameter("pattern", "%" + escapeLike(keyword.toLowerCase(Locale.ROOT)) + "%");
-        }
+    private static void bindMaterialFilter(Query query, GoodsSearchPolicy.NativeSearch search, String categoryId) {
+        search.parameters().forEach(query::setParameter);
         if (categoryId != null && !HISTORICAL_UNCATEGORIZED.equals(categoryId)) {
             query.setParameter("categoryId", UUID.fromString(categoryId));
         }
+    }
+
+    private GoodsSearchPolicy.NativeSearch materialSearch(String keyword,boolean includeRelated) {
+        List<CategoryKeywordSearch.Node> nodes;
+        if(KeywordSearch.terms(keyword).isEmpty()) nodes=List.of();
+        else {
+            @SuppressWarnings("unchecked")
+            List<Object[]> rows=em.createNativeQuery(MATERIAL_CATEGORY_CATALOG).getResultList();
+            nodes=rows.stream().map(row->new CategoryKeywordSearch.Node((UUID)row[0],(UUID)row[1],(String)row[2],(String)row[3])).toList();
+        }
+        return new GoodsSearchPolicy(keyword,nodes,true,includeRelated,GoodsSearchPolicy.SubjectMode.PREFER)
+                .nativeSearch("materialKeyword","goods.category_id","goods.code","goods.name",
+                        List.of("goods.code","goods.name","goods.model","goods.spec","goods.series","goods.c_number","goods.material"),
+                        List.of("goods.require_remark"));
     }
 
     private static String escapeLike(String value) {

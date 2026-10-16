@@ -38,7 +38,8 @@ import java.util.UUID;
 /**
  * 货品主档 API（基础资料-货品资料）。
  *
- * <p>列表与 facets 均按 {@code categoryId} 的<b>子树</b>范围（含子分类）查询，动态字段筛选。
+ * <p>列表、facets、分类定位与导出复用相同搜索/筛选；显式分类子树与业务根范围求交。
+ * 描述相关命中仅在 {@code includeRelated=true} 时加入，默认只查货品身份和分类。
  *
  * - GET  /api/master/goods?categoryId=&keyword=&nullFields=&series=...&page=1&size=20 → 分页
  * - GET  /api/master/goods/facets?categoryId=                                        → 各字段可选值 + 空值计数
@@ -91,6 +92,7 @@ public class GoodsController {
             // V587/V590 归属表头筛选（值为 UUID；空值走 nullFields）
             @RequestParam(required = false) UUID owningWarehouse,
             @RequestParam(required = false) UUID owningWorkshop,
+            @RequestParam(required = false) Boolean includeRelated,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
@@ -100,28 +102,21 @@ public class GoodsController {
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly,
-                owningWarehouse, owningWorkshop), page, size, sort, order);
+                owningWarehouse, owningWorkshop, includeRelated), page, size, sort, order);
     }
 
     /** 统一选择器搜索定位：只返回受 scope/权限约束的命中货品分类 id，不下载全部货品页。 */
     @GetMapping("/search-category-ids")
     @PreAuthorize("hasAuthority('goods:view')")
     public java.util.List<UUID> searchCategoryIds(
-            @RequestParam String keyword,
-            @RequestParam Set<UUID> categoryRootIds,
-            @RequestParam(required = false) Boolean excludeDisabled,
-            @RequestParam(required = false) Boolean excludeStub) {
-        return service.matchingCategoryIds(new GoodsQueryFilter(
-                null, categoryRootIds, keyword, Set.of(),
-                null, null, null, null, null, null, null, null,
-                null, null, null,
-                null, null, null, excludeDisabled, excludeStub, null, null, null, null));
+            @org.springframework.web.bind.annotation.ModelAttribute GoodsQueryFilter filter) {
+        return service.matchingCategoryIds(filter);
     }
 
     @GetMapping("/facets")
     @PreAuthorize("hasAuthority('goods:view')")
-    public GoodsFacets facets(@RequestParam(required = false) UUID categoryId) {
-        return service.facets(categoryId);
+    public GoodsFacets facets(@org.springframework.web.bind.annotation.ModelAttribute GoodsQueryFilter filter) {
+        return service.queryFacets(filter);
     }
 
     /** 按 id 批量解析货品名（采购单据明细展示用；goods:view 全员有）。 */
@@ -156,6 +151,7 @@ public class GoodsController {
     @PreAuthorize("hasAuthority('goods:export')")
     public ResponseEntity<byte[]> export(
             @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) Set<UUID> categoryRootIds,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Set<String> nullFields,
             @RequestParam(required = false) String series,
@@ -176,14 +172,17 @@ public class GoodsController {
             @RequestParam(required = false) Boolean excludeStub,
             @RequestParam(required = false) Boolean disabledOnly,
             @RequestParam(required = false) Boolean stubOnly,
+            @RequestParam(required = false) UUID owningWarehouse,
+            @RequestParam(required = false) UUID owningWorkshop,
+            @RequestParam(required = false) Boolean includeRelated,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order,
             @Valid @RequestBody ExportPasswordRequest body) {
-        ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, null, keyword, nullFields,
+        ExportPayload payload = service.export(new GoodsQueryFilter(categoryId, categoryRootIds, keyword, nullFields,
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
-                excludeStub, disabledOnly, stubOnly, null, null), sort, order,
+                excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated), sort, order,
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_goods");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

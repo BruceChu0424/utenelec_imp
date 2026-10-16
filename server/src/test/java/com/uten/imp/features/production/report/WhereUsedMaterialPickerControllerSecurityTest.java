@@ -64,6 +64,10 @@ class WhereUsedMaterialPickerControllerSecurityTest {
                 .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.whereUsedMaterials("steel", "history-uncategorized", 1, 30))
                 .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.whereUsedMaterials("steel", "history-uncategorized", 1, 30, true))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> controller.whereUsedMaterialCategoryMatches("steel", "history-uncategorized", true))
+                .isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(query);
     }
 
@@ -84,6 +88,19 @@ class WhereUsedMaterialPickerControllerSecurityTest {
         verify(query).whereUsedMaterialCategories();
         verify(query).whereUsedMaterialCategoryMatches("% literal");
         verify(query).searchWhereUsedMaterials("% literal", category, 3, 17);
+        verifyNoMoreInteractions(query);
+    }
+
+    @Test void expandedSearchUsesTheSameDedicatedPermissionAndPassesEveryScopeFlag() {
+        login(Set.of("production_where_used:view"));
+        var page=new PageResponse<WhereUsedMaterialOption>(List.of(),2,9,0,0);
+        when(query.searchWhereUsedMaterials("steel M3","history-uncategorized",2,9,true)).thenReturn(page);
+        when(query.whereUsedMaterialCategoryMatches("steel M3","history-uncategorized",true)).thenReturn(List.of("history-uncategorized"));
+        assertThat(controller.whereUsedMaterials("steel M3","history-uncategorized",2,9,true)).isSameAs(page);
+        assertThat(controller.whereUsedMaterialCategoryMatches("steel M3","history-uncategorized",true))
+                .containsEntry("items",List.of("history-uncategorized"));
+        verify(query).searchWhereUsedMaterials("steel M3","history-uncategorized",2,9,true);
+        verify(query).whereUsedMaterialCategoryMatches("steel M3","history-uncategorized",true);
         verifyNoMoreInteractions(query);
     }
 

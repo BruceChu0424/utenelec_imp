@@ -70,7 +70,7 @@ class MasterCategorySearchPostgresTest extends AuthSessionPostgresTestSupport {
         JsonNode second = goodsSearch(token, root, word + " M3", 2, 1);
         assertEquals(hidden.toString(), second.path("items").get(0).path("id").asText());
         MvcResult locations = mvc.perform(get("/api/master/goods/search-category-ids")
-                .param("keyword", word + " M3").param("categoryRootIds", root.toString())
+                .param("keyword", word + " M3").param("categoryRootIds", root.toString()).param("includeRelated", "true")
                 .header("Authorization", "Bearer " + token)).andReturn();
         assertEquals(200, locations.getResponse().getStatus(), body(locations));
         List<String> ids = strings(json(locations));
@@ -122,7 +122,7 @@ class MasterCategorySearchPostgresTest extends AuthSessionPostgresTestSupport {
     }
 
     private JsonNode goodsSearch(String token, UUID root, String query, int page, int size) throws Exception {
-        MvcResult result = mvc.perform(get("/api/master/goods").param("keyword", query)
+        MvcResult result = mvc.perform(get("/api/master/goods").param("keyword", query).param("includeRelated", "true")
                 .param("categoryRootIds", root.toString()).param("excludeDisabled", "true").param("excludeStub", "true")
                 .param("page", Integer.toString(page)).param("size", Integer.toString(size))
                 .header("Authorization", "Bearer " + token)).andReturn();

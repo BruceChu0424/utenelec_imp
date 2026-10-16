@@ -66,7 +66,7 @@ class ProductionWhereUsedQueryServiceTest {
                 true,
                 false,
                 37L,
-                categoryId.toString()
+                categoryId.toString(), 1
         }));
         when(em.createNativeQuery(anyString())).thenReturn(query);
 
@@ -89,15 +89,18 @@ class ProductionWhereUsedQueryServiceTest {
             assertThat(option.bomIssue()).isTrue();
             assertThat(option.productionHistory()).isTrue();
             assertThat(option.subcontractHistory()).isFalse();
+            assertThat(option.searchRank()).isEqualTo(1);
+            assertThat(option.searchMatchKind()).isEqualTo("PRIMARY");
         });
         assertThat(result.getTotal()).isEqualTo(37L);
         assertThat(result.getTotalPages()).isEqualTo(2);
 
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
-        String compactSql = compact(sql.getValue());
+        List<String> queries = materialSql();
+        assertThat(queries).hasSize(1);
+        String compactSql = compact(queries.get(0));
         int matchedStart = compactSql.indexOf("WITH matched_goods AS MATERIALIZED (");
-        int matchedWhereStart = compactSql.indexOf(" WHERE LOWER(", matchedStart);
+        int candidateFrom = compactSql.indexOf(" FROM goods LEFT JOIN material_categories category", matchedStart);
+        int matchedWhereStart = compactSql.indexOf(" WHERE ", candidateFrom);
         int matchedOrderStart = compactSql.indexOf(
                 " ORDER BY match_rank,", matchedWhereStart);
         int pageLimitStart = compactSql.indexOf(
@@ -119,8 +122,8 @@ class ProductionWhereUsedQueryServiceTest {
         String matchedPageSql = compactSql.substring(matchedStart, outerSelectStart);
         assertThat(matchedPageSql)
                 .contains("COUNT(*) OVER() AS total_count")
-                .contains("COALESCE(goods.code, '') || ' ' || COALESCE(goods.name, '')")
-                .contains(") LIKE :pattern")
+                .contains("goods.code ILIKE :materialKeyword ESCAPE")
+                .contains("goods.name ILIKE :materialKeyword ESCAPE")
                 .contains("ORDER BY match_rank, goods.is_deleted ASC, "
                         + "goods.auto_created ASC, goods.code ASC NULLS LAST, "
                         + "goods.name ASC NULLS LAST, goods.id ASC "
@@ -168,20 +171,20 @@ class ProductionWhereUsedQueryServiceTest {
                 .contains("LEFT JOIN production_execution_segments segment ON segment.id = demand.execution_segment_id AND segment.is_deleted = FALSE")
                 .contains("demand.execution_segment_id IS NOT NULL AND segment.id IS NOT NULL AND segment.product_goods_id <> goods.id")
                 .contains("demand.execution_segment_id IS NULL AND demand.status NOT IN ('RELEASED', 'REVERSED') AND plan.status = 1 AND plan.is_stopped = FALSE AND plan.is_canceled = FALSE")
-                .doesNotContain("ILIKE");
+                .contains("goods.name ILIKE :materialKeyword ESCAPE");
         assertThat(occurrences(pageEnrichmentSql,
                 "demand.execution_segment_id IS NULL AND demand.status NOT IN "
                         + "('RELEASED', 'REVERSED') AND plan.status = 1 "
                         + "AND plan.is_stopped = FALSE AND plan.is_canceled = FALSE")).isEqualTo(2);
         assertThat(occurrences(pageEnrichmentSql,
                 "legacy.master_goods_id IS NOT NULL")).isEqualTo(1);
-        verify(query).setParameter("pattern", "%mat-01%");
+        verify(query).setParameter("materialKeyword", "%mat-01%");
         assertThat(occurrences(pageEnrichmentSql,
                 "legacy.master_goods_id <> goods.id")).isEqualTo(1);
         assertThat(occurrences(pageEnrichmentSql,
                 "segment.product_goods_id <> goods.id")).isEqualTo(2);
-        verify(query).setParameter("prefix", "mat-01%");
-        verify(query).setParameter("exact", "mat-01");
+        verify(query).setParameter("materialKeywordPrefix", "mat-01%");
+        verify(query).setParameter("materialKeywordPhrase", "mat-01");
     }
 
     @Test
@@ -192,12 +195,11 @@ class ProductionWhereUsedQueryServiceTest {
 
         service().searchWhereUsedMaterials("%_\\", 1, 20);
 
-        verify(query).setParameter("pattern", "%\\%\\_\\\\%");
-        verify(query).setParameter("prefix", "\\%\\_\\\\%");
-        verify(query).setParameter("exact", "%_\\");
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
-        assertThat(occurrences(compact(sql.getValue()), " ESCAPE ")).isEqualTo(3);
+        verify(query).setParameter("materialKeyword", "%\\%\\_\\\\%");
+        verify(query).setParameter("materialKeywordPrefix", "\\%\\_\\\\%");
+        verify(query).setParameter("materialKeywordPhrase", "%_\\");
+        assertThat(materialSql()).singleElement().satisfies(sql ->
+                assertThat(compact(sql)).contains("goods.name ILIKE :materialKeyword ESCAPE"));
     }
 
     @Test
@@ -215,16 +217,15 @@ class ProductionWhereUsedQueryServiceTest {
         assertThat(result.getPage()).isEqualTo(2);
         assertThat(result.getTotal()).isEqualTo(61L);
         assertThat(result.getTotalPages()).isEqualTo(3);
-        verify(pageQuery).setParameter("pattern", "%mat%");
-        verify(countQuery).setParameter("pattern", "%mat%");
-
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
-        assertThat(compact(sql.getAllValues().get(0)))
+        verify(pageQuery).setParameter("materialKeyword", "%mat%");
+        verify(countQuery).setParameter("materialKeyword", "%mat%");
+        List<String> queries = materialSql();
+        assertThat(queries).hasSize(2);
+        assertThat(compact(queries.get(0)))
                 .contains("WITH matched_goods AS MATERIALIZED");
-        assertThat(compact(sql.getAllValues().get(1)))
-                .contains("SELECT COUNT(*) FROM goods")
-                .contains("LIKE :pattern ESCAPE")
+        assertThat(compact(queries.get(1)))
+                .contains("SELECT COUNT(*) FROM (SELECT")
+                .contains("ILIKE :materialKeyword ESCAPE")
                 .doesNotContain("CROSS JOIN LATERAL");
     }
 
@@ -234,7 +235,7 @@ class ProductionWhereUsedQueryServiceTest {
         Query pageQuery = chainableQuery();
         when(pageQuery.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
                 UUID.randomUUID(), "OLD-1", "Historical good", null, null, "DISABLED", "MIGRATED",
-                "Child category", true, true, false, false, false, false, 1L, categoryId.toString()
+                "Child category", true, true, false, false, false, false, 1L, categoryId.toString(), 0
         }));
         when(em.createNativeQuery(anyString())).thenReturn(pageQuery);
 
@@ -251,7 +252,7 @@ class ProductionWhereUsedQueryServiceTest {
         verify(pageQuery).setParameter("categoryId", categoryId);
         verify(pageQuery).setParameter("__limit", 50);
         verify(pageQuery).setParameter("__offset", 0L);
-        verify(pageQuery, never()).setParameter(org.mockito.ArgumentMatchers.eq("pattern"), any());
+        verify(pageQuery, never()).setParameter(org.mockito.ArgumentMatchers.eq("materialKeyword"), any());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
         String query = compact(sql.getValue());
@@ -274,7 +275,7 @@ class ProductionWhereUsedQueryServiceTest {
         Query pageQuery = chainableQuery();
         when(pageQuery.getResultList()).thenReturn(List.<Object[]>of(new Object[]{
                 UUID.randomUUID(), "OLD", "Old material", null, null, "DISABLED", null,
-                null, true, true, false, false, false, false, 1L, "history-uncategorized"
+                null, true, true, false, false, false, false, 1L, "history-uncategorized", 0
         }));
         when(em.createNativeQuery(anyString())).thenReturn(pageQuery);
 
@@ -311,17 +312,18 @@ class ProductionWhereUsedQueryServiceTest {
         assertThat(result.getTotalPages()).isEqualTo(2);
         verify(pageQuery).setParameter("categoryId", categoryId);
         verify(countQuery).setParameter("categoryId", categoryId);
-        verify(pageQuery).setParameter("pattern", "%\\%\\_\\\\%");
-        verify(countQuery).setParameter("pattern", "%\\%\\_\\\\%");
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, org.mockito.Mockito.times(2)).createNativeQuery(sql.capture());
-        String count = compact(sql.getAllValues().get(1));
+        verify(pageQuery).setParameter("materialKeyword", "%\\%\\_\\\\%");
+        verify(countQuery).setParameter("materialKeyword", "%\\%\\_\\\\%");
+        List<String> queries = materialSql();
+        assertThat(queries).hasSize(2);
+        String count = compact(queries.get(1));
         assertThat(count).contains("WITH RECURSIVE selected_categories(id)")
                 .contains("goods.category_id IN (SELECT id FROM selected_categories)")
                 .doesNotContain("CROSS JOIN LATERAL");
-        for (String field : List.of("code", "name", "model", "spec", "series", "c_number", "material", "require_remark")) {
-            assertThat(count).contains("COALESCE(goods." + field + ", '')");
+        for (String field : List.of("code", "name", "model", "spec", "series", "c_number", "material")) {
+            assertThat(count).contains("goods." + field + " ILIKE :materialKeyword ESCAPE");
         }
+        assertThat(count).doesNotContain("goods.require_remark");
     }
 
     @Test
@@ -344,14 +346,12 @@ class ProductionWhereUsedQueryServiceTest {
         assertThat(service().whereUsedMaterialCategoryMatches("  %_\\  "))
                 .containsExactly(categoryId, "history-uncategorized");
 
-        verify(query).setParameter("pattern", "%\\%\\_\\\\%");
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
-        assertThat(compact(sql.getValue()))
-                .contains("SELECT DISTINCT COALESCE(CAST(category.id AS text), 'history-uncategorized')")
+        verify(query).setParameter("materialKeyword", "%\\%\\_\\\\%");
+        assertThat(materialSql()).singleElement().satisfies(sql -> assertThat(compact(sql))
+                .contains("SELECT COALESCE(CAST(category.id AS text)")
                 .contains("category.is_deleted = FALSE")
-                .contains("COALESCE(goods.require_remark, '')")
-                .doesNotContain("LIMIT", "CROSS JOIN LATERAL", "goods.is_deleted = FALSE", "goods.auto_created = FALSE");
+                .contains("GROUP BY category.id ORDER BY MIN(")
+                .doesNotContain("LIMIT", "CROSS JOIN LATERAL", "goods.is_deleted = FALSE", "goods.auto_created = FALSE", "goods.require_remark"));
     }
 
     @Test
@@ -625,7 +625,19 @@ class ProductionWhereUsedQueryServiceTest {
     }
 
     private ProductionWhereUsedQueryService service() {
+        Query catalog = org.mockito.Mockito.mock(Query.class);
+        org.mockito.Mockito.lenient().when(catalog.getResultList()).thenReturn(List.of());
+        org.mockito.Mockito.lenient().doReturn(catalog).when(em).createNativeQuery(ProductionWhereUsedQueryService.MATERIAL_CATEGORY_CATALOG);
         return new ProductionWhereUsedQueryService(em);
+    }
+
+    /** Catalog metadata is loaded once, independently of paging/evidence SQL. */
+    private List<String> materialSql() {
+        verify(em).createNativeQuery(ProductionWhereUsedQueryService.MATERIAL_CATEGORY_CATALOG);
+        return org.mockito.Mockito.mockingDetails(em).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().equals("createNativeQuery") && invocation.getArguments().length == 1)
+                .map(invocation -> (String) invocation.getArgument(0))
+                .filter(sql -> !sql.equals(ProductionWhereUsedQueryService.MATERIAL_CATEGORY_CATALOG)).toList();
     }
 
     private Query chainableQuery() {

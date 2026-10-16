@@ -108,11 +108,7 @@ class GoodsCategoryRootScopeTest {
     }
 
     @Test
-    void rejectsAmbiguousOrOversizedRootScopesBeforeQuerying() {
-        UUID categoryId = UUID.randomUUID();
-        assertThrows(ApiException.class, () -> service.list(
-                filter(categoryId, Set.of(UUID.randomUUID()), "G-"), 1, 20, null, null));
-
+    void rejectsOversizedRootScopesBeforeQuerying() {
         Set<UUID> oversized = new LinkedHashSet<>();
         while (oversized.size() <= GoodsService.MAX_CATEGORY_ROOT_IDS) {
             oversized.add(UUID.randomUUID());
@@ -122,6 +118,21 @@ class GoodsCategoryRootScopeTest {
 
         verify(categoryRepo, never()).findSubtree(any(UUID.class));
         verify(goodsRepo, never()).findAll(anyGoodsSpecification(), any(Pageable.class));
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void explicitCategoryIntersectsTheAllowedRootUnion() {
+        UUID rootId = UUID.randomUUID(), selected = UUID.randomUUID(), child = UUID.randomUUID(), outside = UUID.randomUUID();
+        when(categoryRepo.findSubtree(rootId)).thenReturn(List.of(category(rootId), category(selected), category(child)));
+        when(categoryRepo.findSubtree(selected)).thenReturn(List.of(category(selected), category(child), category(outside)));
+        when(goodsRepo.findAll(anyGoodsSpecification(), any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+        service.list(filter(selected, Set.of(rootId), null), 1, 20, null, null);
+        ArgumentCaptor<Specification<Goods>> captor = ArgumentCaptor.forClass(Specification.class);
+        verify(goodsRepo).findAll(captor.capture(), any(Pageable.class));
+        Root<Goods> root = mock(Root.class, Answers.RETURNS_DEEP_STUBS);
+        captor.getValue().toPredicate(root, null, mock(CriteriaBuilder.class, Answers.RETURNS_DEEP_STUBS));
+        verify(root.get("category").get("id")).in(List.of(selected, child));
     }
 
     @Test

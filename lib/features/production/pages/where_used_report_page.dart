@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -103,6 +104,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   MaterialTraceSubject? _subject;
   _TraceEntry _entry = _TraceEntry.goods;
   _TraceResultMode _mode = _TraceResultMode.relationships;
+  String _traceDirection = 'usage';
   int _readEpoch = 0;
   int _traceReloadTick = 0;
   _WhereUsedSource _source = _WhereUsedSource.all;
@@ -155,6 +157,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         _material = null;
         _entry = _TraceEntry.goods;
         _mode = _TraceResultMode.relationships;
+        _traceDirection = 'usage';
         _page = 1;
         _sortKey = null;
         _sortAscending = true;
@@ -251,6 +254,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         status: selected.status,
       );
       _mode = _TraceResultMode.relationships;
+      _traceDirection = 'usage';
       _page = 1;
       _sortKey = null;
       _sortAscending = true;
@@ -278,6 +282,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       _subject = selected;
       _material = null;
       _mode = _TraceResultMode.actual;
+      _traceDirection = 'usage';
       ++_traceReloadTick;
     });
   }
@@ -292,6 +297,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       _mode = entry == _TraceEntry.goods
           ? _TraceResultMode.relationships
           : _TraceResultMode.actual;
+      _traceDirection = 'usage';
       _page = 1;
       _sortKey = null;
       _sortAscending = true;
@@ -461,6 +467,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
         ),
         actions: [
           IconButton(
+            key: const Key('where-used-basis'),
+            icon: const Icon(Icons.info_outline_rounded),
+            tooltip: '依据说明',
+            onPressed: _showBasis,
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh_rounded),
             tooltip: '刷新当前结果',
             onPressed: _subject == null || _loading ? null : _refreshQuery,
@@ -473,9 +485,25 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             padding: const EdgeInsets.only(top: UtenSpacing.s8),
             child: UtenCollapsingHeaderScrollView(
               collapsingHeader: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildQueryToolbar(),
-                  _buildTitle(theme),
+                  Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildQueryToolbar(),
+                          if (_entry != _TraceEntry.document) ...[
+                            const SizedBox(height: UtenSpacing.s12),
+                            _buildTitle(theme),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
                   if (_mode == _TraceResultMode.relationships &&
                       unattributed > 0)
                     _UnattributedNotice(
@@ -493,20 +521,15 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   }
 
   Widget _buildTitle(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s4,
-        0,
-        UtenSpacing.s4,
-        UtenSpacing.s8,
-      ),
-      child: Wrap(
-        spacing: UtenSpacing.s12,
-        runSpacing: UtenSpacing.s4,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
+    return Wrap(
+      spacing: UtenSpacing.s12,
+      runSpacing: UtenSpacing.s4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (_entry == _TraceEntry.goods)
           UtenSegmentRow<_TraceResultMode>(
             key: const Key('where-used-result-mode'),
+            showSelectedIcon: false,
             segments: [
               const ButtonSegment(
                 value: _TraceResultMode.actual,
@@ -530,87 +553,129 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
               }
             },
           ),
-          if (_mode == _TraceResultMode.relationships)
-            Text(
-              _source.label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          if (_mode == _TraceResultMode.relationships && _data != null)
-            Text('共 ${_data!.total} 个成品/半成品', style: theme.textTheme.bodySmall),
-          TextButton(
-            key: const Key('where-used-basis'),
-            onPressed: _showBasis,
-            child: const Text('依据说明'),
+        if (_mode == _TraceResultMode.actual &&
+            (_entry != _TraceEntry.document))
+          UtenSegmentRow<String>(
+            key: const Key('where-used-trace-direction'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: 'usage', label: Text('用到哪些产品')),
+              ButtonSegment(value: 'materials', label: Text('用了哪些物料')),
+            ],
+            selected: {_traceDirection},
+            onSelectionChanged: (values) =>
+                setState(() => _traceDirection = values.single),
           ),
-        ],
-      ),
+      ],
     );
   }
 
-  Widget _buildQueryToolbar() => Padding(
-    padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-    child: LayoutBuilder(
-      builder: (context, constraints) => Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          SizedBox(
-            width: 168.0.clamp(0, constraints.maxWidth),
-            child: UtenDropdownField(
-              key: const Key('where-used-entry-kind'),
-              label: '查询入口',
-              value: _entry.value,
-              allowClear: false,
-              enabled: !_loading,
-              items: [
-                for (final entry in _TraceEntry.values)
-                  UtenDropdownItem(value: entry.value, label: entry.label),
-              ],
-              onChanged: _changeEntry,
-            ),
+  Widget _buildQueryToolbar() => LayoutBuilder(
+    builder: (context, constraints) {
+      Widget entry() => Semantics(
+        label: '查询入口',
+        child: UtenDropdownField(
+          key: const Key('where-used-entry-kind'),
+          value: _entry.value,
+          allowClear: false,
+          enabled: !_loading,
+          items: [
+            for (final entry in _TraceEntry.values)
+              UtenDropdownItem(value: entry.value, label: entry.label),
+          ],
+          onChanged: _changeEntry,
+        ),
+      );
+      Widget subject(double width) => UtenFilterPickerField(
+        key: const Key('where-used-query-subject'),
+        label: '查询对象',
+        value: _subject == null ? null : _subjectLabel,
+        placeholder: _subjectLabel,
+        width: width,
+        icon: Icons.search_rounded,
+        enabled: !_loading,
+        onTap: _pickSubject,
+      );
+      final hasFilters =
+          _limitHistoryDates ||
+          (_mode == _TraceResultMode.relationships &&
+              _source != _WhereUsedSource.all);
+      final filterLabel = hasFilters ? '筛选 · 已设置' : '筛选';
+      final actions = <Widget>[
+        UtenButton(
+          key: const Key('where-used-search'),
+          onPressed: _loading || _subject == null ? null : _refreshQuery,
+          isLoading: _loading,
+          child: const Text('查询'),
+        ),
+        if (constraints.maxWidth < 460)
+          IconButton.outlined(
+            key: const Key('where-used-filters'),
+            tooltip: filterLabel,
+            isSelected: hasFilters,
+            icon: const Icon(Icons.filter_alt_outlined),
+            selectedIcon: const Icon(Icons.filter_alt_rounded),
+            onPressed: _loading ? null : _showFilters,
+          )
+        else
+          UtenButton(
+            key: const Key('where-used-filters'),
+            type: UtenButtonType.secondary,
+            onPressed: _loading ? null : _showFilters,
+            child: Text(filterLabel),
           ),
-          SizedBox(
-            width: constraints.maxWidth < 640
-                ? constraints.maxWidth
-                : (constraints.maxWidth - 260).clamp(280.0, 520.0),
-            child: UtenButton(
-              key: const Key('where-used-query-subject'),
-              type: UtenButtonType.tonal,
-              icon: Icons.search_rounded,
-              onPressed: _loading ? null : _pickSubject,
-              child: Text(
-                _subjectLabel,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+      ];
+      if (constraints.maxWidth >= 760) {
+        return Row(
+          children: [
+            SizedBox(width: 140, child: entry()),
+            const SizedBox(width: UtenSpacing.s12),
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: LayoutBuilder(
+                  builder: (_, available) => subject(available.maxWidth),
+                ),
               ),
             ),
-          ),
-          FilledButton(
-            key: const Key('where-used-search'),
-            onPressed: _loading ? null : _refreshQuery,
-            child: Text(
-              _loading
-                  ? '查询中…'
-                  : _mode == _TraceResultMode.actual
-                  ? '查询追溯'
-                  : '查询关系',
+            const SizedBox(width: UtenSpacing.s12),
+            ...actions.expand(
+              (action) => [action, const SizedBox(width: UtenSpacing.s8)],
             ),
-          ),
-          OutlinedButton(
-            key: const Key('where-used-filters'),
-            onPressed: _loading ? null : _showFilters,
-            child: Text(
-              _source == _WhereUsedSource.all && !_limitHistoryDates
-                  ? '筛选'
-                  : '筛选 · 已设置',
+          ],
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (constraints.maxWidth < 460)
+            Row(
+              children: [
+                Expanded(child: entry()),
+                const SizedBox(width: UtenSpacing.s8),
+                actions.first,
+                const SizedBox(width: UtenSpacing.s8),
+                actions.last,
+              ],
+            )
+          else
+            Wrap(
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 132.0.clamp(0, constraints.maxWidth),
+                  child: entry(),
+                ),
+                ...actions,
+              ],
             ),
-          ),
+          const SizedBox(height: UtenSpacing.s8),
+          subject(constraints.maxWidth),
         ],
-      ),
-    ),
+      );
+    },
   );
 
   Future<void> _showBasis() {
@@ -959,6 +1024,8 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
     return GoodsProductionTraceView.query(
       key: ValueKey(('where-used-actual', subject.identity, _readEpoch)),
       subject: subject,
+      direction: _traceDirection,
+      showDirectionSelector: false,
       dateFrom: _limitHistoryDates ? _formatDate(_from) : null,
       dateTo: _limitHistoryDates ? _formatDate(_to) : null,
       reloadTick: _traceReloadTick,
@@ -970,6 +1037,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
 
   void _followTraceSubject(MaterialTraceSubject subject) {
     setState(() {
+      _traceDirection = 'usage';
       _subject = subject;
       _entry = subject.isGoods
           ? _TraceEntry.goods
@@ -1001,6 +1069,42 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
             type: column.type,
             sortable: isSortableReportType(column.type),
             value: (row) => formatReportCell(column, row),
+            defaultVisible: !const {
+              'goodsCode',
+              'colorName',
+              'categoryName',
+              'executionSegmentCount',
+              'legacyPlanCount',
+              'subcontractOrderCount',
+              'subcontractIssueCount',
+            }.contains(column.key),
+            cellBuilder: column.key == 'goodsName'
+                ? (context, row) => Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: UtenSpacing.s4,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(formatReportCell(column, row) ?? '—'),
+                        Text(
+                          [row['goodsCode'], row['colorName']]
+                              .where(
+                                (value) => value != null && '$value'.isNotEmpty,
+                              )
+                              .join(' · '),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  )
+                : null,
           ),
         )
         .toList();
@@ -1013,6 +1117,17 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
       // primary:true → 表体参与「标题行折叠 → 表格内滚」联动。
       primary: true,
       columns: columns,
+      toolbarLeadingActions: [
+        Text(_source.label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+      toolbarActions: [
+        Text(
+          '共 ${data.total} 个成品/半成品',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        if (_limitHistoryDates)
+          Text(range, style: Theme.of(context).textTheme.bodySmall),
+      ],
       items: data.rows,
       facets: data.facets,
       nullCounts: const {},

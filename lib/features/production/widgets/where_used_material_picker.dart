@@ -1,442 +1,163 @@
-import 'package:uten_imp/components/feedback/uten_dialog.dart';
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/inputs/uten_search_bar.dart';
-import '../../../components/layout/uten_paged_picker_list.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/network/api_exception.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../basic_data/models/goods_node.dart';
+import '../../basic_data/models/product_category_node.dart';
+import '../../basic_data/widgets/uten_goods_picker.dart';
 
-/// 物料反查专用选择器。
-///
-/// 与通用货品选择器不同，本选择器搜索全部匹配货品，再标注当前直接 BOM、生产和委外证据，
-/// 并保留禁用、自动占位及软删除的历史物料。接口只要求
-/// `production_where_used:view`，因此反查页不会额外依赖 `goods:view`。
+/// Reuses the sales picker shell and its staged single-selection contract.
+/// The read-only report API keeps historical, disabled and placeholder goods
+/// available without requiring goods:view or material_category:view.
 Future<GoodsListItem?> showWhereUsedMaterialPicker(
   BuildContext context,
   WidgetRef ref,
-) {
-  final picker = _WhereUsedMaterialPicker(
-    api: ref.read(apiClientProvider),
-    boundary: ref.read(sensitiveReadBoundaryProvider),
-    autofocus: !context.breakpoint.isCompact,
-  );
+) => showUtenGoodsPicker(
+  context,
+  ref,
+  scope: UtenGoodsPickerScope.all,
+  dataSource: _WhereUsedMaterialDataSource(ref.read(apiClientProvider)),
+  title: '选择要反查的物料',
+  readBoundary: ref.read(sensitiveReadBoundaryProvider),
+);
 
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<GoodsListItem>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.xxl),
-        ),
-      ),
-      builder: (_) => FractionallySizedBox(heightFactor: 0.92, child: picker),
-    );
-  }
-
-  return showDialog<GoodsListItem>(
-    context: context,
-    builder: (dialogContext) {
-      final viewport = MediaQuery.sizeOf(dialogContext);
-      return UtenDialogFrame(
-        insetPadding: const EdgeInsets.all(UtenSpacing.s24),
-        clipBehavior: Clip.antiAlias,
-        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-        child: SizedBox(
-          width: math.min(760, math.max(320, viewport.width - 48)),
-          height: math.min(720, math.max(280, viewport.height - 48)),
-          child: picker,
-        ),
-      );
-    },
-  );
-}
-
-class _WhereUsedMaterialPicker extends ConsumerStatefulWidget {
-  const _WhereUsedMaterialPicker({
-    required this.api,
-    required this.boundary,
-    required this.autofocus,
-  });
+class _WhereUsedMaterialDataSource extends UtenGoodsPickerDataSource {
+  _WhereUsedMaterialDataSource(this.api);
 
   final ApiClient api;
-  final SensitiveReadBoundary boundary;
-  final bool autofocus;
+  // Bind evidence to the returned snapshot, so a late discarded request cannot
+  // overwrite the tags of a newer visible item with the same goods ID.
+  final _evidence = Map<GoodsListItem, _WhereUsedMaterial>.identity();
+  static const _basePath = '/production/reports/where-used';
 
   @override
-  ConsumerState<_WhereUsedMaterialPicker> createState() =>
-      _WhereUsedMaterialPickerState();
-}
-
-class _WhereUsedMaterialPickerState
-    extends ConsumerState<_WhereUsedMaterialPicker> {
-  static const _pageSize = 50;
-
-  final _keywordController = TextEditingController();
-  _MaterialPage? _result;
-  bool _hasPageWindow = false;
-  String _keyword = '';
-  String? _error;
-  int _page = 1;
-  int _requestGeneration = 0;
-  bool _loading = false;
-  bool _boundaryChanged = false;
-  bool _closeScheduled = false;
-
-  void _closeStaleRoute() {
-    if (_closeScheduled) return;
-    _closeScheduled = true;
-    final route = ModalRoute.of(context);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final navigator = route?.navigator;
-      if (route == null || navigator == null || !route.isActive) return;
-      if (route.isCurrent) {
-        navigator.pop();
-      } else {
-        navigator.removeRoute(route);
-      }
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.boundary != ref.read(sensitiveReadBoundaryProvider)) {
-      _boundaryChanged = true;
-    }
-    ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
-      if (previous == next || !mounted || _boundaryChanged) return;
-      ++_requestGeneration;
-      setState(() {
-        _boundaryChanged = true;
-        _result = null;
-      });
-      _closeStaleRoute();
-    });
-  }
-
-  @override
-  void dispose() {
-    _keywordController.dispose();
-    super.dispose();
-  }
-
-  /// 每次键入同步复位状态并作废在途请求（防抖窗口内旧结果不回写）；
-  /// 真正的检索由 UtenSearchBar 内置 300ms 防抖回调（_onKeywordDebounced）发起。
-  void _onInputChanged(String value) {
-    ++_requestGeneration;
-    final hasKeyword = value.trim().isNotEmpty;
-    setState(() {
-      _keyword = value;
-      _page = 1;
-      _result = null;
-      _hasPageWindow = false;
-      _error = null;
-      _loading = hasKeyword;
-    });
-  }
-
-  void _onKeywordDebounced(String value) {
-    if (value.trim().isEmpty) {
-      _resetToSearchPrompt();
-      return;
-    }
-    _reload();
-  }
-
-  void _submitKeyword() {
-    _page = 1;
-    if (_keyword.trim().isEmpty) {
-      _resetToSearchPrompt();
-      return;
-    }
-    _reload();
-  }
-
-  Future<void> _reload() async {
-    if (_boundaryChanged) return;
-    if (_keyword.trim().isEmpty) {
-      _resetToSearchPrompt();
-      return;
-    }
-    final generation = ++_requestGeneration;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    await _load(generation: generation);
-  }
-
-  void _resetToSearchPrompt() {
-    ++_requestGeneration;
-    setState(() {
-      _page = 1;
-      _result = null;
-      _hasPageWindow = false;
-      _error = null;
-      _loading = false;
-    });
-  }
-
-  Future<void> _load({required int generation}) async {
-    final keyword = _keyword.trim();
-    if (keyword.isEmpty) return;
-    final requestedPage = _page;
-    try {
-      final json = await widget.api.get(
-        '/production/reports/where-used/materials',
-        query: <String, dynamic>{
-          'keyword': keyword,
-          'page': requestedPage,
-          'size': _pageSize,
-        },
-      );
-      if (!mounted || generation != _requestGeneration) return;
-      final result = _MaterialPage.fromJson(json, fallbackPage: requestedPage);
-      setState(() {
-        _result = result;
-        _hasPageWindow = _hasPageWindow || result.items.isNotEmpty;
-        _page = result.page;
-        _loading = false;
-      });
-    } catch (error) {
-      if (!mounted || generation != _requestGeneration) return;
-      setState(() {
-        _loading = false;
-        _error = error is ApiException ? error.message : '物料加载失败，请稍后重试';
-      });
-    }
-  }
-
-  Future<void> _goToPage(int page) async {
-    if (_loading || page < 1) return;
-    _page = page;
-    await _reload();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_boundaryChanged) {
-      _closeStaleRoute();
-      return const SizedBox.shrink();
-    }
-    final theme = Theme.of(context);
-    return SafeArea(
-      key: const Key('where-used-material-picker'),
-      child: Column(
-        children: [
-          _buildHeader(theme),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s16,
-              UtenSpacing.s12,
-              UtenSpacing.s16,
-              UtenSpacing.s8,
-            ),
-            child: UtenSearchBar(
-              key: const Key('where-used-material-search'),
-              controller: _keywordController,
-              autofocus: widget.autofocus,
-              hint: '编号 / 名称 / 型号 / 规格等',
-              onInputChanged: _onInputChanged,
-              onChanged: _onKeywordDebounced,
-              onSubmitted: (_) => _submitKeyword(),
-            ),
+  Future<List<ProductCategoryNode>> tree() async {
+    final json = await api.get('$_basePath/material-categories');
+    return (json['items'] as List? ?? const [])
+        .map(
+          (item) => ProductCategoryNode.fromJson(
+            Map<String, dynamic>.from(item as Map),
           ),
-          if (_loading) const LinearProgressIndicator(minHeight: 2),
-          if (!_loading) const SizedBox(height: 2),
-          Expanded(child: _buildContent(theme)),
-        ],
-      ),
-    );
+        )
+        .toList();
   }
 
-  Widget _buildHeader(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        UtenSpacing.s20,
-        UtenSpacing.s16,
-        UtenSpacing.s8,
-        UtenSpacing.s12,
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.widgets_outlined, color: theme.colorScheme.primary),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '选择要反查的物料',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (_result != null)
-                  Text(
-                    '共 ${_result!.total} 个匹配物料',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: '关闭',
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.close_rounded),
-          ),
-        ],
-      ),
-    );
-  }
+  @override
+  Future<PagedResult<GoodsListItem>> list(
+    String categoryId, {
+    required int page,
+    String? keyword,
+  }) => _load(page: page, categoryId: categoryId, keyword: keyword);
 
-  Widget _buildContent(ThemeData theme) {
-    final result = _result;
-    final hasRows =
-        result != null && (result.items.isNotEmpty || _hasPageWindow);
-    // 列表骨架恒在（2026-10-09 用户口径「无结果/加载/错误不许整块换占位」）：
-    // loading/错误/无关键词引导/空结果都渲染在同一张 picker 列表的行区提示里，
-    // 页面不再来回切换；「清除搜索」按钮由搜索框自带的清除钮承担。
-    return UtenPagedPickerList<_WhereUsedMaterial>(
-      key: const Key('where-used-material-paged-list'),
-      items: hasRows ? result.items : const [],
-      idOf: (item) => item.id,
-      currentPage: result?.page ?? 1,
-      totalPages: result?.totalPages ?? 1,
-      paginationScope: _keyword.trim(),
-      onPageChange: _goToPage,
-      loading: _loading,
-      error: hasRows ? null : _error,
-      onRetry: _reload,
-      emptyMessage: _keyword.trim().isEmpty
-          ? '输入编号/名称开始搜索，支持物料编号、名称、型号或规格，输入后将自动搜索'
-          : '没有匹配的物料，请尝试更短的编号或名称，也可改用型号或规格',
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (context, item) {
-        return _MaterialTile(
-          key: ValueKey('where-used-material-${item.id}'),
-          item: item,
-          onTap: () {
-            if (!_boundaryChanged) {
-              Navigator.of(context).pop(item.toGoodsListItem());
-            }
-          },
-        );
+  @override
+  Future<PagedResult<GoodsListItem>> search(
+    String keyword, {
+    required int page,
+  }) => _load(page: page, keyword: keyword);
+
+  Future<PagedResult<GoodsListItem>> _load({
+    required int page,
+    String? categoryId,
+    String? keyword,
+  }) async {
+    final json = await api.get(
+      '$_basePath/materials',
+      query: {
+        'categoryId': ?categoryId,
+        if (keyword != null && keyword.trim().isNotEmpty)
+          'keyword': keyword.trim(),
+        'page': page,
+        'size': 50,
       },
     );
+    return PagedResult<GoodsListItem>.fromJson(json, (raw) {
+      final material = _WhereUsedMaterial.fromJson(raw);
+      final goods = material.toGoodsListItem();
+      _evidence[goods] = material;
+      return goods;
+    });
   }
-}
-
-class _MaterialTile extends StatelessWidget {
-  const _MaterialTile({super.key, required this.item, required this.onTap});
-
-  final _WhereUsedMaterial item;
-  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // 2026-09-29 用户口径：名称只显名称、型号/规格（86X86 类）不再显示；
-    // 副行保留 编号 · 分类。
-    final details = <String>[
+  Future<Set<String>> searchCategoryIds(String keyword) async {
+    final json = await api.get(
+      '$_basePath/material-category-matches',
+      query: {'keyword': keyword.trim()},
+    );
+    return (json['items'] as List? ?? const [])
+        .map((item) => item.toString())
+        .toSet();
+  }
+
+  @override
+  Widget? buildSubtitle(BuildContext context, GoodsListItem goods) {
+    final item = _evidence[goods];
+    if (item == null) return null;
+    // Current goods masters use 使用/禁用. Trace candidates may also carry
+    // historical labels; only known inactive states deserve an alert tone.
+    // Normal and unknown states stay explicit without guessing an exception.
+    final inactive = const {
+      '禁用',
+      '停用',
+      'DISABLED',
+      'INACTIVE',
+    }.contains(item.status.toUpperCase());
+    final details = [
       if (item.code.isNotEmpty) item.code,
       if (item.categoryName.isNotEmpty) item.categoryName,
+      if (item.status.isNotEmpty && !inactive) '状态：${item.status}',
     ];
-    final hasKnownEvidence =
+    final hasEvidence =
         item.currentBom ||
         item.bomIssue ||
         item.productionHistory ||
         item.subcontractHistory;
-
-    final semanticSources = <String>[
+    final evidence = [
       if (item.currentBom) '当前 BOM',
-      if (item.bomIssue) 'BOM 异常待处理',
       if (item.productionHistory) '生产历史',
       if (item.subcontractHistory) '委外历史',
-      if (!hasKnownEvidence) '暂无已知关系',
-      if (item.autoCreated) '自动占位',
-      if (item.deleted) '已删除',
-      if (item.status.isNotEmpty) '状态 ${item.status}',
-    ].join('，');
-
-    return Semantics(
-      button: true,
-      label: '选择物料 ${item.displayName}，$semanticSources',
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: UtenSpacing.s16,
-          vertical: UtenSpacing.s4,
-        ),
-        title: Text(
-          item.displayName,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.w600,
+      if (!hasEvidence) '暂无已知关系',
+    ];
+    final alerts = <Widget>[
+      if (item.bomIssue)
+        const _MaterialTag(label: 'BOM 异常', tone: _TagTone.error),
+      if (inactive)
+        _MaterialTag(label: '状态：${item.status}', tone: _TagTone.warning),
+      if (item.autoCreated)
+        const _MaterialTag(label: '自动占位', tone: _TagTone.warning),
+      if (item.deleted) const _MaterialTag(label: '已删除', tone: _TagTone.error),
+    ];
+    final theme = Theme.of(context);
+    final quiet = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (details.isNotEmpty) Text(details.join(' · '), style: quiet),
+        if (evidence.isNotEmpty)
+          Text(
+            evidence.join(' · '),
+            key: ValueKey('where-used-material-evidence-${goods.id}'),
+            style: quiet,
           ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (details.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(
-                details.join(' · '),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            const SizedBox(height: UtenSpacing.s8),
-            Wrap(
-              spacing: UtenSpacing.s4,
-              runSpacing: UtenSpacing.s4,
-              children: [
-                if (item.currentBom)
-                  const _MaterialTag(label: '当前 BOM', tone: _TagTone.primary),
-                if (item.bomIssue)
-                  const _MaterialTag(label: 'BOM 异常', tone: _TagTone.error),
-                if (item.productionHistory)
-                  const _MaterialTag(label: '生产历史', tone: _TagTone.secondary),
-                if (item.subcontractHistory)
-                  const _MaterialTag(label: '委外历史', tone: _TagTone.tertiary),
-                if (!hasKnownEvidence)
-                  const _MaterialTag(label: '暂无已知关系', tone: _TagTone.neutral),
-                if (item.status.isNotEmpty)
-                  _MaterialTag(
-                    label: '状态：${item.status}',
-                    tone: item.status == '禁用'
-                        ? _TagTone.warning
-                        : _TagTone.neutral,
-                  ),
-                if (item.autoCreated)
-                  const _MaterialTag(label: '自动占位', tone: _TagTone.warning),
-                if (item.deleted)
-                  const _MaterialTag(label: '已删除', tone: _TagTone.error),
-              ],
-            ),
-          ],
-        ),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: onTap,
-      ),
+        if (alerts.isNotEmpty) ...[
+          const SizedBox(height: UtenSpacing.s4),
+          Wrap(
+            spacing: UtenSpacing.s4,
+            runSpacing: UtenSpacing.s4,
+            children: alerts,
+          ),
+        ],
+      ],
     );
   }
 }
 
-enum _TagTone { primary, secondary, tertiary, neutral, warning, error }
+enum _TagTone { warning, error }
 
 class _MaterialTag extends StatelessWidget {
   const _MaterialTag({required this.label, required this.tone});
@@ -448,19 +169,6 @@ class _MaterialTag extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final (background, foreground) = switch (tone) {
-      _TagTone.primary => (colors.primaryContainer, colors.onPrimaryContainer),
-      _TagTone.secondary => (
-        colors.secondaryContainer,
-        colors.onSecondaryContainer,
-      ),
-      _TagTone.tertiary => (
-        colors.tertiaryContainer,
-        colors.onTertiaryContainer,
-      ),
-      _TagTone.neutral => (
-        colors.surfaceContainerHighest,
-        colors.onSurfaceVariant,
-      ),
       _TagTone.warning => (
         colors.errorContainer.withValues(alpha: 0.55),
         colors.onErrorContainer,
@@ -487,40 +195,6 @@ class _MaterialTag extends StatelessWidget {
   }
 }
 
-class _MaterialPage {
-  const _MaterialPage({
-    required this.items,
-    required this.page,
-    required this.total,
-    required this.totalPages,
-  });
-
-  final List<_WhereUsedMaterial> items;
-  final int page;
-  final int total;
-  final int totalPages;
-
-  factory _MaterialPage.fromJson(
-    Map<String, dynamic> json, {
-    required int fallbackPage,
-  }) {
-    final rawItems = json['items'] as List? ?? const [];
-    final items = <_WhereUsedMaterial>[];
-    for (final raw in rawItems) {
-      if (raw is! Map) continue;
-      final item = _WhereUsedMaterial.fromJson(Map<String, dynamic>.from(raw));
-      if (item.id.isNotEmpty) items.add(item);
-    }
-    final totalPages = _asInt(json['totalPages'], 1);
-    return _MaterialPage(
-      items: items,
-      page: math.max(1, _asInt(json['page'], fallbackPage)),
-      total: math.max(0, _asInt(json['total'], items.length)),
-      totalPages: math.max(1, totalPages),
-    );
-  }
-}
-
 class _WhereUsedMaterial {
   const _WhereUsedMaterial({
     required this.id,
@@ -531,6 +205,7 @@ class _WhereUsedMaterial {
     required this.status,
     required this.sourceType,
     required this.categoryName,
+    required this.categoryId,
     required this.autoCreated,
     required this.deleted,
     required this.currentBom,
@@ -547,6 +222,7 @@ class _WhereUsedMaterial {
   final String status;
   final String sourceType;
   final String categoryName;
+  final String categoryId;
   final bool autoCreated;
   final bool deleted;
   final bool currentBom;
@@ -564,6 +240,7 @@ class _WhereUsedMaterial {
         status: _asText(json['status']),
         sourceType: _asText(json['sourceType']),
         categoryName: _asText(json['categoryName']),
+        categoryId: _asText(json['categoryId']),
         autoCreated: _asBool(json['autoCreated']),
         deleted: _asBool(json['deleted']),
         currentBom: _asBool(json['currentBom']),
@@ -571,11 +248,6 @@ class _WhereUsedMaterial {
         productionHistory: _asBool(json['productionHistory']),
         subcontractHistory: _asBool(json['subcontractHistory']),
       );
-
-  String get displayName {
-    final effectiveName = name.isEmpty ? '(无名称)' : name;
-    return code.isEmpty ? effectiveName : '$effectiveName($code)';
-  }
 
   GoodsListItem toGoodsListItem() => GoodsListItem(
     id: id,
@@ -586,15 +258,11 @@ class _WhereUsedMaterial {
     status: status.isEmpty ? null : status,
     sourceType: sourceType.isEmpty ? null : sourceType,
     autoCreated: autoCreated,
+    categoryId: categoryId,
   );
 }
 
 String _asText(Object? value) => value?.toString().trim() ?? '';
-
-int _asInt(Object? value, int fallback) {
-  if (value is num) return value.toInt();
-  return int.tryParse(_asText(value)) ?? fallback;
-}
 
 bool _asBool(Object? value) {
   if (value is bool) return value;

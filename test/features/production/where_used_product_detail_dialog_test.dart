@@ -16,6 +16,8 @@ final _detailIdentity = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'detail-viewer'),
 );
 
+final _detailPermissions = StateProvider<Set<String>?>((ref) => null);
+
 class _FakeGoodsRepository extends Fake implements GoodsRepository {
   _FakeGoodsRepository({this.shouldFail = false, this.error});
 
@@ -125,11 +127,15 @@ Future<void> _pumpLauncher(
         authenticatedScopeProvider.overrideWith(
           (ref) => ref.watch(_detailIdentity),
         ),
-        currentPermissionsProvider.overrideWithValue({
-          Perm.productionWhereUsedView,
-          if (canViewGoods) Perm.goodsView,
-          if (canViewStock) Perm.stockView,
-        }),
+        currentPermissionsProvider.overrideWith(
+          (ref) =>
+              ref.watch(_detailPermissions) ??
+              {
+                Perm.productionWhereUsedView,
+                if (canViewGoods) Perm.goodsView,
+                if (canViewStock) Perm.stockView,
+              },
+        ),
         isSuperAdminProvider.overrideWithValue(false),
       ],
       child: MaterialApp(
@@ -207,7 +213,7 @@ void main() {
     },
   );
   testWidgets(
-    'shows separated relationship sources and current goods, then returns BOM link',
+    'right panel keeps separated sources and current goods, then returns BOM link',
     (tester) async {
       final repository = _FakeGoodsRepository();
       WhereUsedProductDetailResult? result;
@@ -221,8 +227,17 @@ void main() {
         onResult: (value) => result = value,
       );
 
-      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(BottomSheet), findsNothing);
+      final panel = tester.getRect(
+        find.byKey(const Key('where-used-product-detail-dialog')),
+      );
+      expect(panel.width, 760);
+      expect(panel.left, 440);
+      expect(panel.right, 1200);
       expect(find.text('多来源关系详情'), findsOneWidget);
+      expect(find.text('产成品编号：CP-001'), findsOneWidget);
+      expect(find.text('查询时状态：启用'), findsOneWidget);
       expect(find.text('全部历史 · A 螺丝(MAT-001)'), findsOneWidget);
       expect(
         find.byKey(const Key('where-used-source-overview')),
@@ -341,6 +356,7 @@ void main() {
       );
 
       expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(BottomSheet), findsOneWidget);
       expect(
         find.byKey(const Key('where-used-product-detail-dialog')),
         findsOneWidget,
@@ -377,6 +393,7 @@ void main() {
     tester,
   ) async {
     final repository = _FakeGoodsRepository();
+    WhereUsedProductDetailResult? result;
 
     await _pumpLauncher(
       tester,
@@ -384,16 +401,82 @@ void main() {
       size: const Size(844, 390),
       canViewGoods: true,
       canViewStock: true,
-      onResult: (_) {},
+      onResult: (value) => result = value,
       textScale: 1.5,
     );
 
-    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byType(Dialog), findsNothing);
     expect(
       find.byKey(const Key('where-used-product-detail-dialog')),
       findsOneWidget,
     );
     expect(repository.detailCalls, 1);
     expect(tester.takeException(), isNull);
+
+    final openBom = find.byKey(const Key('where-used-open-bom'));
+    await tester.ensureVisible(openBom);
+    await tester.pumpAndSettle();
+    await tester.tap(openBom);
+    await tester.pumpAndSettle();
+    expect(result?.link, WhereUsedProductLink.bom);
+    expect(tester.takeException(), isNull);
   });
+
+  testWidgets('short compact screen keeps enlarged-text actions reachable', (
+    tester,
+  ) async {
+    WhereUsedProductDetailResult? result;
+    await _pumpLauncher(
+      tester,
+      _FakeGoodsRepository(),
+      size: const Size(390, 420),
+      canViewGoods: true,
+      canViewStock: true,
+      textScale: 2,
+      onResult: (value) => result = value,
+    );
+
+    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final stock = find.byKey(const Key('where-used-open-stock-movements'));
+    await tester.ensureVisible(stock);
+    await tester.pumpAndSettle();
+    await tester.tap(stock);
+    await tester.pumpAndSettle();
+    expect(result?.link, WhereUsedProductLink.stockMovements);
+    expect(result?.productId, 'product-1');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'permission changes close the right panel and discard late data',
+    (tester) async {
+      final repository = _FakeGoodsRepository()..gate = Completer<void>();
+      WhereUsedProductDetailResult? result;
+      await _pumpLauncher(
+        tester,
+        repository,
+        size: const Size(1200, 900),
+        canViewGoods: true,
+        canViewStock: true,
+        settle: false,
+        onResult: (value) => result = value,
+      );
+      final content = find.byKey(const Key('where-used-product-detail-dialog'));
+      final container = ProviderScope.containerOf(tester.element(content));
+      container.read(_detailPermissions.notifier).state = {
+        Perm.productionWhereUsedView,
+      };
+      await tester.pumpAndSettle();
+      expect(content, findsNothing);
+      expect(find.text('墙壁插座成品'), findsNothing);
+
+      repository.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(content, findsNothing);
+      expect(find.text('墙壁插座成品'), findsNothing);
+      expect(result, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

@@ -35,6 +35,39 @@ public class ProductionWhereUsedQueryService {
     private static final Set<String> SOURCE_FILTERS = Set.of(
             "all", "current", "history", "production", "subcontract");
 
+    static final String HISTORICAL_UNCATEGORIZED = "history-uncategorized";
+
+    private static final String MATERIAL_CATEGORY_JOIN = """
+            LEFT JOIN material_categories category
+              ON category.id = goods.category_id AND category.is_deleted = FALSE
+            """;
+
+    // One expression for candidates, overflow-page counts and global category navigation.
+    private static final String MATERIAL_SEARCH = """
+            LOWER(
+                COALESCE(goods.code, '') || ' ' ||
+                COALESCE(goods.name, '') || ' ' ||
+                COALESCE(goods.model, '') || ' ' ||
+                COALESCE(goods.spec, '') || ' ' ||
+                COALESCE(goods.series, '') || ' ' ||
+                COALESCE(goods.c_number, '') || ' ' ||
+                COALESCE(goods.material, '') || ' ' ||
+                COALESCE(goods.require_remark, '')
+            ) LIKE :pattern ESCAPE '\\'
+            """;
+
+    private static final String MATERIAL_CATEGORY_SUBTREE = """
+            WITH RECURSIVE selected_categories(id) AS (
+                SELECT id FROM material_categories
+                WHERE id = :categoryId AND is_deleted = FALSE
+                UNION
+                SELECT child.id
+                FROM material_categories child
+                JOIN selected_categories parent ON child.parent_id = parent.id
+                WHERE child.is_deleted = FALSE
+            )
+            """;
+
     private final EntityManager em;
 
     /**
@@ -467,26 +500,108 @@ public class ProductionWhereUsedQueryService {
                 total, totalPages, meta);
     }
 
+    /** The picker has its own read projection so its permission never expands to master-data access. */
+    @Transactional(readOnly = true)
+    public List<WhereUsedMaterialCategory> whereUsedMaterialCategories() {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT id, code, name, parent_id, COALESCE(sort_order, 0)
+                FROM material_categories
+                WHERE is_deleted = FALSE
+                ORDER BY sort_order ASC NULLS LAST, name ASC, id ASC
+                """).getResultList();
+        Map<String, CategoryRow> categories = new LinkedHashMap<>();
+        for (Object[] row : rows) {
+            String id = text(row[0]);
+            categories.put(id, new CategoryRow(id, Objects.requireNonNullElse(text(row[1]), ""),
+                    Objects.requireNonNullElse(text(row[2]), ""), text(row[3]), ((Number) row[4]).intValue()));
+        }
+        Map<String, String> parents = new LinkedHashMap<>();
+        for (CategoryRow row : categories.values()) {
+            // Missing/deleted parents and cyclic legacy parents must not hide a valid category.
+            String parent = categories.containsKey(row.parentId()) && !isCategoryCycleMember(row.id(), categories)
+                    ? row.parentId() : null;
+            parents.put(row.id(), parent);
+        }
+        Map<String, List<CategoryRow>> children = new LinkedHashMap<>();
+        for (CategoryRow row : categories.values()) {
+            children.computeIfAbsent(parents.get(row.id()), ignored -> new ArrayList<>()).add(row);
+        }
+        List<WhereUsedMaterialCategory> roots = new ArrayList<>();
+        for (CategoryRow row : children.getOrDefault(null, List.of())) {
+            roots.add(categoryNode(row, null, 0, children));
+        }
+        roots.add(new WhereUsedMaterialCategory(HISTORICAL_UNCATEGORIZED, "", "历史未分类",
+                0, null, Integer.MAX_VALUE, List.of()));
+        return roots;
+    }
+
+    private record CategoryRow(String id, String code, String name, String parentId, int sortOrder) {}
+
+    private static boolean isCategoryCycleMember(String id, Map<String, CategoryRow> categories) {
+        Set<String> visited = new LinkedHashSet<>();
+        String cursor = categories.get(id).parentId();
+        while (cursor != null && categories.containsKey(cursor) && visited.add(cursor)) {
+            if (id.equals(cursor)) return true;
+            cursor = categories.get(cursor).parentId();
+        }
+        return false;
+    }
+
+    private static WhereUsedMaterialCategory categoryNode(
+            CategoryRow row, String parentId, int level, Map<String, List<CategoryRow>> children) {
+        List<WhereUsedMaterialCategory> nested = children.getOrDefault(row.id(), List.of()).stream()
+                .map(child -> categoryNode(child, row.id(), level + 1, children)).toList();
+        return new WhereUsedMaterialCategory(row.id(), row.code(), row.name(), level,
+                parentId, row.sortOrder(), nested);
+    }
+
+    /** Every matched category, independent of candidate pagination; blank search does not scan goods. */
+    @Transactional(readOnly = true)
+    public List<String> whereUsedMaterialCategoryMatches(String keyword) {
+        String normalizedKeyword = keyword == null ? "" : keyword.trim();
+        if (normalizedKeyword.isEmpty()) return List.of();
+        Query query = em.createNativeQuery("""
+                SELECT DISTINCT COALESCE(CAST(category.id AS text), 'history-uncategorized') AS category_id
+                FROM goods
+                """ + MATERIAL_CATEGORY_JOIN + "WHERE " + MATERIAL_SEARCH + " ORDER BY category_id");
+        query.setParameter("pattern", "%" + escapeLike(normalizedKeyword.toLowerCase(Locale.ROOT)) + "%");
+        @SuppressWarnings("unchecked")
+        List<Object> rows = query.getResultList();
+        return rows.stream().map(ProductionWhereUsedQueryService::text).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<WhereUsedMaterialOption> searchWhereUsedMaterials(String keyword, int page, int size) {
+        return searchWhereUsedMaterials(keyword, null, page, size);
+    }
+
     /**
      * 报表自己的材料搜索。覆盖全部匹配货品并标注当前/历史关系，避免依赖 goods:view；
-     * 无已知关系的货品也可选择后确认空结果。空关键字不触发全库/大历史表扫描。
+     * 无已知关系的货品也可选择。选分类可有界浏览；无分类且空关键字不扫描全部货品。
      */
     @Transactional(readOnly = true)
     public PageResponse<WhereUsedMaterialOption> searchWhereUsedMaterials(
-            String keyword, int page, int size) {
+            String keyword, String categoryId, int page, int size) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 50);
         String normalizedKeyword = keyword == null ? "" : keyword.trim();
-        if (normalizedKeyword.isEmpty()) {
+        String normalizedCategory = normalizeMaterialCategory(categoryId);
+        if (normalizedKeyword.isEmpty() && normalizedCategory == null) {
             return new PageResponse<>(List.of(), safePage, safeSize, 0L, 0);
         }
+        boolean categorySubtree = normalizedCategory != null && !HISTORICAL_UNCATEGORIZED.equals(normalizedCategory);
+        String categoryCte = categorySubtree ? MATERIAL_CATEGORY_SUBTREE + ", " : "WITH ";
+        String predicate = materialPredicate(normalizedKeyword, normalizedCategory);
 
-        String sql = """
-                WITH matched_goods AS MATERIALIZED (
+        String sql = categoryCte + """
+                matched_goods AS MATERIALIZED (
                     SELECT goods.id, goods.code, goods.name, goods.model, goods.spec,
                            goods.status, goods.source_type, goods.auto_created, goods.is_deleted,
                            category.name AS category_name,
+                           COALESCE(CAST(category.id AS text), 'history-uncategorized') AS category_id,
                            CASE
+                               WHEN :exact = '' THEN 4
                                WHEN LOWER(COALESCE(goods.code, '')) = :exact THEN 0
                                WHEN LOWER(COALESCE(goods.name, '')) = :exact THEN 1
                                WHEN LOWER(COALESCE(goods.code, '')) LIKE :prefix ESCAPE '\\' THEN 2
@@ -495,17 +610,7 @@ public class ProductionWhereUsedQueryService {
                            END AS match_rank,
                            COUNT(*) OVER() AS total_count
                     FROM goods
-                    LEFT JOIN material_categories category ON category.id = goods.category_id
-                    WHERE LOWER(
-                        COALESCE(goods.code, '') || ' ' ||
-                        COALESCE(goods.name, '') || ' ' ||
-                        COALESCE(goods.model, '') || ' ' ||
-                        COALESCE(goods.spec, '') || ' ' ||
-                        COALESCE(goods.series, '') || ' ' ||
-                        COALESCE(goods.c_number, '') || ' ' ||
-                        COALESCE(goods.material, '') || ' ' ||
-                        COALESCE(goods.require_remark, '')
-                    ) LIKE :pattern ESCAPE '\\'
+                """ + MATERIAL_CATEGORY_JOIN + " WHERE " + predicate + """
                     ORDER BY match_rank,
                              goods.is_deleted ASC,
                              goods.auto_created ASC,
@@ -519,7 +624,7 @@ public class ProductionWhereUsedQueryService {
                        goods.auto_created, goods.is_deleted,
                        source.current_bom, source.bom_issue, source.production_history,
                        source.subcontract_history,
-                       goods.total_count
+                       goods.total_count, goods.category_id
                 FROM matched_goods goods
                 CROSS JOIN LATERAL (
                     SELECT
@@ -643,7 +748,7 @@ public class ProductionWhereUsedQueryService {
         Query query = em.createNativeQuery(sql);
         String normalizedSearch = normalizedKeyword.toLowerCase(Locale.ROOT);
         String escapedSearch = escapeLike(normalizedSearch);
-        query.setParameter("pattern", "%" + escapedSearch + "%");
+        bindMaterialFilter(query, normalizedKeyword, normalizedCategory);
         query.setParameter("prefix", escapedSearch + "%");
         query.setParameter("exact", normalizedSearch);
         query.setParameter("__limit", safeSize);
@@ -655,34 +760,56 @@ public class ProductionWhereUsedQueryService {
         for (Object[] row : rows) {
             items.add(new WhereUsedMaterialOption(
                     (UUID) row[0], text(row[1]), text(row[2]), text(row[3]),
-                    text(row[4]), text(row[5]), text(row[6]), text(row[7]),
+                    text(row[4]), text(row[5]), text(row[6]), text(row[7]), text(row[15]),
                     truth(row[8]), truth(row[9]), truth(row[10]), truth(row[11]),
                     truth(row[12]), truth(row[13])));
         }
         long total = rows.isEmpty()
-                ? (safePage == 1 ? 0L : countWhereUsedMaterials(escapedSearch))
+                ? (safePage == 1 ? 0L : countWhereUsedMaterials(normalizedKeyword, normalizedCategory))
                 : ((Number) rows.get(0)[14]).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }
 
-    private long countWhereUsedMaterials(String escapedSearch) {
-        Query query = em.createNativeQuery("""
+    private long countWhereUsedMaterials(String keyword, String categoryId) {
+        String categoryCte = categoryId != null && !HISTORICAL_UNCATEGORIZED.equals(categoryId)
+                ? MATERIAL_CATEGORY_SUBTREE : "";
+        Query query = em.createNativeQuery(categoryCte + """
                 SELECT COUNT(*)
                 FROM goods
-                WHERE LOWER(
-                    COALESCE(code, '') || ' ' ||
-                    COALESCE(name, '') || ' ' ||
-                    COALESCE(model, '') || ' ' ||
-                    COALESCE(spec, '') || ' ' ||
-                    COALESCE(series, '') || ' ' ||
-                    COALESCE(c_number, '') || ' ' ||
-                    COALESCE(material, '') || ' ' ||
-                    COALESCE(require_remark, '')
-                ) LIKE :pattern ESCAPE '\\'
-                """);
-        query.setParameter("pattern", "%" + escapedSearch + "%");
+                """ + MATERIAL_CATEGORY_JOIN + " WHERE " + materialPredicate(keyword, categoryId));
+        bindMaterialFilter(query, keyword, categoryId);
         return ((Number) query.getSingleResult()).longValue();
+    }
+
+    private static String normalizeMaterialCategory(String categoryId) {
+        if (categoryId == null || categoryId.isBlank()) return null;
+        String trimmed = categoryId.trim();
+        if (HISTORICAL_UNCATEGORIZED.equals(trimmed)) return trimmed;
+        try {
+            UUID id = UUID.fromString(trimmed);
+            if (id.toString().equalsIgnoreCase(trimmed)) return id.toString();
+        } catch (IllegalArgumentException ignored) {
+            // Non-UUID view keys other than the declared historical fallback are invalid input.
+        }
+        throw new ApiException(ErrorCode.VALIDATION_FAILED, "物料分类标识无效，请重新选择分类");
+    }
+
+    private static String materialPredicate(String keyword, String categoryId) {
+        String categoryPredicate = categoryId == null ? ""
+                : HISTORICAL_UNCATEGORIZED.equals(categoryId) ? "category.id IS NULL"
+                : "goods.category_id IN (SELECT id FROM selected_categories)";
+        if (keyword.isEmpty()) return categoryPredicate;
+        return MATERIAL_SEARCH + (categoryPredicate.isEmpty() ? "" : " AND " + categoryPredicate);
+    }
+
+    private static void bindMaterialFilter(Query query, String keyword, String categoryId) {
+        if (!keyword.isEmpty()) {
+            query.setParameter("pattern", "%" + escapeLike(keyword.toLowerCase(Locale.ROOT)) + "%");
+        }
+        if (categoryId != null && !HISTORICAL_UNCATEGORIZED.equals(categoryId)) {
+            query.setParameter("categoryId", UUID.fromString(categoryId));
+        }
     }
 
     private static String escapeLike(String value) {

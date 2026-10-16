@@ -2,7 +2,7 @@
 
 > 自动生成：`python scripts/audit_platform_tables.py --write`；CI/本地核对：`--check`。
 
-扫描 `lib/` 1390 个 Dart 源文件，记录 273 个调用点（200 个文件）。真实 Flutter 表格 242 处。
+扫描 `lib/` 1391 个 Dart 源文件，记录 273 个调用点（200 个文件）。真实 Flutter 表格 242 处。
 
 这里统计实际 AST 调用（包括已核对的原件 CSV 自绘表格 `_CsvBody`），排除注释、字符串与构造器声明。`pw.Table` 是 PDF 内容；`UtenPrintTable` 是打印数据规格，均不计入交互表格。调用点不等于页面数：共享 wrapper 的实际渲染点记录一次。
 
@@ -77,10 +77,10 @@
 | `lib/features/basic_data/widgets/goods_cost_actual_panel.dart:396` | MasterDataTableView<Map<String, dynamic>> | business_list | not_declared_at_call_site | 'master.goods.cost.actual.evidence' |
 | `lib/features/basic_data/widgets/goods_cost_actual_panel.dart:746` | MasterDataTableView<Map<String, dynamic>> | business_list | (r) => (r['inputNodeId'] ?? r['sourceNodeId'] ?? r['costObjectId'] ?? r['id'] ?? '').toString() | 'master.goods.cost.actual.$_tab' |
 | `lib/features/basic_data/widgets/goods_cost_editor.dart:307` | UtenRevisionTable<Map<String, dynamic>> | readonly_history | not_declared_at_call_site | 'master.goods.cost.comparison' |
-| `lib/features/basic_data/widgets/goods_cost_editor.dart:1073` | MasterDataTableView<Map<String, dynamic>> | business_list | (r) => r['path'].toString(); (r) => r['path'].toString() | _GoodsCostTabState._tableKey |
-| `lib/features/basic_data/widgets/goods_cost_editor.dart:1607` | UtenEditableGrid<GoodsCostFeeRow> | editable_detail | controller_rows_have_no_shared_persistent_id_contract | 'master.goods.cost.fees' |
-| `lib/features/basic_data/widgets/goods_cost_editor.dart:1784` | MasterDataTableView<Map<String, dynamic>> | business_list | not_declared_at_call_site | 'master.goods.cost.evidence' |
-| `lib/features/basic_data/widgets/goods_cost_editor.dart:1956` | MasterDataTableView<Map<String, dynamic>> | business_list | not_declared_at_call_site | 'master.goods.cost.snapshots' |
+| `lib/features/basic_data/widgets/goods_cost_editor.dart:1093` | MasterDataTableView<Map<String, dynamic>> | business_list | (r) => r['path'].toString(); (r) => r['path'].toString() | _GoodsCostTabState._tableKey |
+| `lib/features/basic_data/widgets/goods_cost_editor.dart:1631` | UtenEditableGrid<GoodsCostFeeRow> | editable_detail | controller_rows_have_no_shared_persistent_id_contract | 'master.goods.cost.fees' |
+| `lib/features/basic_data/widgets/goods_cost_editor.dart:1808` | MasterDataTableView<Map<String, dynamic>> | business_list | not_declared_at_call_site | 'master.goods.cost.evidence' |
+| `lib/features/basic_data/widgets/goods_cost_editor.dart:1980` | MasterDataTableView<Map<String, dynamic>> | business_list | not_declared_at_call_site | 'master.goods.cost.snapshots' |
 | `lib/features/basic_data/widgets/goods_cost_import_dialog.dart:130` | MasterDataTableView<_CostImportRow> | selector | not_declared_at_call_site | 'master.goods.cost.import' |
 | `lib/features/basic_data/widgets/goods_cost_production_evidence.dart:189` | MasterDataTableView<Map<String, dynamic>> | business_list | not_declared_at_call_site | 'master.goods.cost.production.evidence' |
 | `lib/features/basic_data/widgets/goods_cost_tab.dart:1109` | MasterDataTableView<Map<String, dynamic>> | business_list | not_declared_at_call_site | 'master.goods.cost.pending' |
@@ -119,7 +119,7 @@
 | `lib/features/finance/pages/finance_ar_ap_overview_page.dart:826` | MasterDataTableView<Map<String, dynamic>> | report | not_declared_at_call_site | 'features.finance.pages.finance_ar_ap_overview_page.FinanceArApOverviewPageState._buildTable.1' |
 | `lib/features/finance/pages/finance_ar_ap_page.dart:500` | MasterDataTableView<ArApLedgerItem> | business_list | not_declared_at_call_site | 'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1' |
 | `lib/features/finance/pages/finance_doc_detail_page.dart:1305` | MasterDataTableView<FinanceDocItem> | readonly_history | not_declared_at_call_site | 'finance.${widget.docType.name}.items' |
-| `lib/features/finance/pages/finance_doc_edit_page.dart:2502` | UtenEditableGrid<FinanceGridRow> | editable_detail | controller_rows_have_no_shared_persistent_id_contract | 'finance.${widget.docType.name}.items' |
+| `lib/features/finance/pages/finance_doc_edit_page.dart:2506` | UtenEditableGrid<FinanceGridRow> | editable_detail | controller_rows_have_no_shared_persistent_id_contract | 'finance.${widget.docType.name}.items' |
 | `lib/features/finance/pages/finance_doc_list_page.dart:552` | MasterDataTableView<FinanceDocListItem> | business_list | (item) => !draftDeleteBusy && !_list.loading && _isDeletableDraft(item) ? item.id : null; (item) => item.id | 'finance.${widget.docType.name}.list' |
 | `lib/features/finance/pages/finance_procurement_approval_review_page.dart:1225` | UtenRevisionTable<FinanceProcurementReviewLine> | readonly_history | (line) => line.orderItemId | switch (r.orderType) {FinanceProcurementOrderType.purchase => 'finance.procurement.review.purchase.items', FinanceProcurementOrderType.subcontract => 'finance.procurement.review.subcontract.items', FinanceProcurementOrderType.unknown => 'finance.procurement.unknown.items'} |
 | `lib/features/finance/pages/finance_procurement_approval_tasks_page.dart:752` | MasterDataTableView<FinanceProcurementApprovalTask> | readonly_history | (task) => _canSelectTask(task) ? task.caseId : null | 'features.finance.pages.finance_procurement_approval_tasks_page.FinanceProcurementApprovalTasksPageState._buildList.1' |
@@ -146,7 +146,7 @@
 | `lib/features/finance/widgets/inventory_cost_posting_dialog.dart:703` | MasterDataTableView<Map<String, dynamic>> | business_list | (row) => row['postingId']?.toString() ?? '' | 'finance.inventory_cost_posting' |
 | `lib/features/finance/widgets/sales_order_revision_table.dart:137` | UtenRevisionTable<SalesOrderRevisionLine> | readonly_history | not_declared_at_call_site | 'features.finance.widgets.sales_order_revision_table.SalesOrderRevisionTable.build.1' |
 | `lib/features/hr_profile/pages/hr_profile_changes_list_page.dart:358` | MasterDataTableView<HrProfileChangeListItem> | business_list | (item) => item.batchId | 'features.hr_profile.pages.hr_profile_changes_list_page.HrProfileChangesListPageState._buildBody.1' |
-| `lib/features/hr_task/pages/hr_reconcile_page.dart:1307` | MasterDataTableView<HrReconcileRow> | business_list | (row) => row.kind == HrReconcileRowKind.update && !row.claimedByOther && row.result == null && editable ? row.employee.id : null; (row) => row.employee.id | 'features.hr_task.pages.hr_reconcile_page.HrReconcilePageState._table.1' |
+| `lib/features/hr_task/pages/hr_reconcile_page.dart:1203` | MasterDataTableView<HrReconcileRow> | business_list | (row) => row.kind == HrReconcileRowKind.update && !row.claimedByOther && row.result == null && editable ? row.employee.id : null; (row) => row.employee.id | 'features.hr_task.pages.hr_reconcile_page.HrReconcilePageState._table.manual_v2' |
 | `lib/features/hr_task/pages/hr_task_list_page.dart:329` | MasterDataTableView<HrTaskItem> | business_list | (item) => _type == HrTaskType.identity && item.claimedByOther ? null : item.employeeId; (item) => item.employeeId | 'features.hr_task.pages.hr_task_list_page.HrTaskListPageState._desktopTable.1' |
 | `lib/features/hr_task/widgets/hr_celebration_history_panel.dart:62` | MasterDataTableView<HrCelebrationPublication> | readonly_history | (row) => row.id | 'hr.celebration-publication-history' |
 | `lib/features/operations_workbench/pages/operations_workbench_page.dart:1026` | MasterDataTableView<OperationsWorkbenchTask> | business_list | (item) => item.id | 'features.operations_workbench.pages.operations_workbench_page.DesktopTaskTable.build.1' |
@@ -177,13 +177,13 @@
 | `lib/features/production/pages/production_report_page.dart:243` | UtenPrintTable | print | not_declared_at_call_site | 未声明 |
 | `lib/features/production/pages/production_report_page.dart:485` | MasterDataTableView<Map<String, dynamic>> | report | not_declared_at_call_site | 'features.production.pages.production_report_page.ProductionReportPageState._buildTable.1' |
 | `lib/features/production/pages/production_workshop_tasks_page.dart:2973` | MasterDataTableView<ProductionExecutionWorkbenchSegment> | business_list | (task) => _selectable && _selectableTask(task) ? task.segmentId : null; (task) => task.segmentId | 'features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.1' |
-| `lib/features/production/pages/where_used_report_page.dart:1010` | MasterDataTableView<Map<String, dynamic>> | report | not_declared_at_call_site | 'features.production.pages.where_used_report_page.WhereUsedReportPageState._buildTable.1' |
+| `lib/features/production/pages/where_used_report_page.dart:1114` | MasterDataTableView<Map<String, dynamic>> | report | not_declared_at_call_site | 'features.production.pages.where_used_report_page.WhereUsedReportPageState._buildTable.1' |
 | `lib/features/production/pages/workshop_material_reports_page.dart:667` | MasterDataTableView<WmBinUsageRow> | business_list | not_declared_at_call_site | 'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._usageTable.1' |
 | `lib/features/production/pages/workshop_material_reports_page.dart:785` | MasterDataTableView<WmProductUsageRow> | business_list | not_declared_at_call_site | 'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._productTable.1' |
 | `lib/features/production/pages/workshop_material_reports_page.dart:1014` | MasterDataTableView<WmMissingWeightRow> | business_list | not_declared_at_call_site | 'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._missingTable.1' |
 | `lib/features/production/pages/workshop_material_reports_page.dart:1095` | MasterDataTableView<WmLedgerRow> | business_list | not_declared_at_call_site | 'features.production.pages.workshop_material_reports_page.WorkshopMaterialReportsPageState._ledgerTable.1' |
 | `lib/features/production/widgets/daily_report_material_review_section.dart:143` | MasterDataTableView<DailyReportMaterialReviewRow> | readonly_history | (row) => row.demandId | 'production.daily.material-review' |
-| `lib/features/production/widgets/material_manual_demand_editor.dart:728` | UtenEditableGrid<MaterialManualDemandLine> | editable_detail | controller_rows_have_no_shared_persistent_id_contract | 'features.production.widgets.material_manual_demand_editor.MaterialManualDemandCard.build.1' |
+| `lib/features/production/widgets/material_manual_demand_editor.dart:732` | UtenEditableGrid<MaterialManualDemandLine> | editable_detail | controller_rows_have_no_shared_persistent_id_contract | 'features.production.widgets.material_manual_demand_editor.MaterialManualDemandCard.build.1' |
 | `lib/features/production/widgets/plan_order_import_sheet.dart:376` | MasterDataTableView<ScheduleBomComponent> | business_list | not_declared_at_call_site | 'features.production.widgets.plan_order_import_sheet.ImportSheetState._lineCard.1' |
 | `lib/features/production/widgets/production_daily_product_details_card.dart:904` | UtenEditableGrid<_ProductDetailRow> | readonly_history | controller_rows_have_no_shared_persistent_id_contract | widget.tableKey |
 | `lib/features/production/widgets/production_execution_card_print_preview.dart:591` | DataTable | print | not_declared_at_call_site | 未声明 |
@@ -305,7 +305,7 @@
 | `lib/shared/drafts/draft_workspace_table.dart:490` | MasterDataTableView<DraftWorkspaceRow> | business_list | (row) => _canSelect(row) ? row.key : null; (row) => row.key; (row) => ValueKey('draft-workspace-row-${row.key}') | '${widget.tableKey ?? 'shared.drafts.workspace.${_kinds.map((kind) => kind.name).join('.')}'}' '.v2' |
 | `lib/shared/drafts/form_draft_category_table.dart:249` | MasterDataTableView<FormDraftCategoryRow<T>> | business_list | (row) => row.isLocal ? '$_prefix${row.draft!.id}' : table.idOf?.call(row.record as T); (row) => row.isLocal ? '$_prefix${row.draft!.id}' : _id(row.record as T); (row) => row.isLocal ? ValueKey('form-draft-row-${row.draft!.id}') : table.rowWidgetKeyOf?.call(row.record as T) | table.tableKey |
 | `lib/shared/drafts/form_draft_category_table.dart:733` | MasterDataTableView<Object> | business_list | (_) => null | 'shared.drafts.category.v2' |
-| `lib/shared/stock_ledger/widgets/goods_production_trace_view.dart:239` | MasterDataTableView<GoodsProductionTraceRow> | report | (row) => row.id | 'goods.production_trace.$_direction' |
+| `lib/shared/stock_ledger/widgets/goods_production_trace_view.dart:255` | MasterDataTableView<GoodsProductionTraceRow> | report | (row) => row.id | 'goods.production_trace.$_direction' |
 | `lib/shared/stock_ledger/widgets/goods_stock_balance_view.dart:194` | MasterDataTableView<BalanceRow> | report | not_declared_at_call_site | 'shared.stock_ledger.widgets.goods_stock_balance_view.GoodsStockBalanceViewState.build.1' |
 | `lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart:230` | MasterDataTableView<StockLedgerRow> | report | (row) => '${row.rowKind}:${row.id}' | 'shared.stock_ledger.widgets.goods_stock_ledger_view.GoodsStockLedgerViewState.build.1' |
 | `lib/shared/stock_ledger/widgets/goods_weight_learning_view.dart:508` | MasterDataTableView<WeightObservation> | report | (o) => o.id | 'shared.stock_ledger.widgets.goods_weight_learning_view.GoodsWeightLearningViewState._recordsTable.1' |

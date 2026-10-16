@@ -166,6 +166,16 @@ class _ReleaseNotesDialog extends StatelessWidget {
                 '저장 시 다시 검증합니다.',
           _ => '分类编号前缀输入时自动检查全系统占用，保存时再次校验，避免重复编号。',
         },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Material tracing has a clearer query layout and uses the same '
+                'goods selector as sales, while retaining historical goods '
+                'and access controls.',
+          'ko' =>
+            '자재 추적의 조회 영역을 정리하고 판매와 같은 품목 선택창을 사용합니다. '
+                '이력 품목과 접근 권한은 유지됩니다.',
+          _ => '物料追溯查询重新排版，货品选择与销售一致，支持历史货品并保留访问权限。',
+        },
         l10n.release2518ServerUpdates,
         l10n.release2518Storage,
         l10n.release2518CompanyConnections,

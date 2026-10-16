@@ -52,6 +52,18 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
   bool _minimumMeasureScheduled = false;
   double? _reportedMinimumContentHeight;
 
+  @override
+  void didUpdateWidget(covariant UtenFloatingActionGroup oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The keyed group survives embedded/fullscreen handoff. An embedded host
+    // stops consuming measurements and clears its budget, so a new consumer
+    // must receive the current natural height even if that height is unchanged.
+    if (oldWidget.onMinimumContentHeightChanged == null &&
+        widget.onMinimumContentHeightChanged != null) {
+      _reportedMinimumContentHeight = null;
+    }
+  }
+
   void _scheduleMinimumMeasure() {
     if (widget.onMinimumContentHeightChanged == null ||
         _minimumMeasureScheduled) {

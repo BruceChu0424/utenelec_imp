@@ -67,6 +67,130 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  testWidgets(
+    'embedded natural actions remain complete on first and repeated fullscreen entry',
+    (tester) async {
+      tester.view.physicalSize = const Size(375, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await loadAuditScreenshotFonts(tester);
+      final caption = List.filled(6, '人工核对后确认更正员工资料').join();
+      var calls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: auditScreenshotTheme(
+            buildLightTheme().copyWith(platform: TargetPlatform.android),
+          ),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.6)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: MasterDataTableView<String>(
+                  embedded: true,
+                  showFullscreenToggle: true,
+                  showColumnChooser: false,
+                  columns: [
+                    MasterColumnDef<String>(
+                      key: 'id',
+                      label: '记录',
+                      width: 180,
+                      value: (id) => id,
+                    ),
+                  ],
+                  items: const ['a'],
+                  facets: const {},
+                  nullCounts: const {},
+                  filters: const {},
+                  onFilterChanged: (_, _) {},
+                  selectable: true,
+                  idOf: (id) => id,
+                  selectedIds: const {'a'},
+                  batchActionsBuilder: (_, _) => [
+                    UtenButton(
+                      key: const Key('natural-tall-action'),
+                      size: UtenButtonSize.large,
+                      onPressed: () => calls++,
+                      icon: Icons.fact_check_outlined,
+                      child: Text(caption),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final groupFinder = find.byType(UtenFloatingActionGroup);
+      final originalState = tester.state(groupFinder);
+      final toggle = find.byKey(
+        const ValueKey('master-table-fullscreen-toggle'),
+      );
+      final action = find.byKey(const Key('natural-tall-action'));
+      for (var cycle = 1; cycle <= 2; cycle++) {
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(identical(originalState, tester.state(groupFinder)), isTrue);
+        final scroll = find.descendant(
+          of: groupFinder,
+          matching: find.byType(Scrollable),
+        );
+        final height = tester.getRect(action).height;
+        expect(height, greaterThan(200));
+        expect(
+          tester.getRect(scroll).height,
+          greaterThanOrEqualTo(height),
+          reason:
+              'automatic layout must show a complete action on entry $cycle',
+        );
+        for (var attempt = 0; attempt < 4; attempt++) {
+          final viewport = tester.getRect(scroll);
+          final rect = tester.getRect(action);
+          if (rect.top >= viewport.top - 0.1 &&
+              rect.bottom <= viewport.bottom + 0.1 &&
+              action.hitTestable().evaluate().isNotEmpty) {
+            break;
+          }
+          final gesture = await tester.startGesture(viewport.center);
+          await gesture.moveBy(
+            Offset(0, rect.center.dy > viewport.center.dy ? -24 : 24),
+          );
+          await tester.pump();
+          await gesture.moveBy(
+            Offset(0, viewport.center.dy - tester.getRect(action).center.dy),
+          );
+          await tester.pump(const Duration(milliseconds: 200));
+          await gesture.up();
+          await tester.pumpAndSettle();
+        }
+        final rect = tester.getRect(action);
+        final viewport = tester.getRect(scroll);
+        expect(rect.top, greaterThanOrEqualTo(viewport.top - 0.1));
+        expect(rect.bottom, lessThanOrEqualTo(viewport.bottom + 0.1));
+        expect(action.hitTestable(), findsOneWidget);
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        expect(calls, cycle);
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        final embeddedGroup = tester.widget<UtenFloatingActionGroup>(
+          groupFinder,
+        );
+        expect(embeddedGroup.maxHeight, isNull);
+        expect(embeddedGroup.onMinimumContentHeightChanged, isNull);
+        expect(identical(originalState, tester.state(groupFinder)), isTrue);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('picker list retains bounded batch actions and clear selection', (
     tester,
   ) async {

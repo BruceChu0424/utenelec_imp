@@ -18,6 +18,7 @@ import '../../../shared/drafts/form_draft_values.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
+import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -525,7 +526,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
                     ),
                     hintText: '例如 V6',
                     counterText: '',
-                    errorText: _prefixError,
+                    error: utenFieldError(_prefixError),
                     errorStyle: TextStyle(color: theme.colorScheme.error),
                     enabledBorder: _prefixError == null
                         ? null

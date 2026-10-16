@@ -2584,8 +2584,28 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       } else if (_hBarY.value != null) {
         _hBarY.value = null;
       }
+      final previousBudget = (
+        _floatingBatchHeightLimit,
+        _floatingBatchMinimumTableHeight,
+        _floatingBatchMeasuredHeight,
+        _bodyBottomPad,
+      );
       _updateFloatingBatchGeometry();
       _updateBodyPad();
+      final currentBudget = (
+        _floatingBatchHeightLimit,
+        _floatingBatchMinimumTableHeight,
+        _floatingBatchMeasuredHeight,
+        _bodyBottomPad,
+      );
+      // The fullscreen surface is built in a separate route. setState above
+      // rebuilds this route's placeholder, not that surface. Notify it only
+      // after an actual budget change; ordinary scroll ticks do not rebuild it.
+      if (_fullscreen &&
+          _fullscreenOwner != null &&
+          previousBudget != currentBudget) {
+        _fsTick.value++;
+      }
     });
   }
 

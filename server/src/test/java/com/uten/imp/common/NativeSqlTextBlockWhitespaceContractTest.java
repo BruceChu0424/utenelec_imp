@@ -76,11 +76,7 @@ class NativeSqlTextBlockWhitespaceContractTest {
     private record Allow(String fileSuffix, String snippet, String reason) {
     }
 
-    private static final List<Allow> ALLOWLIST = List.of(
-            new Allow("features/finance/report/FinanceReportService.java",
-                    "having + (having.isEmpty() ? \"WHERE\" : \" AND\")",
-                    "correlated ternary: \"WHERE\" is only chosen when having is empty (nothing to glue to), "
-                            + "otherwise \" AND\" carries its own leading space"));
+    private static final List<Allow> ALLOWLIST = List.of();
 
     private static final Map<String, String> RULE_HINTS = new LinkedHashMap<>();
 

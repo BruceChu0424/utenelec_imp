@@ -274,7 +274,7 @@ public class FinanceReportService {
             default -> "";
         };
         // keyword 过滤
-        WhereBuilder w = new WhereBuilder(having + (having.isEmpty() ? "WHERE TRUE" : " AND TRUE"));
+        WhereBuilder w = new WhereBuilder(having + (having.isEmpty() ? " WHERE TRUE" : " AND TRUE"));
         w.search(keyword, parameter -> "(partyName ILIKE " + parameter + " ESCAPE '\\'"
                 + " OR partyCode ILIKE " + parameter + " ESCAPE '\\'"
                 + " OR (partyType='客户' AND " + CategoryKeywordSearch.nativeBranch("client_categories", "partyCategoryId",

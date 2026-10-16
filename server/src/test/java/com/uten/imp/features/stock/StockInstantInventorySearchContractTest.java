@@ -109,7 +109,7 @@ class StockInstantInventorySearchContractTest {
                 null, em, mock(StockCostMasker.class));
         UUID warehouseId = UUID.randomUUID();
 
-        service.shelfLabelRows(null, " 风扇 ", warehouseId, true);
+        service.shelfLabelRows(null, " 风扇\u3000M3_20% ", warehouseId, true);
 
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(em).createNativeQuery(sql.capture());
@@ -123,11 +123,16 @@ class StockInstantInventorySearchContractTest {
                 .contains("FROM warehouse_goods_place_preferences p JOIN wh ON wh.id=p.warehouse_id")
                 .contains("COALESCE(NULLIF(BTRIM(pref.place), ''), NULLIF(BTRIM(g.stock_place), ''))")
                 .contains("FROM stock_balances b JOIN wh ON wh.id=b.warehouse_id")
-                .contains("r.name ILIKE :kw", "r.code ILIKE :kw", "r.series ILIKE :kw", "r.place ILIKE :kw")
+                .contains("regexp_split_to_table(lower(COALESCE(CAST(:kw AS text),''))",
+                        "AS task_word(value) WHERE task_word.value<>'' AND NOT (")
+                .contains("POSITION(task_word.value IN lower(COALESCE(r.name,'')))>0",
+                        "POSITION(task_word.value IN lower(COALESCE(r.code,'')))>0",
+                        "POSITION(task_word.value IN lower(COALESCE(r.series,'')))>0",
+                        "POSITION(task_word.value IN lower(COALESCE(r.place,'')))>0")
                 .contains("= '禁用') AS disabled")
-                .doesNotContain("<> '禁用'", ":rack");
+                .doesNotContain("<> '禁用'", ":rack", "ILIKE :kw");
         verify(query).setParameter("warehouseId", warehouseId);
-        verify(query).setParameter("kw", "%风扇%");
+        verify(query).setParameter("kw", "风扇 m3_20%");
     }
 
     @Test

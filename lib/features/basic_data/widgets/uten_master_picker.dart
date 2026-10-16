@@ -122,12 +122,12 @@ class _MasterPickerSheetState<TItem>
   final _keywordCtl = TextEditingController();
   String _globalQuery = '';
   Set<String>? _visibleFilterIds;
-  Set<String> _contentMatchCategoryIds = {};
   bool _searchLocationLoading = false;
   String? _searchLocationError;
   bool _showingGlobalResults = false;
   String? _categoryContentKeyword;
   int _requestVersion = 0;
+  bool _acceptPendingSearch = false;
   int _page = 1;
   int _confirmedPage = 1;
   int _queryRevision = 0;
@@ -163,17 +163,14 @@ class _MasterPickerSheetState<TItem>
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
+    if (_globalQuery.isNotEmpty) return;
     _requestVersion++;
-    final keepKeyword =
-        _globalQuery.isNotEmpty &&
-        hierarchyBranchContainsAny(
-          widget.tree,
-          node.id,
-          _contentMatchCategoryIds,
-        );
+    _acceptPendingSearch = false;
     setState(() {
       _selectedCategoryId = node.id;
-      _categoryContentKeyword = keepKeyword ? _globalQuery : null;
+      _categoryContentKeyword = null;
+      _searchLocationLoading = false;
+      _searchLocationError = null;
       _showingGlobalResults = false;
       _resetPageWindow();
     });
@@ -185,6 +182,11 @@ class _MasterPickerSheetState<TItem>
   void _onKeywordInputChanged(String v) {
     setState(() {
       _requestVersion++;
+      _acceptPendingSearch = true;
+      _globalQuery = v.trim();
+      _visibleFilterIds = _globalQuery.isEmpty
+          ? null
+          : categoryHits(widget.tree, _globalQuery);
       _globalItemsQuery = null;
       _globalItems = const [];
       _resetPageWindow();
@@ -203,7 +205,8 @@ class _MasterPickerSheetState<TItem>
   }
 
   void _onKeywordChanged(String v) {
-    if (!mounted) return;
+    if (!mounted || !_acceptPendingSearch) return;
+    _acceptPendingSearch = false;
     _applyGlobalSearch(v.trim());
   }
 
@@ -213,7 +216,6 @@ class _MasterPickerSheetState<TItem>
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null;
-        _contentMatchCategoryIds = {};
         _globalItemsQuery = null;
         _globalItems = const [];
         _searchLocationLoading = false;
@@ -231,7 +233,6 @@ class _MasterPickerSheetState<TItem>
     setState(() {
       _globalQuery = query;
       _visibleFilterIds = categoryHits(widget.tree, query);
-      _contentMatchCategoryIds = {};
       _globalItemsQuery = null;
       _globalItems = const [];
       _searchLocationLoading = true;
@@ -240,7 +241,7 @@ class _MasterPickerSheetState<TItem>
       _categoryContentKeyword = null;
       _resetPageWindow();
     });
-    await _reloadGlobalSearch(allowCategoryFallback: true);
+    await _reloadGlobalSearch();
   }
 
   Future<void> _reloadCategory() async {
@@ -289,9 +290,7 @@ class _MasterPickerSheetState<TItem>
       query != _globalQuery ||
       requestedPage != _page;
 
-  Future<void> _reloadGlobalSearch({
-    required bool allowCategoryFallback,
-  }) async {
+  Future<void> _reloadGlobalSearch() async {
     final query = _globalQuery;
     final requestedPage = _page;
     final requestVersion = ++_requestVersion;
@@ -326,37 +325,6 @@ class _MasterPickerSheetState<TItem>
         contentCategoryIds: allItems.map(_spec.categoryIdOf),
       );
 
-      if (allItems.isEmpty && allowCategoryFallback && requestedPage == 1) {
-        final categoryId = resolution.selectedId;
-        if (categoryId != null) {
-          final categoryPage = await _spec.loadCategoryPage(
-            categoryId,
-            1,
-            null,
-          );
-          if (_stale(requestVersion, query, requestedPage)) return;
-          setState(() {
-            _selectedCategoryId = categoryId;
-            _visibleFilterIds = resolution.visibleIds;
-            _contentMatchCategoryIds = {};
-            _globalItemsQuery = query;
-            _globalItems = const [];
-            _searchLocationLoading = false;
-            _searchLocationError = null;
-            _showingGlobalResults = false;
-            _categoryContentKeyword = null;
-            _items = categoryPage.items;
-            _page = categoryPage.page;
-            _confirmedPage = categoryPage.page;
-            _totalPages = categoryPage.totalPages < 1
-                ? 1
-                : categoryPage.totalPages;
-            _loading = false;
-          });
-          return;
-        }
-      }
-
       const displaySize = 100;
       final totalPages = allItems.isEmpty
           ? 1
@@ -365,9 +333,7 @@ class _MasterPickerSheetState<TItem>
       final start = (safePage - 1) * displaySize;
       final end = (start + displaySize).clamp(0, allItems.length);
       setState(() {
-        _selectedCategoryId = resolution.selectedId;
         _visibleFilterIds = resolution.visibleIds;
-        _contentMatchCategoryIds = resolution.contentCategoryIds;
         _globalItemsQuery = query;
         _globalItems = allItems;
         _searchLocationLoading = false;
@@ -395,7 +361,7 @@ class _MasterPickerSheetState<TItem>
 
   Future<void> _reloadCurrentPage() async {
     if (_globalQuery.isNotEmpty && _showingGlobalResults) {
-      await _reloadGlobalSearch(allowCategoryFallback: false);
+      await _reloadGlobalSearch();
     } else {
       await _reloadCategory();
     }

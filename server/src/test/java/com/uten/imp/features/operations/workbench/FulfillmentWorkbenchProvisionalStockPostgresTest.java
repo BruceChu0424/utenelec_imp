@@ -259,6 +259,55 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                 "visible grouped row must expose its request item ids");
     }
 
+    @Test
+    void groupedGoodsSearchFindsEveryRealLineAndRanksNamesBeforeCodesBeforePaging() throws Exception {
+        String word = "KW" + UUID.randomUUID().toString().replace("-", "");
+        UUID[] requests = new UUID[3];
+        try (Connection connection = connection()) {
+            for (int index = 0; index < 3; index++) {
+                Fixture data = fixture(connection);
+                if (index == 1) insert(connection, "UPDATE goods SET code=?,name='普通件' WHERE id=?", word, data.materialB());
+                else insert(connection, "UPDATE goods SET name=? WHERE id=?", index == 0 ? word : word + " M3_20%", data.materialB());
+                UUID item = insertPurchaseDecompositionTask(connection, data);
+                try (PreparedStatement statement = connection.prepareStatement("SELECT request_id FROM purchase_request_items WHERE id=?")) {
+                    statement.setObject(1, item);
+                    try (ResultSet result = statement.executeQuery()) { result.next(); requests[index] = result.getObject(1, UUID.class); }
+                }
+                if (index == 2) {
+                    insert(connection, """
+                            INSERT INTO purchase_request_items(id,bill_no,bill_date,request_id,line_no,goods_id,unit_id,
+                                unit_rate,qty,ordered_qty,deliver_date,production_plan_no,source_doc_no,goods_snapshot_source)
+                            SELECT ?,first.bill_no,first.bill_date,first.request_id,2,stock.goods_id,first.unit_id,
+                                   1,4,0,first.deliver_date,first.production_plan_no,first.source_doc_no,'MASTER_AT_SAVE'
+                            FROM purchase_request_items first CROSS JOIN stock_balances stock
+                            WHERE first.id=? AND stock.id=?
+                            """, UUID.randomUUID(), item, data.balanceA());
+                }
+            }
+        }
+        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.documentAccess("PURCHASE", "PURCHASE_REQUEST"))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, false));
+        var service = new FulfillmentWorkbenchQueryService(entityManager, access);
+        List<UUID> ranked = new java.util.ArrayList<>();
+        for (int page = 1; page <= 3; page++) {
+            final int current = page;
+            var result = transactions.execute(status -> service.query("PURCHASE", "", word, "", null, null, current, 1));
+            assertNotNull(result);
+            assertEquals(3L, result.total());
+            assertEquals(3L, result.summary().totalTasks());
+            ranked.add(result.items().getFirst().taskId());
+        }
+        assertEquals(List.of(requests[0], requests[2], requests[1]), ranked);
+        var literal = transactions.execute(status -> service.query("PURCHASE", "", word + " M3_20%", "", null, null, 1, 1));
+        assertNotNull(literal);
+        assertEquals(1L, literal.total());
+        assertEquals(requests[2], literal.items().getFirst().taskId());
+        assertEquals(2L, literal.items().getFirst().goodsCount());
+        assertEquals(1L, literal.summary().pendingTasks());
+        assertTrue(transactions.execute(status -> service.query("PURCHASE", "", word + " M3X20A", "", null, null, 1, 20)).items().isEmpty());
+    }
+
     private static Fixture fixture(Connection connection) throws Exception {
         UUID warehouse = UUID.randomUUID();
         UUID unit = UUID.randomUUID();

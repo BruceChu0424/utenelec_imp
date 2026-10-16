@@ -65,7 +65,7 @@ class _PackagingPickerFieldState extends State<PackagingPickerField> {
       ),
       onTap: () async {
         final name = await widget.onPick();
-        if (name != null) _set(name);
+        if (mounted && name != null) _set(name);
       },
     );
   }

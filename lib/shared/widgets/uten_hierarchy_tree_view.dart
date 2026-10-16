@@ -5,7 +5,7 @@
 // 搜索(命中路径自动展开)、展开折叠、外部统一搜索的加载/失败/无结果反馈、
 // 单/多选/无选择语义、选中高亮、trailing 插槽。现在只有这一份，两者只是它的薄封装，
 // 差异经参数给出：节点左侧徽标([leadingBuilder]，部门层级短标签)、行文字([labelOf]，
-// 分类显示「名称(编码)」)、透传节点([passThrough]，部门选择器隐藏公司根、直接列其子级)、
+// 分类正文只显示业务名称)、透传节点([passThrough]，部门选择器隐藏公司根、直接列其子级)、
 // 同级是否按编码排序、默认展开/收起规则与可选谓词。
 //
 // 放在 shared：部门与基础资料两个 feature 都用它，谁都不反向依赖谁(节点契约同理在 shared)。
@@ -17,6 +17,7 @@ import '../../components/layout/uten_hierarchy_content_width.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../models/uten_tree_node.dart';
+import '../hierarchy/category_tree_search.dart';
 
 /// 树的选择语义。
 enum UtenTreeSelectMode { none, single, multi }
@@ -294,33 +295,26 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
   }
 
   /// 搜索时：命中节点 + 其全部祖先(命中路径自动展开)。
-  Set<String> _visibleIds() {
-    final q = _query.trim().toLowerCase();
-    final visible = <String>{};
-    bool walk(List<T> nodes, List<String> ancestors) {
-      var anyHit = false;
-      for (final n in nodes) {
-        final selfHit =
-            n.name.toLowerCase().contains(q) ||
-            n.code.toLowerCase().contains(q);
-        final childHit = walk(n.children, [...ancestors, n.id]);
-        if (selfHit || childHit) {
-          visible.addAll(ancestors);
-          visible.add(n.id);
-          anyHit = true;
-        }
-      }
-      return anyHit;
-    }
+  Set<String> _visibleIds() => categoryHits(widget.nodes, _query);
 
-    walk(widget.nodes, const []);
-    return visible;
-  }
-
-  /// 按 code 字母序排序同级(A-Z；空编码排前，中文按 Unicode 序排后)。
-  List<T> _ordered(List<T> ns) {
-    if (!widget.sortByCode) return ns;
-    return [...ns]..sort((a, b) => a.code.compareTo(b.code));
+  /// Preserve the established sibling order within each relevance tier.
+  List<T> _ordered(List<T> nodes) {
+    final ordered = widget.sortByCode
+        ? ([...nodes]..sort((a, b) => a.code.compareTo(b.code)))
+        : [...nodes];
+    final query = widget.externalSearchQuery ?? _query;
+    if (query.trim().isEmpty) return ordered;
+    final positions = {
+      for (var index = 0; index < ordered.length; index++)
+        ordered[index].id: index,
+    };
+    ordered.sort((a, b) {
+      final aRank = categoryBranchKeywordRank(a, query) ?? (1 << 20);
+      final bRank = categoryBranchKeywordRank(b, query) ?? (1 << 20);
+      final rank = aRank.compareTo(bRank);
+      return rank != 0 ? rank : positions[a.id]!.compareTo(positions[b.id]!);
+    });
+    return ordered;
   }
 
   void _toggleExpand(T node) {

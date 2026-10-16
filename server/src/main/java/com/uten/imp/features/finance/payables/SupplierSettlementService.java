@@ -2,6 +2,8 @@ package com.uten.imp.features.finance.payables;
 
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -35,6 +37,7 @@ import static com.uten.imp.features.finance.payables.SupplierSettlementContracts
 @RequiredArgsConstructor
 public class SupplierSettlementService {
     private static final int MONEY_SCALE = 4;
+    private static final String[] SEARCH_FIELDS = {"batch.batch_no", "supplier.code", "supplier.name"};
     private static final Set<String> FILTER_STATUSES = Set.of(
             "FROZEN", "SUPPLIER_CONFIRMED", "INTERNAL_CONFIRMED", "BOTH_CONFIRMED",
             "DISPUTED", "CLOSED", "REVERSED");
@@ -147,14 +150,14 @@ public class SupplierSettlementService {
             add(where, params, "batch.status=:status", "status", normalized);
         }
         if (keyword != null && !keyword.isBlank()) {
-            add(where, params,
-                    "(LOWER(batch.batch_no) LIKE :keyword OR LOWER(COALESCE(supplier.code,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(supplier.name,'')) LIKE :keyword)",
-                    "keyword", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+            add(where, params, TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS),
+                    "keyword", KeywordSearch.phrase(keyword));
         }
         String from = batchFrom();
+        String relevance = params.containsKey("keyword")
+                ? TaskKeywordSearch.rankParameter("keyword", SEARCH_FIELDS) + ", " : "";
         Query data = em.createNativeQuery(batchSelect() + from + where
-                + " ORDER BY batch.period_start DESC,batch.batch_no DESC LIMIT :limit OFFSET :offset");
+                + " ORDER BY " + relevance + "batch.period_start DESC,batch.batch_no DESC,batch.id LIMIT :limit OFFSET :offset");
         bind(data, params);
         data.setParameter("limit", safeSize);
         data.setParameter("offset", (long) (safePage - 1) * safeSize);

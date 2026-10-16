@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,151 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets(
+    'owner picker requires every name code and department word within its provided authorized candidates',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            adminRepositoryProvider.overrideWithValue(_SearchScopeRepository()),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({}),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: AdminDataScopeSection(
+                  user: AdminUserSummary(
+                    id: 'user-1',
+                    employeeId: 'employee-1',
+                    employeeStatus: 'active',
+                    currentEmployee: true,
+                    loginAccount: '13800000000',
+                    status: 'active',
+                    mustChangePassword: false,
+                    remoteAccess: false,
+                  ),
+                  effectiveAsync: AsyncValue.data(
+                    EffectivePermissions(
+                      departmentPermissions: [],
+                      baselinePermissions: [],
+                      grants: [],
+                      revokes: [],
+                      effective: [],
+                    ),
+                  ),
+                  viewAllPermissions: {'client:view:all'},
+                  showHandover: false,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('仅本人负责的数据'));
+      await tester.pumpAndSettle();
+      final search = find.descendant(
+        of: find.byKey(const Key('uten-employee-picker-search')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(search, '研发 张三 UT003');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-owner-match')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-owner-other')),
+        findsNothing,
+      );
+      await tester.enterText(search, '研发 李四');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-owner-match')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-owner-other')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'switching page scope rejects an old request after returning to the same scope',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = _DelayedScopeRepository();
+      final filter = ValueNotifier<Set<String>>({'client:view:all'});
+      addTearDown(filter.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            adminRepositoryProvider.overrideWithValue(repository),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+            currentPermissionsProvider.overrideWithValue({}),
+            isSuperAdminProvider.overrideWithValue(false),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: ValueListenableBuilder<Set<String>>(
+                  valueListenable: filter,
+                  builder: (_, value, _) => AdminDataScopeSection(
+                    user: const AdminUserSummary(
+                      id: 'user-1',
+                      employeeId: 'employee-1',
+                      employeeStatus: 'active',
+                      currentEmployee: true,
+                      loginAccount: '13800000000',
+                      status: 'active',
+                      mustChangePassword: false,
+                      remoteAccess: false,
+                    ),
+                    effectiveAsync: const AsyncValue.data(
+                      EffectivePermissions(
+                        departmentPermissions: [],
+                        baselinePermissions: [],
+                        grants: [],
+                        revokes: [],
+                        effective: [],
+                      ),
+                    ),
+                    viewAllPermissions: value,
+                    showHandover: false,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(repository.clientRequests, 1);
+      filter.value = {'finance:view:all'};
+      await tester.pumpAndSettle();
+      filter.value = {'client:view:all'};
+      await tester.pumpAndSettle();
+      expect(repository.clientRequests, 2);
+      expect(find.text('仅本人'), findsOneWidget);
+      repository.firstClient.complete(['old-owner']);
+      await tester.pumpAndSettle();
+      expect(find.text('仅本人'), findsOneWidget);
+      expect(find.text('额外查看 1 人'), findsNothing);
+      expect(find.text('人员数据交接'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('catalog groups finance and explains view-all/disabled states', (
     tester,
   ) async {
@@ -66,6 +213,17 @@ void main() {
   });
 }
 
+class _DelayedScopeRepository extends _ScopeRepositoryFake {
+  final firstClient = Completer<List<String>>();
+  int clientRequests = 0;
+
+  @override
+  Future<List<String>> getUserDataScopes(String userId, String scope) async {
+    if (scope == 'client' && ++clientRequests == 1) return firstClient.future;
+    return [];
+  }
+}
+
 class _ScopeRepositoryFake implements AdminRepository {
   final loadedScopes = <String>[];
 
@@ -110,4 +268,26 @@ class _ScopeRepositoryFake implements AdminRepository {
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw UnimplementedError(invocation.memberName.toString());
+}
+
+class _SearchScopeRepository extends _ScopeRepositoryFake {
+  @override
+  Future<List<DataScopeOwner>> dataScopeOwners(String scope) async => const [
+    DataScopeOwner(
+      employeeId: 'owner-match',
+      name: '张三',
+      code: 'UT003',
+      count: 2,
+      departmentId: 'rd',
+      departmentName: '工程研发部',
+    ),
+    DataScopeOwner(
+      employeeId: 'owner-other',
+      name: '李四',
+      code: 'UT004',
+      count: 3,
+      departmentId: 'fin',
+      departmentName: '财务部',
+    ),
+  ];
 }

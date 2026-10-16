@@ -27,6 +27,7 @@ import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.LinkedOrderReadGate;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptDetail;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemDto;
 import com.uten.imp.features.subcontract.receipt.dto.ReceiptItemLine;
@@ -140,7 +141,8 @@ public class SubcontractReceiptService {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        Page<SubcontractReceipt> p = receiptRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<SubcontractReceipt> p = receiptRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReceiptListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return p.stream().noneMatch(SubcontractReceipt::isDeleted) ? result
                 : retainedRecords.page(result, "subcontract_receipts", p.getContent());

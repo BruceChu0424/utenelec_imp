@@ -201,8 +201,7 @@ public class WarehouseHistoryQueryService {
     private Query bindFilters(
             Query query, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo,
             String billNo, String sourceDocNo, WarehouseTaskScope scope) {
-        return bindScope(query, scope).setParameter("keyword", keyword)
-                .setParameter("keyword_pattern", "%" + keyword.toLowerCase() + "%")
+        return bindScope(query, scope).setParameter("keyword", com.uten.imp.common.util.KeywordSearch.phrase(keyword))
                 .setParameter("status", status)
                 .setParameter("date_from", dateFrom)
                 .setParameter("date_to", dateTo)

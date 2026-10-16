@@ -6,6 +6,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -13,13 +15,9 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.sql.ResultSet;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -45,9 +43,6 @@ class ShelfLabelQueryPostgresTest {
                     .withDatabaseName("uten_imp")
                     .withUsername("uten")
                     .withPassword("uten");
-
-    /** 命名参数（:name）；排除 PostgreSQL 的 ::cast。 */
-    private static final Pattern NAMED_PARAM = Pattern.compile("(?<!:):([A-Za-z]\\w*)");
 
     @BeforeAll
     static void migrate() {
@@ -141,11 +136,26 @@ class ShelfLabelQueryPostgresTest {
                 assertTrue(indexOf(a30, f.parsedA30) < indexOf(a30, f.disabled), "同库行按层升序：1 层在 2 层前");
 
                 List<Map<String, Object>> byPlace = query(c,
-                        ShelfLabelSql.rows(false, false, false, true), Map.of("kw", "%y12%"));
+                        ShelfLabelSql.rows(false, false, false, true), Map.of("kw", "y12"));
                 assertEquals(1, byPlace.stream().filter(r -> f.residue.equals(r.get("goods_id"))).count(),
                         "关键字对库位号 ILIKE（大小写不敏感）");
             }
         });
+    }
+
+    @Test
+    void shelfWordsMatchAcrossNameSeriesAndPlaceWithoutTreatingWildcardsAsPatterns() throws Exception {
+        try (Connection c = connection()) {
+            Fixture f = Fixture.create(c);
+            try (PreparedStatement statement = c.prepareStatement("UPDATE goods SET name=?,series=? WHERE id=?")) {
+                statement.setString(1, "螺丝"); statement.setString(2, "M3_20%\\A"); statement.setObject(3, f.parsedA30); statement.executeUpdate();
+                statement.setString(2, "M3X20AZA"); statement.setObject(3, f.parsedA31); statement.executeUpdate();
+            }
+            var rows = query(c, ShelfLabelSql.rows(false, false, false, true), Map.of("kw", "螺丝 M3_20%\\A A30"));
+            assertFalse(rows.isEmpty());
+            assertTrue(rows.stream().allMatch(row -> f.parsedA30.equals(row.get("goods_id"))));
+            assertTrue(query(c, ShelfLabelSql.rows(false, false, false, true), Map.of("kw", "螺丝 不存在")).isEmpty());
+        }
     }
 
     @Test
@@ -574,37 +584,10 @@ class ShelfLabelQueryPostgresTest {
         }
     }
 
-    /** 命名参数 SQL → JDBC 位置参数（按出现顺序绑定，同名可重复出现）。 */
+    /** Use the SQL-aware parser so quoted PostgreSQL classes such as [:space:] are not parameters. */
     private static List<Map<String, Object>> query(Connection c, String namedSql, Map<String, Object> params)
             throws Exception {
-        List<String> order = new ArrayList<>();
-        Matcher m = NAMED_PARAM.matcher(namedSql);
-        StringBuilder sql = new StringBuilder();
-        while (m.find()) {
-            order.add(m.group(1));
-            m.appendReplacement(sql, "?");
-        }
-        m.appendTail(sql);
-        for (String name : order) {
-            assertTrue(params.containsKey(name), "缺少命名参数绑定：" + name);
-        }
-        List<Map<String, Object>> out = new ArrayList<>();
-        try (PreparedStatement ps = c.prepareStatement(sql.toString())) {
-            for (int i = 0; i < order.size(); i++) {
-                ps.setObject(i + 1, params.get(order.get(i)));
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                int cols = rs.getMetaData().getColumnCount();
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= cols; i++) {
-                        row.put(rs.getMetaData().getColumnLabel(i), rs.getObject(i));
-                    }
-                    out.add(row);
-                }
-            }
-        }
-        return out;
+        return new NamedParameterJdbcTemplate(new SingleConnectionDataSource(c,true)).queryForList(namedSql,params);
     }
 
     private static Map<String, Object> rowOf(List<Map<String, Object>> rows, UUID goodsId) {

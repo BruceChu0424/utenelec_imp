@@ -8,6 +8,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
 import com.uten.imp.common.report.ReportQueryKit;
@@ -122,13 +123,10 @@ public class AccountService {
                                        CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            if (f.keyword() != null && !f.keyword().isBlank()) {
-                String like = "%" + f.keyword().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("code")), like),
-                        cb.like(cb.lower(root.get("bankAccountNo")), like)));
-            }
+            ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), pattern -> cb.or(
+                        NameRefKeyword.text(cb, root.get("name"), pattern),
+                        NameRefKeyword.text(cb, root.get("code"), pattern),
+                        NameRefKeyword.text(cb, root.get("bankAccountNo"), pattern))));
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "accountType", f.accountType());
@@ -143,7 +141,8 @@ public class AccountService {
         };
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
-        Page<Account> p = repo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<Account> p = repo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, CurrencyMeta> currencyMeta = currencyMetaFor(p.getContent());
         return new PageResponse<>(
                 p.getContent().stream()

@@ -78,6 +78,7 @@ class SubcontractShortDeliveryEndToEndTest {
         UUID material=fixture.ensureSubcontractDirectMaterial(w,w.goodsE());fixture.receiveSubcontractMaterial(w,material,"20");
 
         // ① 订货 20 件、允许损耗 5%：保存即冻结到本行，并回写货品主档记忆；/last-terms 下次预填 5。
+        db.update("UPDATE goods SET name=? WHERE id=?", "短交检索螺丝 M3_20%", w.goodsE());
         UUID orderId=orders.create(orderRequest(w,"20","5")).getId();
         UUID itemId=db.queryForObject("SELECT id FROM subcontract_order_items WHERE order_id=?",UUID.class,orderId);
         rate("5",db.queryForObject("SELECT allowed_loss_pct FROM subcontract_order_items WHERE id=?",BigDecimal.class,itemId));
@@ -110,6 +111,11 @@ class SubcontractShortDeliveryEndToEndTest {
         rate("19",(BigDecimal)c.get("floor_qty"));assertEquals(1,((Number)c.get("arrival_count")).intValue());
         assertEquals(w.superAdminUserId(),c.get("owner_user_id"));
         UUID caseId=(UUID)c.get("id");
+        assertEquals(1,shortDeliveries.list("PENDING","短交检索 M3_20%",null,orderId,null,null,1,1).getTotal());
+        assertEquals(0,shortDeliveries.list("PENDING","短交检索 M3X20A",null,orderId,null,null,1,1).getTotal());
+        assertEquals(0,shortDeliveries.list("PENDING","短交检索 M3_20%",null,UUID.randomUUID(),null,null,1,1).getTotal());
+        assertEquals(1,shortDeliveries.facets("PENDING","短交检索 M3_20%",null,orderId,null,null).get("orderBillNo").size());
+
         assertEquals(List.of("DETECTED"),events(caseId));
         drainOutbox();
         assertEquals(1,count("SELECT COUNT(*) FROM notices WHERE source_event='SUBCONTRACT_SHORT_DELIVERY_DETECTED' AND audience_user_id=?",w.superAdminUserId()),

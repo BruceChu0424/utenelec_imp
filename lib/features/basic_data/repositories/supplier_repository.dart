@@ -28,7 +28,18 @@ abstract interface class SupplierRepository {
     bool selectableOnly = false,
   });
 
-  /// 全局搜供应商（供应商资料页"搜供应商定位分类"用；不限分类，按编号/简称/全称/联系人/法人/地区/手机模糊）。
+  /// 不限分类的分页结果；保留字段筛选、排序及单据可选状态约束。
+  Future<PagedResult<SupplierListItem>> listGlobal({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool selectableOnly = false,
+  });
+
+  /// 兼容选择器等调用方的全局搜索入口。
   /// [selectableOnly] 同 [list]：单据选商面板搜索用（仅「使用」状态）。
   Future<PagedResult<SupplierListItem>> search(
     String keyword, {
@@ -39,6 +50,8 @@ abstract interface class SupplierRepository {
 
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<SupplierFacets> facets(String categoryId);
+
+  Future<SupplierFacets> globalFacets();
 
   Future<SupplierDetail> detail(String id);
 
@@ -64,9 +77,49 @@ class DioSupplierRepository implements SupplierRepository {
     String? sort,
     String? order,
     bool selectableOnly = false,
+  }) => _list(
+    categoryId,
+    page: page,
+    size: size,
+    keyword: keyword,
+    filters: filters,
+    sort: sort,
+    order: order,
+    selectableOnly: selectableOnly,
+  );
+
+  @override
+  Future<PagedResult<SupplierListItem>> listGlobal({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool selectableOnly = false,
+  }) => _list(
+    null,
+    page: page,
+    size: size,
+    keyword: keyword,
+    filters: filters,
+    sort: sort,
+    order: order,
+    selectableOnly: selectableOnly,
+  );
+
+  Future<PagedResult<SupplierListItem>> _list(
+    String? categoryId, {
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool selectableOnly = false,
   }) async {
     final query = <String, dynamic>{
-      'categoryId': categoryId,
+      'categoryId': ?categoryId,
       'page': page,
       'size': size,
       if (sort != null && sort.isNotEmpty) 'sort': sort,
@@ -126,6 +179,12 @@ class DioSupplierRepository implements SupplierRepository {
       ApiEndpoints.suppliersFacets,
       query: {'categoryId': categoryId},
     );
+    return SupplierFacets.fromJson(json);
+  }
+
+  @override
+  Future<SupplierFacets> globalFacets() async {
+    final json = await api.get(ApiEndpoints.suppliersFacets);
     return SupplierFacets.fromJson(json);
   }
 

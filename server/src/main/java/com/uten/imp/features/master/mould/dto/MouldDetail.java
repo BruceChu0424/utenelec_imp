@@ -36,4 +36,5 @@ public class MouldDetail {
     private String departmentName;
     private UUID keeperId;
     private String keeperName;
+    private String manufacturer;
 }

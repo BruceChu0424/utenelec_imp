@@ -5,7 +5,7 @@
 // 现有复用方：货品/模具/客户/供应商（ProductCategoryNode）、收付款类别（PaymentStyleNode）。
 //
 // 实现在 shared 的 UtenHierarchyTreeView(与组织架构树共用一份，ADR-111)；本组件只把
-// 分类的口径传进去：行文字「名称(编码)」、同级默认按编码排序、全部节点可点、
+// 分类的口径传进去：行文字只显示分类名称、同级默认按编码排序、全部节点可点、
 // 「未分类(历史孤儿)」这类大杂烩节点可默认收起。
 import 'package:flutter/material.dart';
 
@@ -28,18 +28,10 @@ List<T> hoistSingleRootTree<T extends UtenTreeNode<T>>(List<T> nodes) {
   return current;
 }
 
-/// 分类树节点标签：普通分类「名称(编码)」；未分类系统根（LEGACY_ORPHAN /
-/// SYS_UNCATEGORIZED_*）只显示名称，不带括号英文快照（2026-09-25 用户口径）。
-String categoryNodeLabel<T extends UtenTreeNode<T>>(T node) {
-  if (node.code.isEmpty) return node.name;
-  if (node.code == 'LEGACY_ORPHAN' ||
-      node.code.startsWith('SYS_UNCATEGORIZED')) {
-    return node.name;
-  }
-  return '${node.name}(${node.code})';
-}
+/// 分类编号仍作为稳定数据和搜索字段，列表正文统一只显示业务分类名称。
+String categoryNodeLabel<T extends UtenTreeNode<T>>(T node) => node.name;
 
-/// 量测分类树最长一行「名称(编码)」的自然文字宽（TextPainter 实测，2026-09-24），
+/// 量测分类树最长一行名称的自然文字宽（TextPainter 实测），
 /// 加行内装具余量（8 左缘 + 3 选中强调条 + 24 展开位 + 4 间隙 + 8 右缘 + 12 滚动
 /// 余量 + 一级加粗增量）后夹在 [min]–[max]。选择器滑窗把它作为 UtenSplitView 的
 /// initialLeadingWidth，实现「默认划分 = 左边内容最宽那行的宽度」。

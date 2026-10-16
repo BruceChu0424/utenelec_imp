@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.util.TaskKeywordSearch;
+
 /** Same private-demand projection for the source picker and initial planning handoff. */
 final class MaterialAnalysisSalesSourceQuery {
     private MaterialAnalysisSalesSourceQuery() {}
@@ -21,8 +23,8 @@ final class MaterialAnalysisSalesSourceQuery {
                     - COALESCE(draft.qty,0), 0) > 0
                 """;
         if (!keyword.isEmpty()) {
-            predicate += " AND (lower(o.bill_no) LIKE :kw OR lower(COALESCE(c.name,'')) LIKE :kw"
-                    + " OR lower(COALESCE(g.code,'')) LIKE :kw OR lower(COALESCE(g.name,'')) LIKE :kw)\n";
+            predicate += " AND " + TaskKeywordSearch.conditionParameter("kw",
+                    "o.bill_no", "c.name", "g.code", "g.name", "g.spec", "col.name", "u.name") + "\n";
         }
         if (billNoFilter) predicate += " AND COALESCE(o.bill_no, '') = :orderBillNo\n";
         return """
@@ -30,6 +32,8 @@ final class MaterialAnalysisSalesSourceQuery {
                 JOIN sales_order_items i ON i.order_id = o.id
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN clients c ON c.id = o.client_id
+                LEFT JOIN colors col ON col.id = i.color_id
+                LEFT JOIN units u ON u.id = i.unit_id
                 LEFT JOIN LATERAL (
                     -- Public surplus does not occupy the private sales source (V588).
                     SELECT SUM(CASE WHEN link.id IS NOT NULL THEN link.submitted_qty ELSE pi.qty END) AS qty

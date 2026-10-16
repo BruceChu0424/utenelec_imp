@@ -12,6 +12,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
@@ -206,7 +207,8 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         // 2026-09-25 单号列统一：billNo 可排序（单据号不泄露成本）。
                         Map.of("billDate", "billDate", "billNo", "billNo")));
-        Page<StockDocument> p = docRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<StockDocument> p = docRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<StockDocListItem> result = new PageResponse<>(p.map(this::toList).getContent(), page, size,
                 p.getTotalElements(), p.getTotalPages());
         return includeDeleted || onlyDeleted ? retainedRecords.page(result, "stock_documents", p.getContent()) : result;
@@ -284,7 +286,17 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                 ps.add(cb.equal(root.get("docType"), f.docType()));
             }
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), pattern -> {
+                    var fields = NameRefKeyword.keywords();
+                    fields.add(NameRefKeyword.text(cb, root.get("billNo"), pattern));
+                    NameRefKeyword.byName(fields, q, cb, root.get("warehouseId"),
+                            com.uten.imp.features.master.warehouse.Warehouse.class, "name", pattern);
+                    NameRefKeyword.byName(fields, q, cb, root.get("toWarehouseId"),
+                            com.uten.imp.features.master.warehouse.Warehouse.class, "name", pattern);
+                    NameRefKeyword.byName(fields, q, cb, root.get("departmentId"),
+                            com.uten.imp.features.org.department.Department.class, "name", pattern);
+                    return NameRefKeyword.or(cb, fields);
+                }));
             }
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.toWarehouseId() != null) ps.add(cb.equal(root.get("toWarehouseId"), f.toWarehouseId()));

@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.short_delivery;
 
+import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.KeywordSearch;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.BusinessEventPublisher;
@@ -698,7 +700,11 @@ public class SubcontractShortDeliveryService
         String where = predicate + " AND "
                 + shortDeliveryWhere(scope, dateFrom, dateTo, orderBillNo);
         Query rows = em.createNativeQuery(ROW_SELECT + " WHERE " + where
-                + " ORDER BY " + shortDeliveryOrderBy(normalized, sort, order)
+                + " ORDER BY " + (KeywordSearch.terms(keyword).isEmpty() ? "" :
+                    TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                            new String[]{"COALESCE(c.goods_name_snapshot, goods.name)"}, new String[]{},
+                            new String[]{"COALESCE(c.goods_code_snapshot, goods.code)", "c.order_bill_no_snapshot", "c.receipt_bill_no_snapshot", "supplier.name"}) + ", ")
+                + shortDeliveryOrderBy(normalized, sort, order) + ", c.id"
                 + " OFFSET :offset LIMIT :limit");
         Query count = em.createNativeQuery("SELECT COUNT(*) " + ROW_FROM + " WHERE " + where);
         for (Query query : List.of(rows, count)) {
@@ -760,15 +766,13 @@ public class SubcontractShortDeliveryService
                 %s
                  AND (CAST(:supplierId AS uuid) IS NULL OR c.supplier_id = CAST(:supplierId AS uuid))
                  AND (CAST(:orderId AS uuid) IS NULL OR c.order_id = CAST(:orderId AS uuid))
-                 AND (:keyword = '' OR LOWER(
-                      COALESCE(c.order_bill_no_snapshot, '') || ' ' || COALESCE(supplier.name, '') || ' ' ||
-                      COALESCE(c.goods_code_snapshot, goods.code, '') || ' ' ||
-                      COALESCE(c.goods_name_snapshot, goods.name, '') || ' ' ||
-                      COALESCE(c.receipt_bill_no_snapshot, '')) LIKE :keywordLike)
+                 AND %s
                  AND (CAST(:dateFrom AS date) IS NULL OR COALESCE(c.closed_at, c.detected_at) >= CAST(:dateFrom AS date))
                  AND (CAST(:dateTo AS date) IS NULL
                       OR COALESCE(c.closed_at, c.detected_at) < CAST(:dateTo AS date) + INTERVAL '1 day')
-                """.formatted(scope.predicate()) + (orderBillNo == null || orderBillNo.isBlank()
+                """.formatted(scope.predicate(), TaskKeywordSearch.conditionParameter("keyword",
+                        "c.order_bill_no_snapshot", "supplier.name", "COALESCE(c.goods_code_snapshot, goods.code)",
+                        "COALESCE(c.goods_name_snapshot, goods.name)", "c.receipt_bill_no_snapshot")) + (orderBillNo == null || orderBillNo.isBlank()
                         ? "" : " AND c.order_bill_no_snapshot = :orderBillNo\n");
     }
 
@@ -780,9 +784,8 @@ public class SubcontractShortDeliveryService
         scope.bind(query);
         query.setParameter("supplierId", supplierId == null ? null : supplierId.toString());
         query.setParameter("orderId", orderId == null ? null : orderId.toString());
-        String kw = keyword == null ? "" : keyword.strip().toLowerCase();
+        String kw = KeywordSearch.phrase(keyword);
         query.setParameter("keyword", kw);
-        query.setParameter("keywordLike", "%" + kw + "%");
         query.setParameter("dateFrom", dateFrom == null ? null : dateFrom.toString());
         query.setParameter("dateTo", dateTo == null ? null : dateTo.toString());
         if (orderBillNo != null && !orderBillNo.isBlank()) {

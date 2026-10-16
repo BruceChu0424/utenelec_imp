@@ -11,6 +11,9 @@ import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.CanonicalFingerprint;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.CategoryKeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.*;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.weight.WeightMath;
@@ -141,7 +144,7 @@ public class StockCountRequestService {
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());
         String eligible=candidateSnapshots(w,ids,categoryId,stockedOnly,sheet,params);
         long total=Objects.requireNonNull(db.queryForObject(eligible+"SELECT count(*) FROM snapshot",params,Long.class));
-        var rows=db.queryForList(eligible+"SELECT * FROM snapshot ORDER BY goods_code,goods_id,color_name NULLS FIRST,color_id NULLS FIRST LIMIT :limit OFFSET :offset",params)
+        var rows=db.queryForList(eligible+"SELECT * FROM snapshot ORDER BY search_rank,goods_code,goods_id,color_name NULLS FIRST,color_id NULLS FIRST LIMIT :limit OFFSET :offset",params)
                 .stream().map(this::snapshotView).toList();
         return new PageResponse<>(rows,paging.getPageNumber()+1,paging.getPageSize(),total,(int)((total+paging.getPageSize()-1)/paging.getPageSize()));
     }
@@ -178,6 +181,16 @@ public class StockCountRequestService {
         // 候选行必须与即时库存表行同键(货品×该仓余额色)：有余额的货品只出余额色行；
         // 该仓无余额的货品出一行无色(数量 0)——不能用货品主档默认色造行, 否则零余额行
         // 在前端按「无色」键寻不到候选, 表现为一整片「不可编辑」。
+        String keyword = KeywordSearch.phrase(Objects.toString(params.getValue("keyword"), ""));
+        params.addValues(CategoryKeywordSearch.rankParameters(keyword, "countSearch"));
+        String[] fields = {"g.code", "g.name", "g.model", "g.spec", "g.stock_place", "c.name", "u.name", "COALESCE(category.name,'未分类')"};
+        String match = keyword.isEmpty() ? "TRUE" : CategoryKeywordSearch.nativeCondition(keyword, "countSearch", "material_categories", "g.category_id", fields);
+        // Category labels are contextual matches, never primary goods data.
+        // Otherwise a leaf's incidental category text outranks an exact ancestor
+        // category match for goods in another branch.
+        String rank = keyword.isEmpty() ? "0" : CategoryKeywordSearch.nativeRank(keyword, "countSearch", "material_categories", "g.category_id", "g.code", "g.name",
+                "g.code", "g.name", "g.model", "g.spec", "g.stock_place", "c.name", "u.name");
+        String select = SNAPSHOT_SELECT.replace("SELECT g.id AS goods_id", "SELECT " + rank + " AS search_rank,g.id AS goods_id");
         return "WITH RECURSIVE "+categoryCte+"""
                 eligible AS (SELECT g.id FROM goods g WHERE NOT g.is_deleted
                 """+idFilter+categoryFilter+("WORKSHOP".equals(warehouse.get("kind"))?" AND EXISTS(SELECT 1 FROM unit_measurement_profiles p WHERE p.unit_id=g.unit_id AND p.measurement_dimension='MASS')":"")+sheetFilter+"""
@@ -186,7 +199,7 @@ public class StockCountRequestService {
                   UNION
                     SELECT b.goods_id,b.color_id FROM stock_balances b JOIN eligible g ON g.id=b.goods_id WHERE b.warehouse_id=:warehouse),
                 snapshot AS (
-                """+SNAPSHOT_SELECT+(stockedOnly?" AND COALESCE(b.qty,0)<>0":"")+" AND strpos(lower(concat_ws(' ',g.code,g.name,c.name)),lower(:keyword))>0) ";
+                """+select+(stockedOnly?" AND COALESCE(b.qty,0)<>0":"")+" AND ("+match+")) ";
     }
 
     @Transactional(readOnly=true)
@@ -250,10 +263,10 @@ public class StockCountRequestService {
     @Transactional(readOnly=true)
     public List<UUID> candidateCategoryIds(UUID warehouseId,String keyword) {
         require(SUBMIT);var w=warehouse(warehouseId);
-        if(keyword==null||keyword.isBlank())return List.of();
+        if(KeywordSearch.terms(keyword).isEmpty())return List.of();
         var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword",keyword.strip());
         return db.queryForList(candidateSnapshots(w,null,null,params)+"""
-                SELECT DISTINCT category_id FROM snapshot ORDER BY category_id
+                SELECT category_id FROM snapshot GROUP BY category_id ORDER BY MIN(search_rank),category_id
                 """,params,UUID.class);
     }
     private Map<String,Object> snapshot(UUID warehouse,UUID goods,UUID color) {
@@ -554,21 +567,22 @@ public class StockCountRequestService {
         if(route==null)where+=" AND r.submitted_by=:actor";else{where+=" AND r.review_route=:route";params.addValue("route",route);}
         if("HISTORY".equals(status)){where+=" AND r.status IN ('APPROVED','REJECTED','CANCELLED')";}
         else if(status!=null){where+=" AND r.status=:status";params.addValue("status",status);}
-        if(keyword!=null&&!keyword.isBlank()) {
-            params.addValue("keyword",keyword.strip());
-            where+="\n"+"""
-                    AND (strpos(lower(concat_ws(' ',r.request_no,r.reason,
-                          (SELECT count_warehouse.name FROM warehouses count_warehouse WHERE count_warehouse.id=r.warehouse_id))),lower(:keyword))>0
-                      OR EXISTS(SELECT 1 FROM stock_count_request_lines count_line WHERE count_line.request_id=r.id
-                          AND strpos(lower(concat_ws(' ',count_line.goods_code,count_line.goods_name,count_line.color_name)),lower(:keyword))>0))
-                    """;
+        String relevance="";
+        if(!KeywordSearch.terms(keyword).isEmpty()) {
+            params.addValue("keyword",KeywordSearch.phrase(keyword));
+            String names="COALESCE((SELECT string_agg(concat_ws(' ',count_line.goods_code,count_line.goods_name,count_line.color_name),' ') FROM stock_count_request_lines count_line WHERE count_line.request_id=r.id),'')";
+            String warehouseName="(SELECT count_warehouse.name FROM warehouses count_warehouse WHERE count_warehouse.id=r.warehouse_id)";
+            where+=" AND "+TaskKeywordSearch.conditionParameter("keyword","r.request_no","r.reason",warehouseName,names);
+            String codes="ARRAY(SELECT count_line.goods_code FROM stock_count_request_lines count_line WHERE count_line.request_id=r.id)";
+            String goodsNames="ARRAY(SELECT count_line.goods_name FROM stock_count_request_lines count_line WHERE count_line.request_id=r.id)";
+            relevance=TaskKeywordSearch.rankParameter("keyword",new String[]{"r.request_no"},codes,goodsNames,"ARRAY["+warehouseName+"]")+", ";
         }
         long total=Objects.requireNonNull(db.queryForObject("SELECT count(*) FROM stock_count_requests r"+where,params,Long.class));
         var rows=db.queryForList("""
                 SELECT r.*,w.name AS warehouse_name,COALESCE(e.full_name,u.login_account) AS submitted_by_name
                 FROM stock_count_requests r JOIN warehouses w ON w.id=r.warehouse_id
                 JOIN users u ON u.id=r.submitted_by LEFT JOIN employees e ON e.id=u.employee_id
-                """+where+" ORDER BY r.submitted_at DESC,r.id DESC LIMIT :limit OFFSET :offset",params).stream().map(this::headerView).toList();
+                """+where+" ORDER BY "+relevance+"r.submitted_at DESC,r.id DESC LIMIT :limit OFFSET :offset",params).stream().map(this::headerView).toList();
         return new PageResponse<>(rows,paging.getPageNumber()+1,paging.getPageSize(),total,(int)((total+paging.getPageSize()-1)/paging.getPageSize()));
     }
     @Transactional(readOnly=true)

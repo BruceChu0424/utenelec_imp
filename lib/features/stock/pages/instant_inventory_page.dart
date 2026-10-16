@@ -85,11 +85,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
 
   // 分类筛选选中态：null = 全部（不过滤）。
   String? _categoryId;
+  String? get _effectiveCategoryId => _keyword.isNotEmpty ? null : _categoryId;
 
   // 左侧统一搜索；只有货品命中才把关键词带进库存列表。
   String _searchQuery = '';
   Set<String>? _visibleCategoryIds;
-  Set<String> _contentCategoryIds = {};
   bool _searchLoading = false;
   bool _acceptPendingSearch = false;
   Timer? _searchDebounce;
@@ -153,7 +153,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     if (!mounted || !_searchRequests.isCurrent(generation)) return;
     await _loadTree();
     if (!mounted || !_searchRequests.isCurrent(generation)) return;
-    await _applySearch(_searchQuery, preserveSelection: true);
+    await _applySearch(_searchQuery);
   }
 
   @override
@@ -194,7 +194,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           .read(stockQueryRepositoryProvider)
           .instantInventory(
             page: page,
-            categoryId: _categoryId,
+            categoryId: _effectiveCategoryId,
             warehouseId: _warehouseId,
             includeDefective: _includeDefective,
             includeLineSide: _includeLineSide,
@@ -244,14 +244,15 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   bool get _owningFilterIsNull =>
       _filters['owningWarehouse'] == kMasterFilterNullValue;
 
-  bool get _summaryLoading =>
-      _loading || _searchLoading || _acceptPendingSearch;
-  bool get _summaryHasError => _error != null || _searchError != null;
+  bool get _summaryLoading => _loading || _acceptPendingSearch;
+  bool get _summaryHasError => _error != null;
+  bool get _resultsReady =>
+      _page != null && !_summaryLoading && !_summaryHasError;
 
   String get _summaryScopeLabel {
     final names = ref.read(masterNameServiceProvider);
     final parts = <String>[
-      findCategoryName(_tree ?? const [], _categoryId) ?? '全部分类',
+      findCategoryName(_tree ?? const [], _effectiveCategoryId) ?? '全部分类',
       _warehouseId == null
           ? '全部仓库'
           : names.warehouseEntries[_warehouseId] ?? '所选仓库',
@@ -282,7 +283,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     final page = _page;
     if (page == null || _summaryLoading || _summaryHasError) return;
     final scope = InstantInventoryScope(
-      categoryId: _categoryId,
+      categoryId: _effectiveCategoryId,
       warehouseId: _warehouseId,
       includeDefective: _includeDefective,
       includeLineSide: _includeLineSide,
@@ -328,7 +329,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   /// 'instant-inventory' 走后端独立分支)。重量单位用用户显示单位, 「自动」按千克
   /// (文件里的数值列不混单位)。
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-    if (_categoryId != null) 'categoryId': _categoryId,
+    if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
     if (_warehouseId != null) 'warehouseId': _warehouseId,
     'includeDefective': _includeDefective,
     if (_includeLineSide) 'includeLineSide': true,
@@ -366,7 +367,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
         .read(stockQueryRepositoryProvider)
         .instantInventory(
           size: 2000,
-          categoryId: _categoryId,
+          categoryId: _effectiveCategoryId,
           warehouseId: _warehouseId,
           includeDefective: _includeDefective,
           includeLineSide: _includeLineSide,
@@ -567,7 +568,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       _searchQuery = q;
       _acceptPendingSearch = true;
       _visibleCategoryIds = q.isEmpty ? null : categoryHits(_categoryNodes, q);
-      _contentCategoryIds = {};
       _searchLoading = q.isNotEmpty;
       _searchError = null;
       _loading = false;
@@ -591,12 +591,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
     _applySearch(q);
   }
 
-  Future<void> _applySearch(String q, {bool preserveSelection = false}) async {
+  Future<void> _applySearch(String q) async {
     final generation = _searchRequests.begin();
     if (q.isEmpty) {
       setState(() {
         _visibleCategoryIds = null;
-        _contentCategoryIds = {};
         _keyword = '';
         _searchLoading = false;
         _searchError = null;
@@ -605,9 +604,12 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       return;
     }
     setState(() {
+      _keyword = q;
       _searchLoading = true;
       _searchError = null;
     });
+    // Results are global; category locations only decorate the tree.
+    final listLoad = _load(1);
     try {
       final roots = (_tree ?? const <ProductCategoryNode>[])
           .where((node) => node.goodsCount != 0)
@@ -635,24 +637,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
       );
       setState(() {
         _visibleCategoryIds = result.visibleIds;
-        _contentCategoryIds = result.contentCategoryIds;
-        if (!preserveSelection || !result.visibleIds.contains(_categoryId)) {
-          _categoryId = result.selectedId;
-        }
-        // 只命中分类时展示该分类全部库存；无命中仍发关键词查询，避免展示全库。
-        _keyword =
-            !result.hasAnyMatches ||
-                (_categoryId != null &&
-                    hierarchyBranchContainsAny(
-                      _categoryNodes,
-                      _categoryId!,
-                      _contentCategoryIds,
-                    ))
-            ? q
-            : '';
         _searchLoading = false;
       });
-      await _load(1);
+      await listLoad;
     } catch (e) {
       if (!mounted || !_searchRequests.isCurrent(generation)) return;
       setState(() {
@@ -663,22 +650,15 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   }
 
   void _selectCategory(String? id) {
+    if (_searchQuery.isNotEmpty) return;
     _searchRequests.begin();
     _searchDebounce?.cancel();
     _acceptPendingSearch = false;
-    final keepKeyword =
-        id != null &&
-        hierarchyBranchContainsAny(_categoryNodes, id, _contentCategoryIds);
     setState(() {
       _categoryId = id;
-      _keyword = keepKeyword ? _searchQuery : '';
+      _keyword = '';
       _searchLoading = false;
       _searchError = null;
-      if (id == null) {
-        _searchQuery = '';
-        _visibleCategoryIds = null;
-        _contentCategoryIds = {};
-      }
     });
     _load(1);
   }
@@ -814,7 +794,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
               Text(
                 findCategoryName(
                       _tree ?? const <ProductCategoryNode>[],
-                      _categoryId,
+                      _effectiveCategoryId,
                     ) ??
                     '全部分类',
                 key: const Key('instant-inventory-current-category'),
@@ -895,6 +875,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
           // 导出仍受独立权限、限流、行数上限和审计约束；文件密码可选。
           // 预览打印（A4 预览 → 系统打印；与导出口径一致，上限 2000 行）
           UtenPrintPreviewButton(
+            enabled: _resultsReady,
             title: '即时库存',
             subtitle: '最多前 2000 行',
             loader: _printLoader,
@@ -907,6 +888,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             size: UtenButtonSize.large,
           ),
           UtenExportButton(
+            key: ValueKey(('instant-inventory-export', _searchQuery)),
+            enabled: _resultsReady,
             endpoint: '/stock/reports/export',
             requiredPermission: Perm.stockReportExport,
             report: 'instant-inventory',
@@ -982,7 +965,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
             ? UtenFloatingActionGroup.scrollClearance
             : 0,
         paginationScope: (
-          _categoryId,
+          _effectiveCategoryId,
           _warehouseId,
           _includeLineSide,
           _keyword,

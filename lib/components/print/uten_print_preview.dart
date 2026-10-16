@@ -272,6 +272,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.enabled = true,
     required this.loader,
     this.exportEndpoint,
     this.exportReport,
@@ -288,6 +289,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+  final bool enabled;
   final Future<UtenPrintTable> Function() loader;
   final String? exportEndpoint;
   final String? exportReport;
@@ -319,20 +321,22 @@ class UtenPrintPreviewButton extends StatelessWidget {
           ? UtenTableToolbar.controlHeight
           : null,
       icon: Icons.print_outlined,
-      onPressed: () => showUtenPrintPreview(
-        context: context,
-        title: title,
-        subtitle: subtitle,
-        loader: loader,
-        exportEndpoint: exportEndpoint,
-        exportReport: exportReport,
-        exportQuery: exportQuery,
-        exportBody: exportBody,
-        exportFilename: exportFilename,
-        exportPermission: exportPermission,
-        tableKey: tableKey,
-        applyTableProjection: applyTableProjection,
-      ),
+      onPressed: !enabled
+          ? null
+          : () => showUtenPrintPreview(
+              context: context,
+              title: title,
+              subtitle: subtitle,
+              loader: loader,
+              exportEndpoint: exportEndpoint,
+              exportReport: exportReport,
+              exportQuery: exportQuery,
+              exportBody: exportBody,
+              exportFilename: exportFilename,
+              exportPermission: exportPermission,
+              tableKey: tableKey,
+              applyTableProjection: applyTableProjection,
+            ),
       child: Text(label),
     );
   }

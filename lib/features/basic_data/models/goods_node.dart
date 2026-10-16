@@ -46,6 +46,7 @@ class GoodsListItem {
     this.unitName,
     this.sourceType,
     this.categoryId,
+    this.searchRank,
     this.autoCreated = false,
     this.stockQty,
     this.stockPlace,
@@ -97,6 +98,9 @@ class GoodsListItem {
   final String? sourceType; // 来源（自制/采购/委外）
 
   final String? categoryId; // 所属分类 id（货品资料页"搜货品定位分类"用）
+
+  /// Server relevance tier, retained when authorized category roots require multiple requests.
+  final int? searchRank;
 
   final bool autoCreated; // 迁移兜底占位货品标记（auto_created 列）
 
@@ -159,6 +163,7 @@ class GoodsListItem {
     unitName: json['unitName'] as String?,
     sourceType: json['sourceType'] as String?,
     categoryId: json['categoryId'] as String?,
+    searchRank: (json['searchRank'] as num?)?.toInt(),
     autoCreated: json['autoCreated'] as bool? ?? false,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
     stockPlace: json['stockPlace'] as String?,

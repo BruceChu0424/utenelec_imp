@@ -413,6 +413,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   String? _globalResolutionQuery;
   HierarchySearchResolution? _globalResolution;
   int _requestVersion = 0;
+  bool _acceptPendingSearch = false;
   int _page = 1;
   PagedResult<GoodsListItem>? _paged;
   bool _loading = false;
@@ -500,8 +501,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   }
 
   void _onCategoryTap(ProductCategoryNode node) {
+    if (_query.isNotEmpty) return;
     _requestVersion++;
-    final categoryKeyword = _keywordForCategoryBranch(node.id);
+    _acceptPendingSearch = false;
     setState(() {
       _selectedCategoryId = node.id;
       _paged = null;
@@ -510,13 +512,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       _searchError = null;
       _page = 1;
     });
-    _reloadCategory(keyword: categoryKeyword);
+    _reloadCategory();
   }
 
   /// 输入一变化就让飞行中的旧请求失效（UtenSearchBar 的 300ms 防抖期间旧结果不
   /// 回写），并同步更新左侧树的命中过滤；防抖到期后由 [_onKeywordChanged] 检索。
   void _onKeywordInputChanged(String v) {
     _requestVersion++;
+    _acceptPendingSearch = true;
     final query = v.trim();
     setState(() {
       _query = query;
@@ -534,7 +537,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   }
 
   void _onKeywordChanged(String v) {
-    if (!mounted) return;
+    if (!mounted || !_acceptPendingSearch) return;
+    _acceptPendingSearch = false;
     _applySearch(v.trim());
   }
 
@@ -564,7 +568,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       _searchLoading = true;
       _page = 1;
     });
-    await _reloadGlobalSearch(allowCategoryFallback: true);
+    await _reloadGlobalSearch();
   }
 
   Set<String> get _scopeRootIds => {for (final root in widget.tree) root.id};
@@ -580,25 +584,6 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
     collect(widget.tree);
     return ids;
-  }
-
-  /// 分类名称/编号本身命中时，点分类应展示该分类的全部可选货品；只有该分支
-  /// 确实包含货品字段命中时才继续携带关键词做子树内过滤。
-  String? _keywordForCategoryBranch(String? categoryId) {
-    if (categoryId == null ||
-        _query.isEmpty ||
-        _globalResolutionQuery != _query) {
-      return null;
-    }
-    final contentCategoryIds =
-        _globalResolution?.contentCategoryIds ?? const <String>{};
-    return hierarchyBranchContainsAny(
-          widget.tree,
-          categoryId,
-          contentCategoryIds,
-        )
-        ? _query
-        : null;
   }
 
   Future<PagedResult<GoodsListItem>> _categoryPage(
@@ -692,9 +677,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     }
   }
 
-  Future<void> _reloadGlobalSearch({
-    required bool allowCategoryFallback,
-  }) async {
+  Future<void> _reloadGlobalSearch() async {
     if (!_canRead) return;
     final query = _query;
     final requestedPage = _page;
@@ -708,9 +691,12 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     try {
       final needsLocation =
           _globalResolutionQuery != query || _globalResolution == null;
-      final responses = await Future.wait<Object>([
+      final responses = await Future.wait<Object?>([
         _searchPage(query, requestedPage),
-        if (needsLocation) _searchCategoryIds(query),
+        if (needsLocation)
+          _searchCategoryIds(
+            query,
+          ).then<Set<String>?>((ids) => ids, onError: (_) => null),
       ]);
       final result = responses.first as PagedResult<GoodsListItem>;
       if (!mounted ||
@@ -731,14 +717,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         throw StateError('goods search returned an item outside picker scope');
       }
 
-      final pageResolution = resolveHierarchySearch(
-        roots: widget.tree,
-        query: query,
-        contentCategoryIds: result.items.map((goods) => goods.categoryId),
-      );
       final HierarchySearchResolution resolution;
       if (needsLocation) {
-        final matchingCategoryIds = responses[1] as Set<String>;
+        final matchingCategoryIds =
+            responses[1] as Set<String>? ??
+            result.items.map((goods) => goods.categoryId!).toSet();
         if (matchingCategoryIds.any(
           (categoryId) => !allowedCategoryIds.contains(categoryId),
         )) {
@@ -754,38 +737,10 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       } else {
         resolution = _globalResolution!;
       }
-      if (result.items.isEmpty &&
-          allowCategoryFallback &&
-          requestedPage == 1 &&
-          resolution.selectedId != null) {
-        final categoryId = resolution.selectedId!;
-        // 只命中分类名称/编号时，右侧展示该分类内容；分类词不强行套到货品字段上。
-        final categoryPage = await _categoryPage(categoryId);
-        if (!mounted ||
-            !_canRead ||
-            requestVersion != _requestVersion ||
-            query != _query ||
-            requestedPage != _page) {
-          return;
-        }
-        setState(() {
-          _globalResolutionQuery = query;
-          _globalResolution = resolution;
-          _selectedCategoryId = categoryId;
-          _visibleFilterIds = resolution.visibleIds;
-          _showingGlobalResults = false;
-          _paged = categoryPage;
-          _loading = false;
-          _searchLoading = false;
-        });
-        return;
-      }
 
       setState(() {
         _globalResolutionQuery = query;
         _globalResolution = resolution;
-        _selectedCategoryId =
-            pageResolution.selectedId ?? resolution.selectedId;
         _visibleFilterIds = resolution.visibleIds;
         _showingGlobalResults = true;
         _paged = result;
@@ -805,11 +760,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
   Future<void> _reloadCurrentPage() async {
     if (_query.isNotEmpty && _showingGlobalResults) {
-      await _reloadGlobalSearch(allowCategoryFallback: false);
+      await _reloadGlobalSearch();
     } else {
-      await _reloadCategory(
-        keyword: _keywordForCategoryBranch(_selectedCategoryId),
-      );
+      await _reloadCategory();
     }
   }
 
@@ -1136,12 +1089,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         widget.scope,
         _query,
         _showingGlobalResults,
-        // Global search relocates the tree highlight on every returned page;
-        // that highlight is not a change to the global search request.
+        // The browsing category never changes the global search scope.
         _showingGlobalResults ? null : _selectedCategoryId,
-        _showingGlobalResults
-            ? null
-            : _keywordForCategoryBranch(_selectedCategoryId),
       ),
       onPageChange: (page) {
         setState(() => _page = page);

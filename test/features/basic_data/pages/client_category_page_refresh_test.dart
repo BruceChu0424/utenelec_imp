@@ -38,7 +38,7 @@ void main() {
 
     // 选中「成品类」→ 右栏加载详情（第 1 次 detail）+ 客户列表（第 1 次 list）。
     // 树节点渲染为「名称（编码）」。
-    await _selectCategory(tester, '成品类(C-FIN)');
+    await _selectCategory(tester, '成品类');
     await tester.pumpAndSettle();
     expect(categories.detailCalls('finished'), 1);
     expect(clients.listCalls, greaterThan(0));
@@ -79,7 +79,7 @@ void main() {
     );
     await _pumpPage(tester, categories, clients);
 
-    await _selectCategory(tester, '成品类(C-FIN)');
+    await _selectCategory(tester, '成品类');
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<ClientListItem>>(
@@ -109,7 +109,7 @@ void main() {
       final clients = _FakeClientRepository(includeLegacy: true);
       await _pumpPage(tester, categories, clients);
 
-      await _selectCategory(tester, '成品类(C-FIN)');
+      await _selectCategory(tester, '成品类');
       await tester.pumpAndSettle();
       expect(find.text('信用额度 / 旧库 Credit 快照'), findsOneWidget);
 
@@ -157,7 +157,7 @@ void main() {
     final clients = _FakeClientRepository(includeLegacy: true);
     await _pumpPage(tester, categories, clients, locale: const Locale('zh'));
 
-    await _selectCategory(tester, '成品类(C-FIN)');
+    await _selectCategory(tester, '成品类');
     await tester.pumpAndSettle();
 
     final table = tester.widget<MasterDataTableView<ClientListItem>>(
@@ -183,7 +183,7 @@ void main() {
       extraPermissions: const {Perm.clientCreate},
     );
 
-    await _selectCategory(tester, '成品类(C-FIN)');
+    await _selectCategory(tester, '成品类');
     await tester.pumpAndSettle();
     await tester.tap(find.text('添加客户'));
     await tester.pumpAndSettle();

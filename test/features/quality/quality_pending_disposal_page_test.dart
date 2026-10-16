@@ -133,6 +133,97 @@ Future<void> _selectQueueFilter(
 }
 
 void main() {
+  testWidgets('混合待检搜索先排货品名称再分页，多词跨字段且保留来源状态范围', (tester) async {
+    PendingInspectionReceipt receipt(
+      String id,
+      String bill,
+      String name, {
+      String color = '蓝色',
+    }) => PendingInspectionReceipt(
+      receiptType: 'PURCHASE',
+      receiptId: id,
+      billNo: bill,
+      goodsSummary: name,
+      colorNameSummary: color,
+      supplierName: '铜材供应商',
+      itemCount: 1,
+      pendingBaseQty: 1,
+    );
+    final iqc = _FakeIqcRepository(
+      receiptsOverride: [
+        receipt('bill-exact', '铜片', '其他货品', color: '黄色'),
+        for (var i = 0; i < 12; i++)
+          receipt('near-$i', 'CJ-$i', '铜片扩展', color: i == 0 ? '红色' : '蓝色'),
+        receipt('name-exact', 'CJ-EXACT', '铜片'),
+        receipt('literal', 'CJ-LITERAL', '铜片10%_'),
+      ],
+    );
+    await _pumpPage(
+      tester,
+      api: _FqcApi(),
+      iqc: iqc,
+      permissions: _bothViewPerms,
+    );
+    await tester.enterText(_queueSearchField(), '铜片');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    List<String> bills() {
+      final table = _queueTable(tester);
+      final dynamic column = table.columns.singleWhere(
+        (c) => c.key == 'billNo',
+      );
+      // The mixed queue's row type is private to the page library.
+      // ignore: avoid_dynamic_calls
+      return table.items.map((row) => column.value(row) as String).toList();
+    }
+
+    expect(bills().first, 'CJ-EXACT');
+    expect(bills().skip(1).take(3), ['CJ-0', 'CJ-1', 'CJ-2']);
+    expect(_queueTable(tester).totalPages, 2);
+    _queueTable(tester).onPageChange!(2);
+    await tester.pumpAndSettle();
+    expect(bills().last, '铜片');
+
+    await tester.enterText(_queueSearchField(), '蓝色\t铜片');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(_queueTable(tester).currentPage, 1);
+    expect(bills(), isNot(contains('CJ-0')));
+    expect(bills(), isNot(contains('铜片')));
+    expect(_queueTable(tester).facets['status']?.single.count, 13);
+    await _selectQueueFilter(tester, 'docType', 'FQC');
+    expect(_queueTable(tester).items, isEmpty);
+    await _selectQueueFilter(tester, 'docType', null);
+    await tester.enterText(_queueSearchField(), '10%_');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(bills(), ['CJ-LITERAL']);
+    expect(iqc.pendingReceiptsCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('检查单关键词可跨可见货品编号颜色及仓管员，漏任一词不匹配', (tester) async {
+    await _pumpPage(
+      tester,
+      api: _FqcApi(withSheet: true),
+      iqc: _FakeIqcRepository(),
+      permissions: _bothViewPerms,
+    );
+    for (final query in ['白色 FQC-001', '仓库管理员 酸洗']) {
+      await tester.enterText(_queueSearchField(), query);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.text(_sheetNo), findsOneWidget);
+      expect(_queueTable(tester).items, hasLength(1));
+    }
+    await tester.enterText(_queueSearchField(), '白色 不存在');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(_queueTable(tester).items, isEmpty);
+    expect(_queueTable(tester).facets['status'], isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('检验填写草稿仍在原待检分类原行，双击恢复原检查单', (tester) async {
     final spec = FormDraftCatalog.fqcSheet.spec(
       route: RouteName.productionFqcSheetHandling(_sheetId),

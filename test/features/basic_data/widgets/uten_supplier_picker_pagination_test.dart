@@ -281,7 +281,7 @@ void main() {
     expect(suppliers.requests, [('A', 1), ('A', 2)]);
     await tester.tap(find.byIcon(Icons.account_tree_rounded));
     await tester.pump();
-    await tester.tap(find.text('乙类(B)'));
+    await tester.tap(find.text('乙类'));
     await tester.pumpAndSettle();
     expect(suppliers.requests.last, ('B', 1));
     oldResponse.complete(_page('A', 2));

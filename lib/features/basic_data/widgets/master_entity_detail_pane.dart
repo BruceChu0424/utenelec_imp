@@ -52,7 +52,7 @@ class MasterPaneQuery {
     this.forPrint = false,
   });
 
-  final String categoryId;
+  final String? categoryId;
   final int page;
   final int? size;
   final String? keyword;
@@ -80,6 +80,7 @@ class MasterPaneExport {
     required this.permission,
     required this.label,
     this.extraQuery = const {},
+    this.queryParamsOf,
     this.inCard = false,
     this.contactSensitiveInBody = false,
   });
@@ -89,6 +90,7 @@ class MasterPaneExport {
   final String permission;
   final String label;
   final Map<String, dynamic> extraQuery;
+  final Map<String, dynamic> Function(MasterPaneQuery query)? queryParamsOf;
   final bool inCard;
 
   /// 客户/供应商(security-19, ADR-110)：搜索关键字(会匹配手机号)与手机/电话/银行账号的筛选值
@@ -98,7 +100,7 @@ class MasterPaneExport {
 
 /// 明细区对页面暴露的操作面(页面的特有动作经它刷新列表、读选中、跑批量命令)。
 abstract interface class MasterEntityPaneController<TItem, TDetail> {
-  String get categoryId;
+  String? get categoryId;
   ProductCategoryDetail? get category;
   PagedResult<TItem>? get page;
   int get pageNum;
@@ -144,6 +146,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     required this.loadCategory,
     required this.loadPage,
     required this.loadFacets,
+    this.loadGlobalFacets,
     required this.batchEntityPath,
     required this.statusResourceOf,
     required this.canCreate,
@@ -194,6 +197,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final Future<ProductCategoryDetail> Function(String categoryId) loadCategory;
   final Future<PagedResult<TItem>> Function(MasterPaneQuery query) loadPage;
   final Future<MasterPaneFacets> Function(String categoryId) loadFacets;
+  final Future<MasterPaneFacets> Function()? loadGlobalFacets;
 
   /// 主档集合路径(ApiEndpoints.clients 等)，批量命令拼 /batch-status、/batch-delete。
   final String batchEntityPath;
@@ -280,19 +284,23 @@ class MasterEntityDetailPane<TItem, TDetail> extends ConsumerStatefulWidget {
     required this.canAddCategory,
     required this.canDeleteCategory,
     required this.externalKeyword,
+    this.externalSearchPending = false,
     required this.onAddChild,
     required this.onEditCategory,
     required this.onDeleteCategory,
   });
 
   final MasterEntityPaneConfig<TItem, TDetail> config;
-  final String categoryId;
+  final String? categoryId;
   final bool canEditCategory;
   final bool canAddCategory;
   final bool canDeleteCategory;
 
   /// 顶部树搜索命中内容时传入的过滤词：采纳为本地列表搜索词，右侧只显示搜索结果。
   final String? externalKeyword;
+
+  /// Invalidates old reads immediately while the shared search debounces.
+  final bool externalSearchPending;
   final VoidCallback onAddChild;
   final void Function(ProductCategoryDetail detail) onEditCategory;
   final VoidCallback onDeleteCategory;
@@ -343,23 +351,43 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   @override
   void didUpdateWidget(MasterEntityDetailPane<TItem, TDetail> old) {
     super.didUpdateWidget(old);
-    if (old.categoryId != widget.categoryId) {
+    if (widget.externalSearchPending) {
+      _categoryRequests.begin();
+      _listRequests.begin();
+      _groupRequests.begin();
+      _facetRequests.begin();
+      _page = null;
+      _groups = const [];
+      _facets = null;
+      _selectedIds = {};
+      _listError = null;
+      return;
+    }
+    if (old.categoryId != widget.categoryId ||
+        (old.externalSearchPending &&
+            widget.categoryId != null &&
+            _category == null)) {
       _load();
       return;
     }
-    if (old.externalKeyword != widget.externalKeyword) {
+    if (old.externalKeyword != widget.externalKeyword ||
+        old.externalSearchPending) {
       setState(() {
+        _loading = false;
+        _page = null;
+        _selectedIds = {};
         _kwSeed++;
         _keyword = widget.externalKeyword ?? '';
       });
       reload(page: 1);
+      if (old.externalSearchPending) _loadFacets();
     }
   }
 
   // ---- MasterEntityPaneController ----------------------------------------
 
   @override
-  String get categoryId => widget.categoryId;
+  String? get categoryId => widget.categoryId;
 
   @override
   ProductCategoryDetail? get category => _category;
@@ -398,7 +426,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   @override
   Future<void> reload({int? page}) async {
-    if (!mounted) return;
+    if (!mounted || widget.externalSearchPending) return;
     await Future.wait([_loadList(page ?? _pageNum), _loadGroups()]);
     // 删空当前页时回退上一页，避免列表空白。
     final current = _page;
@@ -561,6 +589,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   // ---- 加载 -------------------------------------------------------------
 
   Future<void> _load() async {
+    if (widget.externalSearchPending) return;
     final generation = _categoryRequests.begin();
     // Category-dependent reads from the prior category must stop publishing
     // immediately, even while the new category detail is still loading.
@@ -572,7 +601,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _error = null;
     });
     try {
-      final category = await _c.loadCategory(widget.categoryId);
+      final categoryId = widget.categoryId;
+      final category = categoryId == null
+          ? null
+          : await _c.loadCategory(categoryId);
       if (!mounted || !_categoryRequests.isCurrent(generation)) return;
       setState(() {
         _category = category;
@@ -620,6 +652,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       );
 
   Future<void> _loadList(int page) async {
+    if (widget.externalSearchPending) return;
     final generation = _listRequests.begin();
     setState(() {
       _listLoading = true;
@@ -647,9 +680,14 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   /// 表头筛选下拉选项。失败不阻塞列表，静默降级为空下拉。
   Future<void> _loadFacets() async {
+    if (widget.externalSearchPending) return;
+    final categoryId = widget.categoryId;
+    if (categoryId == null && _c.loadGlobalFacets == null) return;
     final generation = _facetRequests.begin();
     try {
-      final facets = await _c.loadFacets(widget.categoryId);
+      final facets = await (categoryId == null
+          ? _c.loadGlobalFacets!()
+          : _c.loadFacets(categoryId));
       if (mounted && _facetRequests.isCurrent(generation)) {
         setState(() => _facets = facets);
       }
@@ -660,6 +698,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   /// 前导分组是辅助视图：失败静默，不影响主表。
   Future<void> _loadGroups() async {
+    if (widget.externalSearchPending) return;
     final loader = _c.loadLeadingGroups;
     final category = _category;
     if (loader == null || category == null) return;
@@ -724,8 +763,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       _c.export?.contactSensitiveInBody ?? false;
 
   Map<String, dynamic> get _exportQuery => <String, dynamic>{
-    'categoryId': widget.categoryId,
+    if (widget.categoryId != null) 'categoryId': widget.categoryId,
     ...?_c.export?.extraQuery,
+    ...?_c.export?.queryParamsOf?.call(_query()),
     if (!_contactSensitiveInBody && _keyword.trim().isNotEmpty)
       'keyword': _keyword.trim(),
     ...masterFilterQueryParams(_filters),
@@ -887,7 +927,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (widget.externalSearchPending || _loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
     if (_error != null) {
       return UtenEmpty.error(
         message: _error,
@@ -896,7 +938,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       );
     }
     final d = _category;
-    if (d == null) {
+    if (d == null && widget.categoryId != null) {
       return Center(
         child: Text(
           '未选择分类', // TODO(l10n): 补 arb
@@ -907,13 +949,13 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       );
     }
     final isSystemRoot = isSystemUncategorizedCategory(
-      systemManaged: d.systemManaged,
+      systemManaged: d?.systemManaged ?? false,
     );
     final canMutateCategory = canMutateMasterCategory(
       hasEditPermission: widget.canEditCategory,
-      systemManaged: d.systemManaged,
+      systemManaged: d?.systemManaged ?? false,
     );
-    final exportInCard = _c.export?.inCard ?? false;
+    final exportInCard = d != null && (_c.export?.inCard ?? false);
     // compact：容器 gutter 已提供水平留白；medium+：明细区自带水平内边距。
     final hPad = context.breakpoint.isCompact ? 0.0 : UtenSpacing.s16;
     final total = _page?.total ?? 0;
@@ -921,48 +963,50 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       padding: EdgeInsets.symmetric(horizontal: hPad),
       child: UtenCollapsingHeaderScrollView(
         // 滚走区：分类信息卡——上滑即收起、腾出表格空间。
-        collapsingHeader: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            0,
-            UtenSpacing.s16,
-            0,
-            UtenSpacing.s12,
-          ),
-          child: MasterDetailCard(
-            title: d.name,
-            icon: _c.icon,
-            subtitle:
-                '编号前缀 ${d.effectivePrefix ?? _c.defaultCodePrefix}${d.codePrefix == null ? '(继承)' : ''}'
-                '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
-            // 卡片只留标题 + 操作：层级/父级/子项数左侧分类树里都能看出。
-            stats: const [],
-            canEdit: canMutateCategory,
-            canAddChild: widget.canAddCategory,
-            canDelete: widget.canDeleteCategory && !isSystemRoot,
-            onAddChild: widget.onAddChild,
-            onEdit: () {
-              final current = _category;
-              if (current != null) widget.onEditCategory(current);
-            },
-            onDelete: widget.onDeleteCategory,
-            deleteLabel: '删除分类', // TODO(l10n): 补 arb
-            extraActions: [
-              if (widget.canAddCategory && isSystemRoot)
-                MasterDetailCardAction(
-                  icon: Icons.add_rounded,
-                  label: '新增子分类', // TODO(l10n): 补 arb
-                  onPressed: widget.onAddChild,
+        collapsingHeader: d == null
+            ? const SizedBox.shrink()
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  0,
+                  UtenSpacing.s16,
+                  0,
+                  UtenSpacing.s12,
                 ),
-            ],
-            secondaryActions: [
-              if ((widget.canEditCategory || widget.canDeleteCategory) &&
-                  isSystemRoot)
-                const SystemMasterCategoryProtectionNotice(),
-              ...?_c.cardActions?.call(this),
-              if (exportInCard) ..._exportButtons(large: false),
-            ],
-          ),
-        ),
+                child: MasterDetailCard(
+                  title: d.name,
+                  icon: _c.icon,
+                  subtitle:
+                      '编号前缀 ${d.effectivePrefix ?? _c.defaultCodePrefix}${d.codePrefix == null ? '(继承)' : ''}'
+                      '${d.remark?.isNotEmpty == true ? ' · ${d.remark}' : ''} · 层级 L${d.level}',
+                  // 卡片只留标题 + 操作：层级/父级/子项数左侧分类树里都能看出。
+                  stats: const [],
+                  canEdit: canMutateCategory,
+                  canAddChild: widget.canAddCategory,
+                  canDelete: widget.canDeleteCategory && !isSystemRoot,
+                  onAddChild: widget.onAddChild,
+                  onEdit: () {
+                    final current = _category;
+                    if (current != null) widget.onEditCategory(current);
+                  },
+                  onDelete: widget.onDeleteCategory,
+                  deleteLabel: '删除分类', // TODO(l10n): 补 arb
+                  extraActions: [
+                    if (widget.canAddCategory && isSystemRoot)
+                      MasterDetailCardAction(
+                        icon: Icons.add_rounded,
+                        label: '新增子分类', // TODO(l10n): 补 arb
+                        onPressed: widget.onAddChild,
+                      ),
+                  ],
+                  secondaryActions: [
+                    if ((widget.canEditCategory || widget.canDeleteCategory) &&
+                        isSystemRoot)
+                      const SystemMasterCategoryProtectionNotice(),
+                    ...?_c.cardActions?.call(this),
+                    if (exportInCard) ..._exportButtons(large: false),
+                  ],
+                ),
+              ),
         // body：标题 + 搜索 + 添加(卡片收起后吸顶) + 表格(内滚)。
         body: Column(
           children: [
@@ -979,18 +1023,22 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                     ),
                   ),
                   const SizedBox(width: UtenSpacing.s12),
-                  Expanded(
-                    child: UtenSearchBar(
-                      // key 含分类 + 种子：切分类 / 树搜索写入关键词时重建搜索框。
-                      key: ValueKey(
-                        '${_c.keyPrefix}-search-${widget.categoryId}-$_kwSeed',
+                  if (widget.categoryId == null) const Spacer(),
+                  if (widget.categoryId != null)
+                    Expanded(
+                      child: UtenSearchBar(
+                        // key 含分类 + 种子：切分类 / 树搜索写入关键词时重建搜索框。
+                        key: ValueKey(
+                          '${_c.keyPrefix}-search-${widget.categoryId}-$_kwSeed',
+                        ),
+                        hint: _c.searchHint,
+                        initialValue: _keyword,
+                        onChanged: _onKeywordChanged,
                       ),
-                      hint: _c.searchHint,
-                      initialValue: _keyword,
-                      onChanged: _onKeywordChanged,
                     ),
-                  ),
-                  if (_c.canCreate && _c.onCreate != null) ...[
+                  if (widget.categoryId != null &&
+                      _c.canCreate &&
+                      _c.onCreate != null) ...[
                     const SizedBox(width: UtenSpacing.s16),
                     UtenButton(
                       type: UtenButtonType.tonal,
@@ -1022,7 +1070,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 onSelectedIdsChanged: (s) => setState(() => _selectedIds = s),
                 batchActionsBuilder: _batchActions,
                 rowMenuBuilder: _menuItems,
-                backgroundMenuBuilder: _c.backgroundMenuBuilder == null
+                backgroundMenuBuilder:
+                    widget.categoryId == null ||
+                        _c.backgroundMenuBuilder == null
                     ? null
                     : () => _c.backgroundMenuBuilder!(this),
                 toolbarActions: exportInCard || _c.export == null
@@ -1051,7 +1101,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 loadingMore: _listLoading && _page != null,
                 error: _listError,
                 onRetry: () => reload(),
-                emptyMessage: '该分类暂无${_c.noun}', // TODO(l10n): 补 arb
+                emptyMessage: widget.categoryId == null
+                    ? '未找到匹配${_c.noun}'
+                    : '该分类暂无${_c.noun}', // TODO(l10n): 补 arb
                 currentPage: _page?.page ?? 1,
                 totalPages: _page?.totalPages ?? 1,
                 onPageChange: (p) => reload(page: p),

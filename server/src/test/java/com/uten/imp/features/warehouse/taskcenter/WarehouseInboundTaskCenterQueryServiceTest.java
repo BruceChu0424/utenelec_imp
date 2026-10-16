@@ -91,7 +91,7 @@ class WarehouseInboundTaskCenterQueryServiceTest {
         String base=WarehouseInboundTaskCenterSql.base(new WarehouseInboundTaskCenterSql.Access(
                 false,true,false,false,false,false,"1=0"),scope);
         // Only an authorized receipt family is added to the relation. The common CTEs do not grant access.
-        String relation=base.substring(base.indexOf("inbound_rows AS"));
+        String relation=base.substring(base.indexOf("inbound_source_rows AS"));
         assertThat(relation).contains("FROM purchase_receipts h","physical.warehouse_ids",":warehouseScope")
                 .doesNotContain("FROM subcontract_receipts h","FROM stock_documents document","FROM inbound_expectations expectation");
         assertThat(WarehouseInboundTaskCenterSql.rows(base)).contains("FROM inbound_rows","ORDER BY","LIMIT :limit OFFSET :offset");

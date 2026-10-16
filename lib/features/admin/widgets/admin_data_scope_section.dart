@@ -1,5 +1,7 @@
+import '../../../shared/search/keyword_search.dart';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,11 +28,18 @@ class AdminDataScopeSection extends ConsumerStatefulWidget {
     required this.user,
     required this.effectiveAsync,
     this.onAccountChanged,
+    this.viewAllPermissions,
+    this.showHandover = true,
   });
 
   final AdminUserSummary user;
   final AsyncValue<EffectivePermissions> effectiveAsync;
   final VoidCallback? onAccountChanged;
+
+  /// Restrict an in-page editor to scopes advertised by that page's permissions.
+  /// Scope definitions and all authorization checks remain server-authoritative.
+  final Set<String>? viewAllPermissions;
+  final bool showHandover;
 
   @override
   ConsumerState<AdminDataScopeSection> createState() =>
@@ -48,18 +57,24 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
   final Map<String, Set<String>> _grants = {};
   final Map<String, List<DataScopeOwner>> _candidates = {};
   final Map<String, int> _revisions = {};
+  int _generation = 0;
+
+  bool _active(String userId, int generation) =>
+      mounted && widget.user.id == userId && generation == _generation;
 
   @override
   void didUpdateWidget(covariant AdminDataScopeSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.user.id != widget.user.id ||
         oldWidget.user.status != widget.user.status ||
-        oldWidget.user.currentEmployee != widget.user.currentEmployee) {
+        oldWidget.user.currentEmployee != widget.user.currentEmployee ||
+        !setEquals(oldWidget.viewAllPermissions, widget.viewAllPermissions)) {
       _reset();
     }
   }
 
   void _reset() {
+    _generation++;
     _requested = false;
     _catalog = const [];
     _catalogLoading = false;
@@ -80,11 +95,19 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       _catalogError = null;
     });
     final userId = widget.user.id;
+    final generation = _generation;
     try {
-      final catalog = await ref
+      final allScopes = await ref
           .read(adminRepositoryProvider)
           .dataScopeCatalog();
-      if (!mounted || widget.user.id != userId) return;
+      if (!mounted || !_active(userId, generation)) return;
+      final catalog = allScopes
+          .where(
+            (item) =>
+                widget.viewAllPermissions == null ||
+                widget.viewAllPermissions!.contains(item.viewAllPermission),
+          )
+          .toList();
       setState(() {
         _catalog = catalog;
         _catalogLoading = false;
@@ -101,7 +124,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
             .map(_loadScope),
       );
     } catch (_) {
-      if (!mounted || widget.user.id != userId) return;
+      if (!mounted || !_active(userId, generation)) return;
       setState(() {
         _catalogLoading = false;
         _catalogError = '可查看数据目录加载失败，请重试';
@@ -119,6 +142,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
   Future<void> _loadScope(DataScopeCatalogItem definition) async {
     final scope = definition.scope;
     final userId = widget.user.id;
+    final generation = _generation;
     setState(() {
       _loading.add(scope);
       _errors.remove(scope);
@@ -129,16 +153,16 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
         repository.getUserDataScopes(userId, scope),
         repository.dataScopeOwners(scope),
       ]);
-      if (!mounted || widget.user.id != userId) return;
+      if (!mounted || !_active(userId, generation)) return;
       setState(() {
         _grants[scope] = (results[0] as List<String>).toSet();
         _candidates[scope] = results[1] as List<DataScopeOwner>;
       });
     } catch (_) {
-      if (!mounted || widget.user.id != userId) return;
+      if (!mounted || !_active(userId, generation)) return;
       setState(() => _errors[scope] = '加载失败，请重试');
     } finally {
-      if (mounted && widget.user.id == userId) {
+      if (mounted && widget.user.id == userId && generation == _generation) {
         setState(() => _loading.remove(scope));
       }
     }
@@ -150,6 +174,8 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
   ) async {
     final scope = definition.scope;
     if (_saving.contains(scope)) return;
+    final generation = _generation;
+    final userId = widget.user.id;
     final previous = {...?_grants[scope]};
     final selected = selection.map((item) => item.id).toSet();
     if (_sameIds(previous, selected)) return;
@@ -170,7 +196,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       ),
       confirmLabel: '确认保存',
     );
-    if (!mounted) return;
+    if (!mounted || !_active(userId, generation)) return;
     if (confirmed != true) {
       setState(() => _bumpRevision(scope));
       return;
@@ -186,15 +212,15 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
       await ref
           .read(adminRepositoryProvider)
           .updateUserDataScopes(
-            widget.user.id,
+            userId,
             scope,
             ids,
             expectedOwnerEmployeeIds: expectedIds,
           );
-      if (!mounted) return;
+      if (!mounted || !_active(userId, generation)) return;
       UtenToast.success(context, '${definition.displayLabel}已保存，即时生效');
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_active(userId, generation)) return;
       setState(() {
         _grants[scope] = previous;
         _bumpRevision(scope);
@@ -210,14 +236,16 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
         UtenToast.error(context, error.message);
       }
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_active(userId, generation)) return;
       setState(() {
         _grants[scope] = previous;
         _bumpRevision(scope);
       });
       UtenToast.error(context, '保存失败，已恢复原设置');
     } finally {
-      if (mounted) setState(() => _saving.remove(scope));
+      if (mounted && generation == _generation && widget.user.id == userId) {
+        setState(() => _saving.remove(scope));
+      }
     }
   }
 
@@ -317,8 +345,11 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
 
     final theme = Theme.of(context);
     final canHandover =
-        ref.watch(isSuperAdminProvider) ||
-        ref.watch(currentPermissionsProvider).contains(Perm.employeeHandover);
+        widget.showHandover &&
+        (ref.watch(isSuperAdminProvider) ||
+            ref
+                .watch(currentPermissionsProvider)
+                .contains(Perm.employeeHandover));
     final canReceiveHandover = widget.user.authorizationGrantAllowed;
     final authorizationBlocked = !widget.user.authorizationGrantAllowed;
     return UtenCard(
@@ -572,7 +603,7 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
           label: '额外查看哪些负责人的数据',
           hint: '仅本人负责的数据',
           sheetTitle: '配置${definition.displayLabel}',
-          searchHint: '搜索负责人姓名',
+          searchHint: '搜索负责人姓名 / 工号 / 部门',
           emptyMessage: '暂无匹配且拥有归属数据的负责人',
           selectedCountLabel: (count) => '额外查看 $count 人',
           initialSelection: selected,
@@ -581,9 +612,36 @@ class _AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
           loader: (keyword) async {
             final query = keyword?.trim().toLowerCase() ?? '';
             if (query.isEmpty) return items;
-            return items
-                .where((item) => item.name.toLowerCase().contains(query))
-                .toList(growable: false);
+            final result = items
+                .where(
+                  (item) => matchesKeywordSearch([
+                    item.name,
+                    item.employeeCode,
+                    item.departmentName,
+                  ], query),
+                )
+                .toList();
+            final order = {
+              for (var index = 0; index < items.length; index++)
+                items[index].id: index,
+            };
+            result.sort((left, right) {
+              final rankLeft = keywordSearchRankWithPrimary(
+                [left.name],
+                [left.employeeCode, left.departmentName],
+                query,
+              )!;
+              final rankRight = keywordSearchRankWithPrimary(
+                [right.name],
+                [right.employeeCode, right.departmentName],
+                query,
+              )!;
+              final rank = rankLeft.compareTo(rankRight);
+              return rank != 0
+                  ? rank
+                  : order[left.id]!.compareTo(order[right.id]!);
+            });
+            return result;
           },
           onChanged: (next) => unawaited(_saveSelection(definition, next)),
         ),

@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.materialbin;
 
+import com.uten.imp.common.util.TaskKeywordSearch;
+
 /** 申请候选只读 SQL；默认出库仓只由 fn_workshop_bin_default_source 给出(ADR-147)。 */
 final class WorkshopMaterialRequestCandidateSql {
     private WorkshopMaterialRequestCandidateSql() {}
@@ -43,6 +45,7 @@ final class WorkshopMaterialRequestCandidateSql {
                            color.name AS color_name, unit.name AS unit_name,
                            goods.bulk_package_qty, goods.periodic_cost_basis, goods.min_qty,
                            default_leaf.id AS default_leaf_id, default_leaf.name AS default_leaf_name,
+                           %s AS keyword_rank,
                            EXISTS (SELECT 1 FROM used WHERE used.goods_id = candidate.goods_id
                                      AND used.color_id IS NOT DISTINCT FROM candidate.color_id) AS used
                     FROM candidate_keys candidate JOIN goods ON goods.id = candidate.goods_id
@@ -52,10 +55,11 @@ final class WorkshopMaterialRequestCandidateSql {
                         CAST(:bin AS uuid), candidate.goods_id, candidate.color_id)
                     WHERE (candidate.color_id IS NULL OR (color.id IS NOT NULL AND NOT color.is_deleted
                            AND color.status = '使用'))
-                      AND (CAST(:keyword AS text) IS NULL OR
-                           strpos(lower(concat_ws(' ', goods.code, goods.name, color.name)), lower(:keyword)) > 0)
+                      AND (%s)
                 )
-                """;
+                """.formatted(TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"goods.name"},
+                                new String[]{}, new String[]{"goods.code"}),
+                        TaskKeywordSearch.conditionParameter("keyword", "goods.code", "goods.name", "color.name"));
     }
 
     static final String HEADS = """
@@ -73,7 +77,7 @@ final class WorkshopMaterialRequestCandidateSql {
                                           OR fn_warehouse_is_good_stock_leaf(reservation.warehouse_id))), 0)
                        - GREATEST(COALESCE(candidate.min_qty::numeric, 0), 0), 0) AS available
             FROM candidates candidate
-            ORDER BY candidate.used DESC, candidate.code, candidate.goods_id,
+            ORDER BY candidate.keyword_rank, candidate.used DESC, candidate.code, candidate.goods_id,
                      candidate.color_name NULLS FIRST, candidate.color_id NULLS FIRST
             LIMIT :limit OFFSET :offset
             """;

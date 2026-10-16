@@ -189,7 +189,7 @@ class ProcurementIqcRejectionServiceContractTest {
         assertThat(ordinaryQuery.parameters())
                 .containsEntry("currentUserId", ordinaryUserId)
                 .containsEntry("receiptType", "PURCHASE")
-                .containsEntry("keyword", "%bolt%");
+                .containsEntry("keyword", "bolt");
 
         UUID globalUserId = UUID.randomUUID();
         EntityManager globalEm = mock(EntityManager.class);
@@ -236,7 +236,7 @@ class ProcurementIqcRejectionServiceContractTest {
         assertThat(calls).hasSize(2).allSatisfy(call -> {
             assertThat(call.sql()).contains("rejection.status in ('pending_return','return_recorded','finance_exception')")
                     .contains("rejection.owner_user_id=:currentuserid");
-            assertThat(call.parameters()).containsEntry("currentUserId", actor).containsEntry("keyword", "%bolt%");
+            assertThat(call.parameters()).containsEntry("currentUserId", actor).containsEntry("keyword", "bolt");
         });
         assertThat(calls.getFirst().parameters()).containsEntry("limit", 1).containsEntry("offset", 1L);
         calls.clear();

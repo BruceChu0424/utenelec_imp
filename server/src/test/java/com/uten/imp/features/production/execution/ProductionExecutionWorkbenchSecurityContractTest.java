@@ -61,7 +61,7 @@ class ProductionExecutionWorkbenchSecurityContractTest {
                 .contains("JOIN clients client")
                 .contains("client.name")
                 .contains("sales_order:view")
-                .contains("canSearchClient ?")
+                .contains("if (canSearchClient) fields.add(")
                 .contains("task.root_type=root.root_type")
                 .contains("task.root_id=root.root_id");
     }

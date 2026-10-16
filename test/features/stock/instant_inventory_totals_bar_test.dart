@@ -6,6 +6,11 @@
 // 当前页只有 10 个 / 2 箱，全集 137 行则有 900 个 / 20 箱。
 // 主界面只留重量与入口，详细数量必须仍来自服务端全集且按单位分别展示。
 import 'dart:async';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/print/uten_print_preview.dart';
+import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
@@ -89,7 +94,7 @@ void main() {
       withCategories: true,
     );
     final router = await _pumpPage(tester, const Size(1500, 1000), api: api);
-    await tester.tap(find.text('原材料(RAW)'));
+    await tester.tap(_categoryText('原材料'));
     await tester.pumpAndSettle();
     final search = find.descendant(
       of: find.byKey(const Key('instant-inventory-search')),
@@ -108,11 +113,13 @@ void main() {
     await tester.tap(find.text('查看详情'));
     await tester.pumpAndSettle();
     expect(router.state.uri.path, '/stock/instant-inventory/overview');
-    expect(router.state.uri.queryParameters['categoryId'], 'raw');
+    expect(router.state.uri.queryParameters['categoryId'], isNull);
+    expect(router.state.uri.queryParameters['keyword'], '原材料');
     expect(router.state.uri.queryParameters['series'], 'GD');
     expect(find.byType(Dialog), findsNothing);
     expect(find.byType(InstantInventoryOverviewPage), findsOneWidget);
-    expect(api.inventoryRequests.last['categoryId'], 'raw');
+    expect(api.inventoryRequests.last['categoryId'], isNull);
+    expect(api.inventoryRequests.last['keyword'], '原材料');
 
     router.pop();
     await tester.pumpAndSettle();
@@ -121,7 +128,7 @@ void main() {
       tester.state(find.byType(InstantInventoryPage)),
       same(originalState),
     );
-    expect(find.text('原材料(RAW)'), findsOneWidget);
+    expect(_categoryText('原材料'), findsOneWidget);
     expect(tester.widget<EditableText>(search).controller.text, '原材料');
     expect(
       tester
@@ -130,6 +137,65 @@ void main() {
       {'series': 'GD'},
     );
     expect(find.byType(InstantInventorySummaryBar), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('行详情returnTo回放重建后搜索仍全局，清空恢复进入搜索前的分类', (tester) async {
+    final api = InstantInventoryApiFixture(
+      withTotals: true,
+      withAnalysis: true,
+      withCategories: true,
+    );
+    final router = await _pumpPage(tester, const Size(1500, 1000), api: api);
+    await tester.tap(_categoryText('原材料'));
+    await tester.pumpAndSettle();
+    final search = find.descendant(
+      of: find.byKey(const Key('instant-inventory-search')),
+      matching: find.byType(EditableText),
+    );
+    await tester.enterText(search, '螺丝');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
+      find.byType(MasterDataTableView<InstantInventoryRow>),
+    );
+    table.onFilterChanged('series', 'GD');
+    await tester.pumpAndSettle();
+    final oldState = tester.state(find.byType(InstantInventoryPage));
+    table.onRowTap!(table.items.first);
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, startsWith(RouteName.stockItemBase));
+    final returnTo = router.state.uri.queryParameters['returnTo']!;
+    final restoredUri = Uri.parse(returnTo);
+    expect(
+      restoredUri.queryParameters['categoryId'],
+      'raw',
+      reason: '返回地址保存浏览恢复点，不是当前全局API范围',
+    );
+    expect(restoredUri.queryParameters['keyword'], '螺丝');
+    expect(restoredUri.queryParameters['series'], 'GD');
+    // Force a real reconstruction as a refresh/direct returnTo would do.
+    router.go('${RouteName.stockItemBase}/replay');
+    await tester.pumpAndSettle();
+    router.go(returnTo);
+    await tester.pumpAndSettle();
+    expect(
+      tester.state(find.byType(InstantInventoryPage)),
+      isNot(same(oldState)),
+    );
+    expect(api.inventoryRequests.last['categoryId'], isNull);
+    expect(api.inventoryRequests.last['keyword'], '螺丝');
+    expect(api.inventoryRequests.last['series'], 'GD');
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('instant-inventory-search')),
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(api.inventoryRequests.last['categoryId'], 'raw');
+    expect(api.inventoryRequests.last['keyword'], isNull);
+    expect(api.inventoryRequests.last['series'], 'GD');
     expect(tester.takeException(), isNull);
   });
 
@@ -181,13 +247,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('搜索防抖、定位请求和失败期间均禁用旧合计详情', (tester) async {
+  testWidgets('防抖和结果更新期间禁旧合计，分类提示延迟或失败不挡当前全局汇总', (tester) async {
     final api = InstantInventoryApiFixture(
       withTotals: true,
       withAnalysis: true,
       withCategories: true,
     );
-    await _pumpPage(tester, const Size(1500, 1000), api: api);
+    final router = await _pumpPage(tester, const Size(1500, 1000), api: api);
+    final inventory = Completer<Map<String, dynamic>>();
+    api.nextInventoryResponse = inventory.future;
     final request = Completer<List<String>>();
     api.nextSearchResponse = request.future;
     final search = find.descendant(
@@ -205,13 +273,99 @@ void main() {
     expect(tester.widget<TextButton>(details).onPressed, isNull);
     expect(find.textContaining('统计更新中…', findRichText: true), findsOneWidget);
 
+    inventory.complete(api.response());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      tester.widget<TextButton>(details).onPressed,
+      isNotNull,
+      reason: '真实全局结果已更新，树提示仍在请求中也可查看同口径汇总',
+    );
+    expect(find.textContaining('3.52 t', findRichText: true), findsOneWidget);
+    expect(api.inventoryRequests.last['categoryId'], isNull);
+    expect(api.inventoryRequests.last['keyword'], '新货品');
     request.completeError(StateError('分类定位失败'));
     await tester.pumpAndSettle();
     expect(find.text('重试搜索'), findsOneWidget);
-    expect(tester.widget<TextButton>(details).onPressed, isNull);
-    expect(find.textContaining('统计暂不可用', findRichText: true), findsOneWidget);
-    expect(find.textContaining('3.52 t', findRichText: true), findsNothing);
-    expect(find.byType(InstantInventoryOverviewPage), findsNothing);
+    expect(tester.widget<TextButton>(details).onPressed, isNotNull);
+    expect(find.textContaining('统计暂不可用', findRichText: true), findsNothing);
+    await tester.tap(details);
+    await tester.pumpAndSettle();
+    expect(router.state.uri.path, RouteName.stockInstantInventoryOverview);
+    expect(router.state.uri.queryParameters['categoryId'], isNull);
+    expect(router.state.uri.queryParameters['keyword'], '新货品');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('快速改词禁用旧导出打印，新结果已更新即使分类提示未完成仍能导出新词', (tester) async {
+    final api = InstantInventoryApiFixture(
+      withTotals: true,
+      withAnalysis: true,
+      withCategories: true,
+    );
+    await _pumpPage(
+      tester,
+      const Size(1500, 1000),
+      api: api,
+      permissions: const {Perm.stockReportExport},
+    );
+    final locator = Completer<List<String>>();
+    final inventory = Completer<Map<String, dynamic>>();
+    api.nextSearchResponse = locator.future;
+    api.nextInventoryResponse = inventory.future;
+    final search = find.descendant(
+      of: find.byKey(const Key('instant-inventory-search')),
+      matching: find.byType(EditableText),
+    );
+    UtenExportButton export() =>
+        tester.widget<UtenExportButton>(find.byType(UtenExportButton));
+    UtenPrintPreviewButton preview() => tester.widget<UtenPrintPreviewButton>(
+      find.byType(UtenPrintPreviewButton),
+    );
+    expect(export().enabled, isTrue);
+    await tester.enterText(search, '螺丝');
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.enterText(search, '螺丝 M3');
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(export().enabled, isFalse);
+    expect(preview().enabled, isFalse);
+    for (final type in [
+      find.byType(UtenExportButton),
+      find.byType(UtenPrintPreviewButton),
+    ]) {
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.descendant(of: type, matching: find.byType(UtenButton)),
+            )
+            .onPressed,
+        isNull,
+      );
+    }
+    expect(
+      api.inventoryRequests.where((request) => request['keyword'] == '螺丝'),
+      isEmpty,
+    );
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.pump();
+    expect(export().enabled, isFalse);
+    expect(preview().enabled, isFalse);
+    inventory.complete(api.response());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(export().enabled, isTrue);
+    expect(preview().enabled, isTrue);
+    expect(export().queryParams['keyword'], '螺丝 M3');
+    expect(export().queryParams['categoryId'], isNull);
+    expect(preview().exportQuery!['keyword'], '螺丝 M3');
+    await preview().loader();
+    expect(api.inventoryRequests.last['keyword'], '螺丝 M3');
+    expect(api.inventoryRequests.last['categoryId'], isNull);
+    locator.completeError(StateError('分类提示失败'));
+    await tester.pumpAndSettle();
+    expect(find.text('重试搜索'), findsOneWidget);
+    expect(export().enabled, isTrue);
+    expect(preview().enabled, isTrue);
     expect(tester.takeException(), isNull);
   });
 
@@ -242,6 +396,7 @@ Future<GoRouter> _pumpPage(
   bool withAnalysis = true,
   double textScale = 1.0,
   InstantInventoryApiFixture? api,
+  Set<String> permissions = const {},
 }) async {
   SharedPreferences.setMockInitialValues(const {});
   final prefs = await SharedPreferences.getInstance();
@@ -255,7 +410,17 @@ Future<GoRouter> _pumpPage(
     routes: [
       GoRoute(
         path: RouteName.stockInstantInventory,
-        builder: (_, _) => const InstantInventoryPage(),
+        builder: (_, state) => state.uri.queryParameters.isEmpty
+            ? const InstantInventoryPage()
+            : InstantInventoryPage(
+                initialScope: InstantInventoryScope.fromQuery(
+                  state.uri.queryParameters,
+                ),
+              ),
+      ),
+      GoRoute(
+        path: '${RouteName.stockItemBase}/:goodsId',
+        builder: (_, _) => const Scaffold(body: Text('库存行详情')),
       ),
       GoRoute(
         path: '/stock/instant-inventory/overview',
@@ -279,7 +444,7 @@ Future<GoRouter> _pumpPage(
               ),
         ),
         sharedPreferencesProvider.overrideWithValue(prefs),
-        currentPermissionsProvider.overrideWithValue(const <String>{}),
+        currentPermissionsProvider.overrideWithValue(permissions),
       ],
       child: MaterialApp.router(
         routerConfig: router,
@@ -295,3 +460,8 @@ Future<GoRouter> _pumpPage(
   await tester.pumpAndSettle();
   return router;
 }
+
+Finder _categoryText(String label) => find.descendant(
+  of: find.byType(UtenCategoryTreeView<ProductCategoryNode>),
+  matching: find.text(label),
+);

@@ -4,6 +4,8 @@ import com.uten.imp.application.port.SubcontractDocumentReadAccessPort;
 import com.uten.imp.application.port.ProductionMaterialUsageReadPort;
 import com.uten.imp.application.port.WorkshopMaterialStatePort;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -87,7 +89,8 @@ public class ProductionExecutionWorkbenchService {
         int totalPages = pages(total, size);
         if (totalPages > 0 && page > totalPages) page = totalPages;
 
-        String rootOrder = " ORDER BY " + rootOrderBy(sort, order)
+        String rootOrder = " ORDER BY " + (KeywordSearch.terms(keyword).isEmpty() ? "" : rootKeywordRank() + ", ")
+                + rootOrderBy(sort, order)
                 + ", root.root_id ASC";
         Query data = em.createNativeQuery(rootProductCompletionSelect(
                 "SELECT root.*" + from + rootOrder + "\n" + """
@@ -289,6 +292,11 @@ public class ProductionExecutionWorkbenchService {
         // 我的车间任务「等待物料」（2026-09-15 用户口径）：可开工的排最前，
         // 进度越接近可开工越靠前——档位与状态筛选四桶一一对应。
         String orderBy = workshopTaskOrderBy(status, sort, order);
+        if (!KeywordSearch.terms(keyword).isEmpty()) {
+            orderBy = orderBy.replace("ORDER BY ", "ORDER BY "
+                    + TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"task.product_name"},
+                            new String[]{}, new String[]{"task.product_code", "task.segment_code", "task.plan_no"}) + ", ");
+        }
         // 路线记忆的操作者档(ADR-096)：本产品没有历史时预填「你上次选的」；每页只查一次。
         String operatorRouteMemory = history ? null : operatorRouteMemory();
         UUID scopedEmployeeId = seeAll ? null : employeeId;
@@ -327,17 +335,9 @@ public class ProductionExecutionWorkbenchService {
             predicate += " AND task.workshop_department_id = :workshopId";
         }
         if (keyword != null && !keyword.isBlank()) {
-            predicate += "\n" + """
-                    AND (
-                        lower(COALESCE(task.plan_no, '')) LIKE :keyword
-                        OR lower(COALESCE(task.segment_code, '')) LIKE :keyword
-                        OR lower(COALESCE(task.sales_order_nos, '')) LIKE :keyword
-                        OR lower(COALESCE(task.product_code, '')) LIKE :keyword
-                        OR lower(COALESCE(task.product_name, '')) LIKE :keyword
-                        OR lower(COALESCE(task.product_color_name, '')) LIKE :keyword
-                        OR lower(COALESCE(task.workshop_name, '')) LIKE :keyword
-                    )
-                    """;
+            predicate += " AND " + TaskKeywordSearch.conditionParameter("keyword",
+                    "task.plan_no", "task.segment_code", "task.sales_order_nos", "task.product_code",
+                    "task.product_name", "task.product_color_name", "task.workshop_name");
         }
         if (status != null) {
             predicate += switch (status) {
@@ -397,9 +397,7 @@ public class ProductionExecutionWorkbenchService {
             query.setParameter("workshopId", workshopDepartmentId);
         }
         if (keyword != null && !keyword.isBlank()) {
-            query.setParameter(
-                    "keyword",
-                    "%" + keyword.strip().toLowerCase(Locale.ROOT) + "%");
+            query.setParameter("keyword", KeywordSearch.phrase(keyword));
         }
         if (history) {
             query.setParameter("dateFrom", dateFrom);
@@ -1326,6 +1324,29 @@ public class ProductionExecutionWorkbenchService {
                 + " WHERE discovery_filter.execution_segment_id=task.segment_id AND discovery_filter.status='PENDING')";
     }
 
+    private static final String ROOT_SEARCH_TASK_FROM = """
+             FROM v_production_execution_workbench_segments search_task
+             WHERE search_task.root_type=root.root_type AND search_task.root_id=root.root_id
+            """;
+    private static final String ROOT_SEARCH_ANALYSIS_FROM = """
+             FROM production_material_analysis_items search_item
+             JOIN goods search_goods ON search_goods.id=search_item.goods_id
+             LEFT JOIN sales_order_items search_order_item ON search_order_item.id=search_item.sales_order_item_id
+             LEFT JOIN sales_orders search_order ON search_order.id=search_order_item.order_id
+             WHERE root.root_type='ANALYSIS' AND search_item.analysis_id=root.root_id AND search_item.is_deleted=FALSE
+            """;
+
+    private static String rootKeywordRank() {
+        String[] names = {"ARRAY(SELECT search_task.product_name" + ROOT_SEARCH_TASK_FROM + ")",
+                "ARRAY(SELECT search_goods.name" + ROOT_SEARCH_ANALYSIS_FROM + ")"};
+        return TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{}, names,
+                new String[]{"root.root_label"},
+                "ARRAY(SELECT search_task.product_code" + ROOT_SEARCH_TASK_FROM + ")",
+                "ARRAY(SELECT search_task.segment_code" + ROOT_SEARCH_TASK_FROM + ")",
+                "ARRAY(SELECT search_task.plan_no" + ROOT_SEARCH_TASK_FROM + ")",
+                "ARRAY(SELECT search_goods.code" + ROOT_SEARCH_ANALYSIS_FROM + ")");
+    }
+
     private static String rootFilters(
             String keyword,
             UUID workshopDepartmentId,
@@ -1335,57 +1356,22 @@ public class ProductionExecutionWorkbenchService {
             String salesOrder) {
         String filter = "";
         if (keyword != null && !keyword.isBlank()) {
-            String clientFilter = canSearchClient ? """
-                        OR EXISTS (
-                            SELECT 1
-                            FROM v_production_execution_workbench_segments task
-                            JOIN execution_segment_sales_allocations allocation
-                              ON allocation.execution_segment_id=task.segment_id
-                            JOIN sales_order_items sales_item
-                              ON sales_item.id=allocation.sales_order_item_id
-                             AND sales_item.is_deleted=FALSE
-                            JOIN sales_orders sales_order
-                              ON sales_order.id=sales_item.order_id
-                             AND sales_order.is_deleted=FALSE
-                            JOIN clients client ON client.id=sales_order.client_id
-                            WHERE task.root_type=root.root_type
-                              AND task.root_id=root.root_id
-                              AND lower(COALESCE(client.name,'')) LIKE :keyword)
-                    """ : "";
-            filter += "\n" + """
-                    AND (
-                        lower(COALESCE(root.root_label, '')) LIKE :keyword
-                        OR EXISTS (
-                            SELECT 1
-                            FROM v_production_execution_workbench_segments task
-                            WHERE task.root_type = root.root_type
-                              AND task.root_id = root.root_id
-                              AND (
-                                  lower(COALESCE(task.plan_no, '')) LIKE :keyword
-                                  OR lower(COALESCE(task.segment_code, '')) LIKE :keyword
-                                  OR lower(COALESCE(task.sales_order_nos, '')) LIKE :keyword
-                                  OR lower(COALESCE(task.product_code, '')) LIKE :keyword
-                                  OR lower(COALESCE(task.product_name, '')) LIKE :keyword
-                                  OR lower(COALESCE(task.product_color_name, '')) LIKE :keyword
-                                  OR lower(COALESCE(task.workshop_name, '')) LIKE :keyword))
-                    """ + clientFilter + """
-                        OR (root.root_type = 'ANALYSIS' AND EXISTS (
-                            SELECT 1
-                            FROM production_material_analysis_items item
-                            JOIN goods ON goods.id = item.goods_id
-                            LEFT JOIN sales_order_items sales_item
-                              ON sales_item.id = item.sales_order_item_id
-                            LEFT JOIN sales_orders sales_order
-                              ON sales_order.id = sales_item.order_id
-                            WHERE item.analysis_id = root.root_id
-                              AND item.is_deleted = FALSE
-                              AND (
-                                  lower(COALESCE(item.source_ref, '')) LIKE :keyword
-                                  OR lower(COALESCE(goods.code, '')) LIKE :keyword
-                                  OR lower(COALESCE(goods.name, '')) LIKE :keyword
-                                  OR lower(COALESCE(sales_order.bill_no, '')) LIKE :keyword)))
-                    )
-                    """;
+            List<String> fields = new ArrayList<>(List.of("root.root_label",
+                    "(SELECT string_agg(concat_ws(' ', search_task.plan_no,search_task.segment_code,"
+                            + "search_task.sales_order_nos,search_task.product_code,search_task.product_name,"
+                            + "search_task.product_color_name,search_task.workshop_name),' ')" + ROOT_SEARCH_TASK_FROM + ")",
+                    "(SELECT string_agg(concat_ws(' ', search_item.source_ref,search_goods.code,"
+                            + "search_goods.name,search_order.bill_no),' ')" + ROOT_SEARCH_ANALYSIS_FROM + ")"));
+            if (canSearchClient) fields.add("""
+                    (SELECT string_agg(client.name,' ')
+                     FROM v_production_execution_workbench_segments search_task
+                     JOIN execution_segment_sales_allocations allocation ON allocation.execution_segment_id=search_task.segment_id
+                     JOIN sales_order_items sales_item ON sales_item.id=allocation.sales_order_item_id AND sales_item.is_deleted=FALSE
+                     JOIN sales_orders sales_order ON sales_order.id=sales_item.order_id AND sales_order.is_deleted=FALSE
+                     JOIN clients client ON client.id=sales_order.client_id
+                     WHERE search_task.root_type=root.root_type AND search_task.root_id=root.root_id)
+                    """);
+            filter += " AND " + TaskKeywordSearch.conditionParameter("keyword", fields.toArray(String[]::new));
         }
         if (workshopDepartmentId != null) {
             filter += "\n" + """
@@ -1424,9 +1410,7 @@ public class ProductionExecutionWorkbenchService {
             UUID employeeId,
             String salesOrder) {
         if (keyword != null && !keyword.isBlank()) {
-            query.setParameter(
-                    "keyword",
-                    "%" + keyword.strip().toLowerCase(Locale.ROOT) + "%");
+            query.setParameter("keyword", KeywordSearch.phrase(keyword));
         }
         if (workshopDepartmentId != null) {
             query.setParameter("workshopId", workshopDepartmentId);

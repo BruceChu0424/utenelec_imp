@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.insight;
 
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.report.ReportTotal;
 import com.uten.imp.common.report.ReportTotalsCalculator;
@@ -98,7 +99,11 @@ public class WarehouseInsightService {
         List<HealthRow> rows = facts.stream()
                 .map(f -> WarehouseInsightDefinitions.healthRow(f, asOf, canViewCost)).toList();
         Map<HealthRow,UUID> unitByRow=new java.util.IdentityHashMap<>();
-        for(int i=0;i<facts.size();i++)unitByRow.put(rows.get(i),facts.get(i).unitId());
+        Map<HealthRow, String> modelByRow = new java.util.IdentityHashMap<>();
+        for(int i=0;i<facts.size();i++) {
+            unitByRow.put(rows.get(i),facts.get(i).unitId());
+            modelByRow.put(rows.get(i),facts.get(i).model());
+        }
         HealthOverview overview = overview(scope, params, facts, rows, canViewCost);
 
         WarehouseInsightDefinitions.HealthFilter filter = new WarehouseInsightDefinitions.HealthFilter(
@@ -109,7 +114,9 @@ public class WarehouseInsightService {
                 filtered.add(rows.get(i));
             }
         }
-        filtered.sort(WarehouseInsightDefinitions.healthOrder(sort, order));
+        filtered.sort(Comparator.comparingInt((HealthRow row) -> KeywordSearch.rankValue(keyword, row.name(), row.code(), modelByRow.get(row)))
+                .thenComparing(WarehouseInsightDefinitions.healthOrder(sort, order))
+                .thenComparing(HealthRow::goodsId).thenComparing(HealthRow::colorId, Comparator.nullsFirst(Comparator.naturalOrder())));
         List<ReportTotal> totals = ReportTotalsCalculator.computeFromRows(
                 filtered.stream().map(row->WarehouseInsightDefinitions.totalsRow(row,unitByRow.get(row))).toList(),
                 WarehouseInsightDefinitions.healthTotalSpecs(canViewCost));
@@ -227,7 +234,7 @@ public class WarehouseInsightService {
                 .addValue("t90", window.t90())
                 .addValue("asOfEnd", window.asOfEnd());
         if (hasKeyword) {
-            params.addValue("kw", "%" + keyword.strip() + "%");
+            params.addValue("kw", KeywordSearch.phrase(keyword));
         }
         List<InsightFacts.Learning> facts = db.query(WarehouseInsightSql.learning(hasKeyword), params,
                 (rs, i) -> learningFact(rs));
@@ -243,7 +250,8 @@ public class WarehouseInsightService {
                 rows.add(row);
             }
         }
-        rows.sort(WarehouseInsightDefinitions.LEARNING_ORDER);
+        rows.sort(Comparator.comparingInt((LearningRow row) -> KeywordSearch.rankValue(keyword, row.name(), row.code(), row.model()))
+                .thenComparing(WarehouseInsightDefinitions.LEARNING_ORDER).thenComparing(LearningRow::goodsId));
         return WarehouseInsightDefinitions.page(rows, page, size);
     }
 

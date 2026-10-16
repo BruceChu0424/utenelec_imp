@@ -439,8 +439,14 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           label: '厚度',
           numberKey: 'thickness',
           unitKey: 'thicknessUnitId',
-          numberInitial: ctx.initialValue,
-          unitInitial: _detail?.thicknessUnitId,
+          numberInitial: ctx.currentMapText(
+            'thickness',
+            fallback: ctx.initialValue,
+          ),
+          unitInitial: ctx.currentMapText(
+            'thicknessUnitId',
+            fallback: _detail?.thicknessUnitId,
+          ),
           unitOptions: _unitIdOptions,
           onAddUnit: canAddUnit ? _addUnitId : null,
           unitValueAsString: true,
@@ -459,8 +465,14 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           label: '单重',
           numberKey: 'mWeight',
           unitKey: 'mWeightUnitId',
-          numberInitial: ctx.initialValue,
-          unitInitial: _detail?.mWeightUnitId,
+          numberInitial: ctx.currentMapText(
+            'mWeight',
+            fallback: ctx.initialValue,
+          ),
+          unitInitial: ctx.currentMapText(
+            'mWeightUnitId',
+            fallback: _detail?.mWeightUnitId,
+          ),
           unitOptions: _unitIdOptions,
           onAddUnit: canAddUnit ? _addUnitId : null,
           unitValueAsString: true,

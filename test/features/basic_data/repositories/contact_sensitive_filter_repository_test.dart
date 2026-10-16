@@ -9,6 +9,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/supplier_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/mould_repository.dart';
 
 const _emptyPage = {'items': <Object>[], 'total': 0, 'page': 1, 'size': 20};
 
@@ -32,6 +33,134 @@ Dio _capturing(List<RequestOptions> sink) {
 }
 
 void main() {
+  test('全局主档表头选项省略分类，客户默认仍排除旧财务占位', () async {
+    final sent = <RequestOptions>[];
+    final api = ApiClient(_capturing(sent));
+    await DioClientRepository(api).globalFacets();
+    await DioClientRepository(
+      api,
+    ).globalFacets(excludeLegacyFinanceStub: false);
+    await DioSupplierRepository(api).globalFacets();
+    await DioMouldRepository(api).globalFacets();
+    expect(sent.map((r) => r.method), everyElement('GET'));
+    expect(sent.map((r) => r.path), [
+      '/master/clients/facets',
+      '/master/clients/facets',
+      '/master/suppliers/facets',
+      '/master/moulds/facets',
+    ]);
+    expect(sent.map((r) => r.queryParameters), [
+      {'excludeLegacyFinanceStub': true},
+      {'excludeLegacyFinanceStub': false},
+      <String, dynamic>{},
+      <String, dynamic>{},
+    ]);
+  });
+
+  test('客户全局结果不传分类，分页排序/可选范围保留且敏感条件仍只进body', () async {
+    final sent = <RequestOptions>[];
+    await DioClientRepository(ApiClient(_capturing(sent))).listGlobal(
+      page: 3,
+      size: 37,
+      keyword: ' 13800138000 ',
+      sort: 'name',
+      order: 'asc',
+      excludeLegacyFinanceStub: false,
+      selectableOnly: true,
+      filters: const {
+        'mobile': '13900139000',
+        'phone2': kMasterFilterNullValue,
+        'region': '华东',
+      },
+    );
+    final request = sent.single;
+    expect(request.method, 'POST');
+    expect(request.queryParameters, {
+      'page': 3,
+      'size': 37,
+      'sort': 'name',
+      'order': 'asc',
+      'excludeLegacyFinanceStub': false,
+      'selectableOnly': true,
+      'region': '华东',
+      'nullFields': ['phone2'],
+    });
+    expect(request.data, {'keyword': '13800138000', 'mobile': '13900139000'});
+    expect(request.uri.toString(), isNot(contains('13800138000')));
+    expect(request.uri.toString(), isNot(contains('13900139000')));
+  });
+
+  test('供应商全局结果保留筛选排序，电话和关键词不进入URL', () async {
+    final sent = <RequestOptions>[];
+    await DioSupplierRepository(ApiClient(_capturing(sent))).listGlobal(
+      page: 2,
+      size: 25,
+      keyword: ' 测试供应商 ',
+      sort: 'name',
+      order: 'desc',
+      selectableOnly: true,
+      filters: const {
+        'phone': '021-88886666',
+        'place': '杭州',
+        'bankAccount': kMasterFilterNullValue,
+      },
+    );
+    final request = sent.single;
+    expect(request.queryParameters, {
+      'page': 2,
+      'size': 25,
+      'sort': 'name',
+      'order': 'desc',
+      'selectableOnly': true,
+      'place': '杭州',
+      'nullFields': ['bankAccount'],
+    });
+    expect(request.data, {'keyword': '测试供应商', 'phone': '021-88886666'});
+    expect(request.uri.toString(), isNot(contains('测试供应商')));
+    expect(request.uri.toString(), isNot(contains('88886666')));
+  });
+
+  test('模具全局结果与原分类列表共用过滤参数，仅分类范围不同', () async {
+    final sent = <RequestOptions>[];
+    final repo = DioMouldRepository(ApiClient(_capturing(sent)));
+    await repo.listGlobal(
+      page: 2,
+      size: 35,
+      keyword: ' 模具 ',
+      sort: 'name',
+      order: 'asc',
+      filters: const {
+        'manufacturer': '制造商甲',
+        'mstatus': kMasterFilterNullValue,
+      },
+    );
+    expect(sent.single.queryParameters, {
+      'page': 2,
+      'size': 35,
+      'keyword': '模具',
+      'sort': 'name',
+      'order': 'asc',
+      'manufacturer': '制造商甲',
+      'nullFields': ['mstatus'],
+    });
+    await repo.list(
+      'cat-1',
+      page: 2,
+      size: 35,
+      keyword: ' 模具 ',
+      sort: 'name',
+      order: 'asc',
+      filters: const {
+        'manufacturer': '制造商甲',
+        'mstatus': kMasterFilterNullValue,
+      },
+    );
+    expect(sent.last.queryParameters, {
+      ...sent.first.queryParameters,
+      'categoryId': 'cat-1',
+    });
+  });
+
   test('客户：手机/银行账号筛选值只在 POST /search 请求体里', () async {
     final sent = <RequestOptions>[];
     await DioClientRepository(ApiClient(_capturing(sent))).list(

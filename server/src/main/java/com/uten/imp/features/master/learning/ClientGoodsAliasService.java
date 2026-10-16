@@ -3,6 +3,8 @@ package com.uten.imp.features.master.learning;
 import com.uten.imp.application.port.MasterIntakeLookupPort.AliasKind;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -19,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -51,13 +52,11 @@ public class ClientGoodsAliasService {
         boolean canDelete = hasClientEdit() && clientAccess.canWriteOwner(owner, scope);
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 100);
-        String pattern = keywordPattern(keyword);
-        String filter = pattern == null ? "" : """
-                 AND (lower(a.alias_text) LIKE :kw ESCAPE '\\'
-                      OR lower(coalesce(g.code, '')) LIKE :kw ESCAPE '\\'
-                      OR lower(coalesce(g.name, '')) LIKE :kw ESCAPE '\\'
-                      OR lower(coalesce(g.model, '')) LIKE :kw ESCAPE '\\')
-                """;
+        String normalized = KeywordSearch.phrase(keyword);
+        if (normalized.length() > 100) normalized = normalized.substring(0, 100);
+        String filter = " AND " + TaskKeywordSearch.conditionParameter("kw", "a.alias_text", "g.code", "g.name", "g.model");
+        String relevance = normalized.isEmpty() ? "" : TaskKeywordSearch.rankNamesFirstParameter("kw",
+                new String[]{"g.name"}, new String[]{}, new String[]{"g.code", "g.model", "a.alias_text"}) + ", ";
         String from = """
                 FROM client_goods_aliases a
                 JOIN goods g ON g.id = a.goods_id AND NOT g.is_deleted
@@ -65,7 +64,7 @@ public class ClientGoodsAliasService {
                 """ + filter;
         Query count = em.createNativeQuery("SELECT count(*) " + from);
         count.setParameter("clientId", clientId);
-        if (pattern != null) count.setParameter("kw", pattern);
+        count.setParameter("kw", normalized);
         long total = ((Number) count.getSingleResult()).longValue();
         List<ClientGoodsAliasView> items = new ArrayList<>();
         if (total > 0) {
@@ -79,12 +78,9 @@ public class ClientGoodsAliasService {
                     LEFT JOIN users usr ON usr.id = a.last_confirmed_by
                     LEFT JOIN employees e ON e.id = usr.employee_id
                     WHERE a.client_id = :clientId
-                    """ + filter + """
-                     ORDER BY a.last_confirmed_at DESC, a.id
-                     LIMIT :size OFFSET :offset
-                    """);
+                    """ + filter + " ORDER BY " + relevance + "a.last_confirmed_at DESC, a.id LIMIT :size OFFSET :offset");
             rows.setParameter("clientId", clientId);
-            if (pattern != null) rows.setParameter("kw", pattern);
+            rows.setParameter("kw", normalized);
             rows.setParameter("size", safeSize);
             rows.setParameter("offset", (safePage - 1) * safeSize);
             for (Object[] row : (List<Object[]>) rows.getResultList()) {
@@ -176,14 +172,6 @@ public class ClientGoodsAliasService {
     private static String personName(String name, String code) {
         if (name == null || name.isBlank()) return null;
         return code == null || code.isBlank() ? name : name + "(" + code + ")";
-    }
-
-    private static String keywordPattern(String keyword) {
-        if (keyword == null || keyword.isBlank()) return null;
-        String trimmed = keyword.strip().toLowerCase(Locale.ROOT);
-        if (trimmed.length() > 100) trimmed = trimmed.substring(0, 100);
-        String escaped = trimmed.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
-        return "%" + escaped + "%";
     }
 
     private static String shorten(String text) {

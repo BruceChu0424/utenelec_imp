@@ -1,3 +1,4 @@
+import '../../../shared/search/keyword_search.dart';
 // UtenPositionEntryPicker - 入职等表单使用的「岗位选择 + 自由填写」组件。
 //
 // 部门未选时禁用；打开后加载该部门全部岗位，可按名称/编码/职级过滤。
@@ -294,16 +295,31 @@ class _PositionEntrySheetState extends ConsumerState<_PositionEntrySheet> {
     if (mounted) setState(() {});
   }
 
-  bool _matches(Position position, String normalizedQuery) =>
-      position.name.toLowerCase().contains(normalizedQuery) ||
-      position.code.toLowerCase().contains(normalizedQuery) ||
-      position.level.toLowerCase().contains(normalizedQuery);
-
   List<Position> get _filteredPositions {
     final positions = _positions ?? const <Position>[];
-    final normalized = _query.toLowerCase();
-    if (normalized.isEmpty) return positions;
-    return positions.where((item) => _matches(item, normalized)).toList();
+    if (_query.isEmpty) return positions;
+    final result = positions
+        .where(
+          (position) => matchesKeywordSearch([
+            position.name,
+            position.code,
+            position.level,
+          ], _query),
+        )
+        .toList();
+    final originalOrder = {
+      for (var index = 0; index < positions.length; index++)
+        positions[index].id: index,
+    };
+    result.sort((a, b) {
+      final rankA = keywordSearchRank([a.name, a.code], _query) ?? 4;
+      final rankB = keywordSearchRank([b.name, b.code], _query) ?? 4;
+      final rank = rankA.compareTo(rankB);
+      return rank != 0
+          ? rank
+          : originalOrder[a.id]!.compareTo(originalOrder[b.id]!);
+    });
+    return result;
   }
 
   Position? get _exactMatch {

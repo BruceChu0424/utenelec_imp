@@ -95,6 +95,40 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(page.facets()).containsKeys("status","billNo");
     }
 
+    @Test void searchRanksGoodsNamesBeforeBillsAndPagingAndKeepsCountsFacetsAndScope() {
+        UUID warehouse=UUID.randomUUID(), outside=UUID.randomUUID();
+        UUID near=searchStock("Z-NEAR","X-METRIC","Metric Screw extra","2026-10-15",warehouse);
+        UUID name=searchStock("Y-NAME","CODE-NAME","Metric Screw","2026-10-10",warehouse);
+        UUID bill=searchStock("Metric Screw","CODE-BILL","other","2026-10-01",warehouse);
+        searchStock("Metric Screw","HIDDEN","Metric Screw","2026-10-16",outside);
+        var service=service(Set.of("stock_doc:view"),new WarehouseTaskScope(true,List.of(warehouse),false),false);
+        var first=service.list(new Filter("OTHER","","Metric Screw",null,null,null,null,1,1));
+        assertThat(first.items()).extracting(Row::id).containsExactly(name);
+        assertThat(first.total()).isEqualTo(3);
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.facets().get("status").getFirst().count()).isEqualTo(3);
+        assertThat(service.list(new Filter("OTHER","","Metric Screw",null,null,null,null,2,1)).items())
+                .extracting(Row::id).containsExactly(near);
+        assertThat(service.list(new Filter("OTHER","","Metric Screw",null,null,null,null,3,1)).items())
+                .extracting(Row::id).containsExactly(bill);
+        assertThat(service.list(new Filter("OTHER","","Y-NAME Screw",null,null,null,null,1,20)).items())
+                .extracting(Row::id).containsExactly(name);
+        UUID literal=searchStock("LITERAL","A%_B","special","2026-10-01",warehouse);
+        searchStock("WILDCARD","AxYB","special","2026-10-16",warehouse);
+        assertThat(service.list(new Filter("OTHER","","A%_B",null,null,null,null,1,20)).items())
+                .extracting(Row::id).containsExactly(literal);
+    }
+
+    private UUID searchStock(String bill,String code,String name,String date,UUID warehouse) {
+        UUID document=UUID.randomUUID(), goods=UUID.randomUUID();
+        execute("INSERT INTO goods(id,code,name) VALUES(:id,:code,:name)","id",goods,"code",code,"name",name);
+        stock(document,"OTHER_IN",bill,date,null);
+        execute("UPDATE stock_documents SET warehouse_id=:warehouse WHERE id=:id","warehouse",warehouse,"id",document);
+        execute("INSERT INTO stock_document_items(id,doc_id,goods_id,is_deleted) VALUES(:id,:document,:goods,FALSE)",
+                "id",UUID.randomUUID(),"document",document,"goods",goods);
+        return document;
+    }
+
     @Test void completedReversedAndClosedDocumentsLeaveActiveBeforePagingAndRetainScopedHistory() {
         UUID warehouse=UUID.randomUUID(),outside=UUID.randomUUID();
         UUID draft=UUID.randomUUID(),posted=UUID.randomUUID(),reversed=UUID.randomUUID(),closed=UUID.randomUUID();

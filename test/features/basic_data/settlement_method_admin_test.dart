@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/models/settlement_method_admin.dart';
 import 'package:uten_imp/features/basic_data/pages/settlement_method_page.dart';
@@ -84,6 +85,45 @@ void main() {
     // 本例验证列表项与锁定徽标的呈现由模型层覆盖；此处页面空态/错误态不崩。
     await tester.pumpAndSettle();
     expect(find.byType(SettlementMethodPage), findsOneWidget);
+  });
+
+  testWidgets('结算方式全量小字典按多词AND过滤，通配符不扩大结果', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentPermissionsProvider.overrideWithValue(const <String>{}),
+          referenceMethodRepositoryProvider.overrideWithValue(
+            _ReferenceMethodRepositoryFake(),
+          ),
+        ],
+        child: const MaterialApp(home: SettlementMethodPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final search = find.descendant(
+      of: find.byType(UtenSearchBar),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(search, '月结 JS0001');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    final table = tester.widget<MasterDataTableView<SettlementMethodAdminItem>>(
+      find.byType(MasterDataTableView<SettlementMethodAdminItem>),
+    );
+    expect(table.items.single.name, '月结60');
+    await tester.enterText(search, '%');
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<MasterDataTableView<SettlementMethodAdminItem>>(
+            find.byType(MasterDataTableView<SettlementMethodAdminItem>),
+          )
+          .items,
+      isEmpty,
+    );
   });
 
   testWidgets('table header filters reach the repository and drive the list', (

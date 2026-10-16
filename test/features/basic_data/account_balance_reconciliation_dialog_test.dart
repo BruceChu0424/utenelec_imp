@@ -11,6 +11,84 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   testWidgets(
+    'balance search matches words across visible currency and account data and ranks names without changing scope',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final repository = _AccountRepositoryFake(
+        accountItems: const [
+          AccountListItem(
+            id: 'code',
+            code: 'MAIN',
+            name: '别的账户',
+            accountType: 'BANK',
+            currencyId: 'currency-cny',
+            status: '使用',
+          ),
+          AccountListItem(
+            id: 'prefix',
+            code: 'A',
+            name: 'MAIN备用户',
+            accountType: 'BANK',
+            currencyId: 'currency-cny',
+            status: '使用',
+          ),
+          AccountListItem(
+            id: 'exact',
+            code: 'Z',
+            name: 'MAIN',
+            accountType: 'BANK',
+            currencyId: 'currency-cny',
+            status: '使用',
+          ),
+          AccountListItem(
+            id: 'disabled',
+            code: 'X',
+            name: 'MAIN禁用户',
+            accountType: 'BANK',
+            currencyId: 'currency-cny',
+            status: '禁用',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            accountRepositoryProvider.overrideWithValue(repository),
+            currencyRepositoryProvider.overrideWithValue(
+              _CurrencyRepositoryFake(),
+            ),
+            sharedPreferencesProvider.overrideWithValue(preferences),
+          ],
+          child: const MaterialApp(home: _OpenDialogHost()),
+        ),
+      );
+      await tester.tap(find.text('打开余额核对'));
+      await tester.pumpAndSettle();
+      final search = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.hintText == '搜索账户名称、编号、银行账号或币种',
+      );
+      await tester.enterText(search, 'MAIN');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('MAIN · Z')).dy,
+        lessThan(tester.getTopLeft(find.text('MAIN备用户 · A')).dy),
+      );
+      expect(find.textContaining('MAIN禁用户'), findsNothing);
+      await tester.enterText(search, 'MAIN CNY');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(find.text('MAIN备用户 · A'), findsOneWidget);
+      expect(repository.inputs, isEmpty);
+    },
+  );
+
+  testWidgets(
     'forces CNY re-entry without consulting the currency reference rate',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 900));

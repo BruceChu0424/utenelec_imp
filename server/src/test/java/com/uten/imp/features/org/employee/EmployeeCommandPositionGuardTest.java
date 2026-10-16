@@ -57,7 +57,7 @@ class EmployeeCommandPositionGuardTest {
         Department current = department("MFG_CENTER", "管理中心");
         Employee employee = employee(current);
         UUID positionId = UUID.randomUUID();
-        when(queryService.requireEmployee(employee.getId())).thenReturn(employee);
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(java.util.Optional.of(employee));
         ApiException error = assertThrows(
                 ApiException.class,
                 () -> service.update(employee.getId(), updatePosition(positionId)));
@@ -75,8 +75,8 @@ class EmployeeCommandPositionGuardTest {
         Department target = department("NEW_CENTER", "管理中心");
         Employee employee = employee(current);
         UUID positionId = UUID.randomUUID();
-        when(queryService.requireEmployee(employee.getId())).thenReturn(employee);
-        when(historyRepo.findFirstByEmployeeIdOrderByEventDateDescCreatedAtDesc(
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(java.util.Optional.of(employee));
+        when(historyRepo.findLatestEffectiveEventDate(
                 employee.getId())).thenReturn(Optional.empty());
         when(deptRepo.findById(target.getId())).thenReturn(Optional.of(target));
         when(positionRepo.findByIdAndDepartmentIdAndDeletedFalse(
@@ -124,6 +124,6 @@ class EmployeeCommandPositionGuardTest {
                 null, positionId, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null,
-                null, null); // vehicles, phones（ADR-021，null）
+                null, null, null, null, null); // vehicles, phones（ADR-021，null）
     }
 }

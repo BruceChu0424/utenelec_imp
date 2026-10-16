@@ -8,6 +8,7 @@ import '../../components/inputs/uten_dropdown_field.dart';
 import '../../components/inputs/uten_search_bar.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../business_columns/business_column.dart';
+import '../search/keyword_search.dart';
 import '../widgets/column_editor_dialog.dart';
 import 'platform_table_controller.dart';
 import 'platform_table_models.dart';
@@ -418,19 +419,18 @@ class _PlatformColumnPickerState<T> extends State<_PlatformColumnPicker<T>> {
 
   Widget _catalogContent() {
     final query = _query.text.trim().toLowerCase();
-    final system = widget.hiddenColumns
-        .where(
-          (column) =>
-              query.isEmpty || column.label.toLowerCase().contains(query),
-        )
-        .toList();
+    final system = rankedKeywordMatches(
+      widget.hiddenColumns,
+      query,
+      fields: (column) => [column.label],
+    );
     final results = _results
         .where(
           (column) =>
               _visibleColumn(column) &&
               (_catalog ||
                   query.isEmpty ||
-                  column.name.toLowerCase().contains(query)),
+                  matchesKeywordSearch([column.name], query)),
         )
         .toList();
     return Column(

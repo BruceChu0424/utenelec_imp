@@ -1,5 +1,8 @@
 package com.uten.imp.features.production.quality;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.application.port.ProductionFinishedInboundReleasePort;
 import com.uten.imp.application.port.ProductionPreStockedInboundPort;
@@ -225,8 +228,7 @@ public class ProductionFqcInspectionService
             int requestedPage,
             int requestedSize) {
         String status = normalizeStatusFilter(rawStatus);
-        String keyword = rawKeyword == null
-                ? "" : rawKeyword.strip().toLowerCase(Locale.ROOT);
+        String keyword = KeywordSearch.phrase(rawKeyword);
         SheetScope sheetScope = normalizeSheetScope(rawSheetScope);
         PageRequest pageable = Pageables.of(requestedPage, requestedSize);
         int page = pageable.getPageNumber() + 1;
@@ -243,16 +245,8 @@ public class ProductionFqcInspectionService
             case "HISTORY" -> "inspection.status IN ('RESOLVED','CANCELLED')";
             default -> "inspection.status = :status";
         };
-        String keywordPredicate = """
-                (:keyword = '' OR LOWER(
-                    COALESCE(report.bill_no, '') || ' ' ||
-                    COALESCE(plan.bill_no, '') || ' ' ||
-                    COALESCE(goods.code, '') || ' ' ||
-                    COALESCE(goods.name, '') || ' ' ||
-                    COALESCE(color.name, '') || ' ' ||
-                    COALESCE(sheet.sheet_no, '')
-                ) LIKE :keywordLike)
-                """;
+        String keywordPredicate = TaskKeywordSearch.conditionParameter("keyword",
+                "report.bill_no", "plan.bill_no", "goods.code", "goods.name", "color.name", "sheet.sheet_no");
         // V547：sheet=NONE 只列无检查单的历史任务（待检处置「无检查单」行）；
         // sheet=<uuid> 列该检查单的任务；缺省不按检查单过滤。
         String sheetPredicate = switch (sheetScope.kind()) {
@@ -271,7 +265,10 @@ public class ProductionFqcInspectionService
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query query = em.createNativeQuery(pageSql
-                + " ORDER BY inspection.created_at, inspection.id"
+                + " ORDER BY " + TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                        new String[]{"goods.name"}, new String[]{},
+                        new String[]{"goods.code", "report.bill_no", "plan.bill_no", "sheet.sheet_no"})
+                + ", inspection.created_at, inspection.id"
                 + " OFFSET :offset LIMIT :limit");
         bindInspectionPage(query, ownerScope, status, keyword, sheetScope);
         query.setParameter("offset", pageable.getOffset());
@@ -296,8 +293,7 @@ public class ProductionFqcInspectionService
         if (!Set.of("ALL", "ACTIVE", "HISTORY").contains(status)) {
             query.setParameter("status", status);
         }
-        query.setParameter("keyword", keyword);
-        query.setParameter("keywordLike", "%" + keyword + "%");
+        query.setParameter("keyword", KeywordSearch.phrase(keyword));
         if (sheetScope.kind() == SheetScopeKind.EXACT) {
             query.setParameter("sheetId", sheetScope.sheetId());
         }
@@ -315,8 +311,7 @@ public class ProductionFqcInspectionService
             int requestedPage,
             int requestedSize) {
         String status = normalizeSheetStatusFilter(rawStatus);
-        String keyword = rawKeyword == null
-                ? "" : rawKeyword.strip().toLowerCase(Locale.ROOT);
+        String keyword = KeywordSearch.phrase(rawKeyword);
         PageRequest pageable = Pageables.of(requestedPage, requestedSize);
         int page = pageable.getPageNumber() + 1;
         int size = pageable.getPageSize();
@@ -330,15 +325,10 @@ public class ProductionFqcInspectionService
             case "CLOSED" -> "sheet_row.active_count = 0";
             default -> "sheet_row.active_count > 0";
         };
-        String keywordPredicate = """
-                (:keyword = '' OR LOWER(
-                    COALESCE(sheet_row.sheet_no, '') || ' ' ||
-                    COALESCE(sheet_row.warehouse_name, '') || ' ' ||
-                    COALESCE(sheet_row.receiver_name, '') || ' ' ||
-                    COALESCE(sheet_row.report_nos, '') || ' ' ||
-                    COALESCE(sheet_row.goods_summary, '')
-                ) LIKE :keywordLike)
-                """;
+        String keywordPredicate = TaskKeywordSearch.conditionParameter("keyword",
+                "sheet_row.sheet_no", "sheet_row.warehouse_name", "sheet_row.receiver_name",
+                "sheet_row.report_nos", "sheet_row.goods_summary", "sheet_row.goods_code_summary",
+                "sheet_row.color_name_summary", "sheet_row.place_summary");
         String pageSql = sheetSql(sheetOwnerPredicate(ownerScope))
                 + " WHERE " + statusPredicate + " AND " + keywordPredicate;
         Query countQuery = em.createNativeQuery(
@@ -347,7 +337,10 @@ public class ProductionFqcInspectionService
         long total = ((Number) countQuery.getSingleResult()).longValue();
 
         Query query = em.createNativeQuery(pageSql
-                + " ORDER BY sheet_row.created_at, sheet_row.id"
+                + " ORDER BY " + TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                        new String[]{}, new String[]{"sheet_row.goods_names"},
+                        new String[]{"sheet_row.sheet_no"}, "sheet_row.goods_codes", "sheet_row.report_numbers")
+                + ", sheet_row.created_at, sheet_row.id"
                 + " OFFSET :offset LIMIT :limit");
         bindSheetPage(query, ownerScope, keyword);
         query.setParameter("offset", pageable.getOffset());
@@ -418,8 +411,7 @@ public class ProductionFqcInspectionService
             NativeReadScope ownerScope,
             String keyword) {
         if (ownerScope != null) ownerScope.bind(query);
-        query.setParameter("keyword", keyword);
-        query.setParameter("keywordLike", "%" + keyword + "%");
+        query.setParameter("keyword", KeywordSearch.phrase(keyword));
     }
 
     /** 检查单头投影；调用方在其后追加 WHERE（列名以 sheet_row.* 引用）。 */
@@ -467,7 +459,10 @@ public class ProductionFqcInspectionService
                            string_agg(DISTINCT NULLIF(goods.code, ''), '、'
                                ORDER BY NULLIF(goods.code, '')) AS goods_code_summary,
                            string_agg(DISTINCT NULLIF(line_color.name, ''), '、'
-                               ORDER BY NULLIF(line_color.name, '')) AS color_name_summary
+                               ORDER BY NULLIF(line_color.name, '')) AS color_name_summary,
+                           array_agg(DISTINCT goods.name) AS goods_names,
+                           array_agg(DISTINCT goods.code) AS goods_codes,
+                           array_agg(DISTINCT report.bill_no) AS report_numbers
                     FROM production_fqc_inspection_sheets sheet
                     JOIN production_fqc_inspection_sheet_items sheet_item
                       ON sheet_item.sheet_id = sheet.id

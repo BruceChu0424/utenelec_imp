@@ -1,5 +1,8 @@
 package com.uten.imp.features.master.supplier;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.CategoryKeywordSearch;
+
 import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
@@ -108,6 +111,9 @@ public class SupplierService {
     @Transactional(readOnly = true)
     public PageResponse<SupplierListItem> list(SupplierQueryFilter f, int page, int size, String sort, String order) {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
+        var keyword = keywordPlan(f.keyword());
+        Sort defaultSort = Sort.by(Sort.Direction.ASC, "code").and(Sort.by(Sort.Direction.ASC, "id"));
+        Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
         Specification<Supplier> spec = (Root<Supplier> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -122,16 +128,14 @@ public class SupplierService {
             if (subtreeIds != null) {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
-            if (f.keyword() != null && !f.keyword().isBlank()) {
-                String like = "%" + f.keyword().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("code")), like),
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("description")), like),
-                        cb.like(cb.lower(root.get("linkman")), like),
-                        cb.like(cb.lower(root.get("legalPerson")), like),
-                        cb.like(cb.lower(root.get("place")), like),
-                        cb.like(cb.lower(root.get("mobile")), like)));
+            if (!KeywordSearch.terms(f.keyword()).isEmpty()) {
+                List<jakarta.persistence.criteria.Expression<String>> visible = List.of(root.get("code"), root.get("name"), root.get("linkman"), root.get("legalPerson"), root.get("place"), root.get("mobile"));
+                ps.add(keyword.predicate(cb, root.get("category").get("id"), visible,
+                        List.of(root.get("description"))));
+                if (q != null && q.getResultType() != Long.class) {
+                    CategoryKeywordSearch.order(q, cb, root,
+                            keyword.rank(cb, root.get("category").get("id"), root.get("code"), root.get("name"), visible), requestedSort);
+                }
             }
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "description", f.description());
@@ -163,12 +167,18 @@ public class SupplierService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
+        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
         Page<Supplier> p = repo.findAll(spec, pageable);
         List<SupplierListItem> items = new ArrayList<>(p.map(this::toList).getContent());
         applySubcontractLossRates(items);
         return new PageResponse<>(items, p);
+    }
+
+    private CategoryKeywordSearch.Plan keywordPlan(String query) {
+        return CategoryKeywordSearch.plan(query, KeywordSearch.terms(query).isEmpty() ? List.of()
+                : categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc().stream()
+                .map(node -> new CategoryKeywordSearch.Node(node.getId(), node.getParent() == null ? null : node.getParent().getId(),
+                        node.getName(), node.getCode())).toList());
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Supplier> root,
@@ -249,31 +259,30 @@ public class SupplierService {
 
     @Transactional(readOnly = true)
     public SupplierFacets facets(UUID categoryId) {
-        if (categoryId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择供应商分类");
-        }
-        List<UUID> ids = resolveSubtreeIds(categoryId);
+        List<UUID> ids = categoryId == null ? null : resolveSubtreeIds(categoryId);
+        String categoryClause = ids == null ? "" : " and category_id in (:ids)";
         Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
             String field = e.getKey();
             // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
             String col = e.getValue();
-            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+            var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from suppliers "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
-                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .setParameter("ids", ids));
+                            + "where is_deleted = false" + categoryClause + " and " + col + " is not null "
+                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT);
+            if (ids != null) fq.setParameter("ids", ids);
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
             }
             buckets.put(field, bucketList);
-            Long nc = ((Number) em.createNativeQuery(
+            var nq = em.createNativeQuery(
                     "select count(*) from suppliers "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null")
-                    .setParameter("ids", ids)
-                    .getSingleResult()).longValue();
+                            + "where is_deleted = false" + categoryClause + " and " + col + " is null");
+            if (ids != null) nq.setParameter("ids", ids);
+            Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
         // 业务员（empId）桶：值=owner_employee_id（employees.id）、label=人名；空值=未设置业务员。
@@ -296,14 +305,15 @@ public class SupplierService {
      * 避免两表同名列（is_deleted 等）歧义。
      */
     private List<FacetBucket> ownerFacet(List<UUID> ids) {
-        List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+        var fq = em.createNativeQuery(
                 "select employees.id as v, employees.full_name as label, count(*) as c "
                         + "from suppliers join employees on employees.id = suppliers.owner_employee_id "
-                        + "where suppliers.is_deleted = false and suppliers.category_id in (:ids) "
+                        + "where suppliers.is_deleted = false " + (ids == null ? "" : "and suppliers.category_id in (:ids) ")
                         + "and suppliers.owner_employee_id is not null "
                         + "group by employees.id, employees.full_name "
-                        + "order by c desc, label asc limit " + FACET_LIMIT)
-                .setParameter("ids", ids));
+                        + "order by c desc, label asc limit " + FACET_LIMIT);
+        if (ids != null) fq.setParameter("ids", ids);
+        List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
         List<FacetBucket> list = new ArrayList<>(rows.size());
         for (Object[] row : rows) {
             list.add(new FacetBucket(String.valueOf(row[0]),
@@ -314,11 +324,11 @@ public class SupplierService {
 
     /** 业务员空值计数：owner_employee_id 为 null（前端列显「未分配」）的行数。 */
     private Long ownerNullCount(List<UUID> ids) {
-        return ((Number) em.createNativeQuery(
+        var nq = em.createNativeQuery(
                 "select count(*) from suppliers "
-                        + "where is_deleted = false and category_id in (:ids) and owner_employee_id is null")
-                .setParameter("ids", ids)
-                .getSingleResult()).longValue();
+                        + "where is_deleted = false " + (ids == null ? "" : "and category_id in (:ids) ") + "and owner_employee_id is null");
+        if (ids != null) nq.setParameter("ids", ids);
+        return ((Number) nq.getSingleResult()).longValue();
     }
 
     // ===== 详情 / CRUD（不变） =====

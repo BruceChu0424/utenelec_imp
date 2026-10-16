@@ -18,6 +18,7 @@ import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.features.subcontract.waste.dto.WasteDetail;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemDto;
 import com.uten.imp.features.subcontract.waste.dto.WasteItemLine;
@@ -113,7 +114,8 @@ public class SubcontractWasteService {
         Specification<SubcontractWaste> spec = wasteSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SubcontractWaste> p = wasteRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<SubcontractWaste> p = wasteRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<WasteListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
         return p.stream().noneMatch(SubcontractWaste::isDeleted) ? result

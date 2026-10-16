@@ -84,9 +84,9 @@ void main() {
     expect(find.byKey(const Key('category-picker-all')), findsOneWidget);
     expect(find.byKey(const Key('category-picker-tree')), findsOneWidget);
     // 单根「货品资料」被提升（2026-09-24）：包装根不再显示，直接列其子类。
-    expect(find.text('货品资料(G)'), findsNothing);
-    expect(find.text('成品(FIN)'), findsOneWidget);
-    expect(find.text('配件(PRT)'), findsOneWidget);
+    expect(find.text('货品资料'), findsNothing);
+    expect(find.text('成品'), findsOneWidget);
+    expect(find.text('配件').last, findsOneWidget);
     // 每节点尾部显子树货品数。
     expect(find.text('3'), findsOneWidget);
     // 零货品分类不出现。
@@ -102,10 +102,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('配件(PRT)'), findsOneWidget);
+    expect(find.text('配件').last, findsOneWidget);
     // 提升后的森林里「配件」已是根：没有更高祖先可留，也不回到被提升的包装根。
-    expect(find.text('货品资料(G)'), findsNothing);
-    expect(find.text('成品(FIN)'), findsNothing);
+    expect(find.text('货品资料'), findsNothing);
+    expect(find.text('成品'), findsNothing);
   });
 
   testWidgets('点分类行 = 返回该分类 id 并关窗', (tester) async {
@@ -132,7 +132,7 @@ void main() {
     await tester.tap(find.text('选择分类'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('成品(FIN)'));
+    await tester.tap(find.text('成品'));
     await tester.pumpAndSettle();
 
     expect(picked?.id, 'finished');

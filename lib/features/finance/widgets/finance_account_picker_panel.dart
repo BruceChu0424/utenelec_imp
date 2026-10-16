@@ -1,3 +1,4 @@
+import '../../../shared/search/keyword_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
@@ -54,15 +55,34 @@ class _FinanceAccountPickerPanelState
         )
         .toList();
     if (keyword.isEmpty) return usable;
-    return usable
-        .where(
-          (a) =>
-              (a.name ?? '').toLowerCase().contains(keyword) ||
-              (a.code ?? '').toLowerCase().contains(keyword) ||
-              (a.currencyName ?? '').toLowerCase().contains(keyword) ||
-              (a.currencyCode ?? '').toLowerCase().contains(keyword),
-        )
+    List<String?> fields(FinanceAccountReference account) => [
+      account.name,
+      account.code,
+      account.currencyName,
+      account.currencyCode,
+    ];
+    final result = usable
+        .where((account) => matchesKeywordSearch(fields(account), keyword))
         .toList();
+    final order = {
+      for (var index = 0; index < usable.length; index++)
+        usable[index].id: index,
+    };
+    result.sort((left, right) {
+      final rankLeft = keywordSearchRankWithPrimary(
+        [left.name],
+        fields(left),
+        keyword,
+      )!;
+      final rankRight = keywordSearchRankWithPrimary(
+        [right.name],
+        fields(right),
+        keyword,
+      )!;
+      final rank = rankLeft.compareTo(rankRight);
+      return rank != 0 ? rank : order[left.id]!.compareTo(order[right.id]!);
+    });
+    return result;
   }
 
   @override

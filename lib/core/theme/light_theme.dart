@@ -220,6 +220,7 @@ ThemeData buildLightTheme({PlatformBranding? branding}) {
 
     // ===== 输入框：透明背景 + 焦点态品牌色 =====
     inputDecorationTheme: InputDecorationTheme(
+      visualDensity: VisualDensity.standard,
       filled: true,
       fillColor: UtenColors.surface,
       border: OutlineInputBorder(

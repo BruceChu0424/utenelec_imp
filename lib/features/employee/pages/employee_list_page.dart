@@ -3,8 +3,8 @@
 // 2026-09-10 交互改版：删顶部状态 FilterChip——状态筛选交给表头 autofilter（前端
 // 聚合裁剪），列表不再按状态预筛服务端（离职员工默认可见、可从表头筛掉）；搜索框
 // 移入表格工具条「全屏」按钮右侧（toolbarLeadingActions 限宽 260，全屏内同款可用，
-// 控制器页面持有两处共享）；「加载更多」按钮下线，改滚动临近底部自动加载下一页
-//（onLoadMore + loadingMore 末尾转圈行）；工号/入职日期/工龄三列可排序（表头菜单，
+// 控制器页面持有两处共享）；名册按服务端分页连续加载，在同一表内展示完整授权范围；
+// 加载期间显示进度，失败可重试；工号/入职日期/工龄三列可排序（表头菜单，
 // 服务端 sort/order 白名单；工龄映射 hire_date 且方向翻转）。表头筛选（部门/状态/
 // 岗位）仍从已加载 items 前端聚合、前端裁剪显示行。行双击或右键菜单进员工详情。
 // 不开多选。
@@ -39,6 +39,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/employee_api_models.dart';
 import '../models/work_years.dart';
 import '../repositories/employee_repository.dart';
+import '../repositories/employee_roster_loader.dart';
 import '../widgets/employee_leadership_badge.dart';
 import '../widgets/employee_status_badge.dart';
 
@@ -56,8 +57,8 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
   /// 进出全屏不丢已输入的关键字。
   late final TextEditingController _searchCtrl;
   final List<EmployeeSummary> _items = [];
-  int _page = 1;
-  int _totalPages = 1;
+  int _total = 0;
+  String? _rosterError;
   bool _loading = true;
   bool _loadingMore = false;
   String? _error;
@@ -96,26 +97,28 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
       _loading = true;
       _error = null;
       _loadingMore = false;
-      _page = 1;
+      _rosterError = null;
       _similar = const [];
     });
     try {
-      final r = await ref
-          .read(employeeRepositoryProvider)
-          .list(
-            search: search.isEmpty ? null : search,
-            sort: _sortColumn,
-            order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
+      await loadEmployeeRoster(
+        repository: ref.read(employeeRepositoryProvider),
+        isCurrent: () => mounted && request == _request,
+        search: search.isEmpty ? null : search,
+        sort: _sortColumn,
+        order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        onBatch: (items, total, hasMore) {
+          setState(() {
+            _items
+              ..clear()
+              ..addAll(items);
+            _total = total;
+            _loading = false;
+            _loadingMore = hasMore;
+          });
+        },
+      );
       if (!mounted || request != _request) return;
-      setState(() {
-        _items
-          ..clear()
-          ..addAll(r.items);
-        _page = r.page;
-        _totalPages = r.totalPages;
-        _loading = false;
-      });
       unawaited(_refreshSimilar(search, request));
     } on ApiException catch (e) {
       if (!mounted || request != _request) return;
@@ -145,43 +148,15 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
       setState(() {
         _error = message;
         _loading = false;
-      });
-    } else {
-      setState(() => _loading = false);
-      context.appError(message);
-    }
-  }
-
-  Future<void> _loadMore() async {
-    if (_loadingMore || _page >= _totalPages) return;
-    final request = ++_request;
-    final search = _search;
-    final nextPage = _page + 1;
-    setState(() => _loadingMore = true);
-    try {
-      final r = await ref
-          .read(employeeRepositoryProvider)
-          .list(
-            page: nextPage,
-            search: search.isEmpty ? null : search,
-            sort: _sortColumn,
-            order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
-      if (!mounted || request != _request) return;
-      setState(() {
-        _items.addAll(r.items);
-        _page = r.page;
-        _totalPages = r.totalPages;
         _loadingMore = false;
       });
-    } catch (error) {
-      if (!mounted || request != _request) return;
-      setState(() => _loadingMore = false);
-      if (error is ApiException) {
-        context.appError(error.message);
-      } else {
-        context.appError('加载更多员工失败，请稍后重试');
-      }
+    } else {
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+        _rosterError = message;
+      });
+      context.appError(message);
     }
   }
 
@@ -374,10 +349,20 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
             : '无符合「$_search」的员工', // TODO(l10n): 补 arb
         // 滚动临近底部自动追加下一页（末尾转圈行）；是否还有更多由 _loadMore 守卫。
         loadingMore: _loadingMore,
-        onLoadMore: _loadMore,
         // 搜索框：紧跟「全屏」按钮右侧（toolbarLeadingActions 左簇），限宽 260；
         // UtenSearchBar 自带 300ms 防抖 + 清除按钮 + 输入法组合保护，全屏路由里同款渲染。
         toolbarLeadingActions: [
+          Text(
+            _loadingMore || _rosterError != null
+                ? '已加载 ${_items.length} / $_total 人'
+                : '共 ${_items.length} 人',
+          ),
+          if (_rosterError != null)
+            TextButton.icon(
+              onPressed: _reload,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('加载未完成，重试'),
+            ),
           SizedBox(
             width: 260,
             child: UtenSearchBar(

@@ -157,6 +157,32 @@ void main() {
     expect(find.text('查看销售单据'), findsOneWidget);
     expect(find.text('编辑销售单据'), findsNothing);
   });
+  testWidgets(
+    'permission words may cross module category name code and action but still intersect state filters',
+    (tester) async {
+      await tester.pumpWidget(buildSubject());
+      await tester.enterText(searchField(), '销售管理 编辑');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.text('编辑销售单据'), findsOneWidget);
+      expect(find.text('查看销售单据'), findsNothing);
+      expect(find.text('财税管理'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('permission-filter-enabled')));
+      await tester.pumpAndSettle();
+      expect(find.text('没有匹配的权限'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('permission-filter-all')));
+      await tester.enterText(searchField(), '财税管理 report:export 加密');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.text('导出报表'), findsOneWidget);
+      expect(find.text('销售管理'), findsNothing);
+      await tester.enterText(searchField(), '%');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pumpAndSettle();
+      expect(find.text('没有匹配的权限'), findsOneWidget);
+    },
+  );
+
   testWidgets('filters by enabled state without losing the complete catalog', (
     tester,
   ) async {

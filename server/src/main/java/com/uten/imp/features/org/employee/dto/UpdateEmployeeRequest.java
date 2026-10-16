@@ -56,5 +56,9 @@ public record UpdateEmployeeRequest(
         List<NestedDtos.VehicleInput> vehicles,
         @Valid
         @Size(max = RequestLimits.EMPLOYEE_NESTED_ITEMS)
-        List<NestedDtos.PhoneInput> phones
+        List<NestedDtos.PhoneInput> phones,
+        // 入职日期更正使用旧值做并发比较；原因记入追加的任职更正记录。
+        LocalDate hireDate,
+        LocalDate expectedHireDate,
+        @Size(max = 500) String hireDateChangeReason
 ) {}

@@ -142,7 +142,8 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        Page<PurchaseOrder> p = orderRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<PurchaseOrder> p = orderRepo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
                 orderType(),
                 p.getContent().stream().collect(Collectors.toMap(
@@ -187,16 +188,17 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 供应商名称
                 // + 仓库名称（名称经 NameRefKeyword 转成外键 IN 子查询，count 同谓词派生）。
-                String kw = NameRefKeyword.like(f.keyword());
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), kw -> {
                 var kws = NameRefKeyword.keywords();
-                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(NameRefKeyword.text(cb, root.get("billNo"), kw));
                 NameRefKeyword.byName(kws, q, cb, root.get("supplierId"),
                         com.uten.imp.features.master.supplier.Supplier.class, "name", kw);
                 NameRefKeyword.byName(kws, q, cb, root.get("supplierId"),
                         com.uten.imp.features.master.supplier.Supplier.class, "code", kw);
                 NameRefKeyword.byName(kws, q, cb, root.get("warehouseId"),
                         com.uten.imp.features.master.warehouse.Warehouse.class, "name", kw);
-                ps.add(cb.or(kws.toArray(new Predicate[0])));
+                return cb.or(kws.toArray(new Predicate[0]));
+                }));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));

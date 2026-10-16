@@ -6,6 +6,8 @@ import com.uten.imp.application.port.ProcurementArrivalControlPort;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.arap.ArApLedgerService;
@@ -58,6 +60,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
     private static final Set<String> FILTER_STATUSES = Set.of(
             "PENDING_RETURN", "RETURN_RECORDED", "CREDIT_CONFIRMED",
             "CLOSED_NO_CREDIT", "FINANCE_EXCEPTION", "REVERSED","TERMINAL", "ACTIVE");
+    private static final String[] SEARCH_FIELDS = {"rejection.receipt_bill_no",
+            "rejection.order_bill_no", "supplier.name", "goods.code", "goods.name"};
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -336,19 +340,18 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
             add(where, params, "rejection.status=:status", "status", status);
         }
         if (keyword != null && !keyword.isBlank()) {
-            add(where, params, "(LOWER(rejection.receipt_bill_no) LIKE :keyword"
-                            + " OR LOWER(COALESCE(rejection.order_bill_no,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(supplier.name,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(goods.code,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(goods.name,'')) LIKE :keyword)",
-                    "keyword", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+            add(where, params, TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS),
+                    "keyword", KeywordSearch.phrase(keyword));
         }
         if (!canViewAllCases()) {
             add(where, params, "rejection.owner_user_id=:currentUserId",
                     "currentUserId", currentUser.requireId());
         }
+        String relevance = params.containsKey("keyword")
+                ? TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"goods.name"},
+                        new String[]{}, SEARCH_FIELDS) + ", " : "";
         Query data = em.createNativeQuery(select() + from() + where
-                + " ORDER BY rejection.created_at DESC,rejection.id LIMIT :limit OFFSET :offset");
+                + " ORDER BY " + relevance + "rejection.created_at DESC,rejection.id LIMIT :limit OFFSET :offset");
         bind(data, params);
         data.setParameter("limit", safeSize);
         data.setParameter("offset", (long) (safePage - 1) * safeSize);
@@ -372,12 +375,8 @@ public class ProcurementIqcRejectionService implements ProcurementIqcRejectionPo
                     "receiptType", receiptType);
         }
         if (keyword != null && !keyword.isBlank()) {
-            add(where, params, "(LOWER(rejection.receipt_bill_no) LIKE :keyword"
-                            + " OR LOWER(COALESCE(rejection.order_bill_no,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(supplier.name,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(goods.code,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(goods.name,'')) LIKE :keyword)",
-                    "keyword", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+            add(where, params, TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS),
+                    "keyword", KeywordSearch.phrase(keyword));
         }
         if (!canViewAllCases()) {
             add(where, params, "rejection.owner_user_id=:currentUserId",

@@ -4,12 +4,15 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_in_progress_badge.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/stock/counts/models/stock_count_request.dart';
 import 'package:uten_imp/features/stock/counts/pages/stock_count_review_page.dart';
 import 'package:uten_imp/features/stock/counts/repositories/stock_count_request_repository.dart';
@@ -31,11 +34,13 @@ typedef _Query = ({
   String? keyword,
   String? status,
   int size,
+  int page,
 });
 
 class _Repo implements StockCountRequestRepository {
   int pending = 1;
   int approvals = 0;
+  int totalPages = 1;
   final queries = <_Query>[];
   Completer<StockCountRequest>? pendingDetail;
   Completer<StockCountRequest>? pendingApproval;
@@ -84,13 +89,18 @@ class _Repo implements StockCountRequestRepository {
       keyword: keyword,
       status: status,
       size: size,
+      page: page,
     ));
     return PagedResult(
       items: pending > 0 ? [request()] : [],
       page: page,
       size: size,
-      total: pending,
-      totalPages: 1,
+      total: pending == 0
+          ? 0
+          : totalPages == 1
+          ? pending
+          : totalPages * size,
+      totalPages: pending == 0 ? 0 : totalPages,
     );
   }
 
@@ -163,6 +173,7 @@ Future<ProviderContainer> _pump(
   Set<String> permissions = const {Perm.stockCountWarehouseReview},
   BadgeSummary? summary,
   WarehouseTaskScope scope = const WarehouseTaskScope.all(),
+  GoRouter? router,
 }) async {
   tester.view.physicalSize = const Size(1600, 1000);
   tester.view.devicePixelRatio = 1;
@@ -191,12 +202,19 @@ Future<ProviderContainer> _pump(
           return selected.isAll ? global : _summary(review: repo.pending);
         }),
       ],
-      child: const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: Locale('zh'),
-        home: WarehouseTaskCenterPage(),
-      ),
+      child: router == null
+          ? const MaterialApp(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: Locale('zh'),
+              home: WarehouseTaskCenterPage(),
+            )
+          : MaterialApp.router(
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+              routerConfig: router,
+            ),
     ),
   );
   await tester.pumpAndSettle();
@@ -225,7 +243,128 @@ List<int> _redCounts(WidgetTester tester, Finder parent) => tester
     .map((badge) => badge.count)
     .toList();
 
+GoRouter _taskRouter() => GoRouter(
+  initialLocation: '/warehouse/tasks?returnTo=%2Fwarehouse',
+  routes: [
+    GoRoute(
+      path: '/warehouse',
+      builder: (_, _) => const Scaffold(body: Text('仓库模块入口')),
+    ),
+    GoRoute(
+      path: '/warehouse/tasks',
+      builder: (_, _) => const WarehouseTaskCenterPage(),
+    ),
+  ],
+);
+
 void main() {
+  testWidgets('真实顶栏箭头先返回原盘点队列并保留范围搜索页码，再返回仓库入口', (tester) async {
+    final router = _taskRouter();
+    addTearDown(router.dispose);
+    final repo = _Repo()..totalPages = 3;
+    await _pump(
+      tester,
+      repo,
+      router: router,
+      scope: const WarehouseTaskScope.warehouse('main-warehouse'),
+    );
+    await tester.enterText(find.byType(TextField).first, 'PK');
+    await tester.pump(const Duration(milliseconds: 450));
+    await _openReviewSection(tester);
+    final queue = tester.widget<MasterDataTableView<StockCountRequest>>(
+      find.byType(MasterDataTableView<StockCountRequest>),
+    );
+    await queue.onPageChange!(2);
+    await tester.pumpAndSettle();
+    expect(repo.queries.last.page, 2);
+    await tester.tap(find.text('查看明细'));
+    await tester.pumpAndSettle();
+    expect(find.text('返回审核列表'), findsNothing);
+    expect(find.byType(UtenBackButton), findsOneWidget);
+    await tester.tap(find.byType(UtenBackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
+    expect(
+      find.byType(MasterDataTableView<StockCountRequestLine>),
+      findsNothing,
+    );
+    expect(repo.queries.last.page, 2);
+    expect(repo.queries.last.keyword, 'PK');
+    expect(repo.queries.last.warehouse, 'main-warehouse');
+    expect(repo.queries.last.status, 'PENDING');
+    // 系统返回与顶栏箭头使用同一条局部历史。
+    await tester.tap(find.text('查看明细'));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
+    expect(repo.queries.last.page, 2);
+    await tester.tap(find.byType(UtenBackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('仓库模块入口'), findsOneWidget);
+    expect(find.byType(WarehouseTaskCenterPage), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('审批等待时反复返回不会退出详情或重复审核，成功后可直接返回入口', (tester) async {
+    final router = _taskRouter();
+    addTearDown(router.dispose);
+    final repo = _Repo()..pendingApproval = Completer<StockCountRequest>();
+    await _pump(tester, repo, router: router);
+    await _openReviewSection(tester);
+    await tester.tap(find.text('查看明细'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('stock-count-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('stock-count-review-confirm')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(repo.approvals, 1);
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await tester.tap(find.byType(UtenBackButton));
+      await tester.pump();
+      expect(
+        find.byType(MasterDataTableView<StockCountRequestLine>),
+        findsOneWidget,
+      );
+      expect(find.text('仓库模块入口'), findsNothing);
+    }
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    expect(
+      find.byType(MasterDataTableView<StockCountRequestLine>),
+      findsOneWidget,
+    );
+    expect(repo.approvals, 1);
+    repo.pendingApproval!.complete(repo.request('APPROVED'));
+    await tester.pumpAndSettle();
+    expect(find.text('暂无盘点申请'), findsOneWidget);
+    await tester.tap(find.byType(UtenBackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('仓库模块入口'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('切换仓库范围移除旧详情的局部返回历史', (tester) async {
+    final router = _taskRouter();
+    addTearDown(router.dispose);
+    final repo = _Repo();
+    final container = await _pump(tester, repo, router: router);
+    await _openReviewSection(tester);
+    await tester.tap(find.text('查看明细'));
+    await tester.pumpAndSettle();
+    container.read(_scope.notifier).state = const WarehouseTaskScope.warehouse(
+      'other-main',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
+    expect(repo.queries.last.warehouse, 'other-main');
+    await tester.tap(find.byType(UtenBackButton));
+    await tester.pumpAndSettle();
+    expect(find.text('仓库模块入口'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('审核入口与分类同源红1，点申请直接进入真正审核而非周期录入', (tester) async {
     final repo = _Repo();
     await _pump(tester, repo);
@@ -242,8 +381,15 @@ void main() {
     await tester.tap(find.text('查看明细'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('stock-count-approve')), findsOneWidget);
-    expect(find.text('返回审核列表'), findsOneWidget);
-    await tester.tap(find.text('返回审核列表'));
+    expect(find.text('返回审核列表'), findsNothing);
+    expect(find.textContaining('PK20261001000001 ·'), findsNothing);
+    expect(find.textContaining('提交人：'), findsNothing);
+    expect(find.text('塑料颗粒'), findsOneWidget);
+    // 宿主分类仍可导航；切换后重新进入待审段回到队列。
+    await tester.tap(_label('历史单据'));
+    await tester.pumpAndSettle();
+    expect(find.text('返回审核列表'), findsNothing);
+    await tester.tap(_label('盘点审核'));
     await tester.pumpAndSettle();
     expect(find.text('PK20261001000001'), findsOneWidget);
     expect(

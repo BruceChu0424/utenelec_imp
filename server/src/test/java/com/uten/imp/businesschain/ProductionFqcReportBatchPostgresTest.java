@@ -7,6 +7,7 @@ import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import com.uten.imp.features.production.execution.ProductionCompletionReverseService;
 import com.uten.imp.features.production.quality.ProductionFqcContracts.*;
 import com.uten.imp.features.production.quality.ProductionFqcInspectionService;
+import com.uten.imp.features.production.quality.ProductionFqcRecordQueryService;
 import com.uten.imp.features.production.quality.ProductionQualityMutationFootprintService;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.warehouse.finishedin.FinishedArrivalTestSupport;
@@ -65,9 +66,39 @@ class ProductionFqcReportBatchPostgresTest {
     @Autowired StockDocService stock;
     @Autowired ProductionFinishedArrivalRegistrationService arrivals;
     @Autowired ProductionFqcInspectionService quality;
+    @Autowired ProductionFqcRecordQueryService records;
     @MockitoSpyBean ProductionCompletionReverseService completion;
     @MockitoSpyBean ProductionQualityMutationFootprintService footprints;
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
+
+    @Test void searchQueuesAndDecisionRecordsUseLiteralWordsWithoutChangingPendingQuantities() {
+        Source source = source(2);
+        var inspection = quality.detail(source.ids().getFirst());
+        String name = "检索成品" + UUID.randomUUID() + "10%_";
+        String oldName = db.queryForObject("SELECT name FROM goods WHERE id=?",String.class,inspection.goodsId());
+        db.update("UPDATE goods SET name=? WHERE id=?",name,inspection.goodsId());
+        try {
+            String compound = "10%_\t" + inspection.reportNo();
+            var first = quality.list("ACTIVE",compound,null,1,1);
+            var second = quality.list("ACTIVE",compound,null,2,1);
+            assertEquals(2,first.getTotal());
+            assertNotEquals(first.getItems().getFirst().id(),second.getItems().getFirst().id());
+            amount("1",first.getItems().getFirst().remainingQty());
+            assertEquals(0,quality.list("ACTIVE","10__ "+inspection.reportNo(),null,1,20).getTotal());
+            var sheets = quality.listSheets("ACTIVE",compound,1,20);
+            assertEquals(1,sheets.getTotal());
+            assertEquals(2,sheets.getItems().getFirst().itemCount());
+            quality.decide(source.ids().getFirst(),new DecisionRequest("PASS",new BigDecimal(".25"),null,null,null,"search-decision-"+UUID.randomUUID()));
+            var result = records.list(null,compound,null,null,null,null,null,1,20,null,null,null,null,null);
+            assertEquals(1,result.total());
+            assertEquals(source.ids().getFirst(),result.items().getFirst().inspectionId());
+            amount(".25",result.items().getFirst().passQty());
+            assertEquals(1,records.facets(null,compound,null,null,null,null,null).get("sourceNo").size());
+            assertEquals(0,records.list(null,"10__ "+inspection.reportNo(),null,null,null,null,null,1,20,null,null,null,null,null).total());
+        } finally {
+            db.update("UPDATE goods SET name=? WHERE id=?",oldName,inspection.goodsId());
+        }
+    }
 
     @Test void mixedExactRowsCommitPhysicalSourcesAndReplayTheirOriginalLotAndSingleKeys() throws Exception {
         Source source = source(3);

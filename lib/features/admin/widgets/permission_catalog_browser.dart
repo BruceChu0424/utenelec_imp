@@ -1,3 +1,4 @@
+import '../../../shared/search/keyword_search.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/feedback/uten_empty.dart';
@@ -126,20 +127,21 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     final query = _query.trim().toLowerCase();
     final result = <_VisibleModule>[];
     for (final mod in _allModules()) {
-      final moduleMatches = mod.module.toLowerCase().contains(query);
       final fullPerms = <AdminPermission>[];
       final visibleSubcats = <_VisibleSubcat>[];
       for (final g in mod.groups) {
         fullPerms.addAll(g.permissions);
-        final catMatches = g.category.toLowerCase().contains(query);
         final visible = g.permissions
             .where((p) {
               if (!_matchesState(p) || !_matchesAction(p)) return false;
-              if (query.isEmpty || moduleMatches || catMatches) return true;
-              return p.name.toLowerCase().contains(query) ||
-                  p.code.toLowerCase().contains(query) ||
-                  p.actionType.label.toLowerCase().contains(query) ||
-                  (p.description?.toLowerCase().contains(query) ?? false);
+              return matchesKeywordSearch([
+                p.name,
+                p.code,
+                mod.module,
+                g.category,
+                p.actionType.label,
+                p.description,
+              ], query);
             })
             .toList(growable: false);
         if (visible.isNotEmpty) {

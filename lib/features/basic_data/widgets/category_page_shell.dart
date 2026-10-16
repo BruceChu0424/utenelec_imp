@@ -15,6 +15,8 @@
 //  - client/supplier 用默认的简版删除确认。
 //
 // 不改任何业务语义/文案/TODO(l10n)；渲染与交互只在这一处维护。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
@@ -180,10 +182,10 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   // 顶部统一搜索（分类名 + 内容名）→ 定位分类：visibleFilterIds 驱动树只显示命中分类 + 祖先链。
   Set<String>? _visibleFilterIds;
   String _globalQuery = '';
-  Set<String> _contentMatchCategoryIds = {};
   bool _searchLoading = false;
   String? _searchError;
   bool _acceptPendingSearch = false;
+  Timer? _shellSearchDebounce;
 
   // 顶部搜索命中内容时，右侧内容列表同步按该关键词过滤（只显示搜索结果，而非该分类全部）；
   // 清空搜索 / 仅分类名命中 / 手动点树节点时复位为 null。
@@ -232,49 +234,64 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   // ---- 顶部统一搜索（分类名 + 内容名 → 定位分类）----------------------------
 
   void _onGlobalSearchInput(String raw) {
+    _shellSearchDebounce?.cancel();
     _searchRequests.begin();
     final tree = _tree;
-    if (!mounted || tree == null || tree.isEmpty) return;
+    if (!mounted) return;
     final q = raw.trim();
     _acceptPendingSearch = true;
     setState(() {
       _globalQuery = q;
-      _contentMatchCategoryIds = {};
-      _treeSearchKeyword = null;
       _searchError = null;
-      _visibleFilterIds = q.isEmpty ? null : categoryHits(tree, q);
+      _visibleFilterIds = q.isEmpty
+          ? null
+          : categoryHits(tree ?? const <ProductCategoryNode>[], q);
       _searchLoading = q.isNotEmpty;
     });
+    // Keep debounce alive when the input moves between an empty state, the
+    // split view and a compact hierarchy panel.
+    if (q.isEmpty) {
+      _onGlobalSearch(q);
+    } else {
+      _shellSearchDebounce = Timer(
+        const Duration(milliseconds: 300),
+        () => _onGlobalSearch(q),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _shellSearchDebounce?.cancel();
+    super.dispose();
   }
 
   void _onGlobalSearch(String raw) {
     final q = raw.trim();
-    if (!_acceptPendingSearch || q != _globalQuery) return;
+    if (!mounted || !_acceptPendingSearch || q != _globalQuery) return;
+    _shellSearchDebounce?.cancel();
     _acceptPendingSearch = false;
     _applyGlobalSearch(q);
   }
 
   Future<void> _applyGlobalSearch(String q) async {
     final tree = _tree;
-    if (tree == null || tree.isEmpty) return;
     final generation = _searchRequests.begin();
     if (q.isEmpty) {
       setState(() {
         _globalQuery = '';
         _visibleFilterIds = null; // 清空：恢复全树
         _treeSearchKeyword = null; // 同时解除右侧列表的搜索过滤
-        _contentMatchCategoryIds = {};
         _searchLoading = false;
         _searchError = null;
       });
       return;
     }
-    final catHits = categoryHits(tree, q);
+    final catHits = categoryHits(tree ?? const <ProductCategoryNode>[], q);
     setState(() {
       _globalQuery = q;
       _visibleFilterIds = catHits;
-      _contentMatchCategoryIds = {};
-      _treeSearchKeyword = null;
+      _treeSearchKeyword = q;
       _searchLoading = true;
       _searchError = null;
     });
@@ -283,21 +300,21 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         q,
         () => mounted && _searchRequests.isCurrent(generation),
       );
-      if (contentCategoryIds == null) return;
+      if (contentCategoryIds == null ||
+          !mounted ||
+          !_searchRequests.isCurrent(generation)) {
+        return;
+      }
       final resolution = resolveHierarchySearch(
-        roots: tree,
+        roots: tree ?? const <ProductCategoryNode>[],
         query: q,
         contentCategoryIds: contentCategoryIds,
       );
       setState(() {
         _visibleFilterIds = resolution.visibleIds;
-        _contentMatchCategoryIds = resolution.contentCategoryIds;
-        _treeSearchKeyword = resolution.hasContentMatches ? q : null;
+        _treeSearchKeyword = q;
         _searchLoading = false;
         _searchError = null;
-        if (resolution.selectedId != null) {
-          _selectedId = resolution.selectedId;
-        }
       });
     } on ApiException catch (e) {
       if (!mounted || !_searchRequests.isCurrent(generation)) return;
@@ -316,18 +333,14 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   }
 
   void _selectCategory(String id) {
+    // The tree is a search hint. It must never truncate the flat global list
+    // or replace the browsing category restored when the query is cleared.
+    if (_globalQuery.isNotEmpty) return;
     _searchRequests.begin();
     _acceptPendingSearch = false;
-    final keepKeyword =
-        _globalQuery.isNotEmpty &&
-        hierarchyBranchContainsAny(
-          _tree ?? const <ProductCategoryNode>[],
-          id,
-          _contentMatchCategoryIds,
-        );
     setState(() {
       _selectedId = id;
-      _treeSearchKeyword = keepKeyword ? _globalQuery : null;
+      _treeSearchKeyword = null;
       _searchLoading = false;
     });
   }
@@ -425,6 +438,8 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 顶部搜索命中内容时的右栏同步关键词（DetailPane externalKeyword 用）。
   String? get shellTreeSearchKeyword => _treeSearchKeyword;
 
+  bool get shellSearchPending => _acceptPendingSearch;
+
   /// 当前分类树（product 页分批搜索钩子需要根节点列表；其它页面一般用不到）。
   List<ProductCategoryNode>? get shellTree => _tree;
 
@@ -518,6 +533,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   Widget buildShell(
     BuildContext context, {
     required Widget Function(ProductCategoryNode selected) detailPaneBuilder,
+    Widget Function(String query)? searchPaneBuilder,
   }) => FormDraftDialogResume(
     descriptor: shellCategoryDraftDescriptor,
     ready: _tree != null && !_loading,
@@ -532,12 +548,14 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     child: _buildDraftCategoryHost(
       context,
       detailPaneBuilder: detailPaneBuilder,
+      searchPaneBuilder: searchPaneBuilder,
     ),
   );
 
   Widget _buildDraftCategoryHost(
     BuildContext context, {
     required Widget Function(ProductCategoryNode selected) detailPaneBuilder,
+    Widget Function(String query)? searchPaneBuilder,
   }) {
     final theme = Theme.of(context);
     final bp = context.breakpoint;
@@ -560,7 +578,12 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         selectedLeadingKey: _selectedId,
         compactHeader: _buildGlobalSearchBox(),
         leading: _buildTree(onSelect: _selectCategory),
-        trailing: selected == null
+        trailing: _treeSearchKeyword != null && searchPaneBuilder != null
+            ? KeyedSubtree(
+                key: ValueKey('shell-global-search-$_shellDetailEpoch'),
+                child: searchPaneBuilder(_treeSearchKeyword!),
+              )
+            : selected == null
             ? Center(
                 child: Text(
                   '请选择分类查看详情', // TODO(l10n): 补 arb
@@ -586,13 +609,22 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         actionLabel: '重试', // TODO(l10n): 补 arb
         onAction: shellReload,
       );
-    } else if (tree.isEmpty) {
-      body = UtenEmpty(
-        icon: shellEmptyIcon,
-        message: '暂无$shellContentNoun分类', // TODO(l10n): 补 arb
-        description: canCreate ? '还没有任何分类，新建第一个吧' : null, // TODO(l10n): 补 arb
-        actionLabel: canCreate ? '新建分类' : null, // TODO(l10n): 补 arb
-        onAction: canCreate ? () => shellShowCreateDialog() : null,
+    } else if (tree.isEmpty && _globalQuery.isEmpty) {
+      body = Column(
+        children: [
+          _buildGlobalSearchBox(),
+          Expanded(
+            child: UtenEmpty(
+              icon: shellEmptyIcon,
+              message: '暂无$shellContentNoun分类', // TODO(l10n): 补 arb
+              description: canCreate
+                  ? '还没有任何分类，新建第一个吧'
+                  : null, // TODO(l10n): 补 arb
+              actionLabel: canCreate ? '新建分类' : null, // TODO(l10n): 补 arb
+              onAction: canCreate ? () => shellShowCreateDialog() : null,
+            ),
+          ),
+        ],
       );
     } else {
       body = mainLayout();

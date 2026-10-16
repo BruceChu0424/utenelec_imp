@@ -55,6 +55,7 @@ class StockCountCandidateCategoriesPostgresTest {
                 CREATE TABLE material_categories(id uuid PRIMARY KEY,code text,name text,parent_id uuid,level integer DEFAULT 0,
                   sort_order integer DEFAULT 0,is_deleted boolean DEFAULT false);
                 CREATE TABLE goods(id uuid PRIMARY KEY,code text,name text,category_id uuid,color_id uuid,unit_id uuid,
+                  code_sequence bigint NOT NULL CHECK(code_sequence>0),
                   version bigint DEFAULT 2,issue_method text DEFAULT 'ORDER',status text DEFAULT '使用',
                   is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false,
                   stock_place text,model text,spec text,owning_warehouse_id uuid);
@@ -244,6 +245,38 @@ class StockCountCandidateCategoriesPostgresTest {
                 .isEqualTo("hasAuthority('stock:count:submit')");
     }
 
+    @Test void categoryWordsMatchAllEligibleDescendantsAndRankBeforeIncidentalContainsWithStablePaging() {
+        UUID root=category("ROOT","物料",null),screws=category("SCREWS","螺丝类",root),coated=category("COATED","镀锌件",screws);
+        UUID other=category("OTHER","轨道螺丝",root);
+        UUID exact=goods("螺丝","完整编号",root,kg,null);
+        UUID branch=goods("Z-3","圆头件",coated,kg,null);
+        UUID approximate=goods("A-1","其它件",other,kg,null);
+        db.update("UPDATE goods SET model='M3_20%' WHERE id IN (?,?)",branch,approximate);
+        UUID lookalike=goods("Z-4","圆头件",coated,kg,null);
+        db.update("UPDATE goods SET model='M3X20A' WHERE id=?",lookalike);
+        assertThat(service.candidates(bin,"螺丝",null,root,1,1).getItems().getFirst()).containsEntry("goodsId",exact);
+        var first=service.candidates(bin,"螺丝 M3_20%",null,root,1,1);
+        var second=service.candidates(bin,"螺丝 M3_20%",null,root,2,1);
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(first.getItems().getFirst()).containsEntry("goodsId",branch);
+        assertThat(second.getItems().getFirst()).containsEntry("goodsId",approximate);
+        assertThat(service.candidateCategoryIds(bin,"螺丝 M3_20%")).containsExactlyInAnyOrder(coated,other);
+        db.update("UPDATE goods SET auto_created=true WHERE id=?",branch);
+        assertThat(service.candidates(bin,"螺丝 M3_20%",null,root,1,50).getItems())
+                .extracting(row->row.get("goodsId")).containsExactly(approximate);
+    }
+
+    @Test void relocationUsesTheBestRecordRankBeforeCategoryUuidOrder(){
+        UUID a=category("A","分区甲",null),b=category("B","分区乙",null);
+        UUID exactCategory=a.toString().compareTo(b.toString())>0?a:b;
+        UUID approximateCategory=exactCategory.equals(a)?b:a;
+        UUID exact=goods("PART-001","精确零件",exactCategory,kg,null);
+        UUID approximate=goods("OTHER","普通件",approximateCategory,kg,null);
+        db.update("UPDATE goods SET model='供PART-001使用' WHERE id=?",approximate);
+        assertThat(service.candidateCategoryIds(bin,"PART-001")).containsExactly(exactCategory,approximateCategory);
+        assertThat(service.candidates(bin,"PART-001",null,1,1).getItems().getFirst()).containsEntry("goodsId",exact);
+    }
+
     private void as(String... permissions) {
         when(user.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"count-categories",
                 Set.of(permissions),false,true,false)));
@@ -252,7 +285,7 @@ class StockCountCandidateCategoriesPostgresTest {
         UUID id=UUID.randomUUID();db.update("INSERT INTO material_categories(id,code,name,parent_id) VALUES (?,?,?,?)",id,code,name,parent);return id;
     }
     private UUID goods(String code,String name,UUID category,UUID unit,UUID color) {
-        UUID id=UUID.randomUUID();db.update("INSERT INTO goods(id,code,name,category_id,unit_id,color_id) VALUES (?,?,?,?,?,?)",id,code,name,category,unit,color);return id;
+        UUID id=UUID.randomUUID();db.update("INSERT INTO goods(id,code,name,category_id,unit_id,color_id,code_sequence) VALUES (?,?,?,?,?,?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",id,code,name,category,unit,color);return id;
     }
     private UUID color(String name) { UUID id=UUID.randomUUID();db.update("INSERT INTO colors(id,name) VALUES (?,?)",id,name);return id; }
     private static void assertForbidden(Runnable operation) {

@@ -14,7 +14,7 @@ void main() {
           _app(_categories(), width: 240, platform: platform),
         );
         await tester.pumpAndSettle();
-        final title = find.text('外贸钟(KF000001)');
+        final title = find.text('外贸钟');
         final row = find
             .ancestor(of: title, matching: find.byType(InkWell))
             .first;
@@ -31,8 +31,8 @@ void main() {
     await tester.pumpWidget(_app(_categories(), width: 240));
 
     expect(
-      tester.getTopLeft(find.text('外贸钟(KF000001)')).dx,
-      tester.getTopLeft(find.text('外贸刘(KF000003)')).dx,
+      tester.getTopLeft(find.text('外贸钟')).dx,
+      tester.getTopLeft(find.text('外贸刘')).dx,
     );
   });
 
@@ -41,7 +41,7 @@ void main() {
 
     expect(
       tester.getCenter(find.byIcon(Icons.chevron_right_rounded)).dy,
-      tester.getCenter(find.text('外贸钟(KF000001)')).dy,
+      tester.getCenter(find.text('外贸钟')).dy,
     );
   });
 
@@ -52,7 +52,7 @@ void main() {
 
     expect(
       tester.getCenter(find.byIcon(Icons.check_circle_rounded)).dy,
-      tester.getCenter(find.text('外贸钟(KF000001)')).dy,
+      tester.getCenter(find.text('外贸钟')).dy,
     );
   });
 
@@ -89,15 +89,15 @@ void main() {
 
   testWidgets('展开后只显示原分类标题且完整祖先路径仍可读取', (tester) async {
     await tester.pumpWidget(_app(_categories(), width: 240));
-    await tester.tap(find.byTooltip('展开外贸钟(KF000001)'));
+    await tester.tap(find.byTooltip('展开外贸钟'));
     await tester.pump();
 
-    expect(find.text('美国客户(KF000002)'), findsOneWidget);
+    expect(find.text('美国客户'), findsOneWidget);
     expect(find.textContaining('第2层'), findsNothing);
-    expect(find.byTooltip('外贸钟 / 美国客户(KF000002)'), findsOneWidget);
+    expect(find.byTooltip('外贸钟 / 美国客户'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.text('美国客户(KF000002)')).dx,
-      tester.getTopLeft(find.text('外贸刘(KF000003)')).dx,
+      tester.getTopLeft(find.text('美国客户')).dx,
+      tester.getTopLeft(find.text('外贸刘')).dx,
     );
     expect(tester.takeException(), isNull);
   });
@@ -105,7 +105,7 @@ void main() {
   testWidgets('长名称在各字体比例保持一行且选中和展开语义不变', (tester) async {
     final semantics = tester.ensureSemantics();
     const name = '完整名称与编号需要保留供辅助阅读的长客户分类';
-    const label = '$name(LONG001)';
+    const label = name;
     try {
       for (final scale in [0.8, 1.0, 1.6]) {
         await tester.pumpWidget(
@@ -172,23 +172,23 @@ void main() {
       ),
     );
 
-    final expand = find.byTooltip('展开外贸钟(KF000001)');
+    final expand = find.byTooltip('展开外贸钟');
     final button = find.byType(IconButton);
     expect(expand, findsOneWidget);
     expect(tester.getSize(button), const Size(48, 48));
     expect(
-      tester.getTopLeft(find.text('外贸钟(KF000001)')).dx,
-      tester.getTopLeft(find.text('外贸刘(KF000003)')).dx,
+      tester.getTopLeft(find.text('外贸钟')).dx,
+      tester.getTopLeft(find.text('外贸刘')).dx,
     );
-    await tester.tap(find.text('外贸钟(KF000001)'));
+    await tester.tap(find.text('外贸钟'));
     await tester.pump();
     expect(selected, ['branch']);
-    expect(find.text('美国客户(KF000002)'), findsNothing);
+    expect(find.text('美国客户'), findsNothing);
 
     await tester.tap(button);
     await tester.pump();
     expect(selected, ['branch']);
-    expect(find.text('美国客户(KF000002)'), findsOneWidget);
+    expect(find.text('美国客户'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -204,14 +204,14 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('外贸钟(KF000001)'));
+    await tester.tap(find.text('外贸钟'));
     await tester.pump();
-    expect(find.text('美国客户(KF000002)'), findsOneWidget);
+    expect(find.text('美国客户'), findsOneWidget);
     expect(selected, isEmpty);
-    await tester.tap(find.text('外贸刘(KF000003)'));
+    await tester.tap(find.text('外贸刘'));
     await tester.pump();
     expect(selected, isEmpty);
-    await tester.tap(find.text('美国客户(KF000002)'));
+    await tester.tap(find.text('美国客户'));
     await tester.pump();
     expect(selected, ['child']);
     expect(tester.takeException(), isNull);

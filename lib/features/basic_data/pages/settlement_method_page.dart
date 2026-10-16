@@ -1,3 +1,4 @@
+import '../../../shared/search/keyword_search.dart';
 // 结算方式管理页（基础资料 · 扁平字典 + 账期策略维护，V453）。
 //
 // 结算方式是销售/采购/委外结账条件与应付到期日的 UUID 权威字典（ADR-035/047）。
@@ -132,15 +133,20 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage> {
 
   List<SettlementMethodAdminItem> get _filtered {
     final items = _items ?? const <SettlementMethodAdminItem>[];
-    final kw = _keyword.trim();
-    if (kw.isEmpty) return items;
-    return items
-        .where(
-          (m) =>
-              m.name.toLowerCase().contains(kw.toLowerCase()) ||
-              (m.code ?? '').toLowerCase().contains(kw.toLowerCase()),
-        )
+    if (_keyword.trim().isEmpty) return items;
+    final result = items
+        .where((item) => matchesKeywordSearch([item.name, item.code], _keyword))
         .toList();
+    final order = {
+      for (var index = 0; index < items.length; index++) items[index].id: index,
+    };
+    result.sort((a, b) {
+      final rankA = keywordSearchRank([a.name, a.code], _keyword)!;
+      final rankB = keywordSearchRank([b.name, b.code], _keyword)!;
+      final rank = rankA.compareTo(rankB);
+      return rank != 0 ? rank : order[a.id]!.compareTo(order[b.id]!);
+    });
+    return result;
   }
 
   // ---- 新增（可随带账期） ------------------------------------------------

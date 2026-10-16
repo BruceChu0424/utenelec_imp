@@ -16,6 +16,7 @@ import '../../features/warehouse/models/stock_doc.dart';
 import '../../features/finance/providers/finance_name_provider.dart';
 import '../../features/sales/providers/master_name_provider.dart';
 import '../auth/permissions.dart';
+import '../search/keyword_search.dart';
 import '../mixins/draft_bulk_delete_mixin.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../providers/draft_counts_provider.dart';
@@ -366,31 +367,22 @@ class _DraftWorkspaceTableState extends ConsumerState<DraftWorkspaceTable>
         .where((draft) => !isTaskFormDraft(draft))
         .toList();
     final search = '${widget.search} $_search'.trim().toLowerCase();
-    final searchable =
-        mergeDraftWorkspaceRows(
-              formal,
-              local,
-              resolveLocalParty: _resolveLocalParty,
-            )
-            .where(
-              (row) =>
-                  search.isEmpty ||
-                  [
-                        row.category,
-                        row.billNo,
-                        row.billDate,
-                        row.party,
-                        row.amount,
-                        row.local == null
-                            ? null
-                            : formDraftColumnValue(row.local!, 'remark'),
-                      ]
-                      .whereType<String>()
-                      .join(' ')
-                      .toLowerCase()
-                      .contains(search),
-            )
-            .toList();
+    final searchable = rankedKeywordMatches(
+      mergeDraftWorkspaceRows(
+        formal,
+        local,
+        resolveLocalParty: _resolveLocalParty,
+      ),
+      search,
+      fields: (row) => [
+        row.category,
+        row.billNo,
+        row.billDate,
+        row.party,
+        row.amount,
+        row.local == null ? null : formDraftColumnValue(row.local!, 'remark'),
+      ],
+    );
     final productionOnly =
         _kinds.isNotEmpty &&
         _kinds.every(

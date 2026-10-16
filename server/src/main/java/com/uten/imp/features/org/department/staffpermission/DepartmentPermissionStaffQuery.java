@@ -2,13 +2,13 @@ package com.uten.imp.features.org.department.staffpermission;
 
 import com.uten.imp.features.org.department.staffpermission
         .OrganizationPermissionManagementScopeService.StaffSearchAuthority;
+import com.uten.imp.common.util.KeywordSearch;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 /** Bounded, server-filtered employee projection for the permission workspace. */
@@ -38,7 +38,7 @@ public class DepartmentPermissionStaffQuery {
         int page = Math.max(1, requestedPage);
         int size = Math.min(Math.max(1, requestedSize), 50);
         String normalized = search == null ? "" : search.trim();
-        boolean hasSearch = !normalized.isEmpty();
+        boolean hasSearch = !KeywordSearch.terms(normalized).isEmpty();
 
         List<Object> parameters = new ArrayList<>();
         String cte = scopeCte(authority, selectedDepartmentId, parameters);
@@ -47,14 +47,10 @@ public class DepartmentPermissionStaffQuery {
             filter.append(" AND employee.id <> ?\n");
             parameters.add(excludedEmployeeId);
         }
-        if (hasSearch) {
-            filter.append("""
-                      AND (
-                          lower(employee.code) LIKE ? ESCAPE '!'
-                          OR lower(employee.full_name) LIKE ? ESCAPE '!'
-                      )
-                    """);
-            String pattern = "%" + escapeLike(normalized.toLowerCase(Locale.ROOT)) + "%";
+        for (String term : KeywordSearch.terms(normalized)) {
+            filter.append(" AND (lower(employee.code) LIKE ? ESCAPE '\\'"
+                    + " OR lower(employee.full_name) LIKE ? ESCAPE '\\')\n");
+            String pattern = KeywordSearch.containsPattern(term);
             parameters.add(pattern);
             parameters.add(pattern);
         }
@@ -66,6 +62,16 @@ public class DepartmentPermissionStaffQuery {
         long total = count == null ? 0L : count;
 
         List<Object> pageParameters = new ArrayList<>(parameters);
+        String rankOrder = "";
+        if (hasSearch) {
+            String phrase=KeywordSearch.phrase(normalized);
+            pageParameters.add(phrase); pageParameters.add(phrase);
+            pageParameters.add(KeywordSearch.prefixPattern(phrase)); pageParameters.add(KeywordSearch.prefixPattern(phrase));
+            pageParameters.add(KeywordSearch.containsPattern(phrase)); pageParameters.add(KeywordSearch.containsPattern(phrase));
+            rankOrder="CASE WHEN lower(trim(employee.code))=? OR lower(trim(employee.full_name))=? THEN 0"
+                    + " WHEN lower(employee.code) LIKE ? ESCAPE '\\' OR lower(employee.full_name) LIKE ? ESCAPE '\\' THEN 1"
+                    + " WHEN lower(employee.code) LIKE ? ESCAPE '\\' OR lower(employee.full_name) LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END, ";
+        }
         pageParameters.add(size);
         pageParameters.add((long) (page - 1) * size);
         List<StaffProjection> rows = jdbc.query(
@@ -81,10 +87,7 @@ public class DepartmentPermissionStaffQuery {
                         """
                         + filter
                         + "\n"
-                        + """
-                        ORDER BY employee.full_name, employee.code, employee.id
-                        LIMIT ? OFFSET ?
-                        """,
+                        + "ORDER BY " + rankOrder + "employee.full_name, employee.code, employee.id LIMIT ? OFFSET ?",
                 (rs, rowNum) -> new StaffProjection(
                         rs.getObject("id", UUID.class),
                         rs.getString("code"),
@@ -201,13 +204,6 @@ public class DepartmentPermissionStaffQuery {
             throw new IllegalArgumentException(
                     "manager employee is required for organization scope");
         }
-    }
-
-    private static String escapeLike(String value) {
-        return value
-                .replace("!", "!!")
-                .replace("%", "!%")
-                .replace("_", "!_");
     }
 
     public record StaffProjection(

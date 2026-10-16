@@ -4209,7 +4209,7 @@ void main() {
   );
 
   testWidgets(
-    'BOM child search keeps its product header and nonmatching ancestor context',
+    'BOM multiword child search keeps its product header and nonmatching ancestor context',
     (tester) async {
       final json = _makeTreeAnalysisJson()..['allowedActions'] = const ['VIEW'];
       final materials = (json['flatMaterials'] as List<dynamic>)
@@ -4221,6 +4221,9 @@ void main() {
         ..['allocatedAvailableQty'] = 10
         ..['availableQty'] = 10
         ..['shortageQty'] = 0;
+      materials.firstWhere(
+        (material) => material['materialLineId'] == 'buy-child',
+      )['spec'] = 'M3_20%';
 
       await _pumpPage(
         tester,
@@ -4239,7 +4242,7 @@ void main() {
         300,
         scrollable: find.byType(Scrollable).first,
       );
-      await tester.enterText(search, '外箱依赖');
+      await tester.enterText(search, '外箱依赖 M3_20%');
       // UtenSearchBar 内置 300ms 防抖：先推进时间让过滤生效，再等帧稳定。
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();

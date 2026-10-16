@@ -44,7 +44,7 @@ void main() {
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
     );
-    expect(tree.selectedIds, {'section-b'});
+    expect(tree.selectedIds, {'section-a'});
     expect(repository.searchPolicies, everyElement((true, true)));
 
     await tester.tap(find.text('连接器乙'));
@@ -154,10 +154,13 @@ void main() {
     expect(tree.visibleFilterIds, {'section-a', 'section-b'});
     expect(tree.selectedIds, {'section-a'});
 
-    // 搜索期间改点另一个命中分类，关键词保留，并切换为该分类内搜索。
-    await tester.tap(find.text('分区乙(B)'));
+    // 搜索期间树只作提示，点分类仍保留全部匹配结果。
+    final listCallsBeforeTap = goodsRepository.listCalls.length;
+    await tester.tap(find.text('分区乙'));
     await tester.pumpAndSettle();
-    expect(goodsRepository.listCalls.last, ('section-b', 'G-'));
+    expect(goodsRepository.listCalls.length, listCallsBeforeTap);
+    expect(find.text('连接器甲'), findsOneWidget);
+    expect(find.text('连接器乙'), findsOneWidget);
     expect(tester.widget<TextField>(_searchTextField()).controller?.text, 'G-');
 
     // 清除只退出搜索，保留当前位置并恢复分类列表（UtenSearchBar 内置清除按钮）。
@@ -168,13 +171,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(goodsRepository.listCalls.last, ('section-b', null));
+    expect(goodsRepository.listCalls.last, ('section-a', null));
     final clearedTree = tester
         .widget<UtenCategoryTreeView<ProductCategoryNode>>(
           find.byType(UtenCategoryTreeView<ProductCategoryNode>),
         );
     expect(clearedTree.visibleFilterIds, isNull);
-    expect(clearedTree.selectedIds, {'section-b'});
+    expect(clearedTree.selectedIds, {'section-a'});
   });
 
   testWidgets('右侧列表与货品资料同款排序（编号升序）', (tester) async {
@@ -185,7 +188,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 点分类：分类列表通道带编号升序（与货品资料页 defaultSortKey: 'code' 同款）。
-    await tester.tap(find.text('分区乙(B)'));
+    await tester.tap(find.text('分区乙'));
     await tester.pumpAndSettle();
     expect(goodsRepository.listSortOrders.single, ('code', 'asc'));
 
@@ -210,7 +213,7 @@ void main() {
     expect(find.text('范围外原料(RAW-001)'), findsNothing);
   });
 
-  testWidgets('纯分类命中后点分类不把分类词当成货品关键词', (tester) async {
+  testWidgets('服务端空结果不回退整类列表，点分类也不截断全局搜索', (tester) async {
     final goodsRepository = _FakeGoodsRepository(categoryOnlyQuery: '分区');
     await _pumpPicker(tester, goodsRepository);
 
@@ -222,12 +225,13 @@ void main() {
 
     expect(goodsRepository.searchQueries, ['分区']);
     expect(goodsRepository.searchCategoryIdQueries, ['分区']);
-    expect(goodsRepository.listCalls.last, ('section-a', null));
+    expect(goodsRepository.listCalls, isEmpty);
+    expect(find.text('连接器甲'), findsNothing);
 
-    await tester.tap(find.text('分区乙(B)'));
+    await tester.tap(find.text('分区乙'));
     await tester.pumpAndSettle();
 
-    expect(goodsRepository.listCalls.last, ('section-b', null));
+    expect(goodsRepository.listCalls, isEmpty);
     expect(
       tester.widget<TextField>(_searchTextField()).controller?.text,
       '分区',
@@ -291,6 +295,39 @@ void main() {
     expect(find.text('搜索货品失败，请稍后重试'), findsNothing);
   });
 
+  testWidgets('定位未完成时点分类不产生分类请求，仍等待全局关键词结果', (tester) async {
+    final repository = _FakeGoodsRepository(delayedQuery: '分区');
+    await _pumpPicker(tester, repository);
+    await tester.tap(find.byKey(const Key('open-goods-picker')));
+    await tester.pumpAndSettle();
+    await tester.enterText(_searchEditable(), '分区');
+    await tester.pump(const Duration(milliseconds: 301));
+
+    // 分类名可立即命中，货品定位尚在请求中；此时不得把搜索悄悄变成全分类浏览。
+    await tester.tap(find.text('分区乙'));
+    await tester.pump();
+    expect(repository.listCalls, isEmpty);
+    repository.completeDelayedSearch(const [_goodsA]);
+    await tester.pumpAndSettle();
+    expect(repository.listCalls, isEmpty);
+    expect(tester.widget<TextField>(_searchTextField()).controller?.text, '分区');
+  });
+
+  testWidgets('输入防抖期间点分类不取消全局搜索', (tester) async {
+    final repository = _FakeGoodsRepository();
+    await _pumpPicker(tester, repository);
+    await tester.tap(find.byKey(const Key('open-goods-picker')));
+    await tester.pumpAndSettle();
+    await tester.enterText(_searchEditable(), '分区');
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('分区乙'));
+    await tester.pumpAndSettle();
+    expect(repository.listCalls, isEmpty);
+    expect(repository.searchQueries, ['分区']);
+    expect(find.text('连接器甲'), findsOneWidget);
+    expect(find.text('连接器乙'), findsOneWidget);
+  });
+
   testWidgets('单根提升 + 无缩进层级色 + 可拖分割线', (tester) async {
     final goodsRepository = _FakeGoodsRepository();
     await _pumpPicker(tester, goodsRepository);
@@ -299,9 +336,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // sellable 过滤后只剩单根「成品」，自动提升：包装根不再显示，直接列子类。
-    expect(find.text('成品(FINISHED)'), findsNothing);
-    expect(find.text('分区甲(A)'), findsOneWidget);
-    expect(find.text('分区乙(B)'), findsOneWidget);
+    expect(find.text('成品'), findsNothing);
+    expect(find.text('分区甲'), findsOneWidget);
+    expect(find.text('分区乙'), findsOneWidget);
 
     // medium+ 布局换成 UtenSplitView（可拖分割线，货品资料页同款）。
     expect(find.byType(UtenSplitView), findsOneWidget);
@@ -346,7 +383,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 懒载：先点根分类（提升后 = 分区甲）加载货品列表，再点货品行勾选。
-    await tester.tap(find.text('分区甲(A)'));
+    await tester.tap(find.text('分区甲'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('连接器甲'));
     await tester.pumpAndSettle();
@@ -359,7 +396,7 @@ void main() {
     expect(pickedTile.selected, isTrue);
     expect(pickedTile.selectedTileColor, UtenColors.tableSelectedRow);
     // 切到分区乙再勾一条。
-    await tester.tap(find.text('分区乙(B)'));
+    await tester.tap(find.text('分区乙'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('连接器乙'));
     await tester.pumpAndSettle();

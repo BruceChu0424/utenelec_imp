@@ -47,7 +47,7 @@ class FinanceReportUnitsPostgresTest {
         MigratedProjectionSchema.createCurrentTables(db,"finance_receipts","finance_receipt_lines","finance_payments",
                 "finance_expenses","finance_expense_items","finance_other_incomes","finance_other_income_items",
                 "finance_reconciliations","account_flow_monthly_summaries","ar_ap_ledger","ar_ap_source_refs","accounts","clients","suppliers",
-                "currencies","employees","departments","payment_styles","client_director_v","sales_orders",
+                "currencies","employees","departments","payment_styles","client_director_v","client_categories","supplier_categories","sales_orders",
                 "sales_order_items","sales_shipments","sales_shipment_items","customer_open_item_offset_batches","customer_open_item_offsets");
         EntityManager em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         var access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
@@ -64,6 +64,7 @@ class FinanceReportUnitsPostgresTest {
     @BeforeEach void reset(){db.execute("TRUNCATE finance_receipts,finance_receipt_lines,finance_payments,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,finance_reconciliations,ar_ap_ledger");}
     private static Query query(String sql){
         Query query=mock(Query.class);Map<String,Object> parameters=new LinkedHashMap<>();
+        when(query.setMaxResults(anyInt())).thenReturn(query);
         when(query.setParameter(anyString(),any())).thenAnswer(call->{parameters.put(call.getArgument(0),call.getArgument(1));return query;});
         when(query.getResultList()).thenAnswer(call->named.query(sql,parameters,(rs,index)->{
             Object[] row=new Object[rs.getMetaData().getColumnCount()];var aliases=new java.util.ArrayList<String>();
@@ -141,6 +142,24 @@ class FinanceReportUnitsPostgresTest {
         assertThat(result.totals()).anyMatch(t->t.key().equals("inAmount")&&"美金".equals(t.unitLabel()));
     }
 
+    @Test void accountSearchMatchesAllWordsLiterallyAfterRunningBalancesAndBeforePagingTotalsAndFacets(){
+        db.update("INSERT INTO finance_reconciliations(id,account_id,bill_date,bill_no,posting_seq,in_amount,out_amount) VALUES (gen_random_uuid(),?,?,'OPENING',1,100,0)",ACCOUNT,DATE.minusDays(1));
+        db.update("INSERT INTO finance_reconciliations(id,account_id,bill_date,bill_no,posting_seq,counterpart_name,remark,in_amount,out_amount) VALUES (gen_random_uuid(),?,?,'A%_B',2,'张三','办公',10,0),(gen_random_uuid(),?,?,'HIDDEN',3,'其他','不应显示',20,0),(gen_random_uuid(),?,?,'A%_B-2',4,'张三','办公',0,5),(gen_random_uuid(),?,?,'AxYB',5,'张三','办公',9,0)",
+                ACCOUNT,DATE,ACCOUNT,DATE,ACCOUNT,DATE,ACCOUNT,DATE);
+        var first=reports.accountStatement(ACCOUNT,DATE,DATE,"张三\u3000A%_B",1,1);
+        var second=reports.accountStatement(ACCOUNT,DATE,DATE,"张三 A%_B",2,1);
+        assertThat(first.total()).isEqualTo(2);assertThat(first.totalPages()).isEqualTo(2);
+        assertThat(first.rows().getFirst()).containsEntry("billNo","A%_B");
+        assertThat(second.rows().getFirst()).containsEntry("billNo","A%_B-2");
+        assertThat((BigDecimal)first.rows().getFirst().get("balance")).isEqualByComparingTo("113");
+        assertThat((BigDecimal)second.rows().getFirst().get("balance")).isEqualByComparingTo("128");
+        assertThat(first.totals().stream().filter(total->total.key().equals("inAmount")).findFirst().orElseThrow().groups().getFirst().value()).isEqualByComparingTo("10");
+        assertThat(first.totals().stream().filter(total->total.key().equals("outAmount")).findFirst().orElseThrow().groups().getFirst().value()).isEqualByComparingTo("5");
+        assertThat(reports.accountStatementFacets(ACCOUNT,DATE,DATE,"张三 A%_B").get("billNo"))
+                .extracting(row->row.get("value")).containsExactly("A%_B","A%_B-2");
+        assertThat(reports.accountStatement(ACCOUNT,DATE,DATE,"张三 missing",1,20).total()).isZero();
+    }
+
     @Test void sameChineseCurrencyLabelsKeepTheirActualLedgerIdentitiesSeparate(){
         UUID second=UUID.randomUUID();
         db.update("INSERT INTO currencies(id,name,code) VALUES (?,'US Dollar','USD')",second);
@@ -163,5 +182,62 @@ class FinanceReportUnitsPostgresTest {
                 .containsExactlyInAnyOrder(CURRENCY.toString(),second.toString());
         assertThat(total.groups()).extracting(com.uten.imp.common.report.ReportTotalGroup::value)
                 .containsExactlyInAnyOrder(new BigDecimal("11.0001"),new BigDecimal("31.0002"));
+    }
+
+    @Test void arApCategoryUnionUsesTypedBranchesBeforePagingAndKeepsTotalsAndPublicColumnsStable(){
+        String word="联合类别"+UUID.randomUUID().toString().substring(0,8);
+        UUID clientRoot=UUID.randomUUID(),clientLeaf=UUID.fromString("ffffffff-ffff-ffff-ffff-fffffffffff0"),
+                otherClientCategory=UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID supplierMatch=UUID.randomUUID();
+        db.update("INSERT INTO client_categories(id,code,name,parent_id,is_deleted) VALUES (?,? ,?,NULL,false),(?,?,'下级客户',?,false),(?,?,'其他客户类别',NULL,false)",
+                clientRoot,"CC-"+clientRoot,word,clientLeaf,"CC-"+clientLeaf,clientRoot,otherClientCategory,"CC-"+otherClientCategory);
+        // Same UUID in independent category domains must not turn the client match into supplier access.
+        db.update("INSERT INTO supplier_categories(id,code,name,is_deleted) VALUES (?,?,'不相关供应商类别',false),(?,?,?,false)",
+                clientRoot,"SC-"+clientRoot,supplierMatch,"SC-"+supplierMatch,word);
+        UUID direct=UUID.randomUUID(),near=UUID.randomUUID(),supplier=UUID.randomUUID(),wrongType=UUID.randomUUID();
+        db.update("INSERT INTO clients(id,code,name,category_id,is_deleted) VALUES (?,?,'甲公司',?,false),(?,?,?,?,false)",
+                direct,"C-"+direct,clientLeaf,near,"C-"+near,"备件"+word+"专营",otherClientCategory);
+        db.update("INSERT INTO suppliers(id,code,name,category_id,is_deleted) VALUES (?,?,'乙供应商',?,false),(?,?,'不应混入',?,false)",
+                supplier,"S-"+supplier,supplierMatch,wrongType,"S-"+wrongType,clientRoot);
+        categoryLedger("AR",direct,new BigDecimal("21.1250"));
+        categoryLedger("AR",near,new BigDecimal("37.8750"));
+        categoryLedger("AP",supplier,new BigDecimal("11.2500"));
+        categoryLedger("AP",wrongType,new BigDecimal("9999"));
+
+        var locations=reports.arApPartyLocations(word,1,100);
+        assertThat(locations.getTotal()).isEqualTo(3);
+        assertThat(locations.getItems().getFirst()).isEqualTo(new ArApPartyLocation("CLIENT",otherClientCategory));
+        assertThat(locations.getItems()).containsExactlyInAnyOrder(
+                new ArApPartyLocation("CLIENT",clientLeaf),new ArApPartyLocation("CLIENT",otherClientCategory),
+                new ArApPartyLocation("SUPPLIER",supplierMatch));
+        var pagedLocations=new java.util.ArrayList<ArApPartyLocation>();
+        for(int page=1;page<=3;page++)pagedLocations.addAll(reports.arApPartyLocations(word,page,1).getItems());
+        assertThat(pagedLocations).containsExactlyInAnyOrderElementsOf(locations.getItems());
+
+        var first=reports.arApOverview(DATE,DATE,"ANY",word,null,null,1,1);
+        var second=reports.arApOverview(DATE,DATE,"ANY",word,null,null,2,1);
+        var third=reports.arApOverview(DATE,DATE,"ANY",word,null,null,3,1);
+        assertThat(first.total()).isEqualTo(3);
+        assertThat(first.totalPages()).isEqualTo(3);
+        assertThat(first.rows().getFirst()).containsEntry("partyName","备件"+word+"专营");
+        assertThat(List.of(second.rows().getFirst().get("partyName"),third.rows().getFirst().get("partyName")))
+                .containsExactlyInAnyOrder("甲公司","乙供应商");
+        assertThat(first.totals().stream().filter(total->total.key().equals("receivable")).findFirst().orElseThrow().groups().getFirst().value())
+                .isEqualByComparingTo("59.0000");
+        assertThat(first.totals().stream().filter(total->total.key().equals("payable")).findFirst().orElseThrow().groups().getFirst().value())
+                .isEqualByComparingTo("11.2500");
+        assertThat(first.columns()).extracting(ReportColumn::key)
+                .containsExactly("partyName","partyType","receivable","payable","phone","address");
+        assertThat(first.rows().getFirst()).doesNotContainKeys("partyCode","partyCategoryId","searchRank");
+        var scoped=reports.arApOverview(DATE,DATE,"ANY",word,"CLIENT",clientRoot,1,50);
+        assertThat(scoped.total()).isEqualTo(1);
+        assertThat(scoped.rows().getFirst()).containsEntry("partyName","甲公司");
+        assertThat(reports.arApOverview(DATE,DATE,"ANY",word,"SUPPLIER",clientRoot,1,50).total()).isZero();
+    }
+
+    private static void categoryLedger(String direction,UUID party,BigDecimal balance){
+        String field=direction.equals("AR")?"client_id":"supplier_id";
+        db.update("INSERT INTO ar_ap_ledger(id,direction,"+field+",currency_id,status,is_deleted,bill_no,bill_date,amount_balance) VALUES (?,?,?,?,1,false,?,?,?)",
+                UUID.randomUUID(),direction,party,CURRENCY,"CATEGORY-"+UUID.randomUUID(),DATE,balance);
     }
 }

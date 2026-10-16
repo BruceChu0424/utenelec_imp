@@ -120,7 +120,7 @@ public class GoodsController {
 
     @GetMapping("/facets")
     @PreAuthorize("hasAuthority('goods:view')")
-    public GoodsFacets facets(@RequestParam UUID categoryId) {
+    public GoodsFacets facets(@RequestParam(required = false) UUID categoryId) {
         return service.facets(categoryId);
     }
 

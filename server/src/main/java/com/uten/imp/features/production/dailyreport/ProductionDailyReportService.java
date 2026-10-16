@@ -11,6 +11,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.saleschain.SalesOrderChainSql;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
@@ -169,7 +170,20 @@ public class ProductionDailyReportService {
             else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), pattern -> {
+                    var fields = NameRefKeyword.keywords();
+                    fields.add(NameRefKeyword.text(cb, root.get("billNo"), pattern));
+                    fields.add(NameRefKeyword.text(cb, root.get("workshopName"), pattern));
+                    NameRefKeyword.byName(fields, q, cb, root.get("warehouseId"),
+                            com.uten.imp.features.master.warehouse.Warehouse.class, "name", pattern);
+                    NameRefKeyword.byName(fields, q, cb, root.get("departmentId"),
+                            com.uten.imp.features.org.department.Department.class, "name", pattern);
+                    NameRefKeyword.byName(fields, q, cb, root.get("workerId"),
+                            com.uten.imp.features.org.employee.Employee.class, "fullName", pattern);
+                    NameRefKeyword.byName(fields, q, cb, root.get("supplierId"),
+                            com.uten.imp.features.master.supplier.Supplier.class, "name", pattern);
+                    return NameRefKeyword.or(cb, fields);
+                }));
             }
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.departmentId() != null) ps.add(cb.equal(root.get("departmentId"), f.departmentId()));
@@ -181,7 +195,8 @@ public class ProductionDailyReportService {
         };
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<ProductionDailyReport> p = reportRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<ProductionDailyReport> p = reportRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<DailyReportListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_daily_reports", p.getContent()) : result;
     }

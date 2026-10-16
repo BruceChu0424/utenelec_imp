@@ -351,15 +351,14 @@ public class StockReportService {
         if (dateFrom != null) w.add("o.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("o.bill_date <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
-            String k = "%" + kw.toLowerCase() + "%";
             if (hasItems) {
-                w.add("(LOWER(o.bill_no) LIKE LOWER(:kw) "
-                        + "OR LOWER(COALESCE(i.goods_name_snapshot,'')) LIKE LOWER(:kw) "
-                        + "OR LOWER(COALESCE(i.goods_code_snapshot,'')) LIKE LOWER(:kw) "
-                        + "OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id "
-                        + "AND LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw)))", "kw", k);
+                w.search(kw, parameter -> "(o.bill_no ILIKE " + parameter + " ESCAPE '\\'"
+                        + " OR i.goods_name_snapshot ILIKE " + parameter + " ESCAPE '\\'"
+                        + " OR i.goods_code_snapshot ILIKE " + parameter + " ESCAPE '\\'"
+                        + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id=i.goods_id AND gg.model ILIKE "
+                        + parameter + " ESCAPE '\\'))", "o.bill_no", "i.goods_name_snapshot", "i.goods_code_snapshot");
             } else {
-                w.add("LOWER(o.bill_no) LIKE LOWER(:kw)", "kw", k);
+                w.search(kw, "o.bill_no");
             }
         }
     }
@@ -635,11 +634,12 @@ public class StockReportService {
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
         for (ReportColumn c : columns) sortKeys.add(c.key());
-        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
+        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")

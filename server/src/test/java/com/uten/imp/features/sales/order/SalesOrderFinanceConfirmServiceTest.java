@@ -58,7 +58,7 @@ class SalesOrderFinanceConfirmServiceTest {
             assertFalse(statement.contains("o.finance_confirmed = FALSE"));
             assertFalse(statement.contains("o.is_closed = FALSE"));
             assertFalse(statement.contains("o.is_stopped = FALSE"));
-            assertTrue(statement.contains("POSITION(:keyword"));
+            assertTrue(statement.contains("regexp_split_to_table"));
         }
         verify(query, times(3)).setParameter("keyword", "acme");
     }
@@ -277,9 +277,10 @@ class SalesOrderFinanceConfirmServiceTest {
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
         verify(entityManager, times(2)).createNativeQuery(sql.capture());
         for (String statement : sql.getAllValues()) {
-            assertTrue(statement.contains("LOWER(COALESCE(o.bill_no"));
-            assertTrue(statement.contains("LOWER(COALESCE(c.name"));
-            assertTrue(statement.contains("LOWER(COALESCE(e.full_name"));
+            assertTrue(statement.contains("lower(COALESCE(o.bill_no"));
+            assertTrue(statement.contains("lower(COALESCE(c.name"));
+            assertTrue(statement.contains("lower(COALESCE(e.full_name"));
+            assertTrue(statement.contains("regexp_split_to_table"));
         }
         verify(countQuery).setParameter("keyword", "acme");
         verify(rowsQuery).setParameter("keyword", "acme");

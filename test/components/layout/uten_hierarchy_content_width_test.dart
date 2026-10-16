@@ -6,7 +6,7 @@ import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 
-const _label = '海外客户销售部完整分类ABCDEFGHIJKLMN(TEST)';
+const _label = '海外客户销售部完整分类ABCDEFGHIJKLMN';
 const _paneKey = Key('hierarchy-pane-width');
 final _gutter = find.byTooltip('拖动调整宽度 · 双击复位');
 

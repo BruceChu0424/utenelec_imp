@@ -768,6 +768,42 @@ class ProductionExecutionWorkbenchQueryPostgresTest {
                 LocalDate.parse("2030-01-01"), null).getTotal()).isEqualTo(3);
     }
     @Test
+    void keywordRanksNamesBeforeCodesAcrossPagesAndUsesLiteralWordsInsideTheSameOwnerScope() {
+        String word = "WX" + UUID.randomUUID().toString().replace("-", "") + "10%_";
+        UUID labelRoot = UUID.randomUUID(), hiddenRoot = UUID.randomUUID();
+        em.getTransaction().begin();
+        try {
+            em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET product_code=:word,product_name='ordinary' WHERE segment_id=:id")
+                    .setParameter("word", word).setParameter("id", new UUID(0,1)).executeUpdate();
+            em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET product_name=:word WHERE segment_id=:id")
+                    .setParameter("word", word).setParameter("id", new UUID(0,2)).executeUpdate();
+            em.createNativeQuery("UPDATE v_production_execution_workbench_segments SET product_name=:word WHERE segment_id=:id")
+                    .setParameter("word", word + " extra").setParameter("id", new UUID(0,3)).executeUpdate();
+            assertThat(service.workshopTasks(1,1,word,"PREPARING",null,null,null).getItems())
+                    .extracting(item -> item.segmentId()).containsExactly(new UUID(0,2));
+            assertThat(service.workshopTasks(2,1,word,"PREPARING",null,null,null).getItems())
+                    .extracting(item -> item.segmentId()).containsExactly(new UUID(0,3));
+            assertThat(service.workshopTasks(3,1,word,"PREPARING",null,null,null).getItems())
+                    .extracting(item -> item.segmentId()).containsExactly(new UUID(0,1));
+            assertThat(service.workshopTasks(1,50,"Assembly\t"+word,"PREPARING",null,null,null).getTotal()).isEqualTo(3);
+            assertThat(service.workshopTasks(1,50,"10__",null,null,null,null).getTotal()).isZero();
+            assertThat(service.workshopTaskFacets(word,"PREPARING",null,null,null,null,null).get("segment")).hasSize(3);
+            em.createNativeQuery("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id,root_label) VALUES (:id,:owner,:word)")
+                    .setParameter("id",labelRoot).setParameter("owner",EMPLOYEE).setParameter("word",word).executeUpdate();
+            em.createNativeQuery("INSERT INTO v_production_execution_workbench_roots(root_id,owner_employee_id,root_label) VALUES (:id,:owner,:word)")
+                    .setParameter("id",hiddenRoot).setParameter("owner",UUID.randomUUID()).setParameter("word",word).executeUpdate();
+            var roots=service.list(1,1,word,null,false,null,null,null);
+            assertThat(roots.getTotal()).isEqualTo(2);
+            assertThat(roots.getItems()).extracting(item -> item.rootId()).containsExactly(PLAN);
+            assertThat(service.list(2,1,word,null,false,null,null,null).getItems())
+                    .extracting(item -> item.rootId()).containsExactly(labelRoot);
+            assertThat(service.list(1,50,"Assembly "+word,null,false,null,null,null).getTotal()).isEqualTo(1);
+        } finally {
+            em.getTransaction().rollback();
+        }
+    }
+
+    @Test
     void preparingAndInProgressFiltersExecuteWithAndWithoutKeyword() {
         assertThat(service.workshopTasks(1, 50, null, "PREPARING", null, null, null).getTotal()).isEqualTo(3);
         assertThat(service.workshopTasks(1, 50, "Assembly", "IN_PROGRESS", null, null, null).getTotal()).isEqualTo(1);

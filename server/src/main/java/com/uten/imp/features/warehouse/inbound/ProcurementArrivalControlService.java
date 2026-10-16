@@ -271,16 +271,16 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     /** 搜索委外货品时也只匹配已释放/在途的行，不能由同单未出仓行把任务误搜出来。 */
     private static String expectationKeywordClause() {
         return """
-                (expectation.bill_no_snapshot ILIKE ?
+                (expectation.bill_no_snapshot ILIKE ? ESCAPE '\\'
                  OR EXISTS (SELECT 1 FROM suppliers kw_supplier
                             WHERE kw_supplier.id = expectation.supplier_id
-                              AND kw_supplier.name ILIKE ?)
+                              AND kw_supplier.name ILIKE ? ESCAPE '\\')
                  OR EXISTS (SELECT 1 FROM inbound_expectation_items kw_item
                             JOIN goods kw_goods ON kw_goods.id = kw_item.goods_id
                             WHERE kw_item.expectation_id = expectation.id
                               AND (expectation.order_type <> 'SUBCONTRACT'
                                    OR (%s))
-                              AND (kw_goods.code ILIKE ? OR kw_goods.name ILIKE ?)))
+                              AND (kw_goods.code ILIKE ? ESCAPE '\\' OR kw_goods.name ILIKE ? ESCAPE '\\')))
                 """.formatted(subcontractItemVisible("kw_item"));
     }
 
@@ -725,26 +725,20 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             args.add(completedTo);
             args.add(completedTo);
         }
-        String search = keyword == null ? "" : keyword.trim().toLowerCase();
+        String search = com.uten.imp.common.util.KeywordSearch.phrase(keyword);
         if (!search.isEmpty()) {
-            where.append("""
-                  AND (LOWER(COALESCE(exception.receipt_bill_no_snapshot, '')) LIKE ?
-                    OR LOWER(COALESCE(exception.order_bill_no_snapshot, '')) LIKE ?
-                    OR LOWER(COALESCE(goods.name, '')) LIKE ?
-                    OR LOWER(COALESCE(goods.code, '')) LIKE ?
-                    OR LOWER(COALESCE(supplier.name, '')) LIKE ?)
-                """);
-            String like = "%" + search + "%";
-            for (int i = 0; i < 5; i++) {
-                args.add(like);
-            }
+            where.append(" AND ").append(com.uten.imp.common.util.TaskKeywordSearch.conditionPositional(search, EXCEPTION_SEARCH_FIELDS));
+            com.uten.imp.common.util.TaskKeywordSearch.appendContains(args, search, EXCEPTION_SEARCH_FIELDS.length);
         }
         long total = countOwnerTasksWhere(where.toString(), args);
+        String rank = com.uten.imp.common.util.TaskKeywordSearch.rankNamesFirstPositional(search, args,
+                new String[]{"goods.name"}, EXCEPTION_IDENTITY_FIELDS);
         args.add(safeSize);
         args.add((safePage - 1) * safeSize);
         List<ArrivalExceptionTask> items = queryExceptions(
                 where.toString(),
                 ActionScope.OWNER,
+                "ORDER BY " + (rank.isEmpty() ? "" : rank + ", ") + "exception.detected_at,exception.id ",
                 "LIMIT ? OFFSET ?",
                 args.toArray());
         return page(items, safePage, safeSize, total);
@@ -758,6 +752,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 JOIN procurement_arrival_exceptions exception
                   ON exception.id = return_task.arrival_exception_id
                 LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
+                LEFT JOIN warehouses warehouse ON warehouse.id = exception.warehouse_id
                 JOIN goods goods ON goods.id = exception.goods_id
                 """ + " WHERE " + whereClause, Long.class, args.toArray());
         return count == null ? 0 : count;
@@ -1066,12 +1061,16 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 FROM procurement_arrival_exceptions exception
                 JOIN goods goods ON goods.id = exception.goods_id
                 LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
+                LEFT JOIN warehouses warehouse ON warehouse.id = exception.warehouse_id
                 """ + " WHERE " + where, Long.class, filters.args().toArray());
         List<Object> queryArgs = new ArrayList<>(filters.args());
+        String rank = com.uten.imp.common.util.TaskKeywordSearch.rankNamesFirstPositional(keyword, queryArgs,
+                new String[]{"goods.name"}, EXCEPTION_IDENTITY_FIELDS);
         queryArgs.add(safeSize);
         queryArgs.add((safePage - 1) * safeSize);
         List<ArrivalExceptionTask> items = queryExceptions(
-                where, ActionScope.NONE, exceptionOrderBy(sort, order),
+                where, ActionScope.NONE, rank.isEmpty() ? exceptionOrderBy(sort, order)
+                        : exceptionOrderBy(sort, order).replace("ORDER BY ", "ORDER BY " + rank + ", "),
                 "LIMIT ? OFFSET ?", queryArgs.toArray());
         // 价格脱敏（V302）：仓库视角无对应收货单价格权限时，金额快照置 null + priceMasked。
         items = items.stream().map(this::maskWarehousePrices).toList();
@@ -1092,6 +1091,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 FROM procurement_arrival_exceptions exception
                 JOIN goods goods ON goods.id = exception.goods_id
                 LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
+                LEFT JOIN warehouses warehouse ON warehouse.id = exception.warehouse_id
                 """;
         List<Map<String, Object>> receiptBuckets = jdbc.query(
                 "SELECT exception.receipt_bill_no_snapshot, COUNT(*) " + fromJoins
@@ -1122,19 +1122,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         clauses.add(includeHistory
                 ? "exception.status IN ('CLOSED', 'CANCELED')"
                 : "exception.status NOT IN ('CLOSED', 'CANCELED')");
-        String trimmed = keyword == null ? "" : keyword.trim();
+        String trimmed = com.uten.imp.common.util.KeywordSearch.phrase(keyword);
         if (!trimmed.isEmpty()) {
-            String like = "%" + trimmed + "%";
-            clauses.add("""
-                    (CAST(exception.id AS TEXT) ILIKE ?
-                     OR exception.order_bill_no_snapshot ILIKE ?
-                     OR exception.receipt_bill_no_snapshot ILIKE ?
-                     OR goods.name ILIKE ?
-                     OR supplier.name ILIKE ?)
-                    """);
-            for (int i = 0; i < 5; i++) {
-                args.add(like);
-            }
+            clauses.add(com.uten.imp.common.util.TaskKeywordSearch.conditionPositional(trimmed, EXCEPTION_SEARCH_FIELDS));
+            com.uten.imp.common.util.TaskKeywordSearch.appendContains(args, trimmed, EXCEPTION_SEARCH_FIELDS.length);
         }
         // 表头筛选三列（2026-09-16）：供应商/仓库按外键等值、状态白名单 fail-closed。
         if (supplierId != null) {
@@ -1161,6 +1152,11 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     }
 
     /** 到货异常过滤子句载体：clauses/args 可由调用方继续追加（单号列值筛选）。 */
+    private static final String[] EXCEPTION_SEARCH_FIELDS = {
+            "exception.receipt_bill_no_snapshot", "exception.order_bill_no_snapshot", "goods.code", "goods.name", "supplier.name", "warehouse.name"};
+    private static final String[] EXCEPTION_IDENTITY_FIELDS = {
+            "goods.code", "exception.receipt_bill_no_snapshot", "exception.order_bill_no_snapshot"};
+
     private record WarehouseExceptionFilters(List<String> clauses, List<Object> args) {
         String where() {
             return String.join(" AND ", clauses);
@@ -1381,6 +1377,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         ExpectationFilters filters = expectationFilters(
                 normalizedType, trimmedKeyword, supplierId, warehouseScope, billNo, ids);
         List<Object> params = new ArrayList<>(filters.args());
+        String searchOrder = expectationSearchOrder(trimmedKeyword, sort, order, params);
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
         List<ExpectationHeader> headers = jdbc.query("""
@@ -1413,7 +1410,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   )
                 """ + filters.sql() + """
                 GROUP BY expectation.id, supplier.name, warehouse.name, owner.full_name
-                """ + expectationOrderBy(sort, order) + "\n" + """
+                """ + searchOrder + "\n" + """
                 LIMIT ? OFFSET ?
                 """, (rs, rowNum) -> new ExpectationHeader(
                         rs.getObject("id", UUID.class),
@@ -1708,10 +1705,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 args.add(warehouseScope.idsCsv());
             }
             if (!trimmedKeyword.isEmpty()) {
-                sql.append(" AND ").append(expectationKeywordClause()).append("\n");
-                String like = "%" + trimmedKeyword + "%";
-                for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) {
-                    args.add(like);
+                for (String word : com.uten.imp.common.util.KeywordSearch.terms(trimmedKeyword)) {
+                    sql.append(" AND ").append(expectationKeywordClause()).append("\n");
+                    String like = com.uten.imp.common.util.KeywordSearch.containsPattern(word);
+                    for (int i = 0; i < EXPECTATION_KEYWORD_PARAMS; i++) args.add(like);
                 }
             }
             String trimmedBillNo = billNo == null ? "" : billNo.trim();
@@ -1748,6 +1745,28 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             default -> "ORDER BY expectation.expected_date NULLS LAST,"
                     + " expectation.created_at, expectation.id";
         };
+    }
+
+    private static String expectationSearchOrder(String keyword, String sort, String order, List<Object> args) {
+        if (com.uten.imp.common.util.KeywordSearch.terms(keyword).isEmpty()) return expectationOrderBy(sort, order);
+        String visible = " AND (expectation.order_type<>'SUBCONTRACT' OR (" + subcontractItemVisible("rank_item") + "))";
+        String items = " FROM inbound_expectation_items rank_item JOIN goods rank_goods ON rank_goods.id=rank_item.goods_id"
+                + " WHERE rank_item.expectation_id=expectation.id" + visible;
+        String rank = "CASE WHEN EXISTS (SELECT 1" + items + " AND lower(btrim(rank_goods.name))=?) THEN 0"
+                + " WHEN EXISTS (SELECT 1" + items + " AND rank_goods.name ILIKE ? ESCAPE '\\') THEN 1"
+                + " WHEN EXISTS (SELECT 1" + items + " AND rank_goods.name ILIKE ? ESCAPE '\\') THEN 2"
+                + " WHEN EXISTS (SELECT 1" + items + " AND "
+                + com.uten.imp.common.util.TaskKeywordSearch.conditionPositional(keyword, "rank_goods.name") + ") THEN 3"
+                + " WHEN EXISTS (SELECT 1" + items + " AND lower(btrim(rank_goods.code))=?) THEN 4"
+                + " WHEN lower(btrim(expectation.bill_no_snapshot))=? THEN 5 ELSE 6 END";
+        String phrase = com.uten.imp.common.util.KeywordSearch.phrase(keyword);
+        args.add(phrase);
+        args.add(com.uten.imp.common.util.KeywordSearch.prefixPattern(phrase));
+        args.add(com.uten.imp.common.util.KeywordSearch.containsPattern(phrase));
+        com.uten.imp.common.util.TaskKeywordSearch.appendContains(args, keyword, 1);
+        args.add(phrase);
+        args.add(phrase);
+        return expectationOrderBy(sort, order).replace("ORDER BY ", "ORDER BY " + rank + ", ");
     }
 
     /** 预计到货 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——与列表/计数
@@ -1818,7 +1837,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     /** 搜索关键字：trim，超长截断（防御，正常前端输入远短于此）。 */
     private static String normalizeKeyword(String keyword) {
         if (keyword == null) return "";
-        String trimmed = keyword.trim();
+        String trimmed = com.uten.imp.common.util.KeywordSearch.phrase(keyword);
         return trimmed.length() > 100 ? trimmed.substring(0, 100) : trimmed;
     }
 

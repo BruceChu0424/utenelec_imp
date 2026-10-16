@@ -72,7 +72,7 @@ public class WorkforceOverviewQuery {
                               OR h.to_dept_id NOT IN (SELECT id FROM scope)
                           )
                     ) AS transfer_out_total
-                FROM employment_history h
+                FROM employment_history_effective h
                 WHERE h.event_date >= ?
                   AND h.event_date <= ?
             ),
@@ -127,7 +127,7 @@ public class WorkforceOverviewQuery {
                           AND e.status = 'resigned'
                           AND NOT EXISTS (
                               SELECT 1
-                              FROM employment_history h
+                              FROM employment_history_effective h
                               WHERE h.employee_id = e.id
                                 AND h.event_type = 'resign'
                           )
@@ -140,7 +140,7 @@ public class WorkforceOverviewQuery {
                           AND e.hire_date <= ?
                           AND NOT EXISTS (
                               SELECT 1
-                              FROM employment_history h
+                              FROM employment_history_effective h
                               WHERE h.employee_id = e.id
                                 AND h.event_type IN ('onboard', 'rehire')
                                 AND h.event_date >= ?

@@ -50,7 +50,7 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         UUID main = warehouse(null), second = warehouse(main), other = warehouse(null);
         db.update("UPDATE warehouses SET parent_id=? WHERE id=?", main, world.warehouseId());
         UUID product = UUID.randomUUID(), material = UUID.randomUUID();
-        fixture.insertGoods(product,"Y-P-"+product,"调拨产品","自制",world.unitId(),world.unitLegacy());
+        fixture.insertGoods(product,"Y-P-"+product,"调拨产品10%_","自制",world.unitId(),world.unitLegacy());
         fixture.insertGoods(material,"Y-M-"+material,"调拨原料","采购",world.unitId(),world.unitLegacy());
         fixture.insertBom(product,material,"1");
         if(issuedWaiting) {
@@ -80,6 +80,13 @@ class PreplanReallocationMainWarehouseEndToEndTest {
         qty("10",candidates.getItems().getFirst().sourceLendableQty());
         qty("14",candidates.getItems().getFirst().shortageQty());
         assertEquals(1,reallocations.candidates(a.analysisId(),am.materialLineId(),null,1,20).getTotal());
+        var exactSource = reallocations.sources(b.analysisId(),bm.materialLineId(),"10%_\t"+a.analysisNo(),1,1);
+        assertEquals(1,exactSource.getTotal());
+        assertEquals(a.analysisId(),exactSource.getItems().getFirst().sourceAnalysisId());
+        qty("10",exactSource.getItems().getFirst().sourceLendableQty());
+        assertEquals(1,reallocations.candidates(a.analysisId(),am.materialLineId(),"10%_ "+b.analysisNo(),1,1).getTotal());
+        assertEquals(0,reallocations.sources(b.analysisId(),bm.materialLineId(),"10__ "+a.analysisNo(),1,20).getTotal());
+        assertEquals(0,reallocations.candidates(a.analysisId(),am.materialLineId(),"10__ "+b.analysisNo(),1,20).getTotal());
         // 2026-10-10：批量可调池与逐行 sources() 同源——真库执行一遍钉住三处
         // 谓词（含根供行放开后的 node_role 条件）。此刻只有 a 是供方(10)、b 是
         // 接收方；b 的根行是另一货品维度且无供方，不进池。

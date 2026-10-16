@@ -1,6 +1,8 @@
 package com.uten.imp.features.finance.asset.application;
 
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -127,7 +129,7 @@ public class FinanceAssetQueryService {
                       AND l.status='ACTIVE' AND l.is_deleted=false
                 ) x ON TRUE
                 WHERE a.is_deleted=false
-                """ + filter.where() + " ORDER BY a.code,a.id";
+                """ + filter.where() + " ORDER BY " + filter.rank() + "a.code,a.id";
         return page(select, "SELECT COUNT(*) FROM fixed_assets a WHERE a.is_deleted=false" + filter.where(),
                 filter, page, size, false);
     }
@@ -167,7 +169,7 @@ public class FinanceAssetQueryService {
                       AND l.status='ACTIVE' AND l.is_deleted=false
                 ) x ON TRUE
                 WHERE a.is_deleted=false
-                """ + filter.where() + " ORDER BY a.code,a.id";
+                """ + filter.where() + " ORDER BY " + filter.rank() + "a.code,a.id";
         return page(select, "SELECT COUNT(*) FROM deferred_expenses a WHERE a.is_deleted=false" + filter.where(),
                 filter, page, size, true);
     }
@@ -420,15 +422,17 @@ public class FinanceAssetQueryService {
     private static FilterSql filters(String alias, String q, String status, UUID categoryId, UUID departmentId) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> parameters = new LinkedHashMap<>();
+        String rank = "";
         if (q != null && !q.isBlank()) {
             try {
                 parameters.put("exactId", UUID.fromString(q.trim()));
                 where.append(" AND ").append(alias).append(".id=:exactId");
             } catch (IllegalArgumentException ignored) {
-                where.append(" AND (").append(alias).append(".code ILIKE :q OR ")
-                        .append(alias).append(".name ILIKE :q OR COALESCE(")
-                        .append(alias).append(".source_ref,'') ILIKE :q)");
-                parameters.put("q", "%" + q.trim() + "%");
+                String[] fields = {alias+".code",alias+".name",alias+".source_ref"};
+                where.append(" AND ").append(TaskKeywordSearch.conditionParameter("q",fields));
+                parameters.put("q", KeywordSearch.phrase(q));
+                rank = TaskKeywordSearch.rankNamesFirstParameter("q", new String[]{alias+".name"},new String[]{},
+                        new String[]{alias+".code",alias+".source_ref"}) + ", ";
             }
         }
         if (status != null && !status.isBlank()) {
@@ -443,7 +447,7 @@ public class FinanceAssetQueryService {
             where.append(" AND ").append(alias).append(".department_id=:departmentId");
             parameters.put("departmentId", departmentId);
         }
-        return new FilterSql(where.toString(), parameters);
+        return new FilterSql(where.toString(), parameters, rank);
     }
 
     private static Query bind(Query query, FilterSql filter) {
@@ -468,5 +472,5 @@ public class FinanceAssetQueryService {
         return value == null ? null : (BigDecimal) value;
     }
 
-    private record FilterSql(String where, Map<String, Object> parameters) {}
+    private record FilterSql(String where, Map<String, Object> parameters, String rank) {}
 }

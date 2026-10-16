@@ -79,6 +79,35 @@ class AiClientCreditFactsPostgresTest extends AiPlatformPostgresTestSupport {
                 failure -> assertThat(failure.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
     }
 
+    @Test void viewingAllCustomersDoesNotImplicitlyGrantCreditAmounts() {
+        ledger(foreign, "RECEIVABLE", "SALES_SHIPMENT", "900", "0", BusinessTime.today().minusDays(1), false);
+        login(Set.of("client:view", "client:view:all"));
+        assertThatThrownBy(() -> credit.read(foreign)).isInstanceOfSatisfying(ApiException.class,
+                failure -> assertThat(failure.getCode()).isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    @Test void perCustomerSharingAllowsOnlyThatCustomerAndRevocationTakesEffectImmediately() {
+        UUID unrelated = client(otherEmployee);
+        ledger(foreign, "RECEIVABLE", "SALES_SHIPMENT", "900", "0", BusinessTime.today().minusDays(1), false);
+        ledger(unrelated, "RECEIVABLE", "SALES_SHIPMENT", "9999", "0", BusinessTime.today().minusDays(1), false);
+        jdbc.update("""
+                INSERT INTO client_visibility_grants(client_id,grantee_employee_id,granted_by_user_id)
+                VALUES(?,?,?)
+                """, foreign, employee, actor);
+        var facts = credit.read(foreign);
+        assertThat(facts.overdueLocal()).isEqualByComparingTo("900");
+        assertThat(facts.balances().parties()).containsOnlyKeys(foreign);
+        assertThatThrownBy(() -> credit.read(unrelated)).isInstanceOfSatisfying(ApiException.class,
+                failure -> assertThat(failure.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+        jdbc.update("""
+                UPDATE client_visibility_grants
+                SET active=FALSE, revoked_by_user_id=?, revoked_at=now(), row_version=row_version+1
+                WHERE client_id=? AND grantee_employee_id=?
+                """, actor, foreign, employee);
+        assertThatThrownBy(() -> credit.read(foreign)).isInstanceOfSatisfying(ApiException.class,
+                failure -> assertThat(failure.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+    }
+
     private void login(Set<String> permissions) {
         var principal = new AuthUser(actor, employee, "credit-test", permissions, false, true, false);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));

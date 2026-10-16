@@ -59,6 +59,7 @@ const _aliases = <String, String>{
   'unitName': 'unit',
   'listPrice': 'price',
   'amountOriginal': 'amount',
+  'mfgMonth': 'mstatus', // 保留模具旧版表头排序/宽度/显隐与筛选偏好。
 };
 
 String _viewFamily(String key) {

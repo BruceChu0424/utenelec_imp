@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.mould.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -29,10 +31,38 @@ public class MouldSaveRequest {
     private String qty;          // QTY（varchar，如 "1+1"）
     private BigDecimal tqty;     // TQTY（总数量）
     private String mstatus;      // MStatus（制造年月，如 2018年7月）
+    @JsonIgnore
+    private boolean mstatusProvided;
+    @JsonIgnore
+    private boolean canonicalMstatusProvided;
+    private String manufacturer;
+    @JsonIgnore
+    private boolean manufacturerProvided;
     private String status;       // [Status]（生命周期：使用/禁用）
     private String place;        // Place（车间/位置；picker 落 departmentId 时后端按 id 补名）
     private String keeper;       // summary（保管人；picker 落 keeperId 时后端按 id 补名）
     private UUID departmentId;   // 车间部门 id（departments.id，picker 落）
     private UUID keeperId;       // 保管人员工 id（employees.id，picker 落）
     private String remark;       // Remark（备注）
+
+    @JsonSetter("mstatus")
+    public void setMstatus(String value) {
+        mstatus = value;
+        mstatusProvided = true;
+        canonicalMstatusProvided = true;
+    }
+
+    /** 旧控件会把未回显的年月发成空值；不能将它解释为用户主动清空。 */
+    @JsonSetter("mfgMonth")
+    public void setLegacyManufacturingMonth(String value) {
+        if (canonicalMstatusProvided || value == null || value.isBlank()) return;
+        mstatus = value;
+        mstatusProvided = true;
+    }
+
+    @JsonSetter("manufacturer")
+    public void setManufacturer(String value) {
+        manufacturer = value;
+        manufacturerProvided = true;
+    }
 }

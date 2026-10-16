@@ -20,6 +20,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/search/keyword_search.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
@@ -290,11 +291,10 @@ class _WarehouseTaskRecordsViewState
     return [
       for (final draft in _newDocumentDrafts)
         if (!formalRows.any((row) => _matchesNewDocumentDraft(row, draft)) &&
-            (widget.keyword.trim().isEmpty ||
-                [draft.title, formDraftColumnValue(draft, 'billNo') ?? '']
-                    .join(' ')
-                    .toLowerCase()
-                    .contains(widget.keyword.trim().toLowerCase())) &&
+            matchesKeywordSearch([
+              draft.title,
+              formDraftColumnValue(draft, 'billNo'),
+            ], widget.keyword) &&
             (_billNo == null ||
                 formDraftColumnValue(draft, 'billNo') == _billNo) &&
             (_dates == null ||

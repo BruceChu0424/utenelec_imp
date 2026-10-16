@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.taskcenter;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.security.OwnerVisibility.OwnerScope;
 
 import java.util.ArrayList;
@@ -94,7 +95,7 @@ final class WarehouseOutboundTaskCenterSql {
             }
         }
         if (scope.active()) parameters.put("warehouseScope", scope.idsCsv());
-        parameters.put("keyword", filter.keyword() == null ? "" : filter.keyword().toLowerCase(java.util.Locale.ROOT));
+        parameters.putAll(TaskKeywordSearch.parameters(filter.keyword()));
         parameters.put("billNo", filter.billNo());
         parameters.put("dateFrom", filter.dateFrom());
         parameters.put("dateTo", filter.dateTo());
@@ -106,12 +107,12 @@ final class WarehouseOutboundTaskCenterSql {
         String cte = """
                 WITH source_rows(source_type,record_type,id,bill_no,source_doc_no,business_date,
                      party_name,warehouse_name,responsible_name,line_count,status,search_text,
-                     maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable) AS (
+                     maker_id,stock_status,issue_status,revision,request_id,materials_defined,actionable,goods_codes,goods_names) AS (
                 """ + union + """
                 ), physical_rows AS (
-                  SELECT source_rows.*,
+                  SELECT source_rows.*, %s AS keyword_rank,
                     ((:view='ALL' OR (:view='ACTIVE')=(%s))
-                     AND POSITION(CAST(:keyword AS text) IN LOWER(COALESCE(search_text,'')))>0
+                     AND (%s)
                      AND (CAST(:dateFrom AS date) IS NULL OR business_date>=CAST(:dateFrom AS date))
                      AND (CAST(:dateTo AS date) IS NULL OR business_date<=CAST(:dateTo AS date))) AS context_match
                   FROM source_rows
@@ -120,12 +121,15 @@ final class WarehouseOutboundTaskCenterSql {
                     AND (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))
                     AND (CAST(:status AS text) IS NULL OR status=CAST(:status AS text))
                 )
-                """.formatted(ACTIVE_STATUS_PREDICATE);
+                """.formatted(TaskKeywordSearch.rankNamesFirst(filter.keyword(), new String[]{}, new String[]{"goods_names"},
+                        new String[]{"bill_no", "source_doc_no"}, "goods_codes"),
+                        ACTIVE_STATUS_PREDICATE, TaskKeywordSearch.condition(filter.keyword(),
+                                "search_text", "party_name", "warehouse_name", "responsible_name"));
         String direction = "asc".equals(filter.order()) ? "ASC" : "DESC";
         String primary = "billNo".equals(filter.sort()) ? "bill_no " + direction + " NULLS LAST,business_date DESC NULLS LAST"
                 : "business_date " + direction + " NULLS LAST";
         return new Plan(cte, Collections.unmodifiableMap(parameters),
-                " ORDER BY " + primary + ",source_type,record_type,id ");
+                " ORDER BY keyword_rank," + primary + ",source_type,record_type,id ");
     }
 
     private static boolean selected(String requested, String source) {
@@ -147,7 +151,8 @@ final class WarehouseOutboundTaskCenterSql {
                             ELSE 'SALES_LEGACY' END,
                        CONCAT_WS(' ',s.bill_no,s.source_doc_no,client.name,warehouse.name,lines.goods),
                        s.owner_employee_id,s.status::int,NULL::int,s.review_revision::bigint,NULL::uuid,TRUE,
-                       (s.warehouse_work_status='PENDING_PICK' AND s.status=0 AND NOT s.rejected)
+                       (s.warehouse_work_status='PENDING_PICK' AND s.status=0 AND NOT s.rejected),
+                       lines.goods_codes, lines.goods_names
                 FROM sales_shipments s
                 LEFT JOIN clients client ON client.id=s.client_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=s.warehouse_id
@@ -156,7 +161,9 @@ final class WarehouseOutboundTaskCenterSql {
                 LEFT JOIN LATERAL (
                   SELECT COUNT(*)::int AS line_count,array_agg(DISTINCT item.warehouse_id) AS warehouse_ids,
                          STRING_AGG(CONCAT_WS(' ',COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
-                                                  COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)),' ') AS goods
+                                                  COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)),' ') AS goods,
+                         array_agg(DISTINCT COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code)) AS goods_codes,
+                         array_agg(DISTINCT COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)) AS goods_names
                   FROM sales_shipment_items item LEFT JOIN goods ON goods.id=item.goods_id
                   WHERE item.shipment_id=s.id AND NOT item.is_deleted
                 ) lines ON TRUE
@@ -183,13 +190,16 @@ final class WarehouseOutboundTaskCenterSql {
                             ELSE 'SUBCONTRACT_DRAFT' END,
                        CONCAT_WS(' ',issue.bill_no,issue.source_doc_no,plan.order_bill_no,supplier.name,warehouse.name,lines.goods),
                        issue.maker_id,issue.status::int,NULL::int,0::bigint,NULL::uuid,TRUE,
-                       (NOT issue.is_deleted AND NOT issue.is_closed AND issue.status=0 AND lines.plan_line_count>0)
+                       (NOT issue.is_deleted AND NOT issue.is_closed AND issue.status=0 AND lines.plan_line_count>0),
+                       lines.goods_codes, lines.goods_names
                 FROM subcontract_material_issues issue
                 LEFT JOIN LATERAL (
                   SELECT COUNT(*)::int AS line_count,COUNT(plan_item.id)::int AS plan_line_count,
                          (array_agg(plan_item.plan_id ORDER BY plan_item.plan_id))[1] AS plan_id,
                          STRING_AGG(CONCAT_WS(' ',COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
-                                                  COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)),' ') AS goods
+                                                  COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)),' ') AS goods,
+                         array_agg(DISTINCT COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code)) AS goods_codes,
+                         array_agg(DISTINCT COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)) AS goods_names
                   FROM subcontract_material_issue_items item
                   LEFT JOIN goods ON goods.id=item.goods_id
                   LEFT JOIN subcontract_material_plan_items plan_item ON plan_item.id=item.plan_item_id
@@ -233,7 +243,8 @@ final class WarehouseOutboundTaskCenterSql {
         return "SELECT '" + source + "','STOCK_DOC',d.id,d.bill_no,COALESCE(NULLIF(d.plan_no,''),d.source_doc_no),d.bill_date,"
                 + "COALESCE(department.name,client.name,supplier.name,''),COALESCE(warehouse.name,''),COALESCE(worker.full_name,maker.full_name,''),"
                 + "lines.line_count," + state + ",CONCAT_WS(' ',d.bill_no,d.plan_no,d.source_doc_no,department.name,warehouse.name,lines.goods),"
-                + "d.maker_id,d.status::int,d.issue_status::int,0::bigint,discovery.request_id,TRUE," + actionable + "\n"
+                + "d.maker_id,d.status::int,d.issue_status::int,0::bigint,discovery.request_id,TRUE," + actionable
+                + ",lines.goods_codes,lines.goods_names\n"
                 + """
                 FROM stock_documents d
                 LEFT JOIN warehouses warehouse ON warehouse.id=d.warehouse_id
@@ -245,7 +256,9 @@ final class WarehouseOutboundTaskCenterSql {
                 LEFT JOIN LATERAL (
                   SELECT COUNT(*)::int AS line_count,
                          STRING_AGG(CONCAT_WS(' ',COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
-                                                  COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)),' ') AS goods
+                                                  COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)),' ') AS goods,
+                         array_agg(DISTINCT COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code)) AS goods_codes,
+                         array_agg(DISTINCT COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)) AS goods_names
                   FROM stock_document_items item LEFT JOIN goods ON goods.id=item.goods_id
                   WHERE item.doc_id=d.id AND NOT item.is_deleted
                 ) lines ON TRUE
@@ -283,7 +296,8 @@ final class WarehouseOutboundTaskCenterSql {
                        request.status='CONFIGURED',
                        (request.status='PENDING' AND NOT segment.is_deleted AND NOT plan.is_deleted
                         AND NOT plan.is_closed AND NOT plan.is_canceled AND NOT plan.is_stopped
-                        AND segment.status IN('WAITING','READY','DISPATCHED'))
+                        AND segment.status IN('WAITING','READY','DISPATCHED')),
+                       material.goods_codes, material.goods_names
                 FROM production_material_discovery_requests request
                 JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
                 JOIN production_plans plan ON plan.id=segment.plan_id
@@ -292,7 +306,8 @@ final class WarehouseOutboundTaskCenterSql {
                 LEFT JOIN LATERAL (
                   SELECT COUNT(*)::int AS line_count,array_agg(DISTINCT line.warehouse_id) AS warehouse_ids,
                          STRING_AGG(DISTINCT warehouse.name,'、' ORDER BY warehouse.name) AS warehouse_names,
-                         STRING_AGG(CONCAT_WS(' ',goods.code,goods.name),' ') AS goods
+                         STRING_AGG(CONCAT_WS(' ',goods.code,goods.name),' ') AS goods,
+                         array_agg(DISTINCT goods.code) AS goods_codes, array_agg(DISTINCT goods.name) AS goods_names
                   FROM production_material_discovery_lines line
                   LEFT JOIN warehouses warehouse ON warehouse.id=line.warehouse_id
                   LEFT JOIN goods ON goods.id=line.goods_id

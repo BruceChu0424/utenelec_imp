@@ -1,3 +1,4 @@
+import '../../../shared/search/keyword_search.dart';
 // 总账附表/经营损益表「报表行 → 科目/部门」取数设置(ADR-112 / overhaul-gap-03)。
 //
 // GET  /finance/reports/gl/line-bindings            各可配置行当前绑定的科目/部门
@@ -75,12 +76,16 @@ class GlReportLineCandidate {
     required this.label,
     required this.depth,
     this.disabled = false,
+    this.name,
+    this.code,
   });
 
   final String id;
   final String label;
   final int depth;
   final bool disabled;
+  final String? name;
+  final String? code;
 }
 
 abstract final class GlReportLineBindingEndpoints {
@@ -367,6 +372,8 @@ List<GlReportLineCandidate> flattenExpenseLeaves(
                 (disabled ? ' (停用)' : ''),
             depth: 0,
             disabled: disabled,
+            name: name,
+            code: code,
           ),
         );
       } else {
@@ -394,6 +401,8 @@ List<GlReportLineCandidate> flattenDepartments(
           id: node['id']?.toString() ?? '',
           label: code.isEmpty ? name : '$name ($code)',
           depth: depth,
+          name: name,
+          code: code,
         ),
       );
       walk(node['children'] as List<dynamic>? ?? const [], depth + 1);
@@ -430,10 +439,30 @@ class _TargetPickerDialogState extends State<_TargetPickerDialog> {
     final theme = Theme.of(context);
     final keyword = _keyword.trim().toLowerCase();
     final visible = keyword.isEmpty
-        ? widget.candidates
+        ? List<GlReportLineCandidate>.of(widget.candidates)
         : widget.candidates
-              .where((item) => item.label.toLowerCase().contains(keyword))
+              .where((item) => matchesKeywordSearch([item.label], keyword))
               .toList();
+    if (keyword.isNotEmpty) {
+      final order = {
+        for (var index = 0; index < widget.candidates.length; index++)
+          widget.candidates[index].id: index,
+      };
+      visible.sort((left, right) {
+        final rankLeft = keywordSearchRankWithPrimary(
+          [left.name ?? left.label],
+          [left.label, left.code],
+          keyword,
+        )!;
+        final rankRight = keywordSearchRankWithPrimary(
+          [right.name ?? right.label],
+          [right.label, right.code],
+          keyword,
+        )!;
+        final rank = rankLeft.compareTo(rankRight);
+        return rank != 0 ? rank : order[left.id]!.compareTo(order[right.id]!);
+      });
+    }
     return UtenAlertDialog(
       title: Text(widget.title),
       content: SizedBox(

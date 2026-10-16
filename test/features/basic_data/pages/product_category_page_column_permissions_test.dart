@@ -195,7 +195,7 @@ Future<ProviderContainer> _pumpPage(
     ),
   );
   await tester.pumpAndSettle();
-  await _tap(tester, find.text('成品类(C-FIN)'));
+  await _tap(tester, find.text('成品类'));
   return ProviderScope.containerOf(
     tester.element(find.byType(ProductCategoryPage)),
   );

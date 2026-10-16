@@ -12,6 +12,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryDetail;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryItemDto;
 import com.uten.imp.features.subcontract.inquiry.dto.InquiryItemLine;
@@ -86,7 +87,8 @@ public class SubcontractInquiryService {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        Page<SubcontractInquiry> p = inquiryRepo.findAll(inquirySpec(f), pageable);
+        var searchPage = NameRefKeyword.page(inquirySpec(f), pageable, f.keyword());
+        Page<SubcontractInquiry> p = inquiryRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<InquiryListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
         return p.stream().noneMatch(SubcontractInquiry::isDeleted) ? result

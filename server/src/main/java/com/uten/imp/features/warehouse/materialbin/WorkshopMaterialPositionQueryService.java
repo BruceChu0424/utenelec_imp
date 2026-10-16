@@ -5,6 +5,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialBinSupport.Period;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialBinSupport.Settings;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.BadgeCounts;
@@ -187,7 +188,7 @@ public class WorkshopMaterialPositionQueryService {
         var paging = Pageables.of(page, size);
         List<UUID> ids = goodsIds == null ? List.of() : goodsIds.stream().filter(Objects::nonNull).distinct().toList();
         MapSqlParameterSource params = new MapSqlParameterSource("bin", bin == null ? null : bin.toString())
-                .addValue("keyword", keyword == null || keyword.isBlank() ? null : keyword.strip())
+                .addValue("keyword", KeywordSearch.phrase(keyword))
                 .addValue("limit", paging.getPageSize()).addValue("offset", paging.getOffset());
         if (!ids.isEmpty()) params.addValue("goodsIds", ids);
         String candidates = WorkshopMaterialRequestCandidateSql.candidates(!ids.isEmpty());

@@ -32,6 +32,7 @@ class MigratedSchemaBaselinePostgresTest {
                     .locations("classpath:db/migration").load().validate();
 
             assertColumn(firstConnection, "warehouses", "is_line_side");
+            assertColumn(firstConnection, "moulds", "manufacturer");
             assertColumn(firstConnection, "production_execution_segments", "continuous_supply");
             assertColumn(secondConnection, "production_execution_segments", "start_route");
             try (var statement = firstConnection.createStatement()) {

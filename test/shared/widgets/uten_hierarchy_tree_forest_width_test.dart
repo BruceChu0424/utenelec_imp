@@ -46,7 +46,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text(_longLabel), findsNothing, reason: '最长标题仍在视口和缓存外');
+    expect(find.text(_longName), findsNothing, reason: '最长标题仍在视口和缓存外');
     final floor = tester.getSize(find.byKey(const Key('forest-pane'))).width;
     expect(floor, greaterThan(400));
     await tester.drag(find.byTooltip('拖动调整宽度 · 双击复位'), const Offset(-1800, 0));
@@ -55,17 +55,17 @@ void main() {
     final scroll = tester.state<ScrollableState>(find.byType(Scrollable).first);
     scroll.position.jumpTo(scroll.position.maxScrollExtent);
     await tester.pumpAndSettle();
-    expect(find.text(_longLabel), findsOneWidget);
+    expect(find.text(_longName), findsOneWidget);
     expect(
       tester
-          .renderObject<RenderParagraph>(find.text(_longLabel))
+          .renderObject<RenderParagraph>(find.text(_longName))
           .didExceedMaxLines,
       isFalse,
     );
     expect(tester.getSize(find.byKey(const Key('forest-pane'))).width, floor);
     scroll.position.jumpTo(0);
     await tester.pumpAndSettle();
-    expect(find.text(_longLabel), findsNothing);
+    expect(find.text(_longName), findsNothing);
     expect(tester.getSize(find.byKey(const Key('forest-pane'))).width, floor);
     expect(tester.takeException(), isNull);
   });

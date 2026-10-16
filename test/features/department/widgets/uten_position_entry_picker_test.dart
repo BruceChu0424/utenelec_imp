@@ -118,6 +118,29 @@ void main() {
     expect(find.byKey(const Key('uten-position-entry-search')), findsNothing);
   });
 
+  testWidgets('岗位搜索各词可跨名称编号和级别且必须全部命中', (tester) async {
+    await _pumpPicker(
+      tester,
+      repository: _FakePositionRepository(),
+      departmentId: 'dept-a',
+      onChanged: (_) {},
+    );
+    await _openSheet(tester);
+    await tester.enterText(
+      find.byKey(const Key('uten-position-entry-search')),
+      '装配 pos-assembler 员工',
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('position-option-assembler')), findsOneWidget);
+    expect(find.byKey(const Key('position-option-manager')), findsNothing);
+    await tester.enterText(
+      find.byKey(const Key('uten-position-entry-search')),
+      '装配 领导层',
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('position-option-assembler')), findsNothing);
+  });
+
   testWidgets('岗位支持过滤、取消、确认已有项、自定义、清空和部门联动', (tester) async {
     final repository = _FakePositionRepository();
     var departmentId = 'dept-a';

@@ -41,7 +41,7 @@ class InstantInventorySummaryTest {
         UUID unit = UUID.randomUUID();
         prepareQueries(List.of(warehouse, childWarehouse), Map.of(), 0);
 
-        service.instantInventory(category, warehouse, false, false, "  螺丝  ",
+        service.instantInventory(category, warehouse, false, false, "  螺丝 M3_20% ",
                 owningWarehouse, false, color, "  五金  ", unit, 4, 20, "qty", "desc");
 
         String aggregate = summarySql();
@@ -56,6 +56,8 @@ class InstantInventorySummaryTest {
         verify(query).setParameter("scopeIds", Set.of(warehouse, childWarehouse));
         verify(query).setParameter("categoryId", category);
         verify(query).setParameter("kw", "%螺丝%");
+        verify(query).setParameter("kw1", "%m3\\_20\\%%");
+        assertThat(aggregate).contains("g.name ILIKE :kw1 ESCAPE '\\'");
         verify(query).setParameter("ownWh", owningWarehouse);
         verify(query).setParameter("colorId", color);
         verify(query).setParameter("series", "五金");

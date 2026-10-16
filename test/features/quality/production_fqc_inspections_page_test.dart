@@ -18,6 +18,7 @@ import 'package:uten_imp/features/quality/pages/quality_batch_approval_page.dart
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/task_form_draft_recovery_notice.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/search/keyword_search.dart';
 
 const _inspectionId = '10000000-0000-0000-0000-000000000001';
 const _reportNo = 'RB202608280001';
@@ -26,6 +27,7 @@ Future<void> _pumpPage(
   WidgetTester tester, {
   required _FqcApi api,
   required Set<String> permissions,
+  ProductionFqcInspection? handlingResult,
 }) async {
   await tester.binding.setSurfaceSize(const Size(375, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -54,10 +56,20 @@ Future<void> _pumpPage(
             GoRoute(
               path:
                   '${RouteName.productionFqcInspectionHandlingBase}/:inspectionId',
-              builder: (_, state) => ProductionFqcInspectionPage(
-                inspectionId: state.pathParameters['inspectionId']!,
-                extra: state.extra,
-              ),
+              builder: (context, state) => handlingResult == null
+                  ? ProductionFqcInspectionPage(
+                      inspectionId: state.pathParameters['inspectionId']!,
+                      extra: state.extra,
+                    )
+                  : Scaffold(
+                      body: TextButton(
+                        onPressed: () {
+                          api.decided = true;
+                          context.pop(handlingResult);
+                        },
+                        child: const Text('返回部分已决定结果'),
+                      ),
+                    ),
             ),
             GoRoute(
               path: RouteName.warehouseInspectionBatchApproval,
@@ -96,6 +108,35 @@ Future<void> _doubleTapRow(WidgetTester tester, String reportNo) async {
 }
 
 void main() {
+  testWidgets('服务端多词结果处置回写仍保留匹配行，刷新失败不会误删部分任务', (tester) async {
+    final api = _FqcApi(failReloadAfterDecision: true);
+    final partial = ProductionFqcInspection.fromJson({
+      ...api._inspection,
+      'passedQty': 1,
+      'remainingQty': 9,
+      'status': 'PARTIAL',
+    });
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: const {Perm.productionQualityInspectionView},
+      handlingResult: partial,
+    );
+    await tester.enterText(find.byType(TextField).first, '本色\tV51043');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(_taskTable(tester).items.single.id, _inspectionId);
+    expect(api.listQueries.last['keyword'], '本色\tV51043');
+    await _doubleTapRow(tester, _reportNo);
+    await tester.tap(find.text('返回部分已决定结果'));
+    await tester.pumpAndSettle();
+    expect(_taskTable(tester).items.single.status, 'PARTIAL');
+    expect(_taskTable(tester).items.single.remainingQty, 9);
+    expect(_taskTable(tester).currentPage, 1);
+    expect(api.decisionBody, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'manual FQC refresh preserves raw report input and retry identity',
     (tester) async {
@@ -605,14 +646,13 @@ class _FqcApi extends ApiClient {
     final keyword = effectiveQuery['keyword']?.toString().toLowerCase() ?? '';
     final items = _itemsFor(status)
         .where((item) {
-          if (keyword.isEmpty) return true;
-          return [
-            item['reportNo'],
-            item['planNo'],
-            item['goodsCode'],
-            item['goodsName'],
-            item['colorName'],
-          ].whereType<String>().join(' ').toLowerCase().contains(keyword);
+          return matchesKeywordSearch([
+            item['reportNo'] as String?,
+            item['planNo'] as String?,
+            item['goodsCode'] as String?,
+            item['goodsName'] as String?,
+            item['colorName'] as String?,
+          ], keyword);
         })
         .toList(growable: false);
     final effectiveTotalPages = items.isEmpty ? 0 : totalPages;

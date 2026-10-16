@@ -1,3 +1,4 @@
+import '../../../shared/search/keyword_search.dart';
 // “我的部门”安全花名册模型（对应后端 MyDepartmentRosterDto）。
 // 页面权限委派 DTO 已迁至 shared/auth/page_permission_delegation_models.dart。
 
@@ -64,10 +65,10 @@ class MyDepartmentStaffRow {
       );
 
   /// 「我的部门」统一搜索只使用服务端已授权花名册里的安全字段。
-  bool matchesSearch(String query) {
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return true;
-    return (fullName ?? '').toLowerCase().contains(q) ||
-        (code ?? '').toLowerCase().contains(q);
-  }
+  bool matchesSearch(String query) => matchesKeywordSearch([
+    fullName,
+    code,
+    positionName,
+    departmentName,
+  ], query);
 }

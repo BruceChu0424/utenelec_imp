@@ -64,12 +64,13 @@ class FinanceReportObjectScopeTest {
         assertThat(data.sql())
                 .contains("FROM clients c")
                 .contains("FROM suppliers s")
-                .contains("LOWER(COALESCE(c.name,'')) LIKE :locationKw")
-                .contains("LOWER(COALESCE(c.code,'')) LIKE :locationKw")
-                .contains("LOWER(COALESCE(s.name,'')) LIKE :locationKw")
-                .contains("LOWER(COALESCE(s.code,'')) LIKE :locationKw")
+                .contains("c.name ILIKE :locationKw ESCAPE '\\'")
+                .contains("c.code ILIKE :locationKw ESCAPE '\\'")
+                .contains("s.name ILIKE :locationKw ESCAPE '\\'")
+                .contains("s.code ILIKE :locationKw ESCAPE '\\'")
                 .contains("UNION")
-                .contains("ORDER BY party_type ASC, category_id ASC NULLS LAST")
+                .contains("ORDER BY search_rank ASC, party_type ASC, category_id ASC NULLS LAST")
+                .contains("MIN(search_rank)")
                 .doesNotContain("owner_employee_id")
                 .doesNotContain("clientOwners");
         assertThat(count.sql())
@@ -120,14 +121,16 @@ class FinanceReportObjectScopeTest {
         assertThat(response.getTotal()).isEqualTo(203);
         assertThat(response.getTotalPages()).isEqualTo(3);
         assertThat(queries.get(0).sql())
-                .contains("UNION")
-                .doesNotContain("UNION ALL")
-                .contains("ORDER BY party_type ASC, category_id ASC NULLS LAST");
+                .contains("UNION ALL")
+                .contains("GROUP BY party_type,category_id")
+                .contains("MIN(search_rank)")
+                .contains("ORDER BY search_rank ASC, party_type ASC, category_id ASC NULLS LAST");
+        assertThat(queries.get(1).sql()).contains("GROUP BY party_type,category_id");
         verify(queries.get(0).query()).setParameter("locationOffset", 100L);
     }
 
     @Test
-    void arApOverviewKeywordMatchesPartyNameAndCodeWithOneBoundParameter() {
+    void arApOverviewKeywordMatchesPartyNameAndCodeWithSharedBoundFilterParameters() {
         Fixture fixture = viewAllFixture();
 
         fixture.service().arApOverview(
@@ -147,8 +150,10 @@ class FinanceReportObjectScopeTest {
             assertThat(captured.sql())
                     .contains("COALESCE(c.code,'') AS partyCode")
                     .contains("COALESCE(s.code,'') AS partyCode")
-                    .contains("LOWER(COALESCE(partyName,'')) LIKE LOWER(:kw)")
-                    .contains("LOWER(COALESCE(partyCode,'')) LIKE LOWER(:kw)");
+                    .contains("partyName ILIKE :kw ESCAPE '\\'")
+                    .contains("partyCode ILIKE :kw ESCAPE '\\'")
+                    .contains("client_categories")
+                    .contains("supplier_categories");
             verify(captured.query()).setParameter("kw", "%acme-001%");
         }
     }

@@ -1,5 +1,8 @@
 package com.uten.imp.features.finance.cost;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import jakarta.persistence.EntityManager;
@@ -418,20 +421,24 @@ public class FinanceCostService {
 
     // ======================== 通用执行器（同 FinanceStatementService 范式） ========================
 
-    /** core 末尾必须输出 party_name/party_code 两列（keyword 过滤；尾部两列不进结果映射）。 */
+    /** core 末尾必须输出 party_name/party_code 两列（与可见文本联合搜索；尾部元数据不进结果映射）。 */
     private ReportTableResponse runPaged(List<ReportColumn> cols, String coreSql, String orderBy,
                                          String keyword, LocalDate from, LocalDate to,
                                          int page, int size, Map<String, Object> extraParams) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
-        String where = "WHERE TRUE";
-        if (keyword != null && !keyword.isBlank()) {
-            where = "WHERE (LOWER(COALESCE(t.party_name,'')) LIKE LOWER(:kw)"
-                    + " OR LOWER(COALESCE(t.party_code,'')) LIKE LOWER(:kw))";
-        }
+        List<String> fields = new ArrayList<>(List.of("t.party_name", "t.party_code"));
+        // Column keys are application-owned SQL aliases; search the text that
+        // is actually displayed, without exposing numeric/hidden cost inputs.
+        cols.stream().filter(column -> "text".equals(column.type()))
+                .map(column -> "t.\"" + column.key() + "\"").forEach(fields::add);
+        boolean searching = !KeywordSearch.terms(keyword).isEmpty();
+        String where = searching ? "WHERE " + TaskKeywordSearch.conditionParameter("kw", fields.toArray(String[]::new)) : "WHERE TRUE";
+        String name = cols.stream().anyMatch(column -> column.key().equals("goodsName")) ? "t.\"goodsName\"" : "t.party_name";
+        String rank = searching ? TaskKeywordSearch.rankNamesFirstParameter("kw", new String[]{name}, new String[]{}, fields.toArray(String[]::new)) + ", " : "";
         String wrapped = "SELECT * FROM (" + coreSql + ") t " + where;
-        var dq = em.createNativeQuery(wrapped + " ORDER BY " + orderBy + " LIMIT :__l OFFSET :__o");
+        var dq = em.createNativeQuery(wrapped + " ORDER BY " + rank + orderBy + " LIMIT :__l OFFSET :__o");
         bindRaw(dq, keyword, from, to, extraParams);
         dq.setParameter("__l", safeSize);
         dq.setParameter("__o", offset);
@@ -454,7 +461,7 @@ public class FinanceCostService {
     }
 
     private static void bindRaw(Query q, String keyword, LocalDate from, LocalDate to, Map<String, Object> extra) {
-        if (keyword != null && !keyword.isBlank()) q.setParameter("kw", "%" + keyword.toLowerCase() + "%");
+        if (!KeywordSearch.terms(keyword).isEmpty()) q.setParameter("kw", KeywordSearch.phrase(keyword));
         q.setParameter("from", from);
         q.setParameter("to", to);
         extra.forEach(q::setParameter);

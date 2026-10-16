@@ -142,6 +142,27 @@ void main() {
     },
   );
 
+  testWidgets('部门与姓名多词同时匹配既有授权候选', (tester) async {
+    await _panel(
+      tester,
+      loader: (query) async => query == null ? _candidates : const [],
+    );
+    await _search(tester, '销售 张三');
+    expect(
+      find.byKey(const ValueKey('employee-picker-item-sales-1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('employee-picker-item-production-1')),
+      findsNothing,
+    );
+    await _search(tester, '生产 张三');
+    expect(
+      find.byKey(const ValueKey('employee-picker-item-sales-1')),
+      findsNothing,
+    );
+  });
+
   testWidgets('multi selection survives department and keyword changes', (
     tester,
   ) async {

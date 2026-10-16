@@ -4,6 +4,143 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 
 void main() {
+  test('跨批价格空值与服务端升序末尾降序前置保持一致', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          final first =
+              (request.queryParameters['categoryRootIds'] as List).first ==
+              'root-00';
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: {
+                'items': [
+                  {
+                    ..._goodsJson(first ? 'aaa-null' : 'zzz-zero'),
+                    'price': first ? null : 0,
+                    'searchRank': 4,
+                  },
+                ],
+                'page': 1,
+                'size': 100,
+                'total': 1,
+                'totalPages': 1,
+              },
+            ),
+          );
+        },
+      ),
+    );
+    final roots = {
+      for (var index = 0; index < 33; index++)
+        'root-${index.toString().padLeft(2, '0')}',
+    };
+    final repository = DioGoodsRepository(ApiClient(dio));
+    expect(
+      (await repository.search(
+        '料',
+        categoryRootIds: roots,
+        sort: 'price',
+        order: 'asc',
+      )).items.first.id,
+      'zzz-zero',
+    );
+    expect(
+      (await repository.search(
+        '料',
+        categoryRootIds: roots,
+        sort: 'price',
+        order: 'desc',
+      )).items.first.id,
+      'aaa-null',
+    );
+  });
+
+  test('超过32根时跨批按服务端相关性再按编号合并分页', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          final roots = (request.queryParameters['categoryRootIds'] as List)
+              .cast<String>();
+          final exact = roots.first == 'root-32';
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: {
+                'items': [
+                  {
+                    ..._goodsJson(exact ? 'exact' : 'hidden'),
+                    'code': exact ? 'Z-精确' : 'A-近似',
+                    'searchRank': exact ? 0 : 5,
+                  },
+                ],
+                'page': 1,
+                'size': 100,
+                'total': 1,
+                'totalPages': 1,
+              },
+            ),
+          );
+        },
+      ),
+    );
+    final roots = {
+      for (var index = 0; index < 33; index++)
+        'root-${index.toString().padLeft(2, '0')}',
+    };
+    final page = await DioGoodsRepository(
+      ApiClient(dio),
+    ).search('螺丝', categoryRootIds: roots, sort: 'code', order: 'asc', size: 1);
+    expect(page.items.single.id, 'exact');
+    expect(page.items.single.searchRank, 0);
+    expect(page.total, 2);
+    expect(page.totalPages, 2);
+  });
+
+  test('多词关键词在货品页、全局结果及轻量分类定位请求中保持一致', () async {
+    final captured = <RequestOptions>[];
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          captured.add(request);
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: request,
+              statusCode: 200,
+              data: request.path.endsWith('/search-category-ids')
+                  ? const ['category-a']
+                  : const {
+                      'items': <dynamic>[],
+                      'page': 1,
+                      'size': 20,
+                      'total': 0,
+                      'totalPages': 0,
+                    },
+            ),
+          );
+        },
+      ),
+    );
+    final repository = DioGoodsRepository(ApiClient(dio));
+    const query = ' 螺丝 M3_20% ';
+    await repository.list('category-a', keyword: query);
+    await repository.search(query, categoryRootIds: {'root-a'});
+    await repository.searchCategoryIds(query, categoryRootIds: {'root-a'});
+    expect(
+      captured.map((request) => request.queryParameters['keyword']),
+      everyElement('螺丝 M3_20%'),
+    );
+    expect(captured[0].queryParameters['categoryId'], 'category-a');
+    expect(captured[1].queryParameters['categoryRootIds'], ['root-a']);
+    expect(captured[2].queryParameters['categoryRootIds'], ['root-a']);
+  });
+
   test(
     'global goods search forwards deterministic category root scope',
     () async {

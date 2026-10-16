@@ -5,6 +5,8 @@ import com.uten.imp.application.port.SalesQuoteNoticePort;
 import com.uten.imp.application.port.TaskClaimMutationGuardPort;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -53,6 +55,7 @@ public class SalesQuoteFinanceService {
     private static final String FINANCE_CONFIRM = SalesQuoteService.FINANCE_CONFIRM;
     private static final String TARGET = SalesQuoteFinanceClaimTargetLocks.TARGET_TYPE;
     private static final int MAX_PAGE_SIZE = 100;
+    private static final String[] SEARCH_FIELDS = {"o.bill_no", "c.name", "seller.full_name", "maker.full_name"};
 
     private final EntityManager em;
     private com.uten.imp.common.columns.BusinessColumnService businessColumns;
@@ -87,18 +90,16 @@ public class SalesQuoteFinanceService {
             case "cancelled" -> "o.status = -1 AND o.submitted_at IS NOT NULL";
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "核价列表的分类不正确：" + state);
         };
-        String orderBy = switch (normalizedState) {
-            case "confirmed" -> " ORDER BY o.finance_confirmed_at DESC, o.bill_no";
-            case "returned" -> " ORDER BY o.finance_returned_at DESC, o.bill_no";
-            default -> " ORDER BY o.submitted_at NULLS LAST, o.bill_no";
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
+        String relevance = normalizedKeyword.isEmpty() ? ""
+                : TaskKeywordSearch.rankParameter("keyword", SEARCH_FIELDS) + ", ";
+        String orderBy = " ORDER BY " + relevance + switch (normalizedState) {
+            case "confirmed" -> "o.finance_confirmed_at DESC, o.bill_no, o.id";
+            case "returned" -> "o.finance_returned_at DESC, o.bill_no, o.id";
+            default -> "o.submitted_at NULLS LAST, o.bill_no, o.id";
         };
-        String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        String keywordFilter = normalizedKeyword.isEmpty() ? "" : """
-                  AND (POSITION(:keyword IN LOWER(COALESCE(o.bill_no, ''))) > 0
-                    OR POSITION(:keyword IN LOWER(COALESCE(c.name, ''))) > 0
-                    OR POSITION(:keyword IN LOWER(COALESCE(seller.full_name, ''))) > 0
-                    OR POSITION(:keyword IN LOWER(COALESCE(maker.full_name, ''))) > 0)
-                """;
+        String keywordFilter = normalizedKeyword.isEmpty() ? "" : " AND "
+                + TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS);
         String from = """
                 FROM sales_quotes o
                 LEFT JOIN clients c ON c.id = o.client_id

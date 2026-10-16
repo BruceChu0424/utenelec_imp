@@ -1,3 +1,4 @@
+import '../../../shared/search/keyword_search.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
@@ -261,25 +262,47 @@ class _AccountBalanceReconciliationDialogState
   }
 
   List<AccountListItem> get _visibleAccounts {
-    final query = _query.trim().toLowerCase();
-    final visible = query.isEmpty
-        ? List<AccountListItem>.of(_accounts)
-        : _accounts.where((account) {
-            final currency = _currency(account);
-            final haystack = [
-              account.code,
-              account.name,
-              account.bankAccountNo,
-              currency?.code,
-              currency?.name,
-            ].whereType<String>().join(' ').toLowerCase();
-            return haystack.contains(query);
-          }).toList();
+    final query = _query.trim();
+    List<String?> fields(AccountListItem account) {
+      final currency = _currency(account);
+      return [
+        account.name,
+        account.code,
+        account.bankAccountNo,
+        currency?.code,
+        currency?.name,
+        account.currencyCode,
+        account.currencyName,
+      ];
+    }
+
+    final visible = _accounts
+        .where((account) => matchesKeywordSearch(fields(account), query))
+        .toList();
+    final order = {
+      for (var index = 0; index < _accounts.length; index++)
+        _accounts[index].id: index,
+    };
     visible.sort((left, right) {
-      final leftError = _rowErrors.containsKey(left.id);
-      final rightError = _rowErrors.containsKey(right.id);
+      final leftError = _rowErrors.containsKey(left.id),
+          rightError = _rowErrors.containsKey(right.id);
       if (leftError != rightError) return leftError ? -1 : 1;
-      return (left.code ?? '').compareTo(right.code ?? '');
+      if (query.isNotEmpty) {
+        final rankLeft = keywordSearchRankWithPrimary(
+          [left.name],
+          fields(left),
+          query,
+        )!;
+        final rankRight = keywordSearchRankWithPrimary(
+          [right.name],
+          fields(right),
+          query,
+        )!;
+        final rank = rankLeft.compareTo(rankRight);
+        if (rank != 0) return rank;
+      }
+      final code = (left.code ?? '').compareTo(right.code ?? '');
+      return code != 0 ? code : order[left.id]!.compareTo(order[right.id]!);
     });
     return visible;
   }

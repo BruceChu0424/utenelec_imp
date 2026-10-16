@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.history;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
+import com.uten.imp.common.util.TaskKeywordSearch;
 
 /** Fixed, enum-selected SQL builders for the amount-free warehouse history projection. */
 final class WarehouseHistoryQueries {
@@ -18,7 +19,10 @@ final class WarehouseHistoryQueries {
     }
 
     static String listSql(WarehouseHistoryType type, String orderBy, WarehouseTaskScope scope) {
-        return headerSelect(type) + searchJoins(type) + where(type, true) + scopeFilter(type, scope) + orderBy + "\n" + """
+        String rank = TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{}, new String[]{"history_goods.goods_names"},
+                new String[]{"h.bill_no", "h.source_doc_no"}, "history_goods.goods_codes");
+        return headerSelect(type) + searchJoins(type) + where(type, true) + scopeFilter(type, scope)
+                + orderBy.replace("ORDER BY ", "ORDER BY " + rank + ", ") + "\n" + """
                 LIMIT :limit OFFSET :offset
                 """;
     }
@@ -179,7 +183,15 @@ final class WarehouseHistoryQueries {
                 FROM %s h
                 LEFT JOIN suppliers supplier ON supplier.id = h.supplier_id
                 LEFT JOIN warehouses warehouse ON warehouse.id = h.warehouse_id
-                """.formatted(type.headerTable());
+                LEFT JOIN LATERAL (
+                  SELECT string_agg(concat_ws(' ',COALESCE(NULLIF(line.goods_code_snapshot,''),goods.code),
+                           COALESCE(NULLIF(line.goods_name_snapshot,''),goods.name)),' ') AS goods_text,
+                         array_agg(DISTINCT COALESCE(NULLIF(line.goods_code_snapshot,''),goods.code)) AS goods_codes,
+                         array_agg(DISTINCT COALESCE(NULLIF(line.goods_name_snapshot,''),goods.name)) AS goods_names
+                  FROM %s line LEFT JOIN goods ON goods.id=line.goods_id
+                  WHERE line.%s=h.id AND NOT COALESCE(line.is_deleted,FALSE)
+                ) history_goods ON TRUE
+                """.formatted(type.headerTable(), type.itemTable(), type.itemForeignKey());
     }
 
     private static String scopeFilter(WarehouseHistoryType type, WarehouseTaskScope scope) {
@@ -217,29 +229,14 @@ final class WarehouseHistoryQueries {
                   AND (CAST(:status AS smallint) IS NULL OR h.status = CAST(:status AS smallint))
                   AND (CAST(:date_from AS date) IS NULL OR h.bill_date >= CAST(:date_from AS date))
                   AND (CAST(:date_to AS date) IS NULL OR h.bill_date <= CAST(:date_to AS date))
-                  AND (
-                       CAST(:keyword AS text) = ''
-                       OR LOWER(COALESCE(h.bill_no, '')) LIKE :keyword_pattern
-                       OR LOWER(COALESCE(h.source_doc_no, '')) LIKE :keyword_pattern
-                       OR LOWER(COALESCE(supplier.name, '')) LIKE :keyword_pattern
-                       OR LOWER(COALESCE(warehouse.name, '')) LIKE :keyword_pattern
-                       OR EXISTS (
-                           SELECT 1
-                             FROM %s search_item
-                            WHERE search_item.%s = h.id
-                              AND COALESCE(search_item.is_deleted, FALSE) = FALSE
-                              AND (
-                                  LOWER(COALESCE(search_item.goods_code_snapshot, '')) LIKE :keyword_pattern
-                                  OR LOWER(COALESCE(search_item.goods_name_snapshot, '')) LIKE :keyword_pattern
-                              )
-                       )
-                  )
+                  AND (%s)
                   -- 2026-09-25 单号列统一：单据号/来源单据号表头值筛选（等值精确匹配，
                   -- 空参数即不过滤；列表/计数/facets 三处同一段 WHERE）。
                   AND (CAST(:bill_no AS text) IS NULL OR h.bill_no = CAST(:bill_no AS text))
                   AND (CAST(:source_doc_no AS text) IS NULL
                        OR h.source_doc_no = CAST(:source_doc_no AS text))
-                """.formatted(type.itemTable(), type.itemForeignKey()) : "";
+                """.formatted(TaskKeywordSearch.conditionParameter("keyword",
+                        "h.bill_no", "h.source_doc_no", "supplier.name", "warehouse.name", "history_goods.goods_text")) : "";
         return """
                 WHERE COALESCE(h.is_deleted, FALSE) = FALSE
                 """ + filters;

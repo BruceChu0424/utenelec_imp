@@ -1,5 +1,8 @@
 package com.uten.imp.features.master.goods;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.CategoryKeywordSearch;
+
 import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
@@ -161,14 +164,23 @@ public class GoodsService {
     public PageResponse<GoodsListItem> list(GoodsQueryFilter f, int page, int size, String sort, String order) {
         List<UUID> subtreeIds = resolveCategoryScopeIds(f);
         var scope = goodsScope();
-        Specification<Goods> spec = (root, q, cb) -> goodsPredicate(f, subtreeIds, scope, root, cb);
+        var keyword = keywordPlan(f.keyword());
         // 2026-10-02 恢复编号升序默认（与货品选择弹窗、新建/粘贴后的「跳末页看新货品」
         // 口径一致）：此前临时改成创建时间倒序让新货品置顶，与用户定的「复制落最后面」
         // 相反；显式排序参数仍然覆盖默认值。
         Sort defaultSort = Sort.by(Sort.Direction.ASC, "code")
                 .and(Sort.by(Sort.Direction.ASC, "id"));
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT));
+        Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
+        Specification<Goods> spec = (root, q, cb) -> {
+            Predicate predicate = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
+            if (keyword.active() && q != null && q.getResultType() != Long.class) {
+                CategoryKeywordSearch.order(q, cb, root,
+                        keyword.rank(cb, root.get("category").get("id"), root.get("code"), root.get("name"),
+                                goodsVisibleSearchFields(root, mouldCodeForSearch(root))), requestedSort);
+            }
+            return predicate;
+        };
+        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
         Page<Goods> p = repo.findAll(spec, pageable);
         List<Goods> content = p.getContent();
         // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补颜色/单位名，绝不建立新关系。
@@ -188,8 +200,15 @@ public class GoodsService {
         Map<UUID, String> owningWorkshopNames = relationships.departmentNames(
                 content.stream().map(GoodsService::owningWorkshopIdOf).toList());
         List<GoodsListItem> items = content.stream()
-                .map(g -> toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods,
-                        owningWarehouseNames, owningWorkshopNames))
+                .map(g -> {
+                    var item = toList(g, colorNames, unitNames, mouldsByLegacy, stockByGoods,
+                            owningWarehouseNames, owningWorkshopNames);
+                    if (keyword.active()) item.setSearchRank(keyword.rankValue(
+                            g.getCategory() == null ? null : g.getCategory().getId(), g.getCode(), g.getName(),
+                            java.util.Arrays.asList(g.getName(), g.getCode(), g.getModel(), g.getSpec(), g.getSeries(),
+                                    g.getCNumber(), g.getMaterial(), g.getNameEn(), g.getMould() == null ? null : g.getMould().getCode())));
+                    return item;
+                })
                 .toList();
         return new PageResponse<>(items, p);
     }
@@ -200,7 +219,7 @@ public class GoodsService {
      */
     @Transactional(readOnly = true)
     public List<UUID> matchingCategoryIds(GoodsQueryFilter f) {
-        if (f.keyword() == null || f.keyword().isBlank()) {
+        if (KeywordSearch.terms(f.keyword()).isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先填写搜索关键词");
         }
         if (f.categoryId() != null || f.categoryRootIds() == null || f.categoryRootIds().isEmpty()) {
@@ -212,11 +231,14 @@ public class GoodsService {
         CriteriaQuery<UUID> query = cb.createQuery(UUID.class);
         Root<Goods> root = query.from(Goods.class);
         Path<UUID> categoryId = root.get("category").get("id");
-        Predicate filters = goodsPredicate(f, subtreeIds, scope, root, cb);
+        var keyword = keywordPlan(f.keyword());
+        Predicate filters = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
+        var rank = keyword.rank(cb, categoryId, root.get("code"), root.get("name"),
+                goodsVisibleSearchFields(root, mouldCodeForSearch(root)));
         query.select(categoryId)
-                .distinct(true)
+                .groupBy(categoryId)
                 .where(cb.and(filters, cb.isNotNull(categoryId)))
-                .orderBy(cb.asc(categoryId));
+                .orderBy(cb.asc(cb.min(rank)), cb.asc(categoryId));
         return em.createQuery(query).getResultList();
     }
 
@@ -226,7 +248,8 @@ public class GoodsService {
             List<UUID> subtreeIds,
             com.uten.imp.security.OwnerVisibility.OwnerScope scope,
             Root<Goods> root,
-            CriteriaBuilder cb) {
+            CriteriaBuilder cb,
+            CategoryKeywordSearch.Plan keyword) {
         List<Predicate> ps = new ArrayList<>();
         ps.add(cb.isFalse(root.get("deleted")));
         // 归属可见性（外贸按人授权）：公共货品或可见归属人；超管/goods:view:all 全见；
@@ -245,27 +268,15 @@ public class GoodsService {
                     ? cb.disjunction()
                     : root.get("category").get("id").in(subtreeIds));
         }
-        boolean keywordPresent = f.keyword() != null && !f.keyword().isBlank();
+        boolean keywordPresent = !KeywordSearch.terms(f.keyword()).isEmpty();
         boolean mouldCodeFilter = f.mouldCode() != null && !f.mouldCode().isBlank();
         // 模具编号筛选/搜索需要跨关系取 moulds.code：LEFT JOIN 保证无模具货品不被整支 OR 过滤掉。
-        var mouldJoin = keywordPresent || mouldCodeFilter
-                ? root.join("mould", jakarta.persistence.criteria.JoinType.LEFT)
-                : null;
+        jakarta.persistence.criteria.Expression<String> mouldCodeExpression = keywordPresent || mouldCodeFilter
+                ? mouldCodeForSearch(root) : null;
         if (keywordPresent) {
-            String like = "%" + f.keyword().toLowerCase() + "%";
-            ps.add(cb.or(
-                    cb.like(cb.lower(root.get("name")), like),
-                    cb.like(cb.lower(root.get("code")), like),
-                    cb.like(cb.lower(root.get("model")), like),
-                    cb.like(cb.lower(root.get("spec")), like),
-                    cb.like(cb.lower(root.get("series")), like),
-                    cb.like(cb.lower(root.get("cNumber")), like),
-                    cb.like(cb.lower(root.get("material")), like),
-                    cb.like(cb.lower(root.get("requireRemark")), like),
-                    cb.like(cb.lower(root.get("paper")), like),
-                    // 英文名称(ADR-134): 客户文件上的英文品名也能搜到货品。
-                    cb.like(cb.lower(root.get("nameEn")), like),
-                    cb.like(cb.lower(mouldJoin.get("code")), like)));
+            ps.add(keyword.predicate(cb, root.get("category").get("id"),
+                    goodsVisibleSearchFields(root, mouldCodeExpression),
+                    List.of(root.get("requireRemark"), root.get("paper"))));
         }
         addEq(ps, cb, root, "series", f.series());
         addEq(ps, cb, root, "model", f.model());
@@ -278,7 +289,7 @@ public class GoodsService {
         addEq(ps, cb, root, "paper", f.paper());
         addEq(ps, cb, root, "rearInsertCode", f.rearInsertCode());
         if (mouldCodeFilter) {
-            ps.add(cb.equal(mouldJoin.get("code"), f.mouldCode()));
+            ps.add(cb.equal(mouldCodeExpression, f.mouldCode()));
         }
         addEq(ps, cb, root, "sourceType", f.sourceType());
         // V587/V590 归属表头筛选：等值（UUID 关系）；空值桶走 nullFields。
@@ -308,6 +319,25 @@ public class GoodsService {
             }
         }
         return cb.and(ps.toArray(new Predicate[0]));
+    }
+
+    private CategoryKeywordSearch.Plan keywordPlan(String query) {
+        return CategoryKeywordSearch.plan(query, KeywordSearch.terms(query).isEmpty() ? List.of()
+                : categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc().stream()
+                .map(node -> new CategoryKeywordSearch.Node(node.getId(), node.getParent() == null ? null : node.getParent().getId(),
+                        node.getName(), node.getCode())).toList());
+    }
+
+    private static jakarta.persistence.criteria.Expression<String> mouldCodeForSearch(Root<Goods> root) {
+        return root.getJoins().stream().filter(join -> "mould".equals(join.getAttribute().getName()))
+                .findFirst().map(join -> join.<String>get("code"))
+                .orElseGet(() -> root.join("mould", jakarta.persistence.criteria.JoinType.LEFT).get("code"));
+    }
+
+    private static List<jakarta.persistence.criteria.Expression<String>> goodsVisibleSearchFields(
+            Root<Goods> root, jakarta.persistence.criteria.Expression<String> mouldCode) {
+        return List.of(root.get("name"), root.get("code"), root.get("model"), root.get("spec"), root.get("series"),
+                root.get("cNumber"), root.get("material"), root.get("nameEn"), mouldCode);
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Goods> root,
@@ -624,10 +654,8 @@ public class GoodsService {
 
     @Transactional(readOnly = true)
     public GoodsFacets facets(UUID categoryId) {
-        if (categoryId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择货品分类");
-        }
-        List<UUID> ids = resolveSubtreeIds(categoryId);
+        List<UUID> ids = categoryId == null ? null : resolveSubtreeIds(categoryId);
+        String categoryClause = ids == null ? "" : " and category_id in (:ids)";
         // 归属可见性（外贸按人授权）：与 list() 同规则
         boolean[] bindEmp = new boolean[1];
         String ownerClause = ownerClause(bindEmp);
@@ -643,10 +671,10 @@ public class GoodsService {
             String col = e.getValue();
             var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from goods "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
+                            + "where is_deleted = false" + categoryClause + " and " + col + " is not null "
                             + ownerClause
-                            + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .setParameter("ids", ids);
+                            + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT);
+            if (ids != null) fq.setParameter("ids", ids);
             if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
             List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
@@ -658,9 +686,9 @@ public class GoodsService {
             buckets.put(field, bucketList);
             var nq = em.createNativeQuery(
                     "select count(*) from goods "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null"
-                            + ownerClause)
-                    .setParameter("ids", ids);
+                            + "where is_deleted = false" + categoryClause + " and " + col + " is null"
+                            + ownerClause);
+            if (ids != null) nq.setParameter("ids", ids);
             if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
             Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
@@ -690,11 +718,11 @@ public class GoodsService {
         var fq = em.createNativeQuery(
                 "select goods." + goodsCol + " as v, ref.name as label, count(*) as c "
                         + "from goods join " + refTable + " ref on ref.id = goods." + goodsCol + " "
-                        + "where goods.is_deleted = false and goods.category_id in (:ids) "
+                        + "where goods.is_deleted = false " + (ids == null ? "" : "and goods.category_id in (:ids) ")
                         + ownerClause
                         + " group by goods." + goodsCol + ", ref.name "
-                        + "order by c desc, label asc limit " + FACET_LIMIT)
-                .setParameter("ids", ids);
+                        + "order by c desc, label asc limit " + FACET_LIMIT);
+        if (ids != null) fq.setParameter("ids", ids);
         if (bindEmp[0]) fq.setParameter("__ownerEmp", ownerEmps);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
         List<FacetBucket> list = new ArrayList<>(rows.size());
@@ -709,9 +737,9 @@ public class GoodsService {
                              boolean[] bindEmp, java.util.Set<UUID> ownerEmps) {
         var nq = em.createNativeQuery(
                 "select count(*) from goods "
-                        + "where is_deleted = false and category_id in (:ids) and " + goodsCol + " is null"
-                        + ownerClause)
-                .setParameter("ids", ids);
+                        + "where is_deleted = false " + (ids == null ? "" : "and category_id in (:ids) ") + "and " + goodsCol + " is null"
+                        + ownerClause);
+        if (ids != null) nq.setParameter("ids", ids);
         if (bindEmp[0]) nq.setParameter("__ownerEmp", ownerEmps);
         return ((Number) nq.getSingleResult()).longValue();
     }

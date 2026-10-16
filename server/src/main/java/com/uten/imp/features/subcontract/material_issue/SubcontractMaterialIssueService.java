@@ -20,6 +20,7 @@ import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueDetail;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemDto;
 import com.uten.imp.features.subcontract.material_issue.dto.MaterialIssueItemLine;
@@ -159,7 +160,8 @@ public class SubcontractMaterialIssueService {
         boolean priceMasked = subcontractPriceMasked();
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SubcontractMaterialIssue> p = issueRepo.findAll(issueSpec(f), pageable);
+        var searchPage = NameRefKeyword.page(issueSpec(f), pageable, f.keyword());
+        Page<SubcontractMaterialIssue> p = issueRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<MaterialIssueListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
         return p.stream().noneMatch(SubcontractMaterialIssue::isDeleted) ? result

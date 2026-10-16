@@ -74,7 +74,8 @@ public class SalesOtherShipmentService {
         Specification<SalesOtherShipment> spec = otherShipmentSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SalesOtherShipment> p = shipmentRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<SalesOtherShipment> p = shipmentRepo.findAll(searchPage.specification(), searchPage.pageable());
         boolean canEdit = hasObjectActionAuthority();
         PageResponse<OtherShipmentListItem> result = new PageResponse<>(p.map(s -> toList(s,
                         canEdit && accessPolicy.canWrite(s.getOwnerEmployeeId(), readScope))).getContent(),
@@ -101,21 +102,22 @@ public class SalesOtherShipmentService {
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                String kw = "%" + f.keyword().toLowerCase() + "%";
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), kw -> {
                 // 关键字同时匹配 单据号 / 客户名称（日常检索按客户找单）
                 jakarta.persistence.criteria.Subquery<java.util.UUID> cs = q.subquery(java.util.UUID.class);
                 Root<com.uten.imp.features.master.client.Client> cr =
                         cs.from(com.uten.imp.features.master.client.Client.class);
                 cs.select(cr.get("id")).where(cb.isFalse(cr.get("deleted")),
-                        cb.like(cb.lower(cr.get("name")), kw));
+                        NameRefKeyword.text(cb, cr.get("name"), kw));
                 var kws = NameRefKeyword.keywords();
-                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(NameRefKeyword.text(cb, root.get("billNo"), kw));
                 kws.add(root.get("clientId").in(cs)); NameRefKeyword.byName(kws, q, cb, root.get("warehouseId"),
                         com.uten.imp.features.master.warehouse.Warehouse.class, "name", kw); NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
                         com.uten.imp.features.master.currency.Currency.class, "name", kw);
                 NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
                         com.uten.imp.features.master.currency.Currency.class, "code", kw);
-                ps.add(cb.or(kws.toArray(new Predicate[0])));
+                return cb.or(kws.toArray(new Predicate[0]));
+                }));
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));

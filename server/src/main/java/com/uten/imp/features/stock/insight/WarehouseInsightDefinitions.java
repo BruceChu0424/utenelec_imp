@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.insight;
 
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.report.ReportTotalsCalculator;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.PageResponse;
@@ -191,8 +192,7 @@ final class WarehouseInsightDefinitions {
             return false;
         }
         if (filter.keyword() != null && !filter.keyword().isBlank()) {
-            String kw = filter.keyword().strip().toLowerCase(Locale.ROOT);
-            if (!contains(fact.code(), kw) && !contains(fact.name(), kw) && !contains(fact.model(), kw)) {
+            if (!KeywordSearch.matches(filter.keyword(), fact.code(), fact.name(), fact.model())) {
                 return false;
             }
         }
@@ -532,7 +532,4 @@ final class WarehouseInsightDefinitions {
         return b.isAfter(a) ? b : a;
     }
 
-    private static boolean contains(String text, String lowerKeyword) {
-        return text != null && text.toLowerCase(Locale.ROOT).contains(lowerKeyword);
-    }
 }

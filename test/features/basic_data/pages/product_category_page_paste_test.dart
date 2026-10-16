@@ -115,7 +115,7 @@ void main() {
     final goods = _GoodsRepository();
     final bom = _BomRepository();
     await _pumpPage(tester, goods, bom);
-    await tester.tap(find.text('原分类(SRC)'));
+    await tester.tap(find.text('原分类'));
     await tester.pumpAndSettle();
     await _rightClickAt(tester, tester.getCenter(find.text(_source.name!)));
     await tester.tap(find.text('复制货品'));
@@ -123,7 +123,7 @@ void main() {
     expect(goods.detailCalls, [_source.id]);
     expect(bom.listCalls, [_source.id]);
 
-    await tester.tap(find.text('新分类(DST)'));
+    await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
     expect(
       tester.widget<MasterDataTableView<GoodsListItem>>(_table).items,
@@ -191,7 +191,7 @@ void main() {
         canCreate: canCreate,
         withClipboard: !canCreate,
       );
-      await tester.tap(find.text('新分类(DST)'));
+      await tester.tap(find.text('新分类'));
       await tester.pumpAndSettle();
       await _rightClickBlank(tester);
       for (final label in ['粘贴货品', '批量粘贴…']) {
@@ -213,7 +213,7 @@ void main() {
     final goods = _GoodsRepository();
     final bom = _BomRepository();
     await _pumpPage(tester, goods, bom, withClipboard: true);
-    await tester.tap(find.text('新分类(DST)'));
+    await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
     await _rightClickBlank(tester);
     await tester.tap(find.text('批量粘贴…'));
@@ -245,7 +245,7 @@ void main() {
     final goods = _GoodsRepository(targetCount: 20);
     final bom = _BomRepository();
     await _pumpPage(tester, goods, bom, withClipboard: true);
-    await tester.tap(find.text('新分类(DST)'));
+    await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
     expect(
       tester.widget<MasterDataTableView<GoodsListItem>>(_table).currentPage,
@@ -281,7 +281,7 @@ void main() {
       withClipboard: true,
       surfaceSize: const Size(1600, 600),
     );
-    await tester.tap(find.text('新分类(DST)'));
+    await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
     await _rightClickAt(tester, tester.getCenter(find.text('已有货品 1')));
     await tester.tap(find.text('批量粘贴…'));
@@ -320,7 +320,7 @@ void main() {
   testWidgets('跨页批量粘贴默认选中所有成功副本且不包含原右键行', (tester) async {
     final goods = _GoodsRepository(targetCount: 39);
     await _pumpPage(tester, goods, _BomRepository(), withClipboard: true);
-    await tester.tap(find.text('新分类(DST)'));
+    await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
     await _rightClickAt(tester, tester.getCenter(find.text('已有货品 1')));
     await tester.tap(find.text('批量粘贴…'));
@@ -344,7 +344,7 @@ void main() {
     final goods = _GoodsRepository(failCreateAttempt: 2);
     final bom = _BomRepository();
     await _pumpPage(tester, goods, bom, withClipboard: true);
-    await tester.tap(find.text('新分类(DST)'));
+    await tester.tap(find.text('新分类'));
     await tester.pumpAndSettle();
     await _rightClickBlank(tester);
     await tester.tap(find.text('批量粘贴…'));

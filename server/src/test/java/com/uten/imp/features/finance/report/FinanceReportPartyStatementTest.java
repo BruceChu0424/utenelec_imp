@@ -126,7 +126,7 @@ class FinanceReportPartyStatementTest {
                         && sql.contains("opening.amount+SUM(flow.in_amount-flow.out_amount) OVER")
                         && sql.contains("FROM windowed")
                         && java.util.regex.Pattern.compile(
-                                "FROM windowed\\s+WHERE\\s*\\(?\\s*CAST\\(:keyword AS text\\) IS NULL")
+                                "FROM windowed\\s+WHERE\\s+NOT EXISTS")
                                 .matcher(sql).find()
                         && sql.indexOf("opening.amount+SUM(flow.in_amount-flow.out_amount) OVER")
                                 < sql.indexOf("), filtered AS")

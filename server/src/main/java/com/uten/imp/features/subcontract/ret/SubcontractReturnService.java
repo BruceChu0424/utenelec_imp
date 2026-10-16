@@ -26,6 +26,7 @@ import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.LinkedOrderReadGate;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.features.subcontract.ret.dto.ReturnDetail;
 import com.uten.imp.features.subcontract.ret.dto.ReturnItemDto;
 import com.uten.imp.features.subcontract.ret.dto.ReturnItemLine;
@@ -134,7 +135,8 @@ public class SubcontractReturnService {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        Page<SubcontractReturn> p = returnRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<SubcontractReturn> p = returnRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ReturnListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
         return p.stream().noneMatch(SubcontractReturn::isDeleted) ? result

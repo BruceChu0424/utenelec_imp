@@ -8,7 +8,9 @@ import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import java.util.List;
@@ -22,9 +24,11 @@ import static org.mockito.Mockito.when;
 
 class ClientFacetVisibilityConsistencyTest {
 
-    @Test
-    void everyFacetBucketAndNullCountUsesTheSameStubAndVisibilityPredicate() {
-        UUID categoryId = UUID.randomUUID();
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = "category")
+    void everyFacetBucketAndNullCountUsesTheSameStubAndVisibilityPredicate(String categoryMode) {
+        UUID categoryId = categoryMode == null ? null : UUID.randomUUID();
         ClientCategory category = new ClientCategory();
         category.setId(categoryId);
         ClientCategoryRepository categories = mock(ClientCategoryRepository.class);
@@ -58,6 +62,12 @@ class ClientFacetVisibilityConsistencyTest {
         assertThat(sql.getAllValues()).allSatisfy(statement -> assertThat(statement)
                 .contains("legacy-fin-cl-%")
                 .contains("clients.owner_employee_id = :owners"));
+        assertThat(sql.getAllValues()).allSatisfy(statement -> {
+            if (categoryId == null) assertThat(statement).doesNotContain("category_id in (:ids)");
+            else assertThat(statement).contains("category_id in (:ids)");
+        });
+        if (categoryId == null) org.mockito.Mockito.verify(query, org.mockito.Mockito.never())
+                .setParameter(org.mockito.ArgumentMatchers.eq("ids"), org.mockito.ArgumentMatchers.any());
         // 负责人（empId）桶：JOIN employees 按 owner_employee_id 分组、label 出人名；
         // 空值计数按 owner_employee_id is null（= 前端列「未分配」）。
         assertThat(sql.getAllValues()).anySatisfy(statement -> {

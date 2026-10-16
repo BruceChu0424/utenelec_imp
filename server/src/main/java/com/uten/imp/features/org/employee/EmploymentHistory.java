@@ -47,4 +47,8 @@ public class EmploymentHistory extends BaseEntity {
     private LocalDate eventDate;
 
     private String remark;
+
+    /** 日期更正指向原始入职事件；没有可靠历史的导入档案保留 null。 */
+    @Column(name = "corrects_history_id")
+    private UUID correctsHistoryId;
 }

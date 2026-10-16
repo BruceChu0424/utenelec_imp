@@ -28,6 +28,7 @@ import com.uten.imp.security.CommercialPriceVisibility;
 import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.features.subcontract.order.dto.OrderCostItemDto;
 import com.uten.imp.features.subcontract.order.dto.OrderDetail;
 import com.uten.imp.features.subcontract.order.dto.OrderItemDto;
@@ -176,7 +177,8 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                         priceMasked
                                 ? Map.of("billDate", "billDate", "billNo", "billNo")
                                 : ALLOWED_SORT));
-        Page<SubcontractOrder> p = orderRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<SubcontractOrder> p = orderRepo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, FinanceApproval> approvals = approvalProjection.latestForOrders(
                 orderType(),
                 p.getContent().stream().collect(Collectors.toMap(

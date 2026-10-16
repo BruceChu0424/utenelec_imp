@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.features.org.employee.dto.EmployeeListItem;
+import com.uten.imp.common.util.KeywordSearch;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -46,11 +47,6 @@ public class EmployeeListQuery {
             LEFT JOIN positions p ON p.id = e.position_id
             """;
 
-    /** 搜索词命中车牌时带回命中车牌（「、」分隔）；未命中返回 NULL。 */
-    private static final String MATCHED_PLATES =
-            ", (SELECT string_agg(v.plate_no, '、') FROM employee_vehicles v"
-                    + " WHERE v.employee_id = e.id AND LOWER(v.plate_norm) LIKE ?) AS matched_plates\n";
-
     private static final String ORDER_BY = """
             ORDER BY
                 CASE
@@ -75,7 +71,7 @@ public class EmployeeListQuery {
             String order) {
         int safePage = Math.max(1, page);
         int size = Math.min(Math.max(1, requestedSize), 100);
-        boolean hasSearch = search != null && !search.isBlank();
+        boolean hasSearch = !KeywordSearch.terms(search).isEmpty();
         List<Object> parameters = new ArrayList<>();
         String where = where(search, statuses, departmentIds, filterDepartments, parameters);
 
@@ -88,19 +84,26 @@ public class EmployeeListQuery {
 
         // SELECT 里的命中车牌子查询参数（仅搜索时）先于 WHERE 参数
         List<Object> pageParameters = new ArrayList<>();
+        String matchedPlates = ", NULL AS matched_plates\n";
         if (hasSearch) {
-            pageParameters.add(plateLike(search));
+            List<String> terms = KeywordSearch.terms(search);
+            matchedPlates = ", (SELECT string_agg(v.plate_no, '、') FROM employee_vehicles v"
+                    + " WHERE v.employee_id=e.id AND ("
+                    + String.join(" OR ", java.util.Collections.nCopies(terms.size(),
+                            "LOWER(v.plate_norm) LIKE ? ESCAPE '\\'")) + ")) AS matched_plates\n";
+            terms.forEach(term -> pageParameters.add(KeywordSearch.containsPattern(term)));
         }
         pageParameters.addAll(parameters);
+        String ordering = orderBy(sort, order);
+        if (hasSearch) ordering = "ORDER BY " + relevance(search, pageParameters)
+                + ", " + ordering.replaceFirst("(?s)^\\s*ORDER BY\\s*", "");
         pageParameters.add(size);
         pageParameters.add((safePage - 1) * size);
-        String select = COLUMNS
-                + (hasSearch ? MATCHED_PLATES : ", NULL AS matched_plates\n")
-                + FROM;
+        String select = COLUMNS + matchedPlates + FROM;
         List<EmployeeListItem> items = jdbc.query(
                 // 文本块 ORDER_BY 开头的换行会被 Java 吃掉，where 结尾是 "false"，
                 // 必须在此显式补换行，否则拼成 "falseORDER BY" 触发 PG 语法错误。
-                select + where + "\n" + orderBy(sort, order) + " LIMIT ? OFFSET ?",
+                select + where + "\n" + ordering + " LIMIT ? OFFSET ?",
                 (rs, rowNum) -> new EmployeeListItem(
                         rs.getObject("id", UUID.class),
                         rs.getString("code"),
@@ -147,22 +150,14 @@ public class EmployeeListQuery {
             boolean filterDepartments,
             List<Object> parameters) {
         StringBuilder sql = new StringBuilder(" WHERE e.is_deleted = false");
-        if (search != null && !search.isBlank()) {
-            // 全行可搜（2026-10-09 用户口径「行里显示什么就能按什么搜」）：
-            // 工号 / 姓名 / 部门 / 岗位 / 入职日期(yyyy[-MM][-dd] 文本) / 车牌
-            //（ADR-021：谁的车有问题 → 按车牌秒查人）。
-            sql.append(" AND (LOWER(e.code) LIKE ? OR LOWER(e.full_name) LIKE ?")
-                    .append(" OR LOWER(d.name) LIKE ? OR LOWER(p.name) LIKE ?")
-                    .append(" OR LOWER(CAST(e.hire_date AS TEXT)) LIKE ?")
+        for (String term : KeywordSearch.terms(search)) {
+            sql.append(" AND (LOWER(e.code) LIKE ? ESCAPE '\\' OR LOWER(e.full_name) LIKE ? ESCAPE '\\'")
+                    .append(" OR LOWER(d.name) LIKE ? ESCAPE '\\' OR LOWER(p.name) LIKE ? ESCAPE '\\'")
+                    .append(" OR LOWER(CAST(e.hire_date AS TEXT)) LIKE ? ESCAPE '\\'")
                     .append(" OR EXISTS (SELECT 1 FROM employee_vehicles v")
-                    .append(" WHERE v.employee_id = e.id AND LOWER(v.plate_norm) LIKE ?))");
-            String like = "%" + search.trim().toLowerCase(java.util.Locale.ROOT) + "%";
-            parameters.add(like);
-            parameters.add(like);
-            parameters.add(like);
-            parameters.add(like);
-            parameters.add(like);
-            parameters.add(plateLike(search));
+                    .append(" WHERE v.employee_id=e.id AND LOWER(v.plate_norm) LIKE ? ESCAPE '\\'))");
+            String pattern = KeywordSearch.containsPattern(term);
+            for (int field=0; field<6; field++) parameters.add(pattern);
         }
         if (statuses != null && !statuses.isEmpty()) {
             sql.append(" AND e.status IN (")
@@ -205,13 +200,12 @@ public class EmployeeListQuery {
         StringBuilder score = new StringBuilder("(0");
         List<Object> scoreParams = new ArrayList<>();
         for (int cp : codePoints) {
-            String like = "%"
-                    + String.valueOf(Character.toChars(cp)).toLowerCase(java.util.Locale.ROOT)
-                    + "%";
-            score.append(" + (CASE WHEN LOWER(e.full_name) LIKE ? THEN 4 ELSE 0 END)")
-                    .append(" + (CASE WHEN LOWER(d.name) LIKE ? THEN 2 ELSE 0 END)")
-                    .append(" + (CASE WHEN LOWER(p.name) LIKE ? THEN 2 ELSE 0 END)")
-                    .append(" + (CASE WHEN LOWER(e.code) LIKE ? THEN 1 ELSE 0 END)");
+            String like = KeywordSearch.containsPattern(
+                    String.valueOf(Character.toChars(cp)).toLowerCase(java.util.Locale.ROOT));
+            score.append(" + (CASE WHEN LOWER(e.full_name) LIKE ? ESCAPE '\\' THEN 4 ELSE 0 END)")
+                    .append(" + (CASE WHEN LOWER(d.name) LIKE ? ESCAPE '\\' THEN 2 ELSE 0 END)")
+                    .append(" + (CASE WHEN LOWER(p.name) LIKE ? ESCAPE '\\' THEN 2 ELSE 0 END)")
+                    .append(" + (CASE WHEN LOWER(e.code) LIKE ? ESCAPE '\\' THEN 1 ELSE 0 END)");
             scoreParams.add(like);
             scoreParams.add(like);
             scoreParams.add(like);
@@ -248,9 +242,14 @@ public class EmployeeListQuery {
         return String.join(",", java.util.Collections.nCopies(count, "?"));
     }
 
-    /** 车牌搜索词：去空白后小写模糊匹配（plate_norm 已是大写去空白，LOWER 后对齐）。 */
-    private static String plateLike(String search) {
-        return "%" + search.replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT) + "%";
+    private static String relevance(String search, List<Object> parameters) {
+        String phrase = KeywordSearch.phrase(search);
+        for (int field=0; field<2; field++) parameters.add(phrase);
+        for (int field=0; field<2; field++) parameters.add(KeywordSearch.prefixPattern(phrase));
+        for (int field=0; field<2; field++) parameters.add(KeywordSearch.containsPattern(phrase));
+        return "CASE WHEN LOWER(TRIM(e.code))=? OR LOWER(TRIM(e.full_name))=? THEN 0"
+                + " WHEN LOWER(e.code) LIKE ? ESCAPE '\\' OR LOWER(e.full_name) LIKE ? ESCAPE '\\' THEN 1"
+                + " WHEN LOWER(e.code) LIKE ? ESCAPE '\\' OR LOWER(e.full_name) LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END";
     }
 
     public record Result(

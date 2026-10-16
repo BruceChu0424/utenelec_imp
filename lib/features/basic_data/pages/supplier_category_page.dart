@@ -183,6 +183,20 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
     ref.watch(currentPermissionsProvider);
     return buildShell(
       context,
+      searchPaneBuilder: (query) =>
+          MasterEntityDetailPane<SupplierListItem, SupplierDetail>(
+            key: ValueKey('global-search-$query-$_detailEpoch'),
+            config: _paneConfig(),
+            categoryId: null,
+            canEditCategory: false,
+            canAddCategory: false,
+            canDeleteCategory: false,
+            externalKeyword: query,
+            externalSearchPending: shellSearchPending,
+            onAddChild: () {},
+            onEditCategory: (_) {},
+            onDeleteCategory: () {},
+          ),
       detailPaneBuilder: (selected) =>
           MasterEntityDetailPane<SupplierListItem, SupplierDetail>(
             key: ValueKey('dp-${selected.id}-$_detailEpoch'),
@@ -192,6 +206,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
             canAddCategory: shellCanCreate,
             canDeleteCategory: shellCanDelete,
             externalKeyword: shellTreeSearchKeyword,
+            externalSearchPending: shellSearchPending,
             onAddChild: () => shellShowCreateDialog(parent: selected),
             onEditCategory: (detail) => shellShowEditDialog(detail),
             onDeleteCategory: () => shellDeleteNode(selected),
@@ -216,17 +231,30 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       labelOf: (s) => s.name?.isNotEmpty == true ? s.name! : '该供应商',
       loadCategory: (id) =>
           ref.read(supplierCategoryRepositoryProvider).detail(id),
-      loadPage: (q) => suppliers.list(
-        q.categoryId,
-        page: q.page,
-        size: q.size ?? 20,
-        keyword: q.keyword,
-        filters: q.filters,
-        sort: q.sort,
-        order: q.order,
-      ),
+      loadPage: (q) => q.categoryId == null
+          ? suppliers.listGlobal(
+              page: q.page,
+              size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            )
+          : suppliers.list(
+              q.categoryId!,
+              page: q.page,
+              size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            ),
       loadFacets: (id) async {
         final f = await suppliers.facets(id);
+        return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
+      },
+      loadGlobalFacets: () async {
+        final f = await suppliers.globalFacets();
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
       },
       batchEntityPath: ApiEndpoints.suppliers,

@@ -134,7 +134,7 @@ public class SupplierController {
 
     @GetMapping("/facets")
     @PreAuthorize("hasAuthority('supplier:view')")
-    public SupplierFacets facets(@RequestParam UUID categoryId) {
+    public SupplierFacets facets(@RequestParam(required = false) UUID categoryId) {
         return service.facets(categoryId);
     }
 

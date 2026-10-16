@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/layout/uten_paged_picker_list.dart';
 import '../models/mould_node.dart';
 import '../repositories/mould_repository.dart';
 
@@ -58,7 +59,7 @@ class _MouldPickerFieldState extends State<MouldPickerField> {
       isScrollControlled: true,
       builder: (ctx) => const _MouldSearchSheet(),
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     _set(picked.id, _mouldLabel(picked));
   }
 
@@ -105,6 +106,11 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
   List<MouldListItem> _results = const [];
   bool _loading = false;
   String? _error;
+  String _query = '';
+  int _requestVersion = 0;
+  int _page = 1;
+  int _requestedPage = 1;
+  int _totalPages = 1;
 
   @override
   void initState() {
@@ -119,20 +125,46 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
     super.dispose();
   }
 
-  Future<void> _search(String kw) async {
+  void _onInputChanged(String text) {
     setState(() {
+      _requestVersion++;
+      _query = text.trim();
+      _results = const [];
+      _page = 1;
+      _requestedPage = 1;
+      _totalPages = 1;
+      _error = null;
+      _loading = true;
+    });
+  }
+
+  Future<void> _search(String text, {int page = 1}) async {
+    final query = text.trim();
+    if (!mounted || query != _searchCtl.text.trim()) return;
+    final requestVersion = ++_requestVersion;
+    setState(() {
+      _query = query;
+      _requestedPage = page;
       _loading = true;
       _error = null;
     });
     try {
-      final page = await ref.read(mouldRepositoryProvider).search(kw, size: 50);
-      if (!mounted) return;
-      setState(() => _results = page.items);
+      final result = await ref
+          .read(mouldRepositoryProvider)
+          .search(query, page: page, size: 50);
+      if (!mounted || requestVersion != _requestVersion) return;
+      setState(() {
+        _results = result.items;
+        _page = result.page;
+        _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
+        _loading = false;
+      });
     } catch (_) {
-      if (!mounted) return;
-      setState(() => _error = '模具搜索失败，请重试');
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      if (!mounted || requestVersion != _requestVersion) return;
+      setState(() {
+        _error = '模具搜索失败，请重试';
+        _loading = false;
+      });
     }
   }
 
@@ -158,59 +190,53 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet> {
             UtenSearchBar(
               controller: _searchCtl,
               autofocus: true,
-              hint: '模具编号 / 名称 / 位置 / 备注',
+              hint: '模具编号 / 名称 / 位置 / 制造商 / 备注',
+              onInputChanged: _onInputChanged,
               onChanged: _search,
               onSubmitted: _search,
             ),
             const SizedBox(height: 12),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_error != null)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(child: Text(_error!)),
-              )
-            else if (_results.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: Text('没有匹配的模具')),
-              )
-            else
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _results.length,
-                  itemBuilder: (ctx, i) {
-                    final m = _results[i];
-                    return ListTile(
-                      dense: true,
-                      title: Text(
-                        m.code ?? '（无编号）',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: (m.name ?? '').isEmpty
-                          ? null
-                          : Text(
-                              m.name!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+            Expanded(
+              child: UtenPagedPickerList<MouldListItem>(
+                key: const Key('mould-picker-results'),
+                items: _results,
+                idOf: (mould) => mould.id,
+                currentPage: _page,
+                totalPages: _totalPages,
+                paginationScope: _query,
+                loading: _loading,
+                error: _error,
+                onRetry: () => _search(_query, page: _requestedPage),
+                emptyMessage: '没有匹配的模具',
+                onPageChange: (page) => _search(_query, page: page),
+                itemBuilder: (ctx, m) {
+                  return ListTile(
+                    dense: true,
+                    title: Text(
+                      m.code ?? '（无编号）',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: (m.name ?? '').isEmpty
+                        ? null
+                        : Text(
+                            m.name!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                    trailing: (m.place ?? '').isEmpty
+                        ? null
+                        : Text(
+                            m.place!,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
-                      trailing: (m.place ?? '').isEmpty
-                          ? null
-                          : Text(
-                              m.place!,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                      onTap: () => Navigator.pop(ctx, m),
-                    );
-                  },
-                ),
+                          ),
+                    onTap: () => Navigator.pop(ctx, m),
+                  );
+                },
               ),
+            ),
           ],
         ),
       ),

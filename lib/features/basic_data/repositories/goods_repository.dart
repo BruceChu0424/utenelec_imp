@@ -46,18 +46,28 @@ List<List<String>> _goodsCategoryRootBatches(Set<String> rawIds) {
 
 /// 跨批合并结果的客户端排序（见 _searchAcrossRootBatches 注释）。
 /// 只覆盖服务端排序白名单键（code/price）；asc 空值排尾、desc 取反后空值排头，
-/// 与 PostgreSQL 默认 NULLS 口径一致。不识别的键返回 null（保持合并原序）。
+/// 与 PostgreSQL 默认 NULLS 口径一致。同值按同方向的 id 稳定排序。
 Comparator<GoodsListItem>? _searchMergeComparator(String? sort, String? order) {
+  int compareNullable<T extends Comparable<T>>(T? a, T? b) {
+    if (a == null) return b == null ? 0 : 1;
+    if (b == null) return -1;
+    return a.compareTo(b);
+  }
+
   int Function(GoodsListItem, GoodsListItem)? byKey;
   switch (sort) {
     case 'code':
-      byKey = (a, b) => (a.code ?? '').compareTo(b.code ?? '');
+      byKey = (a, b) => compareNullable(a.code, b.code);
     case 'price':
-      byKey = (a, b) => ((a.price ?? 0) - (b.price ?? 0)).sign.toInt();
+      byKey = (a, b) => compareNullable(a.price, b.price);
   }
   if (byKey == null) return null;
-  final asc = order == null || order == 'asc';
-  return asc ? byKey : (a, b) => byKey!(b, a);
+  final asc = order?.toLowerCase() != 'desc';
+  return (a, b) {
+    final compared = byKey!(a, b);
+    final stable = compared != 0 ? compared : a.id.compareTo(b.id);
+    return asc ? stable : -stable;
+  };
 }
 
 abstract interface class GoodsRepository {
@@ -82,10 +92,12 @@ abstract interface class GoodsRepository {
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<GoodsFacets> facets(String categoryId);
 
+  Future<GoodsFacets> globalFacets();
+
   /// 全局搜货品（组装信息「添加组件」选择器用；不限分类，按编号/名称/型号/规格/系列模糊）。
   ///
   /// [sort]/[order] 与 [list] 同一套服务端排序白名单（code/price）；
-  /// 不传时保持服务端默认（创建时间倒序）。
+  /// 不传时保持服务端默认（编号升序及稳定 id）。
   Future<PagedResult<GoodsListItem>> search(
     String keyword, {
     int page = 1,
@@ -171,6 +183,12 @@ class DioGoodsRepository implements GoodsRepository {
       ApiEndpoints.goodsFacets,
       query: {'categoryId': categoryId},
     );
+    return GoodsFacets.fromJson(json);
+  }
+
+  @override
+  Future<GoodsFacets> globalFacets() async {
+    final json = await api.get(ApiEndpoints.goodsFacets);
     return GoodsFacets.fromJson(json);
   }
 
@@ -289,8 +307,15 @@ class DioGoodsRepository implements GoodsRepository {
     final normalizedPage = page < 1 ? 1 : page;
     final normalizedSize = size.clamp(1, _goodsSearchMergeFetchSize);
     final merged = uniqueItems.values.toList(growable: false);
-    final comparator = _searchMergeComparator(sort, order);
-    if (comparator != null) merged.sort(comparator);
+    final comparator =
+        _searchMergeComparator(sort, order) ??
+        _searchMergeComparator('code', 'asc')!;
+    merged.sort((a, b) {
+      final relevance = (a.searchRank ?? 0).compareTo(b.searchRank ?? 0);
+      if (relevance != 0) return relevance;
+      final requested = comparator(a, b);
+      return requested != 0 ? requested : a.id.compareTo(b.id);
+    });
     final total = merged.length;
     final totalPages = total == 0
         ? 0

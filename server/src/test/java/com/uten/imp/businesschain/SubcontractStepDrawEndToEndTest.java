@@ -205,6 +205,7 @@ class SubcontractStepDrawEndToEndTest {
         fixture.loginAs(w.superAdminUserId());
         UUID product = goods(w, tag, "P", "委外");
         UUID material = goods(w, tag, "M", "采购");
+        db.update("UPDATE goods SET name=? WHERE id=?", tag + "螺丝 M3_20%", product);
         UUID unrelatedProduct = goods(w, tag, "UNRELATED", "委外");
         fixture.insertBom(product, material, "1");
         var stage = fixture.stageSubcontractKit(w, Map.of(product, "401"));
@@ -256,6 +257,12 @@ class SubcontractStepDrawEndToEndTest {
         DrawTaskPage broad = drawQueries.tasks(1, 200, "", "", orderId, null);
         assertEquals(401, broad.page().getTotal());
         assertEquals(200, broad.page().getItems().size());
+        DrawTaskPage compound = drawQueries.tasks(1, 1, tag + " M3_20%", "", orderId, null);
+        assertEquals(401, compound.page().getTotal());
+        assertEquals(401L, compound.statusCounts().get("ALL"));
+        assertEquals(1, compound.page().getItems().size());
+        assertEquals(0, drawQueries.tasks(1, 1, tag + " M3X20A", "", orderId, null).page().getTotal());
+
         DrawTaskPage first = drawQueries.tasks(1, 200, "", "", orderId, null, List.of(target));
         assertEquals(201, first.page().getTotal(), "source filtering must happen before total and LIMIT");
         assertEquals(2, first.page().getTotalPages());

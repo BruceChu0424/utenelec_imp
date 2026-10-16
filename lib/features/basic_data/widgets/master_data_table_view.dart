@@ -15,6 +15,7 @@ import '../../../shared/platform_tables/table_column_projection.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import '../../../shared/search/keyword_search.dart';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
@@ -5988,11 +5989,11 @@ class _FilterCellState extends State<_FilterCell> {
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
                     final q = _searchCtl?.text.trim().toLowerCase() ?? '';
-                    final buckets = q.isEmpty
-                        ? widget.buckets
-                        : widget.buckets
-                              .where((b) => b.display.toLowerCase().contains(q))
-                              .toList();
+                    final buckets = rankedKeywordMatches(
+                      widget.buckets,
+                      q,
+                      fields: (bucket) => [bucket.display],
+                    );
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [

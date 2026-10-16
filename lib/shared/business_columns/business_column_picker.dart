@@ -10,6 +10,7 @@ import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../components/layout/uten_segment_row.dart';
 import '../formatters/exact_decimal.dart';
+import '../search/keyword_search.dart';
 import '../widgets/column_editor_dialog.dart';
 import 'business_column.dart';
 import 'business_columns_repository.dart';
@@ -264,9 +265,11 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
 
   Widget _catalog() {
     final query = _name.text.trim().toLowerCase();
-    final builtIns = widget.systemColumns
-        .where((c) => query.isEmpty || c.label.toLowerCase().contains(query))
-        .toList();
+    final builtIns = rankedKeywordMatches(
+      widget.systemColumns,
+      query,
+      fields: (column) => [column.label],
+    );
     final columns = _results
         .where(
           (c) => !_existingIds.contains(c.id) && (_arithmetic || !c.financial),

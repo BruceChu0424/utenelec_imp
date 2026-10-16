@@ -1,5 +1,7 @@
 package com.uten.imp.features.production.schedule;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.validation.RequestLimits;
@@ -97,7 +99,7 @@ public class ProductionScheduleService {
             String sort, String order, String status, String billNo) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
-        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        String kw = KeywordSearch.phrase(keyword);
         String billNoFilter = billNo == null || billNo.isBlank()
                 ? "" : " AND o.bill_no = :billNo";
         LocalDate warn = BusinessTime.today().plusDays(3);
@@ -116,6 +118,12 @@ public class ProductionScheduleService {
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = total == 0 ? 0 : (int) ((total + sz - 1) / sz);
         if (totalPages > 0 && p > totalPages) p = totalPages; // 页码越界回退
+        String orderBy = pendingOrderBy(sort, order);
+        if (!kw.isEmpty()) {
+            orderBy = orderBy.replace("ORDER BY ", "ORDER BY "
+                    + TaskKeywordSearch.rankNamesFirst(kw, new String[]{"g.name"}, new String[]{},
+                            new String[]{"g.code", "o.bill_no", "c.name"}) + ", ");
+        }
 
         var dataQ = em.createNativeQuery("""
                 SELECT i.id, o.id, o.bill_no, o.client_id, c.name,
@@ -142,8 +150,9 @@ public class ProductionScheduleService {
                             END AS readiness_ratio,
                        %s AS analysis_covered
                 """.formatted(PENDING_NEED_SQL, ACTIVE_ANALYSIS_COVERED_SQL) + dataFilters
-                + " " + pendingOrderBy(sort, order) + " LIMIT :lim OFFSET :off");
+                + " " + orderBy + " LIMIT :lim OFFSET :off");
         bindPendingFilters(dataQ, kw, dateFrom, dateTo, warn, needsWarn);
+        TaskKeywordSearch.bind(dataQ, kw, true);
         if (!billNoFilter.isEmpty()) dataQ.setParameter("billNo", billNo.trim());
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
@@ -173,7 +182,7 @@ public class ProductionScheduleService {
     private static void bindPendingFilters(jakarta.persistence.Query q, String kw,
                                            LocalDate dateFrom, LocalDate dateTo,
                                            LocalDate warn, boolean needsWarn) {
-        if (!kw.isEmpty()) q.setParameter("kw", "%" + kw + "%");
+        TaskKeywordSearch.bind(q, kw, false);
         if (dateFrom != null) q.setParameter("dateFrom", dateFrom);
         if (dateTo != null) q.setParameter("dateTo", dateTo);
         if (needsWarn && warn != null) q.setParameter("warn", warn);
@@ -249,9 +258,8 @@ public class ProductionScheduleService {
                   AND COALESCE(i.chain_status,0) BETWEEN 1 AND 8
                   AND %s > 0
                 """.formatted(PENDING_NEED_SQL)
-                + (kw.isEmpty() ? ""
-                        : "  AND (LOWER(o.bill_no) LIKE :kw OR LOWER(COALESCE(c.name,'')) LIKE :kw"
-                          + " OR LOWER(g.name) LIKE :kw OR LOWER(g.code) LIKE :kw)\n")
+                + "  AND " + TaskKeywordSearch.condition(kw,
+                        "o.bill_no", "c.name", "g.name", "g.code", "g.spec", "col.name", "u.name") + "\n"
                 + (dateFrom == null ? ""
                         : "  AND " + DELIVER_EXPR + " >= :dateFrom\n")
                 + (dateTo == null ? ""
@@ -294,7 +302,7 @@ public class ProductionScheduleService {
     @Transactional(readOnly = true)
     public Map<String, List<Map<String, Object>>> pendingFacets(
             String keyword, LocalDate dateFrom, LocalDate dateTo) {
-        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        String kw = KeywordSearch.phrase(keyword);
         LocalDate warn = BusinessTime.today().plusDays(3);
         String filters = pendingFiltersBase(kw, dateFrom, dateTo);
         var q = em.createNativeQuery("""

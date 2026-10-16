@@ -8,6 +8,8 @@ void main() {
       'departmentId': 'department-1',
       'code': 'E-Alpha',
       'fullName': '张三',
+      'departmentName': '工程研发部',
+      'positionName': '研发工程师',
       'departmentManager': false,
       'isSelf': false,
     });
@@ -16,5 +18,8 @@ void main() {
     expect(row.matchesSearch(' 张三 '), isTrue);
     expect(row.matchesSearch('e-alpha'), isTrue);
     expect(row.matchesSearch('李四'), isFalse);
+    expect(row.matchesSearch('张三 e-alpha 研发'), isTrue);
+    expect(row.matchesSearch('张三 财务'), isFalse);
+    expect(row.matchesSearch('%'), isFalse);
   });
 }

@@ -2,6 +2,8 @@ package com.uten.imp.features.notice;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.features.notice.dto.NoticeAudienceEmployeeDto;
 import com.uten.imp.features.notice.dto.NoticeAudiencePreviewDto;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +34,7 @@ public class NoticeAudienceService {
     /** notice:publish 专用人员目录，不要求额外 employee:view，且不暴露敏感档案字段。 */
     @Transactional(readOnly = true)
     public List<NoticeAudienceEmployeeDto> searchEmployees(String search) {
-        String keyword = search == null ? "" : search.trim();
+        String keyword = KeywordSearch.phrase(search);
         List<NoticeAudienceEmployeeDto> candidates = jdbc.sql("""
                         SELECT e.id,
                                e.full_name,
@@ -46,14 +48,12 @@ public class NoticeAudienceService {
                           AND e.status <> 'resigned'
                           AND u.is_deleted = false
                           AND u.status = 'active'
-                          AND (
-                            :keyword = ''
-                            OR e.full_name ILIKE '%' || :keyword || '%'
-                            OR e.code ILIKE '%' || :keyword || '%'
-                          )
-                        ORDER BY e.full_name, e.code
+                          AND %s
+                        ORDER BY %s, e.full_name, e.code, e.id
                         LIMIT :limit
-                        """)
+                        """.formatted(TaskKeywordSearch.conditionParameter("keyword", "e.full_name", "e.code"),
+                        TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"e.full_name"},
+                                new String[]{}, new String[]{"e.full_name", "e.code"})))
                 .param("keyword", keyword)
                 .param("limit", MAX_SEARCH_RESULTS + 1)
                 .query((rs, rowNum) -> new NoticeAudienceEmployeeDto(

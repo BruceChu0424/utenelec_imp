@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../../../shared/search/keyword_search.dart';
 
 import '../../../shared/documents/document_unapproval.dart';
 // 生产模块仓库（生产管理 / production）。
@@ -1205,16 +1206,12 @@ class ProductionPlanRepository {
     final json = await api.getList(
       '$_materialAnalysesBase/${Uri.encodeComponent(targetAnalysisId)}/materials/${Uri.encodeComponent(targetMaterialId)}/future-transfer-sources',
     );
-    final all = json
-        .map(MaterialFutureTransferSource.fromJson)
-        .where(
-          (source) =>
-              keyword.trim().isEmpty ||
-              '${source.sourceLabel} ${source.goodsName ?? ''} ${source.goodsCode ?? ''}'
-                  .toLowerCase()
-                  .contains(keyword.trim().toLowerCase()),
-        )
-        .toList();
+    final all = rankedKeywordMatches(
+      json.map(MaterialFutureTransferSource.fromJson),
+      keyword,
+      primaryFields: (source) => [source.goodsName],
+      fields: (source) => [source.sourceLabel, source.goodsCode],
+    );
     final start = ((page - 1) * size).clamp(0, all.length);
     final end = (start + size).clamp(0, all.length);
     return PagedResult(

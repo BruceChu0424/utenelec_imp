@@ -23,6 +23,10 @@ class UtenControlTheme extends StatelessWidget {
     return Theme(
       data: theme.copyWith(
         inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+          // Desktop adaptive density subtracts 8px from a plain outline while
+          // icon slots retain their 44px minimum. Form geometry owns its density;
+          // table/filter hosts override this with their own compact roles.
+          visualDensity: VisualDensity.standard,
           isDense: true,
           constraints: BoxConstraints(minHeight: fieldHeight),
           contentPadding: EdgeInsets.symmetric(

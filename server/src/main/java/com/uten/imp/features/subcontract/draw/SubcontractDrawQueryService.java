@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.draw;
 
+import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -83,6 +85,8 @@ public class SubcontractDrawQueryService {
         int pageSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         int pageNo = Math.max(page, 1);
         Filters filters = filters(keyword, orderId, orderItemIds, applicationItemIds, applicationId);
+        String rank = KeywordSearch.terms(keyword).isEmpty() ? "0" : TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                new String[]{"goods_name"}, new String[]{}, new String[]{"goods_code", "order_bill_no", "plan_no", "supplier_name"});
         String sql = (classifiedCte(SubcontractDrawSql.OPEN_ITEM_PREDICATE + filters.sql()) + """
                 , counts AS (
                     SELECT COUNT(*) FILTER (WHERE status IN ('DRAWABLE','DRAWABLE_PARTIAL')) AS drawable_rows,
@@ -93,8 +97,8 @@ public class SubcontractDrawQueryService {
                            COUNT(*) FILTER (WHERE {STATUS_FILTER}) AS filtered_rows
                     FROM classified
                 ), page AS (
-                    SELECT * FROM classified WHERE {STATUS_FILTER}
-                    ORDER BY status_rank, deliver_date ASC NULLS LAST, order_bill_no,
+                    SELECT *, {SEARCH_RANK} AS search_rank FROM classified WHERE {STATUS_FILTER}
+                    ORDER BY search_rank, status_rank, deliver_date ASC NULLS LAST, order_bill_no,
                              line_no ASC NULLS LAST, order_item_id
                     LIMIT :pageLimit OFFSET :pageOffset
                 )
@@ -102,9 +106,9 @@ public class SubcontractDrawQueryService {
                        counts.material_rows, counts.all_rows, counts.filtered_rows,
                        {ROW_SELECT}
                 FROM counts LEFT JOIN page ON TRUE
-                ORDER BY page.status_rank, page.deliver_date ASC NULLS LAST, page.order_bill_no,
+                ORDER BY page.search_rank, page.status_rank, page.deliver_date ASC NULLS LAST, page.order_bill_no,
                          page.line_no ASC NULLS LAST, page.order_item_id
-                """).replace("{STATUS_FILTER}", statusFilter).replace("{ROW_SELECT}", rowSelect("page"));
+                """).replace("{SEARCH_RANK}", rank).replace("{STATUS_FILTER}", statusFilter).replace("{ROW_SELECT}", rowSelect("page"));
         Query query = em.createNativeQuery(sql);
         filters.binder().accept(query);
         query.setParameter("pageLimit", pageSize);
@@ -650,15 +654,11 @@ public class SubcontractDrawQueryService {
                             List<UUID> applicationItemIds, UUID applicationId) {
         DocumentAccessPolicy.NativeReadScope scope = access.nativeReadScope("o.maker_id", "readOwners");
         StringBuilder sql = new StringBuilder(" AND ").append(scope.predicate()).append(' ');
-        String pattern = keyword == null || keyword.isBlank() ? null : "%" + keyword.strip() + "%";
-        if (pattern != null) {
-            // 来源计划(= plan_no 同口径)也纳入关键字: 申请行一直可按 WL 编号搜, 领料行对齐。
-            sql.append("""
-                     AND (o.bill_no ILIKE :keyword OR supplier.name ILIKE :keyword
-                          OR COALESCE(oi.goods_code_snapshot, goods.code) ILIKE :keyword
-                          OR COALESCE(oi.goods_name_snapshot, goods.name) ILIKE :keyword
-                          OR COALESCE(NULLIF(oi.source_doc_no, ''), o.bill_no) ILIKE :keyword)
-                    """);
+        String phrase = KeywordSearch.phrase(keyword);
+        if (!phrase.isEmpty()) {
+            sql.append(" AND ").append(TaskKeywordSearch.conditionParameter("keyword", "o.bill_no", "supplier.name",
+                    "COALESCE(oi.goods_code_snapshot, goods.code)", "COALESCE(oi.goods_name_snapshot, goods.name)",
+                    "COALESCE(NULLIF(oi.source_doc_no, ''), o.bill_no)")).append(' ');
         }
         if (orderId != null) {
             sql.append(" AND o.id = :filterOrderId ");
@@ -710,8 +710,8 @@ public class SubcontractDrawQueryService {
         }
         return new Filters(sql.toString(), query -> {
             scope.bind(query);
-            if (pattern != null) {
-                query.setParameter("keyword", pattern);
+            if (!phrase.isEmpty()) {
+                query.setParameter("keyword", phrase);
             }
             if (orderId != null) {
                 query.setParameter("filterOrderId", orderId);

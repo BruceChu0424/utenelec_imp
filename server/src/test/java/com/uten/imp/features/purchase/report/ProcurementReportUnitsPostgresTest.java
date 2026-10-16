@@ -74,6 +74,46 @@ class ProcurementReportUnitsPostgresTest {
         }));
         when(q.getSingleResult()).thenAnswer(call->named.queryForObject(sql,values,Long.class));return q;
     }
+
+    @Test void subcontractInOutSearchRanksCompleteNamesAcrossPagesAndKeepsTheDeclaredProjectionAndMask() {
+        searchReceipt("A-NEAR","Metric Screw extra");
+        searchReceipt("Z-EXACT","Metric Screw");
+        var first=subcontract.inOutStatus(ALIAS_SUPPLIER,DATE,DATE,"Metric Screw",1,1);
+        assertThat(first.total()).isEqualTo(2);
+        assertThat(first.totalPages()).isEqualTo(2);
+        assertThat(first.rows()).hasSize(1);
+        assertThat(first.rows().getFirst()).containsEntry("goodsCode","Z-EXACT")
+                .containsEntry("goodsName","Metric Screw").containsEntry("colorName","对应颜色")
+                .containsEntry("spec","SEARCH-SPEC").containsEntry("model","SEARCH-MODEL").containsEntry("series","SEARCH-SERIES");
+        assertThat(subcontract.inOutStatus(ALIAS_SUPPLIER,DATE,DATE,"Metric Screw",2,1).rows().getFirst())
+                .containsEntry("goodsCode","A-NEAR");
+        assertThat(subcontract.inOutStatus(ALIAS_SUPPLIER,DATE,DATE,"对应供应商 Z-EXACT",1,20).rows())
+                .extracting(row->row.get("goodsCode")).containsExactly("Z-EXACT");
+        searchReceipt("A%_B","literal");
+        searchReceipt("AxYB","near literal");
+        assertThat(subcontract.inOutStatus(ALIAS_SUPPLIER,DATE,DATE,"A%_B",1,20).rows())
+                .extracting(row->row.get("goodsCode")).containsExactly("A%_B");
+        when(visibility.canViewSubcontractReport()).thenReturn(false);
+        try {
+            var masked=subcontract.inOutStatus(ALIAS_SUPPLIER,DATE,DATE,"A%_B",1,20);
+            assertThat(masked.columns()).noneMatch(column->column.key().equals("price")||column.key().equals("amount"));
+            assertThat(masked.rows().getFirst()).doesNotContainKeys("price","amount","priceExact","amountExact");
+            assertThat(masked.rows().getFirst()).containsEntry("goodsCode","A%_B");
+        } finally {
+            when(visibility.canViewSubcontractReport()).thenReturn(true);
+        }
+    }
+
+    private static void searchReceipt(String code,String name) {
+        UUID doc=UUID.randomUUID(),goods=UUID.randomUUID();
+        db.update("INSERT INTO goods(id,code,name,unit_id,spec,model,series) VALUES(?,?,?,?,'SEARCH-SPEC','SEARCH-MODEL','SEARCH-SERIES')",goods,code,name,UNIT);
+        db.update("INSERT INTO subcontract_receipts(id,bill_no,bill_date,status,currency_id,supplier_id) VALUES(?,?,?,1,?,?)",doc,"SEARCH-"+doc,DATE,USD,ALIAS_SUPPLIER);
+        db.update("""
+                INSERT INTO subcontract_receipt_items(id,receipt_id,bill_no,bill_date,goods_id,goods_code_snapshot,goods_name_snapshot,
+                    color_id,unit_id,qty,unit_rate,price,amount_local)
+                VALUES(gen_random_uuid(),?,?,?,?,?,?,?, ?,1,1,10,70)
+                """,doc,"SEARCH-"+doc,DATE,goods,code,name,ALIAS_COLOR,UNIT);
+    }
     @Test void purchaseForeignAmountsAndLocalTotalKeepDifferentUnitsAndExactValues(){
         UUID doc=UUID.randomUUID();db.update("INSERT INTO purchase_orders(id,bill_no,bill_date,status,currency_id,total_local) VALUES (?,'REPORT-PURCHASE',?,1,?,140)",doc,DATE,USD);
         db.update("INSERT INTO purchase_order_items(id,order_id,bill_no,bill_date,goods_id,goods_code_snapshot,goods_name_snapshot,unit_id,qty,price,amount_original,amount_local,received_qty,returned_qty) VALUES (gen_random_uuid(),?,'REPORT-PURCHASE',?,?,'REPORT-GOODS','测试货品',?,2,10,20,140,0,0)",doc,DATE,GOODS,UNIT);

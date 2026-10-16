@@ -94,11 +94,12 @@ public class ProductionReportService {
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
         for (ReportColumn c : columns) sortKeys.add(c.key());
-        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
+        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -213,12 +214,12 @@ public class ProductionReportService {
         if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw)"
-                    + " OR LOWER(COALESCE(i.product_no,'')) LIKE LOWER(:kw)"
-                    + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id"
-                    + " AND (LOWER(gg.name) LIKE LOWER(:kw) OR LOWER(COALESCE(gg.code,'')) LIKE LOWER(:kw)"
-                    + " OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))))",
-                    "kw", "%" + kw.toLowerCase() + "%");
+            w.search(kw, parameter -> "(" + billNoCol + " ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR i.product_no ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id=i.goods_id AND ("
+                    + "gg.name ILIKE " + parameter + " ESCAPE '\\' OR gg.code ILIKE " + parameter
+                    + " ESCAPE '\\' OR gg.model ILIKE " + parameter + " ESCAPE '\\')))",
+                    billNoCol, "i.product_no", "g.name", "g.code");
         }
     }
 

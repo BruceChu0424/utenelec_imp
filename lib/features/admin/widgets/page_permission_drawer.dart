@@ -25,6 +25,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../department/widgets/uten_department_tree_view.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_table_column_kit.dart'
     show utenTableSelectedRowColor;
 import '../../../shared/hierarchy/uten_tree_path.dart';
@@ -35,9 +36,139 @@ import '../../../shared/auth/page_permission_delegation_repository.dart';
 import '../../../shared/auth/page_permission_scope.dart';
 import '../../../shared/auth/permission_action_family.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/formatters/employee_display.dart';
 import '../../employee/widgets/employee_account_provision_flow.dart';
 import 'perm_catalog_group_section.dart';
+import '../models/admin_models.dart';
+import '../repositories/admin_repository.dart';
+import 'admin_data_scope_section.dart';
+
+final _pageDataScopeBoundaryProvider = Provider(
+  (ref) => (
+    ref.watch(sensitiveReadBoundaryProvider),
+    ref.watch(isSuperAdminProvider),
+    ref.watch(currentPermissionsProvider).contains(Perm.authorizationManage),
+  ),
+);
+
+class _PageDataScopePanel extends ConsumerStatefulWidget {
+  const _PageDataScopePanel({
+    required this.employeeId,
+    required this.viewAllPermissions,
+  });
+
+  final String employeeId;
+  final Set<String> viewAllPermissions;
+
+  @override
+  ConsumerState<_PageDataScopePanel> createState() =>
+      _PageDataScopePanelState();
+}
+
+class _PageDataScopePanelState extends ConsumerState<_PageDataScopePanel> {
+  AdminUserSummary? _user;
+  EffectivePermissions? _permissions;
+  String? _error;
+  int _loadRequest = 0;
+  Object? _loadedBoundary;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(_pageDataScopeBoundaryProvider, (previous, next) {
+      if (previous == next || !mounted) return;
+      _loadRequest++;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    final boundary = ref.read(_pageDataScopeBoundaryProvider);
+    final employeeId = widget.employeeId;
+    final request = ++_loadRequest;
+    bool current() =>
+        mounted &&
+        request == _loadRequest &&
+        widget.employeeId == employeeId &&
+        boundary == ref.read(_pageDataScopeBoundaryProvider);
+    setState(() {
+      _error = null;
+      _user = null;
+      _permissions = null;
+      _loadedBoundary = null;
+    });
+    if (!boundary.$2 || !boundary.$3) return;
+    try {
+      final repository = ref.read(adminRepositoryProvider);
+      final user = await repository.userByEmployeeId(employeeId);
+      if (!current()) return;
+      final permissions = await repository.effectivePermissions(user.id);
+      if (!current()) return;
+      setState(() {
+        _user = user;
+        _permissions = permissions;
+        _loadedBoundary = boundary;
+      });
+    } catch (error) {
+      if (current()) {
+        setState(() {
+          _loadedBoundary = boundary;
+          _error = error is ApiException ? error.message : '可查看数据范围加载失败，请重试';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final boundary = ref.watch(_pageDataScopeBoundaryProvider);
+    final allowed = boundary.$2 && boundary.$3;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          title: const Text('配置可查看数据'),
+          trailing: IconButton(
+            tooltip: '关闭',
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        Expanded(
+          child: !allowed
+              ? const UtenEmpty(message: '需要超级管理员配置可查看数据范围')
+              : _loadedBoundary == boundary && _error != null
+              ? UtenEmpty.error(
+                  message: _error,
+                  actionLabel: '重试',
+                  onAction: _load,
+                )
+              : _loadedBoundary != boundary ||
+                    _user == null ||
+                    _permissions == null
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(UtenSpacing.s12),
+                  child: AdminDataScopeSection(
+                    user: _user!,
+                    effectiveAsync: AsyncValue.data(_permissions!),
+                    viewAllPermissions: widget.viewAllPermissions,
+                    showHandover: false,
+                    onAccountChanged: _load,
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
 
 /// 从页面右上角打开「{页面名} · 页面权限」抽屉。
 Future<void> showPagePermissionDrawer(
@@ -866,6 +997,10 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
               UtenSpacing.s16,
             ),
             children: [
+              if (detail.permissions.any(
+                (row) => row.code.endsWith(':view:all'),
+              ))
+                _dataScopeEntry(detail),
               // 单组且为根面（普通页面）：抽屉标题已表达页面名，不再重复分组头。
               if (groups.length == 1 && groups.first.root) ...[
                 ..._familyRows(groups.first),
@@ -875,6 +1010,61 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _dataScopeEntry(PagePermissionEmployeeDetail detail) {
+    final canConfigure =
+        ref.watch(isSuperAdminProvider) &&
+        ref
+            .watch(currentPermissionsProvider)
+            .contains(Perm.authorizationManage);
+    final isClient = detail.permissions.any(
+      (row) => row.code == Perm.clientViewAll,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('可查看数据范围', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: UtenSpacing.s4),
+          Text(
+            isClient
+                ? '开启“查看客户”后，默认可查看本人负责及被指定共享的客户。'
+                      '还可额外选择指定负责人的客户；“查看全部客户资料”会覆盖为全部客户。'
+                      '如只看本人或指定负责人，请先关闭“查看全部”并保存。'
+                      '客户信用汇总只在可见客户范围内生效，全公司应收台账仍需独立财务权限。'
+                : '开启查看权限后，默认按本人负责及已授权的数据范围查看。'
+                      '可额外选择指定负责人；“查看全部”会覆盖为全部数据。',
+          ),
+          if (canConfigure) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            Tooltip(
+              message: _dirty ? '请先保存或撤销本页权限修改，再配置数据范围' : '',
+              child: OutlinedButton.icon(
+                key: const ValueKey('page-data-scope-entry'),
+                onPressed: _dirty || _saving
+                    ? null
+                    : () => showUtenAdaptivePanel<void>(
+                        context: context,
+                        drawerWidth: 720,
+                        builder: (_) => _PageDataScopePanel(
+                          employeeId: detail.employeeId,
+                          viewAllPermissions: {
+                            for (final row in detail.permissions)
+                              if (row.code.endsWith(':view:all')) row.code,
+                          },
+                        ),
+                      ),
+                icon: const Icon(Icons.visibility_outlined),
+                label: const Text('配置可查看数据'),
+              ),
+            ),
+          ] else
+            const Text('额外查看范围由超级管理员配置；单个客户可由有分配权限的人员设置可见人。'),
+        ],
+      ),
     );
   }
 

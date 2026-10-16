@@ -4,6 +4,8 @@ import com.uten.imp.application.port.ProductionMutationFootprintPort;
 import com.uten.imp.application.concurrency.FulfillmentMutationLockPlan;
 import com.uten.imp.application.concurrency.FulfillmentMutationLocks;
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -371,8 +373,7 @@ public class MaterialAnalysisService {
             String keyword, String status, String sourceType, int page, int size) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 100);
-        String normalizedKeyword = blankToNull(keyword) == null
-                ? "" : keyword.strip().toLowerCase(Locale.ROOT);
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedStatus = blankToNull(status) == null
                 ? "" : status.strip().toUpperCase(Locale.ROOT);
         String normalizedSource = blankToNull(sourceType) == null
@@ -389,6 +390,23 @@ public class MaterialAnalysisService {
         }
         var ownerScope = access.nativeReadScope(
                 "analysis.maker_id", "analysisOwners", access.scope());
+        String searchSources = """
+                 FROM production_material_analysis_items source
+                 JOIN goods goods ON goods.id=source.goods_id
+                 LEFT JOIN colors product_color ON product_color.id=COALESCE(source.color_id,goods.color_id)
+                     AND product_color.is_deleted=FALSE
+                 LEFT JOIN sales_order_items sales_item ON sales_item.id=source.sales_order_item_id
+                 LEFT JOIN sales_orders sales_order ON sales_order.id=sales_item.order_id
+                 WHERE source.analysis_id=analysis.id AND source.is_deleted=FALSE
+                   AND (:sourceType='' OR source.source_type=:sourceType)
+                """;
+        String searchPredicate = TaskKeywordSearch.conditionParameter("keyword", "analysis.analysis_no",
+                "(SELECT string_agg(concat_ws(' ',source.source_ref,goods.code,goods.name,product_color.name,sales_order.bill_no),' ')"
+                        + searchSources + ")");
+        String searchRank = TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{},
+                new String[]{"ARRAY(SELECT goods.name" + searchSources + ")"}, new String[]{"analysis.analysis_no"},
+                "ARRAY(SELECT goods.code" + searchSources + ")", "ARRAY(SELECT source.source_ref" + searchSources + ")",
+                "ARRAY(SELECT sales_order.bill_no" + searchSources + ")");
         String filters = """
                 FROM production_material_analyses analysis
                 WHERE analysis.is_deleted = FALSE
@@ -406,19 +424,13 @@ public class MaterialAnalysisService {
                       WHERE source.analysis_id = analysis.id
                         AND source.is_deleted = FALSE
                         AND (:sourceType = '' OR source.source_type = :sourceType)
-                        AND (:keyword = '' OR
-                             lower(COALESCE(analysis.analysis_no, '')) LIKE :keywordLike OR
-                             lower(COALESCE(source.source_ref,'')) LIKE :keywordLike OR
-                             lower(COALESCE(goods.code,'')) LIKE :keywordLike OR
-                             lower(COALESCE(goods.name,'')) LIKE :keywordLike OR
-                             lower(COALESCE(sales_order.bill_no,'')) LIKE :keywordLike)
                   )
-                """.formatted(ownerScope.predicate());
+                  AND EXISTS (SELECT 1 FROM warehouses warehouse WHERE warehouse.id=analysis.warehouse_id)
+                """.formatted(ownerScope.predicate()) + " AND " + searchPredicate;
         Query countQuery = em.createNativeQuery("SELECT COUNT(*) " + filters)
                 .setParameter("status", normalizedStatus)
                 .setParameter("sourceType", normalizedSource)
-                .setParameter("keyword", normalizedKeyword)
-                .setParameter("keywordLike", "%" + normalizedKeyword + "%");
+                .setParameter("keyword", normalizedKeyword);
         ownerScope.bind(countQuery);
         long total = ((Number) countQuery.getSingleResult()).longValue();
         int totalPages = total == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
@@ -426,10 +438,9 @@ public class MaterialAnalysisService {
 
         Query dataQuery = em.createNativeQuery("""
                 WITH analysis_page AS MATERIALIZED (
-                    SELECT analysis.*
-                    """ + filters + """
-                      AND EXISTS (SELECT 1 FROM warehouses warehouse WHERE warehouse.id=analysis.warehouse_id)
-                    ORDER BY analysis.analyzed_at DESC, analysis.id DESC
+                    SELECT analysis.*,
+                    """ + searchRank + " AS search_rank " + filters + """
+                    ORDER BY search_rank, analysis.analyzed_at DESC, analysis.id DESC
                     LIMIT :limit OFFSET :offset
                 )
                 SELECT analysis.id, analysis.status, analysis.version,
@@ -475,12 +486,11 @@ public class MaterialAnalysisService {
                     LEFT JOIN sales_orders sales_order ON sales_order.id = sales_item.order_id
                     WHERE source.analysis_id = analysis.id AND source.is_deleted = FALSE
                 ) summary
-                ORDER BY analysis.analyzed_at DESC, analysis.id DESC
+                ORDER BY analysis.search_rank, analysis.analyzed_at DESC, analysis.id DESC
                 """)
                 .setParameter("status", normalizedStatus)
                 .setParameter("sourceType", normalizedSource)
                 .setParameter("keyword", normalizedKeyword)
-                .setParameter("keywordLike", "%" + normalizedKeyword + "%")
                 .setParameter("limit", safeSize)
                 .setParameter("offset", (safePage - 1) * safeSize);
         ownerScope.bind(dataQuery);
@@ -1132,19 +1142,25 @@ public class MaterialAnalysisService {
             String sort, String order, String orderBillNo) {
         int page = Math.max(rawPage, 1);
         int size = Math.min(Math.max(rawSize, 1), 100);
-        String kw = keyword == null ? "" : keyword.strip().toLowerCase(Locale.ROOT);
+        String kw = KeywordSearch.phrase(keyword);
         boolean billNoFilter = orderBillNo != null && !orderBillNo.isBlank();
         Query countQuery = em.createNativeQuery(
                 "SELECT COUNT(DISTINCT o.id)\n"
                         + salesCandidatesFromWhere(kw, billNoFilter));
-        if (!kw.isEmpty()) countQuery.setParameter("kw", "%" + kw + "%");
+        if (!kw.isEmpty()) countQuery.setParameter("kw", kw);
         if (billNoFilter) countQuery.setParameter("orderBillNo", orderBillNo.strip());
         long total = ((Number) countQuery.getSingleResult()).longValue();
+        String orderBy = salesCandidatesOrderBy(sort, order);
+        if (!kw.isEmpty()) {
+            orderBy = orderBy.replace("ORDER BY ", "ORDER BY MIN("
+                    + TaskKeywordSearch.rankNamesFirstParameter("kw", new String[]{"g.name"}, new String[]{},
+                            new String[]{"g.code", "o.bill_no", "c.name"}) + "), ");
+        }
         Query idsQuery = em.createNativeQuery(
                 "SELECT o.id\n" + salesCandidatesFromWhere(kw, billNoFilter) + "\n" + """
                 GROUP BY o.id, o.deliver_date, o.bill_date, o.bill_no
-                """ + salesCandidatesOrderBy(sort, order));
-        if (!kw.isEmpty()) idsQuery.setParameter("kw", "%" + kw + "%");
+                """ + orderBy);
+        if (!kw.isEmpty()) idsQuery.setParameter("kw", kw);
         if (billNoFilter) idsQuery.setParameter("orderBillNo", orderBillNo.strip());
         idsQuery.setFirstResult((page - 1) * size).setMaxResults(size);
         @SuppressWarnings("unchecked")
@@ -1228,7 +1244,7 @@ public class MaterialAnalysisService {
                     decimal(row[17]), decimal(row[18]), date(row[19]),
                     uuid(row[20]), string(row[21]), longValue(row[22])));
         }
-        List<SalesCandidateOrder> items = builders.values().stream()
+        List<SalesCandidateOrder> items = orderIds.stream().map(builders::get).filter(Objects::nonNull)
                 .map(CandidateOrderBuilder::build).toList();
         return new SalesCandidatePage(items, page, size, total,
                 (int) ((total + size - 1) / size));
@@ -1242,7 +1258,7 @@ public class MaterialAnalysisService {
     @Transactional(readOnly = true)
     public java.util.Map<String, List<java.util.Map<String, Object>>> salesCandidatesFacets(
             String keyword) {
-        String kw = keyword == null ? "" : keyword.strip().toLowerCase(Locale.ROOT);
+        String kw = KeywordSearch.phrase(keyword);
         Query query = em.createNativeQuery(
                 "SELECT o.bill_no, COUNT(DISTINCT o.id)\n"
                         + salesCandidatesFromWhere(kw, false)
@@ -1250,7 +1266,7 @@ public class MaterialAnalysisService {
                         + " HAVING COALESCE(o.bill_no,'') <> ''"
                         + " ORDER BY o.bill_no")
                 .setMaxResults(500);
-        if (!kw.isEmpty()) query.setParameter("kw", "%" + kw + "%");
+        if (!kw.isEmpty()) query.setParameter("kw", kw);
         return java.util.Map.of("orderNo",
                 NativeFacets.rows(NativeQueryResults.objectArrayRows(query)));
     }

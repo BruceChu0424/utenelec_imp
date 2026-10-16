@@ -26,7 +26,17 @@ abstract interface class MouldRepository {
     String? order,
   });
 
-  /// 全局搜模具（模具资料页"搜模具定位分类"用；不限分类，按编号/名称/位置/备注模糊）。
+  /// 不限分类的分页结果；保留字段筛选与排序。
+  Future<PagedResult<MouldListItem>> listGlobal({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  });
+
+  /// 兼容选择器等调用方的全局搜索入口。
   Future<PagedResult<MouldListItem>> search(
     String keyword, {
     int page = 1,
@@ -35,6 +45,8 @@ abstract interface class MouldRepository {
 
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<MouldFacets> facets(String categoryId);
+
+  Future<MouldFacets> globalFacets();
 
   Future<MouldDetail> detail(String id);
 
@@ -58,9 +70,45 @@ class DioMouldRepository implements MouldRepository {
     Map<String, String?> filters = const {},
     String? sort,
     String? order,
+  }) => _list(
+    categoryId,
+    page: page,
+    size: size,
+    keyword: keyword,
+    filters: filters,
+    sort: sort,
+    order: order,
+  );
+
+  @override
+  Future<PagedResult<MouldListItem>> listGlobal({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+  }) => _list(
+    null,
+    page: page,
+    size: size,
+    keyword: keyword,
+    filters: filters,
+    sort: sort,
+    order: order,
+  );
+
+  Future<PagedResult<MouldListItem>> _list(
+    String? categoryId, {
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
   }) async {
     final query = <String, dynamic>{
-      'categoryId': categoryId,
+      'categoryId': ?categoryId,
       'page': page,
       'size': size,
       if (keyword != null && keyword.trim().isNotEmpty)
@@ -108,6 +156,12 @@ class DioMouldRepository implements MouldRepository {
       ApiEndpoints.mouldsFacets,
       query: {'categoryId': categoryId},
     );
+    return MouldFacets.fromJson(json);
+  }
+
+  @override
+  Future<MouldFacets> globalFacets() async {
+    final json = await api.get(ApiEndpoints.mouldsFacets);
     return MouldFacets.fromJson(json);
   }
 

@@ -97,11 +97,12 @@ public class SubcontractReportService {
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
         for (ReportColumn c : safeColumns) sortKeys.add(c.key());
-        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
+        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -693,6 +694,9 @@ public class SubcontractReportService {
         List<ReportColumn> safeCols = responseColumns(cols, priceMasked);
 
         // flow：5 类源明细 UNION，带 signed_qty（方向）+ movement_type + 日期 + 单价/金额
+        WhereBuilder search = new WhereBuilder("WHERE TRUE");
+        search.search(kw, "a.goods_code_snapshot", "a.goods_name_snapshot", "sup.name", "gg.model", "gg.spec", "gg.series", "col.name");
+        WhereBuilder.Built searchFilter = search.build(null);
         String sql = """
                 WITH flow AS (
                     SELECT o.supplier_id, i.goods_id, i.goods_code_snapshot, i.goods_name_snapshot,
@@ -751,8 +755,8 @@ public class SubcontractReportService {
                              oi.goods_name_snapshot, oi.color_id
                 )
                 SELECT sup.name AS supplierName,
-                       a.goods_name_snapshot AS goodsName, gg.spec AS spec,
-                       gg.model AS model, gg.series AS series, a.goods_code_snapshot AS goodsCode, col.name AS colorName,
+                       a.goods_name_snapshot AS goodsName, a.goods_code_snapshot AS goodsCode, col.name AS colorName,
+                       gg.spec AS spec, gg.model AS model, gg.series AS series,
                        a.opening AS openingQty, COALESCE(od.order_qty, 0) AS orderQty,
                        a.issue_qty AS issueQty, a.return_qty AS returnQty, a.m_return_qty AS mReturnQty,
                        a.waste_qty AS wasteQty, a.receipt_qty AS receiptQty,
@@ -770,18 +774,16 @@ public class SubcontractReportService {
                      AND od.goods_code_snapshot IS NOT DISTINCT FROM a.goods_code_snapshot
                      AND od.goods_name_snapshot IS NOT DISTINCT FROM a.goods_name_snapshot
                      AND COALESCE(od.color_id,'00000000-0000-0000-0000-000000000000'::uuid) = COALESCE(a.color_id,'00000000-0000-0000-0000-000000000000'::uuid)
-                WHERE (CAST(:kw AS text) IS NULL
-                       OR LOWER(COALESCE(a.goods_name_snapshot,'')) LIKE LOWER(:kw)
-                       OR LOWER(COALESCE(a.goods_code_snapshot,'')) LIKE LOWER(:kw)
-                       OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
-                ORDER BY supplierName NULLS LAST, a.goods_name_snapshot, a.goods_code_snapshot
+                """ + searchFilter.sql() + "\n ORDER BY "
+                + search.orderBy("sup.name NULLS LAST, a.goods_name_snapshot, a.goods_code_snapshot, a.supplier_id, a.goods_id, a.color_id NULLS FIRST") + "\n" + """
                 LIMIT :__limit OFFSET :__offset
                 """;
         var q = em.createNativeQuery(sql);
         q.setParameter("supplierId", supplierId);
         q.setParameter("from", dateFrom);
         q.setParameter("to", dateTo);
-        q.setParameter("kw", (kw == null || kw.isBlank()) ? null : "%" + kw.toLowerCase() + "%");
+        searchFilter.params().forEach(q::setParameter);
+        search.searchOrderParameters().forEach(q::setParameter);
         q.setParameter("__limit", safeSize);
         q.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -826,14 +828,12 @@ public class SubcontractReportService {
                 )
                 SELECT COUNT(*) FROM agg a
                 LEFT JOIN goods gg ON gg.id = a.goods_id
-                WHERE (CAST(:kw AS text) IS NULL
-                       OR LOWER(COALESCE(a.goods_name_snapshot,'')) LIKE LOWER(:kw)
-                       OR LOWER(COALESCE(a.goods_code_snapshot,'')) LIKE LOWER(:kw)
-                       OR LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw))
-                """;
+                LEFT JOIN suppliers sup ON sup.id = a.supplier_id
+                LEFT JOIN colors col ON col.id = a.color_id
+                """ + searchFilter.sql();
         var cq = em.createNativeQuery(countSql);
         cq.setParameter("supplierId", supplierId);
-        cq.setParameter("kw", (kw == null || kw.isBlank()) ? null : "%" + kw.toLowerCase() + "%");
+        searchFilter.params().forEach(cq::setParameter);
         long total = ((Number) cq.getSingleResult()).longValue();
         int totalPages = safeSize == 0 ? 0 : (int) ((total + safeSize - 1) / safeSize);
 

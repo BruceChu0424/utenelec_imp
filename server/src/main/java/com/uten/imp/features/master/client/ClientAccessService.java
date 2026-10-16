@@ -1,6 +1,8 @@
 package com.uten.imp.features.master.client;
 
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.validation.RequestLimits;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.client.dto.ClientAccessCandidate;
@@ -60,11 +62,7 @@ public class ClientAccessService {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED, "候选员工搜索关键词最长100个字符");
         }
-        String keyword = normalizedSearch.toLowerCase(Locale.ROOT);
-        String pattern = "%" + keyword
-                .replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_") + "%";
+        String keyword = KeywordSearch.phrase(normalizedSearch);
         String fromWhere = """
                 FROM employees employee
                 LEFT JOIN departments department ON department.id = employee.department_id
@@ -75,24 +73,21 @@ public class ClientAccessService {
                       WHERE account.employee_id = employee.id
                         AND account.is_deleted = FALSE
                         AND account.status = 'active')
-                  AND (:keyword = ''
-                       OR lower(employee.full_name) LIKE :pattern ESCAPE '\\'
-                       OR lower(employee.code) LIKE :pattern ESCAPE '\\'
-                       OR lower(COALESCE(department.name,'')) LIKE :pattern ESCAPE '\\')
-                """;
+                  AND
+                """ + TaskKeywordSearch.conditionParameter("keyword", "employee.full_name", "employee.code", "department.name");
         Number totalValue = (Number) em.createNativeQuery("SELECT count(*) " + fromWhere)
                 .setParameter("keyword", keyword)
-                .setParameter("pattern", pattern)
                 .getSingleResult();
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                         SELECT employee.id, employee.full_name, employee.code,
                                department.name, employee.status, TRUE, employee.department_id
-                        """ + fromWhere + """
-                        ORDER BY employee.full_name, employee.code, employee.id
+                        """ + fromWhere + " ORDER BY "
+                        + TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"employee.full_name"},
+                                new String[]{}, new String[]{"employee.full_name", "employee.code", "department.name"}) + """
+                        , employee.full_name, employee.code, employee.id
                         LIMIT :limit OFFSET :offset
                         """)
                 .setParameter("keyword", keyword)
-                .setParameter("pattern", pattern)
                 .setParameter("limit", safeSize)
                 .setParameter("offset", offset));
         List<ClientAccessCandidate> items = rows.stream()

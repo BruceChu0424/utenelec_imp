@@ -9,6 +9,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.unit.dto.FacetBucket;
 import com.uten.imp.features.master.unit.dto.UnitDetail;
@@ -237,12 +238,9 @@ public class UnitService {
                                     CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            if (f.keyword() != null && !f.keyword().isBlank()) {
-                String like = "%" + f.keyword().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("code")), like)));
-            }
+            ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), pattern -> cb.or(
+                        NameRefKeyword.text(cb, root.get("name"), pattern),
+                        NameRefKeyword.text(cb, root.get("code"), pattern))));
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "status", f.status());
@@ -266,7 +264,8 @@ public class UnitService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
-        Page<Unit> p = repo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<Unit> p = repo.findAll(searchPage.specification(), searchPage.pageable());
         List<Unit> content = p.getContent();
         Map<UUID, MeasurementSetting> settings = measurementByUnitId(
                 content.stream().map(Unit::getId).toList());

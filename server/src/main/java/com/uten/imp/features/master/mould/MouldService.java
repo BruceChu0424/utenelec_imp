@@ -1,5 +1,8 @@
 package com.uten.imp.features.master.mould;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.CategoryKeywordSearch;
+
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.mastercode.CategoryCodeAllocation;
@@ -53,16 +56,16 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MouldService {
 
-    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。仅含有数据的 6 列。 */
+    /** nullFields 白名单（实体属性名），防 JPA 任意属性路径。仅含有数据的 7 列。 */
     private static final Set<String> ALLOWED_NULL_FIELDS = Set.of(
-            "code", "name", "place", "mstatus", "remark", "status");
+            "code", "name", "place", "mstatus", "remark", "status", "manufacturer");
 
     /** facet 截断阈值（高基数列如 name/remark 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
     /**
      * facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
-     * 仅含表中"有数据"的 6 列；模数/套数/模具类型/制造商无对应列，不参与 facet。
+     * 仅含表中"有数据"的 7 列；模数/套数/模具类型无对应列，不参与 facet。
      */
     private static final LinkedHashMap<String, String> FACET_COLUMNS = new LinkedHashMap<>();
     static {
@@ -72,6 +75,7 @@ public class MouldService {
         FACET_COLUMNS.put("mstatus", "mstatus");
         FACET_COLUMNS.put("remark", "remark");
         FACET_COLUMNS.put("status", "status");
+        FACET_COLUMNS.put("manufacturer", "manufacturer");
     }
 
     private final MouldRepository repo;
@@ -87,6 +91,9 @@ public class MouldService {
     @Transactional(readOnly = true)
     public PageResponse<MouldListItem> list(MouldQueryFilter f, int page, int size) {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
+        var keyword = keywordPlan(f.keyword());
+        Sort defaultSort = Sort.by(Sort.Direction.ASC, "code").and(Sort.by(Sort.Direction.ASC, "id"));
+        Sort requestedSort = defaultSort;
         Specification<Mould> spec = (Root<Mould> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                      CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -94,18 +101,20 @@ public class MouldService {
             if (subtreeIds != null) {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
-            if (f.keyword() != null && !f.keyword().isBlank()) {
-                String like = "%" + f.keyword().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("code")), like),
-                        cb.like(cb.lower(root.get("place")), like),
-                        cb.like(cb.lower(root.get("remark")), like)));
+            if (!KeywordSearch.terms(f.keyword()).isEmpty()) {
+                List<jakarta.persistence.criteria.Expression<String>> visible = List.of(root.get("name"), root.get("code"), root.get("manufacturer"), root.get("place"));
+                ps.add(keyword.predicate(cb, root.get("category").get("id"), visible,
+                        List.of(root.get("remark"))));
+                if (q != null && q.getResultType() != Long.class) {
+                    CategoryKeywordSearch.order(q, cb, root,
+                            keyword.rank(cb, root.get("category").get("id"), root.get("code"), root.get("name"), visible), requestedSort);
+                }
             }
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "place", f.place());
             addEq(ps, cb, root, "mstatus", f.mstatus());
+            addEq(ps, cb, root, "manufacturer", f.manufacturer());
             addEq(ps, cb, root, "remark", f.remark());
             addEq(ps, cb, root, "status", f.status());
             if (f.nullFields() != null) {
@@ -116,10 +125,17 @@ public class MouldService {
             return cb.and(ps.toArray(new Predicate[0]));
         };
         // 默认按编号升序（问题 #8：表头编号列默认应从小到大，不是内部 id 顺序）。
-        Pageable pageable = Pageables.of(page, size, Sort.by(Sort.Direction.ASC, "code"));
+        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
         Page<Mould> p = repo.findAll(spec, pageable);
         return new PageResponse<>(
                 p.map(this::toList).getContent(), p);
+    }
+
+    private CategoryKeywordSearch.Plan keywordPlan(String query) {
+        return CategoryKeywordSearch.plan(query, KeywordSearch.terms(query).isEmpty() ? List.of()
+                : categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc().stream()
+                .map(node -> new CategoryKeywordSearch.Node(node.getId(), node.getParent() == null ? null : node.getParent().getId(),
+                        node.getName(), node.getCode())).toList());
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Mould> root,
@@ -135,8 +151,8 @@ public class MouldService {
 
     /**
      * 加密 Excel 导出：循环 list 分页累积全部行（size=100），硬上限防 OOM。
-     * 列集与前端模具表格一致——模数/套数/模具类型/制造商四列在表格里是老库占位
-     * （无 DB 列、恒空），导出不带；有数据的六列全给。
+     * 列集与前端模具表格一致——模数/套数/模具类型三列在表格里是老库占位
+     * （无 DB 列、恒空），导出不带；有数据的七列全给。
      */
     @Transactional(readOnly = true)
     public ExportPayload export(MouldQueryFilter f, int maxRows) {
@@ -145,6 +161,7 @@ public class MouldService {
                 new ExportColumn("name", "模具名称", ExportColumn.TEXT),
                 new ExportColumn("place", "存放位置", ExportColumn.TEXT),
                 new ExportColumn("mstatus", "制造日期", ExportColumn.TEXT),
+                new ExportColumn("manufacturer", "制造商", ExportColumn.TEXT),
                 new ExportColumn("remark", "备注", ExportColumn.TEXT),
                 new ExportColumn("status", "状态", ExportColumn.TEXT));
         // 行数上限读系统设置「导出行数上限」(调用方传入), 与报表、审计导出同一口径。
@@ -156,6 +173,7 @@ public class MouldService {
                     row.put("name", m.getName());
                     row.put("place", m.getPlace());
                     row.put("mstatus", m.getMstatus());
+                    row.put("manufacturer", m.getManufacturer());
                     row.put("remark", m.getRemark());
                     row.put("status", m.getStatus());
                     return row;
@@ -167,36 +185,36 @@ public class MouldService {
 
     @Transactional(readOnly = true)
     public MouldFacets facets(UUID categoryId) {
-        if (categoryId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择模具分类");
-        }
-        List<UUID> ids = resolveSubtreeIds(categoryId);
+        List<UUID> ids = categoryId == null ? null : resolveSubtreeIds(categoryId);
+        String categoryClause = ids == null ? "" : " and category_id in (:ids)";
         Map<String, List<FacetBucket>> buckets = new LinkedHashMap<>();
         Map<String, Long> nullCounts = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : FACET_COLUMNS.entrySet()) {
             String field = e.getKey();
             // 列名来自硬编码白名单（非用户输入），可安全拼入 SQL。
             String col = e.getValue();
-            List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery(
+            var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from moulds "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
-                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .setParameter("ids", ids));
+                            + "where is_deleted = false" + categoryClause + " and " + col + " is not null "
+                            + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT);
+            if (ids != null) fq.setParameter("ids", ids);
+            List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
             for (Object[] row : rows) {
                 bucketList.add(new FacetBucket(String.valueOf(row[0]), ((Number) row[1]).longValue()));
             }
             buckets.put(field, bucketList);
-            Long nc = ((Number) em.createNativeQuery(
+            var nq = em.createNativeQuery(
                     "select count(*) from moulds "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null")
-                    .setParameter("ids", ids)
-                    .getSingleResult()).longValue();
+                            + "where is_deleted = false" + categoryClause + " and " + col + " is null");
+            if (ids != null) nq.setParameter("ids", ids);
+            Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
         }
         return new MouldFacets(
                 buckets.get("code"), buckets.get("name"), buckets.get("place"),
                 buckets.get("mstatus"), buckets.get("remark"), buckets.get("status"),
+                buckets.get("manufacturer"),
                 nullCounts);
     }
 
@@ -275,7 +293,15 @@ public class MouldService {
         m.setMnumber(req.getMnumber());
         m.setQty(req.getQty());
         m.setTqty(req.getTqty());
-        m.setMstatus(req.getMstatus());
+        // 缺省/旧控件空值保留历史年月；只有新键显式提供才能主动清空。
+        if (req.isMstatusProvided()) {
+            m.setMstatus(MouldManufacturingMonth.normalize(req.getMstatus(), m.getMstatus()));
+        }
+        // 旧版客户端没有此字段，整表保存也不能抹掉新版维护的制造商。
+        if (req.isManufacturerProvided()) {
+            m.setManufacturer(req.getManufacturer() == null || req.getManufacturer().isBlank()
+                    ? null : req.getManufacturer().strip());
+        }
         m.setStatus(req.getStatus());
         m.setRemark(req.getRemark());
         // 车间/保管人：id 优先；文本列由 id 解析补名（前端 picker 只传 id），保留文本作 fallback 显示。
@@ -306,14 +332,14 @@ public class MouldService {
                 categoryId, categoryName, m.getMnumber(), m.getQty(), m.getTqty(),
                 m.getMstatus(), m.getRemark(),
                 m.getDepartmentId(), resolvePlace(null, m.getDepartmentId()),
-                m.getKeeperId(), resolveKeeper(null, m.getKeeperId()));
+                m.getKeeperId(), resolveKeeper(null, m.getKeeperId()), m.getManufacturer());
     }
 
     private MouldListItem toList(Mould m) {
         return new MouldListItem(
                 m.getId(), m.getCode(), m.getName(), m.getPlace(), m.getMstatus(),
                 m.getStatus(), m.getRemark(), m.getLegacyId(),
-                m.getCategory() == null ? null : m.getCategory().getId());
+                m.getCategory() == null ? null : m.getCategory().getId(), m.getManufacturer());
     }
 
     private MouldCategory requireCategory(UUID id) {

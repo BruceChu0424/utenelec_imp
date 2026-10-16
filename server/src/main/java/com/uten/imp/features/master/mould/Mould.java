@@ -62,6 +62,7 @@ public class Mould extends SoftDeletableEntity {
 
     // ===== 状态 =====
     private String mstatus;         // MStatus（制造年月，如 2018年7月）
+    private String manufacturer;    // 模具制造商（人工维护；历史数据留空）
     private String status;          // [Status]（生命周期：使用/禁用）
     private String place;           // Place（车间/位置）
     private String keeper;          // summary（保管人）

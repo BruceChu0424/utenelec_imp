@@ -71,14 +71,13 @@ class _FinanceArApOverviewPageState
   DateTime _to = ChinaDateTime.today();
   String _displayMode = 'ALL'; // ALL / ANY / AR_ONLY / AP_ONLY
   String _searchQuery = '';
-  // 仅“往来单位内容命中”时赋值；纯分类命中时保持空，让右侧展示该分类全部。
+  // 搜索始终在授权全集查往来单位/分类；导航分类留存，清空后恢复。
   String _keyword = '';
   final _searchController = TextEditingController();
   final _treeSearchController = TextEditingController();
   bool _syncingSearchControllers = false;
   Timer? _searchDebounce;
   Set<String>? _visibleFilterIds;
-  Set<String> _contentMatchCategoryIds = {};
   bool _searchLoading = false;
   String? _searchError;
   bool _noUnifiedSearchMatches = false;
@@ -229,6 +228,8 @@ class _FinanceArApOverviewPageState
   }
 
   void _onTreeTap(ProductCategoryNode node) {
+    // 搜索中的分类树仅提供命中路径提示；展开节点不能把右侧全局结果截成某一类。
+    if (_searchQuery.isNotEmpty) return;
     // Manual navigation cancels both a pending debounce and any in-flight
     // locator so an older search cannot take the selection back afterwards.
     _searchDebounce?.cancel();
@@ -249,14 +250,10 @@ class _FinanceArApOverviewPageState
       type = 'SUPPLIER';
       id = node.id;
     }
-    final keepKeyword =
-        _searchQuery.isNotEmpty &&
-        hierarchyBranchContainsAny(_forest, node.id, _contentMatchCategoryIds);
     setState(() {
       _categoryType = type;
       _categoryId = id;
-      // 统一搜索仍由左框控制；点纯分类结果不退出搜索，只是不把分类词误传给右表。
-      _keyword = keepKeyword ? _searchQuery : '';
+      _keyword = '';
       _noUnifiedSearchMatches = false;
       _searchLoading = false;
       _searchError = null;
@@ -304,21 +301,18 @@ class _FinanceArApOverviewPageState
     if (!mounted) return;
     setState(() {
       _searchQuery = query;
-      _keyword = '';
+      _keyword = query;
       _page = 1;
       _searchError = null;
       _noUnifiedSearchMatches = false;
       // 旧报表请求已失效，其完成分支不会再清 loading。先保留旧数据并结束
-      // 旧 loading；定位成功后的 _load 会为新口径重新进入加载态。
+      // 旧 loading；防抖结束后报表按新全局口径独立加载。
       _loading = false;
       if (query.isEmpty) {
         _visibleFilterIds = null;
-        _contentMatchCategoryIds = {};
         _searchLoading = false;
       } else {
-        // 新搜索开始即丢弃上一轮内容命中，避免定位请求返回前（或失败后）点击树节点时
-        // 错把新关键词当成旧分支的内容关键词传给右侧报表。
-        _contentMatchCategoryIds = {};
+        // 左树先显示本地分类命中，授权往来单位的定位结果随后补充路径。
         _visibleFilterIds = categoryHits(_forest, query);
         _searchLoading = true;
       }
@@ -337,14 +331,13 @@ class _FinanceArApOverviewPageState
     });
   }
 
-  Future<_CategoryLocationMatches> _collectPartyMatches(
+  Future<Set<String?>> _collectPartyMatches(
     String query,
     int requestGeneration,
   ) async {
     final categoryIds = <String?>{};
     var page = 1;
     var totalPages = 1;
-    var hasParties = false;
     do {
       final json = await ref
           .read(apiClientProvider)
@@ -353,7 +346,7 @@ class _FinanceArApOverviewPageState
             query: {'keyword': query, 'page': page, 'size': 100},
           );
       if (!mounted || requestGeneration != _searchRequestGeneration) {
-        return const _CategoryLocationMatches();
+        return const <String?>{};
       }
       final items = json['items'];
       if (items is List) {
@@ -361,105 +354,54 @@ class _FinanceArApOverviewPageState
           if (raw is! Map) continue;
           final partyType = raw['partyType']?.toString();
           if (partyType != 'CLIENT' && partyType != 'SUPPLIER') continue;
-          hasParties = true;
           final categoryId = raw['categoryId']?.toString().trim();
           categoryIds.add(
             categoryId == null || categoryId.isEmpty ? null : categoryId,
           );
         }
       }
-      hasParties = hasParties || ((json['total'] as num?)?.toInt() ?? 0) > 0;
       final parsedTotalPages = (json['totalPages'] as num?)?.toInt() ?? 1;
       totalPages = parsedTotalPages < 1 ? 1 : parsedTotalPages;
       page++;
     } while (page <= totalPages);
-    return _CategoryLocationMatches(
-      categoryIds: categoryIds,
-      hasParties: hasParties,
-    );
+    return categoryIds;
   }
 
   Future<void> _runUnifiedSearch(String query, int requestGeneration) async {
+    // 报表本身决定全局命中与顺序；左侧定位仅补提示，不能阻断、缩小或替换右表。
+    unawaited(_load());
     try {
-      final matches = await _collectPartyMatches(query, requestGeneration);
+      final categoryIds = await _collectPartyMatches(query, requestGeneration);
       if (!mounted ||
           requestGeneration != _searchRequestGeneration ||
           query != _searchQuery) {
         return;
       }
-      final hasParties = matches.hasParties;
       final resolution = resolveHierarchySearch<ProductCategoryNode>(
         roots: _forest,
         query: query,
-        contentCategoryIds: matches.categoryIds,
+        contentCategoryIds: categoryIds,
       );
-
-      String? type;
-      String? id;
-      // 有往来单位命中、但它未归类或分类不在当前授权树中时，右侧退回全局结果，
-      // 不能错误沿用旧分类把真实结果过滤掉。
-      final selectedId = hasParties && !resolution.hasContentMatches
-          ? null
-          : resolution.selectedId;
-      if (selectedId == _clientRootId) {
-        type = 'CLIENT';
-      } else if (selectedId == _supplierRootId) {
-        type = 'SUPPLIER';
-      } else if (selectedId != null &&
-          _findIn(_clientTree, selectedId) != null) {
-        type = 'CLIENT';
-        id = selectedId;
-      } else if (selectedId != null &&
-          _findIn(_supplierTree, selectedId) != null) {
-        type = 'SUPPLIER';
-        id = selectedId;
-      }
-
       setState(() {
         _visibleFilterIds = resolution.visibleIds;
-        _contentMatchCategoryIds = resolution.contentCategoryIds;
-        _keyword = hasParties ? query : '';
         _searchLoading = false;
         _searchError = null;
-        _noUnifiedSearchMatches = !hasParties && !resolution.hasAnyMatches;
-        if (_noUnifiedSearchMatches) {
-          // 0 命中：丢弃旧行——行区显示「未找到匹配…」提示，表格骨架(工具条/
-          // 表头列)沿用 _lastColumns，页面不整块切换(2026-10-09 用户口径)。
-          _data = null;
-        }
-        _categoryType = type;
-        _categoryId = id;
-        _page = 1;
       });
-      await _load();
     } catch (e) {
       if (!mounted || requestGeneration != _searchRequestGeneration) return;
       setState(() {
         _searchLoading = false;
-        _searchError = '往来单位搜索失败，请重试：$e';
-        // 定位失败时不发起第二次报表请求：保留既有右表数据并明确报错，避免
-        // “搜索定位失败但表格偷偷变了”的双重状态；用户可修改关键词或清空后重试。
-        _keyword = '';
-        _noUnifiedSearchMatches = false;
+        _searchError = '分类定位暂不可用，往来单位搜索结果仍显示在右侧';
       });
     }
   }
 
+  String? get _effectiveCategoryType => _keyword.isEmpty ? _categoryType : null;
+  String? get _effectiveCategoryId => _keyword.isEmpty ? _categoryId : null;
+
   Future<void> _load() async {
-    // 搜索框非空时，定位完成前（或定位失败后）不得从日期/偏好/刷新等旁路发起
-    // 无关键词报表请求；否则慢响应可能把搜索态短暂覆盖成全量数据。
-    if (_searchQuery.isNotEmpty && (_searchLoading || _searchError != null)) {
-      return;
-    }
     final requestGeneration = ++_reportRequestGeneration;
     final requestedPage = _page;
-    if (_noUnifiedSearchMatches) {
-      setState(() {
-        _loading = false;
-        _reportError = null;
-      });
-      return;
-    }
     setState(() {
       _loading = true;
       _reportError = null;
@@ -471,8 +413,9 @@ class _FinanceArApOverviewPageState
         'dateTo': _fmt(_to),
         'displayMode': _displayMode,
         if (_keyword.isNotEmpty) 'keyword': _keyword,
-        if (_categoryType != null) 'categoryType': _categoryType,
-        if (_categoryId != null) 'categoryId': _categoryId,
+        if (_effectiveCategoryType != null)
+          'categoryType': _effectiveCategoryType,
+        if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
         'page': requestedPage,
         'size': _size,
         ...sortQueryParams(_sortKey, _sortAsc),
@@ -485,6 +428,7 @@ class _FinanceArApOverviewPageState
       setState(() {
         _data = parseReportResponse(json, requestedPage);
         _lastColumns = _data!.columns;
+        _noUnifiedSearchMatches = _keyword.isNotEmpty && _data!.total == 0;
         _loading = false;
         _reportError = null;
       });
@@ -521,8 +465,8 @@ class _FinanceArApOverviewPageState
     'dateTo': _fmt(_to),
     'displayMode': _displayMode,
     if (_keyword.isNotEmpty) 'keyword': _keyword,
-    if (_categoryType != null) 'categoryType': _categoryType,
-    if (_categoryId != null) 'categoryId': _categoryId,
+    if (_effectiveCategoryType != null) 'categoryType': _effectiveCategoryType,
+    if (_effectiveCategoryId != null) 'categoryId': _effectiveCategoryId,
     ...sortQueryParams(_sortKey, _sortAsc),
   };
 
@@ -564,7 +508,9 @@ class _FinanceArApOverviewPageState
         _load();
       }
     });
-    final selectedLabel = _categoryType == null
+    final selectedLabel = _searchQuery.isNotEmpty
+        ? '全部搜索结果'
+        : _categoryType == null
         ? '全部'
         : _categoryId == null
         ? (_categoryType == 'CLIENT' ? '客户类别(全部)' : '供应商类别(全部)')
@@ -576,9 +522,12 @@ class _FinanceArApOverviewPageState
       nodes: _forest,
       nodeEnabledPredicate: (_) => true,
       selectedIds: {
-        ?_categoryId,
-        if (_categoryId == null && _categoryType == 'CLIENT') _clientRootId,
-        if (_categoryId == null && _categoryType == 'SUPPLIER') _supplierRootId,
+        if (_searchQuery.isEmpty) ...{
+          ?_categoryId,
+          if (_categoryId == null && _categoryType == 'CLIENT') _clientRootId,
+          if (_categoryId == null && _categoryType == 'SUPPLIER')
+            _supplierRootId,
+        },
       },
       expandOnRowTap: true,
       showSearch: false,
@@ -586,6 +535,7 @@ class _FinanceArApOverviewPageState
       externalSearchQuery: _searchQuery,
       externalSearchLoading: _searchLoading,
       externalSearchError: _searchError,
+      emptySearchText: _searchQuery.isEmpty ? null : '未找到匹配分类，往来单位结果见右侧',
       header: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
         child: UtenSearchBar(
@@ -867,8 +817,8 @@ class _FinanceArApOverviewPageState
       currentPage: data?.page ?? 1,
       totalPages: data?.totalPages ?? 1,
       paginationScope: (
-        _categoryType,
-        _categoryId,
+        _effectiveCategoryType,
+        _effectiveCategoryId,
         _from,
         _to,
         _displayMode,
@@ -880,14 +830,4 @@ class _FinanceArApOverviewPageState
       },
     );
   }
-}
-
-class _CategoryLocationMatches {
-  const _CategoryLocationMatches({
-    this.categoryIds = const <String?>{},
-    this.hasParties = false,
-  });
-
-  final Set<String?> categoryIds;
-  final bool hasParties;
 }

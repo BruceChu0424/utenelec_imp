@@ -6,6 +6,7 @@
 // 命中分类自动展开+定位。纯函数，无副作用，不持有状态。
 import '../models/uten_tree_node.dart';
 import '../models/paged_result.dart';
+import '../search/keyword_search.dart';
 
 /// 节点名称或编号含 q 的节点 + 其全部祖先 +（自身命中时）其全部后代 的 id 集合。
 ///
@@ -13,15 +14,12 @@ import '../models/paged_result.dart';
 /// 也要在集合里，树组件据此自动展开路径。自身命中的节点其整子树都算相关（子分类也显示）。
 /// 名称/编号统一做 trim + 小写比较，避免桌面端输入英文编号时受大小写影响。
 Set<String> categoryHits<T extends UtenTreeNode<T>>(List<T> roots, String q) {
-  final normalized = q.trim().toLowerCase();
-  if (normalized.isEmpty) return <String>{};
+  if (keywordSearchTerms(q).isEmpty) return <String>{};
   final ids = <String>{};
   bool walk(List<T> nodes, List<String> ancestors) {
     var anyHit = false;
     for (final n in nodes) {
-      final selfHit =
-          n.name.toLowerCase().contains(normalized) ||
-          n.code.toLowerCase().contains(normalized);
+      final selfHit = matchesKeywordSearch([n.name, n.code], q);
       final childHit = walk(n.children, [...ancestors, n.id]);
       if (selfHit || childHit) {
         ids.addAll(ancestors); // 祖先链（用于展开路径）
@@ -70,23 +68,39 @@ String? shallowestHit<T extends UtenTreeNode<T>>(
   String q,
   Set<String> hits,
 ) {
-  final normalized = q.trim().toLowerCase();
-  if (normalized.isEmpty) return null;
+  if (keywordSearchTerms(q).isEmpty) return null;
   String? found;
-  void walk(List<T> nodes) {
-    for (final n in nodes) {
-      final selfHit =
-          n.name.toLowerCase().contains(normalized) ||
-          n.code.toLowerCase().contains(normalized);
-      if (found == null && hits.contains(n.id) && selfHit) {
-        found = n.id;
+  var bestRank = 1 << 20;
+  var bestDepth = 1 << 20;
+  void walk(List<T> nodes, int depth) {
+    for (final node in nodes) {
+      final rank = keywordSearchRank([node.name, node.code], q);
+      if (hits.contains(node.id) &&
+          rank != null &&
+          (rank < bestRank || (rank == bestRank && depth < bestDepth))) {
+        found = node.id;
+        bestRank = rank;
+        bestDepth = depth;
       }
-      walk(n.children);
+      walk(node.children, depth + 1);
     }
   }
 
-  walk(roots);
+  walk(roots, 0);
   return found;
+}
+
+/// Ancestors inherit their best category match so relevant paths precede incidental content paths.
+int? categoryBranchKeywordRank<T extends UtenTreeNode<T>>(
+  T node,
+  String query,
+) {
+  var result = keywordSearchRank([node.name, node.code], query);
+  for (final child in node.children) {
+    final rank = categoryBranchKeywordRank(child, query);
+    if (rank != null && (result == null || rank < result)) result = rank;
+  }
+  return result;
 }
 
 /// 一次「树节点 + 具体内容」关联搜索的纯函数结果。
@@ -141,12 +155,29 @@ HierarchySearchResolution resolveHierarchySearch<T extends UtenTreeNode<T>>({
   for (final id in validContentIds) {
     addAncestors(roots, id, visible);
   }
+  final categorySelection = shallowestHit(roots, query, categoryMatches);
+  int? selectedCategoryRank;
+  void findRank(List<T> nodes) {
+    for (final node in nodes) {
+      if (node.id == categorySelection) {
+        selectedCategoryRank = keywordSearchRank([node.name, node.code], query);
+        return;
+      }
+      findRank(node.children);
+    }
+  }
+
+  findRank(roots);
+  final preferCategory =
+      selectedCategoryRank != null && selectedCategoryRank! <= 1;
   return HierarchySearchResolution(
     visibleIds: visible,
     contentCategoryIds: validContentIds,
-    selectedId: validContentIds.isNotEmpty
+    selectedId: preferCategory
+        ? categorySelection
+        : validContentIds.isNotEmpty
         ? validContentIds.first
-        : shallowestHit(roots, query, categoryMatches),
+        : categorySelection,
     ignoredContentCategoryCount: ignored,
   );
 }

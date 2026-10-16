@@ -14,13 +14,13 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
-import '../../../core/ui/app_notification.dart';
 import '../../../shared/widgets/master_detail_card.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../employee/models/employee_api_models.dart';
 import '../../employee/models/work_years.dart';
 import '../../employee/repositories/employee_repository.dart';
+import '../../employee/repositories/employee_roster_loader.dart';
 import '../../employee/widgets/employee_leadership_badge.dart';
 import '../../employee/widgets/employee_status_badge.dart';
 import '../models/department_node.dart';
@@ -76,13 +76,9 @@ class DepartmentOverviewPane extends ConsumerStatefulWidget {
 
 class _DepartmentOverviewPaneState
     extends ConsumerState<DepartmentOverviewPane> {
-  static const _pageSize = 50;
-
   DepartmentInfo? _info;
   WorkforceOverview? _overview;
   List<EmployeeSummary> _employees = const [];
-  int _employeePage = 1;
-  int _employeeTotalPages = 0;
   int _employeeTotal = 0;
 
   bool _loading = true;
@@ -255,34 +251,31 @@ class _DepartmentOverviewPaneState
       _employeesError = null;
       _employeesLoadingMore = false;
       _employees = const [];
-      _employeePage = 1;
       _employeeTotal = 0;
-      _employeeTotalPages = 0;
     });
     try {
-      final result = await ref
-          .read(employeeRepositoryProvider)
-          .list(
-            size: _pageSize,
-            departmentId: widget.node.id,
-            includeSubtree: true,
-            statuses: currentDepartmentEmployeeStatuses,
-            search: _keyword.trim().isEmpty ? null : _keyword.trim(),
-            sort: _sortColumn,
-            order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
-      if (!mounted ||
-          targetScope != _scopeVersion ||
-          request != _employeeRequest) {
-        return;
-      }
-      setState(() {
-        _employees = result.items;
-        _employeePage = result.page;
-        _employeeTotal = result.total;
-        _employeeTotalPages = result.totalPages;
-        _employeesLoading = false;
-      });
+      await loadEmployeeRoster(
+        repository: ref.read(employeeRepositoryProvider),
+        isCurrent: () =>
+            mounted &&
+            targetScope == _scopeVersion &&
+            request == _employeeRequest &&
+            widget.canViewEmployees,
+        departmentId: widget.node.id,
+        includeSubtree: true,
+        statuses: currentDepartmentEmployeeStatuses,
+        search: _keyword.trim().isEmpty ? null : _keyword.trim(),
+        sort: _sortColumn,
+        order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
+        onBatch: (items, total, hasMore) {
+          setState(() {
+            _employees = items;
+            _employeeTotal = total;
+            _employeesLoading = false;
+            _employeesLoadingMore = hasMore;
+          });
+        },
+      );
     } on ApiException catch (e) {
       if (!mounted ||
           targetScope != _scopeVersion ||
@@ -292,6 +285,7 @@ class _DepartmentOverviewPaneState
       setState(() {
         _employeesError = e.message;
         _employeesLoading = false;
+        _employeesLoadingMore = false;
       });
     } catch (_) {
       if (!mounted ||
@@ -302,48 +296,8 @@ class _DepartmentOverviewPaneState
       setState(() {
         _employeesError = '员工列表加载失败，请稍后重试';
         _employeesLoading = false;
-      });
-    }
-  }
-
-  Future<void> _loadMoreEmployees() async {
-    if (_employeesLoadingMore || _employeePage >= _employeeTotalPages) return;
-    final scope = _scopeVersion;
-    final request = ++_employeeRequest;
-    setState(() => _employeesLoadingMore = true);
-    try {
-      final result = await ref
-          .read(employeeRepositoryProvider)
-          .list(
-            page: _employeePage + 1,
-            size: _pageSize,
-            departmentId: widget.node.id,
-            includeSubtree: true,
-            statuses: currentDepartmentEmployeeStatuses,
-            search: _keyword.trim().isEmpty ? null : _keyword.trim(),
-            sort: _sortColumn,
-            order: _sortColumn == null ? null : (_sortAsc ? 'asc' : 'desc'),
-          );
-      if (!mounted || scope != _scopeVersion || request != _employeeRequest) {
-        return;
-      }
-      setState(() {
-        _employees = [..._employees, ...result.items];
-        _employeePage = result.page;
-        _employeeTotal = result.total;
-        _employeeTotalPages = result.totalPages;
         _employeesLoadingMore = false;
       });
-    } catch (error) {
-      if (!mounted || scope != _scopeVersion || request != _employeeRequest) {
-        return;
-      }
-      setState(() => _employeesLoadingMore = false);
-      if (error is ApiException) {
-        context.appError(error.message);
-      } else {
-        context.appError('加载更多员工失败，请稍后重试');
-      }
     }
   }
 
@@ -607,15 +561,25 @@ class _DepartmentOverviewPaneState
       onSortChange: _onSortChange,
       // 加载/错误/空态交给表格自身占位。
       isLoading: _employeesLoading,
-      error: _employeesError,
+      error: _employees.isEmpty ? _employeesError : null,
       onRetry: _reloadEmployees,
       emptyMessage: _keyword.isEmpty
           ? l10n.departmentEmployeesEmpty
           : '没有找到匹配的在册员工',
-      // 滚动临近底部自动追加下一页（替代原「加载更多」按钮）；还有没有更多
-      // 由 _loadMoreEmployees 按 _employeePage/_employeeTotalPages 守卫。
       loadingMore: _employeesLoadingMore,
-      onLoadMore: _loadMoreEmployees,
+      toolbarLeadingActions: [
+        Text(
+          _employeesLoadingMore || _employeesError != null
+              ? '已加载 ${_employees.length} / $_employeeTotal 人'
+              : '共 ${_employees.length} 人',
+        ),
+        if (_employeesError != null && _employees.isNotEmpty)
+          TextButton.icon(
+            onPressed: _reloadEmployees,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('加载未完成，重试'),
+          ),
+      ],
     );
   }
 

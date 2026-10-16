@@ -2,6 +2,8 @@ package com.uten.imp.features.finance.payables;
 
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -29,6 +31,8 @@ import static com.uten.imp.features.finance.payables.ProcurementPayablesContract
 public class ProcurementPayablesService {
     private static final int MAX_PAGE_SIZE = 200;
     private static final int MAX_PAYMENT_PREVIEW = 100;
+    private static final String[] SEARCH_FIELDS = {"ledger.source_doc_no", "supplier.name",
+            "supplier.code", "ledger.bill_no"};
     private static final Set<String> BUSINESS_TYPES = Set.of("PURCHASE", "SUBCONTRACT", "DIRECT");
     private static final Set<String> STATUSES = Set.of(
             "OPEN", "PARTIAL", "SETTLED", "OVERDUE", "CREDIT", "UNDATED");
@@ -65,7 +69,9 @@ public class ProcurementPayablesService {
         int safeSize = Math.min(Math.max(1, size), MAX_PAGE_SIZE);
         Filter filter = filter(businessType, supplierId, status, settlementMethodId,
                 currencyId, dateFrom, dateTo, dueFrom, dueTo, keyword, sourceDocNo);
-        String orderBy = orderBy(sort, order);
+        String orderBy = (filter.params().containsKey("keyword")
+                ? TaskKeywordSearch.rankParameter("keyword", SEARCH_FIELDS) + ", " : "")
+                + orderBy(sort, order);
 
         Query data = em.createNativeQuery(itemSelect() + filter.sql()
                 + " ORDER BY " + orderBy + " LIMIT :limit OFFSET :offset");
@@ -305,11 +311,8 @@ public class ProcurementPayablesService {
         if (dueFrom != null) add(sql, params, "ledger.due_date >= :dueFrom", "dueFrom", dueFrom);
         if (dueTo != null) add(sql, params, "ledger.due_date <= :dueTo", "dueTo", dueTo);
         if (keyword != null && !keyword.isBlank()) {
-            add(sql, params, "(LOWER(COALESCE(ledger.bill_no,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(ledger.source_doc_no,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(supplier.code,'')) LIKE :keyword"
-                            + " OR LOWER(COALESCE(supplier.name,'')) LIKE :keyword)",
-                    "keyword", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+            add(sql, params, TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS),
+                    "keyword", KeywordSearch.phrase(keyword));
         }
         // 来源单号表头值筛选（2026-09-25 单号列统一）：精确匹配，随条件绑定。
         if (sourceDocNo != null && !sourceDocNo.isBlank()) {

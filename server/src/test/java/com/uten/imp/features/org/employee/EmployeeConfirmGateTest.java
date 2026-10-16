@@ -58,7 +58,7 @@ class EmployeeConfirmGateTest {
     void activeEmployeeWithoutConfirmedAtBackfillsInsteadOfDeadEnding() {
         Employee employee = employee("active", null);
         LocalDate date = LocalDate.now().minusDays(1);
-        when(queryService.requireEmployee(employee.getId())).thenReturn(employee);
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(java.util.Optional.of(employee));
 
         service.confirm(employee.getId(), date);
 
@@ -76,7 +76,7 @@ class EmployeeConfirmGateTest {
     void probationEmployeeConvertsToActive() {
         Employee employee = employee("probation", null);
         LocalDate date = LocalDate.now().minusDays(1);
-        when(queryService.requireEmployee(employee.getId())).thenReturn(employee);
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(java.util.Optional.of(employee));
 
         service.confirm(employee.getId(), date);
 
@@ -93,7 +93,7 @@ class EmployeeConfirmGateTest {
     void alreadyConfirmedEmployeeRejectedWithExistingDateInMessage() {
         LocalDate confirmed = LocalDate.of(2026, 8, 1);
         Employee employee = employee("active", confirmed);
-        when(queryService.requireEmployee(employee.getId())).thenReturn(employee);
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(java.util.Optional.of(employee));
 
         ApiException error = assertThrows(ApiException.class,
                 () -> service.confirm(employee.getId(), LocalDate.now()));
@@ -106,7 +106,7 @@ class EmployeeConfirmGateTest {
     @Test
     void resignedEmployeeRejected() {
         Employee employee = employee("resigned", null);
-        when(queryService.requireEmployee(employee.getId())).thenReturn(employee);
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(java.util.Optional.of(employee));
 
         ApiException error = assertThrows(ApiException.class,
                 () -> service.confirm(employee.getId(), LocalDate.now()));

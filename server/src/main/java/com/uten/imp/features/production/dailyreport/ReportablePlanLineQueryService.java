@@ -2,6 +2,8 @@ package com.uten.imp.features.production.dailyreport;
 
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.features.production.ProductionDocumentAccessPolicy;
 import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -14,7 +16,6 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -433,26 +434,16 @@ public class ReportablePlanLineQueryService {
         String scopedSql = BASE_SQL.replace(
                 "/*OWNER_SCOPE*/", ownerPredicate);
 
-        String normalized = keyword == null || keyword.isBlank()
-                ? null
-                : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+        String normalized = KeywordSearch.phrase(keyword);
         List<Object> args = new ArrayList<>(ownerArgs);
         StringBuilder filter = new StringBuilder(
                 " WHERE (max_report_qty > 0 OR fqc_recovery_requires_material OR actual_source)");
-        if (normalized != null) {
-            filter.append("""
-                     AND (
-                         lower(COALESCE(plan_no, '')) LIKE ?
-                         OR lower(COALESCE(product_no, '')) LIKE ?
-                         OR lower(COALESCE(goods_code, '')) LIKE ?
-                         OR lower(COALESCE(goods_name, '')) LIKE ?
-                         OR lower(COALESCE(order_no, '')) LIKE ?
-                         OR lower(COALESCE(client_name, '')) LIKE ?
-                     )
-                    """);
-            for (int index = 0; index < 6; index++) {
-                args.add(normalized);
-            }
+        if (!normalized.isEmpty()) {
+            String[] searchFields = {"plan_no", "product_no", "goods_code", "goods_name",
+                    "order_no", "client_name", "goods_spec", "color_name", "unit_name",
+                    "workshop_name", "execution_segment_code", "fqc_source_report_no"};
+            filter.append(" AND ").append(TaskKeywordSearch.conditionPositional(normalized, searchFields));
+            TaskKeywordSearch.appendContains(args, normalized, searchFields.length);
         }
         if (departmentId != null) {
             filter.append(" AND department_id = ?");
@@ -473,14 +464,16 @@ public class ReportablePlanLineQueryService {
         long total = totalValue == null ? 0 : totalValue;
 
         List<Object> dataArgs = new ArrayList<>(args);
+        String rank = TaskKeywordSearch.rankNamesFirstPositional(normalized, dataArgs,
+                new String[]{"goods_name"}, "goods_code", "plan_no", "product_no", "order_no");
         dataArgs.add(size);
         dataArgs.add(pageable.getOffset());
         List<ReportablePlanLine> items = jdbc.query(
                 scopedSql + """
                          SELECT *
                          FROM reportable
-                        """ + filter + """
-                         ORDER BY delivery_date ASC NULLS LAST,
+                        """ + filter + " ORDER BY " + (rank.isEmpty() ? "" : rank + ", ") + """
+                                  delivery_date ASC NULLS LAST,
                                   plan_no ASC,
                                   product_no ASC,
                                   order_no ASC NULLS LAST,

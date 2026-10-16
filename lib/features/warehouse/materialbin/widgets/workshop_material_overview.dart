@@ -23,6 +23,7 @@ import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
+import '../../../../shared/search/keyword_search.dart';
 import '../../../basic_data/widgets/master_data_table_view.dart';
 import '../models/workshop_material_models.dart';
 import '../repositories/workshop_material_repository.dart';
@@ -299,14 +300,20 @@ class _WorkshopMaterialOverviewState
     final l10n = AppLocalizations.of(context);
     int count(String status) =>
         widget.settings.where((s) => s.status == status).length;
-    final rows = widget.settings.where((setting) {
-      if (_status != _all && setting.status != _status) return false;
-      return [
+    final rows = rankedKeywordMatches(
+      widget.settings.where(
+        (setting) => _status == _all || setting.status == _status,
+      ),
+      _keyword,
+      primaryFields: (setting) => [setting.workshopName],
+      fields: (setting) => [
         setting.workshopName,
         setting.binWarehouseName,
-        setting.sourceWarehouseName,
-      ].whereType<String>().join(' ').toLowerCase().contains(_keyword);
-    }).toList();
+        if (setting.opened) setting.sourceWarehouseName,
+        if (setting.currentPeriod != null)
+          wmPeriodLabel(setting.currentPeriod!),
+      ],
+    );
     return Stack(
       children: [
         Column(

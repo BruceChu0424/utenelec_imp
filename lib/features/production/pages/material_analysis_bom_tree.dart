@@ -351,7 +351,7 @@ abstract class _MaterialAnalysisBomTreeState
     ProductionMaterialAnalysisProduct? product,
   ) {
     if (_bomKeyword.isEmpty) return true;
-    return [
+    return matchesKeywordSearch([
       product?.goodsCode,
       product?.goodsName,
       product?.orderNo,
@@ -359,9 +359,7 @@ abstract class _MaterialAnalysisBomTreeState
       material.goodsName,
       material.spec,
       material.colorName,
-    ].whereType<String>().any(
-      (value) => value.toLowerCase().contains(_bomKeyword),
-    );
+    ], _bomKeyword);
   }
 
   /// BOM 查找：防抖与清除按钮由 UtenSearchBar 内置；关键词变化才重算可见层。

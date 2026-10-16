@@ -1005,25 +1005,27 @@ public class SubcontractMaterialPlanService {
         int pageSize = Math.min(Math.max(size, 1), 200);
         int pageNo = Math.max(page, 1);
         boolean scoped = warehouseScope != null && warehouseScope.active();
-        String pattern = keyword == null || keyword.isBlank() ? null : "%" + keyword.strip() + "%";
-        String from = outboundTaskFrom(warehouseScope, pattern != null);
+        String normalized = com.uten.imp.common.util.KeywordSearch.phrase(keyword);
+        String from = outboundTaskFrom(warehouseScope, normalized);
+        String rank = normalized.isEmpty() ? "" : com.uten.imp.common.util.TaskKeywordSearch.rankNamesFirst(normalized,
+                new String[]{}, new String[]{"draft_lines.goods_names"},
+                new String[]{"issue.bill_no", "plan.order_bill_no"}, "draft_lines.goods_codes") + ", ";
         Query count = em.createNativeQuery("SELECT COUNT(*) " + from);
         Query list = em.createNativeQuery("""
                 SELECT issue.id, issue.bill_no, plan.id, plan.order_id, plan.order_bill_no, supplier.name,
                        issue.warehouse_id, warehouse.name, draft_lines.line_count, draft_lines.kind_count,
                        issue.created_at, creator_employee.full_name
-                """ + from + "\n" + """
-                ORDER BY issue.created_at ASC, issue.bill_no
+                """ + from + "\nORDER BY " + rank + """
+                issue.created_at ASC, issue.bill_no,issue.id
                 LIMIT :pageLimit OFFSET :pageOffset
                 """);
         for (Query query : List.of(count, list)) {
             if (scoped) {
                 query.setParameter("warehouseScope", warehouseScope.idsCsv());
             }
-            if (pattern != null) {
-                query.setParameter("keyword", pattern);
-            }
         }
+        com.uten.imp.common.util.TaskKeywordSearch.bind(count, normalized, false);
+        com.uten.imp.common.util.TaskKeywordSearch.bind(list, normalized, true);
         list.setParameter("pageLimit", pageSize);
         list.setParameter("pageOffset", (pageNo - 1) * pageSize);
         long total = ((Number) count.getSingleResult()).longValue();
@@ -1047,7 +1049,7 @@ public class SubcontractMaterialPlanService {
     @PreAuthorize("hasAuthority('subcontract_outbound:view')")
     public long countTasks(WarehouseTaskScope warehouseScope) {
         boolean scoped = warehouseScope != null && warehouseScope.active();
-        Query count = em.createNativeQuery("SELECT COUNT(*) " + outboundTaskFrom(warehouseScope, false));
+        Query count = em.createNativeQuery("SELECT COUNT(*) " + outboundTaskFrom(warehouseScope, null));
         if (scoped) {
             count.setParameter("warehouseScope", warehouseScope.idsCsv());
         }
@@ -1058,24 +1060,27 @@ public class SubcontractMaterialPlanService {
      * 待发料列表与红数共用的 FROM / WHERE: 只认绑定冻结计划行的领料草稿(status 0)。
      * 仓库范围占位 {@code :warehouseScope}, 关键字占位 {@code :keyword}(出仓单号/订货单号/委外商)。
      */
-    private static String outboundTaskFrom(WarehouseTaskScope warehouseScope, boolean keyword) {
+    private static String outboundTaskFrom(WarehouseTaskScope warehouseScope, String keyword) {
         StringBuilder where = new StringBuilder(" WHERE issue.status = 0 AND NOT issue.is_deleted ");
         if (warehouseScope != null && warehouseScope.active()) {
             where.append(" AND ").append(warehouseScope.predicate("issue.warehouse_id", ":warehouseScope"))
                     .append(' ');
         }
-        if (keyword) {
-            where.append(" AND (issue.bill_no ILIKE :keyword OR plan.order_bill_no ILIKE :keyword"
-                    + " OR supplier.name ILIKE :keyword) ");
-        }
+        where.append(" AND ").append(com.uten.imp.common.util.TaskKeywordSearch.condition(keyword,
+                "issue.bill_no", "plan.order_bill_no", "supplier.name", "warehouse.name", "creator_employee.full_name", "draft_lines.goods_text"));
         return """
                 FROM subcontract_material_issues issue
                 JOIN LATERAL (
                     SELECT COUNT(*) AS line_count,
                            COUNT(DISTINCT item.goods_id::text || ':' || COALESCE(item.color_id::text, '')) AS kind_count,
-                           (array_agg(line.plan_id ORDER BY line.plan_id))[1] AS plan_id
+                           (array_agg(line.plan_id ORDER BY line.plan_id))[1] AS plan_id,
+                           string_agg(concat_ws(' ',COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code),
+                               COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)),' ') AS goods_text,
+                           array_agg(DISTINCT COALESCE(NULLIF(item.goods_code_snapshot,''),goods.code)) AS goods_codes,
+                           array_agg(DISTINCT COALESCE(NULLIF(item.goods_name_snapshot,''),goods.name)) AS goods_names
                     FROM subcontract_material_issue_items item
                     JOIN subcontract_material_plan_items line ON line.id = item.plan_item_id
+                    LEFT JOIN goods ON goods.id = item.goods_id
                     WHERE item.issue_id = issue.id AND NOT item.is_deleted
                 ) draft_lines ON draft_lines.line_count > 0
                 JOIN subcontract_material_plans plan ON plan.id = draft_lines.plan_id

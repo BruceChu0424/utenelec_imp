@@ -419,6 +419,19 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       children: [
         buildShell(
           context,
+          searchPaneBuilder: (query) =>
+              MasterEntityDetailPane<GoodsListItem, GoodsDetail>(
+                config: _paneConfig(),
+                categoryId: null,
+                canEditCategory: false,
+                canAddCategory: false,
+                canDeleteCategory: false,
+                externalKeyword: query,
+                externalSearchPending: shellSearchPending,
+                onAddChild: () {},
+                onEditCategory: (_) {},
+                onDeleteCategory: () {},
+              ),
           detailPaneBuilder: (selected) =>
               MasterEntityDetailPane<GoodsListItem, GoodsDetail>(
                 key: ValueKey('dp-${selected.id}-$_detailEpoch'),
@@ -428,6 +441,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                 canAddCategory: shellCanCreate,
                 canDeleteCategory: shellCanDelete,
                 externalKeyword: shellTreeSearchKeyword,
+                externalSearchPending: shellSearchPending,
                 onAddChild: () => shellShowCreateDialog(parent: selected),
                 onEditCategory: (detail) => shellShowEditDialog(detail),
                 onDeleteCategory: () => shellDeleteNode(selected),
@@ -545,11 +559,15 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
         sort: q.sort,
         order: q.order,
         // 浏览态禁用品归前导分组；搜索态把禁用品直接纳入结果，避免「定位到了但右侧为空」。
-        excludeDisabled: q.forPrint || !q.hasKeyword,
+        excludeDisabled: !q.hasKeyword,
         excludeStub: true, // 迁移兜底占位归「未分类」节点的集合行
       ),
       loadFacets: (id) async {
         final f = await goods.facets(id);
+        return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
+      },
+      loadGlobalFacets: () async {
+        final f = await goods.globalFacets();
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
       },
       batchEntityPath: ApiEndpoints.goods,
@@ -559,12 +577,15 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       canDelete: _canDeleteMaster,
       canStatus: _canStatusMaster,
       defaultSortKey: 'code',
-      export: const MasterPaneExport(
+      export: MasterPaneExport(
         title: '货品资料', // TODO(l10n): 补 arb
         endpoint: '/master/goods/export',
         permission: Perm.goodsExport,
         label: '导出货品', // TODO(l10n): 补 arb
-        extraQuery: {'excludeDisabled': true, 'excludeStub': true},
+        queryParamsOf: (query) => {
+          'excludeDisabled': !query.hasKeyword,
+          'excludeStub': true,
+        },
         inCard: true,
       ),
       cardActions: (pane) => [
@@ -583,7 +604,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           ),
       ],
       onCreate: (pane) async {
-        await context.push(RoutePath.basicinfoGoodsNew(pane.categoryId));
+        final categoryId = pane.categoryId;
+        if (categoryId == null) return;
+        await context.push(RoutePath.basicinfoGoodsNew(categoryId));
         // 新建货品编号最大，按编号正序落在列表最下面——跳到最后一页能看到它。
         if (mounted) await _reloadToLastPage(pane);
       },
@@ -816,7 +839,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane, {
     required int copies,
   }) async {
-    if (!_canCreateMaster || pane.busy) return;
+    final targetCategoryId = pane.categoryId;
+    if (!_canCreateMaster || pane.busy || targetCategoryId == null) return;
     final clips = ref.read(goodsClipboardProvider).goodsList;
     if (clips.isEmpty) return;
     final bomRepo = ref.read(goodsBomRepositoryProvider);
@@ -837,8 +861,8 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           for (var i = 0; i < copies; i++) {
             final body = _goodsSaveBody(
               d,
-              currentCategoryId: pane.categoryId,
-              categoryId: pane.categoryId,
+              currentCategoryId: targetCategoryId,
+              categoryId: targetCategoryId,
               copyMode: true,
             );
             final newName = _pastedGoodsName(d.name, taken);
@@ -1260,6 +1284,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     MasterEntityPaneController<GoodsListItem, GoodsDetail> pane,
   ) {
     final enabled =
+        pane.categoryId != null &&
         _canCreateMaster &&
         !pane.busy &&
         ref.read(goodsClipboardProvider).hasGoods;

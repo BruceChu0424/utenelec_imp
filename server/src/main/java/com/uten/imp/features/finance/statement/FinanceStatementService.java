@@ -1,5 +1,8 @@
 package com.uten.imp.features.finance.statement;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+
 import com.uten.imp.features.finance.report.ReportColumn;
 import com.uten.imp.features.finance.report.ReportTableResponse;
 import jakarta.persistence.EntityManager;
@@ -34,7 +37,7 @@ import java.util.UUID;
  *       列：开单日期/货品名称/颜色/单位/数量/含税单价/含税金额/备注(单号)。</li>
  * </ul>
  *
- * <p>口径说明：只取 status=1（已审核）单据，红冲(-1)/草稿不进表；keyword 过滤往来单位名称/编号；
+ * <p>口径说明：只取 status=1（已审核）单据，红冲(-1)/草稿不进表；keyword 按词匹配往来单位、可见货品与单号文本；
  * 日期范围默认上月今日..今日（前端通用页），对账按月选起止即可。
  * 数据局限：发料行 order_item_id 老库未填（全 NULL），材料↔成品按 货品+委外商 直接对应
  * （抽样核实发料行货品即加工件本身，如 80B 外框/金本铜粒）。</p>
@@ -130,7 +133,8 @@ public class FinanceStatementService {
                 WHERE (m.prev_stock <> 0 OR m.iss_qty <> 0 OR m.rcv_qty <> 0)
                 """;
         return runPaged(cols, core, "t.\"supplierName\", t.\"goodsCode\"", keyword, from, to, page, size,
-                Map.of("lossRate", lossRate == null ? new BigDecimal("0.03") : lossRate));
+                Map.of("lossRate", lossRate == null ? new BigDecimal("0.03") : lossRate),false,
+                "t.\"goodsName\"", "t.\"goodsCode\"", "t.\"color\"", "t.\"issueBillNo\"", "t.\"receiptBillNo\"");
     }
 
     // ======================== 附件 2 · 供应商对账单 ========================
@@ -173,7 +177,8 @@ public class FinanceStatementService {
                       AND i.bill_date BETWEEN :from AND :to
                 ) t
                 """;
-        return runPaged(cols, core, "t.bill_date, t.goods_code", keyword, from, to, page, size, Map.of());
+        return runPaged(cols, core, "t.bill_date, t.goods_code", keyword, from, to, page, size, Map.of(),false,
+                "t.goods_name", "t.goods_code", "t.unit_name", "t.remark");
     }
 
     // ======================== 附件 4 · 其他应收款对账单（铜材加工按重量） ========================
@@ -240,7 +245,8 @@ public class FinanceStatementService {
                 JOIN goods g ON g.id = p.goods_id
                 LEFT JOIN suppliers s ON s.id = p.supplier_id
                 """;
-        return runPaged(cols, core, "t.\"billDate\", t.\"billNo\"", keyword, from, to, page, size, Map.of());
+        return runPaged(cols, core, "t.\"billDate\", t.\"billNo\"", keyword, from, to, page, size, Map.of(),true,
+                "t.\"goodsName\"", "t.\"spec\"", "t.\"billNo\"");
     }
 
     // ======================== 附件 5 · 应收账款客户对账单 ========================
@@ -285,26 +291,30 @@ public class FinanceStatementService {
                       AND i.bill_date BETWEEN :from AND :to
                 ) t
                 """;
-        return runPaged(cols, core, "t.bill_date, t.goods_name", keyword, from, to, page, size, Map.of());
+        return runPaged(cols, core, "t.bill_date, t.goods_name", keyword, from, to, page, size, Map.of(),false,
+                "t.goods_name", "t.color_name", "t.unit_name", "t.remark");
     }
 
     // ======================== 通用执行器（镜像 FinanceReportService.executeRawPaged） ========================
 
-    /** 原生 SQL 分页执行器。core 末尾必须输出 party_name/party_code 两列（keyword 过滤往来单位；
+    /** 原生 SQL 分页执行器。core 末尾必须输出 party_name/party_code 两列（与可见文本联合搜索；
      *  包装为子查询 t 后行映射按位置取前 N 列，尾部 party 列不进结果）。 */
     private ReportTableResponse runPaged(List<ReportColumn> cols, String coreSql, String orderBy,
                                          String keyword, LocalDate from, LocalDate to,
-                                         int page, int size, Map<String, Object> extraParams) {
+                                         int page, int size, Map<String, Object> extraParams,
+                                         boolean chronological, String... textFields) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
-        String where = "WHERE TRUE";
-        if (keyword != null && !keyword.isBlank()) {
-            where = "WHERE (LOWER(COALESCE(t.party_name,'')) LIKE LOWER(:kw)"
-                    + " OR LOWER(COALESCE(t.party_code,'')) LIKE LOWER(:kw))";
-        }
+        List<String> fields = new ArrayList<>(List.of("t.party_name", "t.party_code"));
+        fields.addAll(List.of(textFields));
+        boolean searching = !KeywordSearch.terms(keyword).isEmpty();
+        String where = searching ? "WHERE " + TaskKeywordSearch.conditionParameter("kw", fields.toArray(String[]::new)) : "WHERE TRUE";
+        // Running balances are computed inside coreSql and retain their timeline.
+        String rank = searching && !chronological ? TaskKeywordSearch.rankNamesFirstParameter("kw",
+                new String[]{textFields[0]},new String[]{},fields.toArray(String[]::new)) + ", " : "";
         String wrapped = "SELECT * FROM (" + coreSql + ") t " + where;
-        var dq = em.createNativeQuery(wrapped + " ORDER BY " + orderBy + " LIMIT :__l OFFSET :__o");
+        var dq = em.createNativeQuery(wrapped + " ORDER BY " + rank + orderBy + " LIMIT :__l OFFSET :__o");
         bindRaw(dq, keyword, from, to, extraParams);
         dq.setParameter("__l", safeSize);
         dq.setParameter("__o", offset);
@@ -324,7 +334,7 @@ public class FinanceStatementService {
     }
 
     private static void bindRaw(Query q, String keyword, LocalDate from, LocalDate to, Map<String, Object> extra) {
-        if (keyword != null && !keyword.isBlank()) q.setParameter("kw", "%" + keyword.toLowerCase() + "%");
+        if (!KeywordSearch.terms(keyword).isEmpty()) q.setParameter("kw", KeywordSearch.phrase(keyword));
         q.setParameter("from", from);
         q.setParameter("to", to);
         extra.forEach(q::setParameter);

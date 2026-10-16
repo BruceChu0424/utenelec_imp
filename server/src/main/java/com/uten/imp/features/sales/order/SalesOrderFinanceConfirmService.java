@@ -2,6 +2,8 @@ package com.uten.imp.features.sales.order;
 
 import com.uten.imp.application.port.PartyOpenBalancePort;
 import com.uten.imp.common.finance.PartyOpenBalances;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -48,6 +50,7 @@ import java.util.UUID;
 public class SalesOrderFinanceConfirmService {
 
     private static final int MAX_BATCH_CONFIRM_ORDERS = 100;
+    private static final String[] SEARCH_FIELDS = {"o.bill_no", "c.name", "e.full_name"};
 
     private final EntityManager em;
     private com.uten.imp.common.columns.BusinessColumnService businessColumns;
@@ -154,15 +157,9 @@ public class SalesOrderFinanceConfirmService {
                 : rejected ? " AND o.finance_rejected = TRUE" : " AND o.finance_rejected = FALSE";
         String changesFilter = changesOnly == null ? ""
                 : " AND " + (changesOnly ? "" : "NOT ") + "(" + pendingChangesExpression() + ")";
-        String normalizedKeyword = keyword == null
-                ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        String keywordFilter = normalizedKeyword.isEmpty() ? "" : """
-                  AND (
-                    POSITION(:keyword IN LOWER(COALESCE(o.bill_no, ''))) > 0
-                    OR POSITION(:keyword IN LOWER(COALESCE(c.name, ''))) > 0
-                    OR POSITION(:keyword IN LOWER(COALESCE(e.full_name, ''))) > 0
-                  )
-                """;
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
+        String keywordFilter = normalizedKeyword.isEmpty() ? "" : " AND "
+                + TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS);
         // 单号列值筛选（2026-09-25 单号列统一）：等值精确匹配；列表/计数同口径。
         String trimmedBillNo = billNo == null ? "" : billNo.trim();
         String billNoFilter = trimmedBillNo.isEmpty()
@@ -224,7 +221,7 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                 """ + confirmationPoolFilter(confirmed) + String.join("\n", rejectedFilter, changesFilter,
-                        keywordFilter, billNoFilter, pendingOrderBy(sort, order),
+                        keywordFilter, billNoFilter, pendingOrderBy(sort, order, !normalizedKeyword.isEmpty()),
                         "LIMIT :lim OFFSET :off"));
         if (!normalizedKeyword.isEmpty()) {
             pendingQuery.setParameter("keyword", normalizedKeyword);
@@ -300,15 +297,16 @@ public class SalesOrderFinanceConfirmService {
 
     /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
      *  未知/空→默认（驳回沉底, 交货日升序, 单据日期/单号稳定序）。 */
-    private static String pendingOrderBy(String sort, String order) {
+    private static String pendingOrderBy(String sort, String order, boolean searching) {
         String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
-        return switch (sort == null ? "" : sort) {
-            case "billNo" -> "ORDER BY o.bill_no " + dir + " NULLS LAST,\n"
+        String relevance = searching ? TaskKeywordSearch.rankParameter("keyword", SEARCH_FIELDS) + ", " : "";
+        return "ORDER BY " + relevance + switch (sort == null ? "" : sort) {
+            case "billNo" -> "o.bill_no " + dir + " NULLS LAST,\n"
                     + "         o.finance_rejected ASC,\n"
-                    + "         o.deliver_date NULLS LAST, o.bill_date\n";
+                    + "         o.deliver_date NULLS LAST, o.bill_date, o.id\n";
             default -> """
-                    ORDER BY o.finance_rejected ASC,
-                             o.deliver_date NULLS LAST, o.bill_date, o.bill_no
+                    o.finance_rejected ASC,
+                             o.deliver_date NULLS LAST, o.bill_date, o.bill_no, o.id
                     """;
         };
     }
@@ -330,15 +328,9 @@ public class SalesOrderFinanceConfirmService {
                 : rejected ? " AND o.finance_rejected = TRUE" : " AND o.finance_rejected = FALSE";
         String changesFilter = changesOnly == null ? ""
                 : " AND " + (changesOnly ? "" : "NOT ") + "(" + pendingChangesExpression() + ")";
-        String normalizedKeyword = keyword == null
-                ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        String keywordFilter = normalizedKeyword.isEmpty() ? "" : """
-                  AND (
-                    POSITION(:keyword IN LOWER(COALESCE(o.bill_no, ''))) > 0
-                    OR POSITION(:keyword IN LOWER(COALESCE(c.name, ''))) > 0
-                    OR POSITION(:keyword IN LOWER(COALESCE(e.full_name, ''))) > 0
-                  )
-                """;
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
+        String keywordFilter = normalizedKeyword.isEmpty() ? "" : " AND "
+                + TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS);
         var query = em.createNativeQuery("""
                         SELECT COALESCE(o.bill_no, ''), COUNT(*)
                         FROM sales_orders o

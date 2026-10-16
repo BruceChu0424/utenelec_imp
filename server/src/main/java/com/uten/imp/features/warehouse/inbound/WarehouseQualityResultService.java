@@ -212,34 +212,19 @@ public class WarehouseQualityResultService {
               ON supplier.id = scope.supplier_id
             LEFT JOIN warehouses warehouse
               ON warehouse.id = scope.warehouse_id
+            LEFT JOIN LATERAL (
+              SELECT string_agg(concat_ws(' ',goods.code,goods.name),' ') AS goods_text,
+                     array_agg(DISTINCT goods.code) AS goods_codes,array_agg(DISTINCT goods.name) AS goods_names
+              FROM procurement_inspection_items searched LEFT JOIN goods ON goods.id=searched.goods_id
+              WHERE searched.receipt_type=scope.receipt_type AND searched.receipt_id=scope.receipt_id
+                AND searched.status<>'REVERSED'
+            ) quality_goods ON TRUE
             """;
 
     /** 关键字过滤（收货单 / 供应商 / 仓库 / 货品编码或名称）。 */
-    private static final String KEYWORD_WHERE = """
-            WHERE (:type = 'ALL' OR scope.receipt_type = :type)
-              AND (
-                  :keyword = ''
-                  OR LOWER(COALESCE(scope.bill_no, ''))
-                       LIKE :pattern ESCAPE '\\'
-                  OR LOWER(COALESCE(supplier.name, ''))
-                       LIKE :pattern ESCAPE '\\'
-                  OR LOWER(COALESCE(warehouse.name, ''))
-                       LIKE :pattern ESCAPE '\\'
-                  OR EXISTS (
-                      SELECT 1
-                        FROM procurement_inspection_items keyword_inspection
-                        LEFT JOIN goods keyword_goods
-                          ON keyword_goods.id = keyword_inspection.goods_id
-                       WHERE keyword_inspection.receipt_type = scope.receipt_type
-                         AND keyword_inspection.receipt_id = scope.receipt_id
-                         AND keyword_inspection.status <> 'REVERSED'
-                         AND (LOWER(COALESCE(keyword_goods.code, ''))
-                                  LIKE :pattern ESCAPE '\\'
-                              OR LOWER(COALESCE(keyword_goods.name, ''))
-                                  LIKE :pattern ESCAPE '\\')
-                  )
-              )
-            """;
+    private static final String KEYWORD_WHERE = "WHERE (:type = 'ALL' OR scope.receipt_type = :type) AND "
+            + com.uten.imp.common.util.TaskKeywordSearch.conditionParameter("keyword",
+                    "scope.bill_no", "supplier.name", "warehouse.name", "quality_goods.goods_text");
 
     /**
      * 日期范围过滤（列表专用；状态/来源分段计数不跟随日期，保持角标全量口径）。
@@ -337,7 +322,10 @@ public class WarehouseQualityResultService {
                 %s
                 LIMIT :limit OFFSET :offset
                 """.formatted(STATUS_CASE, AGGREGATE_FROM, filters,
-                orderBy(sort, order)))
+                orderBy(sort, order).replace("ORDER BY ", "ORDER BY "
+                        + com.uten.imp.common.util.TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                                new String[]{}, new String[]{"quality_goods.goods_names"},
+                                new String[]{"scope.bill_no"}, "quality_goods.goods_codes") + ", ")))
                 .setParameter("date_from", dateFrom)
                 .setParameter("date_to", dateTo)
                 .setParameter("limit", normalizedSize)
@@ -574,8 +562,7 @@ public class WarehouseQualityResultService {
             String type, String search, String workStatus, WarehouseTaskScope warehouseScope, String bodySql) {
         Query query = em.createNativeQuery(AGGREGATE_CTE + bodySql)
                 .setParameter("type", type)
-                .setParameter("keyword", search)
-                .setParameter("pattern", likePattern(search));
+                .setParameter("keyword", search);
         if (!workStatus.isEmpty()) {
             query.setParameter("status", workStatus);
         }
@@ -1074,12 +1061,7 @@ public class WarehouseQualityResultService {
     }
 
     private static String normalizeSearch(String value) {
-        return value == null ? "" : value.strip().toLowerCase(Locale.ROOT);
-    }
-
-    private static String likePattern(String value) {
-        return "%" + value.replace("\\", "\\\\")
-                .replace("%", "\\%").replace("_", "\\_") + "%";
+        return com.uten.imp.common.util.KeywordSearch.phrase(value);
     }
 
     private static boolean hasWarehouseWriteAuthority(String viewAuthority, String actionAuthority) {

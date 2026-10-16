@@ -363,6 +363,26 @@ class WarehouseInsightPostgresTest {
         assertThat(strip.unitName()).isEqualTo("个");
     }
 
+    @Test
+    void analysisSearchUsesLiteralWordsAndNamePriorityBeforePagingWithoutChangingScope() throws Exception {
+        World w = seed(dataSource);
+        var db = new org.springframework.jdbc.core.JdbcTemplate(dataSource);
+        String word = "搜索" + w.tag();
+        db.update("UPDATE goods SET name=?,model='M3_20%' WHERE id=?", word, w.x());
+        db.update("UPDATE goods SET name=?,model='M3X20A' WHERE id=?", word + "后缀", w.y());
+        db.update("UPDATE goods SET code=?,name='普通件',model='M3_20%' WHERE id=?", word, w.z());
+        var first = service(true).health(w.parent(), null, word, null, false, false, 1, 1, "code", "asc", AS_OF);
+        assertThat(first.getTotal()).isEqualTo(3);
+        assertThat(first.getItems()).extracting(HealthRow::goodsId).containsExactly(w.x());
+        var literal = service(true).health(w.parent(), null, word + " M3_20%", null, false, false, 1, 50, "code", "asc", AS_OF);
+        assertThat(literal.getItems()).extracting(HealthRow::goodsId).containsExactly(w.x(), w.z());
+        assertThat(service(true).health(w.a(), null, word + " 不存在", null, false, false, 1, 50, null, null, AS_OF).getItems()).isEmpty();
+        var learning = service(true).learning("ALL", word + " M3_20%", 1, 1, AS_OF);
+        assertThat(learning.getTotal()).isEqualTo(2);
+        assertThat(learning.getItems()).extracting(LearningRow::goodsId).containsExactly(w.x());
+        assertThat(service(true).learning("ALL", word + " M3_20%", 2, 1, AS_OF).getItems()).extracting(LearningRow::goodsId).containsExactly(w.z());
+    }
+
     private static HealthRow row(List<HealthRow> rows, UUID goodsId) {
         return rows.stream().filter(r -> goodsId.equals(r.goodsId())).findFirst().orElseThrow();
     }

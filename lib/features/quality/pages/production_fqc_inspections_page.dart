@@ -24,6 +24,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/search/keyword_search.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
 import '../models/quality_task_form_drafts.dart';
@@ -210,16 +211,13 @@ class _ProductionFqcInspectionsPageState
       _ => item.status == _status,
     };
     if (!statusMatch) return false;
-    final keyword = _keyword.trim().toLowerCase();
-    if (keyword.isEmpty) return true;
-    final text = [
+    return matchesKeywordSearch([
       item.reportNo,
       item.planNo,
       item.goodsCode,
       item.goodsName,
       item.colorName,
-    ].whereType<String>().join(' ').toLowerCase();
-    return text.contains(keyword);
+    ], _keyword);
   }
 
   void _setSelectedIds(Set<String> next) {

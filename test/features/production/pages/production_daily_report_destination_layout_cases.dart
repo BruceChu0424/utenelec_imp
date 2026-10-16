@@ -40,7 +40,7 @@ Map<String, dynamic> _destinationLayoutItem(
   'outputBatchId': 'layout-batch-$suffix',
   'outputBatchQty': 10,
   'destination': demandId == null ? 'WAREHOUSE' : 'WORKSHOP',
-  if (demandId != null) 'directTransferDemandId': demandId,
+  'directTransferDemandId': ?demandId,
 };
 
 Map<String, dynamic> _destinationLayoutMaterial(String suffix) => {

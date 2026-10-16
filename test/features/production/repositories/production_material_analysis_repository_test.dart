@@ -2,9 +2,94 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
+import 'package:uten_imp/features/production/models/material_future_transfer.dart';
 import 'package:uten_imp/features/production/repositories/production_repository.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  test(
+    'future source search ranks goods names before codes across the complete list before paging',
+    () async {
+      final repository = ProductionPlanRepository(
+        _api(
+          (request) =>
+              [
+                    {
+                      'sourceAllocationId': 'code',
+                      'sourceLabel': '原计划',
+                      'goodsCode': 'Metric Screw',
+                      'goodsName': 'ordinary',
+                    },
+                    {
+                      'sourceAllocationId': 'prefix',
+                      'sourceLabel': '原计划',
+                      'goodsCode': 'other',
+                      'goodsName': 'Metric Screw extra',
+                    },
+                    {
+                      'sourceAllocationId': 'exact',
+                      'sourceLabel': '原计划',
+                      'goodsCode': 'other',
+                      'goodsName': 'Metric Screw',
+                    },
+                    {
+                      'sourceAllocationId': 'literal',
+                      'sourceLabel': '原计划',
+                      'goodsCode': 'A%_B',
+                      'goodsName': '特殊螺丝',
+                    },
+                    {
+                      'sourceAllocationId': 'lookalike',
+                      'sourceLabel': '原计划',
+                      'goodsCode': 'AxYB',
+                      'goodsName': '特殊螺丝',
+                    },
+                  ]
+                  .map(
+                    (row) => {
+                      'sourceAnalysisId': 'source',
+                      'sourceMaterialId': 'material',
+                      'sourceVersion': 1,
+                      'sourceFingerprint': 'source-fp',
+                      'targetVersion': 1,
+                      'targetFingerprint': 'target-fp',
+                      ...row,
+                    },
+                  )
+                  .toList(),
+        ),
+      );
+      Future<PagedResult<MaterialFutureTransferSource>> search(
+        String query, {
+        int page = 1,
+      }) => repository.materialFutureTransferSources(
+        targetAnalysisId: 'target',
+        targetMaterialId: 'material',
+        keyword: query,
+        page: page,
+        size: 1,
+      );
+      final first = await search('Metric Screw');
+      expect(first.total, 3);
+      expect(first.totalPages, 3);
+      expect(first.items.single.sourceAllocationId, 'exact');
+      expect(
+        (await search('Metric Screw', page: 2)).items.single.sourceAllocationId,
+        'prefix',
+      );
+      expect(
+        (await search('Metric Screw', page: 3)).items.single.sourceAllocationId,
+        'code',
+      );
+      expect((await search('原计划 Screw')).total, 3);
+      expect(
+        (await search('特殊 A%_B')).items.single.sourceAllocationId,
+        'literal',
+      );
+      expect((await search('Metric missing')).total, 0);
+      expect((await search('')).items.single.sourceAllocationId, 'code');
+    },
+  );
   test(
     'overproduction defaults batch goods IDs and preserve zero and remembered values',
     () async {

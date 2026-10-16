@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.common.util.TaskKeywordSearch;
 /**
  * 货架目视化清单原生 SQL（rows / racks / layout 三条查询共用同一 {@code shelf} 子集）。
  *
@@ -115,8 +116,7 @@ final class ShelfLabelSql {
             sql.append("   AND r.parsed AND split_part(r.place, '-', 1) = :rack\n");
         }
         if (hasKw) {
-            sql.append("   AND (r.name ILIKE :kw OR r.code ILIKE :kw\n")
-               .append("        OR r.series ILIKE :kw OR r.place ILIKE :kw)\n");
+            sql.append("   AND ").append(TaskKeywordSearch.conditionParameter("kw", "r.name", "r.code", "r.series", "r.place")).append('\n');
         }
         sql.append(" ORDER BY r.parsed DESC,\n")
            .append("          split_part(r.place, '-', 1),\n")

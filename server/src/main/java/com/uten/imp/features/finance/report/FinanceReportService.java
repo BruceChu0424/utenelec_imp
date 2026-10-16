@@ -3,6 +3,9 @@ package com.uten.imp.features.finance.report;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.report.ReportQueryKit;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.CategoryKeywordSearch;
 import com.uten.imp.common.report.ReportQueryKit.FacetSpec;
 import com.uten.imp.common.report.ReportSort;
 import com.uten.imp.common.time.BusinessTime;
@@ -96,11 +99,12 @@ public class FinanceReportService {
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
         for (ReportColumn c : columns) sortKeys.add(c.key());
-        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
+        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -245,7 +249,7 @@ public class FinanceReportService {
         StringBuilder union = new StringBuilder();
         if (showClient) {
             union.append("SELECT c.name AS partyName, COALESCE(c.code,'') AS partyCode, '客户' AS partyType, COALESCE(ar.bal,0) AS receivable, 0 AS payable, "
-                    + "COALESCE(c.phone,'') AS phone, COALESCE(c.address,'') AS address FROM clients c "
+                    + "COALESCE(c.phone,'') AS phone, COALESCE(c.address,'') AS address, c.category_id AS partyCategoryId FROM clients c "
                     + "LEFT JOIN (SELECT client_id, SUM(amount_balance) AS bal FROM ar_ap_ledger "
                     + "WHERE direction='AR' AND is_deleted=false AND status=1"
                     + dateClause("bill_date") + " GROUP BY client_id) ar ON ar.client_id=c.id "
@@ -254,7 +258,7 @@ public class FinanceReportService {
         }
         if (showSupplier) {
             union.append("SELECT s.name AS partyName, COALESCE(s.code,'') AS partyCode, '供应商' AS partyType, 0 AS receivable, COALESCE(ap.bal,0) AS payable, "
-                    + "COALESCE(s.phone,'') AS phone, COALESCE(s.address,'') AS address FROM suppliers s "
+                    + "COALESCE(s.phone,'') AS phone, COALESCE(s.address,'') AS address, s.category_id AS partyCategoryId FROM suppliers s "
                     + "LEFT JOIN (SELECT supplier_id, SUM(amount_balance) AS bal FROM ar_ap_ledger "
                     + "WHERE direction='AP' AND is_deleted=false AND status=1"
                     + dateClause("bill_date") + " GROUP BY supplier_id) ap ON ap.supplier_id=s.id "
@@ -270,20 +274,20 @@ public class FinanceReportService {
             default -> "";
         };
         // keyword 过滤
-        WhereBuilder w = new WhereBuilder(having + (having.isEmpty() ? "WHERE" : " AND")
-                + (keyword == null || keyword.isBlank()
-                ? " TRUE"
-                : " (LOWER(COALESCE(partyName,'')) LIKE LOWER(:kw)"
-                + " OR LOWER(COALESCE(partyCode,'')) LIKE LOWER(:kw))"));
+        WhereBuilder w = new WhereBuilder(having + (having.isEmpty() ? "WHERE TRUE" : " AND TRUE"));
+        w.search(keyword, parameter -> "(partyName ILIKE " + parameter + " ESCAPE '\\'"
+                + " OR partyCode ILIKE " + parameter + " ESCAPE '\\'"
+                + " OR (partyType='客户' AND " + CategoryKeywordSearch.nativeBranch("client_categories", "partyCategoryId",
+                        "(name ILIKE " + parameter + " ESCAPE '\\' OR code ILIKE " + parameter + " ESCAPE '\\')") + ")"
+                + " OR (partyType='供应商' AND " + CategoryKeywordSearch.nativeBranch("supplier_categories", "partyCategoryId",
+                        "(name ILIKE " + parameter + " ESCAPE '\\' OR code ILIKE " + parameter + " ESCAPE '\\')") + "))",
+                "partyName", "partyCode");
         // 包成一个子查询，便于 count + 分页
         // partyCode 只用于搜索，放在内部投影最后；executeOverview 仍只映射前 6 列，
         // 因此对外 ReportTableResponse 列契约不变。
-        String dataSelect = "SELECT partyName, partyType, receivable, payable, phone, address, partyCode FROM ("
+        String dataSelect = "SELECT partyName, partyType, receivable, payable, phone, address, partyCode, partyCategoryId FROM ("
                 + union + ") z";
         String fromJoin = "";
-        if (keyword != null && !keyword.isBlank()) {
-            w.add("", "kw", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
-        }
         // arApOverview 用独立查询（带 category 递归 CTE 参数），不走通用 execute 的 facet；这里手写计数+分页
         return executeOverview(cols, dataSelect, fromJoin, w, dateFrom, dateTo, keyword, categoryId,
                 onlyClient || onlySupplier ? categoryId : null, page, size);
@@ -304,29 +308,33 @@ public class FinanceReportService {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 100);
         String normalized = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isEmpty()) {
+        if (KeywordSearch.terms(normalized).isEmpty()) {
             return new PageResponse<>(List.of(), safePage, safeSize, 0, 0);
         }
 
         String locations = """
-                SELECT 'CLIENT' AS party_type, c.category_id
+                SELECT 'CLIENT' AS party_type, c.category_id, %s AS search_rank
                   FROM clients c
                  WHERE COALESCE(c.is_deleted,false)=false
-                   AND (LOWER(COALESCE(c.name,'')) LIKE :locationKw
-                     OR LOWER(COALESCE(c.code,'')) LIKE :locationKw)
-                UNION
-                SELECT 'SUPPLIER' AS party_type, s.category_id
+                   AND %s
+                UNION ALL
+                SELECT 'SUPPLIER' AS party_type, s.category_id, %s AS search_rank
                   FROM suppliers s
                  WHERE COALESCE(s.is_deleted,false)=false
-                   AND (LOWER(COALESCE(s.name,'')) LIKE :locationKw
-                     OR LOWER(COALESCE(s.code,'')) LIKE :locationKw)
-                """;
+                   AND %s
+                """.formatted(
+                        CategoryKeywordSearch.nativeRank(normalized, "locationKw", "client_categories", "c.category_id", "c.code", "c.name", "c.code", "c.name"),
+                        CategoryKeywordSearch.nativeCondition(normalized, "locationKw", "client_categories", "c.category_id", "c.name", "c.code"),
+                        CategoryKeywordSearch.nativeRank(normalized, "locationKw", "supplier_categories", "s.category_id", "s.code", "s.name", "s.code", "s.name"),
+                        CategoryKeywordSearch.nativeCondition(normalized, "locationKw", "supplier_categories", "s.category_id", "s.name", "s.code"));
+        String rankedLocations = "SELECT party_type,category_id,MIN(search_rank) AS search_rank FROM ("
+                + locations + ") matches GROUP BY party_type,category_id";
         long offset = (long) (safePage - 1) * safeSize;
         var dataQuery = em.createNativeQuery(
-                "SELECT party_type, category_id FROM (" + locations + ") party_locations "
-                        + "ORDER BY party_type ASC, category_id ASC NULLS LAST "
+                "SELECT party_type, category_id FROM (" + rankedLocations + ") party_locations "
+                        + "ORDER BY search_rank ASC, party_type ASC, category_id ASC NULLS LAST "
                         + "LIMIT :locationLimit OFFSET :locationOffset");
-        dataQuery.setParameter("locationKw", "%" + normalized + "%");
+        CategoryKeywordSearch.bindNative(dataQuery, normalized, "locationKw", true);
         dataQuery.setParameter("locationLimit", safeSize);
         dataQuery.setParameter("locationOffset", offset);
         @SuppressWarnings("unchecked")
@@ -339,8 +347,8 @@ public class FinanceReportService {
         }
 
         var countQuery = em.createNativeQuery(
-                "SELECT COUNT(*) FROM (" + locations + ") party_locations");
-        countQuery.setParameter("locationKw", "%" + normalized + "%");
+                "SELECT COUNT(*) FROM (" + rankedLocations + ") party_locations");
+        CategoryKeywordSearch.bindNative(countQuery, normalized, "locationKw", true);
         long total = ((Number) countQuery.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -354,9 +362,15 @@ public class FinanceReportService {
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
         WhereBuilder.Built full = w.build(null);
+        String relevance = KeywordSearch.terms(keyword).isEmpty() ? "" :
+                "CASE WHEN partyType='客户' THEN " + CategoryKeywordSearch.nativeRank(keyword, "kw", "client_categories",
+                        "partyCategoryId", "partyCode", "partyName", "partyCode", "partyName")
+                + " ELSE " + CategoryKeywordSearch.nativeRank(keyword, "kw", "supplier_categories",
+                        "partyCategoryId", "partyCode", "partyName", "partyCode", "partyName") + " END, ";
         var dataQ = em.createNativeQuery(dataSelect + " " + full.sql()
-                + " ORDER BY partyType, partyName LIMIT :__limit OFFSET :__offset");
+                + " ORDER BY " + relevance + "partyType, partyName LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
+        CategoryKeywordSearch.bindRank(dataQ, keyword, "kw");
         dataQ.setParameter("fromDate", dateFrom);
         dataQ.setParameter("toDate", dateTo);
         if (catParam != null) dataQ.setParameter("catId", catParam);
@@ -480,11 +494,7 @@ public class FinanceReportService {
         if (settled != null) w.add("l.is_settled=:settled", "settled", settled);
         if (dateFrom != null) w.add("l.bill_date>=:dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("l.bill_date<=:dateTo", "dateTo", dateTo);
-        if (keyword != null && !keyword.isBlank())
-            w.add("(LOWER(l.bill_no) LIKE LOWER(:kw) OR LOWER(COALESCE(l.source_doc_no,'')) LIKE LOWER(:kw) "
-                    + "OR LOWER(COALESCE(c.name,s.name)) LIKE LOWER(:kw) "
-                    + "OR LOWER(COALESCE(refs.sales_order_nos,'')) LIKE LOWER(:kw))",
-                    "kw", "%" + keyword.toLowerCase() + "%");
+        w.search(keyword, "l.bill_no", "l.source_doc_no", "COALESCE(c.name,s.name)", "refs.sales_order_nos");
         List<FacetSpec> specs = List.of(
                 // 2026-09-25 单号列统一：立帐单号/来源单号列按值筛选（等值匹配，桶 LIMIT 50 见 execute）。
                 new FacetSpec("billNo", "l.bill_no AS v, l.bill_no AS lbl", "l.bill_no", "l.bill_no", "text"),
@@ -578,10 +588,7 @@ public class FinanceReportService {
         if (dateFrom != null) w.add("sales_order.bill_date>=:dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("sales_order.bill_date<=:dateTo", "dateTo", dateTo);
         if (keyword != null && !keyword.isBlank()) {
-            w.add("(LOWER(sales_order.bill_no) LIKE LOWER(:kw)"
-                            + " OR LOWER(COALESCE(client.name,'')) LIKE LOWER(:kw)"
-                            + " OR LOWER(COALESCE(client.full_name,'')) LIKE LOWER(:kw))",
-                    "kw", "%" + keyword.toLowerCase() + "%");
+            w.search(keyword, "sales_order.bill_no", "client.name", "client.full_name");
         }
         return execute(cols, dataSelect, fromJoin, w, "sales_order.bill_date DESC,sales_order.bill_no",
                 List.of(), Map.of(), page, size, sort, order);
@@ -948,8 +955,8 @@ public class FinanceReportService {
         assertCashBookKnown(direction, null, keyword, to);
         String party = "AR".equals(direction) ? "clients" : "suppliers";
         String partyColumn = "AR".equals(direction) ? "client_id" : "supplier_id";
-        String keywordCondition = keyword == null || keyword.isBlank() ? "" :
-                " AND (LOWER(COALESCE(party.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(party.code,'')) LIKE LOWER(:kw))";
+        String keywordCondition = KeywordSearch.terms(keyword).isEmpty() ? "" :
+                " AND (" + KeywordSearch.nativeCondition(keyword, "kw", "party.name", "party.code") + ")";
         var query = em.createNativeQuery("SELECT count(*) FROM ar_ap_ledger ledger "
                 + LegacyOpeningBalanceSql.PROOF_JOIN + " JOIN " + party + " party ON party.id=ledger." + partyColumn
                 + " WHERE ledger.direction=:direction AND ledger.bill_date<=:to AND "
@@ -968,13 +975,13 @@ public class FinanceReportService {
         String table=receipt?"finance_receipts":"finance_payments", party=receipt?"clients":"suppliers";
         String column=receipt?"client_id":"supplier_id";
         String filter=partyId==null?"":" AND cash."+column+"=:pid";
-        if(keyword!=null&&!keyword.isBlank())filter+=" AND (LOWER(COALESCE(party.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(party.code,'')) LIKE LOWER(:kw))";
+        if(!KeywordSearch.terms(keyword).isEmpty())filter+=" AND (" + KeywordSearch.nativeCondition(keyword,"kw","party.name","party.code") + ")";
         var query=em.createNativeQuery("SELECT count(*) FROM "+table+" cash JOIN "+party+" party ON party.id=cash."+column
                 +" WHERE cash.status IN(1,-1) AND NOT COALESCE(cash.is_deleted,false) AND cash.legacy_id IS NULL"
                 +" AND (CAST(:to AS date) IS NULL OR cash.bill_date<=:to) AND "
                 +LegacyOpeningBalanceSql.unknownCashBook(receipt,"cash")+filter).setParameter("to",to);
         if(partyId!=null)query.setParameter("pid",partyId);
-        if(keyword!=null&&!keyword.isBlank())query.setParameter("kw","%"+keyword.toLowerCase()+"%");
+        KeywordSearch.bindNative(query, keyword, "kw");
         if(((Number)query.getSingleResult()).longValue()>0)throw new ApiException(ErrorCode.CONFLICT,
                 "历史收付款核销的本币账面金额尚未核验，不能把未知冲减当成零重建余额");
     }
@@ -987,12 +994,12 @@ public class FinanceReportService {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(Math.max(1, size), 500);
         long offset = (long) (safePage - 1) * safeSize;
-        String where = "WHERE TRUE";
-        if (keyword != null && !keyword.isBlank()) {
-            where = "WHERE (LOWER(COALESCE(" + partyAlias + ".name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(" + partyAlias + ".code,'')) LIKE LOWER(:kw))";
-        }
-        var dq = em.createNativeQuery(coreSql + " " + where + " ORDER BY " + orderBy + " LIMIT :__l OFFSET :__o");
+        var search = new WhereBuilder("WHERE TRUE");
+        search.search(keyword, partyAlias + ".name", partyAlias + ".code");
+        String where = search.build(null).sql();
+        var dq = em.createNativeQuery(coreSql + " " + where + " ORDER BY " + search.orderBy(orderBy) + " LIMIT :__l OFFSET :__o");
         bindRaw(dq, keyword, from, to);
+        search.searchOrderParameters().forEach(dq::setParameter);
         documentScope.bind(dq);
         dq.setParameter("__l", safeSize);
         dq.setParameter("__o", offset);
@@ -1020,7 +1027,7 @@ public class FinanceReportService {
     }
 
     private static void bindRaw(jakarta.persistence.Query q, String keyword, LocalDate from, LocalDate to) {
-        if (keyword != null && !keyword.isBlank()) q.setParameter("kw", "%" + keyword.toLowerCase() + "%");
+        KeywordSearch.bindNative(q, keyword, "kw");
         q.setParameter("from", from);
         q.setParameter("to", to);
     }
@@ -1784,11 +1791,12 @@ public class FinanceReportService {
     @Transactional(readOnly = true)
     public Map<String, List<Map<String, Object>>> accountStatementFacets(
             UUID accountId, LocalDate dateFrom, LocalDate dateTo, String keyword) {
+        requireAccountStatementAccess();
         if (accountId == null) return Map.of("billNo", List.of());
         java.time.OffsetDateTime fromAt = dateFrom == null ? null : BusinessTime.startOfDay(dateFrom);
         java.time.OffsetDateTime toExclusive = dateTo == null ? null : BusinessTime.startOfDay(dateTo.plusDays(1));
         String normalizedKeyword = keyword == null || keyword.isBlank()
-                ? null : "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+                ? null : KeywordSearch.phrase(keyword);
         var query = em.createNativeQuery("""
                         SELECT COALESCE(flow.bill_no, ''), COUNT(*)
                         FROM finance_reconciliations flow
@@ -1797,13 +1805,10 @@ public class FinanceReportService {
                                OR flow.bill_date >= CAST(:fromAt AS timestamptz))
                           AND (CAST(:toExclusive AS timestamptz) IS NULL
                                OR flow.bill_date < CAST(:toExclusive AS timestamptz))
-                          AND (CAST(:keyword AS text) IS NULL
-                               OR LOWER(COALESCE(flow.bill_no, '') || ' ' || COALESCE(flow.check_no, '') || ' '
-                                 || COALESCE(flow.counterpart_name, '') || ' ' || COALESCE(flow.remark, '') || ' '
-                                 || COALESCE(flow.source_remark, '') || ' ' || COALESCE(flow.source_doc_type, ''))
-                                   LIKE CAST(:keyword AS text))
+                          AND %s
                         GROUP BY 1 ORDER BY 1
-                        """)
+                        """.formatted(TaskKeywordSearch.conditionParameter("keyword", "flow.bill_no", "flow.check_no",
+                                "flow.counterpart_name", "flow.remark", "flow.source_remark", "flow.source_doc_type")))
                 .setMaxResults(500)
                 .setParameter("aid", accountId)
                 .setParameter("fromAt", fromAt)
@@ -1842,7 +1847,7 @@ public class FinanceReportService {
                 ?null:BusinessTime.startOfDay(fromMonth);
         java.time.OffsetDateTime toExclusive=dateTo==null?null:BusinessTime.startOfDay(dateTo.plusDays(1));
         String normalizedKeyword=keyword==null||keyword.isBlank()
-                ?null:"%"+keyword.trim().toLowerCase(Locale.ROOT)+"%";
+                ?null:KeywordSearch.phrase(keyword);
         String sql="""
                 WITH account_base AS (
                   SELECT id,currency_id,init_balance
@@ -1902,8 +1907,8 @@ public class FinanceReportService {
                          SUM(in_amount) OVER() AS total_in,
                          SUM(out_amount) OVER() AS total_out
                   FROM windowed
-                  WHERE (CAST(:keyword AS text) IS NULL
-                         OR searchable LIKE CAST(:keyword AS text))
+                  WHERE
+                """ + TaskKeywordSearch.conditionParameter("keyword", "searchable") + """
                     -- 2026-09-25 单号列统一：单号表头值筛选（等值精确匹配，空参数即不过滤；
                     -- 只筛展示行，余额仍按完整日期窗滚动，不破坏滚动余额语义）。
                     AND (CAST(:billNoFilter AS text) IS NULL
@@ -2196,7 +2201,7 @@ public class FinanceReportService {
         if (dateFrom != null) w.add(dateCol + ">=:dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + "<=:dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank())
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw) OR LOWER(COALESCE(" + partyNameCol + ",'')) LIKE LOWER(:kw))", "kw", "%" + kw.toLowerCase() + "%");
+            w.search(kw, billNoCol, partyNameCol);
     }
 
     private static void addFinanceItemFilters(WhereBuilder w, String billNo, UUID accountId, UUID departmentId,
@@ -2209,7 +2214,7 @@ public class FinanceReportService {
         if (dateFrom != null) w.add(dateCol + ">=:dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + "<=:dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank())
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw) OR LOWER(COALESCE(i.summary,'')) LIKE LOWER(:kw))", "kw", "%" + kw.toLowerCase() + "%");
+            w.search(kw, billNoCol, "i.summary");
     }
 
     /** 日期片段（用于 Z 的子查询）。 */
@@ -2319,7 +2324,7 @@ public class FinanceReportService {
     /** S 帐户流水滚动余额。 */
     private ReportTableResponse buildAccountRunning(List<ReportColumn> cols, String sql, UUID aid,
                                                     LocalDate dateFrom, LocalDate dateTo, String kw, int page, int size) {
-        String keyword = (kw == null || kw.isBlank()) ? null : kw.toLowerCase(Locale.ROOT);
+        String keyword = (kw == null || kw.isBlank()) ? null : KeywordSearch.phrase(kw);
         var q = em.createNativeQuery(sql)
                 .setParameter("aid", aid)
                 .setParameter("to", dateTo);
@@ -2346,7 +2351,7 @@ public class FinanceReportService {
                         + Objects.toString(r[3], "") + " "
                         + Objects.toString(r[5], "") + " "
                         + Objects.toString(r[9], "")).toLowerCase(Locale.ROOT);
-                if (!searchable.contains(keyword)) {
+                if (!KeywordSearch.terms(keyword).stream().allMatch(searchable::contains)) {
                     continue;
                 }
             }
@@ -2427,8 +2432,9 @@ public class FinanceReportService {
         WhereBuilder.Built full = w.build(null);
         String groupBy = " GROUP BY " + groupExpr;
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql() + groupBy
-                + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
+                + " ORDER BY " + w.groupedOrderBy(orderBy) + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
+        w.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -2618,31 +2624,7 @@ public class FinanceReportService {
      * （{@code w.add("", "kw", ...)} / {@code w.add("", "dir", dir)}，Z 总览与 A·C 明细在用），
      * 与共享版逻辑有分歧，不强行合并。
      */
-    static final class WhereBuilder {
-        private final String base;
-        private final List<Clause> clauses = new ArrayList<>();
-
-        WhereBuilder(String base) { this.base = base; }
-
-        void add(String fragment, String param, Object val) { clauses.add(new Clause(fragment, param, val)); }
-
-        Built build(List<Clause> extra) {
-            StringBuilder sb = new StringBuilder(base);
-            Map<String, Object> params = new LinkedHashMap<>();
-            List<Clause> all = new ArrayList<>(clauses);
-            if (extra != null) all.addAll(extra);
-            for (Clause c : all) {
-                if (c.fragment == null || c.fragment.isEmpty()) {
-                    if (c.param != null) params.put(c.param, c.val);
-                    continue;
-                }
-                sb.append(" AND ").append(c.fragment);
-                if (c.param != null) params.put(c.param, c.val);
-            }
-            return new Built(sb.toString(), params);
-        }
-
-        record Clause(String fragment, String param, Object val) {}
-        record Built(String sql, Map<String, Object> params) {}
+    static final class WhereBuilder extends com.uten.imp.common.report.ReportQueryKit.WhereBuilder {
+        WhereBuilder(String base) { super(base); }
     }
 }

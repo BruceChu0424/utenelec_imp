@@ -14,6 +14,7 @@ import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.features.subcontract.application.dto.ApplicationDetail;
 import com.uten.imp.features.subcontract.application.dto.ApplicationItemDto;
 import com.uten.imp.features.subcontract.application.dto.ApplicationItemLine;
@@ -146,7 +147,8 @@ public class SubcontractApplicationService {
     public PageResponse<ApplicationListItem> list(ApplicationQueryFilter f, int page, int size, String sort, String order) {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SubcontractApplication> p = applicationRepo.findAll(applicationSpec(f), pageable);
+        var searchPage = NameRefKeyword.page(applicationSpec(f), pageable, f.keyword());
+        Page<SubcontractApplication> p = applicationRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<ApplicationListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return p.stream().noneMatch(SubcontractApplication::isDeleted) ? result
                 : retainedRecords.page(result, "subcontract_applications", p.getContent());

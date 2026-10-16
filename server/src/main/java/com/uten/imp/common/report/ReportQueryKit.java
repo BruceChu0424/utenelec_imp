@@ -5,6 +5,7 @@ import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.KeywordSearch;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -53,13 +54,58 @@ public final class ReportQueryKit {
     }
 
     /** WHERE 构造器：base + 若干 AND 子句（带参数）。2026-09-16 从六个报表服务收敛（finance 的空 fragment 变体除外）。 */
-    public static final class WhereBuilder {
+    public static class WhereBuilder {
         private final String base;
         private final List<Clause> clauses = new ArrayList<>();
+        private String relevance = "";
+        private final Map<String, Object> orderParameters = new LinkedHashMap<>();
 
         public WhereBuilder(String base) { this.base = base; }
 
         public void add(String fragment, String param, Object val) { clauses.add(new Clause(fragment, param, val)); }
+
+        /** Match every word with one shared WHERE/count/facet/total contract. */
+        public void search(String text, String... fields) {
+            search(text, parameter -> "(" + java.util.Arrays.stream(fields)
+                    .map(field -> field + " ILIKE " + parameter + " ESCAPE '\\'")
+                    .collect(java.util.stream.Collectors.joining(" OR ")) + ")", fields);
+        }
+
+        public void search(String text, Function<String, String> condition, String... visibleFields) {
+            var words = KeywordSearch.terms(text);
+            if (words.isEmpty()) return;
+            var prefix = new ArrayList<String>();
+            for (int index = 0; index < words.size(); index++) {
+                String name = index == 0 ? "kw" : "kw" + index;
+                String parameter = "CAST(:" + name + " AS text)";
+                add(condition.apply(":" + name), name, KeywordSearch.containsPattern(words.get(index)));
+                prefix.add(searchTier(visibleFields, "substring(" + parameter + " from 2)"));
+            }
+            if (visibleFields.length > 0) {
+                orderParameters.put("kwPhrasePattern", KeywordSearch.containsPattern(KeywordSearch.phrase(text)));
+                String phrase = "CAST(:kwPhrasePattern AS text)";
+                relevance = "CASE WHEN " + searchTier(visibleFields,
+                        "substring(" + phrase + " from 2 for char_length(" + phrase + ")-2)")
+                        + " THEN 0 WHEN " + searchTier(visibleFields, "substring(" + phrase + " from 2)")
+                        + " THEN 1 WHEN " + String.join(" AND ", prefix) + " THEN 2 ELSE 3 END";
+            }
+        }
+
+        private static String searchTier(String[] fields, String pattern) {
+            return "(" + java.util.Arrays.stream(fields)
+                    .map(field -> field + " ILIKE " + pattern + " ESCAPE '\\'")
+                    .collect(java.util.stream.Collectors.joining(" OR ")) + ")";
+        }
+
+        public String orderBy(String fallback) {
+            return relevance.isEmpty() ? fallback : relevance + ", " + fallback;
+        }
+
+        public String groupedOrderBy(String fallback) {
+            return relevance.isEmpty() ? fallback : "MIN(" + relevance + "), " + fallback;
+        }
+
+        public Map<String, Object> searchOrderParameters() { return Map.copyOf(orderParameters); }
 
         public Built build(List<Clause> extra) {
             StringBuilder sb = new StringBuilder(base);
@@ -67,7 +113,7 @@ public final class ReportQueryKit {
             List<Clause> all = new ArrayList<>(clauses);
             if (extra != null) all.addAll(extra);
             for (Clause c : all) {
-                sb.append(" AND ").append(c.fragment);
+                if (c.fragment != null && !c.fragment.isBlank()) sb.append(" AND ").append(c.fragment);
                 if (c.param != null) params.put(c.param, c.val);
             }
             return new Built(sb.toString(), params);
@@ -102,7 +148,7 @@ public final class ReportQueryKit {
                                            Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                            String billNoCol, String dateCol) {
         if (billNo != null && !billNo.isBlank()) {
-            w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
+            w.add(billNoCol + " LIKE :billNo ESCAPE '\\'", "billNo", KeywordSearch.containsPattern(billNo));
         }
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
@@ -110,12 +156,12 @@ public final class ReportQueryKit {
         if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw)"
-                            + " OR LOWER(COALESCE(i.goods_name_snapshot,'')) LIKE LOWER(:kw)"
-                            + " OR LOWER(COALESCE(i.goods_code_snapshot,'')) LIKE LOWER(:kw)"
-                            + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id"
-                            + " AND LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw)))",
-                    "kw", "%" + kw.toLowerCase() + "%");
+            w.search(kw, parameter -> "(" + billNoCol + " ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR i.goods_name_snapshot ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR i.goods_code_snapshot ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id=i.goods_id"
+                    + " AND gg.model ILIKE " + parameter + " ESCAPE '\\'))",
+                    billNoCol, "i.goods_name_snapshot", "i.goods_code_snapshot");
         }
     }
 
@@ -124,7 +170,7 @@ public final class ReportQueryKit {
      * sales 的版本额外匹配客户名，留在原服务）。
      */
     public static void addSummaryKw(WhereBuilder w, String kw, String billNoCol) {
-        if (kw != null && !kw.isBlank()) w.add("LOWER(" + billNoCol + ") LIKE LOWER(:kw)", "kw", "%" + kw.toLowerCase() + "%");
+        w.search(kw, billNoCol);
     }
 
     /** 从全部查询参数里抽出列筛选（键以 "f." 前缀）。2026-09-16 从六个报表服务（facetsOfMap）与五个

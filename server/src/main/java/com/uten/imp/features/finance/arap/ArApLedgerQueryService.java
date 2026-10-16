@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.arap;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.features.finance.arap.dto.ArApLedgerDetail;
@@ -61,7 +62,8 @@ public class ArApLedgerQueryService {
         Specification<ArApLedger> spec = specification(filter);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<ArApLedger> result = repo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, filter.keyword());
+        Page<ArApLedger> result = repo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, LedgerMetadata> metadata = loadMetadata(
                 result.getContent().stream().map(ArApLedger::getId).toList());
         return new PageResponse<>(
@@ -105,16 +107,17 @@ public class ArApLedgerQueryService {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.isFalse(root.get("deleted")));
             if (hasText(f.keyword())) {
-                String like = "%" + f.keyword().toLowerCase() + "%";
+                predicates.add(NameRefKeyword.match(root, query, cb, f.keyword(), like -> {
                 Subquery<Integer> sourceMatch = query.subquery(Integer.class);
                 Root<ArApSourceRef> source = sourceMatch.from(ArApSourceRef.class);
                 sourceMatch.select(cb.literal(1)).where(
                         cb.equal(source.get("ledgerId"), root.get("id")),
-                        cb.like(cb.lower(source.get("sourceNo")), like));
-                predicates.add(cb.or(
-                        cb.like(cb.lower(root.get("billNo")), like),
-                        cb.like(cb.lower(root.get("sourceDocNo")), like),
-                        cb.exists(sourceMatch)));
+                        NameRefKeyword.text(cb, source.get("sourceNo"), like));
+                return cb.or(
+                        NameRefKeyword.text(cb, root.get("billNo"), like),
+                        NameRefKeyword.text(cb, root.get("sourceDocNo"), like),
+                        cb.exists(sourceMatch));
+                }));
             }
             if (hasText(f.direction())) {
                 predicates.add(cb.equal(root.get("direction"), f.direction()));

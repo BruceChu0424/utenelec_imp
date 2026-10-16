@@ -19,6 +19,7 @@ import 'form_draft_store.dart';
 import 'form_draft_catalog.dart';
 import 'form_draft_history_view.dart';
 import 'draft_workspace_sources.dart' show formDraftCategoryLabel;
+import '../search/keyword_search.dart';
 
 export 'form_draft_category.dart';
 
@@ -164,11 +165,10 @@ class _FormDraftCategoryTableState<T>
   bool _matches(FormDraft draft) {
     if (widget.localPredicate?.call(draft) == false) return false;
     final text = widget.search.trim().toLowerCase();
-    if (text.isNotEmpty &&
-        ![
-          draft.title,
-          ...widget.table.columns.map((c) => _value(draft, c.key) ?? ''),
-        ].join(' ').toLowerCase().contains(text)) {
+    if (!matchesKeywordSearch([
+      draft.title,
+      ...widget.table.columns.map((c) => _value(draft, c.key) ?? ''),
+    ], text)) {
       return false;
     }
     for (final filter in widget.table.filters.entries) {
@@ -657,9 +657,13 @@ class FormDraftCategoryList extends ConsumerStatefulWidget {
     this.search = '',
     this.externalHeader,
     this.linkedScroll = true,
+    this.showSearch = true,
   });
   final FormDraftCategoryScope scope;
   final String search;
+
+  /// 宿主已提供共享搜索头部时关闭本地重复搜索；筛选仍由 [search] 驱动。
+  final bool showSearch;
 
   /// 宿主前缀行（任务中心大类行等）：挂进折叠头随上滑一起收走（与
   /// WarehouseStockDocSegment 等分段视图同一口径：相邻分类行使用 rowGap）。
@@ -694,7 +698,9 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
 
   @override
   Widget build(BuildContext context) {
-    final search = '${widget.search} $_search'.trim();
+    final search = widget.showSearch
+        ? '${widget.search} $_search'.trim()
+        : widget.search.trim();
     final drafts = ref.watch(formDraftCategoryProvider(widget.scope));
     String? value(FormDraft draft, String key) =>
         key == 'category' ? _category(draft) : formDraftColumnValue(draft, key);
@@ -788,10 +794,11 @@ class _FormDraftCategoryListState extends ConsumerState<FormDraftCategoryList> {
           widget.externalHeader!,
           const SizedBox(height: UtenFilterRow.rowGap),
         ],
-        UtenFilterToolbar<String>(
-          searchHint: '搜索类别、草稿或备注',
-          onSearchChanged: (value) => setState(() => _search = value),
-        ),
+        if (widget.showSearch)
+          UtenFilterToolbar<String>(
+            searchHint: '搜索类别、草稿或备注',
+            onSearchChanged: (value) => setState(() => _search = value),
+          ),
         const SizedBox(height: UtenSpacing.s8),
       ],
     );

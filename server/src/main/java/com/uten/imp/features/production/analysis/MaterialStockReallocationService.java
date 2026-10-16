@@ -1,5 +1,8 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -84,15 +87,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 ? "analysis.maker_id IS NOT NULL"
                 : "analysis.maker_id IN (:visibleOwners)";
         String normalized = normalizeKeyword(keyword);
-        String keywordPredicate = normalized == null ? "" : """
-                AND (
-                    LOWER(COALESCE(item.source_ref, '')) LIKE :keyword
-                    OR LOWER(COALESCE(product.code, '')) LIKE :keyword
-                    OR LOWER(COALESCE(product.name, '')) LIKE :keyword
-                    OR LOWER(analysis.id::text) LIKE :keyword
-                    OR LOWER(COALESCE(analysis.analysis_no, '')) LIKE :keyword
-                )
-                """;
+        String keywordPredicate = reallocationKeywordPredicate(normalized);
         String fromAndWhere = """
                 FROM production_material_analysis_materials material
                 JOIN production_material_analyses analysis
@@ -140,8 +135,8 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                        item.delivery_date, material.shortage_qty,
                        item.source_ref, product.code, product.name,
                        analysis.analysis_no
-                """ + fromAndWhere + """
-                ORDER BY item.delivery_date ASC NULLS LAST,
+                """ + fromAndWhere + "ORDER BY " + reallocationSearchOrder(normalized) + """
+                         item.delivery_date ASC NULLS LAST,
                          analysis.updated_at, analysis.id, material.id
                 """)
                 .setParameter("sourceAnalysisId", sourceAnalysisId)
@@ -152,6 +147,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                 .setFirstResult((safePage - 1) * safeSize)
                 .setMaxResults(safeSize);
         bindScopeAndKeyword(rowsQuery, scope, normalized);
+        TaskKeywordSearch.bind(rowsQuery, normalized, true);
         List<CrossReallocationCandidate> items = NativeQueryResults.objectArrayRows(rowsQuery)
                 .stream()
                 .map(row -> new CrossReallocationCandidate(
@@ -185,13 +181,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
         String ownerPredicate = scope.seeAll()
                 ? "analysis.maker_id IS NOT NULL"
                 : "analysis.maker_id IN (:visibleOwners)";
-        String keywordPredicate = normalized == null ? "" : """
-                AND (LOWER(COALESCE(item.source_ref, '')) LIKE :keyword
-                     OR LOWER(COALESCE(product.code, '')) LIKE :keyword
-                     OR LOWER(COALESCE(product.name, '')) LIKE :keyword
-                     OR LOWER(analysis.id::text) LIKE :keyword
-                     OR LOWER(COALESCE(analysis.analysis_no, '')) LIKE :keyword)
-                """;
+        String keywordPredicate = reallocationKeywordPredicate(normalized);
         // Correlate the exact same origin/RESTORE ancestry used by create(). No
         // formal reservation, received reallocation or claimed future supply qualifies.
         String originalLots = PreplanStockEntitlementService.AVAILABLE_ORIGINAL_LOTS_SQL
@@ -245,12 +235,13 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
                        LEAST(lendable.qty, material.allocated_available_qty),
                        item.source_ref, product.code, product.name,
                        analysis.analysis_no
-                """ + fromAndWhere + """
-                ORDER BY item.delivery_date DESC NULLS LAST, analysis.updated_at,
+                """ + fromAndWhere + "ORDER BY " + reallocationSearchOrder(normalized) + """
+                         item.delivery_date DESC NULLS LAST, analysis.updated_at,
                          analysis.id, material.id
                 """)
                 .setFirstResult((safePage - 1) * safeSize).setMaxResults(safeSize);
         bindSourceCandidateQuery(rowsQuery, target, scope, normalized);
+        TaskKeywordSearch.bind(rowsQuery, normalized, true);
         List<CrossReallocationSourceCandidate> items = NativeQueryResults.objectArrayRows(rowsQuery)
                 .stream().map(row -> new CrossReallocationSourceCandidate(
                         uuid(row[0]), ((Number) row[1]).longValue(), string(row[2]),
@@ -903,7 +894,19 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
     private static void bindScopeAndKeyword(
             Query query, OwnerVisibility.OwnerScope scope, String keyword) {
         if (!scope.seeAll()) query.setParameter("visibleOwners", scope.visibleOwners());
-        if (keyword != null) query.setParameter("keyword", "%" + keyword + "%");
+        TaskKeywordSearch.bind(query, keyword, false);
+    }
+
+    private static String reallocationKeywordPredicate(String keyword) {
+        return keyword == null ? "" : "AND " + TaskKeywordSearch.condition(keyword,
+                "item.source_ref", "product.code", "product.name", "analysis.id::text",
+                "analysis.analysis_no", "warehouse.name") + "\n";
+    }
+
+    private static String reallocationSearchOrder(String keyword) {
+        return keyword == null ? "" : TaskKeywordSearch.rankNamesFirst(keyword,
+                new String[]{"product.name"}, new String[]{},
+                new String[]{"product.code", "analysis.analysis_no", "item.source_ref"}) + ", ";
     }
 
     private static String requestHash(
@@ -937,7 +940,7 @@ public class MaterialStockReallocationService implements PreplanOriginEntitlemen
 
     private static String normalizeKeyword(String value) {
         if (value == null || value.isBlank()) return null;
-        return value.strip().toLowerCase(Locale.ROOT);
+        return KeywordSearch.phrase(value);
     }
 
     /** 分析标签（V719）：优先编号；无编号的夹具行回退 id 前 8 位短号。 */

@@ -203,6 +203,6 @@ class EmployeeSensitiveWritePolicyTest {
                 socialInsuranceLocation,
                 null,
                 null,
-                null, null); // vehicles, phones（ADR-021，null）
+                null, null, null, null, null); // vehicles, phones（ADR-021，null）
     }
 }

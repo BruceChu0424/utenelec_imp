@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,6 +13,41 @@ import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 
 void main() {
+  testWidgets('定位未完成时点客户分类不产生分类请求', (tester) async {
+    final repository = _FakeClientRepository();
+    repository.delayedQuery = '海外客户';
+    await _pumpPicker(
+      tester,
+      size: const Size(1800, 900),
+      clientRepository: repository,
+    );
+    await _openPicker(tester);
+    await tester.enterText(_searchEditable(), '海外客户');
+    await tester.pump(const Duration(milliseconds: 301));
+    await tester.tap(find.text('海外客户').last);
+    await tester.pump();
+    expect(repository.listKeywords, [null]);
+    repository.delayedSearch.complete(_page(const [], page: 1, size: 100));
+    await tester.pumpAndSettle();
+    expect(repository.listKeywords, [null]);
+  });
+
+  testWidgets('输入防抖期间点分类仍派发全局搜索', (tester) async {
+    final repository = _FakeClientRepository();
+    await _pumpPicker(
+      tester,
+      size: const Size(1800, 900),
+      clientRepository: repository,
+    );
+    await _openPicker(tester);
+    await tester.enterText(_searchEditable(), '海外客户');
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text('海外客户').last);
+    await tester.pumpAndSettle();
+    expect(repository.listKeywords, [null]);
+    expect(repository.searchQueries, ['海外客户']);
+  });
+
   testWidgets('宽屏只保留左侧统一搜索且客户结果可跨分类回填', (tester) async {
     final clientRepository = _FakeClientRepository();
     await _pumpPicker(
@@ -23,8 +60,8 @@ void main() {
 
     // 左树默认全部收起（2026-09-24 用户口径）：只显示一级分类，
     // 二级「东南亚客户」须点父级行展开后才可见。
-    expect(find.text('海外客户(OVERSEAS)'), findsOneWidget);
-    expect(find.text('东南亚客户(SEA)'), findsNothing);
+    expect(find.text('海外客户'), findsOneWidget);
+    expect(find.text('东南亚客户'), findsNothing);
 
     final sheet = _widePickerSheet();
     expect(sheet, findsOneWidget);
@@ -51,28 +88,23 @@ void main() {
     );
     expect(tree.showSearch, isFalse);
     expect(tree.visibleFilterIds, {'overseas', 'southeast-asia'});
-    expect(tree.selectedIds, {'southeast-asia'});
+    expect(tree.selectedIds, {'domestic'});
 
     // 点击包含客户命中的父分类仍保留左侧查询，并用「分类 + 查询词」刷新右侧。
-    await tester.tap(find.text('海外客户(OVERSEAS)'));
+    await tester.tap(find.text('海外客户').last);
     await tester.pumpAndSettle();
     expect(tester.widget<TextField>(_searchTextField()).controller?.text, '远洋');
-    expect(clientRepository.listKeywords.last, '远洋');
+    expect(clientRepository.listKeywords, [null]);
+    expect(find.text('远洋电器(C-002)'), findsOneWidget);
     // 层级色梯度：展开后二级行用第二档色（与一级深绿拉开），四档内各不相同。
     final rootRow = tester.widget<Material>(
       find
-          .ancestor(
-            of: find.text('海外客户(OVERSEAS)'),
-            matching: find.byType(Material),
-          )
+          .ancestor(of: find.text('海外客户'), matching: find.byType(Material))
           .first,
     );
     final childRow = tester.widget<Material>(
       find
-          .ancestor(
-            of: find.text('东南亚客户(SEA)'),
-            matching: find.byType(Material),
-          )
+          .ancestor(of: find.text('东南亚客户'), matching: find.byType(Material))
           .first,
     );
     expect(rootRow.color, UtenColors.treeLevel1);
@@ -90,7 +122,7 @@ void main() {
     expect(find.text('已选择：远洋电器'), findsOneWidget);
   });
 
-  testWidgets('搜索分类名称时定位分类并在右侧展示该分类客户', (tester) async {
+  testWidgets('分类名称搜索使用全局接口返回结果，左树点击不切回分类列表', (tester) async {
     final clientRepository = _FakeClientRepository();
     await _pumpPicker(
       tester,
@@ -104,17 +136,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(clientRepository.searchQueries, ['海外客户']);
-    expect(clientRepository.listCategoryIds.last, 'overseas');
+    expect(clientRepository.listCategoryIds, ['domestic']);
     expect(find.text('远洋电器(C-002)'), findsOneWidget);
 
     final tree = tester.widget<UtenCategoryTreeView<ProductCategoryNode>>(
       find.byType(UtenCategoryTreeView<ProductCategoryNode>),
     );
     expect(tree.visibleFilterIds, {'overseas', 'southeast-asia'});
-    expect(tree.selectedIds, {'overseas'});
+    expect(tree.selectedIds, {'domestic'});
 
     // 纯分类命中不退出左树搜索，也不得把分类词当作客户过滤词。
-    await tester.tap(find.text('海外客户(OVERSEAS)'));
+    await tester.tap(find.text('海外客户').last);
     await tester.pumpAndSettle();
     expect(
       tester.widget<TextField>(_searchTextField()).controller?.text,
@@ -329,6 +361,8 @@ class _FakeClientCategoryRepository implements ClientCategoryRepository {
 }
 
 class _FakeClientRepository implements ClientRepository {
+  String? delayedQuery;
+  final delayedSearch = Completer<PagedResult<ClientListItem>>();
   final listCategoryIds = <String>[];
   final listKeywords = <String?>[];
   final searchQueries = <String>[];
@@ -393,6 +427,7 @@ class _FakeClientRepository implements ClientRepository {
     selectableOnlyFlags.add(selectableOnly);
     searchQueries.add(keyword);
     searchPages.add(page);
+    if (keyword == delayedQuery) return delayedSearch.future;
     if (keyword == '集团') {
       return PagedResult(
         items: page == 1 ? const [localClient] : const [overseasClient],
@@ -420,7 +455,7 @@ class _FakeClientRepository implements ClientRepository {
         totalPages: 2,
       );
     }
-    final items = keyword == '远洋'
+    final items = keyword == '远洋' || keyword == '海外客户'
         ? const [overseasClient]
         : const <ClientListItem>[];
     return _page(items, page: page, size: size);

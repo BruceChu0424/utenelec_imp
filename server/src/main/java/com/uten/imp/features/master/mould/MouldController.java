@@ -71,10 +71,11 @@ public class MouldController {
             @RequestParam(required = false) String mstatus,
             @RequestParam(required = false) String remark,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String manufacturer,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return service.list(new MouldQueryFilter(categoryId, keyword, nullFields,
-                code, name, place, mstatus, remark, status), page, size);
+                code, name, place, mstatus, remark, status, manufacturer), page, size);
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致） ----------
@@ -91,9 +92,10 @@ public class MouldController {
             @RequestParam(required = false) String mstatus,
             @RequestParam(required = false) String remark,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String manufacturer,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new MouldQueryFilter(categoryId, keyword,
-                nullFields, code, name, place, mstatus, remark, status),
+                nullFields, code, name, place, mstatus, remark, status, manufacturer),
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_mould");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
@@ -108,7 +110,7 @@ public class MouldController {
 
     @GetMapping("/facets")
     @PreAuthorize("hasAuthority('mould:view')")
-    public MouldFacets facets(@RequestParam UUID categoryId) {
+    public MouldFacets facets(@RequestParam(required = false) UUID categoryId) {
         return service.facets(categoryId);
     }
 

@@ -70,6 +70,53 @@ void main() {
   );
 
   testWidgets(
+    'local asset draft search requires all visible name and amount words without crossing ledgers',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      FormDraft draft(String id, String ledger, String name, String amount) =>
+          FormDraft(
+            id: id,
+            title: '设备登记',
+            module: BadgeModule.finance,
+            route: '/finance/assets/new?ledger=$ledger',
+            permission: '',
+            updatedAt: DateTime.utc(2026, 10),
+            data: {'name': name, 'amount': amount},
+          );
+      await _pumpWorkbench(
+        tester,
+        repository: _FakeAssetRepository(),
+        formDrafts: [
+          draft('wanted', 'fixedAsset', '钻床设备', '123.4500'),
+          draft('wrong-amount', 'fixedAsset', '钻床设备', '999.0000'),
+          draft('wrong-ledger', 'deferredExpense', '钻床设备', '123.4500'),
+        ],
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('asset-draft-category-FIXED_ASSET')),
+      );
+      await tester.pumpAndSettle();
+      final search = find.descendant(
+        of: find.byKey(const ValueKey('asset-search-FIXED_ASSET')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(search, '设备 123.45');
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      final table = tester
+          .widget<
+            MasterDataTableView<FormDraftCategoryRow<FinanceAssetSummary>>
+          >(
+            find.byType(
+              MasterDataTableView<FormDraftCategoryRow<FinanceAssetSummary>>,
+            ),
+          );
+      expect(table.unpagedItems.map((row) => row.draft?.id), ['wanted']);
+    },
+  );
+
+  testWidgets(
     'asset inputs join their own ledger draft status and policy drafts stay separate',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 1000));

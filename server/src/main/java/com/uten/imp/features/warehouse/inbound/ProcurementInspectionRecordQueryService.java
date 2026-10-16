@@ -74,7 +74,10 @@ public class ProcurementInspectionRecordQueryService {
         Query pageQuery = em.createNativeQuery(
                 "SELECT record.* FROM " + records
                         + " WHERE " + predicate
-                        + " " + orderBy(rawSort, rawOrder)
+                        + " " + orderBy(rawSort, rawOrder).replace("ORDER BY ", "ORDER BY "
+                                + com.uten.imp.common.util.TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                                        new String[]{"record.goods_name"}, new String[]{},
+                                        new String[]{"record.goods_code", "record.source_no", "record.reference_no"}) + ", ")
                         + " OFFSET :offset LIMIT :limit");
         bindFilters(pageQuery, filter, docNo, true);
         pageQuery.setParameter("offset", filter.offset());
@@ -208,15 +211,9 @@ public class ProcurementInspectionRecordQueryService {
             NormalizedFilter filter,
             DocNoFilter docNo,
             boolean includeDecision) {
-        StringBuilder predicate = new StringBuilder("""
-                (:keyword = '' OR LOWER(CONCAT_WS(' ',
-                    record.source_no, record.reference_no,
-                    record.partner_name, record.warehouse_name,
-                    record.goods_code, record.goods_name,
-                    record.color_name, record.unit_name,
-                    record.inspector_name, record.reason
-                )) LIKE :keywordLike)
-                """);
+        StringBuilder predicate = new StringBuilder(com.uten.imp.common.util.TaskKeywordSearch.conditionParameter(
+                "keyword", "record.source_no", "record.reference_no", "record.partner_name", "record.warehouse_name",
+                "record.goods_code", "record.goods_name", "record.color_name", "record.unit_name", "record.inspector_name", "record.reason"));
         if (filter.from() != null) {
             predicate.append(" AND record.decided_at >= :fromAt");
         }
@@ -260,8 +257,7 @@ public class ProcurementInspectionRecordQueryService {
             NormalizedFilter filter,
             DocNoFilter docNo,
             boolean includeDecision) {
-        query.setParameter("keyword", filter.keyword());
-        query.setParameter("keywordLike", "%" + filter.keyword() + "%");
+        query.setParameter("keyword", com.uten.imp.common.util.KeywordSearch.phrase(filter.keyword()));
         if (filter.from() != null) query.setParameter("fromAt", filter.from());
         if (filter.to() != null) query.setParameter("toAt", filter.to());
         if (filter.sourceType() != null) {

@@ -66,7 +66,7 @@ class GoodsCategoryRootScopeTest {
                 .thenReturn(new PageImpl<>(List.of()));
 
         Set<UUID> roots = new LinkedHashSet<>(List.of(rootA, rootB));
-        service.list(filter(null, roots, "G-"), 1, 20, null, null);
+        service.list(filter(null, roots, null), 1, 20, null, null);
 
         verify(categoryRepo).findSubtree(rootA);
         verify(categoryRepo).findSubtree(rootB);
@@ -97,7 +97,7 @@ class GoodsCategoryRootScopeTest {
         when(goodsRepo.findAll(anyGoodsSpecification(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of()));
 
-        service.list(filter(null, Set.of(missingRoot), "G-"), 1, 20, null, null);
+        service.list(filter(null, Set.of(missingRoot), null), 1, 20, null, null);
 
         ArgumentCaptor<Specification<Goods>> captor = ArgumentCaptor.forClass(Specification.class);
         verify(goodsRepo).findAll(captor.capture(), any(Pageable.class));

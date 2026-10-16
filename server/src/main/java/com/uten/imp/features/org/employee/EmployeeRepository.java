@@ -1,5 +1,8 @@
 package com.uten.imp.features.org.employee;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.features.auth.model.UserAccount;
+import jakarta.persistence.criteria.JoinType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -73,26 +76,31 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID>, JpaSp
             """)
     List<Employee> findAllWithDepartmentByIdIn(@Param("ids") Set<UUID> ids);
 
-    /**
-     * 开通账号候选：在册（未删除、非离职）且尚无未删除登录账号的员工。
-     * 按姓名/工号模糊搜索（空串不过滤），按工号排序；调用方传 Pageable 限量。
-     * 用途：权限设置页「开通账号」选择器（account:support），不回传任何 PII。
-     */
-    @Query("""
-            SELECT e
-            FROM Employee e
-            LEFT JOIN FETCH e.department
-            WHERE e.deleted = false
-              AND e.status <> 'resigned'
-              AND NOT EXISTS (
-                  SELECT 1 FROM UserAccount u
-                  WHERE u.employeeId = e.id AND u.deleted = false)
-              AND (:search IS NULL OR :search = ''
-                   OR LOWER(e.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
-                   OR LOWER(e.code) LIKE LOWER(CONCAT('%', :search, '%')))
-            ORDER BY e.code ASC
-            """)
-    List<Employee> findProvisionCandidates(@Param("search") String search, Pageable pageable);
+    /** 当前未开号候选在数据库内按全词命中与身份相关度排序，随后才取有界分页。 */
+    default List<Employee> findProvisionCandidates(String search, Pageable pageable) {
+        Specification<Employee> spec=(root,query,cb)->{
+            var existing=query.subquery(UUID.class);
+            var account=existing.from(UserAccount.class);
+            existing.select(account.get("id")).where(cb.equal(account.get("employeeId"),root.get("id")),
+                    cb.isFalse(account.get("deleted")));
+            var department=root.join("department",JoinType.LEFT);
+            var matches=KeywordSearch.allTerms(cb,search,root.get("fullName"),root.get("code"),department.get("name"));
+            if(!Long.class.equals(query.getResultType()) && !long.class.equals(query.getResultType())) {
+                if(KeywordSearch.terms(search).isEmpty()) query.orderBy(cb.asc(root.get("code")),cb.asc(root.get("id")));
+                else {
+                    String phrase=KeywordSearch.phrase(search);
+                    var exact=cb.or(KeywordSearch.exact(cb,root.get("fullName"),search),KeywordSearch.exact(cb,root.get("code"),search));
+                    var prefix=cb.or(cb.like(cb.lower(root.get("fullName")),KeywordSearch.prefixPattern(phrase),'\\'),
+                            cb.like(cb.lower(root.get("code")),KeywordSearch.prefixPattern(phrase),'\\'));
+                    var contains=cb.or(cb.like(cb.lower(root.get("fullName")),KeywordSearch.containsPattern(phrase),'\\'),
+                            cb.like(cb.lower(root.get("code")),KeywordSearch.containsPattern(phrase),'\\'));
+                    query.orderBy(cb.asc(KeywordSearch.rank(cb,exact,prefix,contains)),cb.asc(root.get("code")),cb.asc(root.get("id")));
+                }
+            }
+            return cb.and(cb.isFalse(root.get("deleted")),cb.notEqual(root.get("status"),"resigned"),cb.not(cb.exists(existing)),matches);
+        };
+        return findAll(spec,pageable).getContent();
+    }
 
     /**
      * 取某部门子树（含自身 + 所有下级部门）下全部员工的 user id。

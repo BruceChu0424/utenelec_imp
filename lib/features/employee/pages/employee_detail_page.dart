@@ -1284,6 +1284,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
 
   IconData _historyIcon(String? type) => switch (type) {
     'onboard' => Icons.login_rounded,
+    'hire_date_correction' => Icons.edit_calendar_outlined,
     'transfer' => Icons.swap_horiz_rounded,
     'confirm' => Icons.how_to_reg_outlined,
     'resign' => Icons.logout_rounded,
@@ -1729,6 +1730,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   String _historyTitle(AppLocalizations l10n, EmploymentHistoryView h) {
     final type = switch (h.eventType) {
       'onboard' => l10n.historyEventOnboard,
+      'hire_date_correction' => '入职日期更正',
       'transfer' => l10n.historyEventTransfer,
       'confirm' => '转正',
       'resign' => l10n.historyEventResign,

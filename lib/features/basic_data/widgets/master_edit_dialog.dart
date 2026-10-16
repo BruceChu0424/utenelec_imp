@@ -58,16 +58,28 @@ const List<MasterSelectOption> kGoodsSourceTypeOptions = [
 ];
 
 /// 自定义字段上下文：[MasterEditForm] ↔ 自定义 widget（[MasterFieldDef.customBuilder]）的值通道。
-/// 初值来自 [MasterEditForm.initialValues]（字符串形式：日期=yyyy-MM-dd、picker=id）；
-/// widget 内部自行转成所需类型（DateTime / UtenEmployeePickerItem 等），通过 [onChanged] 回写提交值。
+/// [initialValue] 是当前标量值的字符串快照（保留旧命名以兼容选择器），
+/// 不再只传打开时的初值；[currentValue] 还可承载数字/单位等复合 Map。
+/// widget 内部自行转换类型，通过 [onChanged] 回写后下一帧立即拿到新值。
 class MasterFieldContext {
   const MasterFieldContext({
     this.initialValue,
+    this.currentValue,
     required this.onChanged,
     this.required = false,
   });
 
   final String? initialValue;
+
+  /// 当前提交值；复合字段可从这里恢复 Map 内的数值和单位。
+  final Object? currentValue;
+
+  String? currentMapText(String key, {String? fallback}) {
+    final current = currentValue;
+    if (current is! Map) return fallback;
+    final Object? value = current[key];
+    return value?.toString();
+  }
 
   final void Function(dynamic value) onChanged;
 
@@ -90,10 +102,14 @@ class MasterFieldDef {
     this.readOnly = false,
     this.onAddNew,
     this.customBuilder,
+    this.legacyDraftKeys = const [],
   });
 
   /// 与后端 SaveRequest 字段名对齐（如 name / colorLegacyId）。
   final String key;
+
+  /// 仅用于恢复旧版草稿；提交始终使用 [key]。
+  final List<String> legacyDraftKeys;
 
   /// 中文标签。
   final String label;
@@ -220,9 +236,12 @@ class MasterEditFormController extends ChangeNotifier {
           selects.containsKey(field.key)) {
         selectValues[field.key] = selects[field.key] as String?;
       }
-      if (field.type == MasterFieldType.custom &&
-          customs.containsKey(field.key)) {
-        customValues[field.key] = customs[field.key];
+      if (field.type == MasterFieldType.custom) {
+        final key = [
+          field.key,
+          ...field.legacyDraftKeys,
+        ].where(customs.containsKey).firstOrNull;
+        if (key != null) customValues[field.key] = customs[key];
       }
     }
     recoveryRevision++;
@@ -230,7 +249,6 @@ class MasterEditFormController extends ChangeNotifier {
   }
 
   String? recoveredCustomInitialValue(String key) {
-    if (recoveryRevision == 0) return initialValues[key];
     final value = customValues[key];
     if (value == null) return null;
     if (value is String || value is num || value is bool) {
@@ -503,6 +521,7 @@ class MasterEditFormState extends State<MasterEditForm> {
         child: f.customBuilder!(
           MasterFieldContext(
             initialValue: _controller.recoveredCustomInitialValue(f.key),
+            currentValue: _controller.customValues[f.key],
             onChanged: (v) => _controller.setCustom(f.key, v),
             required: f.required,
           ),

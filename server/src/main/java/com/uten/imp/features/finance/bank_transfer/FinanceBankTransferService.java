@@ -94,7 +94,8 @@ public class FinanceBankTransferService {
         Specification<FinanceBankTransfer> spec = transferSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<FinanceBankTransfer> p = transferRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<FinanceBankTransfer> p = transferRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<FinanceBankTransferListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return p.stream().noneMatch(FinanceBankTransfer::isDeleted) ? result
                 : retainedRecords.page(result, "finance_bank_transfers", p.getContent());
@@ -120,9 +121,9 @@ public class FinanceBankTransferService {
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 引用主档名称
                 //（经 NameRefKeyword 转外键 IN 子查询，count 同谓词派生）。
-                String kw = NameRefKeyword.like(f.keyword());
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), kw -> {
                 var kws = NameRefKeyword.keywords();
-                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(NameRefKeyword.text(cb, root.get("billNo"), kw));
                 NameRefKeyword.byName(kws, q, cb, root.get("outAccountId"),
                         com.uten.imp.features.master.account.Account.class, "name", kw);
                 NameRefKeyword.byName(kws, q, cb, root.get("outAccountId"),
@@ -134,8 +135,8 @@ public class FinanceBankTransferService {
                         inAccounts.from(com.uten.imp.features.master.account.Account.class);
                 inAccounts.select(account.get("id")).where(
                         cb.isFalse(account.get("deleted")),
-                        cb.or(cb.like(cb.lower(account.get("name")), kw),
-                                cb.like(cb.lower(account.get("code")), kw)));
+                        cb.or(NameRefKeyword.text(cb, account.get("name"), kw),
+                                NameRefKeyword.text(cb, account.get("code"), kw)));
                 jakarta.persistence.criteria.Subquery<UUID> lineHit = q.subquery(UUID.class);
                 jakarta.persistence.criteria.Root<FinanceBankTransferLine> line =
                         lineHit.from(FinanceBankTransferLine.class);
@@ -143,7 +144,8 @@ public class FinanceBankTransferService {
                         cb.equal(line.get("transferId"), root.get("id")),
                         line.get("inAccountId").in(inAccounts));
                 kws.add(cb.exists(lineHit));
-                ps.add(cb.or(kws.toArray(new Predicate[0])));
+                return cb.or(kws.toArray(new Predicate[0]));
+                }));
             }
             if (f.outAccountId() != null) ps.add(cb.equal(root.get("outAccountId"), f.outAccountId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));

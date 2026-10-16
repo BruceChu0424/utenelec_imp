@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WarehouseTaskScopePort;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.StockDocAccessPolicy;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedArrivalRegistrationService;
@@ -78,20 +79,19 @@ public class WarehouseInboundTaskCenterQueryService {
         var owner = stockAccess.nativeReadScope("document.maker_id", "stockOwners", rights.owner());
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
                 rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate());
-        String base = WarehouseInboundTaskCenterSql.base(access,scope);
+        String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword());
         int page = Math.max(1,filter.page());
         int size = Math.max(1,Math.min(100,filter.size()));
         MapSqlParameterSource parameters = new MapSqlParameterSource()
                 .addValue("type","ALL").addValue("source",source).addValue("status",status)
                 .addValue("view",filter.view().name())
-                .addValue("keyword",text(filter.keyword()).toLowerCase(Locale.ROOT))
-                .addValue("pattern","%"+text(filter.keyword()).toLowerCase(Locale.ROOT)+"%")
                 .addValue("billNo",text(filter.billNo()).isEmpty()?null:text(filter.billNo()))
                 .addValue("dateFrom",filter.dateFrom()).addValue("dateTo",filter.dateTo())
                 .addValue("warehouseScope",scope.idsCsv())
                 .addValue("ownDraftMaker",filter.scopeWarehouseId()==null && actor.getEmployeeId()!=null
                         ? actor.getEmployeeId().toString():"")
                 .addValue("limit",size).addValue("offset",((long)page-1)*size);
+        parameters.addValues(TaskKeywordSearch.parameters(filter.keyword()));
         if (owner.parameterName()!=null) parameters.addValue(owner.parameterName(),owner.owners());
         String identityFilter="";
         if(identity!=null) {

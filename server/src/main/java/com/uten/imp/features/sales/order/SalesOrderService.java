@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.order;
 
+import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.audit.AuditService;
@@ -142,7 +144,8 @@ public class SalesOrderService {
         Pageable pageable = Pageables.of(page, size,
                 shippableFirst ? Sort.unsorted()
                         : TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SalesOrder> p = orderRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<SalesOrder> p = orderRepo.findAll(searchPage.specification(), searchPage.pageable());
         Map<UUID, String> sellerNames = p.isEmpty() ? Map.of() : nameResolver.namesOf(
                 p.getContent().stream().map(SalesOrder::getSellerId).toList());
         boolean canEdit = hasObjectActionAuthority();
@@ -172,20 +175,21 @@ public class SalesOrderService {
             else if (!f.includeDeleted()) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(accessPolicy.readablePredicate(root, cb, "ownerEmployeeId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                String kw = "%" + f.keyword().toLowerCase() + "%";
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), kw -> {
                 // 关键字匹配行内文本（2026-10-09 全行可搜）：单据号 / 客户名称（生产计划选单、日常检索都按客户找单） / 币种
                 jakarta.persistence.criteria.Subquery<UUID> cs = q.subquery(UUID.class);
                 Root<com.uten.imp.features.master.client.Client> cr =
                         cs.from(com.uten.imp.features.master.client.Client.class);
                 cs.select(cr.get("id")).where(cb.isFalse(cr.get("deleted")),
-                        cb.like(cb.lower(cr.get("name")), kw));
+                        NameRefKeyword.text(cb, cr.get("name"), kw));
                 var kws = NameRefKeyword.keywords();
-                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(NameRefKeyword.text(cb, root.get("billNo"), kw));
                 kws.add(root.get("clientId").in(cs)); NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
                         com.uten.imp.features.master.currency.Currency.class, "name", kw);
                 NameRefKeyword.byName(kws, q, cb, root.get("currencyId"),
                         com.uten.imp.features.master.currency.Currency.class, "code", kw);
-                ps.add(cb.or(kws.toArray(new Predicate[0])));
+                return cb.or(kws.toArray(new Predicate[0]));
+                }));
             }
             if (f.clientId() != null) ps.add(cb.equal(root.get("clientId"), f.clientId()));
             if (f.sellerId() != null) ps.add(cb.equal(root.get("sellerId"), f.sellerId()));
@@ -225,6 +229,7 @@ public class SalesOrderService {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
             if (shippableFirst) {
+                var searchOrders = new ArrayList<>(q.getOrderList());
                 // 可发货置顶：Σ行预留 > 0 的单排前（CASE 1/0 DESC），次按交货日升序、开单日期倒序
                 jakarta.persistence.criteria.Subquery<BigDecimal> sum = q.subquery(BigDecimal.class);
                 Root<SalesOrderItem> i2 = sum.from(SalesOrderItem.class);
@@ -238,6 +243,8 @@ public class SalesOrderService {
                         cb.asc(root.get("deliverDate")),
                         cb.desc(root.get("billDate")),
                         cb.desc(root.get("id")));
+                searchOrders.addAll(q.getOrderList());
+                q.orderBy(searchOrders);
             }
             f.headerFilters().requireAmountVisible(priceMasker != null && priceMasker.canView());
             if (f.headerFilters().hasAmountRange() && f.currencyId() == null) throw new ApiException(ErrorCode.VALIDATION_FAILED, "原币订单金额筛选须先选择币种");
@@ -348,7 +355,7 @@ public class SalesOrderService {
         int safeSize = Math.max(1, Math.min(size, 100));
         int safePage = Math.max(1, page);
         String normalizedStage = normalizeProgressStage(stage);
-        String normalizedKeyword = keyword == null ? "" : keyword.strip().toLowerCase();
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedBillNo = billNo == null ? "" : billNo.trim();
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
         // 阶段筛选下沉到数据库：COUNT 与列表同一谓词，分页 total 即当前阶段真实总数。
@@ -361,7 +368,9 @@ public class SalesOrderService {
         bindProgressFilterParams(cq, normalizedStage, normalizedKeyword, dateFrom, dateTo, normalizedBillNo);
         long total = ((Number) cq.getSingleResult()).longValue();
         String rowsSql = "SELECT t.* FROM (" + progressGroupedSql(ownerScope) + ") t WHERE " + stageFilter
-                + " " + progressOrderBy(sort, order);
+                + " " + (normalizedKeyword.isEmpty() ? progressOrderBy(sort, order) : "ORDER BY "
+                    + TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"t.name"}, new String[]{}, new String[]{"t.bill_no"})
+                    + ", " + progressOrderBy(sort, order).substring("ORDER BY ".length()));
         var rq = em.createNativeQuery(rowsSql);
         ownerScope.bind(rq);
         bindProgressFilterParams(rq, normalizedStage, normalizedKeyword, dateFrom, dateTo, normalizedBillNo);
@@ -420,7 +429,7 @@ public class SalesOrderService {
     public java.util.Map<String, java.util.List<java.util.Map<String, Object>>> progressFacets(
             String stage, String keyword, LocalDate dateFrom, LocalDate dateTo) {
         String normalizedStage = normalizeProgressStage(stage);
-        String normalizedKeyword = keyword == null ? "" : keyword.strip().toLowerCase();
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
         var ownerScope = accessPolicy.nativeReadScope("o.owner_employee_id", "salesOwners");
         var q = em.createNativeQuery(
                 "SELECT t.bill_no, COUNT(*) FROM (" + progressGroupedSql(ownerScope) + ") t WHERE "
@@ -437,11 +446,9 @@ public class SalesOrderService {
                 + """
                   AND (CAST(:date_from AS date) IS NULL OR t.bill_date >= CAST(:date_from AS text))
                   AND (CAST(:date_to AS date) IS NULL OR t.bill_date <= CAST(:date_to AS text))
-                  AND (CAST(:keyword AS text) IS NULL OR :keyword = ''
-                       OR LOWER(COALESCE(t.bill_no, '')) LIKE :keyword_pattern
-                       OR LOWER(COALESCE(t.name, '')) LIKE :keyword_pattern)
+                  AND %s
                   AND (CAST(:bill_no AS text) IS NULL OR :bill_no = '' OR t.bill_no = :bill_no)
-                """;
+                """.formatted(TaskKeywordSearch.conditionParameter("keyword", "t.bill_no", "t.name"));
     }
 
     /** 绑定 {@link #progressFilterPredicate} 的命名参数（谓词常在 SQL，参数恒绑定）。 */
@@ -450,7 +457,6 @@ public class SalesOrderService {
             LocalDate dateFrom, LocalDate dateTo, String billNo) {
         q.setParameter("stage", stage);
         q.setParameter("keyword", keyword);
-        q.setParameter("keyword_pattern", "%" + keyword + "%");
         q.setParameter("date_from", dateFrom);
         q.setParameter("date_to", dateTo);
         q.setParameter("bill_no", billNo);

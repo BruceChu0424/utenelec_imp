@@ -1,6 +1,8 @@
 package com.uten.imp.features.operations.workbench;
 
 import com.uten.imp.application.port.SubcontractTaskSource;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.finance.SubcontractLossSettlementSql;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
@@ -160,7 +162,9 @@ public class FulfillmentWorkbenchQueryService {
                         'openQty', request.open_qty
                     ) ORDER BY v.goods_code NULLS LAST, v.color_name NULLS LAST), '[]'::jsonb) AS lines,
                     -- 2026-10-10 V836：仓库段没有委外商（列只服务委外申请行），占位保持列位。
-                    NULL::text AS supplier_name
+                    NULL::text AS supplier_name,
+                    array_remove(array_agg(DISTINCT v.goods_name::text), NULL) AS search_goods_names,
+                    array_remove(array_agg(DISTINCT v.goods_code::text), NULL) AS search_goods_codes
              FROM v_fulfillment_workbench v
              JOIN production_planning_package_document_items mapping
                ON mapping.package_id=v.package_id AND mapping.demand_id=v.task_id AND mapping.document_type='DRAW'
@@ -195,7 +199,8 @@ public class FulfillmentWorkbenchQueryService {
                     NULL::text AS workshop_name, NULL::text AS worker_name,
                     NULL::text AS draw_batch_no,
                     '[]'::jsonb AS lines,
-                    NULL::text AS supplier_name
+                    NULL::text AS supplier_name,
+                    material.search_goods_names, material.search_goods_codes
              FROM production_material_discovery_requests request
              JOIN production_execution_segments segment ON segment.id=request.execution_segment_id
              JOIN production_plans plan ON plan.id=segment.plan_id
@@ -209,7 +214,9 @@ public class FulfillmentWorkbenchQueryService {
                         CASE WHEN COUNT(*)=1 THEN MAX(item."colorName") END AS color_name,
                         CASE WHEN COUNT(*)=1 THEN MIN(item."unitId"::text)::uuid END AS unit_id,
                         CASE WHEN COUNT(*)=1 THEN MAX(item."unitName") END AS unit_name,
-                        CASE WHEN COUNT(*)=1 THEN MAX(item.qty) END AS qty
+                        CASE WHEN COUNT(*)=1 THEN MAX(item.qty) END AS qty,
+                        array_remove(array_agg(DISTINCT item."goodsName"), NULL) AS search_goods_names,
+                        array_remove(array_agg(DISTINCT item."goodsCode"), NULL) AS search_goods_codes
                  FROM jsonb_to_recordset(request.requested_materials) AS item(
                      "goodsId" uuid,"goodsCode" text,"goodsName" text,"colorId" uuid,"colorName" text,
                      "unitId" uuid,"unitName" text,qty numeric)
@@ -270,7 +277,7 @@ public class FulfillmentWorkbenchQueryService {
             return emptyPage(safePage, safeSize);
         }
         String normalizedStatus = status == null ? "" : status.strip();
-        String normalizedKeyword = keyword == null ? "" : keyword.strip().toLowerCase();
+        String normalizedKeyword = KeywordSearch.phrase(keyword);
         String normalizedException = exception == null ? "" : exception.strip().toUpperCase();
         // ADR-065 修订（2026-09-03）：采购/委外任务行按「当前执行单据」归组——
         // 申请待分解阶段一行=一张采购/委外申请（多货品合并单只见一行，双击进
@@ -341,7 +348,9 @@ public class FulfillmentWorkbenchQueryService {
                           NULL::text AS draw_batch_no, '[]'::jsonb AS lines,
                           -- 2026-10-10 V836：委外申请行的委外商（未定商为 NULL）；
                           -- 按单归组后同单同商，MAX 取一即可。
-                          MAX(v.supplier_name) AS supplier_name
+                          MAX(v.supplier_name) AS supplier_name,
+                          array_remove(array_agg(DISTINCT v.goods_name::text), NULL) AS search_goods_names,
+                          array_remove(array_agg(DISTINCT v.goods_code::text), NULL) AS search_goods_codes
                    FROM v_procurement_decomposition_tasks v
                    GROUP BY v.department, v.action_doc_type, v.action_doc_id, v.task_status)
                   """;
@@ -357,16 +366,7 @@ public class FulfillmentWorkbenchQueryService {
                   AND (:exception = ''
                        OR (:exception = 'OVERDUE_ANY' AND exception_code LIKE 'OVERDUE%%')
                        OR (:exception <> 'OVERDUE_ANY' AND exception_code = :exception))
-                  AND (:keyword = '' OR LOWER(
-                      COALESCE(plan_no,'') || ' ' ||
-                      COALESCE(action_doc_no,'') || ' ' ||
-                      COALESCE(goods_code,'') || ' ' ||
-                      COALESCE(goods_name,'') || ' ' ||
-                      COALESCE(production_product_code,'') || ' ' ||
-                      COALESCE(production_product_name,'') || ' ' ||
-                      COALESCE(material_request_no,'') || ' ' ||
-                      COALESCE(execution_segment_codes,'')
-                  ) LIKE :keywordLike)
+                  AND %s
                   -- 历史记录时间门控：仅行/汇总查询传入日期；null = 不过滤
                   -- （状态/异常/待完成计数始终传 null，保持角标全量口径）。
                   -- updated_at 对已完成任务近似完结时间。
@@ -374,7 +374,9 @@ public class FulfillmentWorkbenchQueryService {
                        OR updated_at >= CAST(:date_from AS date))
                   AND (CAST(:date_to AS date) IS NULL
                        OR updated_at < CAST(:date_to AS date) + INTERVAL '1 day')
-                """.formatted(statusBranches.formatted(IN_PROGRESS_STATUS_SQL));
+                """.formatted(statusBranches.formatted(IN_PROGRESS_STATUS_SQL), TaskKeywordSearch.conditionParameter("keyword",
+                        "plan_no", "action_doc_no", "goods_code", "goods_name", "production_product_code", "production_product_name",
+                        "material_request_no", "execution_segment_codes", "array_to_string(search_goods_names,' ')", "array_to_string(search_goods_codes,' ')"));
         boolean scoped = "WAREHOUSE".equals(department)
                 && warehouseScope != null && warehouseScope.active();
         if (scoped) filters += " AND " + warehouseScope.predicate("warehouse_id", ":warehouse_scope");
@@ -383,7 +385,11 @@ public class FulfillmentWorkbenchQueryService {
         };
         String tableFilters = table == null ? "" : table.rangeSql() + table.filterSql(null);
         String priority = "CASE WHEN can_create_order THEN 0 WHEN open_line_count > 0 THEN 1 ELSE 2 END, ";
-        String orderBy = priority + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql());
+        String relevance = normalizedKeyword.isEmpty() ? "" : TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                new String[]{"production_product_name", "CASE WHEN goods_count=1 THEN goods_name END"},
+                new String[]{"search_goods_names"},
+                new String[]{"goods_code", "production_product_code", "action_doc_no", "plan_no", "material_request_no"}, "search_goods_codes") + ", ";
+        String orderBy = relevance + priority + (table == null ? "need_date NULLS LAST, task_id" : table.orderSql());
 
         Query rowsQuery = em.createNativeQuery("""
                 SELECT department, task_id, package_id, plan_id, plan_no,
@@ -1001,7 +1007,7 @@ public class FulfillmentWorkbenchQueryService {
                         base.workshop_name, base.worker_name, base.draw_batch_no, base.lines,
                         %s AS rd_task_no, %s AS bom_missing_item_ids,
                         %s AS orderable_qty,
-                        base.supplier_name
+                        base.supplier_name, base.search_goods_names, base.search_goods_codes
                  FROM %s base %s %s %s %s)
                 """.formatted(kitPrefix, exceptionExpression, subcontract ? "issue.issued_at" : "NULL::timestamptz",
                         canCreate ? "TRUE" : "FALSE", requestType,
@@ -1039,7 +1045,6 @@ public class FulfillmentWorkbenchQueryService {
         query.setParameter("status", status);
         query.setParameter("exception", exception);
         query.setParameter("keyword", keyword);
-        query.setParameter("keywordLike", "%" + keyword + "%");
         query.setParameter("date_from", dateFrom);
         query.setParameter("date_to", dateTo);
     }

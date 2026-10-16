@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.warehouse;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeper;
 import com.uten.imp.features.master.warehouse.dto.WarehouseKeeperAssignment;
@@ -168,6 +169,9 @@ public class WarehouseKeeperService {
     @Transactional(readOnly = true)
     public List<WarehouseKeeper> candidates(String keyword) {
         String search = keyword == null ? "" : keyword.strip();
+        String condition=KeywordSearch.terms(search).isEmpty() ? "TRUE"
+                : KeywordSearch.nativeCondition(search,"keeperSearch","e.full_name","e.code","d.name");
+        String relevance=KeywordSearch.nativeRank(search,"keeperSearch","full_name","code");
         List<WarehouseKeeper> candidates = jdbc.sql("""
                         SELECT * FROM (
                             SELECT e.id, e.full_name, e.code, e.department_id, d.name AS department_name,
@@ -176,13 +180,11 @@ public class WarehouseKeeperService {
                             LEFT JOIN departments d ON d.id = e.department_id
                             WHERE e.is_deleted = FALSE
                               AND e.status <> 'resigned'
-                              AND (:keyword = ''
-                                   OR e.full_name ILIKE '%%' || :keyword || '%%'
-                                   OR e.code ILIKE '%%' || :keyword || '%%')) candidate
-                        ORDER BY warehouse_member DESC, has_account DESC, full_name, code
+                              AND (%s)) candidate
+                        ORDER BY %s, warehouse_member DESC, has_account DESC, full_name, code
                         LIMIT 5001
-                        """.formatted(ACTIVE_ACCOUNT_SQL, WAREHOUSE_MEMBER_SQL, DUPLICATE_NAME_SQL))
-                .param("keyword", search)
+                        """.formatted(ACTIVE_ACCOUNT_SQL, WAREHOUSE_MEMBER_SQL, DUPLICATE_NAME_SQL, condition, relevance))
+                .params(KeywordSearch.nativeRankParameters(search,"keeperSearch"))
                 .query((rs, row) -> new WarehouseKeeper(
                         rs.getObject("id", UUID.class),
                         rs.getString("full_name"),

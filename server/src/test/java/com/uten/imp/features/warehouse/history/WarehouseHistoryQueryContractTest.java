@@ -48,8 +48,8 @@ class WarehouseHistoryQueryContractTest {
                         .as("commercial columns must never be selected for %s", type)
                         .noneMatch(normalized::contains);
             }
-            assertThat(list).contains(":keyword", ":keyword_pattern", ":status", ":limit", ":offset");
-            assertThat(count).contains(":keyword", ":keyword_pattern", ":status");
+            assertThat(list).contains(":keyword", "regexp_split_to_table", ":status", ":limit", ":offset");
+            assertThat(count).contains(":keyword", "regexp_split_to_table", ":status");
             assertThat(header).contains("h.id = :id");
             assertThat(lines).contains("i." + type.itemForeignKey() + " = :id");
         });

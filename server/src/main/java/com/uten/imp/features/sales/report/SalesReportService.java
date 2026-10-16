@@ -122,11 +122,12 @@ public class SalesReportService {
         // 列排序：sort 必须命中 columns 的 key（白名单，防 SQL 注入）；命中则按投影别名排序，否则用默认 orderBy。
         var sortKeys = new java.util.HashSet<String>();
         for (ReportColumn c : columns) sortKeys.add(c.key());
-        String effectiveOrderBy = ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys);
+        String effectiveOrderBy = mainWhere.orderBy(ReportSort.resolveOrderBy(sort, order, orderBy, sortKeys));
 
         var dataQ = em.createNativeQuery(dataSelect + " " + fromJoin + " " + full.sql()
                 + " ORDER BY " + effectiveOrderBy + " LIMIT :__limit OFFSET :__offset");
         full.params().forEach(dataQ::setParameter);
+        mainWhere.searchOrderParameters().forEach(dataQ::setParameter);
         dataQ.setParameter("__limit", safeSize);
         dataQ.setParameter("__offset", offset);
         @SuppressWarnings("unchecked")
@@ -247,16 +248,18 @@ public class SalesReportService {
         if (dateFrom != null) w.add(dateCol + " >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add(dateCol + " <= :dateTo", "dateTo", dateTo);
         if (kw != null && !kw.isBlank()) {
-            w.add("(LOWER(" + billNoCol + ") LIKE LOWER(:kw) OR LOWER(COALESCE(c.name,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(i.goods_name_snapshot,'')) LIKE LOWER(:kw) OR LOWER(COALESCE(i.goods_code_snapshot,'')) LIKE LOWER(:kw) OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id = i.goods_id AND LOWER(COALESCE(gg.model,'')) LIKE LOWER(:kw)))",
-                    "kw", "%" + kw.toLowerCase() + "%");
+            w.search(kw, parameter -> "(" + billNoCol + " ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR c.name ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR i.goods_name_snapshot ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR i.goods_code_snapshot ILIKE " + parameter + " ESCAPE '\\'"
+                    + " OR EXISTS (SELECT 1 FROM goods gg WHERE gg.id=i.goods_id AND gg.model ILIKE " + parameter + " ESCAPE '\\'))",
+                    billNoCol, "c.name", "i.goods_name_snapshot", "i.goods_code_snapshot");
         }
     }
 
     /** 汇总关键字：客户名 / 单号 模糊匹配（汇总表按客户聚合，搜客户为主）。 */
     private static void addSummaryKw(WhereBuilder w, String kw, String billNoCol) {
-        if (kw != null && !kw.isBlank())
-            w.add("(LOWER(COALESCE(c.name,'')) LIKE LOWER(:kw) OR LOWER(" + billNoCol + ") LIKE LOWER(:kw))",
-                    "kw", "%" + kw.toLowerCase() + "%");
+        w.search(kw, billNoCol, "c.name");
     }
 
     private void addOwnerReadFilter(WhereBuilder where, String ownerColumn, String parameterName) {

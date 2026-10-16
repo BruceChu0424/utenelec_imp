@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/employee/pages/employee_list_page.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -74,31 +75,26 @@ void main() {
     await tester.pumpWidget(_app(repo));
     await tester.pumpAndSettle();
 
-    expect(repo.requestedPages, [1]);
+    expect(repo.requestedPages, [1, 2]);
     expect(repo.lastStatuses, isNull, reason: '状态筛选交给表头 autofilter');
     expect(find.byType(FilterChip), findsNothing);
     expect(find.byType(UtenSearchBar), findsOneWidget);
     expect(find.text('员工1'), findsOneWidget);
   });
 
-  testWidgets('滚动临近底部自动加载下一页；末页后不再请求', (tester) async {
+  testWidgets('无需滚动就加载全部分页，表头筛选范围包含末页员工', (tester) async {
     final repo = _PagingEmployeeRepository();
     await tester.pumpWidget(_app(repo));
     await tester.pumpAndSettle();
-    expect(repo.requestedPages, [1]);
-
-    // 拖到第 1 页底部 → 自动触发第 2 页（页面上已无「加载更多」按钮）。
-    expect(find.text('加载更多'), findsNothing);
-    await tester.drag(find.text('员工1'), const Offset(0, -1500));
-    await tester.pump();
-    await tester.pumpAndSettle();
     expect(repo.requestedPages, [1, 2]);
-
-    // 已到末页（totalPages=2）：继续滚动不再请求第 3 页，第 2 页行已追加。
-    await tester.drag(find.text('员工20'), const Offset(0, -1500));
-    await tester.pumpAndSettle();
-    expect(repo.requestedPages, [1, 2]);
-    expect(find.text('员工40'), findsOneWidget);
+    final table = tester.widget<MasterDataTableView<EmployeeSummary>>(
+      find.byKey(const Key('employee-list-table')),
+    );
+    expect(table.items.length, 40);
+    expect(table.items.last.fullName, '员工40');
+    expect(table.onLoadMore, isNull);
+    expect(table.facets['departmentName']!.single.count, 40);
+    expect(find.text('共 40 人'), findsOneWidget);
   });
 
   testWidgets('工号表头排序菜单 → 服务端带 sort/order 重查', (tester) async {

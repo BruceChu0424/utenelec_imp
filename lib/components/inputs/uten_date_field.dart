@@ -158,11 +158,21 @@ class _UtenDateFieldState extends State<UtenDateField> {
 
   Future<void> _pick() async {
     final now = ChinaDateTime.today();
+    final firstDate = DateUtils.dateOnly(widget.firstDate ?? DateTime(2010));
+    final lastDate = DateUtils.dateOnly(widget.lastDate ?? DateTime(2100));
+    final value = DateUtils.dateOnly(widget.value ?? now);
+    // 已有历史日期或动态边界可能落在可选区间之外。保留字段原值，
+    // 仅把日历打开位置限制到可选区间，避免整张编辑表单抛断言。
+    final initialDate = value.isBefore(firstDate)
+        ? firstDate
+        : value.isAfter(lastDate)
+        ? lastDate
+        : value;
     final picked = await showDatePicker(
       context: context,
-      initialDate: widget.value ?? now,
-      firstDate: widget.firstDate ?? DateTime(2010),
-      lastDate: widget.lastDate ?? DateTime(2100),
+      initialDate: initialDate,
+      firstDate: firstDate,
+      lastDate: lastDate,
     );
     if (picked != null && mounted) {
       _aiFilledDate = null;

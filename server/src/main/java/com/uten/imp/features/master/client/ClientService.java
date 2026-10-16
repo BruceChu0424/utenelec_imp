@@ -1,5 +1,8 @@
 package com.uten.imp.features.master.client;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.CategoryKeywordSearch;
+
 import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
@@ -121,6 +124,9 @@ public class ClientService {
     public PageResponse<ClientListItem> list(ClientQueryFilter f, int page, int size, String sort, String order) {
         List<UUID> subtreeIds = (f.categoryId() == null) ? null : resolveSubtreeIds(f.categoryId());
         ClientAccessPolicy.ClientScope accessScope = clientAccessPolicy.evaluate();
+        var keyword = keywordPlan(f.keyword());
+        Sort defaultSort = Sort.by(Sort.Direction.ASC, "code").and(Sort.by(Sort.Direction.ASC, "id"));
+        Sort requestedSort = TableSort.resolve(sort, order, defaultSort, ALLOWED_SORT);
         Specification<Client> spec = (Root<Client> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -137,17 +143,14 @@ public class ClientService {
             if (subtreeIds != null) {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
-            if (f.keyword() != null && !f.keyword().isBlank()) {
-                String like = "%" + f.keyword().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("code")), like),
-                        cb.like(cb.lower(root.get("fullName")), like),
-                        // 外文名称与邮箱(ADR-134): 客户文件上的英文公司名、邮箱也能搜到客户。
-                        cb.like(cb.lower(root.get("nameEn")), like),
-                        cb.like(cb.lower(root.get("email")), like),
-                        cb.like(cb.lower(root.get("linkman")), like),
-                        cb.like(cb.lower(root.get("mobile")), like)));
+            if (!KeywordSearch.terms(f.keyword()).isEmpty()) {
+                List<jakarta.persistence.criteria.Expression<String>> visible = List.of(root.get("name"), root.get("code"), root.get("fullName"), root.get("nameEn"), root.get("email"), root.get("linkman"), root.get("mobile"));
+                ps.add(keyword.predicate(cb, root.get("category").get("id"), visible,
+                        List.of()));
+                if (q != null && q.getResultType() != Long.class) {
+                    CategoryKeywordSearch.order(q, cb, root,
+                            keyword.rank(cb, root.get("category").get("id"), root.get("code"), root.get("name"), visible), requestedSort);
+                }
             }
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
@@ -181,8 +184,7 @@ public class ClientService {
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-        Pageable pageable = Pageables.of(page, size,
-                TableSort.resolve(sort, order, Sort.by(Sort.Direction.ASC, "code"), ALLOWED_SORT));
+        Pageable pageable = Pageables.of(page, size, keyword.active() ? Sort.unsorted() : requestedSort);
         Page<Client> p = repo.findAll(spec, pageable);
         Map<UUID, String> settlementNames = settlementMethodNames(p.getContent());
         return new PageResponse<>(
@@ -225,6 +227,13 @@ public class ClientService {
                         client.getName(),
                         "\u4f7f\u7528".equals(client.getStatus())))
                 .toList();
+    }
+
+    private CategoryKeywordSearch.Plan keywordPlan(String query) {
+        return CategoryKeywordSearch.plan(query, KeywordSearch.terms(query).isEmpty() ? List.of()
+                : categoryRepo.findByDeletedFalseOrderBySortOrderAscNameAsc().stream()
+                .map(node -> new CategoryKeywordSearch.Node(node.getId(), node.getParent() == null ? null : node.getParent().getId(),
+                        node.getName(), node.getCode())).toList());
     }
 
     private static void addEq(List<Predicate> ps, CriteriaBuilder cb, Root<Client> root,
@@ -317,10 +326,8 @@ public class ClientService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ClientFacets facets(UUID categoryId, boolean excludeLegacyFinanceStub) {
-        if (categoryId == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请先选择客户分类");
-        }
-        List<UUID> ids = resolveSubtreeIds(categoryId);
+        List<UUID> ids = categoryId == null ? null : resolveSubtreeIds(categoryId);
+        String categoryClause = ids == null ? "" : " and category_id in (:ids)";
         ClientAccessPolicy.ClientScope accessScope = clientAccessPolicy.evaluate();
         ClientAccessPolicy.NativeReadScope accessSql =
                 clientAccessPolicy.nativeReadScope("", accessScope);
@@ -339,10 +346,10 @@ public class ClientService {
             String col = e.getValue();
             var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from clients "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is not null "
+                            + "where is_deleted = false" + categoryClause + " and " + col + " is not null "
                             + legacyStubClause + " and " + accessSql.predicate()
-                            + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT)
-                    .setParameter("ids", ids);
+                            + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT);
+            if (ids != null) fq.setParameter("ids", ids);
             accessSql.bind(fq);
             List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
             List<FacetBucket> bucketList = new ArrayList<>(rows.size());
@@ -352,9 +359,9 @@ public class ClientService {
             buckets.put(field, bucketList);
             var nq = em.createNativeQuery(
                     "select count(*) from clients "
-                            + "where is_deleted = false and category_id in (:ids) and " + col + " is null"
-                            + legacyStubClause + " and " + accessSql.predicate())
-                    .setParameter("ids", ids);
+                            + "where is_deleted = false" + categoryClause + " and " + col + " is null"
+                            + legacyStubClause + " and " + accessSql.predicate());
+            if (ids != null) nq.setParameter("ids", ids);
             accessSql.bind(nq);
             Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
@@ -383,12 +390,12 @@ public class ClientService {
         var fq = em.createNativeQuery(
                 "select employees.id as v, employees.full_name as label, count(*) as c "
                         + "from clients join employees on employees.id = clients.owner_employee_id "
-                        + "where clients.is_deleted = false and clients.category_id in (:ids) "
+                        + "where clients.is_deleted = false " + (ids == null ? "" : "and clients.category_id in (:ids) ")
                         + "and clients.owner_employee_id is not null "
                         + legacyStubClause + " and " + accessSql.predicate()
                         + " group by employees.id, employees.full_name "
-                        + "order by c desc, label asc limit " + FACET_LIMIT)
-                .setParameter("ids", ids);
+                        + "order by c desc, label asc limit " + FACET_LIMIT);
+        if (ids != null) fq.setParameter("ids", ids);
         accessSql.bind(fq);
         List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
         List<FacetBucket> list = new ArrayList<>(rows.size());
@@ -404,9 +411,9 @@ public class ClientService {
             List<UUID> ids, String legacyStubClause, ClientAccessPolicy.NativeReadScope accessSql) {
         var nq = em.createNativeQuery(
                 "select count(*) from clients "
-                        + "where is_deleted = false and category_id in (:ids) and owner_employee_id is null"
-                        + legacyStubClause + " and " + accessSql.predicate())
-                .setParameter("ids", ids);
+                        + "where is_deleted = false " + (ids == null ? "" : "and category_id in (:ids) ") + "and owner_employee_id is null"
+                        + legacyStubClause + " and " + accessSql.predicate());
+        if (ids != null) nq.setParameter("ids", ids);
         accessSql.bind(nq);
         return ((Number) nq.getSingleResult()).longValue();
     }

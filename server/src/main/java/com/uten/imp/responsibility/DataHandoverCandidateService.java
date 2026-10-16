@@ -1,6 +1,8 @@
 package com.uten.imp.responsibility;
 
 import com.uten.imp.common.util.NativeQueryResults;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.responsibility.dto.DataHandoverCandidate;
@@ -64,9 +66,8 @@ public class DataHandoverCandidateService {
                         AND manager_root.code<>'GM'
                         AND manager_root.level IN ('管理中心','一级部门','二级班组','三级科室')
                         AND department.path LIKE manager_root.path || '%'))
-                  AND (:keyword='' OR lower(employee.full_name) LIKE :pattern
-                       OR lower(employee.code) LIKE :pattern)
-                """;
+                  AND
+                """ + TaskKeywordSearch.conditionParameter("keyword", "employee.full_name", "employee.code");
         var countQuery = em.createNativeQuery("SELECT count(*) " + where);
         bind(countQuery, target, scope, keyword);
         long total = ((Number) countQuery.getSingleResult()).longValue();
@@ -74,8 +75,10 @@ public class DataHandoverCandidateService {
         var dataQuery = em.createNativeQuery("""
                 SELECT employee.id, employee.code, employee.full_name,
                        employee.department_id, department.name, employee.status
-                """ + where + """
-                ORDER BY CASE employee.status
+                """ + where + " ORDER BY "
+                + TaskKeywordSearch.rankNamesFirstParameter("keyword", new String[]{"employee.full_name"},
+                        new String[]{}, new String[]{"employee.full_name", "employee.code"}) + """
+                , CASE employee.status
                     WHEN 'active' THEN 0 WHEN 'probation' THEN 1
                     WHEN 'onLeave' THEN 2 ELSE 3 END,
                     employee.full_name, employee.code, employee.id
@@ -103,8 +106,7 @@ public class DataHandoverCandidateService {
         query.setParameter("target", target);
         query.setParameter("companyScope", scope.companyWide());
         query.setParameter("managerEmployeeId", scope.managerEmployeeId());
-        query.setParameter("keyword", keyword.toLowerCase(Locale.ROOT));
-        query.setParameter("pattern", "%" + keyword.toLowerCase(Locale.ROOT) + "%");
+        query.setParameter("keyword", KeywordSearch.phrase(keyword));
     }
 
     private static UUID uuid(Object value) {

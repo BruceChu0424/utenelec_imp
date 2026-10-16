@@ -72,6 +72,29 @@ class WarehouseHistoryScopePostgresTest {
         }
     }
 
+    @Test void literalMultiWordSearchAndExactIdentityRankingAreSharedByHistoryRowsCountAndFacets() {
+        var type=WarehouseHistoryType.SUBCONTRACT_MATERIAL_RETURN;
+        var scope=new WarehouseTaskScope(true,List.of(warehouse),false);
+        UUID near=header(type,warehouse,"A-NEAR"), exact=header(type,warehouse,"Z-EXACT");
+        UUID nearLine=line(type,near,false),exactLine=line(type,exact,false);
+        execute("UPDATE subcontract_material_return_items SET goods_name_snapshot='Metric Screw extra' WHERE id=:id","id",nearLine);
+        execute("UPDATE subcontract_material_return_items SET goods_name_snapshot='Metric Screw' WHERE id=:id","id",exactLine);
+        UUID hidden=header(type,outside,"Metric Screw"); line(type,hidden,false);
+        var params=parameters(scope).addValue("keyword","Metric Screw").addValue("limit",1);
+        assertThat(jdbc.queryForObject(WarehouseHistoryQueries.countSql(type,scope),params,Long.class)).isEqualTo(2);
+        assertThat(jdbc.queryForList(WarehouseHistoryQueries.listSql(type,WarehouseHistoryQueries.DEFAULT_ORDER_BY,scope),params))
+                .extracting(row->row.get("id")).containsExactly(exact);
+        assertThat(jdbc.queryForList(WarehouseHistoryQueries.listSql(type,WarehouseHistoryQueries.DEFAULT_ORDER_BY,scope),params.addValue("offset",1)))
+                .extracting(row->row.get("id")).containsExactly(near);
+        assertThat(jdbc.queryForList(WarehouseHistoryQueries.facetsSql(type,"h.bill_no",scope),params)).hasSize(2);
+        execute("UPDATE subcontract_material_return_items SET goods_code_snapshot='A%_B' WHERE id=:id","id",exactLine);
+        execute("UPDATE subcontract_material_return_items SET goods_code_snapshot='AxYB' WHERE id=:id","id",nearLine);
+        params.addValue("keyword","Z-EXACT A%_B").addValue("offset",0);
+        assertThat(jdbc.queryForObject(WarehouseHistoryQueries.countSql(type,scope),params,Long.class)).isEqualTo(1);
+        assertThat(jdbc.queryForList(WarehouseHistoryQueries.listSql(type,WarehouseHistoryQueries.DEFAULT_ORDER_BY,scope),params))
+                .extracting(row->row.get("id")).containsExactly(exact);
+    }
+
     @Test void receiptWarehouseFollowsActiveInspectionFactsWithoutTreatingAssignedInspectionAsUnassigned() {
         for (WarehouseHistoryType type : List.of(WarehouseHistoryType.PURCHASE_RECEIPT, WarehouseHistoryType.SUBCONTRACT_RECEIPT)) {
             UUID receipt = header(type, null, "INSPECTED");

@@ -4,10 +4,13 @@ import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.features.rd_task.RdTaskContracts.RdTaskRow;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +19,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +42,14 @@ public class RdTaskService {
     /** 任务完成事件（→ ChainNoticeService 通知制单人/转发人）。 */
     public static final String EVENT_RESOLVED = "RD_TASK_RESOLVED";
 
+    private static final String TASK_FROM = """
+            FROM rd_tasks t
+            LEFT JOIN goods g ON g.id = t.goods_id
+            LEFT JOIN colors goods_color ON goods_color.id = g.color_id
+                                        AND goods_color.is_deleted = FALSE
+            LEFT JOIN employees assignee ON assignee.id = t.assignee_employee_id
+            LEFT JOIN employees reporter ON reporter.id = t.reporter_employee_id
+            """;
     private static final String SELECT_COLUMNS = """
             SELECT t.id, t.task_no, t.title, t.category, t.status, t.priority,
                    t.goods_id, g.name AS goods_name, g.code AS goods_code,
@@ -46,14 +58,7 @@ public class RdTaskService {
                    t.assignee_employee_id, assignee.full_name AS assignee_name,
                    t.reporter_employee_id, reporter.full_name AS reporter_name,
                    t.due_date, t.started_at, t.completed_at, t.created_at, t.close_note, t.row_version
-            FROM rd_tasks t
-            LEFT JOIN goods g ON g.id = t.goods_id
-            -- 任务只指到货品，颜色只能取主档色；不参与过滤/排序，纯身份展示列。
-            LEFT JOIN colors goods_color ON goods_color.id = g.color_id
-                                        AND goods_color.is_deleted = FALSE
-            LEFT JOIN employees assignee ON assignee.id = t.assignee_employee_id
-            LEFT JOIN employees reporter ON reporter.id = t.reporter_employee_id
-            """;
+            """ + TASK_FROM;
 
     private final JdbcTemplate jdbc;
     private final BusinessEventPublisher events;
@@ -78,39 +83,34 @@ public class RdTaskService {
 
         List<String> where = new ArrayList<>();
         where.add("t.is_deleted = false");
-        where.add("t.status IN (" + String.join(",", Collections.nCopies(statuses.size(), "?")) + ")");
-        List<Object> args = new ArrayList<>(statuses);
+        where.add("t.status IN (:statuses)");
+        Map<String, Object> args = new LinkedHashMap<>();
+        args.put("statuses", statuses);
         if (category != null && !category.isBlank()) {
-            where.add("t.category = ?");
-            args.add(category);
+            where.add("t.category = :category");
+            args.put("category", category);
         }
         if (assigneeId != null) {
-            where.add("t.assignee_employee_id = ?");
-            args.add(assigneeId);
+            where.add("t.assignee_employee_id = :assigneeId");
+            args.put("assigneeId", assigneeId);
         }
-        if (keyword != null && !keyword.isBlank()) {
-            String kw = "%" + keyword.trim().toLowerCase() + "%";
-            where.add("(LOWER(t.title) LIKE ? OR LOWER(t.task_no) LIKE ?"
-                    + " OR LOWER(COALESCE(g.name,'')) LIKE ? OR LOWER(COALESCE(g.code,'')) LIKE ?)");
-            args.add(kw);
-            args.add(kw);
-            args.add(kw);
-            args.add(kw);
-        }
+        where.add(TaskKeywordSearch.condition(keyword, "t.title", "t.task_no", "g.name", "g.code",
+                "t.source_doc_no", "assignee.full_name", "reporter.full_name", "goods_color.name"));
+        args.putAll(TaskKeywordSearch.parameters(keyword));
         String whereSql = String.join(" AND ", where);
-
-        Long total = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM rd_tasks t LEFT JOIN goods g ON g.id = t.goods_id WHERE " + whereSql,
-                Long.class, args.toArray());
+        var namedJdbc = new NamedParameterJdbcTemplate(jdbc);
+        Long total = namedJdbc.queryForObject("SELECT COUNT(*) " + TASK_FROM + " WHERE " + whereSql,
+                args, Long.class);
         long t = total == null ? 0 : total;
 
-        List<Object> dataArgs = new ArrayList<>(args);
-        dataArgs.add(sz);
-        dataArgs.add((p - 1) * sz);
-        List<RdTaskRow> items = jdbc.query(
+        args.put("limit", sz);
+        args.put("offset", (long) (p - 1) * sz);
+        String rank = KeywordSearch.terms(keyword).isEmpty() ? "" : TaskKeywordSearch.rankNamesFirst(keyword,
+                new String[]{"g.name"}, new String[]{}, new String[]{"g.code", "t.task_no", "t.title"}) + ", ";
+        List<RdTaskRow> items = namedJdbc.query(
                 SELECT_COLUMNS + " WHERE " + whereSql
-                        + " ORDER BY (t.priority = 'URGENT') DESC, t.created_at DESC LIMIT ? OFFSET ?",
-                (rs, rowNum) -> mapRow(rs), dataArgs.toArray());
+                        + " ORDER BY " + rank + "(t.priority = 'URGENT') DESC, t.created_at DESC,t.id LIMIT :limit OFFSET :offset",
+                args, (rs, rowNum) -> mapRow(rs));
 
         int totalPages = t == 0 ? 0 : (int) ((t + sz - 1) / sz);
         return new PageResponse<>(items, p, sz, t, totalPages);

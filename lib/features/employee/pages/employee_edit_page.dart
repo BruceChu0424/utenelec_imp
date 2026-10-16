@@ -13,6 +13,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -96,6 +97,8 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   // 组织信息
   final _workLocation = TextEditingController();
   final _seatNo = TextEditingController();
+  final _hireDateReason = TextEditingController();
+  DateTime? _hireDate;
   // 薪资与银行
   final _baseSalary = TextEditingController();
   final _perfSalary = TextEditingController();
@@ -148,6 +151,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
       _residence,
       _workLocation,
       _seatNo,
+      _hireDateReason,
       _baseSalary,
       _perfSalary,
       _socialBase,
@@ -220,6 +224,8 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     _residence.text = p.residenceAddress ?? '';
     _workLocation.text = p.workLocation ?? '';
     _seatNo.text = p.seatNo ?? '';
+    _hireDate = DateTime.tryParse(p.hireDate ?? '');
+    _hireDateReason.clear();
     _baseSalary.text = p.baseSalary ?? '';
     _perfSalary.text = p.perfSalary ?? '';
     _socialBase.text = p.socialInsuranceBase ?? '';
@@ -273,6 +279,14 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
     code('employmentType', _employmentType, p.employmentType);
     text('workLocation', _workLocation, p.workLocation);
     text('seatNo', _seatNo, p.seatNo);
+    final hireDate = _hireDate == null
+        ? null
+        : ChinaDateTime.formatDate(_hireDate!);
+    if (hireDate != null && hireDate != p.hireDate) {
+      body['hireDate'] = hireDate;
+      body['expectedHireDate'] = p.hireDate;
+      body['hireDateChangeReason'] = _hireDateReason.text.trim();
+    }
     final permissions = ref.read(currentPermissionsProvider);
     if (permissions.contains(Perm.employeePiiEdit)) {
       text('phone', _phone, p.phone);
@@ -458,6 +472,35 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                           _text(_residence, l10n.employeeFieldResidenceAddress),
                         ]),
                         _section(l10n.employeeEditOrg, [
+                          UtenDateField(
+                            key: const ValueKey('employee-edit-hire-date'),
+                            label: l10n.employeeFieldHireDate,
+                            value: _hireDate,
+                            required: true,
+                            firstDate: DateTime(1900),
+                            lastDate: ChinaDateTime.today(),
+                            enabled: !_saving,
+                            info: '更正后工龄与人员统计会同步更新；原始任职记录保留',
+                            onChanged: (date) =>
+                                setState(() => _hireDate = date),
+                          ),
+                          if (_hireDate != null &&
+                              ChinaDateTime.formatDate(_hireDate!) !=
+                                  _profile?.hireDate)
+                            _text(
+                              _hireDateReason,
+                              '入职日期更正原因',
+                              fieldKey: const ValueKey(
+                                'employee-edit-hire-date-reason',
+                              ),
+                              required: true,
+                              validator: (value) =>
+                                  (value?.trim().isEmpty ?? true)
+                                  ? '请填写入职日期更正原因'
+                                  : value!.trim().length > 500
+                                  ? '更正原因不能超过500字'
+                                  : null,
+                            ),
                           InputDecorator(
                             decoration:
                                 _deco(
@@ -640,11 +683,13 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
   Widget _text(
     TextEditingController c,
     String label, {
+    Key? fieldKey,
     String? Function(String?)? validator,
     bool required = false,
   }) {
     if (!required) {
       return TextFormField(
+        key: fieldKey,
         errorBuilder: utenTextFieldErrorBuilder,
         controller: c,
         decoration: UtenInputDecoration(
@@ -664,6 +709,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
         final theme = Theme.of(context);
         final empty = c.text.trim().isEmpty;
         return TextFormField(
+          key: fieldKey,
           errorBuilder: utenTextFieldErrorBuilder,
           controller: c,
           decoration: UtenInputDecoration(

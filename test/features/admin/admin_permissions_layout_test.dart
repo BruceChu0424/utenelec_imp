@@ -55,7 +55,7 @@ void main() {
             find.byKey(const ValueKey('admin-account-status-filter')),
           );
           final search = tester.getRect(
-            find.widgetWithText(TextField, '搜索登录账号'),
+            find.widgetWithText(TextField, '搜索姓名 / 工号 / 登录账号'),
           );
           expect((filter.left - search.left).abs(), lessThan(2));
           expect(search.top, lessThan(filter.top));

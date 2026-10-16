@@ -7,9 +7,9 @@
 
 import 'master_facet.dart';
 
-/// 模具列表项（表格中"有数据"的 6 列 + legacyId）。
+/// 模具列表项（表格中"有数据"的 7 列 + legacyId）。
 ///
-/// 表格里另有 4 列（模数/套数/模具类型/制造商）表无对应字段，由前端以 null
+/// 表格里另有 3 列（模数/套数/模具类型）表无对应字段，由前端以 null
 /// 取值显示"—"，不参与后端筛选/facet，故无对应模型字段。
 class MouldListItem {
   const MouldListItem({
@@ -18,6 +18,7 @@ class MouldListItem {
     this.name,
     this.place,
     this.mstatus,
+    this.manufacturer,
     this.status,
     this.remark,
     this.legacyId,
@@ -29,6 +30,7 @@ class MouldListItem {
   final String? name; // 模具名称（MouldName）
   final String? place; // 存放位置（车间/位置）
   final String? mstatus; // 制造日期（源 MStatus，制造年月如 2018年7月）
+  final String? manufacturer;
   final String? status; // 状态（生命周期：使用/禁用）
   final String? remark; // 备注
   final int? legacyId;
@@ -40,6 +42,7 @@ class MouldListItem {
     name: json['name'] as String?,
     place: json['place'] as String?,
     mstatus: json['mstatus'] as String?,
+    manufacturer: json['manufacturer'] as String?,
     status: json['status'] as String?,
     remark: json['remark'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
@@ -66,6 +69,7 @@ class MouldDetail {
     this.qty,
     this.tqty,
     this.mstatus,
+    this.manufacturer,
     this.remark,
     this.departmentId,
     this.departmentName,
@@ -86,6 +90,7 @@ class MouldDetail {
   final String? qty; // 数量（如 1+1）
   final double? tqty; // 总数量
   final String? mstatus; // 制造年月（如 2018年7月）
+  final String? manufacturer;
   final String? remark; // 备注
   final String? departmentId; // 车间部门 id（对齐生产计划单）
   final String? departmentName; // 车间部门名（picker 回显）
@@ -106,6 +111,7 @@ class MouldDetail {
     qty: json['qty'] as String?,
     tqty: (json['tqty'] as num?)?.toDouble(),
     mstatus: json['mstatus'] as String?,
+    manufacturer: json['manufacturer'] as String?,
     remark: json['remark'] as String?,
     departmentId: json['departmentId'] as String?,
     departmentName: json['departmentName'] as String?,
@@ -117,14 +123,22 @@ class MouldDetail {
 /// 字段 facet 结果：各筛选字段的可选值桶 + 各字段空值计数。
 ///
 /// fields 以字段 key（与 query 参数名一致：code/name/place/mstatus/remark/status）索引，
-/// 便于 [MasterDataTableView] 通用查找。模数/套数/模具类型/制造商无 DB 列，不在此处。
+/// 便于 [MasterDataTableView] 通用查找。模数/套数/模具类型无 DB 列，不在此处。
 class MouldFacets {
   const MouldFacets({required this.fields, required this.nullCounts});
 
   final Map<String, List<MasterFacetBucket>> fields;
   final Map<String, int> nullCounts;
 
-  static const _keys = ['code', 'name', 'place', 'mstatus', 'remark', 'status'];
+  static const _keys = [
+    'code',
+    'name',
+    'place',
+    'mstatus',
+    'manufacturer',
+    'remark',
+    'status',
+  ];
 
   factory MouldFacets.fromJson(Map<String, dynamic> json) {
     final fields = <String, List<MasterFacetBucket>>{};

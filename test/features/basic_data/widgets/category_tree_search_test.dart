@@ -30,6 +30,16 @@ void main() {
     expect(shallowestHit(tree, 'fg', categoryHits(tree, 'fg')), 'root');
   });
 
+  test('多词可跨分类名称和编号组合匹配，所有词都必须命中', () {
+    expect(categoryHits(tree, '照明  LED-A'), {'root', 'series', 'leaf'});
+    expect(categoryHits(tree, '照明\u3000led-a'), {'root', 'series', 'leaf'});
+    expect(categoryHits(tree, '照明 RAW'), isEmpty);
+    expect(
+      shallowestHit(tree, '照明 LED-A', categoryHits(tree, '照明 LED-A')),
+      'series',
+    );
+  });
+
   test('具体内容命中时补齐祖先并优先选中内容所属分类', () {
     final result = resolveHierarchySearch(
       roots: tree,
@@ -41,6 +51,32 @@ void main() {
     expect(result.contentCategoryIds, {'leaf'});
     expect(result.selectedId, 'leaf');
     expect(result.hasContentMatches, isTrue);
+  });
+
+  test('精确或前缀分类命中先于其他货品隐藏字段所属分类', () {
+    final categories = [
+      _node('switches', 'A', '开关'),
+      _node('screws', 'B', '螺丝类', [_node('screw-child', 'B1', '镀锌件')]),
+      _node('rail-screws', 'C', '轨道螺丝'),
+    ];
+    final result = resolveHierarchySearch(
+      roots: categories,
+      query: '螺丝',
+      contentCategoryIds: const ['switches', 'screw-child'],
+    );
+    expect(result.selectedId, 'screws');
+    expect(shallowestHit(categories, '螺丝', result.visibleIds), 'screws');
+  });
+
+  test('更深的精确分类先于遍历先遇到的前缀或包含分类', () {
+    final categories = [
+      _node('prefix', 'A', '螺丝类'),
+      _node('root', 'B', '原材料', [_node('exact', 'B1', '螺丝')]),
+    ];
+    expect(
+      shallowestHit(categories, '螺丝', categoryHits(categories, '螺丝')),
+      'exact',
+    );
   });
 
   test('树外或空分类 id 不会造成无效选中并会被计数', () {

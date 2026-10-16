@@ -242,29 +242,29 @@ void main() {
       await tester.tap(find.byIcon(Icons.account_tree_rounded));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.text('$childName(LONG-CODE)'),
+        find.text(childName),
         240,
         scrollable: find.byType(Scrollable),
       );
-      final leaf = tester.widget<Text>(find.text('$childName(LONG-CODE)'));
+      final leaf = tester.widget<Text>(find.text(childName));
       expect(leaf.maxLines, 1);
       expect(leaf.softWrap, isFalse);
       expect(
         find.byWidgetPredicate(
           (widget) =>
               widget is Tooltip &&
-              (widget.message?.endsWith('$childName(LONG-CODE)') ?? false),
+              (widget.message?.endsWith(childName) ?? false),
         ),
         findsOneWidget,
       );
-      await tester.tap(find.text('$childName(LONG-CODE)'));
+      await tester.tap(find.text(childName));
       await tester.pumpAndSettle();
       expect(selected, 'leaf');
       expect(find.text('内容计数 1'), findsOneWidget);
       await tester.binding.setSurfaceSize(const Size(1000, 900));
       await tester.pumpAndSettle();
       expect(find.text('内容计数 1'), findsOneWidget);
-      expect(find.text('$childName(LONG-CODE)'), findsOneWidget);
+      expect(find.text(childName), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

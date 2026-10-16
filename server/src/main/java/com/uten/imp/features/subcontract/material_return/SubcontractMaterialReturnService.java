@@ -17,6 +17,7 @@ import com.uten.imp.features.subcontract.SubcontractDocumentAccessPolicy;
 import com.uten.imp.features.subcontract.LinkedOrderReadGate;
 import com.uten.imp.features.subcontract.SubcontractGoodsSnapshot;
 import com.uten.imp.features.subcontract.SubcontractGoodsKeyword;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnDetail;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemDto;
 import com.uten.imp.features.subcontract.material_return.dto.MaterialReturnItemLine;
@@ -102,7 +103,8 @@ public class SubcontractMaterialReturnService {
         boolean priceMasked = subcontractPriceMasked();
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<SubcontractMaterialReturn> p = returnRepo.findAll(materialReturnSpec(f), pageable);
+        var searchPage = NameRefKeyword.page(materialReturnSpec(f), pageable, f.keyword());
+        Page<SubcontractMaterialReturn> p = returnRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<MaterialReturnListItem> result = new PageResponse<>(p.map(row -> toList(row, priceMasked)).getContent(),
                 p);
         return p.stream().noneMatch(SubcontractMaterialReturn::isDeleted) ? result

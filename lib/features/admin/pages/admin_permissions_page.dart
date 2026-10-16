@@ -106,7 +106,7 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
               'admin-account-list-search',
               ref.watch(sensitiveReadBoundaryProvider),
             )),
-            hint: '搜索登录账号',
+            hint: '搜索姓名 / 工号 / 登录账号',
             initialValue: _employeeSearch,
             onChanged: (value) {
               final query = value.trim();

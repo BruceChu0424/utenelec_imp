@@ -1,3 +1,4 @@
+import '../../../shared/search/keyword_search.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -274,21 +275,20 @@ class _FinanceAssetLedgerPanelState
       return false;
     }
     final search = _query.q?.trim().toLowerCase() ?? '';
-    return search.isEmpty ||
-        [
-          draft.title,
-          for (final key in const [
-            'code',
-            'name',
-            'categoryName',
-            'departmentName',
-            'grossAmount',
-            'balance',
-            'startPeriod',
-            'status',
-          ])
-            _assetDraftValue(draft, key) ?? '',
-        ].join(' ').toLowerCase().contains(search);
+    return matchesKeywordSearch([
+      draft.title,
+      for (final key in const [
+        'code',
+        'name',
+        'categoryName',
+        'departmentName',
+        'grossAmount',
+        'balance',
+        'startPeriod',
+        'status',
+      ])
+        _assetDraftValue(draft, key) ?? '',
+    ], search);
   }
 
   Widget _withFormDraftRows(MasterDataTableView<FinanceAssetSummary> table) =>

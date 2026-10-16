@@ -146,7 +146,7 @@ public class ClientController {
     @GetMapping("/facets")
     @PreAuthorize("hasAuthority('client:view')")
     public ClientFacets facets(
-            @RequestParam UUID categoryId,
+            @RequestParam(required = false) UUID categoryId,
             @RequestParam(defaultValue = "true") boolean excludeLegacyFinanceStub) {
         return service.facets(categoryId, excludeLegacyFinanceStub);
     }

@@ -71,6 +71,46 @@ void main() {
     },
   );
 
+  testWidgets(
+    'target search requires parent name and code together while preserving disabled historical leaves',
+    (tester) async {
+      final api = _Api();
+      await tester.binding.setSurfaceSize(const Size(1400, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [apiClientProvider.overrideWithValue(api)],
+          child: const MaterialApp(
+            home: GlReportLineBindingsDialog(canEdit: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('gl-line-edit-ADM_OFFICE')));
+      await tester.pumpAndSettle();
+      final search = find.descendant(
+        of: find.byKey(const ValueKey('gl-line-target-search')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(search, '管理费用 6603');
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('gl-line-target-style-old')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('gl-line-target-style-office')),
+        findsNothing,
+      );
+      await tester.tap(find.byKey(const ValueKey('gl-line-target-style-old')));
+      await tester.tap(find.byKey(const ValueKey('gl-line-target-save')));
+      await tester.pumpAndSettle();
+      expect(api.putBody, {
+        'targetIds': ['style-old'],
+      });
+    },
+  );
+
   test('department tree flattens every level with indentation depth', () {
     final flat = flattenDepartments([
       {

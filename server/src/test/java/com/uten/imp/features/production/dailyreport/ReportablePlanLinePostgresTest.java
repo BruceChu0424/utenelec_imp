@@ -351,6 +351,25 @@ class ReportablePlanLinePostgresTest {
     }
 
     @Test
+    void keywordWordsCrossVisibleFieldsBeforePagingAndKeepLiteralCharactersAndSourceLimits() {
+        var first = service.list(1, 1, "300mm\t成品灯", null);
+        var second = service.list(2, 1, "300mm 成品灯", null);
+        assertEquals(2, first.getTotal());
+        assertEquals(List.of("XD20260801000001", "XD20260801000002"),
+                List.of(first.getItems().getFirst().orderNo(), second.getItems().getFirst().orderNo()));
+        assertEquals(0, first.getItems().getFirst().maxReportQty().compareTo(new java.math.BigDecimal("50")));
+        assertEquals(0, second.getItems().getFirst().maxReportQty().compareTo(new java.math.BigDecimal("10")));
+        assertEquals(0, service.list(1, 100, "成品灯 不存在", null).getTotal());
+        assertEquals(0, service.list(1, 100, "成品灯", UUID.randomUUID()).getTotal());
+        transaction.executeWithoutResult(status -> {
+            jdbc.update("UPDATE goods SET name='成品10%_灯' WHERE id=?", GOODS_ID);
+            assertEquals(2, service.list(1, 100, "10%_", null).getTotal());
+            assertEquals(0, service.list(1, 100, "10__", null).getTotal());
+            status.setRollbackOnly();
+        });
+    }
+
+    @Test
     void mergedPlanIsExpandedByOrderWithIndependentReportCaps() {
         List<ReportablePlanLine> items =
                 service.list(1, 100, null, null).getItems();

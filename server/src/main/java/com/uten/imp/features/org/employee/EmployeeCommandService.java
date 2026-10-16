@@ -89,10 +89,11 @@ public class EmployeeCommandService {
     public EmployeeDetail update(UUID id, UpdateEmployeeRequest r) {
         sensitiveWritePolicy.assertUpdateAllowed(r);
         tx.bind();
-        Employee e = queryService.requireEmployee(id);
+        Employee e = requireEmployeeForUpdate(id);
         assertSensitiveUpdateAllowed(id, r);
         assertDepartmentChangeUsesTransfer(e, r.departmentId());
         assertLifecycleFieldsUseDedicatedCommands(e, r);
+        correctHireDate(e, r);
         if (nn(r.fullName())) e.setFullName(r.fullName());
         if (nn(r.gender())) e.setGender(r.gender());
         if (nn(r.ethnicity())) e.setEthnicity(r.ethnicity());
@@ -131,6 +132,49 @@ public class EmployeeCommandService {
         if (r.vehicles() != null) vehiclePhoneService.replaceVehicles(e, r.vehicles());
         if (r.phones() != null) vehiclePhoneService.replacePhones(e, r.phones());
         return queryService.detail(id);
+    }
+
+    private Employee requireEmployeeForUpdate(UUID id) {
+        return empRepo.findByIdForUpdate(id).filter(employee -> !employee.isDeleted())
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工不存在"));
+    }
+
+    /** 不覆盖不可变入职事件，追加更正；日期、名册与统计在同一事务生效。 */
+    private void correctHireDate(Employee employee, UpdateEmployeeRequest request) {
+        LocalDate requested = request.hireDate();
+        if (requested == null || requested.equals(employee.getHireDate())) return;
+        if (!Objects.equals(request.expectedHireDate(), employee.getHireDate())) {
+            throw new ApiException(ErrorCode.CONFLICT, "入职日期已被其他人修改，请刷新后重新核对");
+        }
+        EmployeeOnboardingService.assertHireDateNotFuture(requested);
+        if (employee.getConfirmedAt() != null && requested.isAfter(employee.getConfirmedAt())) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "入职日期不能晚于已登记的转正日期");
+        }
+        String reason = request.hireDateChangeReason() == null ? "" : request.hireDateChangeReason().trim();
+        if (reason.isEmpty() || reason.length() > 500) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写1至500字的入职日期更正原因");
+        }
+        List<EmploymentHistory> history = historyRepo.findByEmployeeIdOrderByEventDateDesc(employee.getId());
+        List<EmploymentHistory> onboards = history.stream()
+                .filter(event -> "onboard".equals(event.getEventType())).toList();
+        if (onboards.size() > 1) {
+            throw new ApiException(ErrorCode.CONFLICT, "存在多条入职记录，请先核对任职历史");
+        }
+        history.stream()
+                .filter(event -> !Set.of("onboard", "hire_date_correction").contains(event.getEventType()))
+                .filter(event -> event.getEventDate().isBefore(requested))
+                .findFirst().ifPresent(event -> {
+                    throw new ApiException(ErrorCode.VALIDATION_FAILED,
+                            "入职日期不能晚于已登记的任职事件日期 " + event.getEventDate());
+                });
+        EmploymentHistory correction = new EmploymentHistory();
+        correction.setEmployee(employee);
+        correction.setEventType("hire_date_correction");
+        correction.setCorrectsHistoryId(onboards.isEmpty() ? null : onboards.getFirst().getId());
+        correction.setEventDate(requested);
+        correction.setRemark("入职日期更正：" + employee.getHireDate() + " → " + requested + "；原因：" + reason);
+        historyRepo.save(correction);
+        employee.setHireDate(requested);
     }
 
     /** 证书整体替换（非 null 才动；空数组 = 清空）。 */
@@ -275,7 +319,7 @@ public class EmployeeCommandService {
     @Transactional
     public void transfer(UUID id, TransferRequest req) {
         tx.bind();
-        Employee e = queryService.requireEmployee(id);
+        Employee e = requireEmployeeForUpdate(id);
         if ("resigned".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已离职，不可调岗");
         }
@@ -404,12 +448,12 @@ public class EmployeeCommandService {
                 && effectiveDate.isBefore(employee.getHireDate())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "生效日期不能早于员工入职日期");
         }
-        historyRepo.findFirstByEmployeeIdOrderByEventDateDescCreatedAtDesc(employee.getId())
-                .filter(latest -> latest.getEventDate().isAfter(effectiveDate))
+        historyRepo.findLatestEffectiveEventDate(employee.getId())
+                .filter(latest -> latest.isAfter(effectiveDate))
                 .ifPresent(latest -> {
                     throw new ApiException(
                             ErrorCode.VALIDATION_FAILED,
-                            "生效日期不能早于最近一次任职事件日期 " + latest.getEventDate());
+                            "生效日期不能早于最近一次任职事件日期 " + latest);
                 });
     }
 
@@ -417,7 +461,7 @@ public class EmployeeCommandService {
     @Transactional
     public void confirm(UUID id, LocalDate confirmedDate) {
         tx.bind();
-        Employee e = queryService.requireEmployee(id);
+        Employee e = requireEmployeeForUpdate(id);
         // 试用期 → 转正；在职但未登记转正日期（老库导入/历史存量）→ 补登。
         // 在职且已登记的拒重复办理，离职的拒绝——两者都出 CONFLICT 让前端原样提示。
         boolean probation = "probation".equals(e.getStatus());

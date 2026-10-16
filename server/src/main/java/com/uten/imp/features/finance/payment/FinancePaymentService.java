@@ -106,7 +106,8 @@ public class FinancePaymentService {
         Specification<FinancePayment> spec = paymentSpec(f);
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<FinancePayment> p = paymentRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<FinancePayment> p = paymentRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<FinancePaymentListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return p.stream().noneMatch(FinancePayment::isDeleted) ? result
                 : retainedRecords.page(result, "finance_payments", p.getContent());
@@ -131,9 +132,9 @@ public class FinancePaymentService {
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 引用主档名称
                 //（经 NameRefKeyword 转外键 IN 子查询，count 同谓词派生）。
-                String kw = NameRefKeyword.like(f.keyword());
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), kw -> {
                 var kws = NameRefKeyword.keywords();
-                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(NameRefKeyword.text(cb, root.get("billNo"), kw));
                 NameRefKeyword.byName(kws, q, cb, root.get("accountId"),
                         com.uten.imp.features.master.account.Account.class, "name", kw);
                 NameRefKeyword.byName(kws, q, cb, root.get("accountId"),
@@ -142,7 +143,8 @@ public class FinancePaymentService {
                         com.uten.imp.features.master.supplier.Supplier.class, "name", kw);
                 NameRefKeyword.byName(kws, q, cb, root.get("supplierId"),
                         com.uten.imp.features.master.supplier.Supplier.class, "code", kw);
-                ps.add(cb.or(kws.toArray(new Predicate[0])));
+                return cb.or(kws.toArray(new Predicate[0]));
+                }));
             }
             if (f.supplierId() != null) ps.add(cb.equal(root.get("supplierId"), f.supplierId()));
             if (f.accountId() != null) ps.add(cb.equal(root.get("accountId"), f.accountId()));

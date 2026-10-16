@@ -1,6 +1,7 @@
 package com.uten.imp.features.warehouse.taskcenter;
 
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskService;
 import com.uten.imp.features.warehouse.inbound.ProcurementArrivalControlService;
 import com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService;
@@ -37,6 +38,10 @@ final class WarehouseInboundTaskCenterSql {
                   boolean quality, boolean stock, boolean productionPool, String stockOwnerPredicate) {}
 
     static String base(Access access, WarehouseTaskScope scope) {
+        return base(access, scope, null);
+    }
+
+    static String base(Access access, WarehouseTaskScope scope, String keyword) {
         List<String> branches = new ArrayList<>();
         String ctes = "WITH " + WarehouseQualityResultService.taskCenterFactCtes() + ",\n"
                 + ProductionFinishedInboundTaskService.taskCenterFactCtes() + ",\n" + DRAFT_CTES + ",\n";
@@ -58,7 +63,13 @@ final class WarehouseInboundTaskCenterSql {
             branches.add(stockDocuments(access, scope));
         }
         if (branches.isEmpty()) throw new IllegalArgumentException("No authorized warehouse source");
-        return ctes + "inbound_rows AS (\n" + String.join("\nUNION ALL\n", branches) + "\n)\n";
+        return ctes + "inbound_source_rows AS (\n" + String.join("\nUNION ALL\n", branches)
+                + "\n), inbound_rows AS (SELECT *, "
+                + TaskKeywordSearch.rankNamesFirst(keyword, new String[]{}, new String[]{"goods_names"},
+                        new String[]{"bill_no", "source_doc_no"}, "goods_codes")
+                + " AS keyword_rank FROM inbound_source_rows WHERE "
+                + TaskKeywordSearch.condition(keyword, "search_text", "warehouse_name", "responsible_name", "party_name")
+                + ")\n";
     }
 
     static String predicate(boolean includeStatus) {
@@ -68,7 +79,6 @@ final class WarehouseInboundTaskCenterSql {
     static String predicate(boolean includeStatus,boolean includeBillNo) {
         return """
                  WHERE (:source = 'ALL' OR source_type = :source)
-                   AND (:keyword = '' OR LOWER(search_text) LIKE :pattern)
                    AND (CAST(:dateFrom AS date) IS NULL OR business_date >= CAST(:dateFrom AS date))
                    AND (CAST(:dateTo AS date) IS NULL OR business_date <= CAST(:dateTo AS date))
                 """ + (includeBillNo?" AND (CAST(:billNo AS text) IS NULL OR bill_no=CAST(:billNo AS text))\n":"")
@@ -84,7 +94,7 @@ final class WarehouseInboundTaskCenterSql {
         String column=sort==null || sort.isBlank()?"business_date":sort.equals("billNo")?"bill_no":"business_date";
         String direction="asc".equalsIgnoreCase(order)?"ASC":"DESC";
         return base+" SELECT * FROM inbound_rows "+predicate(true)+identityFilter
-                +" ORDER BY "+column+" "+direction+" NULLS LAST, sort_time DESC NULLS LAST, source_type, record_type, id"
+                +" ORDER BY keyword_rank, "+column+" "+direction+" NULLS LAST, sort_time DESC NULLS LAST, source_type, record_type, id"
                 +" LIMIT :limit OFFSET :offset";
     }
 
@@ -141,7 +151,8 @@ final class WarehouseInboundTaskCenterSql {
                        jsonb_build_object('expectationId',expectation.id,'receiptType',expectation.order_type,
                            'draftReceiptIds',to_jsonb(facts.draft_ids)) AS action_data,
                        NULL::uuid AS maker_id, FALSE AS production_linked, expectation.created_at AS sort_time,
-                       concat_ws(' ',expectation.bill_no_snapshot,supplier.name,facts.goods_text) AS search_text
+                       concat_ws(' ',expectation.bill_no_snapshot,supplier.name,facts.goods_text) AS search_text,
+                       facts.goods_codes, facts.goods_names
                 FROM inbound_expectations expectation
                 LEFT JOIN suppliers supplier ON supplier.id=expectation.supplier_id
                 LEFT JOIN employees owner ON owner.id=expectation.owner_employee_id
@@ -152,7 +163,8 @@ final class WarehouseInboundTaskCenterSql {
                            COUNT(DISTINCT exception.id)::integer AS exception_count,
                            COALESCE(bool_or((%s)>COALESCE(inflight.qty,0)
                                 OR (%s)>COALESCE(inflight.gift_qty,0)),FALSE) AS receivable,
-                           string_agg(DISTINCT concat_ws(' ',goods.code,goods.name),' ') AS goods_text
+                           string_agg(DISTINCT concat_ws(' ',goods.code,goods.name),' ') AS goods_text,
+                           array_agg(DISTINCT goods.code) AS goods_codes, array_agg(DISTINCT goods.name) AS goods_names
                     FROM inbound_expectation_items item
                     JOIN goods ON goods.id=item.goods_id
                     LEFT JOIN draft_receipt_lines dr ON dr.order_type=expectation.order_type
@@ -191,7 +203,8 @@ final class WarehouseInboundTaskCenterSql {
                        NULL::uuid AS maker_id, FALSE AS production_linked,
                        exception.detected_at AS sort_time,
                        concat_ws(' ',exception.id,exception.receipt_bill_no_snapshot,exception.order_bill_no_snapshot,
-                                 supplier.name,goods.code,goods.name) AS search_text
+                                 supplier.name,goods.code,goods.name) AS search_text,
+                       ARRAY[goods.code] AS goods_codes, ARRAY[goods.name] AS goods_names
                 FROM procurement_arrival_exceptions exception
                 JOIN goods ON goods.id=exception.goods_id
                 LEFT JOIN suppliers supplier ON supplier.id=exception.supplier_id
@@ -236,7 +249,8 @@ final class WarehouseInboundTaskCenterSql {
                           'openItemCount',COALESCE(inspection.open_item_count,0),
                           'preStockedLineCount',COALESCE(inspection.pre_stocked_line_count,0)) AS action_data,
                        h.maker_id, FALSE AS production_linked, h.created_at AS sort_time,
-                       concat_ws(' ',h.bill_no,h.source_doc_no,supplier.name,warehouse.name,physical.goods_text) AS search_text
+                       concat_ws(' ',h.bill_no,h.source_doc_no,supplier.name,warehouse.name,physical.goods_text) AS search_text,
+                       physical.goods_codes, physical.goods_names
                 FROM %s h
                 LEFT JOIN suppliers supplier ON supplier.id=h.supplier_id
                 LEFT JOIN warehouses warehouse ON warehouse.id=h.warehouse_id
@@ -252,6 +266,8 @@ final class WarehouseInboundTaskCenterSql {
                 CROSS JOIN LATERAL (
                     SELECT COUNT(*)::integer AS line_count,
                            string_agg(DISTINCT concat_ws(' ',line.goods_code_snapshot,line.goods_name_snapshot,goods.code,goods.name),' ') AS goods_text,
+                           array_agg(DISTINCT COALESCE(NULLIF(line.goods_code_snapshot,''),goods.code)) AS goods_codes,
+                           array_agg(DISTINCT COALESCE(NULLIF(line.goods_name_snapshot,''),goods.name)) AS goods_names,
                            ARRAY(SELECT h.warehouse_id UNION SELECT scoped.warehouse_id
                                  FROM procurement_inspection_items scoped
                                  WHERE scoped.receipt_type='%s' AND scoped.receipt_id=h.id
@@ -283,7 +299,8 @@ final class WarehouseInboundTaskCenterSql {
                            'residualTask',task.residual_task,'publicQty',task.public_qty,
                            'actualSurplusQty',task.actual_surplus_qty)) AS action_data,
                        NULL::uuid AS maker_id, TRUE AS production_linked, task.created_at AS sort_time,
-                       concat_ws(' ',task.document_no,task.report_nos,task.plan_no,task.goods_summary) AS search_text
+                       concat_ws(' ',task.document_no,task.report_nos,task.plan_no,task.goods_summary) AS search_text,
+                       task.goods_codes, task.goods_names
                 FROM task_documents task WHERE TRUE
                 """ + scope(scope,"task.scope_warehouse_ids");
     }
@@ -320,7 +337,8 @@ final class WarehouseInboundTaskCenterSql {
                                    OR EXISTS(SELECT 1 FROM production_fqc_recovery_authorizations recovery
                                              WHERE recovery.source_inspection_id=reversible_inspection.id))))) AS action_data,
                        NULL::uuid AS maker_id, TRUE AS production_linked, registration.created_at AS sort_time,
-                       concat_ws(' ',report.bill_no,sheet.sheet_no,registration.warehouse_name_snapshot,facts.goods_text) AS search_text
+                       concat_ws(' ',report.bill_no,sheet.sheet_no,registration.warehouse_name_snapshot,facts.goods_text) AS search_text,
+                       facts.goods_codes, facts.goods_names
                 FROM production_finished_arrival_registrations registration
                 JOIN production_daily_reports report ON report.id=registration.source_report_id AND NOT report.is_deleted
                 LEFT JOIN production_finished_arrival_registration_reversals reversal
@@ -335,7 +353,8 @@ final class WarehouseInboundTaskCenterSql {
                            COUNT(DISTINCT inspection.id) FILTER(WHERE inspection.status IN('PENDING','PARTIAL')) AS active_count,
                            COUNT(DISTINCT inspection.id) FILTER(WHERE inspection.passed_qty>0 OR inspection.failed_qty>0) AS decided_count,
                            COUNT(DISTINCT inspection.id) FILTER(WHERE inspection.failed_qty>0) AS failed_count,
-                           string_agg(DISTINCT concat_ws(' ',goods.code,goods.name),' ') AS goods_text
+                           string_agg(DISTINCT concat_ws(' ',goods.code,goods.name),' ') AS goods_text,
+                           array_agg(DISTINCT goods.code) AS goods_codes, array_agg(DISTINCT goods.name) AS goods_names
                     FROM production_finished_arrival_registration_items item
                     JOIN production_daily_report_items report_item ON report_item.id=item.source_report_item_id
                     LEFT JOIN goods ON goods.id=report_item.goods_id
@@ -383,13 +402,15 @@ final class WarehouseInboundTaskCenterSql {
                                   WHERE adjustment.stock_document_id=document.id))) AS action_data,
                        document.maker_id, fn_is_production_linked_stock_document(document.id) AS production_linked,
                        document.created_at AS sort_time,
-                       concat_ws(' ',document.bill_no,document.source_doc_no,warehouse.name,physical.goods_text) AS search_text
+                       concat_ws(' ',document.bill_no,document.source_doc_no,warehouse.name,physical.goods_text) AS search_text,
+                       physical.goods_codes, physical.goods_names
                 FROM stock_documents document
                 LEFT JOIN warehouses warehouse ON warehouse.id=document.warehouse_id
                 LEFT JOIN employees maker ON maker.id=document.maker_id
                 CROSS JOIN LATERAL (
                     SELECT COUNT(*)::integer AS line_count,
-                           string_agg(DISTINCT concat_ws(' ',goods.code,goods.name),' ') AS goods_text
+                           string_agg(DISTINCT concat_ws(' ',goods.code,goods.name),' ') AS goods_text,
+                           array_agg(DISTINCT goods.code) AS goods_codes, array_agg(DISTINCT goods.name) AS goods_names
                     FROM stock_document_items item LEFT JOIN goods ON goods.id=item.goods_id
                     WHERE item.doc_id=document.id AND NOT item.is_deleted
                 ) physical

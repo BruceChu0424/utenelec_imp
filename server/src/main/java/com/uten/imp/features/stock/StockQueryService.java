@@ -1,5 +1,8 @@
 package com.uten.imp.features.stock;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.CategoryKeywordSearch;
+
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -354,6 +357,7 @@ public class StockQueryService {
         }
         // 同名货品/多个颜色必须有稳定次序，避免行动清单翻页时重复或遗漏。
         orderBy += ", goods_id ASC, color_id ASC NULLS FIRST";
+        if (!KeywordSearch.terms(sql.filter().keyword()).isEmpty()) orderBy = "search_rank ASC, " + orderBy;
         var dataQ = em.createNativeQuery(
                 sql.core() + " ORDER BY " + orderBy + " LIMIT :__limit OFFSET :__offset");
         var countQ = em.createNativeQuery("SELECT COUNT(*) FROM (" + sql.core() + ") t");
@@ -410,9 +414,7 @@ public class StockQueryService {
                 q.setParameter("scopeIds", warehouseScope);
             }
             if (filter.categoryId() != null) q.setParameter("categoryId", filter.categoryId());
-            if (filter.keyword() != null && !filter.keyword().isBlank()) {
-                q.setParameter("kw", "%" + filter.keyword().trim() + "%");
-            }
+            CategoryKeywordSearch.bindNative(q, filter.keyword(), "kw", true);
         }
     }
 
@@ -486,9 +488,8 @@ public class StockQueryService {
         if (filter.categoryId() != null) {
             goodsWhere.append(" AND g.category_id IN (SELECT id FROM cat)");
         }
-        if (filter.keyword() != null && !filter.keyword().isBlank()) {
-            goodsWhere.append(
-                    " AND (g.name ILIKE :kw OR g.code ILIKE :kw OR g.model ILIKE :kw OR g.c_number ILIKE :kw)");
+        if (!KeywordSearch.terms(filter.keyword()).isEmpty()) {
+            goodsWhere.append(" AND ").append(instantKeywordCondition(filter.keyword()));
         }
         // V587/V590 归属筛选 + 颜色/系列/单位列筛选只作用于列表本体；
         // facet 桶在未应用这些筛选的口径（goodsWhereBase）上聚合。
@@ -528,6 +529,9 @@ public class StockQueryService {
         // 新增投影一律追加在 SELECT 末尾 (行映射按位置)。
         String selectedColor = filter.goodsId() != null && filter.colorId() != null
                 ? "COALESCE(base.color_id, :colorId)" : "base.color_id";
+        String relevanceProjection = KeywordSearch.terms(filter.keyword()).isEmpty() ? ""
+                : ", " + CategoryKeywordSearch.nativeRank(filter.keyword(), "kw", "material_categories", "g.category_id",
+                        "g.code", "g.name", "g.name", "g.code", "g.model", "g.c_number") + " AS search_rank\n";
         String core = cte + """
                 SELECT g.id AS goods_id, base.color_id AS color_id, mc.name AS category_name,
                        g.model, g.c_number, g.name, g.spec,
@@ -573,6 +577,7 @@ public class StockQueryService {
                        g.owning_warehouse_id, ow.name AS owning_warehouse_name,
                        COALESCE(base.defective_qty, 0) AS defective_qty,
                        u.id AS unit_id
+                """ + relevanceProjection + """
                 FROM goods g
                 LEFT JOIN (
                     SELECT u.goods_id, u.color_id,
@@ -747,7 +752,7 @@ public class StockQueryService {
     @Transactional(readOnly = true)
     public List<UUID> instantInventoryMatchingCategoryIds(
             String keyword, Set<UUID> categoryRootIds) {
-        if (keyword == null || keyword.isBlank()) {
+        if (KeywordSearch.terms(keyword).isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写搜索关键词");
         }
         if (categoryRootIds == null || categoryRootIds.isEmpty() || categoryRootIds.size() > 32) {
@@ -755,8 +760,7 @@ public class StockQueryService {
                     ErrorCode.VALIDATION_FAILED,
                     "categoryRootIds 必须包含 1-32 个分类");
         }
-        @SuppressWarnings("unchecked")
-        List<Object> rawIds = em.createNativeQuery("""
+        Query query = em.createNativeQuery("""
                 WITH RECURSIVE cat AS (
                     SELECT id
                       FROM material_categories
@@ -767,21 +771,27 @@ public class StockQueryService {
                       JOIN cat p ON c.parent_id = p.id
                      WHERE c.is_deleted = false
                 )
-                SELECT DISTINCT g.category_id
+                SELECT g.category_id
                   FROM goods g
                  WHERE g.is_deleted = false
                    AND g.category_id IN (SELECT id FROM cat)
-                   AND (g.name ILIKE :kw OR g.code ILIKE :kw
-                     OR g.model ILIKE :kw OR g.c_number ILIKE :kw)
-                 ORDER BY g.category_id
-                """)
-                .setParameter("categoryRootIds", categoryRootIds)
-                .setParameter("kw", "%" + keyword.trim() + "%")
-                .getResultList();
+                   AND
+                """ + instantKeywordCondition(keyword) + " GROUP BY g.category_id ORDER BY MIN("
+                + CategoryKeywordSearch.nativeRank(keyword, "kw", "material_categories", "g.category_id",
+                        "g.code", "g.name", "g.name", "g.code", "g.model", "g.c_number") + "), g.category_id");
+        query.setParameter("categoryRootIds", categoryRootIds);
+        CategoryKeywordSearch.bindNative(query, keyword, "kw", true);
+        @SuppressWarnings("unchecked")
+        List<Object> rawIds = query.getResultList();
         return rawIds.stream()
                 .filter(java.util.Objects::nonNull)
                 .map(value -> value instanceof UUID id ? id : UUID.fromString(value.toString()))
                 .toList();
+    }
+
+    private static String instantKeywordCondition(String keyword) {
+        return CategoryKeywordSearch.nativeCondition(keyword, "kw", "material_categories", "g.category_id",
+                "g.name", "g.code", "g.model", "g.c_number");
     }
 
     // ======================== 货架目视化清单（货架图 + 统一表格 / 打印 / 导出） ========================
@@ -806,7 +816,7 @@ public class StockQueryService {
                 ShelfLabelSql.rows(warehouseId != null, includeDisabled, hasRack, hasKw));
         if (warehouseId != null) q.setParameter("warehouseId", warehouseId);
         if (hasRack) q.setParameter("rack", rack.trim());
-        if (hasKw) q.setParameter("kw", "%" + keyword.trim() + "%");
+        if (hasKw) q.setParameter("kw", KeywordSearch.phrase(keyword));
         @SuppressWarnings("unchecked")
         List<Object[]> rows = q.getResultList();
         List<com.uten.imp.features.stock.dto.ShelfLabelRow> out = new ArrayList<>(rows.size());

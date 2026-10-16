@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.admin.dto.ProvisionCandidateDto;
@@ -23,6 +24,7 @@ import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.JoinType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -77,10 +79,23 @@ public class UserAccountAdminService {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.isFalse(root.get("deleted")));
             if (search != null && !search.isBlank()) {
-                predicates.add(
-                        cb.like(
-                                cb.lower(root.get("loginAccount")),
-                                "%" + search.toLowerCase() + "%"));
+                var employee = root.join("employee", JoinType.LEFT);
+                predicates.add(KeywordSearch.allTerms(cb, search,
+                        employee.get("fullName"), employee.get("code"), root.get("loginAccount")));
+                if (!Long.class.equals(q.getResultType()) && !long.class.equals(q.getResultType())) {
+                    var exact=cb.or(KeywordSearch.exact(cb,employee.get("fullName"),search),
+                            KeywordSearch.exact(cb,employee.get("code"),search),
+                            KeywordSearch.exact(cb,root.get("loginAccount"),search));
+                    String phrase=KeywordSearch.phrase(search);
+                    var prefix=cb.or(cb.like(cb.lower(employee.get("fullName")),KeywordSearch.prefixPattern(phrase),'\\'),
+                            cb.like(cb.lower(employee.get("code")),KeywordSearch.prefixPattern(phrase),'\\'),
+                            cb.like(cb.lower(root.get("loginAccount")),KeywordSearch.prefixPattern(phrase),'\\'));
+                    var contains=cb.or(cb.like(cb.lower(employee.get("fullName")),KeywordSearch.containsPattern(phrase),'\\'),
+                            cb.like(cb.lower(employee.get("code")),KeywordSearch.containsPattern(phrase),'\\'),
+                            cb.like(cb.lower(root.get("loginAccount")),KeywordSearch.containsPattern(phrase),'\\'));
+                    q.orderBy(cb.asc(KeywordSearch.rank(cb,exact,prefix,contains)),cb.asc(employee.get("fullName")),
+                            cb.asc(employee.get("code")),cb.asc(root.get("loginAccount")),cb.asc(root.get("id")));
+                }
             }
             if (status != null && !status.isBlank()) {
                 predicates.add(cb.equal(root.get("status"), status));
@@ -90,7 +105,7 @@ public class UserAccountAdminService {
         Pageable pageable = Pageables.of(
                 page,
                 size,
-                Sort.by(Sort.Direction.ASC, "loginAccount"));
+                search == null || search.isBlank() ? Sort.by(Sort.Direction.ASC, "loginAccount") : Sort.unsorted());
         Page<UserAccount> result = userRepo.findAll(spec, pageable);
         List<UserSummary> items = result.getContent().stream().map(this::toSummary).toList();
         return new PageResponse<>(

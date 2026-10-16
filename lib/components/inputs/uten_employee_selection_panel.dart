@@ -1,3 +1,4 @@
+import '../../shared/search/keyword_search.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -224,7 +225,14 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
 
   bool _matchesDepartment(UtenEmployeePickerItem item, String query) =>
       widget.showDepartmentFilter &&
-      item.departmentName?.toLowerCase().contains(query.toLowerCase()) == true;
+      keywordSearchTerms(
+        query,
+      ).any((term) => matchesKeywordSearch([item.departmentName], term)) &&
+      matchesKeywordSearch([
+        item.name,
+        item.employeeCode,
+        item.departmentName,
+      ], query);
 
   void _onInput(String value) {
     _request++;
@@ -263,7 +271,32 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         for (final item in result) item.id: item,
       };
       setState(() {
-        _items = byId.values.toList(growable: false);
+        final candidates = byId.values.toList();
+        if (query.isNotEmpty) {
+          final order = {
+            for (var index = 0; index < candidates.length; index++)
+              candidates[index].id: index,
+          };
+          candidates.sort((a, b) {
+            final rankA =
+                keywordSearchRankWithPrimary(
+                  [a.name],
+                  [a.employeeCode],
+                  query,
+                ) ??
+                8;
+            final rankB =
+                keywordSearchRankWithPrimary(
+                  [b.name],
+                  [b.employeeCode],
+                  query,
+                ) ??
+                8;
+            final rank = rankA.compareTo(rankB);
+            return rank != 0 ? rank : order[a.id]!.compareTo(order[b.id]!);
+          });
+        }
+        _items = candidates;
         if (query.isEmpty) _baseline = _items;
         for (final item in _items) {
           if (_selected.containsKey(item.id)) _selected[item.id] = item;
@@ -412,8 +445,7 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
               _allDepartments,
               for (final item in _items) _departmentKey(item),
               for (final node in departments)
-                if (node.name.toLowerCase().contains(_query.toLowerCase()))
-                  node.id,
+                if (matchesKeywordSearch([node.name], _query)) node.id,
             };
       final tree = UtenHierarchyTreeView<_EmployeeDepartmentNode>(
         key: const Key('uten-employee-picker-departments'),

@@ -209,6 +209,7 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
     ),
 
     inputDecorationTheme: InputDecorationTheme(
+      visualDensity: VisualDensity.standard,
       filled: true,
       fillColor: UtenColors.darkSurface,
       border: OutlineInputBorder(

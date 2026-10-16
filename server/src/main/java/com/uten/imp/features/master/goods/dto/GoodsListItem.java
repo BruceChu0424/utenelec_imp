@@ -78,4 +78,32 @@ public class GoodsListItem {
     // ===== 英文名称(ADR-134, V742): 列表「英文名称」列, 关键字搜索同样命中 =====
     private String nameEn;          // 英文名称; 未维护为 null
     private String nameEnSource;    // MANUAL 人工维护 / LEARNED 从客户文件学习; 名称为空时为 null
+
+    @lombok.Setter
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    private Integer searchRank;
+
+    /** Existing projections can keep constructing the summary without search-only metadata. */
+    public GoodsListItem(
+            UUID id, String code, String name,
+            String spec, String model, BigDecimal price,
+            BigDecimal discount, String status, Integer legacyId,
+            String series, String material, String cNumber,
+            String requireRemark, String mouldCode, String rearInsertCode,
+            String paper, UUID colorId, UUID unitId,
+            Integer colorLegacyId, Integer unitLegacyId, String colorName,
+            String unitName, String sourceType, UUID categoryId,
+            boolean autoCreated, BigDecimal stockQty, String stockPlace,
+            BigDecimal minOrderQty, BigDecimal orderMultipleQty, UUID owningWarehouseId,
+            String owningWarehouseName, UUID owningWorkshopId, String owningWorkshopName,
+            Long version, String issueMethod, String periodicCostBasis,
+            BigDecimal bulkPackageQty, boolean recycledMaterial, String nameEn,
+            String nameEnSource) {
+        this(id, code, name, spec, model, price, discount,
+                status, legacyId, series, material, cNumber, requireRemark, mouldCode,
+                rearInsertCode, paper, colorId, unitId, colorLegacyId, unitLegacyId, colorName,
+                unitName, sourceType, categoryId, autoCreated, stockQty, stockPlace, minOrderQty,
+                orderMultipleQty, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, version, issueMethod,
+                periodicCostBasis, bulkPackageQty, recycledMaterial, nameEn, nameEnSource, null);
+    }
 }

@@ -31,9 +31,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_empty.dart';
-import '../../../core/responsive/breakpoint.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -86,11 +84,20 @@ class RdTaskPage extends ConsumerStatefulWidget {
 
 class _RdTaskPageState extends ConsumerState<RdTaskPage> {
   late _RdTaskSeg _seg;
+  final _searchController = TextEditingController();
+  String _keyword = '';
+  int _refreshVersion = 0;
 
   @override
   void initState() {
     super.initState();
     _seg = widget.initialTab == 1 ? _RdTaskSeg.done : _RdTaskSeg.pending;
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -120,12 +127,29 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 全平台统一筛选工具条替代裸 TabBar(纯分类形态, 搜索框在下方筛选行)。
+            // 四个工作阶段共用“分类 + 搜索”头部；窄屏由共享工具条按空间换行。
             UtenContentContainer.wide(
               selectable: false,
               padding: const EdgeInsets.only(top: UtenSpacing.s12),
               child: UtenFilterToolbar<_RdTaskSeg>(
+                key: const Key('rd-task-header'),
                 segmentsKey: const Key('rd-task-segments'),
+                searchKey: const Key('rd-task-keyword'),
+                searchController: _searchController,
+                searchHint: _seg == _RdTaskSeg.draft
+                    ? '搜索类别、草稿或备注'
+                    : '搜索任务号、标题、来源单号或货品',
+                onSearchChanged: (value) {
+                  final keyword = value.trim();
+                  if (keyword != _keyword) setState(() => _keyword = keyword);
+                },
+                trailing: _seg == _RdTaskSeg.draft
+                    ? null
+                    : IconButton(
+                        tooltip: '刷新',
+                        onPressed: () => setState(() => _refreshVersion++),
+                        icon: const Icon(Icons.refresh_rounded),
+                      ),
                 segments: [
                   UtenFilterSegment(
                     value: _RdTaskSeg.draft,
@@ -162,11 +186,19 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
             Expanded(
               child: _seg == _RdTaskSeg.draft
                   ? UtenContentContainer.wide(
-                      child: const FormDraftCategoryList(
-                        scope: FormDraftCategoryScope(module: BadgeModule.rd),
+                      child: FormDraftCategoryList(
+                        scope: const FormDraftCategoryScope(
+                          module: BadgeModule.rd,
+                        ),
+                        search: _keyword,
+                        showSearch: false,
                       ),
                     )
-                  : _RdTaskListPanel(seg: _seg),
+                  : _RdTaskListPanel(
+                      seg: _seg,
+                      keyword: _keyword,
+                      refreshVersion: _refreshVersion,
+                    ),
             ),
           ],
         ),
@@ -178,7 +210,13 @@ class _RdTaskPageState extends ConsumerState<RdTaskPage> {
 // ═══════════════════════ 单分段列表面板(待处理 / 进行中 / 已完成) ═══════════════════════
 
 class _RdTaskListPanel extends ConsumerStatefulWidget {
-  const _RdTaskListPanel({required this.seg});
+  const _RdTaskListPanel({
+    required this.seg,
+    required this.keyword,
+    required this.refreshVersion,
+  });
+  final String keyword;
+  final int refreshVersion;
 
   /// 当前分段 —— 决定列表的 `status` 过滤与「标记完成」入口是否出现。
   final _RdTaskSeg seg;
@@ -193,7 +231,7 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
   bool _loading = true;
   int _page = 1;
   int _requestId = 0;
-  String _keyword = '';
+  String get _keyword => widget.keyword;
   String _category = ''; // '' = 全部类别
   bool _hasLoaded = false;
   bool _resolving = false;
@@ -253,7 +291,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     super.didUpdateWidget(oldWidget);
     // 换分段 = 换服务端口径: 回到第一页并清掉旧选中任务。
     // 关键词与类别刻意保留 —— 用户常常拿同一个条件在三段之间来回看。
-    if (widget.seg != oldWidget.seg) {
+    if (widget.seg != oldWidget.seg ||
+        widget.keyword != oldWidget.keyword ||
+        widget.refreshVersion != oldWidget.refreshVersion) {
       _page = 1;
       _selectedTaskId = null;
       _load();
@@ -308,10 +348,9 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     }
   }
 
-  void _applyFilter({String? keyword, String? category}) {
-    final needsReload = keyword != null || category != null;
+  void _applyFilter({String? category}) {
+    final needsReload = category != null;
     setState(() {
-      if (keyword != null) _keyword = keyword;
       if (category != null) _category = category;
       if (needsReload) {
         _page = 1;
@@ -416,17 +455,6 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Filters(
-          keyword: _keyword,
-          onKeywordChanged: (value) => _applyFilter(keyword: value),
-          onRefresh: _loading
-              ? null
-              : () {
-                  setState(() => _page = 1);
-                  _load();
-                },
-        ),
-        const SizedBox(height: UtenSpacing.s12),
         // 选中可完成任务时，显示「标记完成」上下文条（行点击=开 BOM；完成走这里）。
         if (sel != null && !widget.seg.isClosed && _resolveEligible(sel))
           _ResolveBar(
@@ -458,52 +486,6 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel> {
           ),
         ),
       ],
-    );
-  }
-}
-
-// ═══════════════════════ 筛选行（关键词 + 刷新） ═══════════════════════
-
-class _Filters extends StatelessWidget {
-  const _Filters({
-    required this.keyword,
-    required this.onKeywordChanged,
-    required this.onRefresh,
-  });
-
-  final String keyword;
-  final ValueChanged<String> onKeywordChanged;
-  final VoidCallback? onRefresh;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < UtenBreakpoints.mediumStart;
-        return Wrap(
-          spacing: UtenSpacing.s12,
-          runSpacing: UtenSpacing.s12,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            SizedBox(
-              // 2026-10-07 用户口径：搜索栏宽度减半（与 UtenFilterToolbar 180 对齐）。
-              width: compact ? constraints.maxWidth : 180,
-              child: UtenSearchBar(
-                key: const Key('rd-task-keyword'),
-                initialValue: keyword,
-                hint: '搜索任务号、标题、来源单号或货品',
-                onChanged: onKeywordChanged,
-              ),
-            ),
-            if (onRefresh != null)
-              IconButton(
-                tooltip: '刷新',
-                onPressed: onRefresh,
-                icon: const Icon(Icons.refresh_rounded),
-              ),
-          ],
-        );
-      },
     );
   }
 }

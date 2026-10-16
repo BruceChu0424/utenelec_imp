@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.insight;
 
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.features.stock.ledger.StockLedgerSource;
 import com.uten.imp.features.stock.ledger.StockMovementTypeCatalog;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -495,7 +496,7 @@ final class WarehouseInsightSql {
                 LEFT JOIN onhand ON onhand.goods_id = g.id
                 LEFT JOIN goods_weight_estimates pe ON pe.goods_id = g.id AND pe.supplier_id IS NULL
                 WHERE up.mass_unit_code IS NULL"""
-                + (keyword ? " AND (g.code ILIKE :kw OR g.name ILIKE :kw OR g.model ILIKE :kw)" : "") + "\n";
+                + (keyword ? " AND " + TaskKeywordSearch.conditionParameter("kw", "g.code", "g.name", "g.model") : "") + "\n";
     }
 
     /** 分类子树 (含自身, 未删除)。 */

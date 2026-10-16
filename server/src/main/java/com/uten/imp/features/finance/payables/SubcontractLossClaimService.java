@@ -2,6 +2,8 @@ package com.uten.imp.features.finance.payables;
 
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.application.port.SubcontractLossClaimPort;
 import com.uten.imp.application.port.BusinessEventPublisher;
 import com.uten.imp.common.time.BusinessTime;
@@ -49,6 +51,7 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
     public static final String EVENT_REVERSED = "SUBCONTRACT_LOSS_CLAIM_REVERSED";
     private static final int MONEY_SCALE = 4;
     private static final int QTY_SCALE = 4;
+    private static final String[] SEARCH_FIELDS = {"loss.waste_bill_no", "supplier.code", "supplier.name"};
     private static final Set<String> TYPES = Set.of(
             "COMPANY_BEAR", "SERVICE_PRICE_REDUCTION", "CASH_COMPENSATION",
             "AP_OFFSET", "MATERIAL_REPLACEMENT", "OUTPUT_REPLACEMENT",
@@ -307,7 +310,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
         String from = " FROM subcontract_loss_cases loss"
                 + " JOIN suppliers supplier ON supplier.id=loss.supplier_id";
         Query data = em.createNativeQuery(summarySelect() + from + filters.where()
-                + " " + lossOrderBy(sort, order) + " LIMIT :limit OFFSET :offset");
+                + " " + lossOrderBy(sort, order, filters.params().containsKey("keyword"))
+                + " LIMIT :limit OFFSET :offset");
         bind(data, filters.params());
         data.setParameter("limit", safeSize);
         data.setParameter("offset", (long) (safePage - 1) * safeSize);
@@ -359,10 +363,8 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
             params.put("status", normalized);
         }
         if (keyword != null && !keyword.isBlank()) {
-            where.append(" AND (LOWER(loss.waste_bill_no) LIKE :keyword"
-                    + " OR LOWER(COALESCE(supplier.code,'')) LIKE :keyword"
-                    + " OR LOWER(COALESCE(supplier.name,'')) LIKE :keyword)");
-            params.put("keyword", "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+            where.append(" AND ").append(TaskKeywordSearch.conditionParameter("keyword", SEARCH_FIELDS));
+            params.put("keyword", KeywordSearch.phrase(keyword));
         }
         String trimmedWasteBillNo = wasteBillNo == null ? "" : wasteBillNo.trim();
         if (!trimmedWasteBillNo.isEmpty()) {
@@ -374,12 +376,13 @@ public class SubcontractLossClaimService implements SubcontractLossClaimPort {
 
     /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
      *  未知/空→默认（创建时间倒序, id 稳定序）。 */
-    private static String lossOrderBy(String sort, String order) {
+    private static String lossOrderBy(String sort, String order, boolean searching) {
         String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
-        return switch (sort == null ? "" : sort) {
-            case "wasteBillNo" -> "ORDER BY loss.waste_bill_no " + dir
+        String relevance = searching ? TaskKeywordSearch.rankParameter("keyword", SEARCH_FIELDS) + ", " : "";
+        return "ORDER BY " + relevance + switch (sort == null ? "" : sort) {
+            case "wasteBillNo" -> "loss.waste_bill_no " + dir
                     + " NULLS LAST, loss.created_at DESC, loss.id";
-            default -> "ORDER BY loss.created_at DESC, loss.id";
+            default -> "loss.created_at DESC, loss.id";
         };
     }
 

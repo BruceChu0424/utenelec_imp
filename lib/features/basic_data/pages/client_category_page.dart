@@ -204,6 +204,20 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
     ref.watch(currentPermissionsProvider);
     return buildShell(
       context,
+      searchPaneBuilder: (query) =>
+          MasterEntityDetailPane<ClientListItem, ClientDetail>(
+            key: ValueKey('global-search-$query-$_detailEpoch'),
+            config: _paneConfig(),
+            categoryId: null,
+            canEditCategory: false,
+            canAddCategory: false,
+            canDeleteCategory: false,
+            externalKeyword: query,
+            externalSearchPending: shellSearchPending,
+            onAddChild: () {},
+            onEditCategory: (_) {},
+            onDeleteCategory: () {},
+          ),
       detailPaneBuilder: (selected) =>
           MasterEntityDetailPane<ClientListItem, ClientDetail>(
             key: ValueKey('dp-${selected.id}-$_detailEpoch'),
@@ -213,6 +227,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
             canAddCategory: shellCanCreate,
             canDeleteCategory: shellCanDelete,
             externalKeyword: shellTreeSearchKeyword,
+            externalSearchPending: shellSearchPending,
             onAddChild: () => shellShowCreateDialog(parent: selected),
             onEditCategory: (detail) => shellShowEditDialog(detail),
             onDeleteCategory: () => shellDeleteNode(selected),
@@ -240,17 +255,30 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       readOnlyBatchHint: '所选客户包含只读数据，请取消只读客户后再批量改资料', // TODO(l10n): 补 arb
       loadCategory: (id) =>
           ref.read(clientCategoryRepositoryProvider).detail(id),
-      loadPage: (q) => clients.list(
-        q.categoryId,
-        page: q.page,
-        size: q.size ?? 20,
-        keyword: q.keyword,
-        filters: q.filters,
-        sort: q.sort,
-        order: q.order,
-      ),
+      loadPage: (q) => q.categoryId == null
+          ? clients.listGlobal(
+              page: q.page,
+              size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            )
+          : clients.list(
+              q.categoryId!,
+              page: q.page,
+              size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            ),
       loadFacets: (id) async {
         final f = await clients.facets(id);
+        return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
+      },
+      loadGlobalFacets: () async {
+        final f = await clients.globalFacets();
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
       },
       batchEntityPath: ApiEndpoints.clients,

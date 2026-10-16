@@ -14,7 +14,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/inputs/uten_month_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
@@ -278,6 +278,20 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     ref.watch(currentPermissionsProvider);
     return buildShell(
       context,
+      searchPaneBuilder: (query) =>
+          MasterEntityDetailPane<MouldListItem, MouldDetail>(
+            key: ValueKey('global-search-$query-$_detailEpoch'),
+            config: _paneConfig(),
+            categoryId: null,
+            canEditCategory: false,
+            canAddCategory: false,
+            canDeleteCategory: false,
+            externalKeyword: query,
+            externalSearchPending: shellSearchPending,
+            onAddChild: () {},
+            onEditCategory: (_) {},
+            onDeleteCategory: () {},
+          ),
       detailPaneBuilder: (selected) =>
           MasterEntityDetailPane<MouldListItem, MouldDetail>(
             key: ValueKey('dp-${selected.id}-$_detailEpoch'),
@@ -287,6 +301,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
             canAddCategory: shellCanCreate,
             canDeleteCategory: shellCanDelete,
             externalKeyword: shellTreeSearchKeyword,
+            externalSearchPending: shellSearchPending,
             onAddChild: () => shellShowCreateDialog(parent: selected),
             onEditCategory: (detail) => shellShowEditDialog(detail),
             onDeleteCategory: () => shellDeleteNode(selected),
@@ -313,15 +328,30 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       labelOf: (m) => m.name?.isNotEmpty == true ? m.name! : (m.code ?? '该模具'),
       loadCategory: (id) =>
           ref.read(mouldCategoryRepositoryProvider).detail(id),
-      loadPage: (q) => moulds.list(
-        q.categoryId,
-        page: q.page,
-        size: q.size ?? 20,
-        keyword: q.keyword,
-        filters: q.filters,
-      ),
+      loadPage: (q) => q.categoryId == null
+          ? moulds.listGlobal(
+              page: q.page,
+              size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            )
+          : moulds.list(
+              q.categoryId!,
+              page: q.page,
+              size: q.size ?? 20,
+              keyword: q.keyword,
+              filters: q.filters,
+              sort: q.sort,
+              order: q.order,
+            ),
       loadFacets: (id) async {
         final f = await moulds.facets(id);
+        return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
+      },
+      loadGlobalFacets: () async {
+        final f = await moulds.globalFacets();
         return MasterPaneFacets(fields: f.fields, nullCounts: f.nullCounts);
       },
       batchEntityPath: ApiEndpoints.moulds,
@@ -348,7 +378,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   /// 模具主档可编辑字段（与后端 MouldSaveRequest 对齐）。
   ///
   /// custom 字段（制造年月/车间/保管人）经 [MasterFieldDef.customBuilder] 嵌入
-  /// UtenDateField / UtenDepartmentPicker / DepartmentEmployeePickerField（右滑入滑窗）。
+  /// UtenMonthField / UtenDepartmentPicker / DepartmentEmployeePickerField（右滑入滑窗）。
   /// 闭包捕获 [iv](初值 map)与 [ref]，故为实例方法而非 static const。
   ///
   /// [workshop] 由调用方（_showMouldCreate/_showMouldEdit）提前 await 拿到，避免在这里
@@ -395,16 +425,18 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
         type: MasterFieldType.money,
         group: '制造',
       ),
-      // 制造年月：日期选择窗（UtenDateField）；存 yyyy-MM-dd，兼容老库「2018年7月」初值。
+      const MasterFieldDef(key: 'manufacturer', label: '模具制造商', group: '制造'),
+      // 制造年月按月份输入/选择；与 API 的 mstatus 字段保持同一契约。
       MasterFieldDef(
-        key: 'mfgMonth',
+        key: 'mstatus',
+        legacyDraftKeys: const ['mfgMonth'],
         label: '制造年月',
         type: MasterFieldType.custom,
         group: '制造',
-        customBuilder: (ctx) => UtenDateField(
+        customBuilder: (ctx) => UtenMonthField(
           label: '制造年月',
-          value: _parseMstatus(ctx.initialValue),
-          onChanged: (date) => ctx.onChanged(_formatYmd(date)),
+          value: ctx.initialValue,
+          onChanged: ctx.onChanged,
         ),
       ),
       // 车间：部门选择滑窗（仅制造与研发管理中心子树，默认只展开生产部，需点确定才生效，
@@ -477,30 +509,6 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     ];
   }
 
-  /// 解析制造年月初值：「2018-07-01」(ISO) / 「2018年7月」(老库中文) → DateTime；失败 null。
-  DateTime? _parseMstatus(String? s) {
-    if (s == null || s.isEmpty) return null;
-    final iso = RegExp(r'^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$').firstMatch(s);
-    if (iso != null) {
-      return DateTime(
-        int.parse(iso.group(1)!),
-        int.parse(iso.group(2)!),
-        int.parse(iso.group(3) ?? '1'),
-      );
-    }
-    final cn = RegExp(r'(\d{4})\s*年\s*(\d{1,2})\s*月?').firstMatch(s);
-    if (cn != null) {
-      return DateTime(int.parse(cn.group(1)!), int.parse(cn.group(2)!));
-    }
-    return null;
-  }
-
-  /// DateTime → yyyy-MM-dd（提交/存储格式）。
-  String _formatYmd(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
-      '${d.month.toString().padLeft(2, '0')}-'
-      '${d.day.toString().padLeft(2, '0')}';
-
   // ---- 模具 新建/编辑/详情弹层 ---------------------------------------------
 
   /// 车间树需要先 await（FutureProvider 首次读永远是 loading，同步 .read 会拿到 null，
@@ -548,7 +556,8 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       'mnumber': d.mnumber ?? '',
       'qty': d.qty ?? '',
       'tqty': d.tqty?.toString() ?? '',
-      'mfgMonth': d.mstatus ?? '',
+      'mstatus': d.mstatus ?? '',
+      'manufacturer': d.manufacturer ?? '',
       'status': d.status ?? '',
       'departmentId': d.departmentId ?? '',
       'departmentName': d.departmentName ?? '',
@@ -663,6 +672,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     MasterDetailRow('车间', d.place), // TODO(l10n): 补 arb
     MasterDetailRow('保管人', d.keeper), // TODO(l10n): 补 arb
     MasterDetailRow('制造年月', d.mstatus), // TODO(l10n): 补 arb
+    MasterDetailRow('模具制造商', d.manufacturer),
     MasterDetailRow('分类', d.categoryName), // TODO(l10n): 补 arb
     MasterDetailRow('备注', d.remark), // TODO(l10n): 补 arb
     MasterDetailRow('旧系统 ID', d.legacyId?.toString()), // TODO(l10n): 补 arb
@@ -674,9 +684,9 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   /// [MasterColumnDef.value]=单元格取值；key 与后端 query 参数名一一对齐（autofilter）。
   ///
   /// 列顺序按产品定义的 10 列。其中：
-  /// - 有数据列（key 与后端 query/facet 字段对齐）：模具编号/模具名称/存放位置/制造日期/备注/状态。
+  /// - 有数据列（key 与后端 query/facet 字段对齐）：模具编号/模具名称/存放位置/制造日期/制造商/备注/状态。
   /// - 无数据列（表无对应字段；模数/套数语义与 qty/tqty 不符按需求当无数据处理）：
-  ///   模数/套数/模具类型/制造商——单元格取 null（表格显"—"），不进 FACET_COLUMNS 白名单
+  ///   模数/套数/模具类型——单元格取 null（表格显"—"），不进 FACET_COLUMNS 白名单
   ///   （下拉只显示"所有"），后端忽略其 query 参数。
   static final _mouldColumns = <MasterColumnDef<MouldListItem>>[
     MasterColumnDef(
@@ -720,10 +730,10 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       key: 'manufacturer',
       label: '制造商',
       width: 140,
-      value: (_) => null,
+      value: (m) => m.manufacturer,
     ),
     MasterColumnDef(
-      key: 'mfgMonth',
+      key: 'mstatus',
       label: '制造日期',
       width: 110,
       value: (m) => m.mstatus,

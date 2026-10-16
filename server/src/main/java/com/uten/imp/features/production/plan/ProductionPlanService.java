@@ -6,6 +6,9 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.NameRefKeyword;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.common.web.TableSort;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
@@ -127,7 +130,18 @@ public class ProductionPlanService {
             else if (!includeDeleted) ps.add(cb.isFalse(root.get("deleted")));
             ps.add(access.readablePredicate(root, cb, "makerId", readScope));
             if (f.keyword() != null && !f.keyword().isBlank()) {
-                ps.add(cb.like(cb.lower(root.get("billNo")), "%" + f.keyword().toLowerCase() + "%"));
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), pattern -> {
+                    var fields = NameRefKeyword.keywords();
+                    for (String field : List.of("billNo", "workshopName", "workerName", "sellerName"))
+                        fields.add(NameRefKeyword.text(cb, root.get(field), pattern));
+                    NameRefKeyword.byName(fields, q, cb, root.get("departmentId"),
+                            com.uten.imp.features.org.department.Department.class, "name", pattern);
+                    NameRefKeyword.byName(fields, q, cb, root.get("workerId"),
+                            com.uten.imp.features.org.employee.Employee.class, "fullName", pattern);
+                    NameRefKeyword.byName(fields, q, cb, root.get("sellerId"),
+                            com.uten.imp.features.org.employee.Employee.class, "fullName", pattern);
+                    return NameRefKeyword.or(cb, fields);
+                }));
             }
             if (f.departmentId() != null) ps.add(cb.equal(root.get("departmentId"), f.departmentId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));
@@ -144,7 +158,8 @@ public class ProductionPlanService {
         };
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"), ALLOWED_SORT));
-        Page<ProductionPlan> p = planRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<ProductionPlan> p = planRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<PlanListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return includeDeleted || onlyDeleted ? retainedRecords.page(result, "production_plans", p.getContent()) : result;
     }
@@ -1355,8 +1370,7 @@ public class ProductionPlanService {
                   AND p.id NOT IN (SELECT subplan_id FROM subplan_links WHERE is_deleted = false)
                 """
                 + "  AND " + ownerPredicate + "\n"
-                + (kw.isEmpty() ? ""
-                        : "  AND (LOWER(p.bill_no) LIKE :kw OR LOWER(COALESCE(p.workshop_name,'')) LIKE :kw)\n")
+                + "  AND " + TaskKeywordSearch.condition(kw, "p.bill_no", "p.workshop_name") + "\n"
                 + (ws.isEmpty() ? "" : "  AND p.workshop_name = :ws\n")
                 + (dateFrom == null ? "" : "  AND p.bill_date >= :dateFrom\n")
                 + (dateTo == null ? "" : "  AND p.bill_date <= :dateTo\n")
@@ -1371,7 +1385,7 @@ public class ProductionPlanService {
                                             String ws, java.time.LocalDate dateFrom,
                                             java.time.LocalDate dateTo) {
         q.setParameter("closed", closed);
-        if (!kw.isEmpty()) q.setParameter("kw", "%" + kw + "%");
+        TaskKeywordSearch.bind(q, kw, false);
         if (!ws.isEmpty()) q.setParameter("ws", ws);
         if (dateFrom != null) q.setParameter("dateFrom", dateFrom);
         if (dateTo != null) q.setParameter("dateTo", dateTo);
@@ -1390,7 +1404,7 @@ public class ProductionPlanService {
             String keyword, String workshop, java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
         int p = Math.max(1, page);
         int sz = Math.min(Math.max(1, size), 100);
-        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        String kw = KeywordSearch.phrase(keyword);
         String ws = workshop == null ? "" : workshop.trim();
         var ownerScope = access.nativeReadScope("p.maker_id", "progressOwners");
         String filters = progressFilters(kw, ws, dateFrom, dateTo, ownerScope.predicate());
@@ -1407,6 +1421,8 @@ public class ProductionPlanService {
         String orderBy = PROGRESS_SORT.getOrDefault(
                 sort == null ? "" : sort,
                 PROGRESS_SORT.get("billDate"));
+        String searchOrder = kw.isEmpty() ? "" : TaskKeywordSearch.rankNamesFirst(
+                kw, new String[]{"p.workshop_name"}, new String[]{}, new String[]{"p.bill_no"}) + ", ";
         var dataQ = em.createNativeQuery("""
                 SELECT p.id, p.bill_no, p.bill_date, p.delivery_date, p.workshop_name, p.department_id,
                        COUNT(i.id), COALESCE(SUM(i.qty),0), COALESCE(SUM(i.fqty),0),
@@ -1415,8 +1431,10 @@ public class ProductionPlanService {
                        p.is_pinned, p.is_important,
                        COALESCE(SUM(fn_plan_original_inbound_qty(i.id)),0),
                        p.status, p.is_closed, p.is_stopped, p.is_canceled
-                """ + filters + " ORDER BY p.is_pinned DESC, " + orderBy + " LIMIT :lim OFFSET :off");
+                """ + filters + " ORDER BY " + searchOrder
+                + "p.is_pinned DESC, " + orderBy + ", p.id LIMIT :lim OFFSET :off");
         bindProgressFilters(dataQ, closed, kw, ws, dateFrom, dateTo);
+        TaskKeywordSearch.bind(dataQ, kw, true);
         ownerScope.bind(dataQ);
         @SuppressWarnings("unchecked")
         List<Object[]> rs = (List<Object[]>) dataQ
@@ -1636,7 +1654,7 @@ public class ProductionPlanService {
     @Transactional(readOnly = true)
     public Map<String, Object> progressSummary(boolean closed, String keyword, String workshop,
                                                java.time.LocalDate dateFrom, java.time.LocalDate dateTo) {
-        String kw = keyword == null ? "" : keyword.trim().toLowerCase();
+        String kw = KeywordSearch.phrase(keyword);
         String ws = workshop == null ? "" : workshop.trim();
         var ownerScope = access.nativeReadScope("p.maker_id", "progressOwners");
         String filters = progressFilters(kw, ws, dateFrom, dateTo, ownerScope.predicate());

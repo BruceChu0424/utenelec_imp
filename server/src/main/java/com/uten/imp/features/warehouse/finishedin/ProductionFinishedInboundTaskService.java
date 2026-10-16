@@ -3,6 +3,8 @@ package com.uten.imp.features.warehouse.finishedin;
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.NativeFacets;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
@@ -69,7 +71,9 @@ public class ProductionFinishedInboundTaskService {
                            WHERE report_item.is_public_output AND NOT report_item.is_actual_surplus), 0)
                            AS public_qty,
                        COALESCE(SUM(report_item.qty) FILTER (WHERE report_item.is_actual_surplus), 0)
-                           AS actual_surplus_qty
+                           AS actual_surplus_qty,
+                       array_agg(DISTINCT goods.code) AS goods_codes,
+                       array_agg(DISTINCT goods.name) AS goods_names
                 FROM production_daily_reports report
                 JOIN production_daily_report_items report_item
                   ON report_item.report_id = report.id
@@ -139,7 +143,9 @@ public class ProductionFinishedInboundTaskService {
                            WHERE lot_source.is_public_output AND NOT lot_source.is_actual_surplus), 0)
                            AS public_qty,
                        COALESCE(SUM(item.qty) FILTER (WHERE lot_source.is_actual_surplus), 0)
-                           AS actual_surplus_qty
+                           AS actual_surplus_qty,
+                       array_agg(DISTINCT item.goods_code_snapshot) AS goods_codes,
+                       array_agg(DISTINCT item.goods_name_snapshot) AS goods_names
                 FROM stock_documents document
                 JOIN stock_document_items item
                   ON item.doc_id = document.id
@@ -254,9 +260,7 @@ public class ProductionFinishedInboundTaskService {
             return new PageResponse<>(
                     List.of(), page, size, 0, 0);
         }
-        String normalized = keyword == null
-                ? ""
-                : keyword.strip().toLowerCase();
+        String normalized = KeywordSearch.phrase(keyword);
         String normalizedStage = taskStage == null
                 ? ""
                 : taskStage.strip().toUpperCase();
@@ -282,11 +286,12 @@ public class ProductionFinishedInboundTaskService {
                        pending_qty, created_at, residual_task,
                        public_qty, actual_surplus_qty
                 FROM task_documents
-                """ + filter + "\n" + taskOrderBy(sort, order) + """
+                """ + filter + "\n" + taskOrderBy(sort, order, normalized) + """
                 OFFSET :offset LIMIT :limit
                 """);
         bindTaskFilters(rowsQuery, normalized, normalizedStage, warehouseId,
                 scoped ? warehouseScope : null, taskNo, planNo);
+        TaskKeywordSearch.bind(rowsQuery, normalized, true);
         rowsQuery.setParameter("offset", pageable.getOffset());
         rowsQuery.setParameter("limit", size);
         List<ProductionFinishedInboundTask> items =
@@ -311,7 +316,7 @@ public class ProductionFinishedInboundTaskService {
             return java.util.Map.of(
                     "taskNo", List.of(), "planNo", List.of());
         }
-        String normalized = keyword == null ? "" : keyword.strip().toLowerCase();
+        String normalized = KeywordSearch.phrase(keyword);
         String normalizedStage = taskStage == null ? "" : taskStage.strip().toUpperCase();
         boolean scoped = warehouseScope != null && warehouseScope.active();
         String filter = taskFilter(normalized, normalizedStage, warehouseId,
@@ -345,17 +350,9 @@ public class ProductionFinishedInboundTaskService {
      *  命名参数按条件出现，未出现的条件不绑定（Hibernate 6 校验未知命名参数）。 */
     private static String taskFilter(String keyword, String taskStage, UUID warehouseId,
             WarehouseTaskScope activeScope, String taskNo, String planNo) {
-        return """
-                 WHERE (
-                     :keyword = ''
-                     OR LOWER(
-                         COALESCE(document_no, '') || ' ' ||
-                         COALESCE(plan_no, '') || ' ' ||
-                         COALESCE(report_nos, '') || ' ' ||
-                         COALESCE(goods_summary, '')
-                     ) LIKE :keyword_like
-                 )
-                """ + (taskStage.isEmpty()
+        return " WHERE " + TaskKeywordSearch.condition(keyword,
+                "document_no", "plan_no", "report_nos", "goods_summary", "warehouse_name")
+                + (taskStage.isEmpty()
                         ? ""
                         : " AND task_stage = :task_stage\n")
                 + (warehouseId == null
@@ -379,8 +376,7 @@ public class ProductionFinishedInboundTaskService {
     /** 绑定共用过滤参数（与 [taskFilter] 的条件一一对应）。 */
     private static void bindTaskFilters(Query query, String keyword, String taskStage,
             UUID warehouseId, WarehouseTaskScope activeScope, String taskNo, String planNo) {
-        query.setParameter("keyword", keyword);
-        query.setParameter("keyword_like", "%" + keyword + "%");
+        TaskKeywordSearch.bind(query, keyword, false);
         if (!taskStage.isEmpty()) query.setParameter("task_stage", taskStage);
         if (warehouseId != null) query.setParameter("warehouse_id", warehouseId);
         if (activeScope != null) query.setParameter("warehouse_scope", activeScope.idsCsv());
@@ -390,15 +386,18 @@ public class ProductionFinishedInboundTaskService {
 
     /** 排序 ORDER BY（2026-09-25 单号列统一）：白名单映射前端列 key→SQL 表达式；
      *  未知/空→默认（进队时间升序, 任务 id 稳定序）。 */
-    private static String taskOrderBy(String sort, String order) {
+    private static String taskOrderBy(String sort, String order, String keyword) {
         String dir = "desc".equalsIgnoreCase(order) ? "DESC" : "ASC";
-        return switch (sort == null ? "" : sort) {
+        String result = switch (sort == null ? "" : sort) {
             case "taskNo" -> "ORDER BY " + TASK_NO_EXPR + " " + dir
                     + " NULLS LAST, created_at ASC, task_id ASC\n";
             case "planNo" -> "ORDER BY plan_no " + dir
                     + " NULLS LAST, created_at ASC, task_id ASC\n";
             default -> "ORDER BY created_at ASC, task_id ASC\n";
         };
+        return KeywordSearch.terms(keyword).isEmpty() ? result : result.replace("ORDER BY ",
+                "ORDER BY " + TaskKeywordSearch.rankNamesFirst(keyword, new String[]{}, new String[]{"goods_names"},
+                        new String[]{TASK_NO_EXPR, "plan_no", "report_nos"}, "goods_codes") + ", ");
     }
 
     @Transactional(readOnly = true)

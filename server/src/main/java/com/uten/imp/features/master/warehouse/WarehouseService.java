@@ -12,6 +12,7 @@ import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
+import com.uten.imp.common.util.NameRefKeyword;
 import com.uten.imp.common.web.Pageables;
 import com.uten.imp.features.master.warehouse.dto.FacetBucket;
 import com.uten.imp.features.master.warehouse.dto.WarehouseDetail;
@@ -67,13 +68,17 @@ public class WarehouseService {
      */
     private static Specification<Warehouse> masterOrder(Specification<Warehouse> filter) {
         return (root, q, cb) -> {
-            if (q != null && !Long.class.equals(q.getResultType())) {
-                q.orderBy(
-                        cb.asc(cb.selectCase().when(cb.isNull(root.get("parentId")), 0).otherwise(1)),
-                        cb.asc(root.get("code")),
-                        cb.asc(root.get("id")));
+            Predicate predicate=filter.toPredicate(root,q,cb);
+            if(q != null && !Long.class.equals(q.getResultType())) {
+                var orders=new ArrayList<jakarta.persistence.criteria.Order>();
+                // 主仓层级是业务次序；匹配等级只排列同一层级内的候选。
+                orders.add(cb.asc(cb.selectCase().when(cb.isNull(root.get("parentId")),0).otherwise(1)));
+                orders.addAll(q.getOrderList());
+                orders.add(cb.asc(root.get("code")));
+                orders.add(cb.asc(root.get("id")));
+                q.orderBy(orders);
             }
-            return filter.toPredicate(root, q, cb);
+            return predicate;
         };
     }
 
@@ -145,13 +150,10 @@ public class WarehouseService {
                                          CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
-            if (f.keyword() != null && !f.keyword().isBlank()) {
-                String like = "%" + f.keyword().toLowerCase() + "%";
-                ps.add(cb.or(
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("code")), like),
-                        cb.like(cb.lower(root.get("location")), like)));
-            }
+            ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), pattern -> cb.or(
+                        NameRefKeyword.text(cb, root.get("name"), pattern),
+                        NameRefKeyword.text(cb, root.get("code"), pattern),
+                        NameRefKeyword.text(cb, root.get("location"), pattern))));
             addEq(ps, cb, root, "code", f.code());
             addEq(ps, cb, root, "name", f.name());
             addEq(ps, cb, root, "status", f.status());

@@ -216,6 +216,19 @@ class WorkshopMaterialRequestCandidatesPostgresTest {
         assertThat(service.requestMaterials(workshop, null, List.of(UUID.randomUUID()), 1, 50).getItems()).isEmpty();
     }
 
+    @Test void completeGoodsNameAndCodeRankBeforeFamiliarPartialMatchesAcrossPages() {
+        UUID near=goods("A-NEAR","Metric Screw extra",kg,"ORDER");
+        UUID exact=goods("Z-EXACT","Metric Screw",kg,"ORDER");
+        db.update("INSERT INTO v_workshop_material_bin_ledger VALUES (?,?,NULL)",bin,near);
+        var first=service.requestMaterials(workshop,"Metric Screw",null,1,1);
+        assertThat(first.getItems()).extracting(MaterialStockOption::goodsId).containsExactly(exact);
+        assertThat(first.getTotal()).isEqualTo(2);
+        assertThat(service.requestMaterials(workshop,"Metric Screw",null,2,1).getItems())
+                .extracting(MaterialStockOption::goodsId).containsExactly(near);
+        assertThat(service.requestMaterials(workshop,"Z-EXACT Screw",null,1,20).getItems())
+                .extracting(MaterialStockOption::goodsId).containsExactly(exact);
+    }
+
     @Test void invalidDefaultWarehousesAndDisabledColorsAreNotAdvertised() {
         UUID material = goods("PP", "颗粒", kg, "ORDER");
         UUID disabled = color("停用色");

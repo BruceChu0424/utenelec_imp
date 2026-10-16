@@ -8,8 +8,8 @@ import java.util.UUID;
 /**
  * 模具列表项。
  *
- * <p>仅承载表格中"有数据"的列（编号/名称/存放位置/制造日期/备注/状态）+ legacyId。
- * 表格里另有 4 列（模数/套数/模具类型/制造商）在表无对应字段，由前端以 null 取值
+ * <p>仅承载表格中"有数据"的列（编号/名称/存放位置/制造日期/制造商/备注/状态）+ legacyId。
+ * 表格里另有 3 列（模数/套数/模具类型）在表无对应字段，由前端以 null 取值
  * 显示"—"，不参与后端筛选/facet，故不在此 DTO 内。
  *
  * <p>字段均为小写命名，无 Jackson 连续大写陷阱（参考 goods 的 mWeight/cNumber）。
@@ -26,4 +26,5 @@ public class MouldListItem {
     private String remark;      // 备注
     private Integer legacyId;
     private UUID categoryId;    // 所属分类 id（模具资料页"搜模具定位分类"用）
+    private String manufacturer;
 }

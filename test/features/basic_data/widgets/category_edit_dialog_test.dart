@@ -327,7 +327,7 @@ void main() {
     await tester.tap(find.byType(UtenLocationField));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('目标上级分类(CAT-TARGET)'));
+    await tester.tap(find.text('目标上级分类'));
     await tester.pump();
 
     expect(find.text('选择上级分类'), findsOneWidget);
@@ -348,7 +348,7 @@ void main() {
 
     await tester.tap(find.byType(UtenLocationField));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('目标上级分类(CAT-TARGET)'));
+    await tester.tap(find.text('目标上级分类'));
     await tester.pump();
     await tester.tap(_pickerSheetAction('确定'));
     await tester.pumpAndSettle();
@@ -436,7 +436,7 @@ void main() {
     expect(confirm.hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('目标上级分类(CAT-TARGET)'));
+    await tester.tap(find.text('目标上级分类'));
     await tester.pump();
 
     expect(bottomSheet, findsOneWidget);

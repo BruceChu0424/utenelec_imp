@@ -15,6 +15,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../shared/search/keyword_search.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -813,13 +814,25 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                 child: StatefulBuilder(
                   builder: (ctx, setOverlayState) {
                     final q = search.text.trim().toLowerCase();
-                    final filtered = widget.items
+                    final ranked = widget.items.indexed
                         .where(
-                          (it) =>
-                              it.visible &&
-                              (q.isEmpty || it.label.toLowerCase().contains(q)),
+                          (entry) =>
+                              entry.$2.visible &&
+                              keywordSearchRank([entry.$2.label], q) != null,
                         )
                         .toList();
+                    // Indented choices carry a parent/child order supplied by
+                    // their host. Never detach children from their group header.
+                    if (q.isNotEmpty &&
+                        !widget.items.any((item) => item.indent > 0)) {
+                      ranked.sort((a, b) {
+                        final rank = keywordSearchRank([
+                          a.$2.label,
+                        ], q)!.compareTo(keywordSearchRank([b.$2.label], q)!);
+                        return rank == 0 ? a.$1.compareTo(b.$1) : rank;
+                      });
+                    }
+                    final filtered = [for (final entry in ranked) entry.$2];
                     final header = <Widget>[
                       if (searchable)
                         Padding(

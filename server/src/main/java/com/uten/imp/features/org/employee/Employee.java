@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.DynamicUpdate;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -23,6 +24,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @Entity
 @Table(name = "employees")
+@DynamicUpdate
 public class Employee extends SoftDeletableEntity {
 
     @Column(nullable = false, unique = true)

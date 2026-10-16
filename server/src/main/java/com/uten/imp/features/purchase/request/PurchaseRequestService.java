@@ -93,7 +93,8 @@ public class PurchaseRequestService {
         Pageable pageable = Pageables.of(page, size,
                 TableSort.resolve(sort, order, Sort.by(Sort.Direction.DESC, "billDate"),
                         Map.of("billDate", "billDate", "total", "totalLocal", "billNo", "billNo")));
-        Page<PurchaseRequest> p = requestRepo.findAll(spec, pageable);
+        var searchPage = NameRefKeyword.page(spec, pageable, f.keyword());
+        Page<PurchaseRequest> p = requestRepo.findAll(searchPage.specification(), searchPage.pageable());
         PageResponse<RequestListItem> result = new PageResponse<>(p.map(this::toList).getContent(), p);
         return p.stream().noneMatch(PurchaseRequest::isDeleted) ? result
                 : retainedRecords.page(result, "purchase_requests", p.getContent());
@@ -115,12 +116,13 @@ public class PurchaseRequestService {
             if (f.keyword() != null && !f.keyword().isBlank()) {
                 // 全行可搜（2026-10-09「行里显示什么就能按什么搜」）：单据号 + 供应商名称
                 // + 仓库名称（名称经 NameRefKeyword 转成外键 IN 子查询，count 同谓词派生）。
-                String kw = NameRefKeyword.like(f.keyword());
+                ps.add(NameRefKeyword.match(root, q, cb, f.keyword(), kw -> {
                 var kws = NameRefKeyword.keywords();
-                kws.add(cb.like(cb.lower(root.get("billNo")), kw));
+                kws.add(NameRefKeyword.text(cb, root.get("billNo"), kw));
                 NameRefKeyword.byName(kws, q, cb, root.get("warehouseId"),
                         com.uten.imp.features.master.warehouse.Warehouse.class, "name", kw);
-                ps.add(cb.or(kws.toArray(new Predicate[0])));
+                return cb.or(kws.toArray(new Predicate[0]));
+                }));
             }
             if (f.warehouseId() != null) ps.add(cb.equal(root.get("warehouseId"), f.warehouseId()));
             if (f.status() != null) ps.add(cb.equal(root.get("status"), f.status()));

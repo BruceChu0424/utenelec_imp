@@ -1,5 +1,8 @@
 package com.uten.imp.features.production.quality;
 
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+
 import com.uten.imp.common.util.NativeQueryResults;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -81,7 +84,10 @@ public class ProductionFqcRecordQueryService {
         Query pageQuery = em.createNativeQuery(
                 "SELECT record.* FROM " + records
                         + " WHERE " + predicate
-                        + " " + orderBy(rawSort, rawOrder)
+                        + " " + orderBy(rawSort, rawOrder).replace("ORDER BY ", "ORDER BY "
+                                + TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                                        new String[]{"record.goods_name"}, new String[]{},
+                                        new String[]{"record.goods_code", "record.source_no", "record.reference_no", "record.sheet_no"}) + ", ")
                         + " OFFSET :offset LIMIT :limit");
         bindFilters(pageQuery, filter, docNo, ownerScope, true);
         pageQuery.setParameter("offset", filter.offset());
@@ -232,17 +238,11 @@ public class ProductionFqcRecordQueryService {
             DocNoFilter docNo,
             NativeReadScope ownerScope,
             boolean includeDecision) {
-        StringBuilder predicate = new StringBuilder("""
-                %s
-                  AND (:keyword = '' OR LOWER(CONCAT_WS(' ',
-                      record.source_no, record.reference_no,
-                      record.partner_name, record.warehouse_name,
-                      record.goods_code, record.goods_name,
-                      record.color_name, record.unit_name,
-                      record.inspector_name, record.reason,
-                      record.disposition_code
-                  )) LIKE :keywordLike)
-                """.formatted(ownerScope == null ? "1=1" : ownerScope.predicate()));
+        StringBuilder predicate = new StringBuilder(ownerScope == null ? "1=1" : ownerScope.predicate());
+        predicate.append(" AND ").append(TaskKeywordSearch.conditionParameter("keyword",
+                "record.source_no", "record.reference_no", "record.sheet_no", "record.partner_name",
+                "record.warehouse_name", "record.goods_code", "record.goods_name", "record.color_name",
+                "record.unit_name", "record.inspector_name", "record.reason", "record.disposition_code"));
         if (filter.from() != null) {
             predicate.append(" AND record.decided_at >= :fromAt");
         }
@@ -291,8 +291,7 @@ public class ProductionFqcRecordQueryService {
             NativeReadScope ownerScope,
             boolean includeDecision) {
         if (ownerScope != null) ownerScope.bind(query);
-        query.setParameter("keyword", filter.keyword());
-        query.setParameter("keywordLike", "%" + filter.keyword() + "%");
+        query.setParameter("keyword", KeywordSearch.phrase(filter.keyword()));
         if (filter.from() != null) query.setParameter("fromAt", filter.from());
         if (filter.to() != null) query.setParameter("toAt", filter.to());
         if (filter.sourceType() != null) {
@@ -339,8 +338,7 @@ public class ProductionFqcRecordQueryService {
                 rawEffective, EFFECTS, "检测记录当前效力仅支持 ACTIVE、EXPIRED 或 CANCELLED");
         String disposition = normalizeWhitelist(
                 rawDisposition, DISPOSITIONS, "检测记录的不良处置方式不正确");
-        String keyword = rawKeyword == null
-                ? "" : rawKeyword.strip().toLowerCase(Locale.ROOT);
+        String keyword = KeywordSearch.phrase(rawKeyword);
         if (keyword.length() > 200) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,

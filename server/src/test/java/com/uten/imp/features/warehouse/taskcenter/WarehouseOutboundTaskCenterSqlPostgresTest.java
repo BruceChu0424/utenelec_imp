@@ -106,6 +106,32 @@ class WarehouseOutboundTaskCenterSqlPostgresTest {
         assertThat(jdbc.queryForList(same.billNoFacetsSql(), parameters(same))).hasSize(4);
     }
 
+    @Test void exactSearchPrecedesNearerDatesAndCrossFieldWordsKeepOwnerWarehouseAndFacetScope() {
+        UUID exact=UUID.randomUUID(),near=UUID.randomUUID(),bill=UUID.randomUUID();
+        UUID exactItem=stock(exact,"OTHER_OUT","NAME",ACTOR,WAREHOUSE_A,0,0);
+        UUID nearItem=stock(near,"OTHER_OUT","NEAR",ACTOR,WAREHOUSE_A,0,0);
+        stock(bill,"OTHER_OUT","Metric Screw",ACTOR,WAREHOUSE_A,0,0);
+        stock(UUID.randomUUID(),"OTHER_OUT","Metric Screw",OTHER,WAREHOUSE_A,0,0);
+        stock(UUID.randomUUID(),"OTHER_OUT","Metric Screw",ACTOR,WAREHOUSE_B,0,0);
+        jdbc.update("UPDATE stock_document_items SET goods_name_snapshot='Metric Screw' WHERE id=:id",Map.of("id",exactItem));
+        jdbc.update("UPDATE stock_document_items SET goods_name_snapshot='Metric Screw extra' WHERE id=:id",Map.of("id",nearItem));
+        jdbc.update("UPDATE stock_documents SET bill_date='2026-10-15' WHERE id=:id",Map.of("id",near));
+        var access=new WarehouseOutboundTaskCenterSql.Access(false,false,false,true,false,new OwnerScope(false,Set.of(ACTOR)));
+        var scope=new WarehouseTaskScope(true,List.of(WAREHOUSE_A),false);
+        var search=WarehouseOutboundTaskCenterSql.build(new Filter("OTHER",null,"Metric Screw",null,null,null,null,1,1),access,scope,"");
+        assertThat(count(search)).isEqualTo(3);
+        assertThat(rows(search,1,1)).extracting(row->row.get("id")).containsExactly(exact);
+        assertThat(rows(search,2,1)).extracting(row->row.get("id")).containsExactly(near);
+        assertThat(rows(search,3,1)).extracting(row->row.get("id")).containsExactly(bill);
+        assertThat(jdbc.queryForList(search.facetsSql(),parameters(search)).getFirst().get("count")).isEqualTo(3L);
+        var cross=WarehouseOutboundTaskCenterSql.build(new Filter("OTHER",null,"NAME Screw",null,null,null,null,1,20),access,scope,"");
+        assertThat(rows(cross,1,20)).extracting(row->row.get("id")).containsExactly(exact);
+        jdbc.update("UPDATE stock_document_items SET goods_code_snapshot='A%_B' WHERE id=:id",Map.of("id",exactItem));
+        jdbc.update("UPDATE stock_document_items SET goods_code_snapshot='AxYB' WHERE id=:id",Map.of("id",nearItem));
+        var literal=WarehouseOutboundTaskCenterSql.build(new Filter("OTHER",null,"A%_B",null,null,null,null,1,20),access,scope,"");
+        assertThat(rows(literal,1,20)).extracting(row->row.get("id")).containsExactly(exact);
+    }
+
     @Test
     void activeAndHistoryPartitionEveryPhysicalStageBeforePagesCountsAndFacets() {
         UUID pendingSale=UUID.randomUUID(),completedSale=UUID.randomUUID(),cancelledSale=UUID.randomUUID();

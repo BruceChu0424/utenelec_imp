@@ -17,16 +17,16 @@ void main() {
     await tester.enterText(_searchEditable(), '办公');
     await tester.pump();
 
-    expect(find.text('办公费用(A100)'), findsOneWidget);
-    expect(find.text('差旅费用(B200)'), findsNothing);
-    expect(find.text('费用(EXP)'), findsOneWidget);
+    expect(find.text('办公费用'), findsOneWidget);
+    expect(find.text('差旅费用'), findsNothing);
+    expect(find.text('费用'), findsOneWidget);
 
     await tester.enterText(_searchEditable(), 'b200');
     await tester.pump();
 
-    expect(find.text('差旅费用(B200)'), findsOneWidget);
-    expect(find.text('办公费用(A100)'), findsNothing);
-    expect(find.text('费用(EXP)'), findsOneWidget);
+    expect(find.text('差旅费用'), findsOneWidget);
+    expect(find.text('办公费用'), findsNothing);
+    expect(find.text('费用'), findsOneWidget);
   });
 
   testWidgets('sortByCode=false 时保留服务端输入顺序', (tester) async {
@@ -37,8 +37,8 @@ void main() {
       ], sortByCode: false),
     );
 
-    final first = find.text('优先显示(Z900)');
-    final second = find.text('随后显示(A100)');
+    final first = find.text('优先显示');
+    final second = find.text('随后显示');
     expect(first, findsOneWidget);
     expect(second, findsOneWidget);
     expect(tester.getTopLeft(first).dy, lessThan(tester.getTopLeft(second).dy));

@@ -369,26 +369,28 @@ public class WorkshopMaterialRequisitionService {
         }
         String warehouseFilter = scope.requisitionWarehouseFilter(warehouseScope, params);
         if (!warehouseFilter.isEmpty()) where.append(" AND ").append(warehouseFilter);
-        if (keyword != null && !keyword.isBlank()) {
-            params.addValue("keyword", "%" + keyword.strip().toLowerCase(java.util.Locale.ROOT) + "%");
-            where.append("""
-                     AND (LOWER(COALESCE(requisition.request_no,'')) LIKE :keyword
-                       OR EXISTS (SELECT 1 FROM departments search_workshop
-                                  WHERE search_workshop.id=requisition.workshop_department_id
-                                    AND LOWER(COALESCE(search_workshop.name,'')) LIKE :keyword)
-                       OR EXISTS (SELECT 1 FROM workshop_material_requisition_lines search_line
-                                  JOIN goods search_goods ON search_goods.id=search_line.goods_id
-                                  WHERE search_line.requisition_id=requisition.id
-                                    AND (LOWER(COALESCE(search_goods.code,'')) LIKE :keyword
-                                      OR LOWER(COALESCE(search_goods.name,'')) LIKE :keyword)))
-                    """);
-        }
+        params.addValue("keyword", com.uten.imp.common.util.KeywordSearch.phrase(keyword));
+        String from = """
+                FROM workshop_material_requisitions requisition
+                LEFT JOIN departments search_workshop ON search_workshop.id=requisition.workshop_department_id
+                LEFT JOIN LATERAL (
+                  SELECT string_agg(concat_ws(' ',goods.code,goods.name),' ') AS goods_text,
+                         array_agg(DISTINCT goods.code) AS goods_codes,array_agg(DISTINCT goods.name) AS goods_names
+                  FROM workshop_material_requisition_lines line JOIN goods ON goods.id=line.goods_id
+                  WHERE line.requisition_id=requisition.id
+                ) search_material ON TRUE
+                """;
+        where.append(" AND ").append(com.uten.imp.common.util.TaskKeywordSearch.conditionParameter("keyword",
+                "requisition.request_no", "search_workshop.name", "search_material.goods_text"));
+        String rank = com.uten.imp.common.util.TaskKeywordSearch.rankNamesFirstParameter("keyword",
+                new String[]{}, new String[]{"search_material.goods_names"},
+                new String[]{"requisition.request_no"}, "search_material.goods_codes");
         var pageable = Pageables.of(page, size);
-        Long total = db.queryForObject("SELECT count(*) FROM workshop_material_requisitions requisition WHERE "
+        Long total = db.queryForObject("SELECT count(*) " + from + " WHERE "
                 + where, params, Long.class);
         params.addValue("limit", pageable.getPageSize()).addValue("offset", pageable.getOffset());
-        List<UUID> ids = db.queryForList("SELECT requisition.id FROM workshop_material_requisitions requisition WHERE "
-                + where + " ORDER BY requisition.requested_at DESC, requisition.id LIMIT :limit OFFSET :offset",
+        List<UUID> ids = db.queryForList("SELECT requisition.id " + from + " WHERE "
+                + where + " ORDER BY " + rank + ",requisition.requested_at DESC, requisition.id LIMIT :limit OFFSET :offset",
                 params, UUID.class);
         long count = total == null ? 0 : total;
         int pages = (int) ((count + pageable.getPageSize() - 1) / pageable.getPageSize());

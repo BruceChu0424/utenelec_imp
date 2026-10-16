@@ -7,7 +7,7 @@ import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
 
-import java.util.Locale;
+import com.uten.imp.common.util.NameRefKeyword;
 import java.util.UUID;
 
 /** Shared list keyword predicate that searches immutable line snapshots. */
@@ -28,7 +28,12 @@ public final class SubcontractGoodsKeyword {
             Class<I> itemType,
             String documentIdAttribute,
             String keyword) {
-        String pattern = "%" + keyword.toLowerCase(Locale.ROOT) + "%";
+        return NameRefKeyword.match(document, query, cb, keyword,
+                pattern -> pattern(cb, query, document, itemType, documentIdAttribute, pattern));
+    }
+
+    private static <D, I> Predicate pattern(CriteriaBuilder cb, CriteriaQuery<?> query,
+            Root<D> document, Class<I> itemType, String documentIdAttribute, String pattern) {
         Subquery<UUID> itemMatch = query.subquery(UUID.class);
         Root<I> item = itemMatch.from(itemType);
         Expression<String> itemName = item.get("goodsNameSnapshot");
@@ -36,25 +41,27 @@ public final class SubcontractGoodsKeyword {
         itemMatch.select(item.get(documentIdAttribute));
         itemMatch.where(
                 cb.equal(item.get(documentIdAttribute), document.get("id")),
+                itemType.equals(com.uten.imp.features.subcontract.order.SubcontractOrderItem.class)
+                        ? cb.isFalse(item.get("deleted")) : cb.conjunction(),
                 cb.or(
-                        cb.like(cb.lower(cb.coalesce(itemName, "")), pattern),
-                        cb.like(cb.lower(cb.coalesce(itemCode, "")), pattern)));
+                        NameRefKeyword.text(cb, cb.coalesce(itemName, ""), pattern),
+                        NameRefKeyword.text(cb, cb.coalesce(itemCode, ""), pattern)));
         Subquery<UUID> suppliers = query.subquery(UUID.class);
         Root<com.uten.imp.features.master.supplier.Supplier> supplier =
                 suppliers.from(com.uten.imp.features.master.supplier.Supplier.class);
         suppliers.select(supplier.get("id")).where(
                 cb.isFalse(supplier.get("deleted")),
                 cb.or(
-                        cb.like(cb.lower(supplier.get("name")), pattern),
-                        cb.like(cb.lower(supplier.get("code")), pattern)));
+                        NameRefKeyword.text(cb, supplier.get("name"), pattern),
+                        NameRefKeyword.text(cb, supplier.get("code"), pattern)));
         Subquery<UUID> warehouses = query.subquery(UUID.class);
         Root<com.uten.imp.features.master.warehouse.Warehouse> warehouse =
                 warehouses.from(com.uten.imp.features.master.warehouse.Warehouse.class);
         warehouses.select(warehouse.get("id")).where(
                 cb.isFalse(warehouse.get("deleted")),
-                cb.like(cb.lower(warehouse.get("name")), pattern));
+                NameRefKeyword.text(cb, warehouse.get("name"), pattern));
         return cb.or(
-                cb.like(cb.lower(document.get("billNo")), pattern),
+                NameRefKeyword.text(cb, document.get("billNo"), pattern),
                 cb.exists(itemMatch),
                 document.get("supplierId").in(suppliers),
                 document.get("warehouseId").in(warehouses));

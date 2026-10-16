@@ -29,7 +29,19 @@ abstract interface class ClientRepository {
     bool selectableOnly = false,
   });
 
-  /// 全局搜客户（客户资料页"搜客户定位分类"用；不限分类，按简称/编码/全称/联系人/手机模糊）。
+  /// 不限分类的分页结果；沿用字段筛选、排序与客户可选范围约束。
+  Future<PagedResult<ClientListItem>> listGlobal({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
+  });
+
+  /// 兼容选择器等调用方的全局搜索入口。
   Future<PagedResult<ClientListItem>> search(
     String keyword, {
     int page = 1,
@@ -40,6 +52,8 @@ abstract interface class ClientRepository {
 
   /// 某分类（子树）下的字段 facet（各字段可选值 + 空值计数）。
   Future<ClientFacets> facets(String categoryId);
+
+  Future<ClientFacets> globalFacets({bool excludeLegacyFinanceStub = true});
 
   Future<ClientDetail> detail(String id);
 
@@ -81,9 +95,53 @@ class DioClientRepository implements ClientRepository {
     String? order,
     bool excludeLegacyFinanceStub = true,
     bool selectableOnly = false,
+  }) => _list(
+    categoryId,
+    page: page,
+    size: size,
+    keyword: keyword,
+    filters: filters,
+    sort: sort,
+    order: order,
+    excludeLegacyFinanceStub: excludeLegacyFinanceStub,
+    selectableOnly: selectableOnly,
+  );
+
+  @override
+  Future<PagedResult<ClientListItem>> listGlobal({
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
+  }) => _list(
+    null,
+    page: page,
+    size: size,
+    keyword: keyword,
+    filters: filters,
+    sort: sort,
+    order: order,
+    excludeLegacyFinanceStub: excludeLegacyFinanceStub,
+    selectableOnly: selectableOnly,
+  );
+
+  Future<PagedResult<ClientListItem>> _list(
+    String? categoryId, {
+    int page = 1,
+    int size = 20,
+    String? keyword,
+    Map<String, String?> filters = const {},
+    String? sort,
+    String? order,
+    bool excludeLegacyFinanceStub = true,
+    bool selectableOnly = false,
   }) async {
     final query = <String, dynamic>{
-      'categoryId': categoryId,
+      'categoryId': ?categoryId,
       'page': page,
       'size': size,
       if (sort != null && sort.isNotEmpty) 'sort': sort,
@@ -145,6 +203,17 @@ class DioClientRepository implements ClientRepository {
     final json = await api.get(
       ApiEndpoints.clientsFacets,
       query: {'categoryId': categoryId},
+    );
+    return ClientFacets.fromJson(json);
+  }
+
+  @override
+  Future<ClientFacets> globalFacets({
+    bool excludeLegacyFinanceStub = true,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.clientsFacets,
+      query: {'excludeLegacyFinanceStub': excludeLegacyFinanceStub},
     );
     return ClientFacets.fromJson(json);
   }

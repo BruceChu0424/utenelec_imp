@@ -39,7 +39,24 @@ class StockInstantInventorySearchContractTest {
                 .contains("g.name ILIKE :kw", "g.code ILIKE :kw")
                 .contains("g.model ILIKE :kw", "g.c_number ILIKE :kw")
                 .doesNotContain("g.spec ILIKE", "g.series ILIKE", "auto_created", "status");
-        verify(query).setParameter("kw", "%G-001%");
+        verify(query).setParameter("kw", "%g-001%");
+    }
+
+    @Test
+    void everyInventoryLocationWordIsRequiredAndWildcardsStayLiteral() {
+        EntityManager em = mock(EntityManager.class);
+        Query query = mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        new StockQueryService(null, em, mock(StockCostMasker.class))
+                .instantInventoryMatchingCategoryIds("螺丝\u3000M3_20%", Set.of(UUID.randomUUID()));
+
+        var sql = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertThat(sql.getValue()).contains("g.name ILIKE :kw ESCAPE '\\'", ") AND (",
+                "g.name ILIKE :kw1 ESCAPE '\\'", "g.c_number ILIKE :kw1 ESCAPE '\\'");
+        verify(query).setParameter("kw", "%螺丝%");
+        verify(query).setParameter("kw1", "%m3\\_20\\%%");
     }
 
     @Test

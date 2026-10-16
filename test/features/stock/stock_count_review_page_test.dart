@@ -10,6 +10,7 @@ import 'package:uten_imp/features/basic_data/models/goods_issue_method.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_issue_method_repository.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/stock/counts/models/stock_count_request.dart';
@@ -33,12 +34,14 @@ class _Repo implements StockCountRequestRepository {
     this.lineCount = 1,
     this.requestCount = 1,
     this.reviewRoute = 'FINANCE',
+    this.requestStatus = 'PENDING',
   });
   final bool stale;
   final String? setupBasis;
   final int lineCount;
   final int requestCount;
   final String reviewRoute;
+  final String requestStatus;
   final batchCalls = <List<Map<String, dynamic>>>[];
   final queries = <({String? reviewRoute, String? status, int page})>[];
   String? lastScopeWarehouseId;
@@ -55,11 +58,11 @@ class _Repo implements StockCountRequestRepository {
     warehouseId: 'w',
     warehouseName: '原料仓',
     reviewRoute: reviewRoute,
-    status: 'PENDING',
+    status: requestStatus,
     version: 7,
     submittedByName: '张三',
     reason: '月末盘点',
-    allowedActions: actions,
+    allowedActions: requestStatus == 'PENDING' ? actions : const [],
     lines: [
       for (var i = 0; i < lineCount; i++)
         StockCountRequestLine(
@@ -293,6 +296,82 @@ const _materialReviewPermissions = {
 };
 
 void main() {
+  for (final history in [false, true]) {
+    testWidgets('内嵌盘点${history ? '历史' : '审核'}详情去掉重复头部并保留业务表格与动作', (
+      tester,
+    ) async {
+      final repo = _Repo(
+        reviewRoute: 'WAREHOUSE',
+        requestStatus: history ? 'APPROVED' : 'PENDING',
+      );
+      await _pump(
+        tester,
+        repo,
+        reviewRoute: 'WAREHOUSE',
+        embedded: true,
+        initialStatus: history ? 'HISTORY' : 'PENDING',
+        permissions: {Perm.stockCountWarehouseReview},
+      );
+      expect(find.text('返回审核列表'), findsNothing);
+      expect(find.textContaining('PD01 ·'), findsNothing);
+      expect(find.textContaining('提交人：'), findsNothing);
+      expect(
+        find.byType(MasterDataTableView<StockCountRequestLine>),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('stock-count-approve')),
+        history ? findsNothing : findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('stock-count-reject')),
+        history ? findsNothing : findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('独立盘点审核保留摘要与页面返回，返回仍能进入审核队列', (tester) async {
+    await _pump(tester, _Repo());
+    expect(find.textContaining('PD01 · 原料仓 ·'), findsOneWidget);
+    expect(find.textContaining('提交人：'), findsOneWidget);
+    expect(find.byType(UtenBackButton), findsOneWidget);
+    await tester.tap(find.byType(UtenBackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(MasterDataTableView<StockCountRequest>), findsOneWidget);
+    expect(
+      find.byType(MasterDataTableView<StockCountRequestLine>),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('内嵌审核删除摘要后库存变化和首次用途权限警告仍保留', (tester) async {
+    await _pump(
+      tester,
+      _Repo(reviewRoute: 'WAREHOUSE', stale: true, setupBasis: 'OWN'),
+      reviewRoute: 'WAREHOUSE',
+      embedded: true,
+      permissions: {Perm.stockCountWarehouseReview},
+    );
+    expect(find.textContaining('提交后库存已变化'), findsOneWidget);
+    expect(find.text('首次材料用途确认需货品及 BOM 编辑权限。'), findsOneWidget);
+    expect(find.textContaining('提交人：'), findsNothing);
+    expect(
+      tester
+          .widget<UtenButton>(find.byKey(const Key('stock-count-approve')))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<UtenButton>(find.byKey(const Key('stock-count-reject')))
+          .onPressed,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('内料仓盘点历史清筛仍查询历史且不开放批量审核', (tester) async {
     final repo = _Repo();
     await _pump(

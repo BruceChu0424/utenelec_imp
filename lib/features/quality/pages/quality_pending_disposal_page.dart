@@ -53,6 +53,7 @@ import '../../../core/ui/uten_notify.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/search/keyword_search.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -352,35 +353,49 @@ class _QualityPendingDisposalPageState
     });
   }
 
-  bool _matchesKeyword(_DisposalRow row) {
-    final keyword = _keyword.trim().toLowerCase();
-    if (keyword.isEmpty) return true;
+  Iterable<String?> _keywordNames(_DisposalRow row) => [
+    if (row.isSheet)
+      row.sheet!.goodsSummary
+    else if (row.isFqc)
+      row.inspection!.goodsName
+    else
+      row.receipt!.goodsSummary,
+  ];
+
+  Iterable<String?> _keywordFields(_DisposalRow row) {
     if (row.isSheet) {
       final sheet = row.sheet!;
-      final text = [
+      return [
         sheet.sheetNo,
         sheet.warehouseName,
         sheet.receiverName,
         sheet.reportNos,
         sheet.goodsSummary,
-      ].whereType<String>().join(' ').toLowerCase();
-      return text.contains(keyword);
+        sheet.goodsCodeSummary,
+        sheet.colorNameSummary,
+      ];
     }
     if (row.isFqc) {
-      final text = [
+      return [
         row.inspection!.reportNo,
         row.inspection!.planNo,
         row.inspection!.goodsCode,
         row.inspection!.goodsName,
         row.inspection!.colorName,
-      ].whereType<String>().join(' ').toLowerCase();
-      return text.contains(keyword);
+      ];
     }
     final receipt = row.receipt!;
-    return (receipt.billNo ?? '').toLowerCase().contains(keyword) ||
-        (receipt.supplierName ?? '').toLowerCase().contains(keyword) ||
-        (receipt.goodsSummary ?? '').toLowerCase().contains(keyword);
+    return [
+      receipt.billNo,
+      receipt.supplierName,
+      receipt.goodsSummary,
+      receipt.goodsCodeSummary,
+      receipt.colorNameSummary,
+    ];
   }
+
+  bool _matchesKeyword(_DisposalRow row) =>
+      matchesKeywordSearch(_keywordFields(row), _keyword);
 
   List<_DisposalRow> get _rows => [
     if (_receipts != null)
@@ -464,13 +479,16 @@ class _QualityPendingDisposalPageState
     }
   }
 
-  List<_DisposalRow> get _filtered => [
-    for (final row in _rows)
-      if ((_typeFilter == null || row.kind == _typeFilter) &&
-          (_statusFilter == null || _statusLabel(row) == _statusFilter) &&
-          _matchesKeyword(row))
-        row,
-  ];
+  List<_DisposalRow> get _filtered => rankedKeywordMatches(
+    _rows.where(
+      (row) =>
+          (_typeFilter == null || row.kind == _typeFilter) &&
+          (_statusFilter == null || _statusLabel(row) == _statusFilter),
+    ),
+    _keyword,
+    fields: _keywordFields,
+    primaryFields: _keywordNames,
+  );
 
   int get _totalPages {
     final pages = (_filtered.length + _pageSize - 1) ~/ _pageSize;

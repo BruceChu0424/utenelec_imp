@@ -414,3 +414,6 @@ a0f46e93151112a71fe40bf663c3103f8e20a22e:docs/99-项目治理/platform_table_inv
 # 2026-10-16 reviewed: generated public purchase table layout ID;
 # same preference key as the existing source inline allowances, only inventory line moved.
 docs/99-项目治理/platform_table_inventory.json:generic-api-key:13113
+
+# Exact Git fingerprint for the reviewed public layout key in the preceding source commit.
+07cd0569dc6c0a9a1036a2e7a95f424b3d25be08:docs/99-项目治理/platform_table_inventory.json:generic-api-key:13113

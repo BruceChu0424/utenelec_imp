@@ -32,9 +32,10 @@ class StockAiWarehouseScopeTest {
         verify(data, never()).setParameter("warehouseId", parent);
         verify(data, never()).setParameter(eq("scopeIds"), any());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(3)).createNativeQuery(sql.capture());
-        assertTrue(sql.getAllValues().get(1).contains("b.warehouse_id = :warehouseId"));
-        assertTrue(sql.getAllValues().get(1).contains("COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id) = :warehouseId"));
+        verify(em, times(4)).createNativeQuery(sql.capture());
+        String rows=sql.getAllValues().stream().filter(value->value.contains("LIMIT :__limit")).findFirst().orElseThrow();
+        assertTrue(rows.contains("b.warehouse_id = :warehouseId"));
+        assertTrue(rows.contains("COALESCE(i.pre_stocked_warehouse_id, i.warehouse_id) = :warehouseId"));
     }
 
     @Test void emptyWarehouseScopeSuppressesGoodsAndAllThreeQuantitySources() {
@@ -44,9 +45,11 @@ class StockAiWarehouseScopeTest {
         when(data.getSingleResult()).thenReturn(0L);
         assertTrue(service.instantInventoryRowsInWarehouseScope(filter(null), Set.of(), 1, 6, "name", "asc").getItems().isEmpty());
         ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, times(2)).createNativeQuery(sql.capture());
-        assertTrue(sql.getAllValues().stream().allMatch(value -> value.contains("WHERE g.is_deleted = false AND FALSE")));
-        assertTrue(sql.getAllValues().stream().allMatch(value -> value.split("AND FALSE", -1).length >= 5));
+        verify(em, times(3)).createNativeQuery(sql.capture());
+        var scoped=sql.getAllValues().stream().filter(value->!value.equals(StockQueryService.GOODS_CATEGORY_NODES_SQL)).toList();
+        assertEquals(2,scoped.size());
+        assertTrue(scoped.stream().allMatch(value -> value.contains("WHERE g.is_deleted = false AND FALSE")));
+        assertTrue(scoped.stream().allMatch(value -> value.split("AND FALSE", -1).length >= 5));
         verify(data, never()).setParameter(eq("warehouseId"), any());
         verify(data, never()).setParameter(eq("scopeIds"), any());
     }

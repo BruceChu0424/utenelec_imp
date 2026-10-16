@@ -1,8 +1,10 @@
 package com.uten.imp.features.stock.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -75,6 +77,25 @@ public class InstantInventoryRow {
     private String owningWarehouseName;
     /** 本行数量里在不良品仓的部分(ADR-146; 只有打开「含不良品仓」或直接查不良品仓时非 0)。 */
     private BigDecimal defectiveQty;
+    @Setter
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Integer searchRank;
+    @Setter
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String searchMatchKind;
+
+    public InstantInventoryRow(UUID goodsId, UUID colorId, String categoryName, String model, String cNumber,
+                               String name, String spec, String colorName, String unitName, String remark,
+                               BigDecimal weight, BigDecimal qty, BigDecimal costAmount, BigDecimal moreQty,
+                               String goodsCode, String series, String stockPlace, BigDecimal pendingQty,
+                               BigDecimal pendingStockInQty, boolean weightEstimated, boolean weightUnknown,
+                               BigDecimal unitWeightKg, String weightTier, boolean costMasked,
+                               UUID owningWarehouseId, String owningWarehouseName, BigDecimal defectiveQty) {
+        this(goodsId, colorId, categoryName, model, cNumber, name, spec, colorName, unitName, remark,
+                weight, qty, costAmount, moreQty, goodsCode, series, stockPlace, pendingQty, pendingStockInQty,
+                weightEstimated, weightUnknown, unitWeightKg, weightTier, costMasked,
+                owningWarehouseId, owningWarehouseName, defectiveQty, null, null);
+    }
 
     /** Preserve the existing constructor used by stock clients and read-side tests. */
     public InstantInventoryRow(UUID goodsId, UUID colorId, String categoryName, String model, String cNumber,

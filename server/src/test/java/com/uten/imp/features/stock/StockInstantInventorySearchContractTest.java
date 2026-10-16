@@ -13,6 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 class StockInstantInventorySearchContractTest {
@@ -25,6 +26,7 @@ class StockInstantInventorySearchContractTest {
         when(query.setParameter(anyString(), org.mockito.ArgumentMatchers.any())).thenReturn(query);
         UUID categoryId = UUID.randomUUID();
         when(query.getResultList()).thenReturn(List.of(categoryId));
+        stubCategoryNodes(em);
         StockQueryService service = new StockQueryService(
                 null, em, mock(StockCostMasker.class));
 
@@ -33,12 +35,13 @@ class StockInstantInventorySearchContractTest {
 
         assertThat(result).containsExactly(categoryId);
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
-        assertThat(sql.getValue())
+        verify(em,times(2)).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues().getLast())
                 .contains("g.is_deleted = false")
                 .contains("g.name ILIKE :kw", "g.code ILIKE :kw")
-                .contains("g.model ILIKE :kw", "g.c_number ILIKE :kw")
-                .doesNotContain("g.spec ILIKE", "g.series ILIKE", "auto_created", "status");
+                .contains("g.model ILIKE :kw", "g.c_number ILIKE :kw", "g.spec ILIKE :kw", "g.series ILIKE :kw", "g.material ILIKE :kw", "g.name_en ILIKE :kw")
+                .contains("GROUP BY t.search_category_id ORDER BY MIN(t.search_rank)")
+                .doesNotContain("g.paper ILIKE", "g.require_remark ILIKE", "g.auto_created", "g.status = '禁用'", "g.status <> '禁用'");
         verify(query).setParameter("kw", "%g-001%");
     }
 
@@ -48,12 +51,13 @@ class StockInstantInventorySearchContractTest {
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
+        stubCategoryNodes(em);
         new StockQueryService(null, em, mock(StockCostMasker.class))
                 .instantInventoryMatchingCategoryIds("螺丝\u3000M3_20%", Set.of(UUID.randomUUID()));
 
         var sql = org.mockito.ArgumentCaptor.forClass(String.class);
-        verify(em).createNativeQuery(sql.capture());
-        assertThat(sql.getValue()).contains("g.name ILIKE :kw ESCAPE '\\'", ") AND (",
+        verify(em,times(2)).createNativeQuery(sql.capture());
+        assertThat(sql.getAllValues().getLast()).contains("g.name ILIKE :kw ESCAPE '\\'", ") AND (",
                 "g.name ILIKE :kw1 ESCAPE '\\'", "g.c_number ILIKE :kw1 ESCAPE '\\'");
         verify(query).setParameter("kw", "%螺丝%");
         verify(query).setParameter("kw1", "%m3\\_20\\%%");
@@ -241,5 +245,11 @@ class StockInstantInventorySearchContractTest {
         verify(em).createNativeQuery(sql.capture());
         assertThat(sql.getValue()).contains("WHERE r.parsed").contains("SELECT DISTINCT split_part(r.place, '-', 1) AS rack");
         assertThat(racks).containsExactly("A30", "A31");
+    }
+
+    private static void stubCategoryNodes(EntityManager em) {
+        Query nodes=mock(Query.class);
+        when(nodes.getResultList()).thenReturn(List.of());
+        when(em.createNativeQuery(StockQueryService.GOODS_CATEGORY_NODES_SQL)).thenReturn(nodes);
     }
 }

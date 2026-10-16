@@ -13,6 +13,7 @@ import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.util.CanonicalFingerprint;
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.CategoryKeywordSearch;
+import com.uten.imp.common.util.GoodsSearchPolicy;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.*;
 import com.uten.imp.features.stock.StockDocService;
@@ -137,10 +138,16 @@ public class StockCountRequestService {
     @Transactional(readOnly=true)
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,
             boolean stockedOnly,boolean sheet,int page,int size) {
+        return candidates(warehouseId,keyword,ids,categoryId,stockedOnly,sheet,page,size,false);
+    }
+    @Transactional(readOnly=true)
+    public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> ids,UUID categoryId,
+            boolean stockedOnly,boolean sheet,int page,int size,boolean includeRelated) {
         require(SUBMIT);var w=warehouse(warehouseId);
         if(ids!=null&&ids.size()>500)throw invalid("一次最多查询500种物料");
         var paging=Pageables.of(page,size);
         var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword",keyword==null?"":keyword.strip())
+                .addValue("includeRelated",includeRelated)
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());
         String eligible=candidateSnapshots(w,ids,categoryId,stockedOnly,sheet,params);
         long total=Objects.requireNonNull(db.queryForObject(eligible+"SELECT count(*) FROM snapshot",params,Long.class));
@@ -150,10 +157,10 @@ public class StockCountRequestService {
     }
 
     /** One eligibility/colour/search projection for candidate pages, the tree, and search relocation. */
-    private static String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,MapSqlParameterSource params) {
+    private String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,MapSqlParameterSource params) {
         return candidateSnapshots(warehouse,ids,categoryId,false,false,params);
     }
-    private static String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,boolean stockedOnly,boolean sheet,MapSqlParameterSource params) {
+    private String candidateSnapshots(Map<String,Object> warehouse,List<UUID> ids,UUID categoryId,boolean stockedOnly,boolean sheet,MapSqlParameterSource params) {
         String idFilter=ids==null||ids.isEmpty()?"":" AND g.id IN (:ids)";
         if(!idFilter.isEmpty())params.addValue("ids",ids);
         String categoryCte="";
@@ -182,15 +189,19 @@ public class StockCountRequestService {
         // 该仓无余额的货品出一行无色(数量 0)——不能用货品主档默认色造行, 否则零余额行
         // 在前端按「无色」键寻不到候选, 表现为一整片「不可编辑」。
         String keyword = KeywordSearch.phrase(Objects.toString(params.getValue("keyword"), ""));
-        params.addValues(CategoryKeywordSearch.rankParameters(keyword, "countSearch"));
-        String[] fields = {"g.code", "g.name", "g.model", "g.spec", "g.stock_place", "c.name", "u.name", "COALESCE(category.name,'未分类')"};
-        String match = keyword.isEmpty() ? "TRUE" : CategoryKeywordSearch.nativeCondition(keyword, "countSearch", "material_categories", "g.category_id", fields);
-        // Category labels are contextual matches, never primary goods data.
-        // Otherwise a leaf's incidental category text outranks an exact ancestor
-        // category match for goods in another branch.
-        String rank = keyword.isEmpty() ? "0" : CategoryKeywordSearch.nativeRank(keyword, "countSearch", "material_categories", "g.category_id", "g.code", "g.name",
-                "g.code", "g.name", "g.model", "g.spec", "g.stock_place", "c.name", "u.name");
-        String select = SNAPSHOT_SELECT.replace("SELECT g.id AS goods_id", "SELECT " + rank + " AS search_rank,g.id AS goods_id");
+        List<CategoryKeywordSearch.Node> nodes = keyword.isEmpty() ? List.of() : db.query(
+                "SELECT id,parent_id,name,code FROM material_categories WHERE NOT is_deleted",Map.of(),
+                (rs,n)->new CategoryKeywordSearch.Node(rs.getObject("id",UUID.class),rs.getObject("parent_id",UUID.class),rs.getString("name"),rs.getString("code")));
+        var search = new GoodsSearchPolicy(keyword,nodes,true,params.hasValue("includeRelated")&&Boolean.TRUE.equals(params.getValue("includeRelated")),
+                categoryId==null?GoodsSearchPolicy.SubjectMode.STRICT:GoodsSearchPolicy.SubjectMode.PREFER)
+                .nativeSearch("countSearch","g.category_id","g.code","g.name",
+                        List.of("g.code","g.name","g.model","g.spec","g.c_number","g.series","g.material","g.name_en","g.stock_place","c.name","u.name",
+                                "CASE WHEN category.id IS NULL THEN '未分类' ELSE NULL END"),List.of());
+        params.addValues(search.parameters());
+        String match = search.condition();
+        String rank = search.rank();
+        String kind = keyword.isEmpty()?"NULL::text":"CASE WHEN ("+rank+")<"+GoodsSearchPolicy.RELATED_RANK_OFFSET+" THEN 'PRIMARY' ELSE 'RELATED' END";
+        String select = SNAPSHOT_SELECT.replace("SELECT g.id AS goods_id", "SELECT " + rank + " AS search_rank,"+kind+" AS search_match_kind,g.id AS goods_id");
         return "WITH RECURSIVE "+categoryCte+"""
                 eligible AS (SELECT g.id FROM goods g WHERE NOT g.is_deleted
                 """+idFilter+categoryFilter+("WORKSHOP".equals(warehouse.get("kind"))?" AND EXISTS(SELECT 1 FROM unit_measurement_profiles p WHERE p.unit_id=g.unit_id AND p.measurement_dimension='MASS')":"")+sheetFilter+"""
@@ -262,10 +273,16 @@ public class StockCountRequestService {
 
     @Transactional(readOnly=true)
     public List<UUID> candidateCategoryIds(UUID warehouseId,String keyword) {
+        return candidateCategoryIds(warehouseId,keyword,null,false,false,false);
+    }
+    @Transactional(readOnly=true)
+    public List<UUID> candidateCategoryIds(UUID warehouseId,String keyword,UUID categoryId,
+            boolean stockedOnly,boolean sheet,boolean includeRelated) {
         require(SUBMIT);var w=warehouse(warehouseId);
         if(KeywordSearch.terms(keyword).isEmpty())return List.of();
-        var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword",keyword.strip());
-        return db.queryForList(candidateSnapshots(w,null,null,params)+"""
+        var params=new MapSqlParameterSource("warehouse",warehouseId).addValue("keyword",keyword.strip())
+                .addValue("includeRelated",includeRelated);
+        return db.queryForList(candidateSnapshots(w,null,categoryId,stockedOnly,sheet,params)+"""
                 SELECT category_id FROM snapshot GROUP BY category_id ORDER BY MIN(search_rank),category_id
                 """,params,UUID.class);
     }
@@ -284,6 +301,9 @@ public class StockCountRequestService {
         for(String[] field:ids)out.put(field[0],row.get(field[1]));
         out.put("qty",exact(row.get("qty")));out.put("weightKg",exact(row.get("weight_kg")));
         out.put("weightEstimated",row.get("weight_estimated"));out.put("kgPerBaseUnit",exact(row.get("kg_factor")));
+        if(row.get("search_match_kind")!=null) {
+            out.put("searchRank",row.get("search_rank"));out.put("searchMatchKind",row.get("search_match_kind"));
+        }
         out.put("allowedActions",has(SUBMIT)?List.of("EDIT"):List.of()); return out;
     }
     private static void verifySnapshot(StockCountDtos.LineInput line,Map<String,Object> current) {

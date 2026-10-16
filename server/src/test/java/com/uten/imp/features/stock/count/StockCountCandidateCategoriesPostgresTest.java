@@ -58,7 +58,7 @@ class StockCountCandidateCategoriesPostgresTest {
                   code_sequence bigint NOT NULL CHECK(code_sequence>0),
                   version bigint DEFAULT 2,issue_method text DEFAULT 'ORDER',status text DEFAULT '使用',
                   is_deleted boolean DEFAULT false,auto_created boolean DEFAULT false,
-                  stock_place text,model text,spec text,owning_warehouse_id uuid);
+                  stock_place text,model text,spec text,c_number text,series text,material text,name_en text,owning_warehouse_id uuid);
                 CREATE TABLE stock_balances(warehouse_id uuid,goods_id uuid,color_id uuid,qty numeric(18,4),
                   weight numeric(18,4),weight_estimated boolean DEFAULT false);
                 CREATE FUNCTION fn_weight_unit_kg_factor(text) RETURNS numeric LANGUAGE sql IMMUTABLE
@@ -260,7 +260,8 @@ class StockCountCandidateCategoriesPostgresTest {
         assertThat(first.getTotal()).isEqualTo(2);
         assertThat(first.getItems().getFirst()).containsEntry("goodsId",branch);
         assertThat(second.getItems().getFirst()).containsEntry("goodsId",approximate);
-        assertThat(service.candidateCategoryIds(bin,"螺丝 M3_20%")).containsExactlyInAnyOrder(coated,other);
+        assertThat(service.candidateCategoryIds(bin,"螺丝 M3_20%")).containsExactly(coated);
+        assertThat(service.candidateCategoryIds(bin,"螺丝 M3_20%",null,false,false,true)).containsExactly(coated,other);
         db.update("UPDATE goods SET auto_created=true WHERE id=?",branch);
         assertThat(service.candidates(bin,"螺丝 M3_20%",null,root,1,50).getItems())
                 .extracting(row->row.get("goodsId")).containsExactly(approximate);
@@ -275,6 +276,31 @@ class StockCountCandidateCategoriesPostgresTest {
         db.update("UPDATE goods SET model='供PART-001使用' WHERE id=?",approximate);
         assertThat(service.candidateCategoryIds(bin,"PART-001")).containsExactly(exactCategory,approximateCategory);
         assertThat(service.candidates(bin,"PART-001",null,1,1).getItems().getFirst()).containsEntry("goodsId",exact);
+    }
+
+    @Test void primaryAndExpandedSearchPreserveInventoryColorKeysAndExplicitCategoryScope() {
+        UUID root=category("ROOT","物料",null),screws=category("SCREWS","螺丝类",root);
+        UUID coated=category("COATED","镀锌件",screws),sockets=category("SOCKETS","插座",root);
+        UUID black=color("黑"),white=color("白");
+        UUID real=goods("Z-SCREW","M3x20",coated,kg,null);
+        UUID feature=goods("A-SOCKET","电话插座（螺丝接线式）",sockets,kg,null);
+        db.update("INSERT INTO stock_balances VALUES (?,?,?,3.125,3.125,false),(?,?,?,4.5,4.5,false)",bin,real,black,bin,real,white);
+        var main=service.candidates(bin,"螺丝",null,null,false,false,1,1,false);
+        assertThat(main.getTotal()).isEqualTo(2);
+        assertThat(main.getItems().getFirst()).containsEntry("goodsId",real).containsEntry("searchMatchKind","PRIMARY");
+        var expanded=service.candidates(bin,"螺丝",null,null,false,false,1,10,true);
+        assertThat(expanded.getTotal()).isEqualTo(3);
+        assertThat(expanded.getItems()).extracting(row->row.get("goodsId")).containsExactly(real,real,feature);
+        assertThat(expanded.getItems().subList(0,2)).extracting(row->row.get("colorId")).containsExactlyInAnyOrder(black,white);
+        assertThat(expanded.getItems().getLast()).containsEntry("searchMatchKind","RELATED");
+        assertThat(service.candidateCategoryIds(bin,"螺丝",null,false,false,false)).containsExactly(coated);
+        assertThat(service.candidateCategoryIds(bin,"螺丝",null,false,false,true)).containsExactly(coated,sockets);
+        assertThat(service.candidates(bin,"螺丝",null,sockets,false,false,1,10,false).getItems())
+                .singleElement().satisfies(row->assertThat(row).containsEntry("goodsId",feature).containsEntry("searchMatchKind","PRIMARY"));
+        assertThat(service.candidateCategoryIds(bin,"螺丝",sockets,false,false,false)).containsExactly(sockets);
+        assertThat(service.candidateCategoryIds(bin,"螺丝",null,true,false,true)).containsExactly(coated);
+        assertThat(service.candidates(bin,"",null,null,false,false,1,10,false).getItems())
+                .allSatisfy(row->assertThat(row).doesNotContainKeys("searchRank","searchMatchKind"));
     }
 
     private void as(String... permissions) {

@@ -33,10 +33,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.io.ByteArrayInputStream;
+import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.springframework.http.MediaType;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 /** Real schema, real SQL and real method authorization; no production connection is used. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
@@ -99,6 +103,82 @@ class StockInventoryScopePostgresTest {
         read(ledger(empty),viewer,Map.of(),404);
         read("/api/stock/balances",viewer,Map.of("goodsId",empty.toString()),404);
     }
+
+    @Test void goodsSubjectSearchKeepsColorsTotalsMasksScopeAndExportInOneContext() throws Exception {
+        UUID root=category(null,"搜索范围"),screws=category(root,"螺丝类"),coated=category(screws,"镀锌件"),sockets=category(root,"插座");
+        UUID warehouse,unit,red,blue,real,feature,dimension;
+        try(var seed=new StockReadSideSeed(dataSource)) {
+            warehouse=seed.warehouse("搜索仓",null);unit=seed.unit("个",null);
+            red=color(seed,"红" );blue=color(seed,"蓝");
+            real=seed.goods("M3安装件",unit,coated);
+            feature=seed.goods("电话插座（螺丝接线式）",unit,sockets);
+            dimension=seed.goods("螺丝",unit,null);
+            seed.jdbc().update("UPDATE goods SET name='螺丝',spec='4*50' WHERE id=?",dimension);
+            balance(seed,warehouse,real,red,"3.125","0.3125");
+            balance(seed,warehouse,real,blue,"4.5","0.45");
+            balance(seed,warehouse,feature,null,"11","1.1");
+        }
+        Map<String,String> query=new HashMap<>();query.put("keyword","螺丝");query.put("warehouseId",warehouse.toString());query.put("size","1");
+        JsonNode main=read("/api/stock/instant-inventory",viewer,query,200);
+        assertEquals(3,main.path("total").asInt());decimal(total(main,"qty"),"7.625");
+        assertTrue(main.path("items").get(0).path("costMasked").asBoolean());
+        assertTrue(main.path("items").get(0).path("costAmount").isNull());
+        assertEquals("PRIMARY",main.path("items").get(0).path("searchMatchKind").asText());
+        query.put("includeRelated","true");
+        List<String> all=new ArrayList<>();
+        for(int page=1;page<=4;page++) {
+            query.put("page",Integer.toString(page));JsonNode result=read("/api/stock/instant-inventory",viewer,query,200);
+            assertEquals(4,result.path("total").asInt());decimal(total(result,"qty"),"18.625");
+            JsonNode row=result.path("items").get(0);all.add(row.path("goodsId").asText());
+            assertEquals(page==4?"RELATED":"PRIMARY",row.path("searchMatchKind").asText());
+            assertTrue(row.path("costAmount").isNull());
+        }
+        assertEquals(feature.toString(),all.getLast());
+        assertEquals(2,all.stream().filter(real.toString()::equals).count());
+        query.put("keyword","螺丝\u00a04*50");query.put("page","1");query.put("includeRelated","false");
+        JsonNode spec=read("/api/stock/instant-inventory",viewer,query,200);
+        assertEquals(1,spec.path("total").asInt());assertEquals(dimension.toString(),spec.path("items").get(0).path("goodsId").asText());
+        assertEquals("4*50",spec.path("items").get(0).path("spec").asText());
+        Map<String,String> hints=new HashMap<>();hints.put("keyword","螺丝");hints.put("warehouseId",warehouse.toString());hints.put("categoryRootIds",root.toString());
+        JsonNode locations=read("/api/stock/instant-inventory/search-category-ids",viewer,hints,200);
+        assertEquals(List.of(coated.toString()),strings(locations));
+        hints.put("includeRelated","true");assertEquals(List.of(coated.toString(),sockets.toString()),strings(read("/api/stock/instant-inventory/search-category-ids",viewer,hints,200)));
+        hints.put("colorId",red.toString());assertEquals(List.of(coated.toString()),strings(read("/api/stock/instant-inventory/search-category-ids",viewer,hints,200)));
+        hints.remove("colorId");hints.put("attention","NEGATIVE_BALANCE");assertTrue(read("/api/stock/instant-inventory/search-category-ids",viewer,hints,200).isEmpty());
+        query.put("keyword","螺丝");query.put("categoryId",sockets.toString());
+        JsonNode explicit=read("/api/stock/instant-inventory",viewer,query,200);
+        assertEquals(1,explicit.path("total").asInt());assertEquals(feature.toString(),explicit.path("items").get(0).path("goodsId").asText());
+        assertEquals("PRIMARY",explicit.path("items").get(0).path("searchMatchKind").asText());
+        Authentication exporter=auth("stock:view","stock_report:export");
+        for(boolean related:List.of(false,true)) {
+            var response=http.perform(post("/api/stock/reports/export").with(authentication(exporter))
+                    .param("report","instant-inventory").param("keyword","螺丝").param("warehouseId",warehouse.toString())
+                    .param("includeRelated",Boolean.toString(related)).contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"\"}")).andReturn().getResponse();
+            assertEquals(200,response.getStatus());
+            try(var workbook=WorkbookFactory.create(new ByteArrayInputStream(response.getContentAsByteArray()))) {
+                assertEquals(related?4:3,workbook.getSheetAt(0).getLastRowNum());
+            }
+        }
+        var riskExport=http.perform(post("/api/stock/reports/export").with(authentication(exporter))
+                .param("report","instant-inventory").param("keyword","螺丝").param("warehouseId",warehouse.toString())
+                .param("includeRelated","true").param("attention","NEGATIVE_BALANCE")
+                .contentType(MediaType.APPLICATION_JSON).content("{\"password\":\"\"}")).andReturn().getResponse();
+        assertEquals(200,riskExport.getStatus());
+        try(var workbook=WorkbookFactory.create(new ByteArrayInputStream(riskExport.getContentAsByteArray()))) {
+            assertEquals(0,workbook.getSheetAt(0).getLastRowNum(),"Export must preserve the same attention predicate as rows and totals");
+        }
+        query.put("keyword","");query.remove("categoryId");query.remove("page");query.put("size","500");
+        JsonNode empty=read("/api/stock/instant-inventory",viewer,query,200);
+        query.put("keyword","\u00a0\u3000 ");query.put("includeRelated","true");
+        JsonNode blank=read("/api/stock/instant-inventory",viewer,query,200);
+        assertEquals(empty.path("items"),blank.path("items"));assertEquals(empty.path("total"),blank.path("total"));
+        empty.path("items").forEach(row->{assertFalse(row.has("searchRank"));assertFalse(row.has("searchMatchKind"));});
+    }
+
+    private UUID category(UUID parent,String name) {
+        UUID id=UUID.randomUUID();db.update("INSERT INTO material_categories(id,code,name,parent_id) VALUES(?,?,?,?)",id,"IS-"+id,name,parent);return id;
+    }
+    private static List<String> strings(JsonNode values) { List<String> result=new ArrayList<>();values.forEach(value->result.add(value.asText()));return result; }
 
     @Test void parentScopeAllModesAndLeafExceptionsAgreeAcrossContextBalancesAndLedger() throws Exception {
         World w=world();

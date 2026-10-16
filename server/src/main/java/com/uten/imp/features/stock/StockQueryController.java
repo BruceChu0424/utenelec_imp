@@ -88,12 +88,13 @@ public class StockQueryController {
             @RequestParam(required = false) UUID unitId,
             // 风险/跟进行动清单，白名单校验在共享查询入口执行。
             @RequestParam(required = false) String attention,
+            @RequestParam(defaultValue = "false") boolean includeRelated,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
-                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order);
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order, includeRelated);
     }
 
     /**
@@ -114,12 +115,13 @@ public class StockQueryController {
             @RequestParam(required = false) String series,
             @RequestParam(required = false) UUID unitId,
             @RequestParam String attention,
+            @RequestParam(defaultValue = "false") boolean includeRelated,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
         return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
-                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order);
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order, includeRelated);
     }
 
     /**
@@ -130,8 +132,22 @@ public class StockQueryController {
     @PreAuthorize("hasAuthority('stock:view')")
     public List<UUID> instantInventorySearchCategoryIds(
             @RequestParam String keyword,
-            @RequestParam Set<UUID> categoryRootIds) {
-        return service.instantInventoryMatchingCategoryIds(keyword, categoryRootIds);
+            @RequestParam Set<UUID> categoryRootIds,
+            @RequestParam(required = false) UUID categoryId,
+            @RequestParam(required = false) UUID warehouseId,
+            @RequestParam(defaultValue = "false") boolean includeDefective,
+            @RequestParam(defaultValue = "false") boolean includeLineSide,
+            @RequestParam(required = false) UUID owningWarehouse,
+            @RequestParam(required = false) Boolean owningWarehouseNull,
+            @RequestParam(required = false) UUID colorId,
+            @RequestParam(required = false) String series,
+            @RequestParam(required = false) UUID unitId,
+            @RequestParam(required = false) String attention,
+            @RequestParam(defaultValue = "false") boolean includeRelated) {
+        var filter = new StockQueryService.InstantInventoryFilter(categoryId, warehouseId, includeDefective,
+                includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId, series, unitId,
+                attention, null, false, true, includeRelated);
+        return service.instantInventoryMatchingCategoryIds(filter, categoryRootIds);
     }
 
     /**

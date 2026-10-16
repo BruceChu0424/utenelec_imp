@@ -2,6 +2,7 @@ package com.uten.imp.features.stock;
 
 import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.util.CategoryKeywordSearch;
+import com.uten.imp.common.util.GoodsSearchPolicy;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -39,6 +40,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class StockQueryService {
+    static final String GOODS_CATEGORY_NODES_SQL = "SELECT id,parent_id,name,code FROM material_categories WHERE NOT is_deleted";
 
     /** 余额列排序白名单：前端列 key → JPA 实体属性名（数量/重量可排序；否则默认 lastMovementDate DESC）。 */
     private static final Map<String, String> BALANCE_ALLOWED_SORT = Map.of(
@@ -103,7 +105,15 @@ public class StockQueryService {
     public record InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
                                          boolean includeLineSide, String keyword, UUID owningWarehouse,
                                          Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
-                                         String attention, UUID goodsId, boolean colorNull, boolean inventoryOnly) {
+                                         String attention, UUID goodsId, boolean colorNull, boolean inventoryOnly,
+                                         boolean includeRelated) {
+        public InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
+                                      boolean includeLineSide, String keyword, UUID owningWarehouse,
+                                      Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
+                                      String attention, UUID goodsId, boolean colorNull, boolean inventoryOnly) {
+            this(categoryId, warehouseId, includeDefective, includeLineSide, keyword, owningWarehouse,
+                    owningWarehouseNull, colorId, series, unitId, attention, goodsId, colorNull, inventoryOnly, false);
+        }
         public InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
                                       boolean includeLineSide, String keyword, UUID owningWarehouse,
                                       Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
@@ -231,8 +241,21 @@ public class StockQueryService {
                                                               String attention,
                                                               int page, int size,
                                                               String sort, String order) {
+        return instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
+                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<InstantInventoryRow> instantInventory(UUID categoryId, UUID warehouseId,
+                                                              boolean includeDefective, boolean includeLineSide,
+                                                              String keyword, UUID owningWarehouse,
+                                                              Boolean owningWarehouseNull, UUID colorId,
+                                                              String series, UUID unitId, String attention,
+                                                              int page, int size, String sort, String order,
+                                                              boolean includeRelated) {
         InstantInventoryFilter filter = new InstantInventoryFilter(categoryId, warehouseId, includeDefective,
-                includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention);
+                includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId, series, unitId,
+                attention, null, false, true, includeRelated);
         InstantSql sql = instantSql(filter, sort);
         PageResponse<InstantInventoryRow> rows = instantPage(sql, page, size, sort, order);
 
@@ -372,7 +395,7 @@ public class StockQueryService {
         List<InstantInventoryRow> items = new ArrayList<>(rows.size());
         for (Object[] r : rows) {
             // 位置映射：列序见 instantSql 的 SELECT；重量扩展列(ADR-135)一律追加在末尾。
-            items.add(new InstantInventoryRow(
+            InstantInventoryRow item = new InstantInventoryRow(
                     (UUID) r[0], (UUID) r[1],
                     (String) r[2], (String) r[3], (String) r[4], (String) r[5], (String) r[6],
                     (String) r[7], (String) r[8], (String) r[9],
@@ -385,7 +408,14 @@ public class StockQueryService {
                     decimal(r[22]),
                     r[23] == null ? null : r[23].toString(),
                     !canViewCost,
-                    (UUID) r[37], (String) r[38], decimal(r[39])));
+                    (UUID) r[37], (String) r[38], decimal(r[39]));
+            if (!KeywordSearch.terms(sql.filter().keyword()).isEmpty()) {
+                // unit_id remains at index 40 for grouped totals; new metadata is appended.
+                int rank = ((Number) r[41]).intValue();
+                item.setSearchRank(rank);
+                item.setSearchMatchKind(rank < GoodsSearchPolicy.RELATED_RANK_OFFSET ? "PRIMARY" : "RELATED");
+            }
+            items.add(item);
         }
         long total = ((Number) countQ.getSingleResult()).longValue();
         int totalPages = (int) ((total + safeSize - 1) / safeSize);
@@ -394,7 +424,8 @@ public class StockQueryService {
 
     /** 即时库存 SQL 与参数绑定(列表/计数/合计绑全部筛选；facet 只绑范围 + 分类 + 关键字)。 */
     private record InstantSql(String core, String coreFacet, boolean canViewCost, Set<UUID> warehouseScope,
-                              InstantInventoryFilter filter, String seriesFilter) {
+                              InstantInventoryFilter filter, String seriesFilter,
+                              Map<String, Object> searchParameters) {
 
         void bindAll(Query q) {
             bindBase(q);
@@ -414,7 +445,7 @@ public class StockQueryService {
                 q.setParameter("scopeIds", warehouseScope);
             }
             if (filter.categoryId() != null) q.setParameter("categoryId", filter.categoryId());
-            CategoryKeywordSearch.bindNative(q, filter.keyword(), "kw", true);
+            searchParameters.forEach(q::setParameter);
         }
     }
 
@@ -488,9 +519,8 @@ public class StockQueryService {
         if (filter.categoryId() != null) {
             goodsWhere.append(" AND g.category_id IN (SELECT id FROM cat)");
         }
-        if (!KeywordSearch.terms(filter.keyword()).isEmpty()) {
-            goodsWhere.append(" AND ").append(instantKeywordCondition(filter.keyword()));
-        }
+        GoodsSearchPolicy.NativeSearch keyword = inventoryKeyword(filter.keyword(), filter.categoryId(), filter.includeRelated());
+        if (!KeywordSearch.terms(filter.keyword()).isEmpty()) goodsWhere.append(" AND (").append(keyword.condition()).append(')');
         // V587/V590 归属筛选 + 颜色/系列/单位列筛选只作用于列表本体；
         // facet 桶在未应用这些筛选的口径（goodsWhereBase）上聚合。
         String goodsWhereBase = goodsWhere.toString();
@@ -530,8 +560,7 @@ public class StockQueryService {
         String selectedColor = filter.goodsId() != null && filter.colorId() != null
                 ? "COALESCE(base.color_id, :colorId)" : "base.color_id";
         String relevanceProjection = KeywordSearch.terms(filter.keyword()).isEmpty() ? ""
-                : ", " + CategoryKeywordSearch.nativeRank(filter.keyword(), "kw", "material_categories", "g.category_id",
-                        "g.code", "g.name", "g.name", "g.code", "g.model", "g.c_number") + " AS search_rank\n";
+                : ", " + keyword.rank() + " AS search_rank,g.category_id AS search_category_id\n";
         String core = cte + """
                 SELECT g.id AS goods_id, base.color_id AS color_id, mc.name AS category_name,
                        g.model, g.c_number, g.name, g.spec,
@@ -657,7 +686,7 @@ public class StockQueryService {
             core = "SELECT * FROM (" + core + ") attention_scope WHERE attention_scope."
                     + attention.countColumn + " > 0";
         }
-        return new InstantSql(core, coreFacet, canViewCost, warehouseScope, filter, seriesFilter);
+        return new InstantSql(core, coreFacet, canViewCost, warehouseScope, filter, seriesFilter, keyword.parameters());
     }
 
     /** facet 聚合查询 → 桶列表（v=值、label=展示名、c=命中数；label 列可为 null）。 */
@@ -752,6 +781,20 @@ public class StockQueryService {
     @Transactional(readOnly = true)
     public List<UUID> instantInventoryMatchingCategoryIds(
             String keyword, Set<UUID> categoryRootIds) {
+        return instantInventoryMatchingCategoryIds(keyword, categoryRootIds, null, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> instantInventoryMatchingCategoryIds(
+            String keyword, Set<UUID> categoryRootIds, UUID selectedCategory, boolean includeRelated) {
+        return instantInventoryMatchingCategoryIds(new InstantInventoryFilter(selectedCategory, null,
+                false, false, keyword, null, null, null, null, null,
+                null, null, false, true, includeRelated), categoryRootIds);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> instantInventoryMatchingCategoryIds(InstantInventoryFilter filter, Set<UUID> categoryRootIds) {
+        String keyword = filter.keyword();
         if (KeywordSearch.terms(keyword).isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写搜索关键词");
         }
@@ -760,27 +803,14 @@ public class StockQueryService {
                     ErrorCode.VALIDATION_FAILED,
                     "categoryRootIds 必须包含 1-32 个分类");
         }
-        Query query = em.createNativeQuery("""
-                WITH RECURSIVE cat AS (
-                    SELECT id
-                      FROM material_categories
-                     WHERE id IN (:categoryRootIds) AND is_deleted = false
-                    UNION
-                    SELECT c.id
-                      FROM material_categories c
-                      JOIN cat p ON c.parent_id = p.id
-                     WHERE c.is_deleted = false
-                )
-                SELECT g.category_id
-                  FROM goods g
-                 WHERE g.is_deleted = false
-                   AND g.category_id IN (SELECT id FROM cat)
-                   AND
-                """ + instantKeywordCondition(keyword) + " GROUP BY g.category_id ORDER BY MIN("
-                + CategoryKeywordSearch.nativeRank(keyword, "kw", "material_categories", "g.category_id",
-                        "g.code", "g.name", "g.name", "g.code", "g.model", "g.c_number") + "), g.category_id");
+        InstantSql sql = instantSql(filter, null);
+        Query query = em.createNativeQuery("SELECT t.search_category_id FROM (" + sql.core() + ") t "
+                + "WHERE t.search_category_id IN (WITH RECURSIVE allowed_categories(id) AS ("
+                + "SELECT id FROM material_categories WHERE id IN (:categoryRootIds) AND NOT is_deleted "
+                + "UNION SELECT child.id FROM material_categories child JOIN allowed_categories parent ON child.parent_id=parent.id WHERE NOT child.is_deleted) "
+                + "SELECT id FROM allowed_categories) GROUP BY t.search_category_id ORDER BY MIN(t.search_rank),t.search_category_id");
         query.setParameter("categoryRootIds", categoryRootIds);
-        CategoryKeywordSearch.bindNative(query, keyword, "kw", true);
+        sql.bindAll(query);
         @SuppressWarnings("unchecked")
         List<Object> rawIds = query.getResultList();
         return rawIds.stream()
@@ -789,9 +819,19 @@ public class StockQueryService {
                 .toList();
     }
 
-    private static String instantKeywordCondition(String keyword) {
-        return CategoryKeywordSearch.nativeCondition(keyword, "kw", "material_categories", "g.category_id",
-                "g.name", "g.code", "g.model", "g.c_number");
+    private GoodsSearchPolicy.NativeSearch inventoryKeyword(String keyword, UUID categoryId, boolean includeRelated) {
+        List<CategoryKeywordSearch.Node> nodes = KeywordSearch.terms(keyword).isEmpty() ? List.of() : goodsCategoryNodes();
+        return new GoodsSearchPolicy(keyword, nodes, true, includeRelated,
+                categoryId == null ? GoodsSearchPolicy.SubjectMode.STRICT : GoodsSearchPolicy.SubjectMode.PREFER)
+                .nativeSearch("kw", "g.category_id", "g.code", "g.name",
+                        List.of("g.name", "g.code", "g.model", "g.c_number", "g.spec", "g.series", "g.material", "g.name_en"), List.of());
+    }
+
+    private List<CategoryKeywordSearch.Node> goodsCategoryNodes() {
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = em.createNativeQuery(GOODS_CATEGORY_NODES_SQL).getResultList();
+        return rows.stream().map(row -> new CategoryKeywordSearch.Node((UUID) row[0], (UUID) row[1],
+                (String) row[2], (String) row[3])).toList();
     }
 
     // ======================== 货架目视化清单（货架图 + 统一表格 / 打印 / 导出） ========================

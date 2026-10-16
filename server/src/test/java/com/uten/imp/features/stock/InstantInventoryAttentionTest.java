@@ -97,7 +97,8 @@ class InstantInventoryAttentionTest {
         assertThat(result.getTotal()).isEqualTo(31L);
         assertThat(result.getTotalPages()).isEqualTo(3);
         // 未请求成本权限仍在每条库存 SQL 投影脱敏。
-        assertThat(queries.keySet().stream().filter(sql -> !sql.equals(StockWarehouseScope.SUBTREE_SQL)))
+        assertThat(queries.keySet().stream().filter(sql -> !sql.equals(StockWarehouseScope.SUBTREE_SQL)
+                        && !sql.equals(StockQueryService.GOODS_CATEGORY_NODES_SQL)))
                 .allSatisfy(sql -> assertThat(sql).contains("CAST(NULL AS NUMERIC)"));
 
         List<String> facets = queries.keySet().stream()

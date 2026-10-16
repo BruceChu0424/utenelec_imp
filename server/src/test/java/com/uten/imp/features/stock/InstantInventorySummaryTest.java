@@ -67,7 +67,7 @@ class InstantInventorySummaryTest {
         // 仍只有原有的两条合计 SQL：一条重量/计数，一条分单位数量。
         assertThat(queries.keySet().stream().filter(sql -> sql.startsWith("SELECT ")
                 && sql.contains("SUM(t.\""))).hasSize(2);
-        assertThat(queries).hasSize(10); // 仓库范围 + 列表/计数 + 两条合计 + 五条 facet。
+        assertThat(queries).hasSize(11); // 分类意图快照 + 仓库范围 + 列表/计数 + 两条合计 + 五条 facet。
     }
 
     @Test

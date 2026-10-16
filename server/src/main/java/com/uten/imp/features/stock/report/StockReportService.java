@@ -498,7 +498,8 @@ public class StockReportService {
                 "true".equalsIgnoreCase(params.get("owningWarehouseNull")) ? Boolean.TRUE : null,
                 ReportQueryKit.parseUuid(params.get("colorId")),
                 params.get("series"),
-                ReportQueryKit.parseUuid(params.get("unitId")));
+                ReportQueryKit.parseUuid(params.get("unitId")),
+                params.get("attention"), null, false, true, "true".equalsIgnoreCase(params.get("includeRelated")));
         WeightUnit weightUnit = exportWeightUnit(params.get("weightUnit"));
         boolean canViewCost = costMasker.canView();
         List<ReportColumn> columns = instantExportColumns(weightUnit, canViewCost);

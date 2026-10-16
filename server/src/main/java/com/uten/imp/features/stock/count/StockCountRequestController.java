@@ -26,8 +26,9 @@ public class StockCountRequestController {
             @RequestParam(defaultValue="") String keyword, @RequestParam(required=false) List<UUID> goodsIds,
             @RequestParam(required=false) UUID categoryId, @RequestParam(defaultValue="false") boolean stockedOnly,
             @RequestParam(defaultValue="false") boolean sheet,
+            @RequestParam(defaultValue="false") boolean includeRelated,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size) {
-        return service.candidates(warehouseId,keyword,goodsIds,categoryId,stockedOnly,sheet,page,size);
+        return service.candidates(warehouseId,keyword,goodsIds,categoryId,stockedOnly,sheet,page,size,includeRelated);
     }
     /** Existing Java callers keep the unfiltered candidate contract. */
     public PageResponse<Map<String,Object>> candidates(UUID warehouseId,String keyword,List<UUID> goodsIds,int page,int size) {
@@ -39,7 +40,13 @@ public class StockCountRequestController {
         return service.candidateCategories(warehouseId,sheet);
     }
     @GetMapping("/candidate-category-ids") @PreAuthorize("hasAuthority('stock:count:submit')")
-    public List<UUID> candidateCategoryIds(@RequestParam UUID warehouseId,@RequestParam(defaultValue="") String keyword) {
+    public List<UUID> candidateCategoryIds(@RequestParam UUID warehouseId,@RequestParam(defaultValue="") String keyword,
+            @RequestParam(required=false) UUID categoryId,@RequestParam(defaultValue="false") boolean stockedOnly,
+            @RequestParam(defaultValue="false") boolean sheet,@RequestParam(defaultValue="false") boolean includeRelated) {
+        return service.candidateCategoryIds(warehouseId,keyword,categoryId,stockedOnly,sheet,includeRelated);
+    }
+    @PreAuthorize("hasAuthority('stock:count:submit')")
+    public List<UUID> candidateCategoryIds(UUID warehouseId,String keyword) {
         return service.candidateCategoryIds(warehouseId,keyword);
     }
     /**

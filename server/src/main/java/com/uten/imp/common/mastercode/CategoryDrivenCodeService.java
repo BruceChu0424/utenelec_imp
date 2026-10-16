@@ -175,6 +175,50 @@ public class CategoryDrivenCodeService {
     }
 
     /**
+     * Checks the same lifetime, exact-token ownership rule as
+     * {@code fn_claim_global_business_prefix}, without claiming or locking anything.
+     * Blank means inheritance and therefore creates no explicit prefix reservation.
+     * An editing category may keep its current prefix, or reclaim a past prefix
+     * that has no other owner; another category cannot reuse a deleted owner's prefix.
+     */
+    @Transactional(readOnly = true)
+    public CategoryPrefixAvailability prefixAvailability(
+            MasterType type, String requestedPrefix, UUID categoryId) {
+        requireType(type);
+        String normalized = normalizePrefix(requestedPrefix);
+        String currentPrefix = null;
+        if (categoryId != null) {
+            requireCategory(type, categoryId);
+            currentPrefix = explicitPrefix(type, categoryId);
+        }
+        if (normalized == null) {
+            return new CategoryPrefixAvailability(null, true, null);
+        }
+
+        String ownerKey = categoryId == null ? "" : type.categoryTable + "/" + categoryId;
+        Object value = em.createNativeQuery("""
+                WITH members AS (
+                    SELECT owner_kind, owner_key
+                    FROM business_prefix_reservation_members
+                    WHERE normalized_prefix = :prefix COLLATE "C")
+                SELECT NOT EXISTS (SELECT 1 FROM members)
+                    OR (EXISTS (
+                            SELECT 1 FROM members
+                            WHERE owner_kind = 'CATEGORY' AND owner_key = :ownerKey)
+                        AND (:unchanged OR NOT EXISTS (
+                            SELECT 1 FROM members
+                            WHERE NOT (owner_kind = 'CATEGORY' AND owner_key = :ownerKey))))
+                """)
+                .setParameter("prefix", normalized)
+                .setParameter("ownerKey", ownerKey)
+                .setParameter("unchanged", normalized.equals(currentPrefix))
+                .getSingleResult();
+        boolean available = Boolean.TRUE.equals(value);
+        return new CategoryPrefixAvailability(normalized, available,
+                available ? null : CategoryPrefixAvailability.OCCUPIED_MESSAGE);
+    }
+
+    /**
      * Previews an explicit prefix edit after (or immediately before) the category row
      * is changed.  A null/blank requested prefix means inherit the closest ancestor.
      */

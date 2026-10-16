@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.materialcategory;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.common.mastercode.CategoryPrefixAvailability;
 import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.materialcategory.dto.*;
 import jakarta.validation.Valid;
@@ -52,6 +53,14 @@ public class MaterialCategoryController {
     @PreAuthorize("hasAuthority('material_category:view')")
     public MaterialCategoryDeletePreview deletePreview(@PathVariable UUID id) {
         return service.deletePreview(id);
+    }
+
+    @GetMapping("/prefix-availability")
+    @PreAuthorize("hasAnyAuthority('material_category:create', 'material_category:edit')")
+    public CategoryPrefixAvailability prefixAvailability(
+            @RequestParam String prefix,
+            @RequestParam(required = false) UUID categoryId) {
+        return service.prefixAvailability(prefix, categoryId);
     }
 
     @GetMapping("/{id}/prefix-preview")

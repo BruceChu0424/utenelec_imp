@@ -212,6 +212,26 @@ class ProductCategoryUpdateInput {
   };
 }
 
+/// 编号前缀的服务端全局占用检查；未明确返回可用时禁止保存。
+class CategoryPrefixAvailability {
+  const CategoryPrefixAvailability({
+    required this.normalizedPrefix,
+    required this.available,
+    this.message,
+  });
+
+  final String normalizedPrefix;
+  final bool available;
+  final String? message;
+
+  factory CategoryPrefixAvailability.fromJson(Map<String, dynamic> json) =>
+      CategoryPrefixAvailability(
+        normalizedPrefix: json['normalizedPrefix'] as String? ?? '',
+        available: json['available'] == true,
+        message: json['message'] as String?,
+      );
+}
+
 /// 修改分类编号前缀前的服务端影响预览。
 class CategoryPrefixPreview {
   const CategoryPrefixPreview({

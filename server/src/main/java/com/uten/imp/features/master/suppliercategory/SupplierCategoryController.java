@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.suppliercategory;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.common.mastercode.CategoryPrefixAvailability;
 import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.suppliercategory.dto.*;
 import jakarta.validation.Valid;
@@ -44,6 +45,14 @@ public class SupplierCategoryController {
                 "view_supplier_category_detail", "supplier_categories", id, displayName,
                 result.getLegacyId(), "供应商分类");
         return result;
+    }
+
+    @GetMapping("/prefix-availability")
+    @PreAuthorize("hasAnyAuthority('supplier_category:create', 'supplier_category:edit')")
+    public CategoryPrefixAvailability prefixAvailability(
+            @RequestParam String prefix,
+            @RequestParam(required = false) UUID categoryId) {
+        return service.prefixAvailability(prefix, categoryId);
     }
 
     @GetMapping("/{id}/prefix-preview")

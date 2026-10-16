@@ -12,6 +12,10 @@ abstract interface class SupplierCategoryRepository {
   Future<List<ProductCategoryNode>> tree();
   Future<List<ProductCategoryNode>> subtree(String id);
   Future<ProductCategoryDetail> detail(String id);
+  Future<CategoryPrefixAvailability> prefixAvailability(
+    String prefix, {
+    String? categoryId,
+  });
   Future<CategoryPrefixPreview> prefixPreview(
     String id,
     String prefix, {
@@ -45,6 +49,18 @@ class DioSupplierCategoryRepository implements SupplierCategoryRepository {
   Future<ProductCategoryDetail> detail(String id) async {
     final json = await api.get(ApiEndpoints.supplierCategory(id));
     return ProductCategoryDetail.fromJson(json);
+  }
+
+  @override
+  Future<CategoryPrefixAvailability> prefixAvailability(
+    String prefix, {
+    String? categoryId,
+  }) async {
+    final json = await api.get(
+      ApiEndpoints.supplierCategoryPrefixAvailability,
+      query: {'prefix': prefix, 'categoryId': ?categoryId},
+    );
+    return CategoryPrefixAvailability.fromJson(json);
   }
 
   @override

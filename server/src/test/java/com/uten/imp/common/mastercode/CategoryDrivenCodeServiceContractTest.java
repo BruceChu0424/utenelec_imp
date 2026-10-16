@@ -23,6 +23,25 @@ import static org.mockito.Mockito.when;
 class CategoryDrivenCodeServiceContractTest {
 
     @Test
+    void blankPrefixMeansInheritanceWithoutAnyReservationLookup() {
+        EntityManager entityManager = mock(EntityManager.class);
+        var result = new CategoryDrivenCodeService(entityManager)
+                .prefixAvailability(CLIENT, "  ", null);
+        assertNull(result.normalizedPrefix());
+        assertTrue(result.available());
+        assertNull(result.message());
+        org.mockito.Mockito.verifyNoInteractions(entityManager);
+    }
+
+    @Test
+    void invalidAvailabilityPrefixIsRejectedBeforeSql() {
+        EntityManager entityManager = mock(EntityManager.class);
+        assertThrows(ApiException.class, () -> new CategoryDrivenCodeService(entityManager)
+                .prefixAvailability(CLIENT, "U-G", null));
+        org.mockito.Mockito.verifyNoInteractions(entityManager);
+    }
+
+    @Test
     void ungroupedNewMasterUsesFallbackPrefixAndAtomicSequence() {
         EntityManager entityManager = mock(EntityManager.class);
         Query lock = fluentQuery();

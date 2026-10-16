@@ -8,13 +8,14 @@
 //
 // 提交通过 onSubmit 回调上抛，由页面执行真正的仓储调用并返回是否成功；
 // 成功时对话框自行关闭。
+import 'dart:async';
+
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 
-import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -57,6 +58,7 @@ class CategoryEditDialog extends ConsumerStatefulWidget {
     required this.onSubmit,
     this.initialParent,
     this.editing,
+    this.onCheckPrefix,
     this.onPreviewPrefixChange,
     this.canEditFields = true,
     this.canMove = true,
@@ -80,6 +82,10 @@ class CategoryEditDialog extends ConsumerStatefulWidget {
   final bool canMove;
   final bool canReorder;
 
+  /// 只读检查全系统前缀占用；保存仍由服务器事务做最终查重。
+  final Future<CategoryPrefixAvailability> Function(String requestedPrefix)?
+  onCheckPrefix;
+
   /// 编辑时前缀发生变化才调用；返回影响数量并在提交前二次确认。
   final Future<CategoryPrefixPreview> Function(
     String requestedPrefix,
@@ -102,6 +108,75 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
   late final TextEditingController _sortCtl;
   ProductCategoryNode? _parent;
   String? _formError;
+  Timer? _prefixDebounce;
+  int _prefixRevision = 0;
+  String? _observedPrefix;
+  String? _prefixError;
+  bool _prefixChecking = false;
+  bool _prefixCheckFailed = false;
+
+  String get _normalizedPrefix => _prefixCtl.text.trim().toUpperCase();
+  bool get _canCheckPrefix =>
+      widget.onCheckPrefix != null && (!_isEdit || widget.canEditFields);
+
+  String? _prefixFormatError(String prefix) =>
+      prefix.isNotEmpty && !RegExp(r'^[A-Z][A-Z0-9]{0,7}$').hasMatch(prefix)
+      ? '编号前缀须以字母开头，只能包含 1–8 位字母或数字'
+      : null;
+
+  void _onPrefixChanged() {
+    final prefix = _normalizedPrefix;
+    if (prefix == _observedPrefix) return;
+    _observedPrefix = prefix;
+    _queuePrefixCheck();
+  }
+
+  void _queuePrefixCheck({bool immediately = false}) {
+    _prefixDebounce?.cancel();
+    final revision = ++_prefixRevision;
+    final prefix = _normalizedPrefix;
+    final formatError = _serverCreated ? null : _prefixFormatError(prefix);
+    final shouldCheck =
+        !_serverCreated &&
+        _canCheckPrefix &&
+        prefix.isNotEmpty &&
+        formatError == null;
+    setState(() {
+      _prefixError = formatError;
+      _prefixCheckFailed = false;
+      _prefixChecking = shouldCheck;
+    });
+    if (shouldCheck) {
+      _prefixDebounce = Timer(
+        immediately ? Duration.zero : const Duration(milliseconds: 300),
+        () => unawaited(_checkPrefix(prefix, revision)),
+      );
+    }
+  }
+
+  Future<bool> _checkPrefix(String prefix, int revision) async {
+    try {
+      final result = await widget.onCheckPrefix!(prefix);
+      if (!mounted || revision != _prefixRevision) return false;
+      if (result.normalizedPrefix != prefix) {
+        throw StateError('前缀检查结果与当前输入不一致');
+      }
+      setState(() {
+        _prefixChecking = false;
+        _prefixCheckFailed = false;
+        _prefixError = result.available ? null : '编号前缀“$prefix”已被占用，请更换后再保存。';
+      });
+      return result.available;
+    } catch (_) {
+      if (!mounted || revision != _prefixRevision) return false;
+      setState(() {
+        _prefixChecking = false;
+        _prefixCheckFailed = true;
+        _prefixError = '暂时无法检查编号前缀，请重新检查后保存。';
+      });
+      return false;
+    }
+  }
 
   bool get _isEdit => widget.editing != null;
 
@@ -146,6 +221,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
       throw StateError('草稿的上级位置已不存在，请核查后重新选择');
     }
     _serverCreated = data['serverCreated'] == true;
+    _queuePrefixCheck();
   }
 
   Future<void> _close() async {
@@ -169,11 +245,16 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
     } else {
       _parent = widget.initialParent;
     }
+    _prefixCtl.addListener(_onPrefixChanged);
+    _onPrefixChanged();
     WidgetsBinding.instance.addPostFrameCallback((_) => initializeFormDraft());
   }
 
   @override
   void dispose() {
+    _prefixDebounce?.cancel();
+    _prefixRevision++;
+    _prefixCtl.removeListener(_onPrefixChanged);
     _prefixCtl.dispose();
     _nameCtl.dispose();
     _remarkCtl.dispose();
@@ -203,11 +284,8 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
   }
 
   String? _validate() {
-    final prefix = _prefixCtl.text.trim();
-    if (prefix.isNotEmpty &&
-        !RegExp(r'^[A-Za-z][A-Za-z0-9]{0,7}$').hasMatch(prefix)) {
-      return '编号前缀须以字母开头，只能包含 1–8 位字母或数字';
-    }
+    final prefixError = _prefixFormatError(_normalizedPrefix) ?? _prefixError;
+    if (prefixError != null) return prefixError;
     if (int.tryParse(_sortCtl.text.trim()) == null) {
       return '显示顺序必须填整数';
     }
@@ -289,10 +367,17 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
   }
 
   Future<void> _submit() async {
-    if (_saving) return;
+    if (_saving || (!_serverCreated && _prefixChecking)) return;
     if (_serverCreated) {
-      await completeFormDraft();
-      if (mounted) Navigator.of(context).pop();
+      setState(() => _saving = true);
+      try {
+        await completeFormDraft();
+        if (mounted) Navigator.of(context).pop();
+      } catch (e) {
+        if (mounted) context.appApiError(e);
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
       return;
     }
     final err = _validate();
@@ -300,28 +385,37 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
       setState(() => _formError = err);
       return;
     }
-    setState(() => _formError = null);
-    final prefix = _prefixCtl.text.trim().toUpperCase();
-    if (!await _confirmPrefixImpact(prefix)) return;
-    if (!mounted) return;
-    final result = CategoryEditResult(
-      name: _nameCtl.text.trim(),
-      codePrefix: prefix,
-      remark: _remarkCtl.text.trim(),
-      version: widget.editing?.version,
-      sortOrder: int.parse(_sortCtl.text.trim()),
-      moveToRoot:
-          _isEdit && widget.editing?.parentId != null && _parent == null,
-      parentId: _isEdit && _parent?.id == widget.editing?.parentId
-          ? null
-          : _parent?.id,
-    );
     // 兜底：onSubmit 内部通常已自带成功/失败通知；此处只兜未捕获异常，防止静默失败。
     late final bool ok;
-    setState(() => _saving = true);
+    setState(() {
+      _formError = null;
+      _saving = true;
+    });
     try {
+      final prefix = _normalizedPrefix;
+      if (_canCheckPrefix && prefix.isNotEmpty) {
+        // 提交前重新读取占用，覆盖输入检查后被另一用户抢占的情况。
+        _prefixDebounce?.cancel();
+        final revision = ++_prefixRevision;
+        setState(() => _prefixChecking = true);
+        if (!await _checkPrefix(prefix, revision)) return;
+      }
+      if (!await _confirmPrefixImpact(prefix) || !mounted) return;
+      final result = CategoryEditResult(
+        name: _nameCtl.text.trim(),
+        codePrefix: prefix,
+        remark: _remarkCtl.text.trim(),
+        version: widget.editing?.version,
+        sortOrder: int.parse(_sortCtl.text.trim()),
+        moveToRoot:
+            _isEdit && widget.editing?.parentId != null && _parent == null,
+        parentId: _isEdit && _parent?.id == widget.editing?.parentId
+            ? null
+            : _parent?.id,
+      );
       await saveFormDraftNow();
       ok = await runFormDraftSubmission(() => widget.onSubmit(result));
+      if (!ok && mounted) _queuePrefixCheck(immediately: true);
       if (ok && mounted) {
         setState(() => _serverCreated = true);
         await saveFormDraftNow();
@@ -329,6 +423,7 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
       }
     } catch (e) {
       if (!mounted) return;
+      _queuePrefixCheck(immediately: true);
       context.appApiError(e);
       return;
     } finally {
@@ -391,13 +486,17 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
                 rootLabel: '顶级分类', // TODO(l10n): 补 arb
                 resultLevelLabel: 'L$_resultLevel',
                 headingLabel: _isEdit ? '上级分类' : '添加位置',
-                enabled: !_isEdit || widget.canMove,
+                enabled:
+                    !_saving && !_serverCreated && (!_isEdit || widget.canMove),
                 onTap: _pickParent,
               ),
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _sortCtl,
-                readOnly: _isEdit && !widget.canReorder,
+                readOnly:
+                    _saving ||
+                    _serverCreated ||
+                    (_isEdit && !widget.canReorder),
                 keyboardType: TextInputType.number,
                 decoration: UtenInputDecoration(
                   InputDecoration(
@@ -408,7 +507,10 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _prefixCtl,
-                readOnly: _isEdit && !widget.canEditFields,
+                readOnly:
+                    _saving ||
+                    _serverCreated ||
+                    (_isEdit && !widget.canEditFields),
                 textCapitalization: TextCapitalization.characters,
                 maxLength: 8,
                 decoration: UtenInputDecoration(
@@ -419,17 +521,61 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
                       info:
                           '留空时沿用最近上级的前缀；前缀全系统唯一，'
                           '不区分大小写，一经使用会一直占用。'
-                          '保存时服务器会查重；如提示重复，你填的内容会保留，改一下再保存。',
+                          '输入时自动检查，被占用时请更换前缀后再保存。',
                     ),
                     hintText: '例如 V6',
                     counterText: '',
+                    errorText: _prefixError,
+                    errorStyle: TextStyle(color: theme.colorScheme.error),
+                    enabledBorder: _prefixError == null
+                        ? null
+                        : OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.error,
+                            ),
+                          ),
+                    focusedBorder: _prefixError == null
+                        ? null
+                        : OutlineInputBorder(
+                            borderSide: BorderSide(
+                              color: theme.colorScheme.error,
+                              width: 2,
+                            ),
+                          ),
+                    suffixIcon: _prefixCheckFailed
+                        ? IconButton(
+                            tooltip: '重新检查编号前缀',
+                            onPressed: _saving
+                                ? null
+                                : () => _queuePrefixCheck(immediately: true),
+                            icon: const Icon(Icons.refresh),
+                          )
+                        : null,
                   ),
                 ),
               ),
+              if (_prefixError != null || _prefixChecking) ...[
+                const SizedBox(height: UtenSpacing.s8),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    _prefixError ?? '正在检查编号前缀…',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: _prefixError == null
+                          ? theme.colorScheme.onSurfaceVariant
+                          : theme.colorScheme.error,
+                      fontWeight: _prefixError == null ? null : FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _nameCtl,
-                readOnly: _isEdit && !widget.canEditFields,
+                readOnly:
+                    _saving ||
+                    _serverCreated ||
+                    (_isEdit && !widget.canEditFields),
                 decoration: const InputDecoration(
                   labelText: '名称', // TODO(l10n): 补 arb
                 ),
@@ -437,7 +583,10 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 controller: _remarkCtl,
-                readOnly: _isEdit && !widget.canEditFields,
+                readOnly:
+                    _saving ||
+                    _serverCreated ||
+                    (_isEdit && !widget.canEditFields),
                 minLines: 2,
                 maxLines: 3,
                 decoration: UtenInputDecoration(
@@ -470,9 +619,14 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
           onPressed: _saving ? null : _close,
           child: const Text('取消'), // TODO(l10n): 补 arb
         ),
-        UtenActionButton(
-          label: Text(_isEdit ? '保存' : '创建'), // TODO(l10n): 补 arb
-          onAction: _submit,
+        UtenButton(
+          isLoading: _saving,
+          onPressed:
+              _saving ||
+                  (!_serverCreated && (_prefixChecking || _prefixError != null))
+              ? null
+              : _submit,
+          child: Text(_isEdit ? '保存' : '创建'), // TODO(l10n): 补 arb
         ),
       ],
     );

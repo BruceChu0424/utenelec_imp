@@ -1,5 +1,6 @@
 package com.uten.imp.common.web;
 
+import com.uten.imp.common.mastercode.CategoryPrefixAvailability;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
@@ -291,6 +292,11 @@ public class GlobalExceptionHandler {
                     "23502".equals(state) ? RULE_VIOLATION_MESSAGE : DATA_RANGE_MESSAGE);
         }
         if ("23505".equals(state) || "23P01".equals(state)) {
+            if ("23505".equals(state) && server != null
+                    && "business_prefix_reservations_pkey".equals(server.getConstraint())) {
+                return new IntegrityOutcome(ErrorCode.CONFLICT,
+                        CategoryPrefixAvailability.OCCUPIED_MESSAGE);
+            }
             String guard = businessGuardMessage(server);
             if (guard != null) return new IntegrityOutcome(ErrorCode.CONFLICT, guard);
             logIntegrity("duplicate", sql, server, root);

@@ -569,28 +569,39 @@ class _NoticeCard extends StatelessWidget {
                           const SizedBox(height: UtenSpacing.s12),
                           const Divider(),
                           const SizedBox(height: UtenSpacing.s12),
-                          // 底部：发布人 + 时间（+ 组计数胶囊）
-                          Row(
+                          // 日期满七天后会变成长日期；空间不足时完整换行，保留组入口。
+                          Wrap(
+                            spacing: UtenSpacing.s8,
+                            runSpacing: UtenSpacing.s8,
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              Icon(
-                                notice.type.isWork
-                                    ? Icons.work_outline_rounded
-                                    : Icons.account_circle_rounded,
-                                size: 16,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                              const SizedBox(width: UtenSpacing.s4),
-                              Flexible(
-                                child: Text(
-                                  notice.publisher,
-                                  style: theme.textTheme.bodySmall?.copyWith(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    notice.type.isWork
+                                        ? Icons.work_outline_rounded
+                                        : Icons.account_circle_rounded,
+                                    size: 16,
                                     color: theme.colorScheme.onSurfaceVariant,
-                                    fontWeight: FontWeight.w500,
                                   ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                  const SizedBox(width: UtenSpacing.s4),
+                                  Flexible(
+                                    child: Text(
+                                      notice.publisher,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: UtenSpacing.s8),
                               Text(
                                 _fmt(notice.publishedAt),
                                 style: theme.textTheme.bodySmall?.copyWith(
@@ -598,7 +609,6 @@ class _NoticeCard extends StatelessWidget {
                                 ),
                               ),
                               if (groupCount != null && groupCount! > 1) ...[
-                                const Spacer(),
                                 _GroupCountPill(
                                   count: groupCount!,
                                   groupUnread: groupUnread,
@@ -856,11 +866,13 @@ class _GroupCountPill extends StatelessWidget {
           children: [
             Icon(Icons.layers_rounded, size: 12, color: color),
             const SizedBox(width: 2),
-            Text(
-              '共 $count 条${unread ? ' · $groupUnread 未读' : ''}',
-              style: theme.textTheme.labelSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: color,
+            Flexible(
+              child: Text(
+                '共 $count 条${unread ? ' · $groupUnread 未读' : ''}',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
               ),
             ),
           ],

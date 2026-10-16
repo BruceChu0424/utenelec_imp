@@ -1,6 +1,6 @@
 // 员工详情页（v2 重构，ADR-021 §六）：大厂 People 范式——
 // 头部身份卡 + 常用操作外显（编辑/调岗/登记转正/办理离职，次要在 ⋯），
-// 内容 Tab 分组（概览 / 组织与合同 / 联系与车辆 / 薪酬 / 任职记录），
+// 内容按统一分类栏分组（概览 / 组织与合同 / 联系与车辆 / 薪酬 / 任职记录 / 档案文件），
 // 联系与车辆 Tab 内置：更换手机号（同步登录账号）、备用手机号与车辆管理。
 // 敏感字段由后端按权限点脱敏后返回；全断点默认 UtenContentContainer（正文随可用宽度铺满）。
 // 2026-10-05 证件号码有问题(服务端 idNumberIssue)时顶部常驻红/黄提醒，修好之前一直显示；
@@ -14,6 +14,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_empty.dart';
@@ -34,6 +36,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/providers/session_provider.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
@@ -71,43 +75,114 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   bool _loading = true;
   String? _error;
   late final TabController _tab;
+  int _selectedCategory = 0;
+  int _loadRequest = 0;
+  int _accountRequest = 0;
+  bool _accountBusy = false;
+  bool _accountWriting = false;
+  final _accountOwnerChanges = ValueNotifier<int>(0);
+  SensitiveReadBoundary? _profileOwner;
 
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 6, vsync: this);
+    _tab = TabController(length: 6, vsync: this)
+      ..addListener(_onCategoryChanged);
+    ref.listenManual(sensitiveReadBoundaryProvider, (old, next) {
+      if (old == next) return;
+      ++_loadRequest;
+      ++_accountRequest;
+      _accountOwnerChanges.value++;
+      setState(() {
+        _profile = null;
+        _profileOwner = null;
+        _loading = true;
+        _error = null;
+        _accountBusy = false;
+        _accountWriting = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
+    ++_loadRequest;
+    ++_accountRequest;
+    _accountOwnerChanges.value++;
+    _accountOwnerChanges.dispose();
+    _tab.removeListener(_onCategoryChanged);
     _tab.dispose();
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant EmployeeDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.employeeId != widget.employeeId) {
+      ++_accountRequest;
+      _accountOwnerChanges.value++;
+      _profile = null;
+      _profileOwner = null;
+      _accountBusy = false;
+      _accountWriting = false;
+      _load();
+    }
+  }
+
+  void _onCategoryChanged() {
+    if (!mounted || _selectedCategory == _tab.index) return;
+    setState(() => _selectedCategory = _tab.index);
+  }
+
   Future<void> _load() async {
+    final request = ++_loadRequest;
+    final employeeId = widget.employeeId;
+    final owner = ref.read(sensitiveReadBoundaryProvider);
     setState(() {
       _loading = true;
       _error = null;
     });
+    if (owner.identity == null ||
+        !owner.permissions.contains(Perm.employeeView)) {
+      setState(() {
+        _profile = null;
+        _profileOwner = null;
+        _loading = false;
+        _error = '没有员工资料查看权限';
+      });
+      return;
+    }
+    bool current() =>
+        mounted &&
+        request == _loadRequest &&
+        employeeId == widget.employeeId &&
+        owner == ref.read(sensitiveReadBoundaryProvider);
     try {
-      final p = await ref
-          .read(employeeRepositoryProvider)
-          .getById(widget.employeeId);
-      if (!mounted) return;
+      final p = await ref.read(employeeRepositoryProvider).getById(employeeId);
+      if (!current()) return;
+      if (p.id != employeeId) throw const FormatException('员工资料与当前对象不一致');
       setState(() {
         _profile = p;
+        _profileOwner = owner;
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        _profile = null;
+        _profileOwner = null;
         _error = e.message;
         _loading = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!current()) return;
       setState(() {
+        _profile = null;
+        _profileOwner = null;
         _error = AppLocalizations.of(context).employeeOffboardLoadFailed;
         _loading = false;
       });
@@ -133,7 +208,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
           if (canManageAuthorization && _profile != null)
             IconButton(
               icon: const Icon(Icons.admin_panel_settings_outlined),
-              tooltip: _profile!.accountStatus == null
+              tooltip: _accountStatus(_profile!) == null
                   ? l10n.employeeAccountNotProvisionedTooltip
                   : l10n.employeePermissionSettingsTooltip,
               onPressed: _openPermissionSettings,
@@ -153,11 +228,11 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
               actionLabel: l10n.commonRetry,
               onAction: _load,
             )
-          // Builder 推迟 _tabBar 构建：其内部经 _p 强制解包 _profile，
+          // Builder 在资料成功加载后构建分类栏与内容（_p 依赖当前档案），
           // 仅资料加载完成后才可调用。
           : Builder(
               builder: (context) {
-                final tabBar = _tabBar(theme, l10n);
+                final categories = _categoryBar(theme);
                 return UtenContentContainer(
                   // 「顶部折叠 + Tab 吸顶 + 内容内滚」：身份卡、变更审批、
                   // 到期横幅随上滑收起腾出空间，Tab 栏顶到上沿后吸顶，
@@ -177,8 +252,8 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                         const SizedBox(height: UtenSpacing.s12),
                       ],
                     ),
-                    pinnedHeader: tabBar,
-                    pinnedHeaderExtent: tabBar.preferredSize.height,
+                    pinnedHeader: categories,
+                    pinnedHeaderExtent: categories.preferredSize.height,
                     body: TabBarView(
                       controller: _tab,
                       children: [
@@ -198,26 +273,38 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   // 返回类型保持 TabBar：调用方需要 preferredSize 计算吸顶高度。
-  TabBar _tabBar(ThemeData theme, AppLocalizations l10n) {
-    final showComp =
-        _p.contractType != null ||
-        _p.baseSalary != null ||
-        _p.bankAccount != null;
-    return TabBar(
-      controller: _tab,
-      isScrollable: true,
-      tabAlignment: TabAlignment.start,
-      labelStyle: theme.textTheme.titleSmall?.copyWith(
-        fontWeight: FontWeight.w600,
+  PreferredSizeWidget _categoryBar(ThemeData theme) {
+    final label = theme.textTheme.labelLarge;
+    final textHeight =
+        MediaQuery.textScalerOf(context).scale(label?.fontSize ?? 14) *
+        (label?.height ?? 1.5);
+    final height =
+        math.max(
+          UtenFilterRow.heightOf(context),
+          textHeight + UtenFilterRow.cellVerticalPadding * 2,
+        ) +
+        UtenSpacing.s16;
+    return PreferredSize(
+      preferredSize: Size.fromHeight(height),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: UtenSegmentedFilter<int>(
+            key: const ValueKey('employee-detail-categories'),
+            segments: const [
+              UtenSegment(value: 0, label: '概览'),
+              UtenSegment(value: 1, label: '组织与合同'),
+              UtenSegment(value: 2, label: '联系与车辆'),
+              UtenSegment(value: 3, label: '薪酬'),
+              UtenSegment(value: 4, label: '任职记录'),
+              UtenSegment(value: 5, label: '档案文件'),
+            ],
+            selected: _selectedCategory,
+            onChanged: _tab.animateTo,
+          ),
+        ),
       ),
-      tabs: [
-        const Tab(text: '概览'),
-        const Tab(text: '组织与合同'),
-        const Tab(text: '联系与车辆'),
-        Tab(text: showComp ? '薪酬' : '薪酬 🔒'),
-        const Tab(text: '任职记录'),
-        const Tab(text: '档案文件'),
-      ],
     );
   }
 
@@ -378,6 +465,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
               children: _primaryActions(l10n),
             ),
           ],
+          const SizedBox(height: UtenSpacing.s12),
+          const Divider(height: 1),
+          const SizedBox(height: UtenSpacing.s12),
+          _accountSection(theme, l10n),
         ],
       ),
     );
@@ -447,46 +538,81 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         ),
       );
     }
-    // 账号支持（account:support，独立于 employee:edit）：开通 / 锁定 / 解锁 / 修改密码。
-    if (perms.contains(Perm.accountSupport)) {
-      if (p.accountStatus == null && !resigned) {
-        actions.add(
-          FilledButton.tonalIcon(
-            icon: const Icon(Icons.person_add_outlined, size: 18),
-            label: Text(l10n.employeeActionProvision),
-            onPressed: _onProvisionAccount,
-          ),
-        );
-      } else if (p.accountStatus == 'active') {
-        actions.add(
-          FilledButton.tonalIcon(
-            icon: const Icon(Icons.lock_outline_rounded, size: 18),
-            label: Text(l10n.employeeActionLockAccount),
-            onPressed: _onLockAccount,
-          ),
-        );
-      } else if (p.accountStatus == 'locked') {
-        actions.add(
-          FilledButton.tonalIcon(
-            icon: const Icon(Icons.lock_open_outlined, size: 18),
-            label: Text(l10n.employeeActionUnlockAccount),
-            onPressed: _onUnlockAccount,
-          ),
-        );
-      }
-      if (!resigned &&
-          (p.accountStatus == 'active' || p.accountStatus == 'locked')) {
-        actions.add(
-          FilledButton.tonalIcon(
-            key: const ValueKey('employee-reset-password-action'),
-            icon: const Icon(Icons.key_outlined, size: 18),
-            label: const Text('修改密码'),
-            onPressed: _onResetPassword,
-          ),
-        );
-      }
-    }
     return actions;
+  }
+
+  String? _accountStatus(EmployeeProfile profile) =>
+      profile.accountDeleted ? null : profile.accountStatus;
+
+  bool _maySupportAccount(EmployeeProfile profile) {
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final self = ref.read(sessionProvider).user?.employeeId == profile.id;
+    return owner == _profileOwner &&
+        owner.identity != null &&
+        owner.identity!.actorId == null &&
+        !owner.identity!.readOnly &&
+        owner.permissions.contains(Perm.accountSupport) &&
+        !self &&
+        profile.accountSupportAllowed != false &&
+        const {'active', 'probation', 'onLeave'}.contains(profile.status);
+  }
+
+  Widget _accountSection(ThemeData theme, AppLocalizations l10n) {
+    ref.watch(sensitiveReadBoundaryProvider);
+    final profile = _p;
+    final status = _accountStatus(profile);
+    final canSupport = _maySupportAccount(profile);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: UtenSpacing.s12,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text('登录账号', style: theme.textTheme.titleSmall),
+            _accountStatusBadge(theme, l10n),
+            if (canSupport && status == null)
+              UtenButton(
+                key: const ValueKey('employee-provision-account-action'),
+                icon: Icons.person_add_outlined,
+                isLoading: _accountWriting,
+                onPressed: _accountBusy ? null : _onProvisionAccount,
+                child: const Text('开通账号'),
+              ),
+            if (canSupport && status == 'active')
+              UtenButton(
+                key: const ValueKey('employee-lock-account-action'),
+                type: UtenButtonType.danger,
+                icon: Icons.lock_outline_rounded,
+                isLoading: _accountWriting,
+                onPressed: _accountBusy ? null : _onLockAccount,
+                child: Text(l10n.employeeActionLockAccount),
+              ),
+            if (canSupport && status == 'locked')
+              UtenButton(
+                key: const ValueKey('employee-unlock-account-action'),
+                icon: Icons.lock_open_outlined,
+                isLoading: _accountWriting,
+                onPressed: _accountBusy ? null : _onUnlockAccount,
+                child: Text(l10n.employeeActionUnlockAccount),
+              ),
+            if (canSupport && (status == 'active' || status == 'locked'))
+              UtenButton(
+                key: const ValueKey('employee-reset-password-action'),
+                type: UtenButtonType.secondary,
+                icon: Icons.key_outlined,
+                onPressed: _accountBusy ? null : _onResetPassword,
+                child: const Text('修改密码'),
+              ),
+          ],
+        ),
+        if (status == 'disabled') ...[
+          const SizedBox(height: UtenSpacing.s8),
+          Text('账号已停用；如需恢复，请联系账号管理员处理。', style: theme.textTheme.bodySmall),
+        ],
+      ],
+    );
   }
 
   // 注：禁止删除员工——⋯ 菜单与"归档删除"入口已下线。员工离职走「办理离职」流程，
@@ -1226,117 +1352,214 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   }
 
   Future<void> _openPermissionSettings() async {
-    final profile = _profile;
-    if (profile == null) return;
-    final l10n = AppLocalizations.of(context);
-    if (profile.accountStatus == null) {
-      if (profile.status == 'resigned') {
-        context.appError(l10n.employeeResignedCannotProvision);
-        return;
-      }
-      if (!ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) {
-        context.appError(l10n.employeeAccountNotProvisionedContactSupport);
-        return;
-      }
-      final result = await showProvisionSelectedEmployeeAccountFlow(
-        context,
-        ref: ref,
-        employeeId: widget.employeeId,
-        employeeName: profile.fullName ?? '未命名员工',
-        employeeCode: profile.code,
-        hasAccount: false,
-      );
-      if (result == null || !mounted) return;
-      setState(() => _profile = result.employee);
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    if (_profile == null ||
+        !owner.superAdmin ||
+        !owner.permissions.contains(Perm.authorizationManage)) {
+      return;
     }
-    if (!mounted) return;
+    final employeeId = widget.employeeId;
+    if (_accountStatus(_profile!) == null) {
+      await _onProvisionAccount();
+    }
+    if (!mounted ||
+        _profile == null ||
+        widget.employeeId != employeeId ||
+        owner != ref.read(sensitiveReadBoundaryProvider) ||
+        _profileOwner != owner ||
+        _accountStatus(_profile!) == null) {
+      return;
+    }
     final target = Uri(
       path: RouteName.adminPermissions,
-      queryParameters: {'employeeId': widget.employeeId},
+      queryParameters: {'employeeId': employeeId},
     );
     context.push(target.toString());
   }
 
-  /// 给批量导入等「未开通账号」的存量员工补开登录账号。
+  bool _sameAccountAction(
+    int request,
+    SensitiveReadBoundary owner,
+    String employeeId,
+    String? status,
+  ) {
+    final profile = _profile;
+    return mounted &&
+        request == _accountRequest &&
+        widget.employeeId == employeeId &&
+        profile?.id == employeeId &&
+        owner == ref.read(sensitiveReadBoundaryProvider) &&
+        profile != null &&
+        _maySupportAccount(profile) &&
+        _accountStatus(profile) == status;
+  }
+
+  /// 补开后先安全保存一次性凭据，再用服务端当前状态刷新锁定入口。
   Future<void> _onProvisionAccount() async {
     final profile = _profile;
-    if (profile == null ||
-        profile.accountStatus != null ||
-        profile.status == 'resigned') {
+    if (_accountBusy ||
+        profile == null ||
+        !_maySupportAccount(profile) ||
+        _accountStatus(profile) != null) {
       return;
     }
-    final result = await showProvisionSelectedEmployeeAccountFlow(
-      context,
-      ref: ref,
-      employeeId: widget.employeeId,
-      employeeName: profile.fullName ?? '未命名员工',
-      employeeCode: profile.code,
-      hasAccount: false,
-    );
-    if (result == null || !mounted) return;
-    setState(() => _profile = result.employee);
-    await _load();
+    final request = ++_accountRequest;
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final employeeId = widget.employeeId;
+    setState(() => _accountBusy = true);
+    try {
+      final result = await showProvisionSelectedEmployeeAccountFlow(
+        context,
+        ref: ref,
+        employeeId: employeeId,
+        employeeName: profile.fullName ?? '未命名员工',
+        employeeCode: profile.code,
+        hasAccount: false,
+        isCurrent: () => _sameAccountAction(request, owner, employeeId, null),
+        ownerChanges: _accountOwnerChanges,
+      );
+      if (result == null ||
+          !_sameAccountAction(request, owner, employeeId, null)) {
+        return;
+      }
+      if (result.employee.id != employeeId) return;
+      setState(() {
+        _profile = result.employee;
+        _profileOwner = owner;
+      });
+      await _load();
+    } finally {
+      if (mounted && request == _accountRequest) {
+        setState(() {
+          _accountBusy = false;
+          _accountWriting = false;
+        });
+      }
+    }
   }
 
   Future<void> _onLockAccount() => _toggleAccountLock(lock: true);
+  Future<void> _onUnlockAccount() => _toggleAccountLock(lock: false);
 
   Future<void> _onResetPassword() async {
     final profile = _profile;
-    if (profile == null) return;
-    final changed = await showEmployeeResetPasswordDialog(
-      context,
-      employee: profile,
-    );
-    if (changed == true && mounted) await _load();
+    if (_accountBusy ||
+        profile == null ||
+        !_maySupportAccount(profile) ||
+        !const {'active', 'locked'}.contains(_accountStatus(profile))) {
+      return;
+    }
+    final request = ++_accountRequest;
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final employeeId = widget.employeeId;
+    final status = _accountStatus(profile);
+    setState(() => _accountBusy = true);
+    try {
+      final changed = await showEmployeeResetPasswordDialog(
+        context,
+        employee: profile,
+      );
+      if (changed == true &&
+          _sameAccountAction(request, owner, employeeId, status)) {
+        await _load();
+      }
+    } finally {
+      if (mounted && request == _accountRequest) {
+        setState(() {
+          _accountBusy = false;
+          _accountWriting = false;
+        });
+      }
+    }
   }
 
-  Future<void> _onUnlockAccount() => _toggleAccountLock(lock: false);
-
-  /// 锁定 / 解锁登录账号（account:support）。二次确认后调端点，成功刷新档案。
+  /// 确认前后均复核当前身份、权限和目标状态，写入沿用真实员工账号端点。
   Future<void> _toggleAccountLock({required bool lock}) async {
+    final profile = _profile;
+    final expectedStatus = lock ? 'active' : 'locked';
+    if (_accountBusy ||
+        profile == null ||
+        !_maySupportAccount(profile) ||
+        _accountStatus(profile) != expectedStatus) {
+      return;
+    }
+    final request = ++_accountRequest;
+    final owner = ref.read(sensitiveReadBoundaryProvider);
+    final employeeId = widget.employeeId;
     final l10n = AppLocalizations.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => UtenAlertDialog(
-        title: Text(
-          lock
-              ? l10n.employeeActionLockAccount
-              : l10n.employeeActionUnlockAccount,
-        ),
-        content: Text(
-          lock ? '锁定后该员工将无法登录，所有会话立即失效，是否继续？' : '解锁后该员工可正常登录，是否继续？',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(l10n.commonCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(l10n.commonConfirm),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
+    setState(() => _accountBusy = true);
     try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => UtenAlertDialog(
+          title: Text(
+            lock
+                ? l10n.employeeActionLockAccount
+                : l10n.employeeActionUnlockAccount,
+          ),
+          content: Text(
+            lock ? '锁定后该员工将无法登录，所有会话立即失效，是否继续？' : '解锁后该员工可重新登录，是否继续？',
+          ),
+          actionsAlignment: MainAxisAlignment.end,
+          actions: [
+            UtenButton(
+              key: const ValueKey('employee-account-lock-cancel'),
+              type: UtenButtonType.secondary,
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.commonCancel),
+            ),
+            UtenButton(
+              key: const ValueKey('employee-account-lock-confirm'),
+              type: lock ? UtenButtonType.danger : UtenButtonType.primary,
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.commonConfirm),
+            ),
+          ],
+        ),
+      );
+      if (ok != true ||
+          !_sameAccountAction(request, owner, employeeId, expectedStatus)) {
+        return;
+      }
+      setState(() => _accountWriting = true);
       final repo = ref.read(employeeRepositoryProvider);
       if (lock) {
-        await repo.lockAccount(widget.employeeId);
+        await repo.lockAccount(employeeId);
       } else {
-        await repo.unlockAccount(widget.employeeId);
+        await repo.unlockAccount(employeeId);
       }
-      if (!mounted) return;
+      if (!mounted ||
+          !_sameAccountAction(request, owner, employeeId, expectedStatus)) {
+        return;
+      }
       context.appSuccess(
         lock
             ? l10n.employeeLockAccountSuccess
             : l10n.employeeUnlockAccountSuccess,
       );
-      _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
+      await _load();
+    } on ApiException catch (error) {
+      if (!mounted ||
+          !_sameAccountAction(request, owner, employeeId, expectedStatus)) {
+        return;
+      }
+      context.appApiError(error);
+      if ({401, 403}.contains(error.httpStatus) ||
+          {'UNAUTHORIZED', 'FORBIDDEN'}.contains(error.code)) {
+        await _load();
+      }
+    } catch (_) {
+      if (mounted &&
+          _sameAccountAction(request, owner, employeeId, expectedStatus)) {
+        context.appError('账号操作未完成，请刷新确认当前状态');
+      }
+    } finally {
+      if (mounted && request == _accountRequest) {
+        setState(() {
+          _accountBusy = false;
+          _accountWriting = false;
+        });
+      }
     }
   }
 
@@ -1520,11 +1743,12 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   /// ADR-169 档位：锁定=红（硬阻断，2026-10-08 用户口径「锁住就是红色」）、
   /// 正常=绿、停用=灰（中性终态，非错误，与锁定红区分）、未开通随正文灰。
   Widget _accountStatusBadge(ThemeData theme, AppLocalizations l10n) {
-    final (label, color) = switch (_p.accountStatus) {
+    final (label, color) = switch (_accountStatus(_p)) {
       'active' => (l10n.accountStatusActive, UtenColors.statusSuccess),
       'locked' => (l10n.accountStatusLocked, UtenColors.statusDanger),
       'disabled' => (l10n.accountStatusDisabled, UtenColors.statusNeutral),
-      _ => (l10n.accountStatusNone, theme.colorScheme.onSurfaceVariant),
+      null => (l10n.accountStatusNone, theme.colorScheme.onSurfaceVariant),
+      _ => ('状态未知', theme.colorScheme.onSurfaceVariant),
     };
     return Row(
       mainAxisSize: MainAxisSize.min,

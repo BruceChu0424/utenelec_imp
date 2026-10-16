@@ -120,6 +120,33 @@ class _ReleaseNotesDialog extends StatelessWidget {
                 '백업, 권한 분리 및 상태 점검 절차는 유지됩니다.',
           _ => '修复服务器升级时迁移程序无法启动的问题，保留备份、权限隔离和健康检查流程。',
         },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Fixed account provisioning blocked by a deleted account. '
+                'Reopening preserves identity without restoring old personal permissions.',
+          'ko' =>
+            '삭제된 계정 때문에 새 계정을 개설할 수 없던 문제를 수정했습니다. '
+                '기존 식별자는 유지하고 이전 개인 권한은 복원하지 않습니다.',
+          _ => '修复已删除账号占位导致员工无法开通的问题，保留历史身份，重新开通不恢复旧个人授权。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Notification cards now wrap full dates and group counts on narrow screens '
+                'and with larger text.',
+          'ko' => '좁은 화면과 큰 글꼴에서도 알림 카드의 날짜와 묶음 개수가 잘리지 않도록 줄바꿈합니다.',
+          _ => '通知卡片在窄屏和大字体下完整换行显示日期及分组数量。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'HR identity review now uses separate employee columns, one read-only '
+                'suggestion and manual entry. Employee details share the standard '
+                'category control; account actions are visible in headers and AI '
+                'use is categorized within permission details.',
+          'ko' =>
+            '인사 증명서 검토는 직원 정보를 열별로 나누고 하나의 읽기 전용 제안과 수동 입력을 사용합니다. '
+                '직원 상세는 공통 분류 구성요소를 사용하며, 계정 작업은 상단에 배치하고 AI 사용 권한은 권한 상세에서 분류합니다.',
+          _ => '员工核对信息分列、只读单条建议与手动填写；详情使用统一分类栏，账号操作外显，AI 使用权限归入权限明细分类。',
+        },
         l10n.release2518ServerUpdates,
         l10n.release2518Storage,
         l10n.release2518CompanyConnections,

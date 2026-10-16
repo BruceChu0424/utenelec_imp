@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/hr_task/models/hr_reconcile_form_draft.dart';
 import 'package:uten_imp/features/hr_task/models/hr_reconcile_plan.dart';
+import 'package:uten_imp/features/hr_task/widgets/hr_reconcile_cells.dart';
 import 'package:uten_imp/shared/drafts/form_draft_catalog.dart';
 
 HrReconcileRow _row(
@@ -65,6 +66,25 @@ HrReconcilePlan _plan({
 );
 
 void main() {
+  test('a preselected suggestion never supplies a manual final value', () {
+    const item = HrReconcileItem(
+      itemNo: 1,
+      field: 'idNumber',
+      label: '证件号码',
+      writePath: 'CHANGE_IDENTITY',
+      tier: HrReconcileTier.high,
+      preselected: true,
+      newValue: '11010519491231002X',
+    );
+    final draft = HrReconcileRowDraft();
+    addTearDown(draft.dispose);
+    expect(hrReconcileFinalValue(item, draft), isNull);
+    draft.manual.text = '1101051949';
+    expect(hrReconcileFinalValue(item, draft), isNull);
+    draft.manual.text = '11010519491231002X';
+    expect(hrReconcileFinalValue(item, draft)?.value, '11010519491231002X');
+  });
+
   test('credential fields never capture manual input or candidate choices', () {
     final source = _plan(rows: [_row('employee-a', 1, field: 'password')]);
     final captured = captureHrReconcileFormDraft(source, {
@@ -177,31 +197,61 @@ void main() {
         saved,
       );
       expect(restored['employee-a']!.manual, '  unfinished X  ');
-      expect(restored['employee-a']!.adopted, isFalse);
+      expect(restored['employee-a']!.adopted, isNull);
       expect(restored['employee-a']!.selected, isTrue);
       expect(restored['employee-b']!.manual, isEmpty);
       expect(
         saved.keys,
-        unorderedEquals(['planId', 'planVersion', 'employeeIds', 'rows']),
+        unorderedEquals([
+          'inputMode',
+          'planId',
+          'planVersion',
+          'employeeIds',
+          'rows',
+        ]),
       );
     },
   );
 
-  test('candidate identity survives candidate reordering', () {
-    final saved = captureHrReconcileFormDraft(_plan(), {
-      'employee-a': const HrReconcileDraftInput(candidateValue: 'second'),
-    });
-    final restored = restoreHrReconcileFormDraft(
-      _plan(
-        rows: [
-          _row('employee-a', 1, candidates: ['second', 'first']),
-          _row('employee-b', 2),
-        ],
-      ),
-      saved,
-    );
-    expect(restored['employee-a']!.candidateValue, 'second');
-  });
+  test(
+    'legacy choices never become manual input and genuine manual text survives',
+    () {
+      final saved = captureHrReconcileFormDraft(_plan(), const {});
+      saved.remove('inputMode');
+      final rows = saved['rows'] as List;
+      (rows.first as Map<String, dynamic>).addAll({
+        'manual': '  unfinished X  ',
+        'adopted': true,
+        'candidateValue': 'second',
+        'selected': true,
+      });
+      (rows.last as Map<String, dynamic>).addAll({
+        'adopted': true,
+        'candidateValue': 'first',
+        'selected': true,
+      });
+      final restored = restoreHrReconcileFormDraft(
+        _plan(
+          rows: [
+            _row('employee-a', 1, candidates: ['different']),
+            _row('employee-b', 2),
+          ],
+        ),
+        saved,
+      );
+      expect(restored['employee-a']!.manual, '  unfinished X  ');
+      expect(restored['employee-a']!.legacyChoicesIgnored, isTrue);
+      expect(restored['employee-a']!.candidateValue, isNull);
+      expect(restored['employee-a']!.adopted, isNull);
+      expect(restored['employee-b']!.manual, isEmpty);
+      final recaptured = captureHrReconcileFormDraft(_plan(), restored);
+      expect(recaptured['inputMode'], 'MANUAL_ONLY_V1');
+      for (final row in recaptured['rows'] as List) {
+        expect(row, isNot(contains('adopted')));
+        expect(row, isNot(contains('candidateValue')));
+      }
+    },
+  );
 
   for (final changed in <String, HrReconcilePlan>{
     'plan UUID': _plan(id: 'different-plan'),
@@ -236,35 +286,20 @@ void main() {
     });
   }
 
-  test(
-    'duplicate employees and changed selected candidates are rejected atomically',
-    () {
-      final saved = captureHrReconcileFormDraft(_plan(), {
-        'employee-a': const HrReconcileDraftInput(candidateValue: 'second'),
-      });
-      expect(
-        () => restoreHrReconcileFormDraft(
-          _plan(
-            rows: [
-              _row('employee-a', 1, candidates: ['first']),
-              _row('employee-b', 2),
-            ],
-          ),
-          saved,
-        ),
-        throwsFormatException,
-      );
-      final rows = saved['rows'] as List;
-      final duplicate = {
-        ...saved,
-        'rows': [rows.first, rows.first],
-      };
-      expect(
-        () => restoreHrReconcileFormDraft(_plan(), duplicate),
-        throwsFormatException,
-      );
-    },
-  );
+  test('duplicate employees are rejected atomically', () {
+    final saved = captureHrReconcileFormDraft(_plan(), {
+      'employee-a': const HrReconcileDraftInput(manual: 'unfinished'),
+    });
+    final rows = saved['rows'] as List;
+    final duplicate = {
+      ...saved,
+      'rows': [rows.first, rows.first],
+    };
+    expect(
+      () => restoreHrReconcileFormDraft(_plan(), duplicate),
+      throwsFormatException,
+    );
+  });
 
   test(
     'confirmed partial apply keeps only compatible remaining raw inputs',
@@ -292,7 +327,7 @@ void main() {
       expect(remaining['employee-a']!.manual, isEmpty);
       expect(remaining['employee-b']!.manual, '  remainder unfinished  ');
       expect(remaining['employee-b']!.selected, isFalse);
-      expect(remaining['employee-b']!.adopted, isFalse);
+      expect(remaining['employee-b']!.adopted, isNull);
     },
   );
 

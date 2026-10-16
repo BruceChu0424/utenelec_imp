@@ -116,13 +116,37 @@ class AccountSupportBoundaryTest {
         employee.setFullName("离职员工");
         when(users.findByEmployeeId(employeeId)).thenReturn(Optional.of(account));
         when(employees.findById(employeeId)).thenReturn(Optional.of(employee));
+        when(support.canSupportTarget(account)).thenReturn(true);
 
         UserSummary summary = service(support).getByEmployeeId(employeeId);
 
         assertEquals("disabled", summary.getStatus());
         assertEquals("resigned", summary.getEmployeeStatus());
         assertFalse(summary.isCurrentEmployee());
+        assertEquals(Boolean.TRUE, summary.getAccountSupportAllowed());
         assertEquals(employeeId, summary.getEmployeeId());
+    }
+
+    @Test
+    void accountSummaryCapabilityRequiresRealSupportAuthorityAndRejectsSelfOrSuperAdmin() {
+        AdminUserSupport support = new AdminUserSupport(users, currentUser, credentialPolicy());
+        UserAccount target = new UserAccount();
+        target.setStatus("disabled");
+        when(currentUser.get()).thenReturn(Optional.empty());
+        assertFalse(support.canSupportTarget(target));
+        AuthUser actor = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "support",
+                java.util.Set.of("account:support"), false, true, false);
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        assertTrue(support.canSupportTarget(target));
+        target.setSuperAdmin(true);
+        assertFalse(support.canSupportTarget(target));
+        target.setSuperAdmin(false);
+        target.setId(actor.getId());
+        assertFalse(support.canSupportTarget(target));
+        target.setId(UUID.randomUUID());
+        when(currentUser.get()).thenReturn(Optional.of(new AuthUser(actor.getId(), actor.getEmployeeId(),
+                "viewer", java.util.Set.of("employee:view"), false, true, false)));
+        assertFalse(support.canSupportTarget(target));
     }
 
     @Test
@@ -240,6 +264,45 @@ class AccountSupportBoundaryTest {
         verify(accountLifecycle, never()).lock(any());
         verify(passwords, never()).generate();
         verify(users, never()).save(any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void employeeLockAndUnlockResolveOnlyScalarIdentityBeforeTheLifecycleLock(boolean locking) {
+        AdminUserSupport support = mock(AdminUserSupport.class);
+        UUID employeeId = UUID.randomUUID();
+        UserAccount target = new UserAccount();
+        target.setEmployeeId(employeeId);
+        target.setStatus(locking ? "active" : "locked");
+        target.setLockedUntil(OffsetDateTime.now().plusMinutes(15));
+        when(users.findIdByEmployeeId(employeeId)).thenReturn(Optional.of(target.getId()));
+        lock(target, activeEmployee());
+        when(users.bumpAuthVersion(target.getId())).thenReturn(1);
+        when(support.requireCurrentUser()).thenReturn(actor());
+
+        if (locking) service(support).lockByEmployee(employeeId);
+        else service(support).unlockByEmployee(employeeId);
+
+        assertEquals(locking ? "locked" : "active", target.getStatus());
+        assertNull(target.getLockedUntil());
+        verify(users, never()).findByEmployeeId(any());
+        verify(accountLifecycle).lock(target.getId());
+        verify(refreshTokens).revokeAllByUserId(target.getId());
+        verify(sessions).revokeAllForUser(target.getId(), AuthSessionService.REASON_ACCOUNT_STATUS);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void employeeLockAndUnlockRejectMissingOrDeletedScalarIdentity(boolean locking) {
+        var service = service(mock(AdminUserSupport.class));
+        ApiException refused = assertThrows(ApiException.class, () -> {
+            if (locking) service.lockByEmployee(UUID.randomUUID());
+            else service.unlockByEmployee(UUID.randomUUID());
+        });
+        assertEquals(ErrorCode.NOT_FOUND, refused.getCode());
+        assertEquals("该员工未开通账号，无法锁定/解锁", refused.getMessage());
+        verify(users, never()).findByEmployeeId(any());
+        verify(accountLifecycle, never()).lock(any());
     }
 
     @Test

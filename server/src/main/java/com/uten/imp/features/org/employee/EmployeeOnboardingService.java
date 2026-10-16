@@ -10,6 +10,8 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.admin.systemsetting.SystemSettingKey;
 import com.uten.imp.features.admin.systemsetting.SystemSettingsService;
 import com.uten.imp.features.auth.CredentialIssuancePolicy;
+import com.uten.imp.features.auth.AuthSessionService;
+import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.department.Department;
@@ -22,6 +24,7 @@ import com.uten.imp.features.org.employee.dto.OnboardingRequest;
 import com.uten.imp.features.org.position.Position;
 import com.uten.imp.features.org.position.PositionRepository;
 import com.uten.imp.security.TemporaryPasswordGenerator;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +40,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.UUID;
 
 import static com.uten.imp.common.util.Strings.isBlank;
@@ -75,6 +79,9 @@ public class EmployeeOnboardingService {
     private final SystemSettingsService settings;
     private final CredentialIssuancePolicy credentialIssuance;
     private final TemporaryPasswordGenerator passwordGenerator;
+    private final RefreshTokenRepository refreshTokenRepo;
+    private final AuthSessionService sessions;
+    private final SecurityContextCurrentUser currentUser;
 
     // ===== 入职（原子建号） =====
     /** 入职：单事务原子写入员工主档/敏感 PII/薪资/合同/任职轨迹/联系人/证书/学历，并以手机号开号 (初始密码为规范证件号后六位，不足六位时随机生成)。工号服务端分配，profile.code 故意忽略以防缓存客户端重放。 */
@@ -279,14 +286,29 @@ public class EmployeeOnboardingService {
     public EmployeeOnboardingResult provisionAccount(UUID employeeId) {
         tx.bind();
 
-        Employee e = empRepo.findById(employeeId)
+        // Account lifecycle writes use one order: employee, then its retained user identity.
+        // Serialize both first provisioning and reopening so a concurrent retry cannot reset
+        // the credential issued by the winning request.
+        Employee e = empRepo.findByIdForUpdate(employeeId)
                 .filter(row -> !row.isDeleted())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "员工不存在"));
         if ("resigned".equals(e.getStatus())) {
             throw new ApiException(ErrorCode.CONFLICT, "离职员工必须先完成复职流程，不能开通登录账号");
         }
-        if (userRepo.findByEmployeeId(employeeId).isPresent()) {
+        UserAccount retained = userRepo.findRetainedIdByEmployeeId(employeeId)
+                .map(id -> userRepo.findByIdForUpdate(id)
+                        .orElseThrow(() -> new ApiException(
+                                ErrorCode.CONFLICT, "员工账号在开通过程中已变化，请刷新后重试")))
+                .orElse(null);
+        if (retained != null && !Objects.equals(employeeId, retained.getEmployeeId())) {
+            throw new ApiException(ErrorCode.CONFLICT, "账号与员工绑定已变化，请刷新后重试");
+        }
+        if (retained != null && !retained.isDeleted()) {
             throw new ApiException(ErrorCode.CONFLICT, "该员工已开通登录账号");
+        }
+        if (retained != null && (retained.isSuperAdmin()
+                || retained.getId().equals(currentUser.requireId()))) {
+            throw new ApiException(ErrorCode.FORBIDDEN, "不能通过员工开号操作本人或超级管理员账号");
         }
         EmployeeSensitive s = sensitiveRepo.findByEmployeeId(employeeId)
                 .orElseThrow(() -> new ApiException(
@@ -297,7 +319,10 @@ public class EmployeeOnboardingService {
         if (isBlank(loginAccount)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "该员工缺少手机号，无法开通账号");
         }
-        if (userRepo.existsByLoginAccount(loginAccount)) {
+        boolean loginTaken = retained == null
+                ? userRepo.existsByLoginAccount(loginAccount)
+                : userRepo.existsByLoginAccountAndIdNot(loginAccount, retained.getId());
+        if (loginTaken) {
             throw new ApiException(ErrorCode.CONFLICT, "该手机号已被用作其他账号的登录名，请先修改员工手机号");
         }
         // 登录名确认可用之后才解密证件号派生密码：开不了的号不碰证件密文。
@@ -310,7 +335,37 @@ public class EmployeeOnboardingService {
         }
         String temporaryPassword = initialPassword(e.getIdType(), identity.orElse(null));
 
-        UserAccount account = createAccount(e, loginAccount, temporaryPassword);
+        UserAccount account;
+        if (retained == null) {
+            account = createAccount(e, loginAccount, temporaryPassword);
+        } else {
+            // This row only reserves historical identity. Reopen it through the ordinary
+            // provisioning flow without deleting business/audit references or reenabling
+            // any revoked overrides, delegations, or remote-access permission.
+            com.uten.imp.features.rbac.PersonalPermissionOverrideLifecycle
+                    .deactivateForEmployee(entityManager, employeeId);
+            com.uten.imp.features.rbac.PersonalPermissionOverrideLifecycle
+                    .clearRecipientDataScopes(entityManager, retained.getId());
+            retained.setDeleted(false);
+            retained.setDeletedAt(null);
+            retained.setLoginAccount(loginAccount);
+            retained.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+            retained.setMustChangePassword(true);
+            retained.setTempPasswordExpiresAt(OffsetDateTime.now().plusHours(
+                    settings.readInt(SystemSettingKey.TEMP_PASSWORD_TTL_HOURS)));
+            retained.setStatus("active");
+            retained.setRemoteAccess(false);
+            retained.setFailedAttempts(0);
+            retained.setLockedUntil(null);
+            userRepo.saveAndFlush(retained);
+            // V322 increments the authorization/delegation generations on reopening.
+            // Read those authoritative values before evaluating effective permissions;
+            // never resolve a revoked delegation using a stale entity generation.
+            entityManager.refresh(retained);
+            refreshTokenRepo.revokeAllByUserId(retained.getId());
+            sessions.revokeAllForUser(retained.getId(), AuthSessionService.REASON_ACCOUNT_STATUS);
+            account = retained;
+        }
         // 在同一事务里按新账号的有效权限判定; 不允许时抛错, 账号随事务回滚, 不留半开的号。
         credentialIssuance.requireCanIssueCredentials(account);
 

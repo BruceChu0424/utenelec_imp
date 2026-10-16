@@ -46,6 +46,17 @@ class AdminUserSupport {
         }
     }
 
+    /** Read-side capability; resigned/disabled targets may still need safe credential support. */
+    boolean canSupportTarget(UserAccount target) {
+        return target != null && !target.isSuperAdmin()
+                && currentUser.get().map(actor -> !actor.isVisitor()
+                        && !actor.isMustChangePassword()
+                        && actor.getImpersonatedBy() == null
+                        && actor.getPermissions().contains("account:support")
+                        && !actor.getId().equals(target.getId()))
+                .orElse(false);
+    }
+
     /**
      * 重置密码的额外边界: 目标持有高危权限 (权限目录 high_risk 标记) 时只有超级管理员能重置,
      * 与补开账号同一判定 ({@link CredentialIssuancePolicy})。

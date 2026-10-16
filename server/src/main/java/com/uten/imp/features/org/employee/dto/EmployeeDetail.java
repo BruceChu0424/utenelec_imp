@@ -91,6 +91,10 @@ public class EmployeeDetail {
 
     // 登录账号状态（active/locked/disabled；null = 未开通账号）
     private String accountStatus;
+    /** Retained deleted identity is unopened; it must not be treated as a disabled live account. */
+    private boolean accountDeleted;
+    /** Target eligibility for this actor; endpoints still enforce current permissions and step-up. */
+    private Boolean accountSupportAllowed;
 
     // 嵌套
     private List<EmergencyContactDto> emergencyContacts;

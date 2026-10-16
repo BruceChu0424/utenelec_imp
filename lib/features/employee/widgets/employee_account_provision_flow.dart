@@ -17,6 +17,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../repositories/employee_repository.dart';
 import 'employee_credential_dialog.dart';
 import 'employee_dialog_error_text.dart';
@@ -34,6 +35,8 @@ Future<EmployeeOnboardingResult?> showProvisionSelectedEmployeeAccountFlow(
   required String employeeName,
   String? employeeCode,
   required bool hasAccount,
+  bool Function()? isCurrent,
+  Listenable? ownerChanges,
 }) async {
   final l10n = AppLocalizations.of(context);
   if (!ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) {
@@ -45,45 +48,80 @@ Future<EmployeeOnboardingResult?> showProvisionSelectedEmployeeAccountFlow(
     return null;
   }
 
-  final result = await showDialog<EmployeeOnboardingResult>(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogContext) => _SelectedEmployeeProvisionDialog(
-      repository: ref.read(employeeRepositoryProvider),
-      employeeId: employeeId,
-      employeeName: employeeName,
-      employeeCode: employeeCode,
-    ),
-  );
-  if (result == null || !context.mounted) return null;
-  // 等开户弹窗那一帧重建完(遮罩随之从 root Overlay 摘掉)再推凭据弹窗。
-  await WidgetsBinding.instance.endOfFrame;
-  if (!context.mounted) return null;
-  await showEmployeeCredentialDialog(context, result);
-  return context.mounted ? result : null;
+  final owner = ref.read(sensitiveReadBoundaryProvider);
+  if (owner.identity == null ||
+      owner.identity!.actorId != null ||
+      owner.identity!.readOnly) {
+    return null;
+  }
+  var invalidated = false;
+  final subscription = ref.listenManual(sensitiveReadBoundaryProvider, (
+    old,
+    next,
+  ) {
+    if (old != next) invalidated = true;
+  });
+  bool current() =>
+      context.mounted &&
+      !invalidated &&
+      (isCurrent?.call() ?? true) &&
+      owner == ref.read(sensitiveReadBoundaryProvider) &&
+      ref.read(currentPermissionsProvider).contains(Perm.accountSupport);
+  try {
+    final result = await showDialog<EmployeeOnboardingResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => _SelectedEmployeeProvisionDialog(
+        repository: ref.read(employeeRepositoryProvider),
+        employeeId: employeeId,
+        employeeName: employeeName,
+        employeeCode: employeeCode,
+        isCurrent: current,
+        ownerChanges: ownerChanges,
+      ),
+    );
+    if (result == null || !current()) return null;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!context.mounted || !current()) return null;
+    await showEmployeeCredentialDialog(
+      context,
+      result,
+      isCurrent: current,
+      ownerChanges: ownerChanges,
+    );
+    return current() ? result : null;
+  } finally {
+    subscription.close();
+  }
 }
 
-class _SelectedEmployeeProvisionDialog extends StatefulWidget {
+class _SelectedEmployeeProvisionDialog extends ConsumerStatefulWidget {
   const _SelectedEmployeeProvisionDialog({
     required this.repository,
     required this.employeeId,
     required this.employeeName,
     required this.employeeCode,
+    required this.isCurrent,
+    required this.ownerChanges,
   });
 
   final EmployeeRepository repository;
   final String employeeId;
   final String employeeName;
   final String? employeeCode;
+  final bool Function() isCurrent;
+  final Listenable? ownerChanges;
 
   @override
-  State<_SelectedEmployeeProvisionDialog> createState() =>
+  ConsumerState<_SelectedEmployeeProvisionDialog> createState() =>
       _SelectedEmployeeProvisionDialogState();
 }
 
 class _SelectedEmployeeProvisionDialogState
-    extends State<_SelectedEmployeeProvisionDialog> {
+    extends ConsumerState<_SelectedEmployeeProvisionDialog> {
   bool _submitting = false;
+  bool _invalidated = false;
+  ModalRoute<EmployeeOnboardingResult>? _route;
   String? _error;
 
   /// 就绪检查进行中：确认按钮转圈，避免在提醒出来之前就点了确认。
@@ -95,7 +133,40 @@ class _SelectedEmployeeProvisionDialogState
   @override
   void initState() {
     super.initState();
+    ref.listenManual(sensitiveReadBoundaryProvider, (_, _) => _ensureCurrent());
+    widget.ownerChanges?.addListener(_onOwnerChanged);
     _loadReadiness();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route ??= ModalRoute.of<EmployeeOnboardingResult>(context);
+    _ensureCurrent();
+  }
+
+  bool _ensureCurrent() {
+    if (!mounted || _invalidated) return false;
+    if (widget.isCurrent()) return true;
+    setState(() {
+      _invalidated = true;
+      _error = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = _route;
+      if (mounted && route != null && route.isActive) {
+        route.navigator?.removeRoute(route);
+      }
+    });
+    return false;
+  }
+
+  void _onOwnerChanged() => _ensureCurrent();
+
+  @override
+  void dispose() {
+    widget.ownerChanges?.removeListener(_onOwnerChanged);
+    super.dispose();
   }
 
   Future<void> _loadReadiness() async {
@@ -106,7 +177,7 @@ class _SelectedEmployeeProvisionDialogState
       // 就绪检查只是提前提醒：读失败不拦开号，以服务端开号结果为准。
       readiness = null;
     }
-    if (!mounted) return;
+    if (!mounted || !_ensureCurrent()) return;
     setState(() {
       _readiness = readiness;
       _checking = false;
@@ -117,7 +188,7 @@ class _SelectedEmployeeProvisionDialogState
   bool get _missingPhone => _readiness?.hasPhone == false;
 
   Future<void> _submit() async {
-    if (_submitting || _checking || _missingPhone) return;
+    if (_submitting || _checking || _missingPhone || !_ensureCurrent()) return;
     setState(() {
       _submitting = true;
       _error = null;
@@ -127,14 +198,14 @@ class _SelectedEmployeeProvisionDialogState
       final result = await widget.repository.provisionAccount(
         widget.employeeId,
       );
-      if (!mounted) return;
+      if (!mounted || !_ensureCurrent()) return;
       succeeded = true;
       // 先清忙标志再 pop：遮罩的 OverlayEntry 只在宿主 dispose 时才移除, 而本弹窗要走完
       // 退场动画才 dispose; 不清的话外层紧接着推的一次性凭据弹窗会被它盖住、点不动。
       setState(() => _submitting = false);
       Navigator.of(context).pop(result);
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_ensureCurrent()) return;
       // 服务端原话(如手机号已被其他账号使用)直接显示，不用笼统的「开通失败」。
       setState(
         () => _error = employeeDialogErrorText(

@@ -17,12 +17,14 @@ Future<bool?> showSetTemporaryPasswordDialog(
   BuildContext context, {
   required String displayName,
   required String loginAccount,
+  String? permissionDiscardWarning,
 }) {
   return showDialog<bool>(
     context: context,
     builder: (dialogContext) => _SetTemporaryPasswordDialog(
       displayName: displayName,
       loginAccount: loginAccount,
+      permissionDiscardWarning: permissionDiscardWarning,
     ),
   );
 }
@@ -31,10 +33,12 @@ class _SetTemporaryPasswordDialog extends StatelessWidget {
   const _SetTemporaryPasswordDialog({
     required this.displayName,
     required this.loginAccount,
+    this.permissionDiscardWarning,
   });
 
   final String displayName;
   final String loginAccount;
+  final String? permissionDiscardWarning;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +60,15 @@ class _SetTemporaryPasswordDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (permissionDiscardWarning != null) ...[
+                Text(
+                  permissionDiscardWarning!,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+              ],
               Text(
                 '员工忘记密码时，为「$displayName($loginAccount)」生成一次性临时密码。'
                 '系统随机生成 20 位安全密码(含大小写字母、数字与符号)，'

@@ -19,6 +19,12 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, UUID>,
 
     Optional<UserAccount> findByEmployeeId(UUID employeeId);
 
+    /** Identity-only lookup after locking the employee; includes a retained unopened account. */
+    @Query("SELECT account.id FROM UserAccount account WHERE account.employeeId=:employeeId")
+    Optional<UUID> findRetainedIdByEmployeeId(@Param("employeeId") UUID employeeId);
+
+    boolean existsByLoginAccountAndIdNot(String loginAccount, UUID id);
+
     /** Non-entity lookup used after the employee row is locked, before locking users. */
     @Query("""
             SELECT account.id FROM UserAccount account

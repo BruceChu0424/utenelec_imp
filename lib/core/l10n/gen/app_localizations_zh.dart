@@ -9644,14 +9644,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get hrReconcileColKind => '类型';
 
   @override
+  String get hrReconcileColDepartment => '部门';
+
+  @override
+  String get hrReconcileColPosition => '职位';
+
+  @override
+  String get hrReconcileColSuggestion => '建议';
+
+  @override
+  String get hrReconcileManualOnlyNotice => '建议仅供核对。所有证件号码请手动填写，勾选后确认更正。';
+
+  @override
+  String get hrReconcileLegacyChoicesIgnored => '已忽略旧草稿中的建议选择，请手动填写；原手输内容已保留。';
+
+  @override
   String get hrReconcileColEmployee => '员工';
 
   @override
   String get hrReconcileColReason => '原因';
 
   @override
-  String get hrReconcileIdNumberInfo =>
-      '红色删除线为存档旧值，绿色底为建议新值（改动位红色加粗）。点「采用」、选候选或直接输入新号码';
+  String get hrReconcileIdNumberInfo => '所有类型均须手动填写证件号码，建议不会自动填入或提交。';
 
   @override
   String hrReconcileBasisOf(String label) {

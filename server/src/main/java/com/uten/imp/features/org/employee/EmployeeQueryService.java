@@ -188,8 +188,21 @@ public class EmployeeQueryService {
 
         // 登录账号状态（离职冻结后 HR 在详情页可直接确认账号已停用）
         UserAccount account = userRepo.findByEmployeeId(id).orElse(null);
-        d.setAccountStatus(account == null ? null
-                : account.isDeleted() ? "disabled" : account.getStatus());
+        // Retained soft-deleted identities are unopened, matching the account candidate APIs.
+        // Reopening reuses their UUID; ordinary disabled accounts remain explicitly disabled.
+        d.setAccountStatus(account == null || account.isDeleted() ? null : account.getStatus());
+        d.setAccountDeleted(account != null && account.isDeleted());
+        d.setAccountSupportAllowed(currentUser.get().map(actor ->
+                !actor.isVisitor()
+                        && !actor.isMustChangePassword()
+                        && actor.getImpersonatedBy() == null
+                        && actor.getPermissions().contains("account:support")
+                        && com.uten.imp.common.identity.CurrentEmployeeStatusPolicy
+                                .isCurrentEmployee(e.getStatus())
+                        && !e.getId().equals(actor.getEmployeeId())
+                        && (account == null || (!account.isSuperAdmin()
+                                && !account.getId().equals(actor.getId()))))
+                .orElse(false));
         // 证件号码问题 (V807)：按已存的校验结果；修好之前详情页一直提醒。详情要显示号码本来就得解密，
         // 此刻解不开 (数据损坏、换密钥后没配旧密钥) 时不管存的是什么都按「读取不出来」提醒，和人事任务、
         // 就绪检查读到回填任务存的 unreadable 是同一句原因；号码留空，不让整个详情报错 (补开账号的返回结果也走这里)。

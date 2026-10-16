@@ -133,7 +133,8 @@ public class UserAccountAdminService {
                 user.isMustChangePassword(),
                 user.getLastLoginAt(),
                 user.isRemoteAccess(),
-                user.getTempPasswordExpiresAt());
+                user.getTempPasswordExpiresAt(),
+                support.canSupportTarget(user));
     }
 
     /**
@@ -310,7 +311,7 @@ public class UserAccountAdminService {
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public void lockByEmployee(UUID employeeId) {
-        setStatus(requireUserByEmployee(employeeId).getId(), "locked");
+        setStatus(requireAccountIdByEmployee(employeeId), "locked");
     }
 
     /**
@@ -320,7 +321,7 @@ public class UserAccountAdminService {
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public void unlockByEmployee(UUID employeeId) {
-        unlock(requireUserByEmployee(employeeId).getId());
+        unlock(requireAccountIdByEmployee(employeeId));
     }
 
     /** 按员工 ID 重置其登录密码，复用账号支持的凭据、安全边界、会话吊销与审计策略。 */
@@ -334,9 +335,10 @@ public class UserAccountAdminService {
         return resetPassword(userId);
     }
 
-    private UserAccount requireUserByEmployee(UUID employeeId) {
-        return userRepo.findByEmployeeId(employeeId)
-                .filter(row -> !row.isDeleted())
+    private UUID requireAccountIdByEmployee(UUID employeeId) {
+        // Keep the account out of the persistence context until the canonical
+        // employee -> account lifecycle lock has read its current state.
+        return userRepo.findIdByEmployeeId(employeeId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND,
                         "该员工未开通账号，无法锁定/解锁"));

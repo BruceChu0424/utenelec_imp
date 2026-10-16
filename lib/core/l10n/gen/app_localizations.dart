@@ -17710,6 +17710,36 @@ abstract class AppLocalizations {
   /// **'类型'**
   String get hrReconcileColKind;
 
+  /// No description provided for @hrReconcileColDepartment.
+  ///
+  /// In zh, this message translates to:
+  /// **'部门'**
+  String get hrReconcileColDepartment;
+
+  /// No description provided for @hrReconcileColPosition.
+  ///
+  /// In zh, this message translates to:
+  /// **'职位'**
+  String get hrReconcileColPosition;
+
+  /// No description provided for @hrReconcileColSuggestion.
+  ///
+  /// In zh, this message translates to:
+  /// **'建议'**
+  String get hrReconcileColSuggestion;
+
+  /// No description provided for @hrReconcileManualOnlyNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'建议仅供核对。所有证件号码请手动填写，勾选后确认更正。'**
+  String get hrReconcileManualOnlyNotice;
+
+  /// No description provided for @hrReconcileLegacyChoicesIgnored.
+  ///
+  /// In zh, this message translates to:
+  /// **'已忽略旧草稿中的建议选择，请手动填写；原手输内容已保留。'**
+  String get hrReconcileLegacyChoicesIgnored;
+
   /// No description provided for @hrReconcileColEmployee.
   ///
   /// In zh, this message translates to:
@@ -17725,7 +17755,7 @@ abstract class AppLocalizations {
   /// No description provided for @hrReconcileIdNumberInfo.
   ///
   /// In zh, this message translates to:
-  /// **'红色删除线为存档旧值，绿色底为建议新值（改动位红色加粗）。点「采用」、选候选或直接输入新号码'**
+  /// **'所有类型均须手动填写证件号码，建议不会自动填入或提交。'**
   String get hrReconcileIdNumberInfo;
 
   /// No description provided for @hrReconcileBasisOf.

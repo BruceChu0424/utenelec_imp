@@ -6,107 +6,270 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../repositories/employee_repository.dart';
+import '../models/employee_id_number_issue.dart';
 import 'employee_identity_issue_notice.dart';
 
 /// 展示一次性账号凭据（登录账号 + 临时密码）。barrier 不可消失，必须点「我已安全保存」关闭。
 Future<void> showEmployeeCredentialDialog(
   BuildContext context,
-  EmployeeOnboardingResult result,
-) {
+  EmployeeOnboardingResult result, {
+  bool Function()? isCurrent,
+  Listenable? ownerChanges,
+}) => showAccountCredentialDialog(
+  context,
+  temporaryPassword: result.temporaryPassword,
+  loginAccount: result.loginAccount,
+  employeeName: result.employee.fullName,
+  employeeCode: result.employee.code,
+  idNumberIssue: result.employee.idNumberIssue,
+  isCurrent: isCurrent,
+  ownerChanges: ownerChanges,
+);
+
+/// 账号支持共用一次性凭据展示；调用方提供真实凭据与持有者边界，不构造员工档案。
+Future<void> showAccountCredentialDialog(
+  BuildContext context, {
+  required String temporaryPassword,
+  required String loginAccount,
+  String? title,
+  String? employeeName,
+  String? employeeCode,
+  EmployeeIdNumberIssue? idNumberIssue,
+  bool Function()? isCurrent,
+  Listenable? ownerChanges,
+}) {
   final l10n = AppLocalizations.of(context);
-  final idIssue = result.employee.idNumberIssue;
+  final idIssue = idNumberIssue;
+  final guardKey = GlobalKey<_CredentialOwnerGuardState>();
+  bool current() {
+    try {
+      return guardKey.currentState?.ensureCurrent() ??
+          (isCurrent?.call() ?? true);
+    } catch (_) {
+      return false;
+    }
+  }
+
   return showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (dialogContext) => PopScope(
-      canPop: false,
-      child: UtenAlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.key_rounded),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(child: Text(l10n.employeeOnboardCredentialTitle)),
-          ],
-        ),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 480),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    builder: (dialogContext) => _CredentialOwnerGuard(
+      key: guardKey,
+      isCurrent: isCurrent,
+      ownerChanges: ownerChanges,
+      child: PopScope(
+        canPop: false,
+        child: UtenAlertDialog(
+          title: Row(
             children: [
-              Text(l10n.employeeOnboardCredentialWarning),
-              const SizedBox(height: UtenSpacing.s16),
-              Text(
-                l10n.employeeFieldCode,
-                style: Theme.of(dialogContext).textTheme.labelMedium,
-              ),
-              SelectableText(result.employee.code),
-              const SizedBox(height: UtenSpacing.s12),
-              Text(
-                l10n.employeeOnboardAccountLabel,
-                style: Theme.of(dialogContext).textTheme.labelMedium,
-              ),
-              SelectableText(result.loginAccount),
-              const SizedBox(height: UtenSpacing.s12),
-              if (idIssue != null) ...[
-                EmployeeIdentityIssueNotice(
-                  issue: idIssue,
-                  where: EmployeeIdentityNoticeContext.credential,
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-              ],
-              Text(
-                l10n.employeeOnboardTemporaryPasswordLabel,
-                style: Theme.of(dialogContext).textTheme.labelMedium,
-              ),
-              const SizedBox(height: UtenSpacing.s4),
-              Container(
-                padding: const EdgeInsets.all(UtenSpacing.s16),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    dialogContext,
-                  ).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(UtenRadius.control),
-                ),
-                child: SelectableText(
-                  result.temporaryPassword,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                  ),
+              const Icon(Icons.key_rounded),
+              const SizedBox(width: UtenSpacing.s8),
+              Expanded(
+                child: Text(
+                  title ?? l10n.employeeOnboardCredentialTitle,
+                  key: const ValueKey('account-credential-title'),
                 ),
               ),
             ],
           ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(l10n.employeeOnboardCredentialWarning),
+                const SizedBox(height: UtenSpacing.s16),
+                if (employeeName?.trim().isNotEmpty == true) ...[
+                  Text(
+                    employeeName!,
+                    style: Theme.of(dialogContext).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
+                if (employeeCode?.trim().isNotEmpty == true) ...[
+                  Text(
+                    l10n.employeeFieldCode,
+                    style: Theme.of(dialogContext).textTheme.labelMedium,
+                  ),
+                  SelectableText(employeeCode!),
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
+                Text(
+                  l10n.employeeOnboardAccountLabel,
+                  style: Theme.of(dialogContext).textTheme.labelMedium,
+                ),
+                SelectableText(loginAccount),
+                const SizedBox(height: UtenSpacing.s12),
+                if (idIssue != null) ...[
+                  EmployeeIdentityIssueNotice(
+                    issue: idIssue,
+                    where: EmployeeIdentityNoticeContext.credential,
+                  ),
+                  const SizedBox(height: UtenSpacing.s12),
+                ],
+                Text(
+                  l10n.employeeOnboardTemporaryPasswordLabel,
+                  style: Theme.of(dialogContext).textTheme.labelMedium,
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Container(
+                  padding: const EdgeInsets.all(UtenSpacing.s16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      dialogContext,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(UtenRadius.control),
+                  ),
+                  child: SelectableText(
+                    temporaryPassword,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(dialogContext).textTheme.titleLarge
+                        ?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                if (!current()) return;
+                await Clipboard.setData(ClipboardData(text: temporaryPassword));
+                if (dialogContext.mounted && current()) {
+                  dialogContext.appSuccess(
+                    l10n.employeeOnboardTemporaryPasswordCopied,
+                  );
+                }
+              },
+              icon: const Icon(Icons.copy_rounded),
+              label: Text(l10n.employeeOnboardCopyTemporaryPassword),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (!current()) return;
+                final route = ModalRoute.of(dialogContext);
+                if (route?.isCurrent == true) {
+                  Navigator.pop(dialogContext);
+                } else if (route?.isActive == true) {
+                  route!.navigator?.removeRoute(route);
+                }
+              },
+              child: Text(l10n.employeeOnboardCredentialSaved),
+            ),
+          ],
         ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(
-                ClipboardData(text: result.temporaryPassword),
-              );
-              if (dialogContext.mounted) {
-                dialogContext.appSuccess(
-                  l10n.employeeOnboardTemporaryPasswordCopied,
-                );
-              }
-            },
-            icon: const Icon(Icons.copy_rounded),
-            label: Text(l10n.employeeOnboardCopyTemporaryPassword),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(l10n.employeeOnboardCredentialSaved),
-          ),
-        ],
       ),
     ),
   );
+}
+
+class _CredentialOwnerGuard extends ConsumerStatefulWidget {
+  const _CredentialOwnerGuard({
+    super.key,
+    required this.isCurrent,
+    required this.ownerChanges,
+    required this.child,
+  });
+  final bool Function()? isCurrent;
+  final Listenable? ownerChanges;
+  final Widget child;
+
+  @override
+  ConsumerState<_CredentialOwnerGuard> createState() =>
+      _CredentialOwnerGuardState();
+}
+
+class _CredentialOwnerGuardState extends ConsumerState<_CredentialOwnerGuard> {
+  SensitiveReadBoundary? _owner;
+  ProviderContainer? _container;
+  ModalRoute<void>? _route;
+  bool _invalidated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isCurrent != null) {
+      _container = ProviderScope.containerOf(context, listen: false);
+      _owner = _container!.read(sensitiveReadBoundaryProvider);
+      ref.listenManual(
+        sensitiveReadBoundaryProvider,
+        (_, _) => ensureCurrent(),
+      );
+    }
+    widget.ownerChanges?.addListener(_ownerChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route ??= ModalRoute.of<void>(context);
+  }
+
+  @override
+  void didUpdateWidget(covariant _CredentialOwnerGuard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.ownerChanges != widget.ownerChanges) {
+      oldWidget.ownerChanges?.removeListener(_ownerChanged);
+      widget.ownerChanges?.addListener(_ownerChanged);
+    }
+    ensureCurrent();
+  }
+
+  void _ownerChanged() => ensureCurrent();
+
+  bool _valid() {
+    if (_invalidated) return false;
+    try {
+      if (widget.isCurrent?.call() == false) return false;
+      return _owner == null ||
+          _owner == _container?.read(sensitiveReadBoundaryProvider);
+    } catch (_) {
+      // Owner/container may already be deactivated during a caller's dispose.
+      return false;
+    }
+  }
+
+  bool ensureCurrent() {
+    if (!mounted || _invalidated) return false;
+    if (_valid()) return true;
+    _invalidate();
+    return false;
+  }
+
+  void _invalidate({bool rebuilding = false}) {
+    if (_invalidated) return;
+    _invalidated = true;
+    if (!rebuilding) setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = _route;
+      if (route != null && route.isActive) route.navigator?.removeRoute(route);
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.ownerChanges?.removeListener(_ownerChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_valid()) {
+      _invalidate(rebuilding: true);
+      return const SizedBox.shrink();
+    }
+    return widget.child;
+  }
 }

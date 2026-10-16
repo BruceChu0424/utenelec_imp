@@ -9876,6 +9876,23 @@ class AppLocalizationsKo extends AppLocalizations {
   String get hrReconcileColKind => '유형';
 
   @override
+  String get hrReconcileColDepartment => '부서';
+
+  @override
+  String get hrReconcileColPosition => '직위';
+
+  @override
+  String get hrReconcileColSuggestion => '제안';
+
+  @override
+  String get hrReconcileManualOnlyNotice =>
+      '제안은 참고용입니다. 신분증 번호를 직접 입력한 후 행을 선택하고 정정을 확인하세요.';
+
+  @override
+  String get hrReconcileLegacyChoicesIgnored =>
+      '이전 초안의 제안 선택은 무시했습니다. 직접 입력한 내용은 유지되며 나머지 번호는 직접 입력해야 합니다.';
+
+  @override
   String get hrReconcileColEmployee => '직원';
 
   @override
@@ -9883,7 +9900,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get hrReconcileIdNumberInfo =>
-      '취소선 빨강은 저장된 값, 초록 배경은 제안 새 값(변경 자리는 굵은 빨강). 채택, 후보 선택 또는 직접 입력 가능';
+      '모든 유형에서 신분증 번호를 직접 입력하세요. 제안은 자동 입력되거나 제출되지 않습니다.';
 
   @override
   String hrReconcileBasisOf(String label) {

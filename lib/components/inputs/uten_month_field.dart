@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/china_datetime.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
+import '../feedback/uten_dialog.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
@@ -150,8 +151,7 @@ class _UtenMonthFieldState extends State<UtenMonthField> {
     final month = await showDialog<DateTime>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          scrollable: true,
+        builder: (context, setDialogState) => UtenAlertDialog(
           title: Text(widget.label),
           content: SizedBox(
             width: 320,

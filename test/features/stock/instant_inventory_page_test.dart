@@ -848,6 +848,12 @@ class _RecordingStockRepository extends StockQueryRepository {
 class _ProductCategoryRepo implements ProductCategoryRepository {
   _ProductCategoryRepo({this.delayedRefresh});
 
+  @override
+  Future<CategoryPrefixAvailability> prefixAvailability(
+    String prefix, {
+    String? categoryId,
+  }) => throw UnsupportedError('not used');
+
   final Completer<List<ProductCategoryNode>>? delayedRefresh;
   int treeCalls = 0;
 

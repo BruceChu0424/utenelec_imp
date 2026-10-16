@@ -83,6 +83,12 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   /// 删除分类（已过确认框）。
   Future<void> shellDeleteCategory(String id);
 
+  /// 创建/编辑分类时实时检查编号前缀的全局占用。
+  Future<CategoryPrefixAvailability> shellPrefixAvailability(
+    String prefix, {
+    String? categoryId,
+  });
+
   /// 编码前缀预览（编辑对话框联动，返回对话框要的预览对象）。
   Future<CategoryPrefixPreview> shellPrefixPreview(
     String id,
@@ -361,6 +367,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         routerPageKey: dialogDraftPageKey(context),
         tree: _tree ?? const <ProductCategoryNode>[],
         initialParent: parent,
+        onCheckPrefix: (prefix) => shellPrefixAvailability(prefix),
         onSubmit: (r) => _doCreate(r),
       ),
     );
@@ -389,6 +396,8 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
         canEditFields: shellCanEdit,
         canMove: shellCanMove,
         canReorder: shellCanReorder,
+        onCheckPrefix: (prefix) =>
+            shellPrefixAvailability(prefix, categoryId: detail.id),
         onPreviewPrefixChange: (prefix, parentId) =>
             shellPrefixPreview(detail.id, prefix, parentId),
         onSubmit: (r) => _doUpdate(detail.id, r),

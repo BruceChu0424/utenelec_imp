@@ -291,6 +291,12 @@ class _PickerHarnessState extends ConsumerState<_PickerHarness> {
 
 class _FakeClientCategoryRepository implements ClientCategoryRepository {
   @override
+  Future<CategoryPrefixAvailability> prefixAvailability(
+    String prefix, {
+    String? categoryId,
+  }) => throw UnsupportedError('not used');
+
+  @override
   Future<CategoryPrefixPreview> prefixPreview(
     String id,
     String prefix, {

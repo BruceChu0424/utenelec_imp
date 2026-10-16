@@ -266,6 +266,20 @@ Future<void> _pumpPage(
 
 /// 记录 detail 调用次数的假分类仓储：update 会真实改名，模拟服务端已生效。
 class _FakeClientCategoryRepository implements ClientCategoryRepository {
+  final prefixChecks = <({String prefix, String? categoryId})>[];
+
+  @override
+  Future<CategoryPrefixAvailability> prefixAvailability(
+    String prefix, {
+    String? categoryId,
+  }) async {
+    prefixChecks.add((prefix: prefix, categoryId: categoryId));
+    return CategoryPrefixAvailability(
+      normalizedPrefix: prefix.trim().toUpperCase(),
+      available: true,
+    );
+  }
+
   final _tree = <ProductCategoryNode>[
     ProductCategoryNode(
       id: 'finished',

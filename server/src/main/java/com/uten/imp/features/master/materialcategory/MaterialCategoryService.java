@@ -2,6 +2,7 @@ package com.uten.imp.features.master.materialcategory;
 
 import com.uten.imp.common.concurrency.OptimisticLocks;
 import com.uten.imp.common.mastercode.CategoryDrivenCodeService;
+import com.uten.imp.common.mastercode.CategoryPrefixAvailability;
 import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.common.mastercode.MasterCodePrefix;
 import com.uten.imp.common.mastercode.MasterCodeService;
@@ -204,6 +205,12 @@ public class MaterialCategoryService {
                     id, oldEffective.prefix(), c.getCodePrefix());
         }
         return detail(id);
+    }
+
+    @Transactional(readOnly = true)
+    public CategoryPrefixAvailability prefixAvailability(String prefix, UUID categoryId) {
+        return categoryCodes.prefixAvailability(
+                CategoryDrivenCodeService.MasterType.GOODS, prefix, categoryId);
     }
 
     @Transactional(readOnly = true)

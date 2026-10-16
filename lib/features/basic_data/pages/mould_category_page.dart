@@ -127,6 +127,14 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
       ref.read(mouldCategoryRepositoryProvider).delete(id);
 
   @override
+  Future<CategoryPrefixAvailability> shellPrefixAvailability(
+    String prefix, {
+    String? categoryId,
+  }) => ref
+      .read(mouldCategoryRepositoryProvider)
+      .prefixAvailability(prefix, categoryId: categoryId);
+
+  @override
   Future<CategoryPrefixPreview> shellPrefixPreview(
     String id,
     String prefix,

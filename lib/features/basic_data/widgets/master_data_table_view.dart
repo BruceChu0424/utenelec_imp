@@ -3769,9 +3769,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               _buildTable(context),
               if (_hasFloatingBatchActions)
                 PositionedDirectional(
+                  start: UtenSpacing.s16,
                   end: UtenSpacing.s16,
                   bottom: UtenSpacing.s16,
-                  child: _buildFloatingBatchActions(context),
+                  child: Align(
+                    alignment: AlignmentDirectional.bottomEnd,
+                    child: _buildFloatingBatchActions(context),
+                  ),
                 ),
             ],
           ),

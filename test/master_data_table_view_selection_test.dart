@@ -11,7 +11,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/ui/capsule_nav_metrics.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+
+import 'support/audit_screenshot_support.dart';
 
 class _Row {
   const _Row(this.id);
@@ -60,6 +66,127 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  for (final scenario in [
+    (dark: false, scale: 1.0, rtl: false, selected: true, occlusion: 0.0),
+    (dark: true, scale: 1.6, rtl: false, selected: false, occlusion: 0.0),
+    (dark: false, scale: 1.0, rtl: true, selected: false, occlusion: 48.0),
+    (dark: true, scale: 1.6, rtl: true, selected: true, occlusion: 0.0),
+  ]) {
+    testWidgets('floating batch bounds respect a padded 375px stage $scenario', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(375, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await loadAuditScreenshotFonts(tester);
+      var selected = scenario.selected ? <String>{'a1'} : <String>{};
+      var runs = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: auditScreenshotTheme(
+            (scenario.dark ? buildDarkTheme() : buildLightTheme()).copyWith(
+              platform: TargetPlatform.android,
+            ),
+          ),
+          builder: (context, child) => Directionality(
+            textDirection: scenario.rtl ? TextDirection.rtl : TextDirection.ltr,
+            child: MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scenario.scale)),
+              child: child!,
+            ),
+          ),
+          home: Scaffold(
+            body: UtenCapsuleNavScope(
+              occlusion: scenario.occlusion,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: ClipRect(
+                  key: const Key('padded-batch-stage'),
+                  child: StatefulBuilder(
+                    builder: (context, update) => MasterDataTableView<_Row>(
+                      columns: [
+                        MasterColumnDef<_Row>(
+                          key: 'id',
+                          label: 'ID',
+                          width: 240,
+                          value: (row) => row.id,
+                        ),
+                      ],
+                      items: const [_Row('a1')],
+                      facets: const {},
+                      nullCounts: const {},
+                      filters: const {},
+                      onFilterChanged: (_, _) {},
+                      selectable: true,
+                      idOf: (row) => row.id,
+                      selectedIds: selected,
+                      onSelectedIdsChanged: (next) =>
+                          update(() => selected = next),
+                      batchActionsBuilder: (_, ids) => [
+                        UtenButton(
+                          key: const Key('padded-batch-action'),
+                          type: UtenButtonType.danger,
+                          size: UtenButtonSize.large,
+                          icon: Icons.fact_check_outlined,
+                          onPressed: () => runs++,
+                          child: Text('确认更正 ${ids.length} 人 ${ids.length} 处'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final stage = tester.getRect(find.byKey(const Key('padded-batch-stage')));
+      final pill = find.byType(UtenSelectionSummaryPill);
+      final action = find.byKey(const Key('padded-batch-action'));
+      void expectVisibleBounds() {
+        for (final finder in [pill, action]) {
+          final rect = tester.getRect(finder);
+          expect(
+            rect.left,
+            greaterThanOrEqualTo(stage.left),
+            reason:
+                'Each complete control must stay within the local clip, including its outline.',
+          );
+          expect(rect.right, lessThanOrEqualTo(stage.right));
+          expect(rect.top, greaterThanOrEqualTo(stage.top));
+          expect(
+            rect.bottom,
+            lessThanOrEqualTo(stage.bottom - scenario.occlusion),
+          );
+          expect(finder.hitTestable(), findsOneWidget);
+        }
+        expect(
+          tester.getSize(pill).width,
+          lessThan(tester.getSize(action).width),
+          reason:
+              'The short selection pill must not stretch to match the business action.',
+        );
+      }
+
+      expectVisibleBounds();
+      await tester.tap(action);
+      await tester.pumpAndSettle();
+      expect(runs, 1);
+      if (selected.isNotEmpty) {
+        await tester.tap(find.byKey(const Key('master-table-clear-selection')));
+        await tester.pumpAndSettle();
+        expect(selected, isEmpty);
+        expect(find.text('已选 0 项'), findsOneWidget);
+        expectVisibleBounds();
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
     'a partial row explicitly selects all and a full row clears on the next click',
     (tester) async {

@@ -69,7 +69,10 @@ class EmployeeOnboardingServiceTest {
     @Mock private com.uten.imp.features.admin.systemsetting.SystemSettingsService settings;
     @Mock private com.uten.imp.features.auth.CredentialIssuancePolicy credentialIssuance;
     @Mock private TemporaryPasswordGenerator passwordGenerator;
+    @Mock private com.uten.imp.features.auth.model.RefreshTokenRepository refreshTokenRepo;
+    @Mock private com.uten.imp.features.auth.AuthSessionService sessions;
     @Mock private Query positionNameLockQuery;
+    @Mock private Query dataScopesQuery;
 
     @InjectMocks
     private EmployeeOnboardingService service;
@@ -126,8 +129,7 @@ class EmployeeOnboardingServiceTest {
         sensitive.setEmployeeId(employee.getId());
         sensitive.setPhoneEnc("phone-cipher");
         sensitive.setIdCardEnc("id-cipher");
-        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
-        when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.empty());
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000001");
         when(tx.tryDecrypt("id-cipher")).thenReturn(Optional.of("CARD-123456"));
@@ -158,8 +160,7 @@ class EmployeeOnboardingServiceTest {
         EmployeeSensitive sensitive = new EmployeeSensitive();
         sensitive.setEmployeeId(employee.getId());
         sensitive.setPhoneEnc("phone-cipher");
-        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
-        when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.empty());
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000002");
         sensitive.setIdCardEnc("id-cipher");
@@ -277,13 +278,99 @@ class EmployeeOnboardingServiceTest {
     void existingAccountCannotBeReprovisionedOrHaveItsPasswordChanged() {
         Employee employee = new Employee();
         employee.setStatus("active");
-        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
-        when(userRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(new UserAccount()));
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
+        UserAccount existing = new UserAccount();
+        existing.setEmployeeId(employee.getId());
+        when(userRepo.findRetainedIdByEmployeeId(employee.getId())).thenReturn(Optional.of(existing.getId()));
+        when(userRepo.findByIdForUpdate(existing.getId())).thenReturn(Optional.of(existing));
         assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class,
                 () -> service.provisionAccount(employee.getId())).getCode());
         verify(sensitiveRepo, never()).findByEmployeeId(employee.getId());
         verify(passwordEncoder, never()).encode(anyString());
         verify(userRepo, never()).save(any(UserAccount.class));
+    }
+
+    @Test
+    void retainedUnopenedAccountReusesIdentityAndRevokesAllOldSessions() {
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        UserAccount retained = new UserAccount();
+        retained.setEmployeeId(employee.getId());
+        retained.setDeleted(true);
+        retained.setStatus("disabled");
+        retained.setRemoteAccess(true);
+        retained.setFailedAttempts(7);
+        retained.setLockedUntil(java.time.OffsetDateTime.now().plusDays(1));
+        retained.setDeletedAt(java.time.OffsetDateTime.now().minusDays(1));
+        UUID originalId = retained.getId();
+        EmployeeSensitive sensitive = new EmployeeSensitive();
+        sensitive.setPhoneEnc("phone-cipher");
+        sensitive.setIdCardEnc("id-cipher");
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
+        when(userRepo.findRetainedIdByEmployeeId(employee.getId())).thenReturn(Optional.of(originalId));
+        when(userRepo.findByIdForUpdate(originalId)).thenReturn(Optional.of(retained));
+        when(currentUser.requireId()).thenReturn(UUID.randomUUID());
+        when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
+        when(tx.decrypt("phone-cipher")).thenReturn("13800000006");
+        when(tx.tryDecrypt("id-cipher")).thenReturn(Optional.of("CARD-123456"));
+        when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
+                .thenReturn(72);
+        when(passwordEncoder.encode("123456")).thenReturn("argon2-reopened");
+        when(entityManager.createNativeQuery(org.mockito.ArgumentMatchers.contains("UPDATE user_permission_overrides")))
+                .thenReturn(positionNameLockQuery);
+        when(positionNameLockQuery.setParameter("source", employee.getId())).thenReturn(positionNameLockQuery);
+        when(entityManager.createNativeQuery("DELETE FROM user_data_scopes WHERE user_id=:userId"))
+                .thenReturn(dataScopesQuery);
+        when(dataScopesQuery.setParameter("userId", originalId)).thenReturn(dataScopesQuery);
+
+        EmployeeOnboardingResult result = service.provisionAccount(employee.getId());
+
+        assertEquals(originalId, retained.getId());
+        assertEquals(employee.getId(), retained.getEmployeeId());
+        assertFalse(retained.isDeleted());
+        assertNull(retained.getDeletedAt());
+        assertFalse(retained.isRemoteAccess());
+        assertTrue(retained.isMustChangePassword());
+        assertEquals("active", retained.getStatus());
+        assertEquals("argon2-reopened", retained.getPasswordHash());
+        assertEquals("13800000006", retained.getLoginAccount());
+        assertEquals("123456", result.temporaryPassword());
+        assertEquals(0, retained.getFailedAttempts());
+        assertNull(retained.getLockedUntil());
+        assertTrue(retained.getTempPasswordExpiresAt().isAfter(java.time.OffsetDateTime.now().plusHours(71)));
+        verify(userRepo, never()).save(any(UserAccount.class));
+        var order = org.mockito.Mockito.inOrder(empRepo, userRepo, entityManager, credentialIssuance);
+        order.verify(empRepo).findByIdForUpdate(employee.getId());
+        order.verify(userRepo).findRetainedIdByEmployeeId(employee.getId());
+        order.verify(userRepo).findByIdForUpdate(originalId);
+        order.verify(userRepo).saveAndFlush(retained);
+        order.verify(entityManager).refresh(retained);
+        order.verify(credentialIssuance).requireCanIssueCredentials(retained);
+        verify(refreshTokenRepo).revokeAllByUserId(originalId);
+        verify(positionNameLockQuery).executeUpdate();
+        verify(dataScopesQuery).executeUpdate();
+        verify(sessions).revokeAllForUser(originalId,
+                com.uten.imp.features.auth.AuthSessionService.REASON_ACCOUNT_STATUS);
+    }
+
+    @Test
+    void changedBindingAndSuperAdminRetainedIdentityCannotBeReopened() {
+        Employee employee = new Employee();
+        employee.setStatus("active");
+        UserAccount retained = new UserAccount();
+        retained.setEmployeeId(UUID.randomUUID());
+        retained.setDeleted(true);
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
+        when(userRepo.findRetainedIdByEmployeeId(employee.getId())).thenReturn(Optional.of(retained.getId()));
+        when(userRepo.findByIdForUpdate(retained.getId())).thenReturn(Optional.of(retained));
+        assertEquals(ErrorCode.CONFLICT, assertThrows(ApiException.class,
+                () -> service.provisionAccount(employee.getId())).getCode());
+        retained.setEmployeeId(employee.getId());
+        retained.setSuperAdmin(true);
+        assertEquals(ErrorCode.FORBIDDEN, assertThrows(ApiException.class,
+                () -> service.provisionAccount(employee.getId())).getCode());
+        verify(passwordEncoder, never()).encode(anyString());
+        verify(userRepo, never()).saveAndFlush(any());
     }
 
     @Test
@@ -293,7 +380,7 @@ class EmployeeOnboardingServiceTest {
         employee.setIdType("身份证");
         EmployeeSensitive sensitive = new EmployeeSensitive();
         sensitive.setPhoneEnc("phone-cipher");
-        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000001");
         when(passwordGenerator.generate()).thenReturn("Rnd-Temp-Pass-20ch!x");
@@ -319,7 +406,7 @@ class EmployeeOnboardingServiceTest {
         sensitive.setPhoneEnc("phone-cipher");
         sensitive.setIdCardEnc("id-cipher");
         sensitive.setIdCardCheck("check_digit");
-        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000003");
         when(tx.tryDecrypt("id-cipher")).thenReturn(Optional.of("110105194912310021"));
@@ -344,7 +431,7 @@ class EmployeeOnboardingServiceTest {
         sensitive.setPhoneEnc("phone-cipher");
         sensitive.setIdCardEnc("corrupt-cipher");
         sensitive.setIdCardCheck("unchecked");
-        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000005");
         when(tx.tryDecrypt("corrupt-cipher")).thenReturn(Optional.empty());
@@ -371,7 +458,7 @@ class EmployeeOnboardingServiceTest {
         EmployeeSensitive sensitive = new EmployeeSensitive();
         sensitive.setPhoneEnc("phone-cipher");
         sensitive.setIdCardEnc("id-cipher");
-        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
         when(tx.decrypt("phone-cipher")).thenReturn("13800000004");
         when(userRepo.existsByLoginAccount("13800000004")).thenReturn(true);
@@ -392,7 +479,7 @@ class EmployeeOnboardingServiceTest {
         employee.setStatus("active");
         EmployeeSensitive sensitive = new EmployeeSensitive();
         sensitive.setIdCardEnc("id-cipher");
-        when(empRepo.findById(employee.getId())).thenReturn(Optional.of(employee));
+        when(empRepo.findByIdForUpdate(employee.getId())).thenReturn(Optional.of(employee));
         when(sensitiveRepo.findByEmployeeId(employee.getId())).thenReturn(Optional.of(sensitive));
 
         ApiException missing = assertThrows(ApiException.class,

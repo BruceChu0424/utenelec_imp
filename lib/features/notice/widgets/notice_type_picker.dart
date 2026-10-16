@@ -55,6 +55,7 @@ class NoticeTypePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
     return InkWell(
       onTap: enabled ? () => _open(context) : null,
       borderRadius: UtenRadius.smAll,
@@ -62,11 +63,17 @@ class NoticeTypePicker extends StatelessWidget {
         decoration: InputDecoration(
           labelText: l10n.noticePublishTypeLabel,
           prefixIcon: Icon(current.icon, color: current.color),
-          border: const OutlineInputBorder(),
         ),
         child: Row(
           children: [
-            Expanded(child: Text(noticeTypeLabel(l10n, current))),
+            Expanded(
+              child: Text(
+                noticeTypeLabel(l10n, current),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyLarge,
+              ),
+            ),
             const Icon(Icons.arrow_drop_down_rounded),
           ],
         ),

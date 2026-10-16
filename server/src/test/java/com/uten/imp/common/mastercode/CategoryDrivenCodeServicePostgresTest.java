@@ -74,6 +74,81 @@ class CategoryDrivenCodeServicePostgresTest {
     private PlatformTransactionManager transactionManager;
 
     @Test
+    void livePrefixCheckUsesLifetimeCrossDomainReservationsWithoutClaiming() {
+        UUID owner = UUID.randomUUID();
+        UUID child = UUID.randomUUID();
+        insertCategory(owner, "PREFIX-OWNER", "已占用分类", null, "UQ");
+        insertCategory(child, "PREFIX-CHILD", "继承分类", owner, null);
+        long before = longValue("SELECT count(*) FROM business_prefix_reservation_members");
+
+        for (var type : CategoryDrivenCodeService.MasterType.values()) {
+            CategoryPrefixAvailability occupied = service.prefixAvailability(type, " uq ", null);
+            assertEquals("UQ", occupied.normalizedPrefix());
+            assertFalse(occupied.available());
+            assertEquals(CategoryPrefixAvailability.OCCUPIED_MESSAGE, occupied.message());
+            assertFalse(service.prefixAvailability(type, "hp", null).available(),
+                    "The fixed goods namespace is occupied across every master domain");
+            assertTrue(service.prefixAvailability(type, "UQX", null).available(),
+                    "Only the exact prefix token conflicts, not a longer token");
+            assertTrue(service.prefixAvailability(type, "", null).available());
+        }
+        assertTrue(service.prefixAvailability(GOODS, "uQ", owner).available());
+        assertFalse(service.prefixAvailability(GOODS, "UQ", child).available(),
+                "An inherited prefix cannot be explicitly claimed by the child");
+        assertThrows(ApiException.class, () -> service.prefixAvailability(
+                CategoryDrivenCodeService.MasterType.MOULD, "UQ", owner));
+        assertEquals(before, longValue("SELECT count(*) FROM business_prefix_reservation_members"),
+                "Typing checks must not reserve any candidate");
+
+        UUID deletedOwner = UUID.randomUUID();
+        insertCategory(deletedOwner, "PREFIX-DELETED", "已删除分类", null, "UQR");
+        jdbc.update("UPDATE material_categories SET is_deleted = true WHERE id = ?", deletedOwner);
+        assertFalse(service.prefixAvailability(GOODS, "UQR", null).available());
+        assertThrows(ApiException.class,
+                () -> service.prefixAvailability(GOODS, "UQR", deletedOwner));
+    }
+
+    @Test
+    void livePrefixCheckMatchesCurrentAndHistoricalSameOwnerAllowance() {
+        UUID owner = UUID.randomUUID();
+        insertCategory(owner, "PREFIX-HISTORY", "历史前缀分类", null, "UQ");
+        jdbc.update("UPDATE material_categories SET code_prefix = 'UQX' WHERE id = ?", owner);
+        assertTrue(service.prefixAvailability(GOODS, "UQ", owner).available(),
+                "A sole owner may reclaim its previous prefix");
+        assertFalse(service.prefixAvailability(GOODS, "UQ", null).available());
+
+        claimHistoricalPrefix("UQ", "HISTORICAL_DOCUMENT");
+        assertFalse(service.prefixAvailability(GOODS, "UQ", owner).available(),
+                "A historical collision prevents returning to an old prefix");
+        claimHistoricalPrefix("UQX", "HISTORICAL_DOCUMENT");
+        assertTrue(service.prefixAvailability(GOODS, "UQX", owner).available(),
+                "Keeping the current legacy prefix is permitted by the save guard");
+        jdbc.update("UPDATE material_categories SET code_prefix = 'UQZ' WHERE id = ?", owner);
+        assertFalse(service.prefixAvailability(GOODS, "UQX", owner).available());
+    }
+
+    @Test
+    void databaseStillRejectsAClaimMadeAfterTheLiveCheck() {
+        assertTrue(service.prefixAvailability(GOODS, "UQ", null).available());
+        assertTrue(service.prefixAvailability(
+                CategoryDrivenCodeService.MasterType.MOULD, "UQ", null).available());
+        insertCategory(UUID.randomUUID(), "PREFIX-FIRST", "先保存的分类", null, "UQ");
+        assertFalse(service.prefixAvailability(
+                CategoryDrivenCodeService.MasterType.MOULD, "UQ", null).available());
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+                INSERT INTO mould_categories (id, code, name, code_prefix, is_deleted)
+                VALUES (?, 'PREFIX-SECOND', '后保存的分类', 'UQ', false)
+                """, UUID.randomUUID()));
+    }
+
+    private void claimHistoricalPrefix(String prefix, String namespace) {
+        jdbc.queryForList("""
+                SELECT fn_claim_global_business_prefix(
+                    ?, 'NAMESPACE', ?, NULL, NULL, ?, 'HISTORICAL', NULL, TRUE)
+                """, prefix, namespace, prefix);
+    }
+
+    @Test
     void rootChangeRenumbersInheritedAndCustomRowsButNotCloserOverride() {
         UUID root = UUID.randomUUID();
         UUID inheritedChild = UUID.randomUUID();

@@ -529,7 +529,15 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.dense && !UtenTableCellInputTheme.contains(context)) {
+      return UtenTableCellInputTheme(child: Builder(builder: _buildField));
+    }
+    return _buildField(context);
+  }
+
+  Widget _buildField(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = widget.dense || UtenTableCellInputTheme.contains(context);
     final hasValue = widget.value != null;
     final requiredEmpty =
         widget.enabled &&
@@ -553,18 +561,22 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
             applyAutofillHint(
               UtenInputDecoration(
                 InputDecoration(
-                  // 紧凑形态（2026-09-18 用户口径：表格内下拉太高）——isDense +
-                  // 共享紧凑内边距（2026-10-08 起与实盘格/编辑表同源，见
-                  // UtenEditableGridCellSpec），收起时与同行文本格等高；非 dense
-                  // 走主题默认。
                   isDense: true,
-                  contentPadding: widget.dense
-                      ? UtenEditableGridCellSpec.contentPadding
+                  contentPadding: compact
+                      ? UtenEditableGridCellSpec.contentPaddingOf(context)
                       : null,
-                  // 箭头图标自带约束（2026-10-06）：InputDecorator 对无约束的
-                  // suffixIcon 默认给最小 48×48 触控槽，直接把格子撑高；预填
-                  // 黄标时 UtenInputDecoration 的提示包装也按本约束收敛。
-                  suffixIconConstraints: widget.dense
+                  constraints: compact
+                      ? BoxConstraints(
+                          minHeight: UtenControlMetrics.minimumHitExtent(
+                            context,
+                            desktop: UtenControlMetrics.cellHeight,
+                          ),
+                        )
+                      : null,
+                  floatingLabelBehavior: compact
+                      ? FloatingLabelBehavior.never
+                      : null,
+                  suffixIconConstraints: compact
                       ? const BoxConstraints(minWidth: 20, minHeight: 20)
                       : null,
                   label: widget.label == null
@@ -609,16 +621,14 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
             // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
             // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
             // 由网格列 textOf 自动加宽兜底，表单里就省略号。
-            maxLines: widget.dense ? 1 : widget.selectedMaxLines,
-            overflow: widget.dense || widget.selectedMaxLines != null
+            maxLines: compact ? 1 : widget.selectedMaxLines,
+            overflow: compact || widget.selectedMaxLines != null
                 ? TextOverflow.ellipsis
                 : TextOverflow.clip,
-            // 紧凑形态字号对齐同行 TextField 输入文本（bodyLarge）：表格里
-            // 下拉值与数量/单价同一字号同一行高，整行等高（2026-10-06）。
             style:
-                (widget.dense
-                        ? theme.textTheme.bodyLarge
-                        : theme.textTheme.bodyMedium)
+                (compact
+                        ? theme.textTheme.bodyMedium
+                        : theme.textTheme.bodyLarge)
                     ?.copyWith(
                       color: hasValue
                           ? theme.colorScheme.onSurface

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "lib",
   "generator": "scripts/audit_platform_tables.py + Dart analyzer AST",
-  "sourceFileCount": 1390,
+  "sourceFileCount": 1391,
   "parseErrorFiles": [],
   "countMeaning": "Source invocation sites, not route count or runtime table instances. Shared wrappers count at their renderer call; PDF and print data are separate.",
   "printBoundaries": [
@@ -2584,13 +2584,13 @@
       "scope": null,
       "preferenceAndScopeEvidence": [
         {
-          "line": 1099,
+          "line": 1119,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
         },
         {
-          "line": 1613,
+          "line": 1637,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
@@ -2619,8 +2619,8 @@
     {
       "id": "lib/features/basic_data/widgets/goods_cost_editor.dart::_GoodsCostEditor::_materialTable::MasterDataTableView#1",
       "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
-      "line": 1073,
-      "endLine": 1137,
+      "line": 1093,
+      "endLine": 1157,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<Map<String, dynamic>>",
       "kind": "flutter_table",
@@ -2640,13 +2640,13 @@
       "scope": null,
       "preferenceAndScopeEvidence": [
         {
-          "line": 1099,
+          "line": 1119,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
         },
         {
-          "line": 1613,
+          "line": 1637,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
@@ -2677,8 +2677,8 @@
     {
       "id": "lib/features/basic_data/widgets/goods_cost_editor.dart::_GoodsCostEditor::_feeTable::UtenEditableGrid#1",
       "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
-      "line": 1607,
-      "endLine": 1755,
+      "line": 1631,
+      "endLine": 1779,
       "component": "UtenEditableGrid",
       "qualifiedType": "UtenEditableGrid<GoodsCostFeeRow>",
       "kind": "flutter_table",
@@ -2696,13 +2696,13 @@
       "scope": null,
       "preferenceAndScopeEvidence": [
         {
-          "line": 1099,
+          "line": 1119,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
         },
         {
-          "line": 1613,
+          "line": 1637,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
@@ -2719,7 +2719,7 @@
           "label": "_l.costGoodsName",
           "type": null,
           "value": null,
-          "sourceLine": 1654,
+          "sourceLine": 1678,
           "editable": true
         },
         {
@@ -2727,7 +2727,7 @@
           "label": "label",
           "type": null,
           "value": "(r) => r.controller(key).text",
-          "sourceLine": 1668,
+          "sourceLine": 1692,
           "editable": true
         },
         {
@@ -2735,7 +2735,7 @@
           "label": "_l.costFeeMethod",
           "type": null,
           "value": null,
-          "sourceLine": 1680,
+          "sourceLine": 1704,
           "editable": true
         },
         {
@@ -2743,7 +2743,7 @@
           "label": "_l.costFeeCategory",
           "type": null,
           "value": null,
-          "sourceLine": 1698,
+          "sourceLine": 1722,
           "editable": true
         },
         {
@@ -2751,7 +2751,7 @@
           "label": "_l.costFeeBase",
           "type": null,
           "value": null,
-          "sourceLine": 1716,
+          "sourceLine": 1740,
           "editable": true
         },
         {
@@ -2759,7 +2759,7 @@
           "label": "_l.costLineAmount",
           "type": null,
           "value": null,
-          "sourceLine": 1738,
+          "sourceLine": 1762,
           "editable": true
         },
         {
@@ -2767,7 +2767,7 @@
           "label": "_l.costNotes",
           "type": null,
           "value": null,
-          "sourceLine": 1747,
+          "sourceLine": 1771,
           "editable": true
         }
       ],
@@ -2788,8 +2788,8 @@
     {
       "id": "lib/features/basic_data/widgets/goods_cost_editor.dart::_GoodsCostEditor::_showEvidence::MasterDataTableView#1",
       "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
-      "line": 1784,
-      "endLine": 1795,
+      "line": 1808,
+      "endLine": 1819,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<Map<String, dynamic>>",
       "kind": "flutter_table",
@@ -2807,13 +2807,13 @@
       "scope": null,
       "preferenceAndScopeEvidence": [
         {
-          "line": 1099,
+          "line": 1119,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
         },
         {
-          "line": 1613,
+          "line": 1637,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
@@ -2842,8 +2842,8 @@
     {
       "id": "lib/features/basic_data/widgets/goods_cost_editor.dart::_GoodsCostEditor::_showSnapshots::MasterDataTableView#1",
       "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
-      "line": 1956,
-      "endLine": 1978,
+      "line": 1980,
+      "endLine": 2002,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<Map<String, dynamic>>",
       "kind": "flutter_table",
@@ -2861,13 +2861,13 @@
       "scope": null,
       "preferenceAndScopeEvidence": [
         {
-          "line": 1099,
+          "line": 1119,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
         },
         {
-          "line": 1613,
+          "line": 1637,
           "ownerClass": "_GoodsCostEditor",
           "name": "scope",
           "value": "'view_goods_cost'"
@@ -2883,7 +2883,7 @@
           "label": "_l.costOpen",
           "type": null,
           "value": "(_) => _l.costOpen",
-          "sourceLine": 1962,
+          "sourceLine": 1986,
           "editable": false
         }
       ],
@@ -5037,8 +5037,8 @@
     {
       "id": "lib/features/finance/pages/finance_doc_edit_page.dart::_FinanceDocEditPageState::build::UtenEditableGrid#1",
       "path": "lib/features/finance/pages/finance_doc_edit_page.dart",
-      "line": 2502,
-      "endLine": 2586,
+      "line": 2506,
+      "endLine": 2590,
       "component": "UtenEditableGrid",
       "qualifiedType": "UtenEditableGrid<FinanceGridRow>",
       "kind": "flutter_table",
@@ -7909,8 +7909,8 @@
     {
       "id": "lib/features/hr_task/pages/hr_reconcile_page.dart::_HrReconcilePageState::_table::MasterDataTableView#1",
       "path": "lib/features/hr_task/pages/hr_reconcile_page.dart",
-      "line": 1307,
-      "endLine": 1350,
+      "line": 1203,
+      "endLine": 1246,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<HrReconcileRow>",
       "kind": "flutter_table",
@@ -7920,7 +7920,7 @@
       "category": "business_list",
       "categoryEvidence": "path_and_enclosing_method_policy",
       "arguments": {
-        "tableKey": "'features.hr_task.pages.hr_reconcile_page.HrReconcilePageState._table.1'",
+        "tableKey": "'features.hr_task.pages.hr_reconcile_page.HrReconcilePageState._table.manual_v2'",
         "columns": "_columns(l10n, plan)",
         "items": "plan.rows",
         "idOf": "(row) => row.kind == HrReconcileRowKind.update && !row.claimedByOther && row.result == null && editable ? row.employee.id : null",
@@ -7930,7 +7930,7 @@
       "scope": null,
       "preferenceAndScopeEvidence": [
         {
-          "line": 990,
+          "line": 930,
           "ownerClass": "_HrReconcilePageState",
           "name": "scope",
           "value": "ReturnToScope.employee"
@@ -7949,15 +7949,39 @@
           "label": "l10n.hrReconcileColKind",
           "type": null,
           "value": "(row) => _kindLabel(l10n, row.kind)",
-          "sourceLine": 1359,
+          "sourceLine": 1255,
           "editable": false
         },
         {
-          "key": "'employee'",
-          "label": "l10n.hrReconcileColEmployee",
+          "key": "'name'",
+          "label": "l10n.employeeFieldName",
           "type": null,
           "value": "(row) => row.employee.name",
-          "sourceLine": 1368,
+          "sourceLine": 1263,
+          "editable": false
+        },
+        {
+          "key": "'code'",
+          "label": "l10n.employeeFieldCode",
+          "type": null,
+          "value": "(row) => row.employee.code",
+          "sourceLine": 1269,
+          "editable": false
+        },
+        {
+          "key": "'department'",
+          "label": "l10n.hrReconcileColDepartment",
+          "type": null,
+          "value": "(row) => row.employee.deptName ?? '—'",
+          "sourceLine": 1275,
+          "editable": false
+        },
+        {
+          "key": "'position'",
+          "label": "l10n.hrReconcileColPosition",
+          "type": null,
+          "value": "(row) => row.employee.positionName ?? '—'",
+          "sourceLine": 1281,
           "editable": false
         },
         {
@@ -7965,15 +7989,15 @@
           "label": "l10n.hrReconcileColReason",
           "type": null,
           "value": "(row) => _reasonOf(row)",
-          "sourceLine": 1402,
+          "sourceLine": 1287,
           "editable": false
         },
         {
-          "key": "'tier'",
-          "label": "l10n.hrReconcileColTier",
+          "key": "'suggestion'",
+          "label": "l10n.hrReconcileColSuggestion",
           "type": null,
-          "value": "(row) => _primaryItem(row)?.tier == null ? null : _tierLabel(l10n, _primaryItem(row)!.tier)",
-          "sourceLine": 1426,
+          "value": "(row) => _primaryItem(row)?.newValue",
+          "sourceLine": 1308,
           "editable": false
         },
         {
@@ -7981,7 +8005,7 @@
           "label": "l10n.hrReconcileColNotes",
           "type": null,
           "value": "(row) => row.items.isEmpty ? null : row.items.first.notes.join('；')",
-          "sourceLine": 1443,
+          "sourceLine": 1321,
           "editable": false
         }
       ],
@@ -8663,7 +8687,7 @@
           "label": "'分析状态'",
           "type": null,
           "value": "(line) => _analysisStatusText(line.analysisStatus)",
-          "sourceLine": 1179,
+          "sourceLine": 1181,
           "editable": false
         },
         {
@@ -8671,7 +8695,7 @@
           "label": "'销售单号'",
           "type": null,
           "value": "(line) => line.orderNo",
-          "sourceLine": 1191,
+          "sourceLine": 1193,
           "editable": false
         },
         {
@@ -8679,7 +8703,7 @@
           "label": "'产品名称'",
           "type": null,
           "value": "(line) => line.goodsName",
-          "sourceLine": 1200,
+          "sourceLine": 1202,
           "editable": false
         },
         {
@@ -8687,7 +8711,7 @@
           "label": "'编号'",
           "type": null,
           "value": "(line) => line.goodsCode",
-          "sourceLine": 1206,
+          "sourceLine": 1208,
           "editable": false
         },
         {
@@ -8695,7 +8719,7 @@
           "label": "'颜色'",
           "type": null,
           "value": "(line) => line.colorName",
-          "sourceLine": 1212,
+          "sourceLine": 1214,
           "editable": false
         },
         {
@@ -8703,7 +8727,7 @@
           "label": "'规格'",
           "type": null,
           "value": "(line) => line.spec",
-          "sourceLine": 1218,
+          "sourceLine": 1220,
           "editable": false
         },
         {
@@ -8711,7 +8735,7 @@
           "label": "'待排数量'",
           "type": "'number'",
           "value": "(line) => _qty(line.remainingQty)",
-          "sourceLine": 1224,
+          "sourceLine": 1226,
           "editable": false
         },
         {
@@ -8719,7 +8743,7 @@
           "label": "'本次分析数量'",
           "type": "'number'",
           "value": "(line) => _sourceQtyControllers[line.salesOrderItemId]?.text",
-          "sourceLine": 1234,
+          "sourceLine": 1236,
           "editable": false
         },
         {
@@ -8727,7 +8751,7 @@
           "label": "'交货日期'",
           "type": "'date'",
           "value": "(line) => _dateOnly(line.deliveryDate)",
-          "sourceLine": 1272,
+          "sourceLine": 1274,
           "editable": false
         }
       ],
@@ -10822,8 +10846,8 @@
     {
       "id": "lib/features/production/pages/where_used_report_page.dart::_WhereUsedReportPageState::_buildTable::MasterDataTableView#1",
       "path": "lib/features/production/pages/where_used_report_page.dart",
-      "line": 1010,
-      "endLine": 1037,
+      "line": 1114,
+      "endLine": 1152,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<Map<String, dynamic>>",
       "kind": "flutter_table",
@@ -11406,8 +11430,8 @@
     {
       "id": "lib/features/production/widgets/material_manual_demand_editor.dart::MaterialManualDemandCard::build::UtenEditableGrid#1",
       "path": "lib/features/production/widgets/material_manual_demand_editor.dart",
-      "line": 728,
-      "endLine": 761,
+      "line": 732,
+      "endLine": 765,
       "component": "UtenEditableGrid",
       "qualifiedType": "UtenEditableGrid<MaterialManualDemandLine>",
       "kind": "flutter_table",
@@ -23292,8 +23316,8 @@
     {
       "id": "lib/shared/stock_ledger/widgets/goods_production_trace_view.dart::_TraceState::build::MasterDataTableView#1",
       "path": "lib/shared/stock_ledger/widgets/goods_production_trace_view.dart",
-      "line": 239,
-      "endLine": 274,
+      "line": 255,
+      "endLine": 290,
       "component": "MasterDataTableView",
       "qualifiedType": "MasterDataTableView<GoodsProductionTraceRow>",
       "kind": "flutter_table",
@@ -23323,7 +23347,7 @@
           "label": "_direction == 'usage' ? '生产产品' : '使用物料'",
           "type": null,
           "value": "(row) => related(row).goodsName ?? '—'",
-          "sourceLine": 388,
+          "sourceLine": 404,
           "editable": false
         },
         {
@@ -23331,15 +23355,15 @@
           "label": "'编号'",
           "type": null,
           "value": "(row) => related(row).goodsCode ?? '—'",
-          "sourceLine": 394,
+          "sourceLine": 418,
           "editable": false
         },
         {
           "key": "'productionBatches'",
-          "label": "'生产批次'",
+          "label": "'生产批次 / 计划'",
           "type": null,
           "value": "(row) => _joined(row.reports.expand((report) => report.batches).map((batch) => batch.displayName))",
-          "sourceLine": 400,
+          "sourceLine": 425,
           "editable": false
         },
         {
@@ -23347,7 +23371,7 @@
           "label": "'记录类型'",
           "type": null,
           "value": "(row) => row.isPeriodic ? '期间分摊' : '按单用料'",
-          "sourceLine": 410,
+          "sourceLine": 448,
           "editable": false
         },
         {
@@ -23355,7 +23379,7 @@
           "label": "'颜色'",
           "type": null,
           "value": "(row) => related(row).colorName ?? '—'",
-          "sourceLine": 416,
+          "sourceLine": 454,
           "editable": false
         },
         {
@@ -23363,7 +23387,7 @@
           "label": "'车间'",
           "type": null,
           "value": "(row) => row.workshopName ?? '—'",
-          "sourceLine": 422,
+          "sourceLine": 461,
           "editable": false
         },
         {
@@ -23371,7 +23395,7 @@
           "label": "'生产计划'",
           "type": null,
           "value": "(row) => row.planNo ?? row.segmentCode ?? '—'",
-          "sourceLine": 428,
+          "sourceLine": 467,
           "editable": false
         },
         {
@@ -23379,7 +23403,7 @@
           "label": "'已领数量'",
           "type": null,
           "value": "(row) => _qty(row.issuedQty, row.material.unitName)",
-          "sourceLine": 434,
+          "sourceLine": 474,
           "editable": false
         },
         {
@@ -23387,7 +23411,7 @@
           "label": "'已退数量'",
           "type": null,
           "value": "(row) => _qty(row.returnedQty, row.material.unitName)",
-          "sourceLine": 440,
+          "sourceLine": 480,
           "editable": false
         },
         {
@@ -23395,7 +23419,7 @@
           "label": "'核销耗用'",
           "type": null,
           "value": "(row) => _qty(row.consumedQty, row.material.unitName)",
-          "sourceLine": 446,
+          "sourceLine": 486,
           "editable": false
         },
         {
@@ -23403,7 +23427,7 @@
           "label": "'期间分摊量'",
           "type": null,
           "value": "(row) => _qty(row.allocatedQty, row.material.unitName)",
-          "sourceLine": 452,
+          "sourceLine": 492,
           "editable": false
         },
         {
@@ -23411,7 +23435,7 @@
           "label": "'报工日期'",
           "type": null,
           "value": "(row) => _joined(row.reports.map((r) => r.billDate).nonNulls)",
-          "sourceLine": 458,
+          "sourceLine": 498,
           "editable": false
         },
         {
@@ -23419,7 +23443,7 @@
           "label": "'报工参与人'",
           "type": null,
           "value": "(row) => _joined(row.reports.expand((r) => r.workers))",
-          "sourceLine": 464,
+          "sourceLine": 504,
           "editable": false
         },
         {
@@ -23427,7 +23451,7 @@
           "label": "'入库来源单据'",
           "type": null,
           "value": "(row) => row.receiptSources.isEmpty ? '暂无可显示来源' : row.receiptSources.map((r) => r.billNo ?? '—').toSet().join('、')",
-          "sourceLine": 470,
+          "sourceLine": 511,
           "editable": false
         }
       ],

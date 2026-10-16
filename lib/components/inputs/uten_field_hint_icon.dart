@@ -4,7 +4,9 @@ import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/l10n/gen/app_localizations_zh.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import 'uten_filter_field_theme.dart';
 import 'uten_table_cell_hints.dart';
+import 'uten_table_cell_spec.dart';
 
 /// In-field disclosure shared by text inputs, dropdowns and pickers.
 class UtenFieldHintIcon extends StatefulWidget {
@@ -101,6 +103,12 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
     }
     if (messages.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
+    final compact = widget.dense || UtenTableCellInputTheme.contains(context);
+    final extent = compact
+        ? UtenEditableGridCellSpec.heightOf(context)
+        : UtenFilterFieldTheme.contains(context)
+        ? UtenFilterRow.heightOf(context)
+        : UtenPageField.heightOf(context);
     final isError = widget.errorMessage?.isNotEmpty ?? false;
     final isWarning = autofillMessage?.isNotEmpty ?? false;
     final color = isError
@@ -133,14 +141,8 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
                 widget.dense ? UtenSpacing.s4 : UtenSpacing.s8,
               ),
               constraints: BoxConstraints.tightFor(
-                width: UtenControlMetrics.minimumHitExtent(
-                  context,
-                  desktop: widget.dense ? 32 : UtenFilterRow.minHeight,
-                ),
-                height: UtenControlMetrics.minimumHitExtent(
-                  context,
-                  desktop: widget.dense ? 32 : UtenFilterRow.minHeight,
-                ),
+                width: extent,
+                height: extent,
               ),
               style: const ButtonStyle(
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,

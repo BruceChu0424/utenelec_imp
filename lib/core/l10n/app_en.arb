@@ -4342,9 +4342,14 @@
   "hrReconcileApplyFailed": "The correction did not complete. Please try again later.",
   "hrReconcileIdEmpty": "(empty)",
   "hrReconcileColKind": "Type",
+  "hrReconcileColDepartment": "Department",
+  "hrReconcileColPosition": "Position",
+  "hrReconcileColSuggestion": "Suggestion",
+  "hrReconcileManualOnlyNotice": "Suggestions are for reference. Enter each identity number manually, then select the rows and confirm.",
+  "hrReconcileLegacyChoicesIgnored": "Suggestion choices from the old draft were ignored. Manual entries were kept; enter the remaining numbers manually.",
   "hrReconcileColEmployee": "Employee",
   "hrReconcileColReason": "Reason",
-  "hrReconcileIdNumberInfo": "Struck-through red is the stored value; green background is the suggested new value (changed digits in bold red). Adopt the suggestion, pick a candidate, or type a new number",
+  "hrReconcileIdNumberInfo": "Enter identity numbers manually for every suggestion type. Suggestions are never filled or submitted automatically.",
   "hrReconcileBasisOf": "Suggestion basis: {label}",
   "@hrReconcileBasisOf": {
     "placeholders": {

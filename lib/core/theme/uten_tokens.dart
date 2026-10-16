@@ -16,7 +16,7 @@ import '../responsive/display_zoom.dart';
 ///
 /// 常用映射：
 /// - 小控件（标签、勾选框）：xs / sm
-/// - 按钮、输入框、Chip 等表单级控件：control（10，全平台唯一控件圆角）
+/// - 普通按钮、输入框、Chip：control（10）；表格内编辑控件用 sm（6）
 /// - 卡片、面板：card（16）
 /// - 对话框、底部弹层：xxl
 /// - 徽章、胶囊：pill
@@ -30,7 +30,7 @@ abstract final class UtenRadius {
   /// 8 —— 中等元素（图标容器）
   static const double md = 8;
 
-  /// 10 —— 表单级控件统一圆角：按钮、输入框、Chip、下拉等。
+  /// 10 —— 普通表单控件圆角：按钮、输入框、Chip、下拉等；表格内用 sm。
   /// 2026-09-01 全平台圆角统一：主题（含深色）与所有按钮组件一律调用本值，
   /// 业务代码不得再散落 8/10/12/14 等控件级硬编码。
   static const double control = 10;
@@ -136,7 +136,7 @@ abstract final class UtenControlMetrics {
   static const double compactHeight = 36;
   static const double standardHeight = 40;
   static const double primaryHeight = 48;
-  static const double inputHeight = compactHeight;
+  static const double inputHeight = 44;
   static const double cellHeight = 32;
   static const double touchExtent = 48;
 
@@ -182,21 +182,22 @@ abstract final class UtenFilterRow {
       UtenControlMetrics.minimumHitExtent(context, desktop: 24);
 }
 
-/// Page fields share the search control's outline and height. Table cells keep
-/// their separate compact specification in UtenTableCellInputTheme.
+/// Normal form fields in pages, cards and dialogs. Search/filter controls and
+/// table cell editors have their own compact roles.
 abstract final class UtenPageField {
-  static const BorderRadius borderRadius = UtenFilterRow.borderRadius;
+  static const double minHeight = UtenControlMetrics.inputHeight;
+  static const BorderRadius borderRadius = UtenRadius.controlAll;
   static const EdgeInsets contentPadding = EdgeInsets.symmetric(
-    horizontal: UtenFilterRow.cellHorizontalPadding,
-    vertical: 6,
+    horizontal: UtenSpacing.s12,
+    vertical: 10,
   );
   static const BoxConstraints iconConstraints = BoxConstraints(
-    minWidth: UtenFilterRow.minHeight,
-    minHeight: UtenFilterRow.minHeight,
+    minWidth: minHeight,
+    minHeight: minHeight,
   );
 
   static double heightOf(BuildContext context) =>
-      UtenFilterRow.heightOf(context);
+      UtenControlMetrics.controlHeight(context, desktop: minHeight);
 }
 
 /// 自研表格共用的表头文字样式，渲染与列宽测量使用同一入口。

@@ -8,8 +8,10 @@
 // - 货品列的「产出去向」「子件用料」分组头行：两个分组各带展开/收起钮，独立控制。
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -18,6 +20,8 @@ import 'package:uten_imp/features/production/models/production_direct_transfer_c
 import 'package:uten_imp/features/production/widgets/production_daily_grid_columns.dart';
 import 'package:uten_imp/features/production/repositories/production_material_repository.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
+
+import '../../../support/audit_screenshot_support.dart';
 
 const _subcontractReason = 'HV5ZJ012 是委外件：做好后先送入仓库，发外加工回来后，上层工单再从仓库领料';
 const _crossReason = '上层工单 ZX-C 在二车间，跨车间必须送入仓库';
@@ -105,8 +109,13 @@ void main() {
         expect(controller.text, isEmpty, reason: '提示不是默认数量或已填写事实');
         expect(_hintOpacity(tester, hint), 1);
         expect(
+          UtenTableCellInputTheme.contains(tester.element(find.text(hint))),
+          isTrue,
+        );
+        expect(
           tester.widget<Text>(find.text(hint)).style?.color,
-          theme.inputDecorationTheme.hintStyle?.color,
+          // 表格宿主使用语义提示色，普通页面的暗色70%提示色不适用于表格。
+          theme.colorScheme.onSurfaceVariant,
         );
       }
       for (final (row, key, hint, controller, input) in fields) {
@@ -176,7 +185,7 @@ void main() {
       expect(find.text(hint), findsOneWidget);
       expect(
         tester.widget<Text>(find.text(hint)).style?.color,
-        theme.inputDecorationTheme.hintStyle?.color,
+        theme.colorScheme.onSurfaceVariant,
       );
     }
     row.goods = const GoodsOption(id: 'goods', name: '真实货品');
@@ -190,6 +199,101 @@ void main() {
     expect(row.planNo.text, 'SJ-原计划');
     expect(tester.takeException(), isNull);
   });
+
+  for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+    for (final textScale in [1.0, 2.0]) {
+      testWidgets('真实报工表格选择格保持触控规格并自然放大 $platform $textScale', (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = Size(
+          platform == TargetPlatform.android ? 375 : 1400,
+          900,
+        );
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await loadAuditScreenshotFonts(tester);
+        final row = DailyGridRow();
+        final controller = UtenEditableGridController<DailyGridRow>(
+          initial: [row],
+        );
+        addTearDown(controller.dispose);
+        final theme = auditScreenshotTheme(
+          buildLightTheme(),
+        ).copyWith(platform: platform);
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              theme: theme,
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              locale: const Locale('zh'),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
+              home: Scaffold(
+                body: Builder(
+                  builder: (context) => SingleChildScrollView(
+                    child: UtenEditableGrid<DailyGridRow>(
+                      controller: controller,
+                      columns:
+                          dailyGridColumns(
+                                context: context,
+                                onPickGoods: (_) async {},
+                                onPickSource: (_) async {},
+                                onClearSource: (_) {},
+                                colorEntries: const {},
+                                unitEntries: const {},
+                                standaloneDetails: true,
+                              )
+                              .where((c) => ['goods', 'planNo'].contains(c.key))
+                              .toList(),
+                      showAddRow: false,
+                      showRowDelete: false,
+                      showColumnSettings: false,
+                      stickyHeader: false,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('选择货品'), findsOneWidget);
+        expect(find.text('选择来源工单'), findsOneWidget);
+        final context = tester.element(find.text('选择货品'));
+        expect(UtenTableCellInputTheme.contains(context), isTrue);
+        final minimum = platform == TargetPlatform.android ? 48.0 : 32.0;
+        expect(UtenEditableGridCellSpec.heightOf(context), minimum);
+        Finder inputOf(String text) => find
+            .ancestor(
+              of: find.text(text),
+              matching: find.byType(InputDecorator),
+            )
+            .first;
+        final emptyHeight = tester.getSize(inputOf('选择货品')).height;
+        expect(emptyHeight, greaterThanOrEqualTo(minimum));
+        if (textScale > 1) expect(emptyHeight, greaterThan(minimum));
+        expect(tester.takeException(), isNull);
+
+        row.goods = const GoodsOption(id: 'goods', name: '真实货品');
+        row.executionSegmentCode = 'ZX-原工单';
+        row.planNo.text = 'SJ-原计划';
+        await tester.pumpAndSettle();
+        expect(find.text('选择货品'), findsNothing);
+        expect(find.text('选择来源工单'), findsNothing);
+        expect(find.text('真实货品'), findsOneWidget);
+        expect(find.text('ZX-原工单'), findsOneWidget);
+        expect(row.planNo.text, 'SJ-原计划');
+        final selectedHeight = tester.getSize(inputOf('真实货品')).height;
+        expect(selectedHeight, greaterThanOrEqualTo(minimum));
+        if (textScale > 1) expect(selectedHeight, greaterThan(minimum));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   test('去向下拉：先急后缓的上层工单、已分满置灰、不能收的红字原因、最后是送入仓库', () {
     final product = _product();
@@ -664,30 +768,38 @@ Future<void> _pumpNamedCells(
       supportedLocales: AppLocalizations.supportedLocales,
       locale: const Locale('zh'),
       home: Scaffold(
-        body: Builder(
-          builder: (context) {
-            final columns = dailyGridColumns(
-              context: context,
-              onPickGoods: (_) async {},
-              onPickSource: (_) async {},
-              onClearSource: (_) {},
-              colorEntries: const {},
-              unitEntries: const {},
-            );
-            return Column(
-              children: [
-                for (final (row, key) in cells)
-                  SizedBox(
-                    key: ValueKey('test-$key-${identityHashCode(row)}'),
-                    width: 350,
-                    height: 40,
-                    child: columns
-                        .firstWhere((column) => column.key == key)
-                        .cellBuilder(context, row),
-                  ),
-              ],
-            );
-          },
+        body: UtenTableCellInputTheme(
+          child: Builder(
+            builder: (cellContext) {
+              final columns = dailyGridColumns(
+                context: cellContext,
+                onPickGoods: (_) async {},
+                onPickSource: (_) async {},
+                onClearSource: (_) {},
+                colorEntries: const {},
+                unitEntries: const {},
+              );
+              return Column(
+                children: [
+                  for (final (row, key) in cells)
+                    SizedBox(
+                      key: ValueKey('test-$key-${identityHashCode(row)}'),
+                      width: 350,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: UtenEditableGridCellSpec.heightOf(
+                            cellContext,
+                          ),
+                        ),
+                        child: columns
+                            .firstWhere((column) => column.key == key)
+                            .cellBuilder(cellContext, row),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     ),

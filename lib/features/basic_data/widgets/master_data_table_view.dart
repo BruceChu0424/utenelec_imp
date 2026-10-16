@@ -42,6 +42,7 @@ import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../components/layout/uten_table_horizontal_scroll_controller.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/scale.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import '../models/master_facet.dart';
@@ -868,6 +869,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   void _syncRows() {
     _items = _collectRows(_pages);
+    // This already runs at data/projection changes, never at a scroll tick.
+    // Compare values rather than the newly collected List identity so selection
+    // rebuilds do not discard a virtualized row's measured height.
+    if (!listEquals(_floatingBatchRowsSnapshot, _items)) {
+      _floatingBatchRowsSnapshot = _items;
+      _floatingBatchDataRevision++;
+    }
     if (_visiblePage != null && !_pages.containsKey(_visiblePage)) {
       _visiblePage = null;
     }
@@ -1942,6 +1950,8 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   // —— 横滚条覆盖层测量 ——
   /// 表体区 Stack / 末行 的测量键。
   final GlobalKey _bodyAreaKey = GlobalKey();
+  final GlobalKey _tableChromeKey = GlobalKey();
+  final GlobalKey _floatingBatchKey = GlobalKey();
   final GlobalKey _lastRowKey = GlobalKey();
   // 自然滚动条/覆盖层切换时保留同一个横向视口，不因包装层变化重建 ScrollPosition。
   final GlobalKey _bodyHorizontalKey = GlobalKey();
@@ -1960,6 +1970,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
 
   /// 表体 ListView 当前底 padding，随悬浮动作或外部留白配置同步。
   double _bodyBottomPad = _hBarGap;
+
+  // Total budget includes capsule padding, exactly once. Measurements belong
+  // to the row viewport below the toolbar/header, never the full window/stage.
+  double? _floatingBatchHeightLimit;
+  double _floatingBatchMeasuredHeight = 0;
+  double _floatingBatchMinimumTableHeight = 0;
+  Object? _floatingBatchRowScope;
+  double _floatingBatchMeasuredRowHeight = 0;
+  double _floatingBatchMinimumContentHeight = 0;
+  List<T> _floatingBatchRowsSnapshot = [];
+  int _floatingBatchDataRevision = 0;
 
   /// compact 悬浮胶囊遮挡高度（非外壳内恒 0），didChangeDependencies 里同步。
   double _capsuleOcclusion = 0;
@@ -2563,21 +2584,178 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       } else if (_hBarY.value != null) {
         _hBarY.value = null;
       }
+      final previousBudget = (
+        _floatingBatchHeightLimit,
+        _floatingBatchMinimumTableHeight,
+        _floatingBatchMeasuredHeight,
+        _bodyBottomPad,
+      );
+      _updateFloatingBatchGeometry();
       _updateBodyPad();
+      final currentBudget = (
+        _floatingBatchHeightLimit,
+        _floatingBatchMinimumTableHeight,
+        _floatingBatchMeasuredHeight,
+        _bodyBottomPad,
+      );
+      // The fullscreen surface is built in a separate route. setState above
+      // rebuilds this route's placeholder, not that surface. Notify it only
+      // after an actual budget change; ordinary scroll ticks do not rebuild it.
+      if (_fullscreen &&
+          _fullscreenOwner != null &&
+          previousBudget != currentBudget) {
+        _fsTick.value++;
+      }
     });
+  }
+
+  double _minimumFloatingBatchHeight(BuildContext context) =>
+      math.max(
+        UtenControlMetrics.minimumHitExtent(
+          context,
+          desktop: context.scaled(UtenFloatingActionGroup.controlHeight),
+        ),
+        _floatingBatchMinimumContentHeight,
+      ) +
+      UtenSpacing.s8 +
+      _capsuleOcclusion;
+
+  void _onFloatingBatchMinimumContentHeightChanged(double height) {
+    if (!mounted ||
+        (_floatingBatchMinimumContentHeight - height).abs() <= 0.5) {
+      return;
+    }
+    setState(() => _floatingBatchMinimumContentHeight = height);
+    _scheduleHBarUpdate();
+  }
+
+  void _updateFloatingBatchGeometry() {
+    if (!_usesBoundedFloatingBatchActions) {
+      if (_floatingBatchHeightLimit != null ||
+          _floatingBatchMinimumTableHeight != 0 ||
+          _floatingBatchMeasuredHeight != 0 ||
+          _floatingBatchMinimumContentHeight != 0) {
+        setState(() {
+          _floatingBatchHeightLimit = null;
+          _floatingBatchMinimumTableHeight = 0;
+          _floatingBatchMeasuredHeight = 0;
+          _floatingBatchRowScope = null;
+          _floatingBatchMeasuredRowHeight = 0;
+          _floatingBatchMinimumContentHeight = 0;
+        });
+      }
+      return;
+    }
+    final area = _bodyAreaKey.currentContext?.findRenderObject() as RenderBox?;
+    final chrome =
+        _tableChromeKey.currentContext?.findRenderObject() as RenderBox?;
+    final group =
+        _floatingBatchKey.currentContext?.findRenderObject() as RenderBox?;
+    if (group == null) {
+      if (_floatingBatchHeightLimit != null ||
+          _floatingBatchMinimumTableHeight != 0 ||
+          _floatingBatchMeasuredHeight != 0 ||
+          _floatingBatchMinimumContentHeight != 0) {
+        setState(() {
+          _floatingBatchHeightLimit = null;
+          _floatingBatchMinimumTableHeight = 0;
+          _floatingBatchMeasuredHeight = 0;
+          _floatingBatchMinimumContentHeight = 0;
+          _floatingBatchRowScope = null;
+          _floatingBatchMeasuredRowHeight = 0;
+        });
+      }
+      return;
+    }
+    if (area == null ||
+        chrome == null ||
+        !area.attached ||
+        !chrome.attached ||
+        !group.attached ||
+        !area.hasSize ||
+        !chrome.hasSize ||
+        !group.hasSize) {
+      return;
+    }
+    final body = Theme.of(context).textTheme.bodyMedium;
+    final rowScope = (
+      area.size.width,
+      MediaQuery.textScalerOf(context),
+      Object.hashAll(_widths),
+      body,
+      _floatingBatchDataRevision,
+      Object.hashAllUnordered(
+        _rowFilters.entries.map((entry) => Object.hash(entry.key, entry.value)),
+      ),
+      _localSortColumn,
+      _localSortAscending,
+      Object.hashAllUnordered(_expandedGroups),
+    );
+    if (_floatingBatchRowScope != rowScope) {
+      _floatingBatchRowScope = rowScope;
+      _floatingBatchMeasuredRowHeight = 0;
+    }
+    var row = math.max(
+      UtenEditableGridCellSpec.heightOf(context),
+      MediaQuery.textScalerOf(context).scale(body?.fontSize ?? 14) *
+              (body?.height ?? 1.5) +
+          UtenSpacing.s16,
+    );
+    final last = _lastRowKey.currentContext?.findRenderObject() as RenderBox?;
+    if (last != null && last.attached && last.hasSize) {
+      _floatingBatchMeasuredRowHeight = math.max(
+        _floatingBatchMeasuredRowHeight,
+        last.size.height,
+      );
+    }
+    // A virtualized last row disappearing during scroll must not shrink the
+    // reserved row and repeatedly resize the action viewport.
+    row = math.max(row, _floatingBatchMeasuredRowHeight);
+    final minimumActions = _minimumFloatingBatchHeight(context);
+    final requiredRows = row + _hBarGap + minimumActions + UtenSpacing.s16;
+    // The offset measures only actual chrome. Subtracting body height from a
+    // loose Column would count spare whitespace and cause a growing feedback loop.
+    final leading = area.localToGlobal(Offset.zero, ancestor: chrome).dy;
+    final minimumTable = math.max(0.0, leading) + requiredRows;
+    final limit = math.max(
+      minimumActions,
+      math.min(
+        UtenFloatingActionGroup.scrollClearance,
+        area.size.height - row - _hBarGap - UtenSpacing.s16,
+      ),
+    );
+    final measured = group.size.height;
+    if ((_floatingBatchHeightLimit == null ||
+            (_floatingBatchHeightLimit! - limit).abs() > 0.5) ||
+        (_floatingBatchMinimumTableHeight - minimumTable).abs() > 0.5 ||
+        (_floatingBatchMeasuredHeight - measured).abs() > 0.5) {
+      setState(() {
+        _floatingBatchHeightLimit = limit;
+        _floatingBatchMinimumTableHeight = minimumTable;
+        _floatingBatchMeasuredHeight = measured;
+      });
+    }
   }
 
   /// 滚动留白独立于横滚条：悬浮动作取共享留白，页面可再提供更大的让位空间。
   void _updateBodyPad() {
     // 即使内容刚好装得下，也要允许把最后一行滚到操作区上方。
-    // compact 悬浮胶囊的遮挡高度叠加在其后：页面给的 floor 也须抬过胶囊，
-    // 否则悬浮批量动作（已按胶囊避让抬升）反而盖住末行。
+    // 本地浮条的实测总高已经含胶囊避让，只补底距和横滚条间隙；
+    // 页面自带的 floor 仍另外按胶囊抬升，两者取最大值，不重复叠加。
     final next =
-        (_hasFloatingBatchActions ? _batchPad : _hBarGap).clamp(
-          widget.bottomContentPadding,
-          double.infinity,
-        ) +
-        _capsuleOcclusion;
+        _usesBoundedFloatingBatchActions &&
+            _floatingBatchKey.currentContext == null
+        ? math.max(widget.bottomContentPadding, _hBarGap) + _capsuleOcclusion
+        : _usesBoundedFloatingBatchActions && _floatingBatchMeasuredHeight > 0
+        ? math.max(
+            widget.bottomContentPadding + _capsuleOcclusion,
+            _floatingBatchMeasuredHeight + UtenSpacing.s16 + _hBarGap,
+          )
+        : (_hasFloatingBatchActions ? _batchPad : _hBarGap).clamp(
+                widget.bottomContentPadding,
+                double.infinity,
+              ) +
+              _capsuleOcclusion;
     if (next != _bodyBottomPad) setState(() => _bodyBottomPad = next);
   }
 
@@ -2631,6 +2809,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   @override
   void didUpdateWidget(covariant MasterDataTableView<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.items, widget.items) ||
+        !identical(oldWidget.leadingGroups, widget.leadingGroups) ||
+        oldWidget.paginationRevision != widget.paginationRevision ||
+        oldWidget.paginationScope != widget.paginationScope) {
+      _floatingBatchRowScope = null;
+      _floatingBatchMeasuredRowHeight = 0;
+    }
     if (!identical(oldWidget.rowsController, widget.rowsController)) {
       oldWidget.rowsController?.detachPagination(this);
     }
@@ -3662,6 +3847,9 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   bool get _hasFloatingBatchActions =>
       widget.selectable && widget.batchActionsBuilder != null;
 
+  bool get _usesBoundedFloatingBatchActions =>
+      _hasFloatingBatchActions && (!widget.embedded || _fullscreen);
+
   bool get _usesOverlayHBar =>
       widget.primary ||
       _hasFloatingBatchActions ||
@@ -3763,18 +3951,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             }
             return false;
           },
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildTable(context),
-              if (_hasFloatingBatchActions)
-                PositionedDirectional(
-                  end: UtenSpacing.s16,
-                  bottom: UtenSpacing.s16,
-                  child: _buildFloatingBatchActions(context),
-                ),
-            ],
-          ),
+          child: Stack(fit: StackFit.expand, children: [_buildTable(context)]),
         ),
       ),
     );
@@ -3914,11 +4091,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     final hasFooter = _loadingMore || (!_prepending && _appendError != null);
     // 空结果/加载/错误提示插在列表首位（列表骨架常驻，与表格同口径）。
     final hasNotice = notice != null;
+    final boundedActions = _usesBoundedFloatingBatchActions;
     final list = ListView.builder(
       controller: _bodyV,
       primary: false,
       physics: _prependAnchor.wrap(const ClampingScrollPhysics()),
-      padding: padding.copyWith(bottom: padding.bottom + _prependBottomSpace),
+      padding: padding.copyWith(
+        bottom:
+            padding.bottom +
+            _prependBottomSpace +
+            (boundedActions ? _bodyBottomPad : 0),
+      ),
       itemCount: (hasNotice ? 1 : 0) + rows.length + (hasFooter ? 1 : 0),
       findChildIndexCallback: (key) => indexes[key],
       itemBuilder: (context, index) {
@@ -3944,14 +4127,22 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                 );
         }
         final item = rows[itemIndex];
+        final tile = row(
+          item,
+          itemIndex,
+          separator: itemIndex < rows.length - 1,
+        );
         return _trackPaginationRow(
           ('data', _paginationRowId(item)),
           true,
-          row(item, itemIndex, separator: itemIndex < rows.length - 1),
+          boundedActions && itemIndex == rows.length - 1
+              ? KeyedSubtree(key: _lastRowKey, child: tile)
+              : tile,
         );
       },
     );
-    return Stack(
+    final body = Stack(
+      key: boundedActions ? _bodyAreaKey : null,
       children: [
         _measurePrepend(
           list,
@@ -3966,7 +4157,34 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ),
         if (_prependFeedback case final feedback?)
           Positioned(left: 0, right: 0, top: 0, child: feedback),
+        if (boundedActions)
+          PositionedDirectional(
+            start: UtenSpacing.s16,
+            end: UtenSpacing.s16,
+            bottom: UtenSpacing.s16,
+            child: Align(
+              alignment: AlignmentDirectional.bottomEnd,
+              child: _buildFloatingBatchActions(context),
+            ),
+          ),
       ],
+    );
+    // Plain picker consumers retain their existing tiles/footer and paging
+    // topology. The public selectable+batch combination shares the exact local
+    // row/action budget used by a column table, with no synthetic toolbar.
+    if (!boundedActions) return body;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _scheduleHBarUpdate();
+        return _ResponsiveTableChrome(
+          toolbar: const SizedBox.shrink(),
+          minimumHeight: _floatingBatchMinimumTableHeight,
+          compose: (_) => Column(
+            key: _tableChromeKey,
+            children: [Expanded(child: body)],
+          ),
+        );
+      },
     );
   }
 
@@ -4213,6 +4431,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         embedded: widget.embedded && !_fullscreen,
         primary: _usesPrimaryScroll,
         virtualized: widget.virtualized,
+        fill: _usesBoundedFloatingBatchActions,
         child: _maybeSelectionArea(
           Stack(
             key: _bodyAreaKey,
@@ -4288,6 +4507,17 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                     ),
                   ),
                 ),
+              // Actions stay above the horizontal scrollbar in hit-test order.
+              if (_usesBoundedFloatingBatchActions)
+                PositionedDirectional(
+                  start: UtenSpacing.s16,
+                  end: UtenSpacing.s16,
+                  bottom: UtenSpacing.s16,
+                  child: Align(
+                    alignment: AlignmentDirectional.bottomEnd,
+                    child: _buildFloatingBatchActions(context),
+                  ),
+                ),
             ],
           ),
         ),
@@ -4299,6 +4529,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       // 整表总高与非吸顶形态一致。普通表原样流内渲染，零结构变化。
       final sticky = _fullscreen ? null : _sticky;
       Widget compose(Widget visibleToolbar) => Column(
+        key: _tableChromeKey,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           visibleToolbar,
@@ -4341,7 +4572,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
         ],
       );
       if (widget.embedded && !_fullscreen) return compose(toolbar);
-      return _ResponsiveTableChrome(toolbar: toolbar, compose: compose);
+      return _ResponsiveTableChrome(
+        toolbar: toolbar,
+        compose: compose,
+        minimumHeight: _usesBoundedFloatingBatchActions
+            ? _floatingBatchMinimumTableHeight
+            : 0,
+      );
     }
 
     return buildStandardTable();
@@ -4410,7 +4647,19 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     // 淡到「看不出这里能点」（物料分析、下达采购/委外/自制的用户反馈）。
     // 未选态的可辨识度改由控件自身承担——UtenButton 禁用态是实底+描边+可读灰字，
     // UtenSelectionSummaryPill 未选态是实底+描边，两者都清楚可见且明显不可用。
-    return UtenFloatingActionGroup(children: children);
+    return UtenFloatingActionGroup(
+      key: _floatingBatchKey,
+      onMinimumContentHeightChanged: _usesBoundedFloatingBatchActions
+          ? _onFloatingBatchMinimumContentHeightChanged
+          : null,
+      maxHeight: _usesBoundedFloatingBatchActions
+          ? math.max(
+              _floatingBatchHeightLimit ?? 0,
+              _minimumFloatingBatchHeight(context),
+            )
+          : null,
+      children: children,
+    );
   }
 
   /// 前导分组标题行：跨满表宽（_totalWidth），与表头/数据行同处一个横向 ScrollView，
@@ -6003,9 +6252,14 @@ class _ShortTablePresentationState extends State<_ShortTablePresentation> {
 }
 
 class _ResponsiveTableChrome extends StatefulWidget {
-  const _ResponsiveTableChrome({required this.toolbar, required this.compose});
+  const _ResponsiveTableChrome({
+    required this.toolbar,
+    required this.compose,
+    this.minimumHeight = 0,
+  });
   final Widget toolbar;
   final Widget Function(Widget toolbar) compose;
+  final double minimumHeight;
 
   @override
   State<_ResponsiveTableChrome> createState() => _ResponsiveTableChromeState();
@@ -6026,7 +6280,10 @@ class _ResponsiveTableChromeState extends State<_ResponsiveTableChrome> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-      final minimumHeight = 168.0 * math.max(1.0, textScale);
+      final minimumHeight = math.max(
+        168.0 * math.max(1.0, textScale),
+        widget.minimumHeight,
+      );
       final height = math.max(constraints.maxHeight, minimumHeight);
       final toolbarHeight = math.min(160.0, math.max(48.0, height * 0.35));
       final visibleToolbar = NotificationListener<ScrollMetricsNotification>(
@@ -6080,12 +6337,14 @@ class _BodyFlex extends StatelessWidget {
     required this.embedded,
     required this.primary,
     required this.virtualized,
+    this.fill = false,
     required this.child,
   });
 
   final bool embedded;
   final bool primary;
   final bool virtualized;
+  final bool fill;
   final Widget child;
 
   @override
@@ -6094,9 +6353,9 @@ class _BodyFlex extends StatelessWidget {
       return child;
     }
     // primary（联动折叠）用 tight：表格填满 NestedScrollView body 释放出的空间；
-    // 普通列表页用 loose：行少时连同 shrinkWrap 收缩表高。
+    // 有浮动批量动作也填满本地行区，保持其贴底位置；其余短列表仍可收缩。
     return Flexible(
-      fit: primary || virtualized ? FlexFit.tight : FlexFit.loose,
+      fit: primary || virtualized || fill ? FlexFit.tight : FlexFit.loose,
       child: child,
     );
   }

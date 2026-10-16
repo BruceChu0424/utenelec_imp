@@ -7,7 +7,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -25,10 +24,14 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/admin_models.dart';
 import '../pages/admin_permissions_page.dart' show AccountStatusBadge;
 import '../providers/admin_providers.dart';
 import '../repositories/admin_repository.dart';
+import '../../employee/widgets/employee_credential_dialog.dart';
 import 'admin_data_scope_section.dart';
 import 'permission_catalog_browser.dart';
 import 'permission_action_badge.dart';
@@ -43,6 +46,7 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
     this.showBack = false,
     this.onBack,
     this.onPermissionDirtyChanged,
+    this.onProvisionAccount,
   });
 
   final AdminUserSummary user;
@@ -53,6 +57,7 @@ class AdminUserDetailPanel extends ConsumerStatefulWidget {
   final bool showBack;
   final VoidCallback? onBack;
   final ValueChanged<bool>? onPermissionDirtyChanged;
+  final VoidCallback? onProvisionAccount;
 
   @override
   ConsumerState<AdminUserDetailPanel> createState() =>
@@ -68,6 +73,18 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   bool _savingOverrides = false;
   bool? _lastReportedPermissionDirty;
   bool _acting = false;
+  bool _confirmingAccountAction = false;
+  bool get _networkActing => _acting && !_confirmingAccountAction;
+  int _accountOperation = 0;
+  final _credentialOwner = ValueNotifier<int>(0);
+
+  @override
+  void dispose() {
+    _accountOperation++;
+    _credentialOwner.value++;
+    _credentialOwner.dispose();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(covariant AdminUserDetailPanel oldWidget) {
@@ -78,11 +95,19 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final lifecycleChanged =
         oldWidget.user.status != widget.user.status ||
         oldWidget.user.employeeStatus != widget.user.employeeStatus ||
-        oldWidget.user.currentEmployee != widget.user.currentEmployee;
+        oldWidget.user.currentEmployee != widget.user.currentEmployee ||
+        oldWidget.user.accountSupportAllowed !=
+            widget.user.accountSupportAllowed;
     if (!identityChanged && !lifecycleChanged) {
       return;
     }
-    if (identityChanged) _section = _UserDetailSection.permissions;
+    if (identityChanged) {
+      _section = _UserDetailSection.permissions;
+    }
+    _accountOperation++;
+    _credentialOwner.value++;
+    _acting = false;
+    _confirmingAccountAction = false;
     _localGrants = null;
     _localRevokes = null;
     _lastReportedPermissionDirty = null;
@@ -117,6 +142,18 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(currentPermissionsProvider);
+    ref.watch(authenticatedScopeProvider);
+    ref.listen(sensitiveReadBoundaryProvider, (previous, next) {
+      if (previous != null && previous != next) {
+        _accountOperation++;
+        _credentialOwner.value++;
+        setState(() {
+          _acting = false;
+          _confirmingAccountAction = false;
+        });
+      }
+    });
     final effectiveAsync = widget.canManageAuthorization
         ? ref.watch(adminEffectivePermissionsProvider(widget.user.id))
         : null;
@@ -342,7 +379,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         type: UtenButtonType.secondary,
         size: UtenButtonSize.small,
         icon: Icons.done_all_rounded,
-        isLoading: _acting,
+        isLoading: _networkActing,
         onPressed: bulkEnabled
             ? () => _grantScope(data, PermissionBulkScope.everything)
             : null,
@@ -355,17 +392,23 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         type: UtenButtonType.danger,
         size: UtenButtonSize.small,
         icon: Icons.remove_done_outlined,
-        isLoading: _acting,
+        isLoading: _networkActing,
         onPressed: bulkEnabled ? () => _confirmRevokeAll(data) : null,
         onDisabledTap: explainDisabled,
         child: const Text('全部收回'),
       ),
     ];
+    final accountActions = _accountHeaderActions(data);
+    final headerActions = [
+      ...accountActions,
+      if (showBulkActions) ...bulkButtons,
+    ];
     return UtenCard(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final inlineBulk = showBulkActions && constraints.maxWidth >= 640;
+          final inlineActions =
+              headerActions.isNotEmpty && constraints.maxWidth >= 800;
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -405,18 +448,26 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                   ),
                   const SizedBox(width: UtenSpacing.s8),
                   AccountStatusBadge(status: user.status),
-                  if (inlineBulk) ...[
+                  if (inlineActions) ...[
                     const SizedBox(width: UtenSpacing.s12),
-                    ...bulkButtons,
+                    Expanded(
+                      child: Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: UtenSpacing.s8,
+                        runSpacing: UtenSpacing.s8,
+                        children: headerActions,
+                      ),
+                    ),
                   ],
                 ],
               ),
-              if (showBulkActions && !inlineBulk) ...[
+              if (headerActions.isNotEmpty && !inlineActions) ...[
                 const SizedBox(height: UtenSpacing.s8),
                 Wrap(
+                  alignment: WrapAlignment.end,
                   spacing: UtenSpacing.s8,
                   runSpacing: UtenSpacing.s8,
-                  children: bulkButtons,
+                  children: headerActions,
                 ),
               ],
             ],
@@ -424,6 +475,87 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         },
       ),
     );
+  }
+
+  bool get _hasAccountSupport =>
+      widget.canManageAuthorization ||
+      ref.read(currentPermissionsProvider).contains(Perm.accountSupport);
+
+  bool _supportTargetAllowed(EffectivePermissions? data) =>
+      _hasAccountSupport &&
+      widget.user.accountSupportAllowed != false &&
+      ref.read(authenticatedScopeProvider)?.userId != widget.user.id &&
+      data?.superAdmin != true;
+
+  List<Widget> _accountHeaderActions(EffectivePermissions? data) {
+    final user = widget.user;
+    final actions = <Widget>[];
+    if (_hasAccountSupport && widget.onProvisionAccount != null) {
+      actions.add(
+        UtenButton(
+          key: const ValueKey('admin-header-provision-account'),
+          size: UtenButtonSize.small,
+          type: UtenButtonType.secondary,
+          icon: Icons.person_add_alt_1_rounded,
+          onPressed: _acting ? null : widget.onProvisionAccount,
+          child: const Text('开通账号'),
+        ),
+      );
+    }
+    if (!_supportTargetAllowed(data)) return actions;
+    final locked = user.status == 'locked';
+    final disabled = user.status == 'disabled';
+    final label = locked
+        ? '解锁账号'
+        : disabled
+        ? '启用账号'
+        : '锁定账号';
+    actions.add(
+      UtenButton(
+        key: const ValueKey('admin-header-account-status'),
+        size: UtenButtonSize.small,
+        type: locked || disabled
+            ? UtenButtonType.secondary
+            : UtenButtonType.danger,
+        icon: locked || disabled
+            ? Icons.lock_open_rounded
+            : Icons.lock_outline_rounded,
+        isLoading: _networkActing,
+        onPressed: _acting || !user.currentEmployee
+            ? null
+            : () => _runAccountAction(
+                label: label,
+                danger: !locked && !disabled,
+                call: (repository) => locked
+                    ? repository.unlockUser(user.id)
+                    : disabled
+                    ? repository.enableUser(user.id)
+                    : repository.lockUser(user.id),
+              ),
+        onDisabledTap: _acting || user.currentEmployee
+            ? null
+            : _explainLifecycleRestriction,
+        child: Text(label),
+      ),
+    );
+    if (!disabled) {
+      actions.add(
+        UtenButton(
+          size: UtenButtonSize.small,
+          type: UtenButtonType.secondary,
+          icon: Icons.block_rounded,
+          onPressed: _acting
+              ? null
+              : () => _runAccountAction(
+                  label: '停用账号',
+                  danger: true,
+                  call: (repository) => repository.disableUser(user.id),
+                ),
+          child: const Text('停用账号'),
+        ),
+      );
+    }
+    return actions;
   }
 
   /// 人员信息行「全部收回」：把整个目录的权限码全部标记为个人收回（本地暂存），
@@ -1072,7 +1204,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             icon: remoteAccess
                 ? Icons.remove_circle_outline_rounded
                 : Icons.cloud_upload_outlined,
-            isLoading: _acting,
+            isLoading: _networkActing,
             onPressed: _acting || !grantAllowed
                 ? null
                 : () => _toggleRemoteAccess(remoteAccess),
@@ -1180,11 +1312,17 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 type: UtenButtonType.secondary,
                 size: UtenButtonSize.small,
                 icon: Icons.key_rounded,
-                isLoading: _acting,
-                onPressed: _acting || !user.passwordResetAllowed
+                isLoading: _networkActing,
+                onPressed:
+                    _acting ||
+                        !user.passwordResetAllowed ||
+                        !_supportTargetAllowed(_currentEffective)
                     ? null
                     : _openSetTemporaryPassword,
-                onDisabledTap: _acting || user.passwordResetAllowed
+                onDisabledTap:
+                    _acting ||
+                        user.passwordResetAllowed ||
+                        !_supportTargetAllowed(_currentEffective)
                     ? null
                     : _explainLifecycleRestriction,
                 child: Text(user.mustChangePassword ? '重新设置临时密码' : '设置临时密码'),
@@ -1194,92 +1332,10 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         ),
         const SizedBox(height: UtenSpacing.s12),
         UtenCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Text(
-                '账号状态',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              Wrap(
-                spacing: UtenSpacing.s8,
-                runSpacing: UtenSpacing.s8,
-                children: [
-                  if (user.status == 'active')
-                    UtenButton(
-                      type: UtenButtonType.ghost,
-                      size: UtenButtonSize.small,
-                      icon: Icons.lock_outline_rounded,
-                      isLoading: _acting,
-                      onPressed: _acting || !user.currentEmployee
-                          ? null
-                          : () => _runAccountAction(
-                              label: '锁定',
-                              danger: true,
-                              call: (repository) =>
-                                  repository.lockUser(user.id),
-                            ),
-                      onDisabledTap: _acting || user.currentEmployee
-                          ? null
-                          : _explainLifecycleRestriction,
-                      child: const Text('锁定'),
-                    ),
-                  if (user.status == 'locked')
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      size: UtenButtonSize.small,
-                      icon: Icons.lock_open_rounded,
-                      isLoading: _acting,
-                      onPressed: _acting || !user.currentEmployee
-                          ? null
-                          : () => _runAccountAction(
-                              label: '解锁',
-                              danger: false,
-                              call: (repository) =>
-                                  repository.unlockUser(user.id),
-                            ),
-                      onDisabledTap: _acting || user.currentEmployee
-                          ? null
-                          : _explainLifecycleRestriction,
-                      child: const Text('解锁'),
-                    ),
-                  if (user.status != 'disabled')
-                    UtenButton(
-                      type: UtenButtonType.danger,
-                      size: UtenButtonSize.small,
-                      icon: Icons.block_rounded,
-                      isLoading: _acting,
-                      onPressed: () => _runAccountAction(
-                        label: '停用',
-                        danger: true,
-                        call: (repository) => repository.disableUser(user.id),
-                      ),
-                      child: const Text('停用'),
-                    ),
-                  if (user.status == 'disabled')
-                    UtenButton(
-                      type: UtenButtonType.secondary,
-                      size: UtenButtonSize.small,
-                      icon: Icons.play_circle_outline_rounded,
-                      isLoading: _acting,
-                      onPressed: _acting || !user.currentEmployee
-                          ? null
-                          : () => _runAccountAction(
-                              label: '启用',
-                              danger: false,
-                              call: (repository) =>
-                                  repository.enableUser(user.id),
-                            ),
-                      onDisabledTap: _acting || user.currentEmployee
-                          ? null
-                          : _explainLifecycleRestriction,
-                      child: const Text('启用'),
-                    ),
-                ],
-              ),
+              const Expanded(child: Text('账号状态')),
+              AccountStatusBadge(status: user.status),
             ],
           ),
         ),
@@ -1414,7 +1470,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             icon: promote
                 ? Icons.add_moderator_outlined
                 : Icons.shield_outlined,
-            isLoading: _acting,
+            isLoading: _networkActing,
             onPressed: _acting || !toggleAllowed
                 ? null
                 : () => _toggleSuperAdmin(promote: promote),
@@ -1479,129 +1535,174 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     required bool danger,
     required Future<void> Function(AdminRepository repository) call,
   }) async {
-    final confirmed = await UtenDialog.show(
-      context,
-      title: '$label确认',
-      content: Text(
-        '确定要对「${widget.user.employeeName ?? widget.user.loginAccount}」执行「$label」吗？',
-      ),
-      confirmLabel: label,
-      danger: danger,
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _acting = true);
+    final user = widget.user;
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    if (_acting || !_supportTargetAllowed(_currentEffective)) return;
+    final discardWarning = _permissionDiscardWarning;
+    final operation = ++_accountOperation;
+    setState(() {
+      _acting = true;
+      _confirmingAccountAction = true;
+    });
     try {
+      final confirmed = await UtenDialog.show(
+        context,
+        title: '$label确认',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('确定要对「${user.employeeName ?? user.loginAccount}」执行「$label」吗？'),
+            if (discardWarning != null) ...[
+              const SizedBox(height: UtenSpacing.s12),
+              Text(
+                discardWarning,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+        confirmLabel: label,
+        danger: danger,
+      );
+      if (confirmed != true ||
+          !mounted ||
+          !_accountActionCurrent(operation, user.id, boundary)) {
+        return;
+      }
+      setState(() => _confirmingAccountAction = false);
       await call(ref.read(adminRepositoryProvider));
-      if (!mounted) return;
+      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+        return;
+      }
+      if (discardWarning != null) _discardPermissionDraftAfterAccountAction();
       UtenToast.success(context, '$label成功');
       widget.onAccountChanged();
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+        return;
+      }
       if (error.code == 'CONFLICT') widget.onAccountChanged();
       UtenToast.error(
         context,
         error.message.isNotEmpty ? error.message : '$label失败，请刷新状态后重试',
       );
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+        return;
+      }
       UtenToast.error(context, '$label失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _acting = false);
+      if (mounted && operation == _accountOperation) {
+        setState(() {
+          _acting = false;
+          _confirmingAccountAction = false;
+        });
+      }
     }
   }
+
+  String? get _permissionDiscardWarning {
+    final data = _currentEffective;
+    final count = data == null ? 0 : _dirtyCount(data);
+    return count == 0 ? null : '执行后会丢弃 $count 项尚未保存的权限修改。你可以取消并先保存或撤销修改。';
+  }
+
+  void _discardPermissionDraftAfterAccountAction() {
+    setState(() {
+      _localGrants = null;
+      _localRevokes = null;
+      _lastReportedPermissionDirty = false;
+    });
+    widget.onPermissionDirtyChanged?.call(false);
+  }
+
+  EffectivePermissions? get _currentEffective => widget.canManageAuthorization
+      ? ref.read(adminEffectivePermissionsProvider(widget.user.id)).valueOrNull
+      : null;
+
+  bool _accountActionCurrent(
+    int operation,
+    String userId,
+    SensitiveReadBoundary boundary,
+  ) =>
+      mounted &&
+      operation == _accountOperation &&
+      widget.user.id == userId &&
+      ref.read(sensitiveReadBoundaryProvider) == boundary &&
+      _supportTargetAllowed(_currentEffective);
 
   /// 设置临时密码：先确认，再调端点 (服务端要求再认证，统一密码框)，最后一次性展示明文。
   Future<void> _openSetTemporaryPassword() async {
     final user = widget.user;
-    final confirmed = await showSetTemporaryPasswordDialog(
-      context,
-      displayName: user.employeeName ?? user.loginAccount,
-      loginAccount: user.loginAccount,
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => _acting = true);
+    if (_acting ||
+        !user.passwordResetAllowed ||
+        !_supportTargetAllowed(_currentEffective)) {
+      return;
+    }
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    final discardWarning = _permissionDiscardWarning;
+    final operation = ++_accountOperation;
+    setState(() {
+      _acting = true;
+      _confirmingAccountAction = true;
+    });
     try {
+      final confirmed = await showSetTemporaryPasswordDialog(
+        context,
+        displayName: user.employeeName ?? user.loginAccount,
+        loginAccount: user.loginAccount,
+        permissionDiscardWarning: discardWarning,
+      );
+      if (confirmed != true ||
+          !mounted ||
+          !_accountActionCurrent(operation, user.id, boundary)) {
+        return;
+      }
+      setState(() => _confirmingAccountAction = false);
       final temporaryPassword = await ref
           .read(adminRepositoryProvider)
           .resetPassword(user.id);
-      if (!mounted) return;
-      widget.onAccountChanged();
-      await _showTemporaryPassword(temporaryPassword);
-    } on ApiException catch (e) {
-      // 透出后端的具体原因 (如「只有超级管理员可以重置管理员的密码」)。
-      if (mounted) {
-        if (e.code == 'CONFLICT') widget.onAccountChanged();
-        UtenToast.error(
-          context,
-          e.message.isNotEmpty ? e.message : '设置临时密码失败，请稍后重试',
-        );
+      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+        return;
       }
+      if (discardWarning != null) _discardPermissionDraftAfterAccountAction();
+      setState(() => _acting = false);
+      await showAccountCredentialDialog(
+        context,
+        title: '一次性临时密码',
+        temporaryPassword: temporaryPassword,
+        loginAccount: user.loginAccount,
+        employeeName: user.employeeName,
+        employeeCode: user.employeeCode,
+        isCurrent: () => _accountActionCurrent(operation, user.id, boundary),
+        ownerChanges: _credentialOwner,
+      );
+      if (mounted && _accountActionCurrent(operation, user.id, boundary)) {
+        widget.onAccountChanged();
+      }
+    } on ApiException catch (error) {
+      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+        return;
+      }
+      if (error.code == 'CONFLICT') widget.onAccountChanged();
+      UtenToast.error(
+        context,
+        error.message.isNotEmpty ? error.message : '设置临时密码失败，请稍后重试',
+      );
     } catch (_) {
-      if (mounted) UtenToast.error(context, '设置临时密码失败，请稍后重试');
+      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+        return;
+      }
+      UtenToast.error(context, '设置临时密码失败，请稍后重试');
     } finally {
-      if (mounted) setState(() => _acting = false);
+      if (mounted && operation == _accountOperation) {
+        setState(() {
+          _acting = false;
+          _confirmingAccountAction = false;
+        });
+      }
     }
-  }
-
-  Future<void> _showTemporaryPassword(String temporaryPassword) {
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => UtenAlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.key_rounded),
-            SizedBox(width: UtenSpacing.s8),
-            Text('一次性临时密码'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              '请立即通过安全渠道告知该员工：临时密码有效期默认 72 小时(系统设置可调)，'
-              '员工登录后须设置新密码。关闭此窗口后，系统不会再次显示或保存这段明文。',
-            ),
-            const SizedBox(height: UtenSpacing.s16),
-            Container(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  dialogContext,
-                ).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(UtenRadius.control),
-              ),
-              child: SelectableText(
-                temporaryPassword,
-                textAlign: TextAlign.center,
-                style: Theme.of(dialogContext).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton.icon(
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: temporaryPassword));
-              if (dialogContext.mounted) {
-                UtenToast.success(dialogContext, '临时密码已复制');
-              }
-            },
-            icon: const Icon(Icons.copy_rounded),
-            label: const Text('复制'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('我已妥善保存'),
-          ),
-        ],
-      ),
-    );
   }
 }
 

@@ -10,12 +10,16 @@ class HrReconcileDraftInput {
     this.adopted,
     this.candidateValue,
     this.selected = false,
+    this.legacyChoicesIgnored = false,
   });
 
   final String manual;
+  // Legacy draft metadata is accepted only for migration detection, never captured
+  // or restored as an editable value.
   final bool? adopted;
   final String? candidateValue;
   final bool selected;
+  final bool legacyChoicesIgnored;
 }
 
 bool hrReconcileInputIsSupported(HrReconcileRow row) => row.items.every(
@@ -35,6 +39,7 @@ bool _rawRowAllowsInput(Map<Object?, Object?> row) {
 }
 
 Map<String, dynamic> hrReconcileInputSnapshot(Map<String, dynamic> source) => {
+  'inputMode': source['inputMode'],
   'planId': source['planId'],
   'planVersion': source['planVersion'],
   'employeeIds': [
@@ -70,6 +75,7 @@ Map<String, dynamic> captureHrReconcileFormDraft(
   HrReconcilePlan plan,
   Map<String, HrReconcileDraftInput> inputs,
 ) => {
+  'inputMode': 'MANUAL_ONLY_V1',
   'planId': plan.id,
   'planVersion': plan.version,
   'employeeIds': [for (final row in plan.rows) row.employee.id],
@@ -89,8 +95,6 @@ Map<String, dynamic> captureHrReconcileFormDraft(
         if (row.kind == HrReconcileRowKind.update &&
             hrReconcileInputIsSupported(row)) ...{
           'manual': inputs[row.employee.id]?.manual ?? '',
-          'adopted': inputs[row.employee.id]?.adopted,
-          'candidateValue': inputs[row.employee.id]?.candidateValue,
           'selected': inputs[row.employee.id]?.selected ?? false,
         },
       },
@@ -159,13 +163,6 @@ Map<String, HrReconcileDraftInput> restoreHrReconcileFormDraft(
         (raw['selected'] != null && raw['selected'] is! bool)) {
       throw const FormatException('原填写输入不完整');
     }
-    if (candidateValue != null &&
-        (source.items.length != 1 ||
-            !source.items.single.candidates.any(
-              (item) => item.value == candidateValue,
-            ))) {
-      throw const FormatException('原采用候选已变化，请重新核对');
-    }
     if ((source.result != null ||
             source.items.any((item) => item.outcome != null)) &&
         (manual.isNotEmpty ||
@@ -176,8 +173,13 @@ Map<String, HrReconcileDraftInput> restoreHrReconcileFormDraft(
     }
     inputs[employeeId] = HrReconcileDraftInput(
       manual: manual,
-      adopted: adopted as bool?,
-      candidateValue: candidateValue as String?,
+      legacyChoicesIgnored:
+          adopted != null ||
+          candidateValue != null ||
+          (snapshot['inputMode'] != 'MANUAL_ONLY_V1' &&
+              raw['selected'] == true &&
+              manual.trim().isEmpty &&
+              source.items.any((item) => item.preselected)),
       selected: raw['selected'] == true,
     );
   }

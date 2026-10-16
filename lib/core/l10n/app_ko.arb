@@ -4224,9 +4224,14 @@
   "hrReconcileApplyFailed": "수정이 완료되지 않았습니다. 잠시 후 다시 시도해 주세요",
   "hrReconcileIdEmpty": "(없음)",
   "hrReconcileColKind": "유형",
+  "hrReconcileColDepartment": "부서",
+  "hrReconcileColPosition": "직위",
+  "hrReconcileColSuggestion": "제안",
+  "hrReconcileManualOnlyNotice": "제안은 참고용입니다. 신분증 번호를 직접 입력한 후 행을 선택하고 정정을 확인하세요.",
+  "hrReconcileLegacyChoicesIgnored": "이전 초안의 제안 선택은 무시했습니다. 직접 입력한 내용은 유지되며 나머지 번호는 직접 입력해야 합니다.",
   "hrReconcileColEmployee": "직원",
   "hrReconcileColReason": "사유",
-  "hrReconcileIdNumberInfo": "취소선 빨강은 저장된 값, 초록 배경은 제안 새 값(변경 자리는 굵은 빨강). 채택, 후보 선택 또는 직접 입력 가능",
+  "hrReconcileIdNumberInfo": "모든 유형에서 신분증 번호를 직접 입력하세요. 제안은 자동 입력되거나 제출되지 않습니다.",
   "hrReconcileBasisOf": "제안 근거: {label}",
   "@hrReconcileBasisOf": {
     "placeholders": {

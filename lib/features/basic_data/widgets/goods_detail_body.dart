@@ -547,6 +547,9 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             _detail?.unitName?.isNotEmpty == true
                 ? _detail!.unitName!
                 : '历史单位待核对',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyLarge,
           ),
         ),
         group: '商务',
@@ -1018,7 +1021,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       children: [
         Expanded(
           // 表单随可用内容宽度扩展，字段继续由表单内部响应式分列。
-          child: Center(
+          child: Align(
+            alignment: Alignment.topCenter,
             child: ConstrainedBox(
               constraints: const BoxConstraints.tightFor(
                 width: double.infinity,

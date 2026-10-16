@@ -62,10 +62,16 @@ class DataHandoverSourceContractTest {
                 "clientEvents.revokeViewerForOffboarding(",
                 "rejectPendingProfileChanges(sourceEmployeeId",
                 "releaseClaims(sourceEmployeeId",
-                "SET active=false, row_version=row_version+1",
+                "PersonalPermissionOverrideLifecycle",
+                ".deactivateForEmployee(em, sourceEmployeeId)",
                 "SET enabled=false, row_version=row_version+1",
                 "remote_access=false, must_change_password=true",
                 "release_reason='employee_handover'",
                 "UPDATE hr_task_claims SET released_at=now()");
+        String overrides = Files.readString(Path.of(
+                "src/main/java/com/uten/imp/features/rbac/PersonalPermissionOverrideLifecycle.java"),
+                StandardCharsets.UTF_8);
+        assertThat(overrides).contains("SET active=false, row_version=row_version+1",
+                "WHERE permission_override.active=true", "WHERE employee_id=:source");
     }
 }

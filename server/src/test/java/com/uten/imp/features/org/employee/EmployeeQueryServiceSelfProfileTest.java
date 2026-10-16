@@ -120,6 +120,82 @@ class EmployeeQueryServiceSelfProfileTest {
         assertNull(detail.getBaseSalary());
     }
 
+    @Test
+    void softDeletedBindingIsUnopenedButOrdinaryDisabledAccountRemainsDisabled() {
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID, Set.of("employee:view", "account:support"))));
+        stubDetail(OTHER_ID, "待开通员工");
+        var retained = new com.uten.imp.features.auth.model.UserAccount();
+        retained.setEmployeeId(OTHER_ID);
+        retained.setDeleted(true);
+        retained.setStatus("disabled");
+        when(userRepo.findByEmployeeId(OTHER_ID)).thenReturn(Optional.of(retained));
+        assertNull(service.detail(OTHER_ID).getAccountStatus());
+        org.junit.jupiter.api.Assertions.assertTrue(service.detail(OTHER_ID).isAccountDeleted());
+        assertEquals(Boolean.TRUE, service.detail(OTHER_ID).getAccountSupportAllowed());
+        retained.setDeleted(false);
+        assertEquals("disabled", service.detail(OTHER_ID).getAccountStatus());
+        org.junit.jupiter.api.Assertions.assertFalse(service.detail(OTHER_ID).isAccountDeleted());
+    }
+
+    @Test
+    void accountSupportHintRequiresTheActorsActualPermissionAndHandlesNoBinding() {
+        stubDetail(OTHER_ID, "待开通员工");
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID, Set.of("employee:view"))));
+        assertEquals(Boolean.FALSE, service.detail(OTHER_ID).getAccountSupportAllowed());
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID, Set.of("employee:view", "account:support"))));
+        assertEquals(Boolean.TRUE, service.detail(OTHER_ID).getAccountSupportAllowed());
+        org.junit.jupiter.api.Assertions.assertFalse(service.detail(OTHER_ID).isAccountDeleted());
+        when(currentUser.get()).thenReturn(Optional.empty());
+        assertEquals(Boolean.FALSE, service.detail(OTHER_ID).getAccountSupportAllowed());
+    }
+
+    @Test
+    void accountSupportHintRejectsSelfByEitherEmployeeOrUserUuid() {
+        stubDetail(OTHER_ID, "员工");
+        when(currentUser.get()).thenReturn(Optional.of(staff(OTHER_ID, Set.of("employee:view", "account:support"))));
+        assertEquals(Boolean.FALSE, service.detail(OTHER_ID).getAccountSupportAllowed());
+        var account = new com.uten.imp.features.auth.model.UserAccount();
+        account.setId(USER_ID);
+        account.setEmployeeId(OTHER_ID);
+        account.setDeleted(true);
+        when(userRepo.findByEmployeeId(OTHER_ID)).thenReturn(Optional.of(account));
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID, Set.of("employee:view", "account:support"))));
+        assertEquals(Boolean.FALSE, service.detail(OTHER_ID).getAccountSupportAllowed());
+    }
+
+    @Test
+    void accountSupportHintRejectsSuperAdministratorIncludingRetainedDeletedIdentity() {
+        stubDetail(OTHER_ID, "受保护员工");
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID, Set.of("employee:view", "account:support"))));
+        var account = new com.uten.imp.features.auth.model.UserAccount();
+        account.setEmployeeId(OTHER_ID);
+        account.setSuperAdmin(true);
+        when(userRepo.findByEmployeeId(OTHER_ID)).thenReturn(Optional.of(account));
+        assertEquals(Boolean.FALSE, service.detail(OTHER_ID).getAccountSupportAllowed());
+        account.setDeleted(true);
+        assertEquals(Boolean.FALSE, service.detail(OTHER_ID).getAccountSupportAllowed());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"active", "probation", "onLeave", "resigned"})
+    void accountSupportHintUsesTheCanonicalEmploymentEligibility(String status) {
+        Employee employee = stubDetail(OTHER_ID, "员工");
+        employee.setStatus(status);
+        when(currentUser.get()).thenReturn(Optional.of(staff(SELF_ID, Set.of("employee:view", "account:support"))));
+        assertEquals(!"resigned".equals(status), service.detail(OTHER_ID).getAccountSupportAllowed());
+    }
+
+    @Test
+    void accountSupportHintRejectsForcedPasswordAndImpersonatedActors() {
+        stubDetail(OTHER_ID, "员工");
+        when(currentUser.get()).thenReturn(Optional.of(new AuthUser(USER_ID, SELF_ID, "actor",
+                Set.of("employee:view", "account:support"), true, true, false)));
+        assertEquals(Boolean.FALSE, service.detail(OTHER_ID).getAccountSupportAllowed());
+        when(currentUser.get()).thenReturn(Optional.of(new AuthUser(USER_ID, SELF_ID, "actor",
+                Set.of("employee:view", "account:support"), false, true, false, false, UUID.randomUUID())));
+        assertEquals(Boolean.FALSE, service.detail(OTHER_ID).getAccountSupportAllowed());
+    }
+
     /**
      * 证件号密文解不开时详情照常返回 (补开账号的结果也走这里)：号码留空，提醒说明号码读取不出来；
      * 其它字段不受影响。
@@ -167,7 +243,7 @@ class EmployeeQueryServiceSelfProfileTest {
         verifyNoInteractions(empRepo);
     }
 
-    private void stubDetail(UUID employeeId, String fullName) {
+    private Employee stubDetail(UUID employeeId, String fullName) {
         Employee employee = new Employee();
         employee.setId(employeeId);
         employee.setCode("E-" + employeeId.toString().substring(0, 4));
@@ -232,6 +308,7 @@ class EmployeeQueryServiceSelfProfileTest {
                 "corrupt-cipher".equals(invocation.getArgument(0))
                         ? Optional.empty()
                         : Optional.of(invocation.getArgument(0)));
+        return employee;
     }
 
     private static EmployeeSensitive sensitiveWith(String identityCipher) {

@@ -472,6 +472,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                               (_profile?.departmentName ?? '').trim().isEmpty
                                   ? '—'
                                   : _profile!.departmentName!,
+                              style: Theme.of(context).textTheme.bodyLarge,
                             ),
                           ),
                           // 兼职部门（V459）：主部门之外兼任的部门，权限合成并入其
@@ -514,6 +515,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
                                     : _secondaryDepartments
                                           .map((s) => s.name)
                                           .join('、'),
+                                style: Theme.of(context).textTheme.bodyLarge,
                               ),
                             ),
                           UtenDropdownField(

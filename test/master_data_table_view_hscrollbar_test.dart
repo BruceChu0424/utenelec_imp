@@ -4,6 +4,7 @@
 // 与 uten_editable_grid_hscrollbar_test 同款规格，锁定两张表行为一致。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 class _Row {
@@ -15,6 +16,8 @@ MasterDataTableView<_Row> _table(
   List<_Row> items, {
   bool withBatch = false,
   double bottomContentPadding = 0,
+  Set<String> selectedIds = const {},
+  ValueChanged<Set<String>>? onSelectedIdsChanged,
 }) {
   return MasterDataTableView<_Row>(
     bottomContentPadding: bottomContentPadding,
@@ -34,6 +37,8 @@ MasterDataTableView<_Row> _table(
     onFilterChanged: (_, _) {},
     // 颜色主档同款：多选 + 悬浮批量按钮（右下角）。
     selectable: withBatch,
+    selectedIds: selectedIds,
+    onSelectedIdsChanged: onSelectedIdsChanged,
     idOf: withBatch ? (item) => item.id : null,
     batchActionsBuilder: withBatch
         ? (context, ids) => const [Text('批量操作')]
@@ -176,7 +181,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<ListView>(find.byType(ListView)).padding,
-      const EdgeInsets.only(bottom: 200),
+      EdgeInsets.only(
+        bottom:
+            tester.getSize(find.byType(UtenFloatingActionGroup)).height +
+            16 +
+            11,
+      ),
     );
     await tester.pumpWidget(_wrap(_table(const [_Row('a'), _Row('b')])));
     await tester.pumpAndSettle();
@@ -188,10 +198,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('长表滚到底保留 200 留白，横滚条跟随实际末行', (tester) async {
+  testWidgets('长表滚到底保留实际操作组让位，横滚条跟随实际末行', (tester) async {
+    var selected = <String>{};
     await tester.pumpWidget(
-      _wrap(
-        _table([for (var i = 0; i < 60; i++) _Row('r$i')], withBatch: true),
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, update) => _table(
+              [for (var i = 0; i < 60; i++) _Row('r$i')],
+              withBatch: true,
+              selectedIds: selected,
+              onSelectedIdsChanged: (next) => update(() => selected = next),
+            ),
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -209,13 +229,80 @@ void main() {
     final rowBottom = row.localToGlobal(Offset.zero).dy + row.size.height;
     expect(
       tester.getRect(find.byType(ListView)).bottom - rowBottom,
-      closeTo(200, 1),
+      closeTo(
+        tester.getSize(find.byType(UtenFloatingActionGroup)).height + 16 + 11,
+        1,
+      ),
     );
     final bar = _hBarBox(tester);
     expect(
       bar.localToGlobal(Offset.zero).dy + bar.size.height - rowBottom,
       closeTo(11, 1),
     );
+
+    // Reset only the test setup. The next end-of-list visit uses real, bounded
+    // user drags; the original jumpTo scrollbar-spacing assertion above stays.
+    position.jumpTo(0);
+    await tester.pumpAndSettle();
+    for (var drag = 0; drag < 20 && position.extentAfter > 0.1; drag++) {
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+    }
+    expect(position.pixels, closeTo(position.maxScrollExtent, 0.1));
+    final visibleRow = _lastRowBox(tester, text: 'r59-7');
+    final visibleTop = visibleRow.localToGlobal(Offset.zero).dy;
+    final visibleBottom = visibleTop + visibleRow.size.height;
+    final listRect = tester.getRect(find.byType(ListView));
+    final groupRect = tester.getRect(find.byType(UtenFloatingActionGroup));
+    expect(visibleTop, greaterThanOrEqualTo(listRect.top));
+    expect(visibleBottom, lessThanOrEqualTo(groupRect.top - 11 + 0.1));
+    final lastCell = find.text('r59-0');
+    expect(lastCell.hitTestable(), findsOneWidget);
+    await tester.tap(lastCell);
+    await tester.pumpAndSettle();
+    expect(selected, {'r59'});
+    expect(find.text('已选 1 项'), findsOneWidget);
+
+    final checkboxElement = find
+        .byType(Checkbox)
+        .hitTestable()
+        .evaluate()
+        .singleWhere((element) {
+          final finder = find.byElementPredicate(
+            (candidate) => identical(candidate, element),
+          );
+          final center = tester.getCenter(finder);
+          return center.dy >= visibleTop && center.dy <= visibleBottom;
+        });
+    final checkbox = find.byElementPredicate(
+      (element) => identical(element, checkboxElement),
+    );
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+    expect(selected, isEmpty);
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+    expect(selected, {'r59'});
+    final clear = find.byKey(const Key('master-table-clear-selection'));
+    expect(clear.hitTestable(), findsOneWidget);
+    await tester.tap(clear);
+    await tester.pumpAndSettle();
+    expect(selected, isEmpty);
+    expect(find.text('已选 0 项'), findsOneWidget);
+
+    final horizontal = _horizontalController(tester);
+    final before = horizontal.offset;
+    await tester.drag(find.text('r59-2'), const Offset(-120, 0));
+    await tester.pumpAndSettle();
+    expect(horizontal.offset, greaterThan(before + 50));
+    for (final scroll
+        in tester
+            .widgetList<SingleChildScrollView>(
+              find.byType(SingleChildScrollView),
+            )
+            .where((scroll) => scroll.scrollDirection == Axis.horizontal)) {
+      expect(scroll.controller!.offset, closeTo(horizontal.offset, 1));
+    }
     expect(tester.takeException(), isNull);
   });
 

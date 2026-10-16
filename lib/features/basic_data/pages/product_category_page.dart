@@ -222,6 +222,14 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       ref.read(productCategoryRepositoryProvider).delete(id);
 
   @override
+  Future<CategoryPrefixAvailability> shellPrefixAvailability(
+    String prefix, {
+    String? categoryId,
+  }) => ref
+      .read(productCategoryRepositoryProvider)
+      .prefixAvailability(prefix, categoryId: categoryId);
+
+  @override
   Future<CategoryPrefixPreview> shellPrefixPreview(
     String id,
     String prefix,

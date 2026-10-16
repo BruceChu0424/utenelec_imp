@@ -1,0 +1,233 @@
+package com.uten.imp.businesschain;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.MvcResult;
+
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+
+/** Ordinary account provisioning reuses retained identity without reviving removed authority. */
+class EmployeeAccountReprovisionPostgresTest extends AuthSessionPostgresTestSupport {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    com.uten.imp.features.org.employee.EmployeeOnboardingService onboarding;
+
+    @Test
+    void unopenedRetainedIdentityUsesNormalStepUpAndPreservesHistoricalOwnership() throws Exception {
+        String admin = adminToken();
+        Employee employee = newEmployee(admin, "DEPT_ENG");
+        UUID user = UUID.fromString(employee.userId());
+        UUID staff = UUID.fromString(employee.employeeId());
+        Employee other = newEmployee(admin, "DEPT_ENG");
+        admin = grantScope(admin, employee.userId(), other.employeeId());
+        admin = grantScope(admin, other.userId(), employee.employeeId());
+        String otherScopes = scopeHash(UUID.fromString(other.userId()));
+        jdbc.update("""
+                INSERT INTO user_permission_overrides(user_id,permission_id,effect,active,authority_source)
+                SELECT ?,id,CASE WHEN code='profile:edit:self' THEN 'revoke' ELSE 'grant' END,
+                    code<>'employee:create','SUPER_ADMIN_CONFIRMED'
+                FROM permissions WHERE code IN ('account:support','profile:edit:self','employee:create')
+                """, user);
+        String inactiveOverride = jdbc.queryForObject(
+                "SELECT to_jsonb(o)::text FROM user_permission_overrides o WHERE user_id=? AND NOT active",
+                String.class, user);
+        long auditBefore = jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE actor_id=?", Long.class, user);
+        retire(employee);
+        // V324 deliberately invalidates every permission snapshot on permanent
+        // lifecycle changes. Renew the real actor session after arranging that fixture.
+        admin = adminToken();
+        long version = number("version", user);
+        long auth = number("auth_version", user);
+        long generation = number("permission_delegation_generation", user);
+
+        MvcResult detail = mvc.perform(get("/api/org/employees/" + staff)
+                .header("Authorization", "Bearer " + admin)).andReturn();
+        assertEquals(200, detail.getResponse().getStatus());
+        assertThat(json(detail).path("accountStatus").isNull()
+                || json(detail).path("accountStatus").isMissingNode()).isTrue();
+        MvcResult candidates = mvc.perform(get("/api/admin/users/provision-candidates")
+                .param("search", code(staff)).header("Authorization", "Bearer " + admin)).andReturn();
+        assertEquals(200, candidates.getResponse().getStatus());
+        assertThat(json(candidates).findValuesAsText("employeeId")).contains(staff.toString());
+
+        String before = accountHash(user);
+        MvcResult noStepUp = mvc.perform(json(post(account(staff)), Map.of(), admin)).andReturn();
+        assertEquals(403, noStepUp.getResponse().getStatus());
+        assertEquals("REAUTH_REQUIRED", json(noStepUp).path("code").asText());
+        assertEquals(before, accountHash(user));
+
+        MvcResult opened = provision(admin, staff, stepUp(admin, ADMIN_PASSWORD));
+        assertEquals(200, opened.getResponse().getStatus(), body(opened));
+        JsonNode issued = json(opened);
+        assertEquals(employee.loginAccount(), issued.path("loginAccount").asText());
+        assertEquals("active", issued.path("employee").path("accountStatus").asText());
+        assertEquals(user, jdbc.queryForObject("SELECT id FROM users WHERE employee_id=?", UUID.class, staff));
+        assertThat(jdbc.queryForObject("""
+                SELECT NOT is_deleted AND deleted_at IS NULL AND status='active'
+                    AND NOT remote_access AND must_change_password AND failed_attempts=0
+                    AND locked_until IS NULL AND temp_password_expires_at>now()
+                FROM users WHERE id=?
+                """, Boolean.class, user)).isTrue();
+        assertEquals(version + 1, number("version", user));
+        assertThat(number("auth_version", user)).isGreaterThan(auth);
+        assertThat(number("permission_delegation_generation", user)).isGreaterThan(generation);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_permission_overrides WHERE user_id=? AND active",
+                Long.class, user)).isZero();
+        assertEquals(2L, jdbc.queryForObject("""
+                SELECT count(*) FROM user_permission_overrides WHERE user_id=? AND NOT active AND row_version=2
+                """, Long.class, user));
+        assertEquals(inactiveOverride, jdbc.queryForObject(
+                "SELECT to_jsonb(o)::text FROM user_permission_overrides o WHERE user_id=? AND row_version=1",
+                String.class, user));
+        assertEquals(0L, jdbc.queryForObject("SELECT count(*) FROM user_data_scopes WHERE user_id=?", Long.class, user));
+        assertEquals(otherScopes, scopeHash(UUID.fromString(other.userId())));
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM audit_log WHERE target_type='user_data_scopes' AND action='delete'
+                    AND "before"->>'user_id'=? AND actor_id=(SELECT id FROM users WHERE login_account=?)
+                """, Long.class, user.toString(), ADMIN_LOGIN)).isGreaterThanOrEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM auth_sessions WHERE user_id=? AND revoked_at IS NULL",
+                Long.class, user)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM refresh_tokens WHERE user_id=? AND revoked_at IS NULL",
+                Long.class, user)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_log WHERE actor_id=?", Long.class, user))
+                .isGreaterThanOrEqualTo(auditBefore);
+        assertThat(me(employee.accessToken()).getResponse().getStatus()).isEqualTo(401);
+
+        String after = accountHash(user);
+        admin = adminToken();
+        MvcResult repeated = provision(admin, staff, stepUp(admin, ADMIN_PASSWORD));
+        assertEquals(409, repeated.getResponse().getStatus());
+        assertEquals(after, accountHash(user));
+        JsonNode firstLogin = login(employee.loginAccount(), issued.path("temporaryPassword").asText());
+        assertThat(firstLogin.path("mustChangePassword").asBoolean()).isTrue();
+        String newToken = changePassword(firstLogin.path("accessToken").asText(),
+                issued.path("temporaryPassword").asText(), "ReopenedOwn-4!").path("accessToken").asText();
+        MvcResult current = me(newToken);
+        assertEquals(200, current.getResponse().getStatus());
+        assertThat(json(current).path("permissions").toString()).doesNotContain("account:support");
+        assertThat(json(current).path("permissions").toString()).contains("profile:edit:self");
+    }
+
+    @Test
+    void concurrentProvisioningHasOneWinnerAndNeverReissuesItsCredential() throws Exception {
+        String admin = adminToken();
+        Employee employee = newEmployee(admin, "DEPT_ENG");
+        retire(employee);
+        UUID staff = UUID.fromString(employee.employeeId());
+        UUID user = UUID.fromString(employee.userId());
+        long version = number("version", user);
+        UUID actorId = jdbc.queryForObject("SELECT id FROM users WHERE login_account=?", UUID.class, ADMIN_LOGIN);
+        UUID actorEmployee = jdbc.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, actorId);
+        var actor = new com.uten.imp.security.AuthUser(actorId, actorEmployee, ADMIN_LOGIN,
+                java.util.Set.of("account:support", "employee:view"), false, true, true);
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            // Exercise the transactional boundary after authentication. The HTTP
+            // step-up contract is tested above; a request reaching JWT validation
+            // after the winning commit must instead reauthenticate under V324.
+            var first = executor.submit(() -> concurrentProvision(actor, staff, start));
+            var second = executor.submit(() -> concurrentProvision(actor, staff, start));
+            start.countDown();
+            int a = first.get(30, TimeUnit.SECONDS);
+            int b = second.get(30, TimeUnit.SECONDS);
+            assertThat(java.util.List.of(a, b))
+                    .containsExactlyInAnyOrder(200, 409);
+        }
+        assertEquals(1L, jdbc.queryForObject("SELECT count(*) FROM users WHERE employee_id=?", Long.class, staff));
+        assertEquals(user, jdbc.queryForObject("SELECT id FROM users WHERE employee_id=?", UUID.class, staff));
+        assertEquals(version + 1, number("version", user));
+    }
+
+    @Test
+    void supportCannotReopenHighRiskTargetAndFailureRollsBackAllAccountChanges() throws Exception {
+        String admin = adminToken();
+        Employee support = newEmployee(admin, "DEPT_ENG");
+        MvcResult granted = mvc.perform(json(put("/api/admin/users/" + support.userId() + "/permission-overrides"),
+                Map.of("grants", java.util.List.of("account:support"), "revokes", java.util.List.of()), admin)
+                .header("X-Uten-Step-Up", stepUp(admin, ADMIN_PASSWORD))).andReturn();
+        assertEquals(200, granted.getResponse().getStatus(), body(granted));
+        admin = adminToken();
+        Employee target = newEmployee(admin, "DEPT_HR");
+        admin = grantScope(admin, target.userId(), support.employeeId());
+        retire(target);
+        String supportToken = login(support.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
+        UUID user = UUID.fromString(target.userId());
+        String before = accountHash(user);
+        String scopesBefore = scopeHash(user);
+        MvcResult refused = provision(supportToken, UUID.fromString(target.employeeId()),
+                stepUp(supportToken, EMPLOYEE_PASSWORD));
+        assertEquals(403, refused.getResponse().getStatus());
+        assertThat(json(refused).path("message").asText()).contains("高危权限");
+        assertEquals(before, accountHash(user));
+        assertEquals(scopesBefore, scopeHash(user));
+    }
+
+    private String grantScope(String admin, String recipient, String owner) throws Exception {
+        MvcResult saved = mvc.perform(json(put("/api/admin/users/" + recipient + "/data-scopes").param("scope", "client"),
+                Map.of("ownerEmployeeIds", java.util.List.of(owner), "expectedOwnerEmployeeIds", java.util.List.of()), admin)
+                .header("X-Uten-Step-Up", stepUp(admin, ADMIN_PASSWORD))).andReturn();
+        assertEquals(200, saved.getResponse().getStatus(), body(saved));
+        return adminToken();
+    }
+
+    private String scopeHash(UUID user) {
+        return jdbc.queryForObject("""
+                SELECT encode(digest(COALESCE(jsonb_agg(to_jsonb(s) ORDER BY scope,owner_employee_id)::text,'[]'),
+                    'sha256'),'hex') FROM user_data_scopes s WHERE user_id=?
+                """, String.class, user);
+    }
+
+    private void retire(Employee employee) {
+        jdbc.update("""
+                UPDATE users SET login_account='offboarded-'||login_account,status='disabled',is_deleted=true,
+                    remote_access=true,must_change_password=true,temp_password_expires_at=now()-interval '1 day',
+                    failed_attempts=7,locked_until=now()+interval '1 day',deleted_at=NULL
+                WHERE id=?
+                """, UUID.fromString(employee.userId()));
+    }
+
+    private int concurrentProvision(com.uten.imp.security.AuthUser actor, UUID staff, CountDownLatch start)
+            throws InterruptedException {
+        var context = org.springframework.security.core.context.SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                actor, null, actor.getAuthorities()));
+        org.springframework.security.core.context.SecurityContextHolder.setContext(context);
+        try {
+            start.await();
+            onboarding.provisionAccount(staff);
+            return 200;
+        } catch (com.uten.imp.common.web.ApiException refused) {
+            assertEquals(com.uten.imp.common.web.ErrorCode.CONFLICT, refused.getCode());
+            return 409;
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    private MvcResult provision(String token, UUID employee, String proof) throws Exception {
+        return mvc.perform(json(post(account(employee)), Map.of(), token)
+                .header("X-Uten-Step-Up", proof)).andReturn();
+    }
+
+    private static String account(UUID staff) { return "/api/org/employees/" + staff + "/account"; }
+    private String code(UUID staff) { return jdbc.queryForObject("SELECT code FROM employees WHERE id=?", String.class, staff); }
+    private long number(String column, UUID user) {
+        if (!java.util.Set.of("version", "auth_version", "permission_delegation_generation").contains(column)) {
+            throw new IllegalArgumentException("Unsupported test projection");
+        }
+        return jdbc.queryForObject("SELECT " + column + " FROM users WHERE id=?", Long.class, user);
+    }
+    private String accountHash(UUID user) {
+        return jdbc.queryForObject("SELECT encode(digest(to_jsonb(u)::text,'sha256'),'hex') FROM users u WHERE id=?", String.class, user);
+    }
+}

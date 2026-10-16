@@ -10247,6 +10247,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get hrReconcileColKind => 'Type';
 
   @override
+  String get hrReconcileColDepartment => 'Department';
+
+  @override
+  String get hrReconcileColPosition => 'Position';
+
+  @override
+  String get hrReconcileColSuggestion => 'Suggestion';
+
+  @override
+  String get hrReconcileManualOnlyNotice =>
+      'Suggestions are for reference. Enter each identity number manually, then select the rows and confirm.';
+
+  @override
+  String get hrReconcileLegacyChoicesIgnored =>
+      'Suggestion choices from the old draft were ignored. Manual entries were kept; enter the remaining numbers manually.';
+
+  @override
   String get hrReconcileColEmployee => 'Employee';
 
   @override
@@ -10254,7 +10271,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get hrReconcileIdNumberInfo =>
-      'Struck-through red is the stored value; green background is the suggested new value (changed digits in bold red). Adopt the suggestion, pick a candidate, or type a new number';
+      'Enter identity numbers manually for every suggestion type. Suggestions are never filled or submitted automatically.';
 
   @override
   String hrReconcileBasisOf(String label) {

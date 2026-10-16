@@ -108,7 +108,7 @@ void main() {
     },
   );
 
-  for (final release in ['2.5.17', '2.5.18']) {
+  for (final release in ['2.5.17', '2.5.18', '2.5.19']) {
     for (final language in ['zh', 'en', 'ko']) {
       testWidgets(
         '$release $language notes remain localized and usable on a narrow screen',
@@ -143,6 +143,36 @@ void main() {
                         l10n.release2518LayoutAndTrace,
                       ]) {
               expect(find.textContaining(note), findsOneWidget);
+            }
+            final launcherFix = switch (language) {
+              'en' => 'Fixed database migration startup',
+              'ko' => '마이그레이션이 시작되지',
+              _ => '迁移程序无法启动',
+            };
+            expect(
+              find.textContaining(launcherFix),
+              release == '2.5.19' ? findsOneWidget : findsNothing,
+            );
+            final accountFix = switch (language) {
+              'en' => 'Fixed account provisioning blocked by a deleted account',
+              'ko' => '삭제된 계정 때문에',
+              _ => '已删除账号占位导致员工无法开通',
+            };
+            final notificationFix = switch (language) {
+              'en' => 'Notification cards now wrap full dates',
+              'ko' => '알림 카드의 날짜와 묶음 개수',
+              _ => '通知卡片在窄屏和大字体下',
+            };
+            final hrLayout = switch (language) {
+              'en' => 'HR identity review now uses separate employee columns',
+              'ko' => '인사 증명서 검토는',
+              _ => '员工核对信息分列',
+            };
+            for (final fix in [accountFix, notificationFix, hrLayout]) {
+              expect(
+                find.textContaining(fix),
+                release == '2.5.19' ? findsOneWidget : findsNothing,
+              );
             }
             if (language != 'zh') {
               expect(find.textContaining('选择滑窗的清空'), findsNothing);

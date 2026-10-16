@@ -143,15 +143,11 @@ class _EmployeeTransferDialogState
               child: InputDecorator(
                 decoration: InputDecoration(
                   labelText: l10n.employeeTransferFieldDate,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(UtenRadius.control),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
                 ),
-                child: Text(DateFormat('yyyy-MM-dd').format(_date)),
+                child: Text(
+                  DateFormat('yyyy-MM-dd').format(_date),
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
               ),
             ),
             const SizedBox(height: UtenSpacing.s12),
@@ -160,13 +156,6 @@ class _EmployeeTransferDialogState
               maxLines: 2,
               decoration: InputDecoration(
                 labelText: l10n.employeeTransferFieldRemark,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(UtenRadius.control),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
               ),
             ),
           ],

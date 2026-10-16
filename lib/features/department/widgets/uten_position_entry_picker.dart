@@ -189,7 +189,12 @@ class _UtenPositionEntryPickerState
           ),
           child: display == null
               ? null
-              : Text(display, overflow: TextOverflow.ellipsis),
+              : Text(
+                  display,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyLarge,
+                ),
         ),
       ),
     );

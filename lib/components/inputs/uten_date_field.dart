@@ -20,7 +20,7 @@ import '../../core/utils/china_datetime.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
-import 'uten_table_cell_hints.dart';
+import 'uten_table_cell_spec.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// outlined 日期选择字段。点按弹 showDatePicker；值/占位"未选择"显示在框内。
@@ -173,47 +173,67 @@ class _UtenDateFieldState extends State<UtenDateField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final inTable = UtenTableCellInputTheme.contains(context);
     final hasValue = widget.value != null;
     final requiredEmpty =
         widget.enabled &&
         widget.required &&
         !hasValue &&
         widget.errorMessage == null;
-    return InkWell(
-      onTap: widget.enabled ? _pick : null,
-      borderRadius: UtenTableCellHints.contains(context)
-          ? UtenRadius.mdAll
-          : UtenPageField.borderRadius,
-      child: InputDecorator(
-        decoration: applyRequiredEmpty(
-          applyAutofillHint(
-            UtenInputDecoration(
-              InputDecoration(
-                enabled: widget.enabled,
-                label: fieldLabel(
-                  widget.label,
-                  theme,
-                  required: widget.required,
-                  info: widget.info,
-                  base: theme.inputDecorationTheme.labelStyle,
+    return Semantics(
+      label: inTable ? widget.label : null,
+      child: InkWell(
+        onTap: widget.enabled ? _pick : null,
+        borderRadius: inTable
+            ? UtenEditableGridCellSpec.borderRadius
+            : UtenPageField.borderRadius,
+        child: InputDecorator(
+          decoration: applyRequiredEmpty(
+            applyAutofillHint(
+              UtenInputDecoration(
+                InputDecoration(
+                  enabled: widget.enabled,
+                  floatingLabelBehavior: inTable
+                      ? FloatingLabelBehavior.never
+                      : null,
+                  // Table headers identify their cells; retain the field name
+                  // in semantics without adding another visual label.
+                  label: inTable
+                      ? null
+                      : fieldLabel(
+                          widget.label,
+                          theme,
+                          required: widget.required,
+                          info: widget.info,
+                          base: theme.inputDecorationTheme.labelStyle,
+                        ),
+                  error: widget.errorMessage == null
+                      ? null
+                      : UtenFieldMessage.error(widget.errorMessage!),
+                  suffixIcon: const Icon(Icons.event_outlined, size: 18),
                 ),
-                error: widget.errorMessage == null
-                    ? null
-                    : UtenFieldMessage.error(widget.errorMessage!),
-                suffixIcon: const Icon(Icons.event_outlined, size: 18),
+                info: widget.info,
               ),
+              theme,
+              autofilled: widget.autofilled || _aiFilledNow,
             ),
             theme,
-            autofilled: widget.autofilled || _aiFilledNow,
+            requiredEmpty: requiredEmpty,
           ),
-          theme,
-          requiredEmpty: requiredEmpty,
-        ),
-        child: Text(
-          hasValue ? ChinaDateTime.formatDate(widget.value!) : '未选择',
-          style: hasValue
-              ? TextStyle(color: theme.colorScheme.onSurface)
-              : TextStyle(color: theme.colorScheme.onSurfaceVariant),
+          child: Text(
+            hasValue ? ChinaDateTime.formatDate(widget.value!) : '未选择',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style:
+                (inTable
+                        ? theme.textTheme.bodyMedium
+                        : theme.textTheme.bodyLarge)
+                    ?.copyWith(
+                      color: hasValue
+                          ? theme.colorScheme.onSurface
+                          : theme.colorScheme.onSurfaceVariant,
+                    ),
+          ),
         ),
       ),
     );

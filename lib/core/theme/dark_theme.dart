@@ -236,7 +236,7 @@ ThemeData buildDarkTheme({PlatformBranding? branding}) {
         borderSide: const BorderSide(color: UtenColors.darkBorder),
       ),
       isDense: true,
-      constraints: const BoxConstraints(minHeight: UtenFilterRow.minHeight),
+      constraints: const BoxConstraints(minHeight: UtenPageField.minHeight),
       contentPadding: UtenPageField.contentPadding,
       prefixIconConstraints: UtenPageField.iconConstraints,
       suffixIconConstraints: UtenPageField.iconConstraints,

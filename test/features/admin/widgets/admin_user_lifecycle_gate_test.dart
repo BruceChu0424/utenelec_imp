@@ -48,9 +48,9 @@ void main() {
 
       await tester.tap(find.text('账号安全').first);
       await tester.pumpAndSettle();
-      await tester.ensureVisible(_buttonFinder('启用'));
-      expect(_button(tester, '启用').onPressed, isNull);
-      expect(_button(tester, '启用').onDisabledTap, isNotNull);
+      await tester.ensureVisible(_buttonFinder('启用账号'));
+      expect(_button(tester, '启用账号').onPressed, isNull);
+      expect(_button(tester, '启用账号').onDisabledTap, isNotNull);
       expect(_button(tester, '设置临时密码').onPressed, isNotNull);
       expect(tester.takeException(), isNull);
     },
@@ -85,11 +85,11 @@ void main() {
       );
       await tester.tap(find.text('账号安全').first);
       await tester.pumpAndSettle();
-      final blockedLabel = status == 'active' ? '锁定' : '解锁';
+      final blockedLabel = status == 'active' ? '锁定账号' : '解锁账号';
       await tester.ensureVisible(_buttonFinder(blockedLabel));
       expect(_button(tester, blockedLabel).onPressed, isNull);
       expect(_button(tester, blockedLabel).onDisabledTap, isNotNull);
-      expect(_button(tester, '停用').onPressed, isNotNull);
+      expect(_button(tester, '停用账号').onPressed, isNotNull);
       expect(_button(tester, '设置临时密码').onPressed, isNull);
       expect(tester.takeException(), isNull);
     }

@@ -39,6 +39,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/widgets/uten_tree_table_cell.dart';
 
 Map<String, dynamic> _input() => {
   'goodsId': 'product',
@@ -886,6 +887,45 @@ class _PreviewFailureCosts extends _Costs {
       throw StateError('计算服务暂不可用');
 }
 
+class _HierarchyCosts extends _Costs {
+  _HierarchyCosts({this.goodsItself = false});
+
+  final bool goodsItself;
+
+  @override
+  Future<GoodsCostCalculation> preview(Map<String, dynamic> input) async =>
+      sheet(input: input).calculation;
+
+  @override
+  GoodsCostSheet sheet({Map<String, dynamic>? input, int version = 3}) {
+    final data = super.sheet(input: input, version: version).json;
+    final calculation = costMap(data['calculation']);
+    final base = costMaps(calculation['lines']).first;
+    final occurrences = goodsItself
+        ? [('ROOT', 0, '货品本身')]
+        : [
+            ('assembly-a', 0, '组件甲'),
+            ('assembly-a/shared', 1, '共用组件'),
+            ('assembly-a/shared/leaf', 2, '底层材料'),
+            ('assembly-b', 0, '组件乙'),
+            ('assembly-b/shared', 1, '共用组件'),
+          ];
+    calculation['lines'] = [
+      for (final occurrence in occurrences)
+        {
+          ...base,
+          'id': occurrence.$1,
+          'path': occurrence.$1,
+          'depth': occurrence.$2,
+          'goodsId': occurrence.$3 == '共用组件' ? 'shared' : occurrence.$1,
+          'goodsName': occurrence.$3,
+        },
+    ];
+    data['calculation'] = calculation;
+    return GoodsCostSheet(data);
+  }
+}
+
 class _CostPlatform extends Fake implements PlatformTableRepository {
   @override
   Future<List<PlatformTableCapabilities>> scopes() async => const [
@@ -951,6 +991,7 @@ Future<void> _pump(
   CurrencyRepository? currencies,
   StateProvider<Set<String>>? livePermissions,
   double textScale = 1,
+  TargetPlatform? platform,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -987,7 +1028,7 @@ Future<void> _pump(
           }),
       ],
       child: MaterialApp(
-        theme: buildLightTheme(),
+        theme: buildLightTheme().copyWith(platform: platform),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
@@ -1057,6 +1098,113 @@ void main() {
     final icons = FontLoader('MaterialIcons')
       ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
     await icons.load();
+  });
+  testWidgets(
+    'cost hierarchy matches assembly levels and keeps repeated occurrences independent',
+    (tester) async {
+      await _pump(tester, _HierarchyCosts(), platform: TargetPlatform.windows);
+      UtenTreeTableCell cell(String path) => tester.widget<UtenTreeTableCell>(
+        find.byKey(ValueKey('goods-cost-tree-cell-$path')),
+      );
+
+      expect(find.text('组件 1 级'), findsNWidgets(2));
+      expect(find.text('组件 2 级'), findsNWidgets(2));
+      expect(find.text('组件 3 级'), findsOneWidget);
+      expect(cell('assembly-a').sequence, '1');
+      expect(cell('assembly-a/shared').sequence, '1.1');
+      expect(cell('assembly-a/shared/leaf').sequence, '1.1.1');
+      expect(cell('assembly-b').sequence, '2');
+      expect(cell('assembly-b/shared').sequence, '2.1');
+      expect(cell('assembly-a/shared/leaf').ancestorContinuations, [
+        true,
+        false,
+      ]);
+      expect(cell('assembly-a/shared/leaf').isLastChild, isTrue);
+      final firstTitle = find.descendant(
+        of: find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a')),
+        matching: find.text('组件甲'),
+      );
+      final nestedTitle = find.descendant(
+        of: find.byKey(
+          const ValueKey('goods-cost-tree-cell-assembly-a/shared'),
+        ),
+        matching: find.text('共用组件'),
+      );
+      expect(
+        tester.getTopLeft(nestedTitle).dx - tester.getTopLeft(firstTitle).dx,
+        24,
+      );
+      final automaticPrice = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const ValueKey('cost-unitPrice-assembly-a')),
+          matching: find.byType(TextField),
+        ),
+      );
+      expect(
+        (automaticPrice.decoration!.enabledBorder! as OutlineInputBorder)
+            .borderRadius,
+        UtenEditableGridCellSpec.borderRadius,
+      );
+      final priceFinder = find.byKey(
+        const ValueKey('cost-unitPrice-assembly-a'),
+      );
+      final editable = find.descendant(
+        of: priceFinder,
+        matching: find.byType(EditableText),
+      );
+      final priceContainer = InputDecorator.containerOf(
+        tester.element(editable),
+      )!;
+      final priceOutline =
+          priceContainer.localToGlobal(Offset.zero) & priceContainer.size;
+      final treeRect = tester.getRect(
+        find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a')),
+      );
+      expect(priceOutline.height, closeTo(32, .5));
+      expect(priceOutline.center.dy, closeTo(treeRect.center.dy, .5));
+      expect(
+        tester.getRect(editable).center.dy,
+        closeTo(tester.getRect(find.text('2.123456').first).center.dy, .5),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('goods-cost-tree-toggle-assembly-a')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('goods-cost-tree-cell-assembly-a/shared')),
+        findsNothing,
+      );
+      expect(cell('assembly-b/shared').sequence, '2.1');
+      expect(find.text('共用组件'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey('goods-cost-tree-toggle-assembly-a')),
+      );
+      await tester.pumpAndSettle();
+      expect(cell('assembly-a/shared/leaf').sequence, '1.1.1');
+      expect(tester.takeException(), isNull);
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const Key('cost-render')),
+      );
+      await tester.runAsync(() async {
+        final image = await boundary.toImage();
+        final data = await image.toByteData(format: ui.ImageByteFormat.png);
+        final file = File('build/cost-hierarchy-widget-preview.png');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(data!.buffer.asUint8List());
+        image.dispose();
+      });
+    },
+  );
+  testWidgets('cost without a BOM identifies the goods itself', (tester) async {
+    await _pump(tester, _HierarchyCosts(goodsItself: true));
+    final cell = tester.widget<UtenTreeTableCell>(
+      find.byKey(const ValueKey('goods-cost-tree-cell-ROOT')),
+    );
+    expect(cell.sequence, isEmpty);
+    expect(cell.levelLabel, '货品名称');
+    expect(find.text('组件 1 级'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
   testWidgets(
     'ordinary settings keep the material table visible and defer advanced fields',

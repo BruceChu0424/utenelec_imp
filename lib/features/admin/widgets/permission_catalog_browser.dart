@@ -397,7 +397,6 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
     List<PermissionActionType> actionTypes,
     List<AdminPermission> allPermissions,
   ) {
-    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(top: UtenFilterRow.rowGap),
       child: Semantics(
@@ -408,13 +407,6 @@ class _PermissionCatalogBrowserState extends State<PermissionCatalogBrowser> {
           runSpacing: UtenFilterRow.rowGap,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Text(
-              '动作类型',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
             UtenSegmentRow<PermissionActionType?>(
               showSelectedIcon: false,
               emptySelectionAllowed: true,

@@ -37,7 +37,23 @@ void main() {
       'lib/features/admin/widgets/permission_catalog_browser.dart',
       'lib/features/admin/widgets/admin_baseline_perm_view.dart',
     ]) {
-      final source = File(path).readAsStringSync();
+      var source = File(path).readAsStringSync();
+      if (path.endsWith('/admin_user_detail_panel.dart')) {
+        // 账号命令需要检查操作者的支持权限；它不参与目录授权或批量排除。
+        // 仅这一入口可引用账号支持码，其余详情及授权页仍不准按码维护名单。
+        final accountCommandGate = RegExp(
+          r'bool get _hasAccountSupport\s*=>[^;]*;',
+        );
+        final gates = accountCommandGate.allMatches(source).toList();
+        expect(gates, hasLength(1), reason: path);
+        final gate = gates.single.group(0)!;
+        expect(
+          RegExp(r'\bPerm\.\w+').allMatches(gate).map((m) => m.group(0)),
+          ['Perm.accountSupport'],
+          reason: '只有账号支持入口可检查账号命令权限',
+        );
+        source = source.replaceRange(gates.single.start, gates.single.end, '');
+      }
       expect(source, isNot(contains('Perm.')), reason: path);
       expect(source, isNot(contains('bulkAssignable')), reason: path);
     }

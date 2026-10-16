@@ -25,6 +25,7 @@ class AdminUserSummary {
     this.departmentName,
     this.positionName,
     this.tempPasswordExpiresAt,
+    this.accountSupportAllowed,
   });
 
   final String id;
@@ -52,6 +53,9 @@ class AdminUserSummary {
 
   /// 管理员设置的临时密码有效期截止（ISO 字符串，V297）；null = 无临时密码或不设有效期。
   final String? tempPasswordExpiresAt;
+
+  /// Server target boundary; absent only when connected to an older deployment.
+  final bool? accountSupportAllowed;
 
   bool get authorizationGrantAllowed => currentEmployee && status == 'active';
 
@@ -109,6 +113,7 @@ class AdminUserSummary {
         positionName: json['positionName'] as String?,
         remoteAccess: json['remoteAccess'] as bool? ?? false,
         tempPasswordExpiresAt: json['tempPasswordExpiresAt'] as String?,
+        accountSupportAllowed: json['accountSupportAllowed'] as bool?,
       );
 }
 

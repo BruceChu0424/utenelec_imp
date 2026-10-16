@@ -211,6 +211,8 @@ class EmployeeProfile {
     this.probationEndDate,
     this.renewCount,
     this.accountStatus,
+    this.accountDeleted = false,
+    this.accountSupportAllowed,
     this.emergencyContacts = const [],
     this.history = const [],
     this.vehicles = const [],
@@ -280,6 +282,12 @@ class EmployeeProfile {
   // 登录账号状态（active/locked/disabled；null = 未开通账号）
   final String? accountStatus;
 
+  /// 已软删的历史绑定可重新开通，不能把真实停用账号视为未开通。
+  final bool accountDeleted;
+
+  /// 服务端目标边界；null 兼容旧服务端，仍须当前权限和写接口最终校验。
+  final bool? accountSupportAllowed;
+
   final List<EmergencyContactView> emergencyContacts;
   final List<EmploymentHistoryView> history;
   final List<EmployeeVehicleView> vehicles; // ADR-021
@@ -346,6 +354,8 @@ class EmployeeProfile {
       probationEndDate: json['probationEndDate'] as String?,
       renewCount: json['renewCount'] as int?,
       accountStatus: json['accountStatus'] as String?,
+      accountDeleted: json['accountDeleted'] as bool? ?? false,
+      accountSupportAllowed: json['accountSupportAllowed'] as bool?,
       emergencyContacts: ec
           .map((e) => EmergencyContactView.fromJson(e as Map<String, dynamic>))
           .toList(),

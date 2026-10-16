@@ -2,6 +2,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 
 void main() {
+  test(
+    'account support boundary preserves explicit denial and old-server absence',
+    () {
+      for (final value in [null, false, true]) {
+        final user = AdminUserSummary.fromJson({
+          'id': 'user',
+          'loginAccount': 'test-account',
+          'accountSupportAllowed': ?value,
+        });
+        expect(user.accountSupportAllowed, value);
+      }
+    },
+  );
   test('parses server-authoritative employment capability', () {
     final user = AdminUserSummary.fromJson({
       'id': 'user-1',

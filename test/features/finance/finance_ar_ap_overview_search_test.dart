@@ -388,6 +388,12 @@ Map<String, dynamic> _report(String partyName) => <String, dynamic>{
 
 class _ClientCategoryRepo implements ClientCategoryRepository {
   @override
+  Future<CategoryPrefixAvailability> prefixAvailability(
+    String prefix, {
+    String? categoryId,
+  }) => throw UnsupportedError('not used');
+
+  @override
   Future<CategoryPrefixPreview> prefixPreview(
     String id,
     String prefix, {
@@ -433,6 +439,12 @@ class _ClientCategoryRepo implements ClientCategoryRepository {
 }
 
 class _SupplierCategoryRepo implements SupplierCategoryRepository {
+  @override
+  Future<CategoryPrefixAvailability> prefixAvailability(
+    String prefix, {
+    String? categoryId,
+  }) => throw UnsupportedError('not used');
+
   @override
   Future<CategoryPrefixPreview> prefixPreview(
     String id,

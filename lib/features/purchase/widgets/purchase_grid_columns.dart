@@ -577,9 +577,11 @@ List<EditableGridColumn<PurchaseGridRow>> purchaseGridColumns(
           child: InputDecorator(
             // 选择格统一内边距（2026-10-06 表格控件统一口径）：名称保持
             // 身份格字号（bodyMedium w600），垫高到与数量/单价等格同高。
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
-              contentPadding: UtenEditableGridCellSpec.pickerCellPadding,
+              contentPadding: UtenEditableGridCellSpec.contentPaddingOf(
+                context,
+              ),
             ),
             child: Row(
               children: [

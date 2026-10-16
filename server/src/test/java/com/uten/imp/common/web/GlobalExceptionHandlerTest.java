@@ -13,6 +13,18 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class GlobalExceptionHandlerTest {
     @Test
+    void competingPrefixClaimHasTheSameActionableMessageAsTheLiveCheck() {
+        var sql = postgres("23505", "business prefix is reserved for another owner: secret owner",
+                "nbusiness_prefix_reservations_pkey\u0000Dsecret detail\u0000Rexec_stmt_raise\u0000");
+        for (var response : allAdapters(sql)) {
+            assertEquals(409, response.getStatusCode().value());
+            assertEquals(com.uten.imp.common.mastercode.CategoryPrefixAvailability.OCCUPIED_MESSAGE,
+                    response.getBody().getMessage());
+            assertFalse(response.getBody().getMessage().contains("secret"));
+        }
+    }
+
+    @Test
     void finalReportShowsOnlyReviewedBusinessMessageAndNeverDriverDetails() {
         String message="该工单还有未审核报工单(SR20260924000001)，请先审核或删除这些草稿，再提前完结";
         var server = new org.postgresql.util.ServerErrorMessage(

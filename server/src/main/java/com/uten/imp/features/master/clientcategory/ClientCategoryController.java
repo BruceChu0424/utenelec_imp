@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.clientcategory;
 
 import com.uten.imp.audit.AuditDetailViewRecorder;
+import com.uten.imp.common.mastercode.CategoryPrefixAvailability;
 import com.uten.imp.common.mastercode.CategoryPrefixPreview;
 import com.uten.imp.features.master.clientcategory.dto.*;
 import jakarta.validation.Valid;
@@ -44,6 +45,14 @@ public class ClientCategoryController {
                 "view_client_category_detail", "client_categories", id, displayName,
                 result.getLegacyId(), "客户分类");
         return result;
+    }
+
+    @GetMapping("/prefix-availability")
+    @PreAuthorize("hasAnyAuthority('client_category:create', 'client_category:edit')")
+    public CategoryPrefixAvailability prefixAvailability(
+            @RequestParam String prefix,
+            @RequestParam(required = false) UUID categoryId) {
+        return service.prefixAvailability(prefix, categoryId);
     }
 
     @GetMapping("/{id}/prefix-preview")

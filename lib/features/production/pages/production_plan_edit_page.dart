@@ -693,7 +693,7 @@ class _ProductionPlanEditPageState
           empty ? '点击选择销售订单(可多选)' : _sourceDocDisplay,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
+          style: theme.textTheme.bodyLarge?.copyWith(
             color: empty ? theme.colorScheme.onSurfaceVariant : null,
           ),
         ),

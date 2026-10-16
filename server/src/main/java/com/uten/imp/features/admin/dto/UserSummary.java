@@ -30,4 +30,6 @@ public class UserSummary {
     private boolean remoteAccess;
     /** 管理员设置的临时密码有效期截止（V297）；NULL = 无临时密码或不受有效期限制。 */
     private OffsetDateTime tempPasswordExpiresAt;
+    /** Target eligibility only; each operation still enforces current lifecycle and credential policy. */
+    private Boolean accountSupportAllowed;
 }

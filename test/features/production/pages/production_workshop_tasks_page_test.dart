@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../support/filter_segment_tap.dart';
+import '../../../support/audit_screenshot_support.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -1387,7 +1389,10 @@ void routeConfirmationTests() {
     _FakePlanRepository? planRepository,
     bool canStart = true,
     String category = '开工准备',
+    bool realFonts = false,
+    double textScale = 1,
   }) async {
+    if (realFonts) await loadAuditScreenshotFonts(tester);
     await tester.binding.setSurfaceSize(const Size(1800, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final router = _router();
@@ -1413,6 +1418,17 @@ void routeConfirmationTests() {
             productionPlanRepositoryProvider.overrideWithValue(planRepository),
         ],
         child: MaterialApp.router(
+          theme: realFonts
+              ? auditScreenshotTheme(
+                  buildLightTheme().copyWith(platform: TargetPlatform.android),
+                )
+              : null,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
           routerConfig: router,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
@@ -1646,6 +1662,40 @@ void routeConfirmationTests() {
     expect(plans.confirmedRoutes, [('segment-c', 'FULL_KIT')]);
     expect(tester.takeException(), isNull);
   });
+
+  for (final scale in [1.0, 1.6]) {
+    testWidgets(
+      'short-screen route center stays clear of batch actions at $scale',
+      (tester) async {
+        final plans = _FakePlanRepository();
+        await mount(
+          tester,
+          planRepository: plans,
+          realFonts: true,
+          textScale: scale,
+        );
+        await tester.binding.setSurfaceSize(const Size(375, 480));
+        await tester.pumpAndSettle();
+        final field = find.byKey(
+          const ValueKey('workshop-next-step-segment-c'),
+        );
+        await tester.ensureVisible(field);
+        await tester.pumpAndSettle();
+        expect(
+          field.hitTestable(),
+          findsOneWidget,
+          reason:
+              'The normal center of the full route field must remain actionable.',
+        );
+        await tester.tap(field);
+        await tester.pumpAndSettle();
+        await tester.tap(_menuEntry('齐套生产'));
+        await tester.pumpAndSettle();
+        expect(plans.confirmedRoutes, [('segment-c', 'FULL_KIT')]);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final (route, label) in [
     ('FULL_KIT', '齐套生产'),

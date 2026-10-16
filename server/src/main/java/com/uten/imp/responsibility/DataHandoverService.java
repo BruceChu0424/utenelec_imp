@@ -1395,15 +1395,8 @@ public class DataHandoverService {
     }
 
     private int disablePersonalOverrides(UUID sourceEmployeeId) {
-        return em.createNativeQuery("""
-                        UPDATE user_permission_overrides permission_override
-                        SET active=false, row_version=row_version+1
-                        WHERE permission_override.active=true
-                          AND permission_override.user_id IN (
-                              SELECT id FROM users WHERE employee_id=:source)
-                        """)
-                .setParameter("source", sourceEmployeeId)
-                .executeUpdate();
+        return com.uten.imp.features.rbac.PersonalPermissionOverrideLifecycle
+                .deactivateForEmployee(em, sourceEmployeeId);
     }
 
     private int disableManagerDelegations(
@@ -1443,10 +1436,8 @@ public class DataHandoverService {
 
     private int deleteDataScopes(UUID sourceEmployeeId) {
         return account(sourceEmployeeId, false)
-                .map(value -> em.createNativeQuery(
-                                "DELETE FROM user_data_scopes WHERE user_id=:userId")
-                        .setParameter("userId", value.userId())
-                        .executeUpdate())
+                .map(value -> com.uten.imp.features.rbac.PersonalPermissionOverrideLifecycle
+                        .clearRecipientDataScopes(em, value.userId()))
                 .orElse(0);
     }
 

@@ -8,13 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/data_display/uten_revision_cell.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_paged_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/network/api_error.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -340,6 +340,7 @@ Future<GoRouter> _pump(
   FormDraftStorage? draftStorage,
   double? displayFactor,
   double systemFactor = 1,
+  bool dark = false,
 }) async {
   bool? pushed;
   final router = GoRouter(
@@ -394,7 +395,11 @@ Future<GoRouter> _pump(
           ),
       ],
       child: MaterialApp.router(
-        theme: displayFactor == null ? null : buildLightTheme(),
+        theme: dark
+            ? buildDarkTheme()
+            : displayFactor == null
+            ? null
+            : buildLightTheme(),
         builder: (context, child) => displayFactor == null
             ? child!
             : MediaQuery(
@@ -425,6 +430,18 @@ MasterDataTableView<HrReconcileRow> _table(WidgetTester tester) =>
 
 HrReconcileRow _row(WidgetTester tester, String employeeId) =>
     _table(tester).items.firstWhere((row) => row.employee.id == employeeId);
+
+Future<void> _typeManual(
+  WidgetTester tester,
+  int rowNo, [
+  String value = _kValidId,
+]) async {
+  await tester.enterText(
+    find.byKey(ValueKey('hr-reconcile-manual-$rowNo')),
+    value,
+  );
+  await tester.pumpAndSettle();
+}
 
 List<String> _noticeMessages(WidgetTester tester) => ProviderScope.containerOf(
   tester.element(find.byType(HrReconcilePage)),
@@ -977,6 +994,177 @@ void main() {
   );
 
   testWidgets(
+    'legacy draft resumes manual text only and leaves suggestion-only rows blank',
+    (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final storage = MemoryFormDraftStorage();
+      final repo = _FakeRepo(
+        HrReconcilePlan.fromJson(
+          _planJson(
+            rows: [
+              _rowJson(item: _itemJson(newValue: _kValidId, preselected: true)),
+              _rowJson(
+                rowNo: 2,
+                employeeId: 'emp-2',
+                item: _itemJson(
+                  newValue: _kValidId,
+                  tier: 'MEDIUM',
+                  candidates: [
+                    {'value': _kValidId, 'probability': 0.9},
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+      );
+      final editor =
+          tester.state(find.byType(HrReconcilePage))
+              as FormDraftMixin<HrReconcilePage>;
+      final spec = editor.formDraftSpec;
+      final snapshot = editor.captureFormDraft()..remove('inputMode');
+      final rows = snapshot['rows'] as List;
+      final saved =
+          await ProviderScope.containerOf(
+                tester.element(find.byType(HrReconcilePage)),
+              )
+              .read(formDraftsProvider.notifier)
+              .save(
+                FormDraft(
+                  id: 'legacy-manual-and-choice',
+                  title: spec.title,
+                  module: spec.module,
+                  route: spec.route,
+                  permission: spec.permission,
+                  draftKind: spec.draftKind,
+                  updatedAt: DateTime.utc(2026, 10, 11),
+                  data: {
+                    ...snapshot,
+                    'rows': [
+                      {
+                        ...Map<String, dynamic>.from(rows.first as Map),
+                        'manual': '1101051949',
+                        'adopted': true,
+                        'selected': true,
+                      },
+                      {
+                        ...Map<String, dynamic>.from(rows.last as Map),
+                        'manual': '',
+                        'candidateValue': _kValidId,
+                        'selected': true,
+                      },
+                    ],
+                  },
+                ),
+              );
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      await _pump(
+        tester,
+        repo: repo,
+        draftStorage: storage,
+        pushUri: saved.resumeLocation,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('hr-reconcile-manual-1')),
+            )
+            .controller!
+            .text,
+        '1101051949',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('hr-reconcile-manual-2')),
+            )
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(
+        find.byKey(const Key('hr-reconcile-legacy-input-notice')),
+        findsOneWidget,
+      );
+      expect(find.text('确认更正 0 人 0 处'), findsOneWidget);
+      expect(repo.applies, isEmpty);
+      await _typeManual(tester, 2);
+      expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('hr-reconcile-apply')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确认更正'));
+      await tester.pumpAndSettle();
+      expect(repo.applies.single.rows.map((row) => row.rowNo), [2]);
+      expect(repo.applies.single.rows.single.items.single.value, _kValidId);
+      expect(
+        repo.applies.single.rows.single.items.single.candidateIndex,
+        isNull,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  for (final size in [const Size(1440, 1000), const Size(375, 1000)]) {
+    testWidgets('manual editor remains usable at $size dark and large text', (
+      tester,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final row = _rowJson(
+        item: _itemJson(newValue: _kValidId, tier: 'NONE'),
+      );
+      row['employee'] = {
+        ...Map<String, dynamic>.from(row['employee'] as Map),
+        'positionName': null,
+      };
+      final repo = _FakeRepo(HrReconcilePlan.fromJson(_planJson(rows: [row])));
+      await _pump(
+        tester,
+        repo: repo,
+        pushUri: '${RouteName.hrReconcile}?planId=plan-1',
+        displayFactor: 1.6,
+        systemFactor: 1.5,
+        dark: true,
+      );
+      expect(tester.takeException(), isNull);
+      expect(
+        _table(tester).columns
+            .where((column) => column.key == 'position')
+            .single
+            .value(_row(tester, 'emp-1')),
+        '—',
+      );
+      await _typeManual(tester, 1);
+      _table(tester).onSelectedIdsChanged!({'emp-1'});
+      await tester.pumpAndSettle();
+      expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('hr-reconcile-manual-1')),
+            )
+            .controller!
+            .text,
+        _kValidId,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets(
     'changed source version blocks restoration and retains original input',
     (tester) async {
       tester.view.physicalSize = const Size(1600, 1000);
@@ -1056,6 +1244,7 @@ void main() {
         draftStorage: storage,
         pushUri: '${RouteName.hrReconcile}?planId=plan-1',
       );
+      await _typeManual(tester, 1);
       _table(tester).onSelectedIdsChanged!({'emp-1'});
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('hr-reconcile-apply')));
@@ -1159,11 +1348,13 @@ void main() {
         expect(find.byKey(const Key('hr-reconcile-apply')), findsNothing);
         expect(find.byKey(const Key('hr-reconcile-select-high')), findsNothing);
         expect(find.text('已更正'), findsWidgets);
-        final cell = tester.widget<UtenRevisionCell>(
-          find.byType(UtenRevisionCell),
+        expect(find.text(_kBrokenId), findsNothing);
+        expect(find.text(_kValidId), findsOneWidget);
+        final input = tester.widget<TextField>(
+          find.byKey(const ValueKey('hr-reconcile-manual-1')),
         );
-        expect(cell.before, _kBrokenId);
-        expect(cell.after, _kValidId);
+        expect(input.enabled, isFalse);
+        expect(input.controller?.text ?? '', isEmpty);
         expect(repo.applies, isEmpty);
         await tester.pumpWidget(const SizedBox());
       },
@@ -1400,16 +1591,23 @@ void main() {
       contains('employeeIds=emp-1%2Cemp-2'),
       reason: '深链保留 employeeIds 供过期重核对',
     );
-    // 行渲染：旧值/新值对照 + 把握徽标。
-    expect(find.byType(UtenRevisionCell), findsNWidgets(2));
-    expect(find.text(_kBrokenId), findsOneWidget);
-    expect(find.text(_kValidId), findsOneWidget);
-    expect(find.text('高'), findsOneWidget, reason: 'HIGH 把握徽标');
+    expect(find.text(_kBrokenId), findsNothing);
+    expect(find.text(_kValidId), findsOneWidget, reason: '唯一建议只读');
+    expect(find.text('高'), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('hr-reconcile-manual-1')),
+          )
+          .controller!
+          .text,
+      isEmpty,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('HIGH 默认采用：勾选即得「确认更正 1 人 1 处」', (tester) async {
+  testWidgets('HIGH 默认建议不填入：必须手填后勾选确认', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -1436,12 +1634,25 @@ void main() {
     );
     _table(tester).onSelectedIdsChanged!({'emp-1'});
     await tester.pumpAndSettle();
+    expect(find.text('确认更正 0 人 0 处'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('hr-reconcile-manual-1')),
+          )
+          .controller!
+          .text,
+      isEmpty,
+    );
+    await _typeManual(tester, 1, '1101051949');
+    expect(find.text('确认更正 0 人 0 处'), findsOneWidget, reason: '非法手输不能回退为建议');
+    await _typeManual(tester, 1);
     expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('MEDIUM 未预选：点「采用」后计数 +1', (tester) async {
+  testWidgets('MEDIUM 建议只读，手填后计数 +1', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -1471,14 +1682,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('确认更正 0 人 0 处'), findsOneWidget, reason: '未采用不计入');
 
-    await tester.tap(find.byKey(const ValueKey('hr-reconcile-adopt-1')));
-    await tester.pumpAndSettle();
-    expect(find.text('确认更正 1 人 1 处'), findsOneWidget, reason: '采用后计数 +1');
+    expect(find.byKey(const ValueKey('hr-reconcile-adopt-1')), findsNothing);
+    await _typeManual(tester, 1);
+    expect(find.text('确认更正 1 人 1 处'), findsOneWidget, reason: '手填后计数 +1');
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('MANUAL 候选 chip：点击采用', (tester) async {
+  testWidgets('MANUAL 仅一个空输入框，不显示候选百分比或错误位', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -1515,19 +1726,26 @@ void main() {
       pushUri: '${RouteName.hrReconcile}?planId=plan-1',
     );
 
-    // 可疑位提示 + 候选 chips 都在。
-    expect(find.textContaining('可能出错的位置'), findsOneWidget);
-    expect(find.textContaining('90%'), findsOneWidget);
+    expect(find.textContaining('可能出错的位置'), findsNothing);
+    expect(find.textContaining('90%'), findsNothing);
     expect(
       find.byKey(const ValueKey('hr-reconcile-candidate-1-0')),
-      findsOneWidget,
+      findsNothing,
     );
-
+    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('hr-reconcile-manual-1')),
+          )
+          .controller!
+          .text,
+      isEmpty,
+    );
     _table(tester).onSelectedIdsChanged!({'emp-1'});
     await tester.pumpAndSettle();
     expect(find.text('确认更正 0 人 0 处'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('hr-reconcile-candidate-1-0')));
-    await tester.pumpAndSettle();
+    await _typeManual(tester, 1);
     expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
@@ -1596,9 +1814,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('提交体：rows 只含已确认行，candidateIndex/value 语义正确，requestId ≤64', (
-    tester,
-  ) async {
+  testWidgets('提交体：所有类型只提交手输 value，无候选下标，requestId ≤64', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -1643,8 +1859,8 @@ void main() {
       pushUri: '${RouteName.hrReconcile}?planId=plan-1',
     );
 
-    await tester.tap(find.byKey(const ValueKey('hr-reconcile-candidate-2-0')));
-    await tester.pumpAndSettle();
+    await _typeManual(tester, 1);
+    await _typeManual(tester, 2);
     await tester.enterText(
       find.byKey(const ValueKey('hr-reconcile-manual-3')),
       _kValidId,
@@ -1672,11 +1888,11 @@ void main() {
     // 行1：建议预选 → 都不带 = 采用建议 newValue。
     final item1 = byRow[1]!.items.single;
     expect(item1.candidateIndex, isNull);
-    expect(item1.value, isNull);
+    expect(item1.value, _kValidId);
     // 行2：候选 → candidateIndex=0、value 不带。
     final item2 = byRow[2]!.items.single;
-    expect(item2.candidateIndex, 0);
-    expect(item2.value, isNull);
+    expect(item2.candidateIndex, isNull);
+    expect(item2.value, _kValidId);
     // 行3：手输 → value、candidateIndex 不带。
     final item3 = byRow[3]!.items.single;
     expect(item3.candidateIndex, isNull);
@@ -1732,6 +1948,7 @@ void main() {
       onResult: (v) => popped = v,
     );
 
+    await _typeManual(tester, 1);
     _table(tester).onSelectedIdsChanged!({'emp-1'});
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('hr-reconcile-apply')));
@@ -1798,6 +2015,7 @@ void main() {
     );
 
     expect(repo.getPlanCalls, 1, reason: '首次进入 GET 一次');
+    await _typeManual(tester, 1);
     _table(tester).onSelectedIdsChanged!({'emp-1'});
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('hr-reconcile-apply')));
@@ -1897,12 +2115,18 @@ void main() {
       pushUri: '${RouteName.hrReconcile}?planId=plan-1',
     );
 
-    expect(find.text('****2646'), findsOneWidget);
-    final cell = tester.widget<UtenRevisionCell>(find.byType(UtenRevisionCell));
-    expect(cell.masked, isTrue, reason: '无 pii:view 不做逐位差异高亮');
-    expect(cell.changedPositions, isEmpty);
-    expect(cell.before, '****2646');
-    expect(cell.after, '****002X');
+    expect(find.text('****2646'), findsNothing);
+    expect(find.text('****002X'), findsOneWidget, reason: '建议沿用服务端打码');
+    expect(
+      tester
+              .widget<TextField>(
+                find.byKey(const ValueKey('hr-reconcile-manual-1')),
+              )
+              .controller
+              ?.text ??
+          '',
+      isEmpty,
+    );
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -1948,12 +2172,13 @@ void main() {
     );
     // 员工合并列的 cellBuilder(姓名主行 + 工号·部门副行)在表格格内照常渲染。
     expect(find.text('王五'), findsOneWidget);
-    expect(find.text('UT0050 · 装配第一车间'), findsOneWidget);
+    expect(find.text('UT0050'), findsOneWidget);
+    expect(find.text('装配第一车间'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('摘要统计胶囊：待核对人数主行 + 把握分布(未执行项现算)', (tester) async {
+  testWidgets('摘要保留进度，去掉把握分类并说明人工确认', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -1988,14 +2213,15 @@ void main() {
 
     expect(find.text('待核对 3 人'), findsOneWidget);
     expect(find.text('需更正 3'), findsOneWidget, reason: 'kind 副行');
-    expect(find.text('高把握 2'), findsOneWidget);
-    expect(find.text('需人工 1'), findsOneWidget);
+    expect(find.text('高把握 2'), findsNothing);
+    expect(find.text('需人工 1'), findsNothing);
+    expect(find.text('建议仅供核对。所有证件号码请手动填写，勾选后确认更正。'), findsOneWidget);
     expect(find.textContaining('中把握'), findsNothing, reason: '0 值档不占位');
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('员工合并列：姓名主行 + 工号·部门副行；问题列名取自服务端 label', (tester) async {
+  testWidgets('员工拆为四列，唯一建议紧邻证件号码左侧', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -2015,29 +2241,45 @@ void main() {
       pushUri: '${RouteName.hrReconcile}?planId=plan-1',
     );
 
-    expect(find.text('王五'), findsOneWidget, reason: '姓名主行');
-    expect(find.text('UT0050 · 装配第一车间'), findsOneWidget, reason: '工号·部门副行');
-    expect(find.text('工号'), findsNothing, reason: '独立工号列已退役');
-    expect(find.text('部门'), findsNothing, reason: '独立部门列已退役');
-    expect(find.text('依据'), findsNothing, reason: '独立依据列已退役');
-    // 动态问题列的列头用 items 的服务端 label。
     final columns = _table(tester).columns;
-    expect(
-      columns.where((c) => c.key == 'field-idNumber').single.label,
+    expect(columns.map((c) => c.key), [
+      'kind',
+      'name',
+      'code',
+      'department',
+      'position',
+      'reason',
+      'suggestion',
+      'field-idNumber',
+      'notes',
+    ]);
+    expect(columns.map((c) => c.label), [
+      '类型',
+      '姓名',
+      '工号',
+      '部门',
+      '职位',
+      '原因',
+      '建议',
       '证件号码',
-      reason: 'field_code 驱动动态列，列名来自服务端字段 label',
-    );
-    // 依据并入把握徽章 Tooltip。
+      '说明/结果',
+    ]);
+    expect(find.text('王五'), findsOneWidget);
+    expect(find.text('UT0050'), findsOneWidget);
+    expect(find.text('装配第一车间'), findsOneWidget);
+    expect(find.text('操作工'), findsOneWidget, reason: '服务端实际职位');
+    expect(find.text('UT0050 · 装配第一车间'), findsNothing);
+    expect(_table(tester).tableKey, endsWith('.manual_v2'));
     expect(
-      tester.widgetList<Tooltip>(find.byType(Tooltip)).map((t) => t.message),
-      contains('建议依据：生日对齐'),
-      reason: '把握徽章悬停出建议依据',
+      find.byKey(const ValueKey('hr-reconcile-suggestion-1')),
+      findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('hr-reconcile-tier-1')), findsNothing);
 
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('「只选把握高的」：一键勾选全部 HIGH 未执行行，不动 MANUAL', (tester) async {
+  testWidgets('无高把握批选，填入但未显式勾选仍不能提交', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -2074,12 +2316,23 @@ void main() {
       pushUri: '${RouteName.hrReconcile}?planId=plan-1',
     );
 
-    await tester.tap(find.byKey(const Key('hr-reconcile-select-high')));
-    await tester.pumpAndSettle();
-    // 行2 被他人认领(tier HIGH 也不可选)：只勾进 emp-1；行3 MANUAL 不进。
-    expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
-    // 全部高把握已选中后快捷按钮退场(没有可再选的)。
     expect(find.byKey(const Key('hr-reconcile-select-high')), findsNothing);
+    await _typeManual(tester, 1);
+    expect(find.text('确认更正 0 人 0 处'), findsOneWidget);
+    expect(_table(tester).selectedIds, isEmpty);
+    expect(repo.applies, isEmpty);
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('hr-reconcile-manual-2')),
+          )
+          .enabled,
+      isFalse,
+      reason: '他人认领不开放填写',
+    );
+    _table(tester).onSelectedIdsChanged!({'emp-1'});
+    await tester.pumpAndSettle();
+    expect(find.text('确认更正 1 人 1 处'), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
   });
@@ -2135,6 +2388,7 @@ void main() {
     );
 
     // 选中两行(含已执行行)后首轮 apply → 409 → 自动重取，勾选残留。
+    await _typeManual(tester, 2);
     _table(tester).onSelectedIdsChanged!({'emp-1', 'emp-2'});
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('hr-reconcile-apply')));

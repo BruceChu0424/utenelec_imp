@@ -26,6 +26,14 @@
 -- =====================================================================
 
 BEGIN;
+-- Retired one-off operation. Keep its original body for historical review only.
+-- Normal business reset must preserve employee identities, login accounts and grants.
+DO $retired_hr_reimport$
+BEGIN
+    RAISE EXCEPTION USING ERRCODE = '55000',
+        MESSAGE = '该一次性人事重导脚本已退役，禁止再次执行；清空业务数据请使用工作台系统测试页面，账号和授权必须保留';
+END;
+$retired_hr_reimport$;
 SET LOCAL standard_conforming_strings = on;
 -- 与官方 migrate.sh run_sql 同口径：导入会话旁路逐行审计（ADR-105）
 SET LOCAL app.legacy_import = 'on';

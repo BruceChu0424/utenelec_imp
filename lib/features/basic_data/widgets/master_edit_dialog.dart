@@ -24,6 +24,7 @@ import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/responsive/breakpoint.dart';
@@ -482,56 +483,13 @@ class MasterEditFormState extends State<MasterEditForm> {
   }
 
   Widget _fieldGrid(List<MasterFieldDef> fields, bool twoColumn) {
-    if (!twoColumn) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final f in fields) ...[
-            _field(f),
-            const SizedBox(height: UtenSpacing.s12),
-          ],
-        ],
-      );
-    }
-    // 2026-09-14：列数按容器实际宽度自适应（每列约 260 宽，1-4 列），
-    // 屏幕越大一行显示越多，不再固定两列。
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final colCount = (constraints.maxWidth ~/ 260).clamp(1, 4);
-        if (colCount == 1) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final f in fields) ...[
-                _field(f),
-                const SizedBox(height: UtenSpacing.s12),
-              ],
-            ],
-          );
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var i = 0; i < fields.length; i += colCount)
-              Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var c = 0; c < colCount; c++) ...[
-                      if (c > 0) const SizedBox(width: UtenSpacing.s12),
-                      Expanded(
-                        child: i + c < fields.length
-                            ? _field(fields[i + c])
-                            : const SizedBox.shrink(),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-          ],
-        );
-      },
+    // 与单据、卡片表单共用字段网格：列宽同时计入间距与系统文字缩放，
+    // 侧栏/弹窗挤窄时自动少排一列；不同分组仍沿用同一列宽。
+    return UtenFormGrid(
+      columns: twoColumn ? 4 : 1,
+      maxColumns: 4,
+      minFieldWidth: 260,
+      children: [for (final f in fields) _field(f)],
     );
   }
 

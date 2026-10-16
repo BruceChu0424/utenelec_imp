@@ -7,6 +7,7 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/router/permission_by_path.dart';
+import '../../../core/theme/uten_tokens.dart';
 import '../../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../auth/permissions.dart';
 import '../../models/paged_result.dart';
@@ -26,6 +27,8 @@ class GoodsProductionTraceView extends ConsumerStatefulWidget {
     required this.goodsId,
     this.reloadTick = 0,
     this.onTraceSubject,
+    this.direction,
+    this.showDirectionSelector = true,
   }) : subject = null,
        dateFrom = null,
        dateTo = null;
@@ -37,6 +40,8 @@ class GoodsProductionTraceView extends ConsumerStatefulWidget {
     this.dateTo,
     this.reloadTick = 0,
     this.onTraceSubject,
+    this.direction,
+    this.showDirectionSelector = true,
   }) : goodsId = null;
 
   final String? goodsId;
@@ -44,6 +49,11 @@ class GoodsProductionTraceView extends ConsumerStatefulWidget {
   final String? dateFrom, dateTo;
   final ValueChanged<MaterialTraceSubject>? onTraceSubject;
   final int reloadTick;
+
+  /// A host page can place the same direction controls beside its result mode.
+  /// The embedded goods-ledger view continues to own its direction by default.
+  final String? direction;
+  final bool showDirectionSelector;
 
   @override
   ConsumerState<GoodsProductionTraceView> createState() => _TraceState();
@@ -63,6 +73,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
   @override
   void initState() {
     super.initState();
+    _direction = widget.direction ?? 'usage';
     ref.listenManual(sensitiveReadBoundaryProvider, (old, next) {
       if (old == next) return;
       ++_request;
@@ -106,11 +117,15 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
   void didUpdateWidget(covariant GoodsProductionTraceView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.goodsId != widget.goodsId ||
+        oldWidget.direction != widget.direction ||
         oldWidget.subject?.identity != widget.subject?.identity ||
         oldWidget.dateFrom != widget.dateFrom ||
         oldWidget.dateTo != widget.dateTo ||
         oldWidget.reloadTick != widget.reloadTick) {
       _closeDetails();
+      if (oldWidget.direction != widget.direction) {
+        _direction = widget.direction ?? 'usage';
+      }
       _data = null;
       _result = null;
       _load(1);
@@ -187,9 +202,10 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.subject == null ||
-            widget.subject!.isGoods ||
-            widget.subject!.type == 'PRODUCTION_OUTPUT_LOT')
+        if (widget.showDirectionSelector &&
+            (widget.subject == null ||
+                widget.subject!.isGoods ||
+                widget.subject!.type == 'PRODUCTION_OUTPUT_LOT'))
           UtenFilterToolbar<String>(
             segments: const [
               UtenFilterSegment(value: 'usage', label: '用到哪些产品'),
@@ -390,22 +406,44 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
         label: _direction == 'usage' ? '生产产品' : '使用物料',
         width: 220,
         value: (row) => related(row).goodsName ?? '—',
+        cellBuilder: (context, row) => _identityCell(
+          context,
+          related(row).goodsName ?? '—',
+          [
+            related(row).goodsCode,
+            related(row).colorName,
+          ].nonNulls.where((value) => value.isNotEmpty).join(' · '),
+        ),
       ),
       MasterColumnDef(
         key: 'code',
+        defaultVisible: false,
         label: '编号',
         width: 120,
         value: (row) => related(row).goodsCode ?? '—',
       ),
       MasterColumnDef(
         key: 'productionBatches',
-        label: '生产批次',
+        label: '生产批次 / 计划',
         width: 190,
         value: (row) => _joined(
           row.reports
               .expand((report) => report.batches)
               .map((batch) => batch.displayName),
         ),
+        cellBuilder: (context, row) {
+          final batches = row.reports
+              .expand((r) => r.batches)
+              .map((b) => b.displayName)
+              .where((name) => name.isNotEmpty)
+              .toSet();
+          final plan = row.planNo ?? row.segmentCode ?? '';
+          return _identityCell(
+            context,
+            batches.isEmpty ? (plan.isEmpty ? '—' : plan) : batches.join('、'),
+            batches.isEmpty ? '' : plan,
+          );
+        },
       ),
       MasterColumnDef(
         key: 'basis',
@@ -415,6 +453,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
       ),
       MasterColumnDef(
         key: 'color',
+        defaultVisible: false,
         label: '颜色',
         width: 90,
         value: (row) => related(row).colorName ?? '—',
@@ -427,6 +466,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
       ),
       MasterColumnDef(
         key: 'plan',
+        defaultVisible: false,
         label: '生产计划',
         width: 170,
         value: (row) => row.planNo ?? row.segmentCode ?? '—',
@@ -463,12 +503,14 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
       ),
       MasterColumnDef(
         key: 'workers',
+        defaultVisible: false,
         label: '报工参与人',
         width: 180,
         value: (row) => _joined(row.reports.expand((r) => r.workers)),
       ),
       MasterColumnDef(
         key: 'sources',
+        defaultVisible: false,
         label: '入库来源单据',
         width: 190,
         value: (row) => row.receiptSources.isEmpty
@@ -476,6 +518,27 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView> {
             : row.receiptSources.map((r) => r.billNo ?? '—').toSet().join('、'),
       ),
     ];
+  }
+
+  Widget _identityCell(BuildContext context, String title, String subtitle) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: theme.textTheme.bodyMedium),
+          if (subtitle.isNotEmpty)
+            Text(
+              subtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _details(GoodsProductionTraceRow row) async {

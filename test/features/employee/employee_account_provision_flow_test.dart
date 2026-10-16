@@ -10,6 +10,9 @@ import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/models/employee_id_number_issue.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
@@ -26,6 +29,21 @@ const _invalidIssue = EmployeeIdNumberIssue(
   reason: '身份证号第18位校验码与前17位不符，通常是某一位数字录错或相邻两位颠倒，请对照证件逐位核对',
 );
 
+class _FlowApi extends Fake implements ApiClient {}
+
+class _FlowSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: 'hr-user',
+      code: 'HR1',
+      name: '人事',
+      permissions: [Perm.accountSupport],
+    ),
+  );
+}
+
 class _ProvisionRepository extends Fake implements EmployeeRepository {
   _ProvisionRepository({
     this.readiness,
@@ -33,6 +51,7 @@ class _ProvisionRepository extends Fake implements EmployeeRepository {
     this.readinessPending,
     this.provisionedIssue,
     this.provisionError,
+    this.provisionPending,
   });
 
   final EmployeeAccountReadiness? readiness;
@@ -40,6 +59,7 @@ class _ProvisionRepository extends Fake implements EmployeeRepository {
   final Completer<EmployeeAccountReadiness>? readinessPending;
   final EmployeeIdNumberIssue? provisionedIssue;
   final ApiException? provisionError;
+  final Completer<EmployeeOnboardingResult>? provisionPending;
   int readinessCalls = 0;
   int provisionCalls = 0;
 
@@ -56,6 +76,7 @@ class _ProvisionRepository extends Fake implements EmployeeRepository {
   @override
   Future<EmployeeOnboardingResult> provisionAccount(String id) async {
     provisionCalls++;
+    if (provisionPending != null) return provisionPending!.future;
     final error = provisionError;
     if (error != null) throw error;
     return EmployeeOnboardingResult(
@@ -73,10 +94,17 @@ class _ProvisionRepository extends Fake implements EmployeeRepository {
   }
 }
 
-Future<void> _openFlow(WidgetTester tester, _ProvisionRepository repo) async {
+Future<void> _openFlow(
+  WidgetTester tester,
+  _ProvisionRepository repo, {
+  bool Function()? isCurrent,
+  Listenable? ownerChanges,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        apiClientProvider.overrideWithValue(_FlowApi()),
+        sessionProvider.overrideWith(() => _FlowSession()),
         employeeRepositoryProvider.overrideWithValue(repo),
         currentPermissionsProvider.overrideWithValue(const {
           Perm.accountSupport,
@@ -96,6 +124,8 @@ Future<void> _openFlow(WidgetTester tester, _ProvisionRepository repo) async {
                 employeeName: '赵六',
                 employeeCode: 'UT0007',
                 hasAccount: false,
+                isCurrent: isCurrent,
+                ownerChanges: ownerChanges,
               ),
               child: const Text('open'),
             ),
@@ -202,6 +232,8 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(_FlowApi()),
+          sessionProvider.overrideWith(() => _FlowSession()),
           employeeRepositoryProvider.overrideWithValue(repo),
           currentPermissionsProvider.overrideWithValue(const {
             Perm.accountSupport,
@@ -255,5 +287,61 @@ void main() {
     expect(find.text('该手机号已被其他账号用作登录名，无法开通'), findsOneWidget);
     expect(find.text('开通账号失败，请稍后重试'), findsNothing);
     expect(_confirmPressed(tester), isNotNull);
+  });
+
+  testWidgets('确认前持有者失效会关闭开号弹窗且旧确认不能再写入', (tester) async {
+    final owner = ValueNotifier(0);
+    addTearDown(owner.dispose);
+    var current = true;
+    final repo = _ProvisionRepository(
+      readiness: const EmployeeAccountReadiness(hasPhone: true),
+    );
+    await _openFlow(
+      tester,
+      repo,
+      isCurrent: () => current,
+      ownerChanges: owner,
+    );
+    final confirm = _confirmPressed(tester)!;
+    current = false;
+    owner.value++;
+    await tester.pumpAndSettle();
+    confirm();
+    await tester.pumpAndSettle();
+    expect(repo.provisionCalls, 0);
+    expect(find.byKey(_dialog), findsNothing);
+  });
+
+  testWidgets('开号在途后持有者失效的迟到凭据永不展示', (tester) async {
+    final owner = ValueNotifier(0);
+    addTearDown(owner.dispose);
+    var current = true;
+    final pending = Completer<EmployeeOnboardingResult>();
+    final repo = _ProvisionRepository(
+      readiness: const EmployeeAccountReadiness(hasPhone: true),
+      provisionPending: pending,
+    );
+    await _openFlow(
+      tester,
+      repo,
+      isCurrent: () => current,
+      ownerChanges: owner,
+    );
+    await tester.tap(find.byKey(_confirm));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(repo.provisionCalls, 1);
+    current = false;
+    owner.value++;
+    await tester.pumpAndSettle();
+    pending.complete(
+      const EmployeeOnboardingResult(
+        employee: EmployeeProfile(id: 'emp-7', code: 'UT0007', fullName: '赵六'),
+        temporaryPassword: 'Synthetic-DO-NOT-DISPLAY!9',
+        loginAccount: '13800138000',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Synthetic-DO-NOT-DISPLAY!9'), findsNothing);
+    expect(find.byKey(_dialog), findsNothing);
   });
 }

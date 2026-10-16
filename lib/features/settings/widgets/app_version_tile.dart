@@ -110,6 +110,77 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release2518CompanyConnections,
         l10n.release2518LayoutAndTrace,
       ],
+      '2.5.19' => [
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Fixed database migration startup during server upgrades, while '
+                'keeping backups, permission isolation, and health checks.',
+          'ko' =>
+            '서버 업데이트 중 데이터베이스 마이그레이션이 시작되지 않던 문제를 수정했습니다. '
+                '백업, 권한 분리 및 상태 점검 절차는 유지됩니다.',
+          _ => '修复服务器升级时迁移程序无法启动的问题，保留备份、权限隔离和健康检查流程。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Fixed account provisioning blocked by a deleted account. '
+                'Reopening preserves identity without restoring old personal permissions.',
+          'ko' =>
+            '삭제된 계정 때문에 새 계정을 개설할 수 없던 문제를 수정했습니다. '
+                '기존 식별자는 유지하고 이전 개인 권한은 복원하지 않습니다.',
+          _ => '修复已删除账号占位导致员工无法开通的问题，保留历史身份，重新开通不恢复旧个人授权。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Notification cards now wrap full dates and group counts on narrow screens '
+                'and with larger text.',
+          'ko' => '좁은 화면과 큰 글꼴에서도 알림 카드의 날짜와 묶음 개수가 잘리지 않도록 줄바꿈합니다.',
+          _ => '通知卡片在窄屏和大字体下完整换行显示日期及分组数量。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'HR identity review now uses separate employee columns, one read-only '
+                'suggestion and manual entry. Employee details share the standard '
+                'category control; account actions are visible in headers and AI '
+                'use is categorized within permission details.',
+          'ko' =>
+            '인사 증명서 검토는 직원 정보를 열별로 나누고 하나의 읽기 전용 제안과 수동 입력을 사용합니다. '
+                '직원 상세는 공통 분류 구성요소를 사용하며, 계정 작업은 상단에 배치하고 AI 사용 권한은 권한 상세에서 분류합니다.',
+          _ => '员工核对信息分列、只读单条建议与手动填写；详情使用统一分类栏，账号操作外显，AI 使用权限归入权限明细分类。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Form fields and table editors now share consistent styles. Cost '
+                'budget hierarchies follow assembly components and adapt to '
+                'narrow screens and larger text.',
+          'ko' =>
+            '양식과 표 편집기의 입력 스타일을 통일했습니다. 원가 예산 계층은 조립 구성요소와 '
+                '동일하게 표시되며 좁은 화면과 큰 글꼴에도 대응합니다.',
+          _ => '统一表单输入与表格编辑样式，成本预算层级对齐组装组件，适配窄屏和大字体。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Category code prefixes are checked as you type across the shared '
+                'numbering namespace, then checked again when saving.',
+          'ko' =>
+            '분류 코드 접두어를 입력할 때 공통 번호 공간의 중복을 확인하고, '
+                '저장 시 다시 검증합니다.',
+          _ => '分类编号前缀输入时自动检查全系统占用，保存时再次校验，避免重复编号。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Material tracing has a clearer query layout and uses the same '
+                'goods selector as sales, while retaining historical goods '
+                'and access controls.',
+          'ko' =>
+            '자재 추적의 조회 영역을 정리하고 판매와 같은 품목 선택창을 사용합니다. '
+                '이력 품목과 접근 권한은 유지됩니다.',
+          _ => '物料追溯查询重新排版，货品选择与销售一致，支持历史货品并保留访问权限。',
+        },
+        l10n.release2518ServerUpdates,
+        l10n.release2518Storage,
+        l10n.release2518CompanyConnections,
+        l10n.release2518LayoutAndTrace,
+      ],
       _ => <String>[],
     };
     final theme = Theme.of(context);

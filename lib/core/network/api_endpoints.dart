@@ -276,6 +276,8 @@ abstract final class ApiEndpoints {
   // 货品资料分类（基础资料 / master-data）
   static const materialCategories = '/master/material-categories';
   static const materialCategoryTree = '$materialCategories/tree';
+  static const materialCategoryPrefixAvailability =
+      '$materialCategories/prefix-availability';
   static String materialCategorySubtree(String id) =>
       '$materialCategories/$id/subtree';
   static String materialCategory(String id) => '$materialCategories/$id';
@@ -338,6 +340,8 @@ abstract final class ApiEndpoints {
   // 模具资料分类（基础资料 / master-data）—— 与货品分类同构，独立端点
   static const mouldCategories = '/master/mould-categories';
   static const mouldCategoryTree = '$mouldCategories/tree';
+  static const mouldCategoryPrefixAvailability =
+      '$mouldCategories/prefix-availability';
   static String mouldCategorySubtree(String id) =>
       '$mouldCategories/$id/subtree';
   static String mouldCategory(String id) => '$mouldCategories/$id';
@@ -354,6 +358,8 @@ abstract final class ApiEndpoints {
   // 客户资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
   static const clientCategories = '/master/client-categories';
   static const clientCategoryTree = '$clientCategories/tree';
+  static const clientCategoryPrefixAvailability =
+      '$clientCategories/prefix-availability';
   static String clientCategorySubtree(String id) =>
       '$clientCategories/$id/subtree';
   static String clientCategory(String id) => '$clientCategories/$id';
@@ -386,6 +392,8 @@ abstract final class ApiEndpoints {
   // 供应商资料分类（基础资料 / master-data）—— 与货品/模具分类同构，独立端点
   static const supplierCategories = '/master/supplier-categories';
   static const supplierCategoryTree = '$supplierCategories/tree';
+  static const supplierCategoryPrefixAvailability =
+      '$supplierCategories/prefix-availability';
   static String supplierCategorySubtree(String id) =>
       '$supplierCategories/$id/subtree';
   static String supplierCategory(String id) => '$supplierCategories/$id';

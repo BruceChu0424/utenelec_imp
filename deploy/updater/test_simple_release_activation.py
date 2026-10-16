@@ -1,7 +1,9 @@
 """Exercise the shipped activation flow with fixture services and real symlinks."""
 from pathlib import Path
+import json
 import os
 import re
+import shlex
 import subprocess
 import tempfile
 import unittest
@@ -62,7 +64,7 @@ current_version() { cat "$ACTIVE_FILE"; }
 create_database_backup() { printf 'backup\n' >> "$EVENTS"; [[ "$BACKUP_SUCCEEDS" == 1 ]] || return 1; printf '%s/backup.dump\n' "$UTEN_BASE"; }
 runuser() { [[ "$1 $2 $3 $4" == '-u uten-imp -- test' && "$MIGRATOR_READABLE" == 1 ]]; }
 timeout() {
-  [[ "$1 $2 $3 $4 $5 $6" == '900 runuser -u uten-imp -- /usr/bin/java' ]] || return 99
+  [[ "$1 $2 $3 $4 $5 $6" == '900 /usr/sbin/runuser -u uten-imp -- /usr/bin/java' ]] || return 99
   printf 'migration-env:%s\n' "$(/usr/bin/env | cut -d= -f1 | sort | tr '\n' ',')" >> "$EVENTS"
   printf 'migrate\n' >> "$EVENTS"; [[ "$MIGRATE" == 1 ]];
 }
@@ -96,6 +98,87 @@ prune_database_backups() { printf 'prune-dumps\n' >> "$EVENTS"; }
             link = root / "current"
             return result, (root / "events").read_text().splitlines(), active.read_text().strip(), (
                 os.readlink(link) if link.is_symlink() else None)
+
+    def migration_launch(self, *, launcher_exit=0):
+        """Execute the shipped migration subshell, with real timeout and no role launcher on PATH."""
+        source = SCRIPT.read_text(encoding="utf-8")
+        activate = re.search(r"(?ms)^do_activate\(\) \{.*?^\}", source).group(0)
+        body = re.search(r'(?ms)^    \(\n(.*?)^    \) \|\| die "migrator ', activate).group(1)
+        hardened_path = "export PATH=/usr/bin:/bin LANG=C.UTF-8"
+        self.assertEqual(body.count(hardened_path), 1, "Keep the production minimal PATH unchanged")
+        self.assertTrue(Path("/usr/bin/timeout").is_file(), "This regression requires real GNU timeout")
+        with tempfile.TemporaryDirectory(prefix="uten-real-migrator-launch-") as temp:
+            root = Path(temp)
+            private_bin = root / "private-bin"
+            private_bin.mkdir()
+            (private_bin / "timeout").symlink_to("/usr/bin/timeout")
+            self.assertFalse((private_bin / "runuser").exists())
+            role_launcher = root / "trusted-runuser"
+            record = root / "launch.json"
+            release = root / "releases/v1.1.0"
+            release.mkdir(parents=True)
+            expected_args = ["-u", "uten-imp", "--", "/usr/bin/java",
+                             "-Dlogging.file.name=/var/log/uten-imp/migrator.log", "-jar",
+                             str(release / "server/uten-imp-migrator.jar")]
+            role_launcher.write_text(
+                "#!/usr/bin/python3\nimport json, os, sys\nfrom pathlib import Path\n"
+                f"expected = {expected_args!r}\n"
+                "if sys.argv[1:] != expected: sys.exit(97)\n"
+                f"Path({str(record)!r}).write_text(json.dumps({{"
+                "'argv':sys.argv[1:], 'environmentNames':sorted(os.environ), "
+                "'path':os.environ.get('PATH'), 'lang':os.environ.get('LANG'), "
+                "'passwordIsDedicated':os.environ.get('UTEN_MIGRATOR_DB_PASSWORD') "
+                "== 'FixtureOnlyPassword1234567890'}))\n"
+                f"sys.exit({launcher_exit})\n", encoding="utf-8")
+            role_launcher.chmod(0o700)
+            poison_bin = root / "parent-path"
+            poison_bin.mkdir()
+            poison_marker = root / "parent-runuser-was-used"
+            poison = poison_bin / "runuser"
+            poison.write_text("#!/bin/sh\nprintf invoked > " + shlex.quote(str(poison_marker)) + "\n",
+                              encoding="utf-8")
+            poison.chmod(0o700)
+            migrator_env = root / "migrator.env"
+            migrator_env.write_text("UTEN_MIGRATOR_DB_PASSWORD=FixtureOnlyPassword1234567890\n",
+                                    encoding="utf-8")
+            # Sandbox only the fixed system paths. A bare production runuser is deliberately
+            # not substituted, so real timeout must fail to find it in private_bin.
+            body = body.replace(hardened_path, "export PATH=" + shlex.quote(str(private_bin)) + " LANG=C.UTF-8")
+            body = body.replace("/usr/sbin/runuser", shlex.quote(str(role_launcher)))
+            env = dict(os.environ, PATH=str(poison_bin) + ":/usr/bin:/bin",
+                       UTEN_MIGRATOR_ENV=str(migrator_env), RELEASES_DIR=str(root / "releases"),
+                       UTEN_MIGRATOR_DB_PASSWORD="InheritedWrongPassword1234567890",
+                       UTEN_OSS_KEY_SECRET="FixtureCloudSecretOnly", JAVA_TOOL_OPTIONS="FixtureNoRealJvm",
+                       _JAVA_OPTIONS="FixtureNoInheritedJvm", JDK_JAVA_OPTIONS="FixtureNoInheritedJvm")
+            env.pop("BASH_ENV", None)
+            command = "set -euo pipefail\nversion=v1.1.0\nexport BASH_ENV=/fixture/untrusted-parent\n(\n" + body + ")\n"
+            result = subprocess.run([bash_path(), "-c", command], env=env, capture_output=True,
+                                    text=True, encoding="utf-8", check=False, timeout=10)
+            observed = json.loads(record.read_text(encoding="utf-8")) if record.exists() else None
+            return result, observed, poison_marker.exists(), str(private_bin)
+
+    def test_minimal_path_launches_migrator_role_with_real_timeout(self):
+        result, observed, poison_used, private_bin = self.migration_launch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNotNone(observed)
+        self.assertEqual(observed["argv"][:4], ["-u", "uten-imp", "--", "/usr/bin/java"])
+        self.assertEqual(observed["path"], private_bin)
+        self.assertFalse(poison_used, "Do not search the inherited parent PATH for a privileged launcher")
+
+    def test_real_timeout_child_keeps_only_dedicated_migration_environment(self):
+        result, observed, _, _ = self.migration_launch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(observed["passwordIsDedicated"], "The private file must replace any inherited password")
+        self.assertEqual(observed["lang"], "C.UTF-8")
+        for name in ("UTEN_OSS_KEY_SECRET", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS",
+                     "BASH_ENV", "UTEN_MIGRATOR_ENV", "RELEASES_DIR"):
+            self.assertNotIn(name, observed["environmentNames"])
+
+    def test_real_timeout_preserves_role_launcher_failure(self):
+        result, observed, poison_used, _ = self.migration_launch(launcher_exit=71)
+        self.assertEqual(result.returncode, 71, result.stderr)
+        self.assertIsNotNone(observed, "The controlled role launcher must actually execute")
+        self.assertFalse(poison_used)
 
     def test_success_records_version_only_after_health(self):
         result, events, active, link = self.activation(migration=True)

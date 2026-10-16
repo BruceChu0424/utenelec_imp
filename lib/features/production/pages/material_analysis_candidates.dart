@@ -1147,27 +1147,29 @@ abstract class _MaterialAnalysisCandidatesState
       key: const Key('material-analysis-warehouse'),
       children: [
         Expanded(
-          child: UtenDropdownField(
-            key: ValueKey('material-analysis-main-warehouse-${root?.id}'),
-            value: root?.id,
-            label: _l10n.materialMainWarehouse,
-            allowClear: false,
-            info: _l10n.materialWarehouseScopeExplanation,
-            enabled: !_busy && _canManage && roots.isNotEmpty,
-            items: [
-              for (final entry in roots)
-                if (entry.status != '禁用' || entry.id == root?.id)
-                  UtenDropdownItem(
-                    value: entry.id,
-                    label: entry.name,
-                    enabled: entry.status != '禁用',
-                  ),
-            ],
-            onChanged: (value) {
-              // Displaying an old leaf-backed analysis must not rewrite its identity.
-              if (value == null || value == root?.id) return;
-              _applyWarehouseSelection(value, {value});
-            },
+          child: UtenFilterFieldTheme(
+            child: UtenDropdownField(
+              key: ValueKey('material-analysis-main-warehouse-${root?.id}'),
+              value: root?.id,
+              label: _l10n.materialMainWarehouse,
+              allowClear: false,
+              info: _l10n.materialWarehouseScopeExplanation,
+              enabled: !_busy && _canManage && roots.isNotEmpty,
+              items: [
+                for (final entry in roots)
+                  if (entry.status != '禁用' || entry.id == root?.id)
+                    UtenDropdownItem(
+                      value: entry.id,
+                      label: entry.name,
+                      enabled: entry.status != '禁用',
+                    ),
+              ],
+              onChanged: (value) {
+                // Displaying an old leaf-backed analysis must not rewrite its identity.
+                if (value == null || value == root?.id) return;
+                _applyWarehouseSelection(value, {value});
+              },
+            ),
           ),
         ),
       ],

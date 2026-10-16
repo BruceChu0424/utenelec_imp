@@ -107,6 +107,8 @@ class BusinessDataResetServicePostgresTest {
         insertSeedDepartment(dataSource);
         insertSeedEmployee(dataSource);
         insertSeedUser(dataSource);
+        insertPreservedAccountAndAuthorityFixtures(dataSource);
+        assertPreservedScopeHasOnePermanentIdentity(dataSource);
         insertSeedRefreshToken(dataSource);
         long epochBefore = readEpoch(dataSource);
 
@@ -116,6 +118,7 @@ class BusinessDataResetServicePostgresTest {
         String[] admin = superAdmin(dataSource);
         UUID operator = UUID.fromString(admin[0]);
         String account = admin[1];
+        String identitiesBefore = preservedIdentityConfiguration(dataSource);
 
         // —— 阶段一：后台事件排队中 → 排水前由拒绝函数拒绝(409)——
         insertSeedBusinessOutboxRow(dataSource, (short) 0);
@@ -168,6 +171,7 @@ class BusinessDataResetServicePostgresTest {
             assertThat(auditFailure).hasStackTraceContaining("reset completion unavailable");
             assertThat(readEpoch(dataSource)).isEqualTo(epochBefore);
             assertThat(countRefreshTokens(dataSource)).isEqualTo(1);
+            assertThat(preservedIdentityConfiguration(dataSource)).isEqualTo(identitiesBefore);
             assertThat(countBusinessOutbox(dataSource)).isEqualTo(2);
             // ADR-067 §9：受理回执独立于清库事务、先行提交，回滚后仍在（+1）；提交确认丢失
             // 的不确定结果不写失败回执，完成回执随事务回滚——重登核对时只看到「已受理未完成」。
@@ -189,7 +193,11 @@ class BusinessDataResetServicePostgresTest {
 
         Map<String, Long> expectedClearFixture = new LinkedHashMap<>(migratedClearBaseline);
         expectedClearFixture.putAll(Map.of(
-                "business_outbox", 2L, "stock_balances", 1L, "stock_value_pools", 1L));
+                "business_outbox", 2L, "stock_balances", 1L, "stock_value_pools", 1L, "auth_sessions", 1L));
+        // The single new PRESERVE scope configuration creates exactly one V775
+        // permanent identity. Identity projections remain CLEAR under the reset contract.
+        expectedClearFixture.put("business_record_identities",
+                migratedClearBaseline.get("business_record_identities") + 1L);
         assertThat(nonemptyClearTableCounts(dataSource)).containsExactlyInAnyOrderEntriesOf(expectedClearFixture);
         SQLException bootstrapRefused = assertThrows(SQLException.class,
                 () -> verifySchemaOnlyBootstrapTarget(dataSource));
@@ -246,7 +254,7 @@ class BusinessDataResetServicePostgresTest {
         // it preserves the actual department grant and ordinary audit policy.
         // refresh_tokens 属 PRESERVE，
         // 在终局校验后单独清空，不计入）
-        assertThat(result.clearedRows()).isEqualTo(4L + migratedClearBaseline.values().stream()
+        assertThat(result.clearedRows()).isEqualTo(6L + migratedClearBaseline.values().stream()
                 .mapToLong(Long::longValue).sum());
         assertThat(nonemptyClearTableCounts(dataSource)).isEmpty();
         assertThat(result.authorizationEpochAfter()).isEqualTo(epochBefore + 1);
@@ -259,6 +267,12 @@ class BusinessDataResetServicePostgresTest {
 
         // 保留主档：行数不变、五个金额字段全部归零
         assertThat(countUsers(dataSource)).isEqualTo(usersBefore);
+        assertThat(preservedIdentityConfiguration(dataSource)).isEqualTo(identitiesBefore);
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT count(*) FROM auth_sessions")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getLong(1)).isZero();
+        }
         assertThat(countAccounts(dataSource)).isEqualTo(1);
         assertThat(countFullyZeroedAccounts(dataSource)).isEqualTo(1);
         assertThat(queryZeroedPaymentStyle(dataSource)).isEqualTo(1);
@@ -276,6 +290,7 @@ class BusinessDataResetServicePostgresTest {
         var second = service.reset(operator, account);
         assertThat(second.clearedRows()).isEqualTo(1);
         assertThat(second.authorizationEpochAfter()).isEqualTo(epochBefore + 2);
+        assertThat(preservedIdentityConfiguration(dataSource)).isEqualTo(identitiesBefore);
         assertThat(service.lastResult(operator, attempt).authorizationEpochAfter())
                 .isEqualTo(epochBefore + 1); // A later reset must not replace this exact receipt.
         RequestContextHolder.resetRequestAttributes();
@@ -568,6 +583,68 @@ class BusinessDataResetServicePostgresTest {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
             statement.execute("INSERT INTO users(employee_id, login_account, password_hash, must_change_password, status) SELECT id, 't0001', 'x', false, 'active' FROM employees WHERE code = 'T0001'");
+        }
+    }
+
+    private void insertPreservedAccountAndAuthorityFixtures(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO employees(code,full_name,id_type,department_id,hire_date,status,employment_type)
+                    SELECT 'T0002','待开号保留身份','其他',id,current_date,'active','regular'
+                    FROM departments WHERE code='TEST'
+                    """);
+            statement.execute("""
+                    INSERT INTO users(employee_id,login_account,password_hash,must_change_password,status,is_deleted)
+                    SELECT id,'offboarded-reset-fixture','x',true,'disabled',true FROM employees WHERE code='T0002'
+                    """);
+            statement.execute("""
+                    INSERT INTO user_permission_overrides(user_id,permission_id,effect,active)
+                    SELECT u.id,p.id,CASE WHEN p.code='profile:edit:self' THEN 'revoke' ELSE 'grant' END,
+                        u.login_account='t0001'
+                    FROM users u CROSS JOIN permissions p
+                    WHERE u.login_account IN ('t0001','offboarded-reset-fixture')
+                      AND p.code IN ('account:support','profile:edit:self')
+                    """);
+            statement.execute("""
+                    INSERT INTO user_data_scopes(user_id,scope,owner_employee_id)
+                    SELECT u.id,'client',e.id FROM users u CROSS JOIN employees e
+                    WHERE u.login_account='t0001' AND e.code='T0002'
+                    """);
+            statement.execute("""
+                    INSERT INTO auth_sessions(sid,user_id,created_at,last_seen_at,absolute_expires_at)
+                    SELECT gen_random_uuid(),id,now(),now(),now()+interval '1 day' FROM users WHERE login_account='t0001'
+                    """);
+        }
+    }
+
+    private void assertPreservedScopeHasOnePermanentIdentity(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("""
+                     SELECT count(*) FROM business_record_identities identity
+                     JOIN users recipient ON identity.parent_id=recipient.id::text
+                     WHERE identity.source_table='user_data_scopes' AND identity.parent_table='users'
+                       AND recipient.login_account='t0001'
+                     """)) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getLong(1)).isEqualTo(1L);
+        }
+    }
+
+    /** Whole-row hashes include credentials/status/UUID/override CAS state without logging their contents. */
+    private String preservedIdentityConfiguration(SimpleDriverDataSource dataSource) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("""
+                     SELECT encode(digest(jsonb_build_object(
+                         'users',(SELECT jsonb_agg(to_jsonb(u) ORDER BY id) FROM users u),
+                         'employees',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM employees e),
+                         'overrides',(SELECT jsonb_agg(to_jsonb(o) ORDER BY user_id,permission_id) FROM user_permission_overrides o),
+                         'delegations',(SELECT jsonb_agg(to_jsonb(d) ORDER BY user_id,department_id,permission_id) FROM manager_permission_delegations d),
+                         'dataScopes',(SELECT jsonb_agg(to_jsonb(s) ORDER BY user_id,scope,owner_employee_id) FROM user_data_scopes s),
+                         'departmentGrants',(SELECT jsonb_agg(to_jsonb(g) ORDER BY department_id,permission_id) FROM department_permissions g)
+                     )::text,'sha256'),'hex')
+                     """)) {
+            assertThat(rows.next()).isTrue();
+            return rows.getString(1);
         }
     }
 

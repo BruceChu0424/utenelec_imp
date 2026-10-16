@@ -1,11 +1,10 @@
-import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/data_display/uten_info_row.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../core/network/api_exception.dart';
-import '../../../core/responsive/breakpoint.dart';
-import '../../../core/responsive/dialog_size.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../basic_data/models/goods_node.dart';
@@ -13,7 +12,7 @@ import '../../basic_data/repositories/goods_repository.dart';
 
 import 'where_used_source_breakdown.dart';
 
-/// 物料反查结果弹窗中可继续前往的关联页面。
+/// 物料反查结果面板中可继续前往的关联页面。
 enum WhereUsedProductLink { goodsProfile, bom, stockMovements }
 
 class WhereUsedProductDetailResult {
@@ -30,7 +29,7 @@ class WhereUsedProductDetailResult {
 
 /// 展示一条“物料反查产成品”结果的历史汇总和当前货品主档。
 ///
-/// compact 使用底部抽屉，medium+ 使用居中弹窗。关联动作通过返回值交给
+/// 复用统一面板：compact 使用底部抽屉，medium+ 使用右侧面板。关联动作通过返回值交给
 /// 调用页处理，确保先关闭当前弹层，再打开货品详情或路由页面。
 Future<WhereUsedProductDetailResult?> showWhereUsedProductDetailDialog({
   required BuildContext context,
@@ -55,38 +54,13 @@ Future<WhereUsedProductDetailResult?> showWhereUsedProductDetailDialog({
         ).read(sensitiveReadBoundaryProvider),
   );
 
-  if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<WhereUsedProductDetailResult>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(UtenRadius.xxl),
-        ),
-      ),
-      builder: (_) => FractionallySizedBox(heightFactor: 0.92, child: body),
-    );
-  }
-
-  return showDialog<WhereUsedProductDetailResult>(
+  return showUtenAdaptivePanel<WhereUsedProductDetailResult>(
     context: context,
-    builder: (dialogContext) {
-      final height = (MediaQuery.sizeOf(dialogContext).height - 48)
-          .clamp(240.0, 760.0)
-          .toDouble();
-      return UtenDialogFrame(
-        shape: const RoundedRectangleBorder(borderRadius: UtenRadius.xxlAll),
-        insetPadding: utenDialogInsetPadding(dialogContext),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: utenDialogWidth(dialogContext, 800),
-          ),
-          child: SizedBox(width: double.infinity, height: height, child: body),
-        ),
-      );
-    },
+    compactHeightFactor: 0.92,
+    drawerWidth: 760,
+    showDragHandle: true,
+    barrierLabel: '关闭物料关系详情',
+    builder: (_) => body,
   );
 }
 
@@ -224,64 +198,89 @@ class _WhereUsedProductDetailBodyState
     final productName = _display(widget.row['goodsName']);
     final productCode = _display(widget.row['goodsCode']);
 
+    final header = _DialogHeader(
+      productName: productName,
+      productCode: productCode,
+      productStatus: _rowGoodsStatus(widget.row),
+      onClose: () => Navigator.of(context).pop(),
+    );
+    final content = Padding(
+      padding: const EdgeInsets.all(UtenSpacing.s20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionTitle(
+            icon: Icons.manage_search_rounded,
+            title: '本次反查',
+            subtitle:
+                '${widget.historyRangeLabel} · ${_materialLabel(widget.material)}',
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          _HistoryNotice(theme: theme),
+          const SizedBox(height: UtenSpacing.s20),
+          WhereUsedSourceBreakdown(row: widget.row),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: UtenSpacing.s24),
+            child: Divider(height: 1),
+          ),
+          const _SectionTitle(
+            icon: Icons.inventory_2_outlined,
+            title: '当前产成品资料',
+            subtitle: '来自货品主档；与上方各来源关系和数量分开显示',
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          if (_loading)
+            const _DetailLoading()
+          else if (_accessDenied)
+            const _DetailUnavailable(message: '你没有查看当前货品主档和 BOM 的权限。')
+          else if (_loadFailed)
+            _DetailLoadError(onRetry: () => _loadDetail(retry: true))
+          else
+            _GoodsInfoGrid(detail: _detail!),
+        ],
+      ),
+    );
+    final actions = _DialogActions(
+      goodsLinksEnabled: _detail != null,
+      stockLinkEnabled: widget.canViewStock && _productId.isNotEmpty,
+      showGoodsLinks: widget.canViewGoods,
+      showStockLink: widget.canViewStock,
+      onClose: () => Navigator.of(context).pop(),
+      onGoodsProfile: () => _follow(WhereUsedProductLink.goodsProfile),
+      onBom: () => _follow(WhereUsedProductLink.bom),
+      onStockMovements: () => _follow(WhereUsedProductLink.stockMovements),
+    );
+
     return SafeArea(
       key: const Key('where-used-product-detail-dialog'),
-      child: Column(
-        children: [
-          _DialogHeader(
-            productName: productName,
-            productCode: productCode,
-            onClose: () => Navigator.of(context).pop(),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(UtenSpacing.s20),
+      top: false,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          // 短窗口或大字时让整页滚动，避免固定标题和操作栏挤掉内容或互相溢出。
+          if (constraints.maxHeight < 480 * textScale) {
+            return SingleChildScrollView(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _HistoryNotice(theme: theme),
-                  const SizedBox(height: UtenSpacing.s20),
-                  _SectionTitle(
-                    icon: Icons.query_stats_rounded,
-                    title: '本次反查',
-                    subtitle:
-                        '${widget.historyRangeLabel} · ${_materialLabel(widget.material)}',
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  WhereUsedSourceBreakdown(row: widget.row),
-                  const SizedBox(height: UtenSpacing.s24),
-                  const _SectionTitle(
-                    icon: Icons.inventory_2_outlined,
-                    title: '当前产成品资料',
-                    subtitle: '来自货品主档；与上方各来源关系和数量分开显示',
-                  ),
-                  const SizedBox(height: UtenSpacing.s12),
-                  if (_loading)
-                    const _DetailLoading()
-                  else if (_accessDenied)
-                    const _DetailUnavailable(message: '你没有查看当前货品主档和 BOM 的权限。')
-                  else if (_loadFailed)
-                    _DetailLoadError(onRetry: () => _loadDetail(retry: true))
-                  else
-                    _GoodsInfoGrid(detail: _detail!),
+                  header,
+                  const Divider(height: 1),
+                  content,
+                  const Divider(height: 1),
+                  actions,
                 ],
               ),
-            ),
-          ),
-          const Divider(height: 1),
-          _DialogActions(
-            goodsLinksEnabled: _detail != null,
-            stockLinkEnabled: widget.canViewStock && _productId.isNotEmpty,
-            showGoodsLinks: widget.canViewGoods,
-            showStockLink: widget.canViewStock,
-            onClose: () => Navigator.of(context).pop(),
-            onGoodsProfile: () => _follow(WhereUsedProductLink.goodsProfile),
-            onBom: () => _follow(WhereUsedProductLink.bom),
-            onStockMovements: () =>
-                _follow(WhereUsedProductLink.stockMovements),
-          ),
-        ],
+            );
+          }
+          return Column(
+            children: [
+              header,
+              const Divider(height: 1),
+              Expanded(child: SingleChildScrollView(child: content)),
+              const Divider(height: 1),
+              actions,
+            ],
+          );
+        },
       ),
     );
   }
@@ -291,11 +290,13 @@ class _DialogHeader extends StatelessWidget {
   const _DialogHeader({
     required this.productName,
     required this.productCode,
+    required this.productStatus,
     required this.onClose,
   });
 
   final String productName;
   final String productCode;
+  final String productStatus;
   final VoidCallback onClose;
 
   @override
@@ -315,42 +316,37 @@ class _DialogHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Wrap(
-                  spacing: UtenSpacing.s8,
-                  runSpacing: UtenSpacing.s4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      productName,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: UtenSpacing.s8,
-                        vertical: UtenSpacing.s4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.tertiaryContainer,
-                        borderRadius: UtenRadius.pillAll,
-                      ),
-                      child: Text(
-                        '多来源关系详情',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onTertiaryContainer,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: UtenSpacing.s4),
-                SelectableText(
-                  '产成品编号：$productCode',
+                Text(
+                  '多来源关系详情',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
+                ),
+                const SizedBox(height: UtenSpacing.s4),
+                Text(
+                  productName,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+                Wrap(
+                  spacing: UtenSpacing.s16,
+                  runSpacing: UtenSpacing.s4,
+                  children: [
+                    SelectableText(
+                      '产成品编号：$productCode',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      '查询时状态：$productStatus',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -376,34 +372,25 @@ class _HistoryNotice extends StatelessWidget {
     return Semantics(
       container: true,
       label: '数据口径说明',
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(UtenSpacing.s12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.45),
-          borderRadius: UtenRadius.lgAll,
-          border: Border.all(color: theme.colorScheme.outlineVariant),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.history_rounded,
-              size: 20,
-              color: theme.colorScheme.onTertiaryContainer,
-            ),
-            const SizedBox(width: UtenSpacing.s8),
-            Expanded(
-              child: Text(
-                '当前 BOM、新生产需求、旧生产快照和委外历史分别展示；不同来源的数量不能相加。名称、编号、规格和分类按查询时主档展示。',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onTertiaryContainer,
-                  height: 1.45,
-                ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 16,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: UtenSpacing.s8),
+          Expanded(
+            child: Text(
+              '不同来源分别展示，数量不能相加；名称、编号、规格和分类按查询时主档显示。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                height: 1.45,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -472,47 +459,23 @@ class _GoodsInfoGrid extends StatelessWidget {
       _InfoValue('包装', _display(detail.pack)),
       _InfoValue('件数', _display(detail.pieces)),
     ];
-    final theme = Theme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columnCount = constraints.maxWidth >= 560 ? 2 : 1;
+        final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        final columnCount = constraints.maxWidth >= 720 * textScale ? 2 : 1;
         final width =
-            (constraints.maxWidth - UtenSpacing.s8 * (columnCount - 1)) /
+            (constraints.maxWidth - UtenSpacing.s20 * (columnCount - 1)) /
             columnCount;
         return Wrap(
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
+          spacing: UtenSpacing.s20,
           children: [
             for (final value in values)
               SizedBox(
                 width: width,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: UtenSpacing.s12,
-                    vertical: UtenSpacing.s8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHigh,
-                    borderRadius: UtenRadius.mdAll,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        value.label,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      SelectableText(
-                        value.value,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+                child: UtenInfoRow(
+                  label: value.label,
+                  value: null,
+                  valueWidget: SelectableText(value.value),
                 ),
               ),
           ],
@@ -541,7 +504,7 @@ class _DetailLoading extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2.5),
             ),
             SizedBox(width: UtenSpacing.s8),
-            Text('正在加载当前产成品资料…'),
+            Flexible(child: Text('正在加载当前产成品资料…')),
           ],
         ),
       ),
@@ -717,6 +680,17 @@ String _materialLabel(GoodsListItem material) {
   final code = _display(material.code);
   if (name == '—' || code == '—') return name == '—' ? code : name;
   return '$name($code)';
+}
+
+String _rowGoodsStatus(Map<String, dynamic> row) {
+  bool flag(String key) =>
+      row[key] == true || row[key]?.toString().toLowerCase() == 'true';
+  final values = [
+    if (_display(row['__goodsStatus']) != '—') _display(row['__goodsStatus']),
+    if (flag('__autoCreated')) '历史占位',
+    if (flag('__goodsDeleted')) '已软删除',
+  ];
+  return values.isEmpty ? '—' : values.join(' · ');
 }
 
 String _rawText(Object? value) => value?.toString().trim() ?? '';

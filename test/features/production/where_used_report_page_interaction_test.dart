@@ -11,6 +11,8 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/components/inputs/uten_filter_picker_field.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/pages/goods_detail_page.dart';
@@ -25,6 +27,8 @@ import '../../support/filter_segment_tap.dart';
 import '../../support/audit_screenshot_support.dart';
 
 const _materialId = '11111111-1111-4111-8111-111111111111';
+const _alternateMaterialId = '33333333-3333-4333-8333-333333333333';
+const _materialCategoryId = '44444444-4444-4444-8444-444444444444';
 const _productId = '22222222-2222-4222-8222-222222222222';
 const _captureUi = bool.fromEnvironment('UTEN_CAPTURE_UI');
 const _captureBoundary = Key('where-used-capture');
@@ -51,11 +55,13 @@ class _WhereUsedApi extends ApiClient {
     this.unattributedDemandQty = 0,
     this.traceError,
     this.richActual = false,
+    this.includeAlternativeMaterial = false,
   }) : super(Dio());
 
   Object? reportError;
   final Object? traceError;
   final bool richActual;
+  final bool includeAlternativeMaterial;
   Completer<void>? reportGate;
   final int unattributedDemandCount;
   final num unattributedDemandQty;
@@ -73,6 +79,24 @@ class _WhereUsedApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/production/reports/where-used/material-categories') {
+      return {
+        'items': [
+          {
+            'id': _materialCategoryId,
+            'code': 'RAW',
+            'name': '原材料',
+            'level': 0,
+            'children': <Object>[],
+          },
+        ],
+      };
+    }
+    if (path == '/production/reports/where-used/material-category-matches') {
+      return {
+        'items': [_materialCategoryId],
+      };
+    }
     if (path == '/production/reports/where-used/subjects') {
       final q = Map<String, dynamic>.from(query ?? {});
       subjectQueries.add(q);
@@ -157,28 +181,53 @@ class _WhereUsedApi extends ApiClient {
     if (path == '/production/reports/where-used/materials') {
       materialCalls += 1;
       lastMaterialQuery = Map<String, dynamic>.of(query ?? const {});
+      final keyword = (query?['keyword'] as String? ?? '').toLowerCase();
+      final candidates =
+          [
+            {
+              'id': _materialId,
+              'code': richActual ? 'RAW-ABS01' : 'MAT-001',
+              'name': richActual ? 'ABS 注塑原料' : 'A 螺丝',
+              'model': richActual ? 'ABS-100' : 'M3',
+              'spec': richActual ? '通用级注塑颗粒' : '镀锌',
+              'status': '启用',
+              'sourceType': '外购',
+              'categoryId': _materialCategoryId,
+              'categoryName': '原材料',
+              'autoCreated': false,
+              'deleted': false,
+              'currentBom': true,
+              'bomIssue': false,
+              'productionHistory': true,
+              'subcontractHistory': true,
+            },
+            if (includeAlternativeMaterial)
+              {
+                'id': _alternateMaterialId,
+                'code': 'MAT-002',
+                'name': 'B 螺丝',
+                'model': 'M4',
+                'spec': '镀锌',
+                'status': '启用',
+                'sourceType': '外购',
+                'categoryId': _materialCategoryId,
+                'categoryName': '原材料',
+                'currentBom': true,
+              },
+          ].where((item) {
+            final searchable = [
+              item['code'],
+              item['name'],
+              item['model'],
+            ].join(' ');
+            return keyword.isEmpty ||
+                searchable.toLowerCase().contains(keyword);
+          }).toList();
       return <String, dynamic>{
-        'items': [
-          {
-            'id': _materialId,
-            'code': richActual ? 'RAW-ABS01' : 'MAT-001',
-            'name': richActual ? 'ABS 注塑原料' : 'A 螺丝',
-            'model': richActual ? 'ABS-100' : 'M3',
-            'spec': richActual ? '通用级注塑颗粒' : '镀锌',
-            'status': '启用',
-            'sourceType': '外购',
-            'categoryName': '原材料',
-            'autoCreated': false,
-            'deleted': false,
-            'currentBom': true,
-            'bomIssue': false,
-            'productionHistory': true,
-            'subcontractHistory': true,
-          },
-        ],
+        'items': candidates,
         'page': 1,
         'size': 50,
-        'total': 1,
+        'total': candidates.length,
         'totalPages': 1,
       };
     }
@@ -187,6 +236,7 @@ class _WhereUsedApi extends ApiClient {
     }
     reportCalls += 1;
     lastQuery = Map<String, dynamic>.of(query ?? const {});
+    final alternateMaterial = query?['materialGoodsId'] == _alternateMaterialId;
     final error = reportError;
     if (error != null) throw error;
     if (reportGate != null) await reportGate!.future;
@@ -199,7 +249,7 @@ class _WhereUsedApi extends ApiClient {
         {'key': 'sources', 'label': '关系来源', 'type': 'text', 'width': 230},
         {'key': 'bomRelation', 'label': '当前BOM', 'type': 'text', 'width': 105},
       ],
-      'rows': const [
+      'rows': [
         {
           '__productId': _productId,
           '__currentBom': true,
@@ -207,7 +257,7 @@ class _WhereUsedApi extends ApiClient {
           '__currentDirectQty': 2.5,
           '__goodsStatus': '启用',
           'goodsCode': 'CP-001',
-          'goodsName': '墙壁插座成品',
+          'goodsName': alternateMaterial ? '新物料关联产品' : '墙壁插座成品',
           'spec': '10A',
           'categoryName': '插座',
           'sources': '当前 BOM · 新生产需求 · 旧生产快照 · 委外历史证据',
@@ -443,20 +493,24 @@ Future<void> _selectMaterial(
   WidgetTester tester, {
   bool settleReport = true,
   String keyword = 'MAT-001',
+  String materialId = _materialId,
 }) async {
-  await tester.tap(find.text('搜索并选择物料'));
+  await tester.tap(find.byKey(const Key('where-used-query-subject')));
   await tester.pumpAndSettle();
+  final picker = find.byKey(const Key('goods-picker-sheet'));
+  expect(picker, findsOneWidget);
   await tester.enterText(
-    find.byKey(const Key('where-used-material-search')),
+    find.byKey(const Key('uten-goods-picker-search')),
     keyword,
   );
   await tester.pump(const Duration(milliseconds: 300));
   await tester.pumpAndSettle();
-  final material = find.byKey(
-    const ValueKey('where-used-material-$_materialId'),
-  );
+  final material = find.byKey(ValueKey('goods-picker-item-$materialId'));
   await tester.ensureVisible(material);
   await tester.tap(material);
+  await tester.pumpAndSettle();
+  expect(picker, findsOneWidget, reason: '点行只暂选，确定后才返回查询页');
+  await tester.tap(find.descendant(of: picker, matching: find.text('确定')));
   if (settleReport) {
     await tester.pumpAndSettle();
   } else {
@@ -465,6 +519,117 @@ Future<void> _selectMaterial(
 }
 
 void main() {
+  testWidgets(
+    'desktop query controls share the first row and mode with direction share the second',
+    (tester) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1440, 1000),
+        permissions: _actualPermissions,
+      );
+      await _selectMaterial(tester);
+      await selectFilterSegment(tester, '实际追溯');
+      await tester.pumpAndSettle();
+
+      final entry = tester.getRect(
+        find.byKey(const Key('where-used-entry-kind')),
+      );
+      final subject = tester.getRect(
+        find.byKey(const Key('where-used-query-subject')),
+      );
+      final search = tester.getRect(find.byKey(const Key('where-used-search')));
+      final filters = tester.getRect(
+        find.byKey(const Key('where-used-filters')),
+      );
+      expect(
+        tester.widget(find.byKey(const Key('where-used-query-subject'))),
+        isA<UtenFilterPickerField>(),
+      );
+      for (final control in [subject, search, filters]) {
+        expect(control.center.dy, closeTo(entry.center.dy, 0.5));
+      }
+      expect(subject.left, greaterThan(entry.right));
+      expect(search.left, greaterThan(subject.right));
+      expect(filters.left, greaterThan(search.right));
+
+      final mode = tester.getRect(
+        find.byKey(const Key('where-used-result-mode')),
+      );
+      final direction = tester.getRect(
+        find.byKey(const Key('where-used-trace-direction')),
+      );
+      expect(mode.left, closeTo(entry.left, 0.5));
+      expect(mode.top, greaterThan(entry.bottom));
+      expect(direction.center.dy, closeTo(mode.center.dy, 0.5));
+      expect(direction.left, greaterThan(mode.right));
+      final trace = find.byType(GoodsProductionTraceView);
+      expect(
+        tester.widget<GoodsProductionTraceView>(trace).showDirectionSelector,
+        isFalse,
+      );
+      expect(
+        find.descendant(
+          of: trace,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is UtenFilterToolbar,
+          ),
+        ),
+        findsNothing,
+        reason: '实际结果内不再重复显示追溯方向工具栏',
+      );
+      expect(find.text('用到哪些产品'), findsOneWidget);
+      expect(find.text('用了哪些物料'), findsOneWidget);
+      expect(api.traceQueries.single['direction'], 'usage');
+
+      await selectFilterSegment(tester, '用了哪些物料');
+      await tester.pumpAndSettle();
+      expect(api.traceQueries.last['direction'], 'materials');
+      expect(api.traceQueries.last['subjectType'], 'GOODS');
+      expect(api.traceQueries.last['subjectId'], _materialId);
+      expect(
+        tester.widget<GoodsProductionTraceView>(trace).direction,
+        'materials',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'confirming a different material clears old results before its query resolves',
+    (tester) async {
+      final api = _WhereUsedApi(includeAlternativeMaterial: true);
+      await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+      await _selectMaterial(tester);
+      expect(find.text('墙壁插座成品'), findsOneWidget);
+      api.reportGate = Completer<void>();
+
+      await _selectMaterial(
+        tester,
+        keyword: 'MAT-002',
+        materialId: _alternateMaterialId,
+        settleReport: false,
+      );
+      expect(find.text('墙壁插座成品'), findsNothing);
+      expect(api.lastQuery?['materialGoodsId'], _alternateMaterialId);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('where-used-query-subject')),
+          matching: find.text('B 螺丝 · MAT-002'),
+        ),
+        findsOneWidget,
+      );
+
+      api.reportGate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('墙壁插座成品'), findsNothing);
+      expect(find.text('新物料关联产品'), findsOneWidget);
+      expect(api.reportCalls, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final viewport in [
     (width: 1440.0, height: 1000.0, scale: 1.0),
     (width: 375.0, height: 812.0, scale: 2.0),
@@ -682,8 +847,8 @@ void main() {
         expect(api.traceQueries.last['subjectId'], scenario.id);
         expect(api.reportCalls, 0);
         expect(find.byType(GoodsProductionTraceView), findsOneWidget);
-        await tester.tap(find.text('BOM 与历史关系'));
-        await tester.pumpAndSettle();
+        expect(find.text('BOM 与历史关系'), findsNothing);
+        expect(find.byKey(const Key('where-used-result-mode')), findsNothing);
         expect(api.reportCalls, 0, reason: '单据与生产批次不能当作货品BOM身份');
         if (scenario.type == 'PRODUCTION_OUTPUT_LOT') {
           await selectFilterSegment(tester, '用了哪些物料');
@@ -695,6 +860,11 @@ void main() {
             find.text('用了哪些物料'),
             findsNothing,
             reason: '订货单不提供没有业务差异的方向切换',
+          );
+          expect(find.text('用到哪些产品'), findsNothing);
+          expect(
+            find.byKey(const Key('where-used-trace-direction')),
+            findsNothing,
           );
         }
         expect(tester.takeException(), isNull);
@@ -878,20 +1048,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('搜索并选择物料'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const Key('where-used-material-search')),
-        'MAT-001',
-      );
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pumpAndSettle();
+      await _selectMaterial(tester);
       expect(api.materialCalls, greaterThanOrEqualTo(1));
       expect(api.lastMaterialQuery, containsPair('keyword', 'MAT-001'));
-      await tester.tap(
-        find.byKey(const ValueKey('where-used-material-$_materialId')),
-      );
-      await tester.pumpAndSettle();
 
       expect(api.reportCalls, 1);
       expect(api.lastQuery, containsPair('materialGoodsId', _materialId));

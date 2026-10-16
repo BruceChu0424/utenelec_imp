@@ -181,6 +181,77 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release2518CompanyConnections,
         l10n.release2518LayoutAndTrace,
       ],
+      '2.5.20' => [
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Search shows one list across categories on the right, with item-name '
+                'matches first, followed by codes, product details and categories. '
+                'Multiple keywords, filters and paging use the same result scope.',
+          'ko' =>
+            '검색 결과를 오른쪽에 분류에 관계없이 한 목록으로 표시합니다. 품목명 일치를 '
+                '우선하고 코드, 주요 품목 정보, 분류 순으로 정렬하며 여러 검색어와 필터, '
+                '페이지 이동에 같은 조회 범위를 적용합니다.',
+          _ => '搜索结果在右侧跨分类统一显示，货品名称优先，其次为编号、主要资料及分类；支持多词组合，筛选与翻页保持同一范围。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Input, dropdown and date fields share consistent heights and alignment. '
+                'Category trees show names, and category codes remain searchable.',
+          'ko' =>
+            '입력칸, 선택 목록과 날짜 필드의 높이와 글자 정렬을 통일했습니다. '
+                '분류 트리는 이름만 표시하며 분류 코드는 계속 검색할 수 있습니다.',
+          _ => '统一表单输入框、下拉和日期控件的高度与文字对齐，分类树只显示名称，编号仍可搜索。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Mould manufacture months can be selected and corrected, and manufacturer '
+                'details can be recorded. Mould pickers keep search results and paging in sync.',
+          'ko' =>
+            '금형 제조 연월을 선택하거나 수정할 수 있으며 제조사 정보를 기록할 수 있습니다. '
+                '금형 선택창의 검색과 페이지 이동도 일치하도록 수정했습니다.',
+          _ => '模具制造年月可正常选择和修改，新增制造商记录，选择器搜索与分页同步修正。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Employee records load the complete roster and allow hire-date corrections. '
+                'Accounts can be found by employee name, staff code or department.',
+          'ko' =>
+            '직원 기록에서 전체 직원 명단을 불러오고 입사일을 정정할 수 있습니다. '
+                '직원 이름, 사번 또는 부서로 계정을 찾을 수 있습니다.',
+          _ => '员工档案显示完整人员名单，支持更正入职日期；账号可按姓名、工号和部门查找。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Customer access can be scoped by department or person. Customer and '
+                'receivable information remains within authorized access, and task '
+                'and permission controls fit narrow screens.',
+          'ko' =>
+            '고객 조회 범위를 부서나 직원별로 설정할 수 있습니다. 고객 및 미수금 정보는 '
+                '부여된 권한 범위에서만 표시되며 작업과 권한 조작부도 좁은 화면에 맞춰 표시됩니다.',
+          _ => '客户查看范围可按部门或人员配置，客户及应收信息继续按授权隔离；任务和权限操作在窄屏下完整显示。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Daily-report outputs that can only go to the warehouse show “Send to '
+                'warehouse” in the main table. Outputs needing allocation or review '
+                'keep their details below, preserving entered materials and quantities.',
+          'ko' =>
+            '창고로만 보낼 수 있는 생산 실적은 주 표에 ‘창고 입고’로 표시합니다. '
+                '배분이나 확인이 필요한 이동 대상은 아래 상세 영역에서 관리하며 '
+                '입력한 자재와 수량은 유지됩니다.',
+          _ => '报工中只能送仓的产出在主表直接显示“送入仓库”，需要分配或核对的去向保留在下方详情，原用料和数量保持不变。',
+        },
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Attachment actions, including “Add file”, align to the right and wrap '
+                'on narrow screens. Files selected before saving remain queued '
+                'until the record is saved.',
+          'ko' =>
+            '‘파일 추가’ 등 첨부 작업을 오른쪽에 정렬하고 좁은 화면에서는 줄바꿈합니다. '
+                '저장 전에 선택한 파일은 문서를 저장할 때 업로드됩니다.',
+          _ => '附件区的“添加文件”等操作统一靠右，窄屏自动换行；保存前选好的附件在单据保存后上传。',
+        },
+      ],
       _ => <String>[],
     };
     final theme = Theme.of(context);

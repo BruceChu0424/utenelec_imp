@@ -108,7 +108,7 @@ void main() {
     },
   );
 
-  for (final release in ['2.5.17', '2.5.18', '2.5.19']) {
+  for (final release in ['2.5.17', '2.5.18', '2.5.19', '2.5.20']) {
     for (final language in ['zh', 'en', 'ko']) {
       testWidgets(
         '$release $language notes remain localized and usable on a narrow screen',
@@ -122,27 +122,76 @@ void main() {
               tester,
               version: release,
               locale: Locale(language),
-              scale: 1.6,
+              scale: release == '2.5.20' ? 2 : 1.6,
               brightness: brightness,
             );
             final l10n = AppLocalizations.of(
               tester.element(find.byType(AppVersionTile)),
             );
-            for (final note
-                in release == '2.5.17'
-                    ? [
-                        l10n.release2517PickerLayout,
-                        l10n.release2517Lifecycle,
-                        l10n.release2517Paging,
-                        l10n.release2517Drafts,
-                      ]
-                    : [
-                        l10n.release2518ServerUpdates,
-                        l10n.release2518Storage,
-                        l10n.release2518CompanyConnections,
-                        l10n.release2518LayoutAndTrace,
-                      ]) {
+            final historicalNotes = switch (release) {
+              '2.5.17' => [
+                l10n.release2517PickerLayout,
+                l10n.release2517Lifecycle,
+                l10n.release2517Paging,
+                l10n.release2517Drafts,
+              ],
+              '2.5.18' || '2.5.19' => [
+                l10n.release2518ServerUpdates,
+                l10n.release2518Storage,
+                l10n.release2518CompanyConnections,
+                l10n.release2518LayoutAndTrace,
+              ],
+              _ => <String>[],
+            };
+            for (final note in historicalNotes) {
               expect(find.textContaining(note), findsOneWidget);
+            }
+            final currentNotes = switch (language) {
+              'en' => [
+                'Search shows one list across categories',
+                'Input, dropdown and date fields share consistent heights',
+                'Mould manufacture months can be selected and corrected',
+                'Employee records load the complete roster',
+                'Customer access can be scoped by department or person',
+                'Daily-report outputs that can only go to the warehouse',
+                'Attachment actions, including “Add file”',
+              ],
+              'ko' => [
+                '검색 결과를 오른쪽에 분류에 관계없이 한 목록으로',
+                '입력칸, 선택 목록과 날짜 필드의 높이',
+                '금형 제조 연월을 선택하거나 수정',
+                '직원 기록에서 전체 직원 명단을',
+                '고객 조회 범위를 부서나 직원별로',
+                '창고로만 보낼 수 있는 생산 실적은',
+                '‘파일 추가’ 등 첨부 작업을 오른쪽에',
+              ],
+              _ => [
+                '搜索结果在右侧跨分类统一显示',
+                '统一表单输入框、下拉和日期控件',
+                '模具制造年月可正常选择和修改',
+                '员工档案显示完整人员名单',
+                '客户查看范围可按部门或人员配置',
+                '报工中只能送仓的产出在主表直接显示',
+                '附件区的“添加文件”等操作统一靠右',
+              ],
+            };
+            for (final note in currentNotes) {
+              expect(
+                find.textContaining(note),
+                release == '2.5.20' ? findsOneWidget : findsNothing,
+              );
+            }
+            if (release == '2.5.20') {
+              for (final oldNote in [
+                l10n.release2517Lifecycle,
+                l10n.release2518ServerUpdates,
+                l10n.release2518Storage,
+              ]) {
+                expect(find.textContaining(oldNote), findsNothing);
+              }
+              if (language != 'zh') {
+                expect(find.textContaining('搜索结果在右侧跨分类统一显示'), findsNothing);
+              }
             }
             final launcherFix = switch (language) {
               'en' => 'Fixed database migration startup',
@@ -225,6 +274,13 @@ void main() {
     await pump(tester, version: 'v2.5.60');
     expect(find.text('此版本暂未附带更新说明。'), findsOneWidget);
     expect(find.textContaining('物料下单保留完整精度'), findsNothing);
+  });
+
+  testWidgets('a similar version never borrows 2.5.20 notes', (tester) async {
+    await pump(tester, version: 'v2.5.200');
+    expect(find.text('此版本暂未附带更新说明。'), findsOneWidget);
+    expect(find.textContaining('搜索结果在右侧跨分类统一显示'), findsNothing);
+    expect(find.textContaining('模具制造年月可正常选择和修改'), findsNothing);
   });
 
   testWidgets('large text on a narrow screen scrolls in both themes', (

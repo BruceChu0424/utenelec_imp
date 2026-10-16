@@ -201,3 +201,60 @@ class InstantInventoryScope {
     if (unitId != null) '已筛选单位',
   ].join(' · ');
 }
+
+/// Restorable page navigation, separate from the API's effective query scope.
+/// A global search can keep a different category to resume after clearing it.
+class InstantInventoryNavigationContext {
+  const InstantInventoryNavigationContext({
+    required this.scope,
+    required this.browseCategoryId,
+    this.returnTo,
+  });
+
+  final InstantInventoryScope scope;
+  final String? browseCategoryId;
+  final String? returnTo;
+
+  /// Before explicit search categories, categoryId recorded the browse point
+  /// even while a keyword searched globally. Keep old constructors/URLs global.
+  factory InstantInventoryNavigationContext.fromLegacyScope(
+    InstantInventoryScope scope, {
+    String? returnTo,
+  }) => InstantInventoryNavigationContext(
+    scope: scope.keyword?.trim().isNotEmpty == true
+        ? InstantInventoryScope.fromQuery(
+            {...scope.toQuery()}..remove('categoryId'),
+          )
+        : scope,
+    browseCategoryId: scope.categoryId,
+    returnTo: returnTo,
+  );
+
+  factory InstantInventoryNavigationContext.fromQuery(
+    Map<String, String> query,
+  ) {
+    final scope = InstantInventoryScope.fromQuery(query);
+    if (!query.containsKey('browseCategoryId')) {
+      return InstantInventoryNavigationContext.fromLegacyScope(
+        scope,
+        returnTo: query['returnTo'],
+      );
+    }
+    final browse = query['browseCategoryId']?.trim();
+    return InstantInventoryNavigationContext(
+      scope: scope,
+      // Old URLs had only categoryId. A present empty browse key explicitly
+      // means ALL, even if a search currently selects a specific category.
+      browseCategoryId: scope.keyword?.trim().isNotEmpty == true
+          ? (browse == null || browse.isEmpty ? null : browse)
+          : scope.categoryId,
+      returnTo: query['returnTo'],
+    );
+  }
+
+  Map<String, String> toQuery() => {
+    ...scope.toQuery(),
+    'browseCategoryId': browseCategoryId ?? '',
+    'returnTo': ?returnTo,
+  };
+}

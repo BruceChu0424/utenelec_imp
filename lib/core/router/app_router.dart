@@ -1026,9 +1026,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: RouteName.stockInstantInventory,
             name: 'stock-instant-inventory',
             builder: (_, state) => InstantInventoryPage(
-              initialScope: state.uri.queryParameters.isEmpty
+              initialNavigation: state.uri.queryParameters.isEmpty
                   ? null
-                  : InstantInventoryScope.fromQuery(state.uri.queryParameters),
+                  : InstantInventoryNavigationContext.fromQuery(
+                      state.uri.queryParameters,
+                    ),
             ),
           ),
           // 库存详情：即时库存双击货品行进入 (库存余额 / 出入库流水 / 单重学习三段)；

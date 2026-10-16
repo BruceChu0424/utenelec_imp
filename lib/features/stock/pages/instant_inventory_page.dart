@@ -70,8 +70,13 @@ import '../widgets/instant_inventory_summary_bar.dart';
 import '../counts/models/stock_count_request.dart';
 
 class InstantInventoryPage extends ConsumerStatefulWidget {
-  const InstantInventoryPage({super.key, this.initialScope});
+  const InstantInventoryPage({
+    super.key,
+    this.initialScope,
+    this.initialNavigation,
+  }) : assert(initialScope == null || initialNavigation == null);
   final InstantInventoryScope? initialScope;
+  final InstantInventoryNavigationContext? initialNavigation;
 
   @override
   ConsumerState<InstantInventoryPage> createState() =>
@@ -116,6 +121,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
   String? _warehouseId; // null = 全部（参与核算仓库聚合）；父仓 = 子树聚合（V476）
+  String? _returnTo;
 
   /// 「含线边仓」(V595)：线边仓是车间直送料架，默认不计入即时库存；仅本页会话内生效。
   bool _includeLineSide = false;
@@ -133,9 +139,19 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   @override
   void initState() {
     super.initState();
-    final scope = widget.initialScope;
+    final navigation =
+        widget.initialNavigation ??
+        (widget.initialScope == null
+            ? null
+            : InstantInventoryNavigationContext.fromLegacyScope(
+                widget.initialScope!,
+              ));
+    final scope = navigation?.scope;
     if (scope != null) {
-      _categoryId = scope.categoryId;
+      _categoryId = scope.keyword?.trim().isNotEmpty == true
+          ? navigation!.browseCategoryId
+          : scope.categoryId;
+      _returnTo = navigation!.returnTo;
       _warehouseId = scope.warehouseId;
       _includeLineSide = scope.includeLineSide;
       _restoredIncludeDefective = scope.includeDefective;
@@ -295,29 +311,43 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
   void _showSummary() {
     final page = _page;
     if (page == null || _summaryLoading || _summaryHasError) return;
-    final scope = InstantInventoryScope(
-      categoryId: _effectiveCategoryId,
-      warehouseId: _warehouseId,
-      includeDefective: _includeDefective,
-      includeLineSide: _includeLineSide,
-      keyword: _keyword.isEmpty ? null : _keyword,
-      includeRelated: _includeRelated,
-      owningWarehouse: _owningFilterUuid,
-      owningWarehouseNull: _owningFilterIsNull,
-      colorId: _columnFilter('color'),
-      series: _columnFilter('series'),
-      unitId: _columnFilter('unit'),
-    );
+    final navigation = _navigationContext;
     context.push(
       Uri(
         path: RouteName.stockInstantInventoryOverview,
         queryParameters: {
-          ...scope.toQuery(),
+          ...navigation.scope.toQuery(),
           'scopeLabel': _pageSummaryScopeLabel,
+          'returnTo': _inventoryLocation(navigation),
         },
       ).toString(),
     );
   }
+
+  InstantInventoryNavigationContext get _navigationContext =>
+      InstantInventoryNavigationContext(
+        scope: InstantInventoryScope(
+          categoryId: _effectiveCategoryId,
+          warehouseId: _warehouseId,
+          includeDefective: _includeDefective,
+          includeLineSide: _includeLineSide,
+          keyword: _keyword.isEmpty ? null : _keyword,
+          includeRelated: _includeRelated,
+          owningWarehouse: _owningFilterUuid,
+          owningWarehouseNull: _owningFilterIsNull,
+          colorId: _columnFilter('color'),
+          series: _columnFilter('series'),
+          unitId: _columnFilter('unit'),
+        ),
+        browseCategoryId: _categoryId,
+        returnTo: _returnTo,
+      );
+
+  String _inventoryLocation(InstantInventoryNavigationContext navigation) =>
+      Uri(
+        path: RouteName.stockInstantInventory,
+        queryParameters: navigation.toQuery(),
+      ).toString();
 
   /// 颜色/系列/单位列筛选值（服务端 facet 桶值：颜色 UUID / 系列文本 / 单位 UUID）。
   /// 这三列不下发空值桶，哨兵值按无过滤处理。
@@ -1034,22 +1064,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage> {
                 includeDefective: _includeDefective,
                 includeLineSide: _includeLineSide,
               ),
-              returnTo: Uri(
-                path: RouteName.stockInstantInventory,
-                queryParameters: InstantInventoryScope(
-                  categoryId: _effectiveCategoryId,
-                  warehouseId: _warehouseId,
-                  includeDefective: _includeDefective,
-                  includeLineSide: _includeLineSide,
-                  keyword: _keyword.isEmpty ? null : _keyword,
-                  includeRelated: _includeRelated,
-                  owningWarehouse: _owningFilterUuid,
-                  owningWarehouseNull: _owningFilterIsNull,
-                  colorId: _columnFilter('color'),
-                  series: _columnFilter('series'),
-                  unitId: _columnFilter('unit'),
-                ).toQuery(),
-              ).toString(),
+              returnTo: _inventoryLocation(_navigationContext),
             ),
           );
         },

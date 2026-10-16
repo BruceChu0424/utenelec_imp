@@ -11,6 +11,10 @@ import java.util.Collections;
 /** Shared native task search. SQL expressions are fixed application-owned fragments. */
 public final class TaskKeywordSearch {
     private static final String PREFIX = "taskKeyword";
+    // PostgreSQL POSIX space omits NBSP/figure space/narrow NBSP. Keep the same
+    // Unicode White_Space set as KeywordSearch.terms, including raw SQL callers.
+    private static final String PARAMETER_WHITESPACE =
+            "U&'[\\0009-\\000D\\0020\\0085\\00A0\\1680\\2000-\\200A\\2028\\2029\\202F\\205F\\3000]+'";
     private TaskKeywordSearch() { }
 
     public static String condition(String text, String... fields) {
@@ -20,7 +24,7 @@ public final class TaskKeywordSearch {
 
     /** Keep complete item identities before aggregation, so a partial name never ranks as exact. */
     public static String rank(String text, String[] fields, String... arrayFields) {
-        if (KeywordSearch.terms(text).isEmpty()) return "0";
+        if (KeywordSearch.terms(text).isEmpty()) return KeywordSearch.INACTIVE_NATIVE_RANK;
         var prefixTerms = new java.util.ArrayList<String>();
         for (int index = 0; index < KeywordSearch.terms(text).size(); index++) {
             String parameter = ":" + PREFIX + "Prefix" + (index == 0 ? "" : index);
@@ -32,7 +36,7 @@ public final class TaskKeywordSearch {
     /** A visible goods name outranks document/code matches, before the task's normal stable order. */
     public static String rankNamesFirst(String text, String[] names, String[] nameArrays,
                                         String[] fields, String... arrayFields) {
-        if (KeywordSearch.terms(text).isEmpty()) return "0";
+        if (KeywordSearch.terms(text).isEmpty()) return KeywordSearch.INACTIVE_NATIVE_RANK;
         String phrase = ":" + PREFIX + "Phrase";
         String allWords = prefixMatch(names, nameArrays, field -> {
             var predicates = new java.util.ArrayList<String>();
@@ -80,29 +84,35 @@ public final class TaskKeywordSearch {
     public static String conditionParameter(String parameter, String... fields) {
         String match = String.join(" OR ", Arrays.stream(fields)
                 .map(field -> "POSITION(task_word.value IN lower(COALESCE(" + field + ",'')))>0").toList());
-        return "NOT EXISTS (SELECT 1 FROM regexp_split_to_table(lower(COALESCE(CAST(:" + parameter
-                + " AS text),'')), '[[:space:]]+') AS task_word(value) WHERE task_word.value<>'' AND NOT ("
+        return "NOT EXISTS (SELECT 1 FROM regexp_split_to_table(" + parameterPhrase(parameter)
+                + ", ' ') AS task_word(value) WHERE task_word.value<>'' AND NOT ("
                 + match + "))";
     }
 
     public static String rankParameter(String parameter, String[] fields, String... arrayFields) {
         String alternatives = prefixMatch(fields, arrayFields,
                 field -> "left(lower(COALESCE(" + field + ",'')),length(task_word.value))=task_word.value");
-        String prefix = "NOT EXISTS (SELECT 1 FROM regexp_split_to_table(lower(COALESCE(CAST(:" + parameter
-                + " AS text),'')), '[[:space:]]+') AS task_word(value) WHERE task_word.value<>'' AND NOT " + alternatives + ")";
-        String expression = rankExpression("lower(btrim(COALESCE(CAST(:" + parameter + " AS text),'')))", fields, arrayFields, prefix);
-        return "CASE WHEN COALESCE(CAST(:" + parameter + " AS text),'')='' THEN 0 ELSE " + expression + " END";
+        String phrase = parameterPhrase(parameter);
+        String prefix = "NOT EXISTS (SELECT 1 FROM regexp_split_to_table(" + phrase
+                + ", ' ') AS task_word(value) WHERE task_word.value<>'' AND NOT " + alternatives + ")";
+        String expression = rankExpression(phrase, fields, arrayFields, prefix);
+        return "CASE WHEN " + phrase + "='' THEN 0 ELSE " + expression + " END";
     }
 
     public static String rankNamesFirstParameter(String parameter, String[] names, String[] nameArrays,
                                                  String[] fields, String... arrayFields) {
-        String phrase = "lower(btrim(COALESCE(CAST(:" + parameter + " AS text),'')))";
+        String phrase = parameterPhrase(parameter);
         String allWords = prefixMatch(names, nameArrays, field ->
                 "NOT EXISTS (SELECT 1 FROM regexp_split_to_table(" + phrase
-                        + ", '[[:space:]]+') AS name_word(value) WHERE name_word.value<>'' AND POSITION(name_word.value IN lower(COALESCE("
+                        + ", ' ') AS name_word(value) WHERE name_word.value<>'' AND POSITION(name_word.value IN lower(COALESCE("
                         + field + ",'')))=0)");
         return "CASE WHEN " + phrase + "='' THEN 0 ELSE "
                 + namesFirst(phrase, names, nameArrays, allWords, rankParameter(parameter, fields, arrayFields)) + " END";
+    }
+
+    private static String parameterPhrase(String parameter) {
+        return "lower(btrim(regexp_replace(COALESCE(CAST(:" + parameter + " AS text),''), "
+                + PARAMETER_WHITESPACE + ",' ','g')))";
     }
 
     /** Positional JDBC variant; arguments are appended in the same operation as SQL construction. */

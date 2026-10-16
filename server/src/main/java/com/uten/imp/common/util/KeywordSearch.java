@@ -14,6 +14,9 @@ import java.util.stream.IntStream;
 
 /** Ordinary search: every whitespace-separated word must match at least one field. */
 public final class KeywordSearch {
+    /** A numeric expression, never PostgreSQL's ordinal ORDER BY syntax. */
+    public static final String INACTIVE_NATIVE_RANK = "CAST(0 AS integer)";
+
     private KeywordSearch() {}
 
     public static List<String> terms(String query) {
@@ -82,7 +85,7 @@ public final class KeywordSearch {
     }
 
     public static String nativeRank(String text, String prefix, String... fields) {
-        if (terms(text).isEmpty()) return "0";
+        if (terms(text).isEmpty()) return INACTIVE_NATIVE_RANK;
         StringBuilder result = new StringBuilder("CASE");
         for (int index = 0; index < fields.length; index++) {
             result.append(" WHEN lower(btrim(").append(fields[index]).append(")) = :")

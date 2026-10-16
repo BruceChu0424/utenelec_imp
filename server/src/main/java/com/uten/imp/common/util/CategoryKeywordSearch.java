@@ -201,7 +201,7 @@ public final class CategoryKeywordSearch {
 
     public static String nativeRank(String text, String parameter, String table, String category,
                                     String code, String name, String... visibleFields) {
-        if (KeywordSearch.terms(text).isEmpty()) return "0";
+        if (KeywordSearch.terms(text).isEmpty()) return KeywordSearch.INACTIVE_NATIVE_RANK;
         List<String> tiers = new ArrayList<>();
         addFieldRanks(tiers, text, parameter, name);
         addFieldRanks(tiers, text, parameter, code);

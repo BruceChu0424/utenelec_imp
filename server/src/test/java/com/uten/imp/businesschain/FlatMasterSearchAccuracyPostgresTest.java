@@ -87,6 +87,61 @@ class FlatMasterSearchAccuracyPostgresTest extends AuthSessionPostgresTestSuppor
         assertEquals(0,json(literal).size());
     }
 
+    @Test
+    void warehouseKeeperEmptySearchPreservesBusinessOrderAndEditPermission() throws Exception {
+        String salt = UUID.randomUUID().toString().substring(0, 8);
+        String token = adminToken();
+        Employee warehouseAccount = newEmployee(token, "SUB_WH");
+        Employee otherAccount = newEmployee(token, "DEPT_HR");
+        UUID warehouseDepartment = jdbc.queryForObject(
+                "SELECT id FROM departments WHERE code='SUB_WH'", UUID.class);
+        UUID otherDepartment = jdbc.queryForObject(
+                "SELECT id FROM departments WHERE code='DEPT_HR'", UUID.class);
+        jdbc.update("UPDATE employees SET full_name=? WHERE id=CAST(? AS uuid)",
+                "Z-warehouse-account-" + salt, warehouseAccount.employeeId());
+        jdbc.update("UPDATE employees SET full_name=? WHERE id=CAST(? AS uuid)",
+                "Z-other-account-" + salt, otherAccount.employeeId());
+        UUID warehouseWithoutAccount = keeperEmployee(
+                warehouseDepartment, "A-warehouse-no-account-" + salt, "W-" + salt, "active", false);
+        UUID otherWithoutAccount = keeperEmployee(
+                otherDepartment, "A-other-no-account-" + salt, "O-" + salt, "active", false);
+        UUID departed = keeperEmployee(otherDepartment, "Departed-" + salt, "R-" + salt, "resigned", false);
+        UUID deleted = keeperEmployee(otherDepartment, "Deleted-" + salt, "D-" + salt, "active", true);
+        List<String> expected = List.of(warehouseAccount.employeeId(), warehouseWithoutAccount.toString(),
+                otherAccount.employeeId(), otherWithoutAccount.toString());
+        Set<String> fixtureIds = Set.copyOf(expected);
+        List<String> initialOrder = null;
+        for (String keyword : java.util.Arrays.asList(null, "", " \t\u3000 ", "\u00a0")) {
+            var request = get("/api/master/warehouses/keeper-candidates")
+                    .header("Authorization", "Bearer " + token);
+            if (keyword != null) request.param("keyword", keyword);
+            MvcResult result = mvc.perform(request).andReturn();
+            assertEquals(200, result.getResponse().getStatus(), body(result));
+            List<String> ids = java.util.stream.StreamSupport.stream(json(result).spliterator(), false)
+                    .map(row -> row.path("employeeId").asText()).toList();
+            assertEquals(expected, ids.stream().filter(fixtureIds::contains).toList());
+            assertFalse(ids.contains(departed.toString()));
+            assertFalse(ids.contains(deleted.toString()));
+            if (initialOrder == null) initialOrder = ids;
+            else assertEquals(initialOrder, ids, "Blank searches retain the full original business order");
+        }
+        MvcResult anonymous = mvc.perform(get("/api/master/warehouses/keeper-candidates")).andReturn();
+        assertEquals(401, anonymous.getResponse().getStatus(), body(anonymous));
+        Employee unprivileged = newEmployee(token, "DEPT_ENG");
+        MvcResult denied = mvc.perform(get("/api/master/warehouses/keeper-candidates")
+                .header("Authorization", "Bearer " + unprivileged.accessToken())).andReturn();
+        assertEquals(403, denied.getResponse().getStatus(), body(denied));
+    }
+
+    private UUID keeperEmployee(UUID department, String name, String code, String status, boolean deleted) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type,is_deleted)
+                VALUES (?,?,?,'其他',?,DATE '2020-01-01',?,'regular',?)
+                """, id, code, name, department, status, deleted);
+        return id;
+    }
+
     private JsonNode search(String token,String path,String keyword,int page,int size) throws Exception {
         MvcResult result=mvc.perform(get(path).param("keyword",keyword).param("page",Integer.toString(page))
                 .param("size",Integer.toString(size)).header("Authorization","Bearer "+token)).andReturn();

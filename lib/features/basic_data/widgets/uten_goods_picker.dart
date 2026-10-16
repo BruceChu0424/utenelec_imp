@@ -665,6 +665,11 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
   Set<String> get _scopeRootIds => {for (final root in _scopeTree) root.id};
 
+  // Only the explicit BOM expansion can search unclassified goods. An empty
+  // default business tree, ordinary picker, or dedicated source stays scoped.
+  bool get _searchesAllSelectableGoods =>
+      _expandedScope && widget.dataSource == null && _searchCategoryId == null;
+
   Set<String> get _scopeCategoryIds {
     final ids = <String>{};
     void collect(List<ProductCategoryNode> nodes) {
@@ -734,7 +739,9 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             query,
             page: page,
             size: 100,
-            categoryRootIds: _scopeRootIds,
+            categoryRootIds: _searchesAllSelectableGoods
+                ? const {}
+                : _scopeRootIds,
             categoryId: _searchCategoryId,
             includeRelated: _includeRelated,
             excludeDisabled: true,
@@ -854,12 +861,15 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
         return;
       }
 
-      // 服务端 categoryRootIds 是权威分页范围；客户端再做 fail-closed 校验，避免旧服务端
-      // 忽略新参数或旧 DTO 缺 categoryId 时把 scope 外货品展示给当前业务选择器。
+      // Keep the category guard for ordinary/dedicated scopes and unknown
+      // non-null categories. Explicit all-goods search also permits genuinely
+      // unclassified rows; the repository still owns eligibility and paging.
       final allowedCategoryIds = _searchAllowedCategoryIds;
       if (result.items.any((goods) {
         final categoryId = goods.categoryId;
-        return categoryId == null || !allowedCategoryIds.contains(categoryId);
+        return categoryId == null
+            ? !_searchesAllSelectableGoods
+            : !allowedCategoryIds.contains(categoryId);
       })) {
         throw StateError('goods search returned an item outside picker scope');
       }
@@ -868,7 +878,10 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       if (needsLocation) {
         var matchingCategoryIds =
             responses[1] as Set<String>? ??
-            result.items.map((goods) => goods.categoryId!).toSet();
+            result.items
+                .map((goods) => goods.categoryId)
+                .whereType<String>()
+                .toSet();
         // Some dedicated report APIs offer only global location hints. Keep
         // those hints inside the explicit scope; rows are never filtered here.
         if (widget.dataSource != null) {
@@ -946,6 +959,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
       initiallyExpandDepth: 0,
       initiallyCollapsedNames: const {'未分类'},
       showSearch: false,
+      emptySearchText: '未找到匹配「$_query」的分类',
       visibleFilterIds: _treeVisibleIds,
       externalSearchQuery: _query,
       externalSearchLoading: _searchLoading,

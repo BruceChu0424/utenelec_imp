@@ -273,6 +273,103 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
         assertNativeParity(root,"V9.1",true,ids(expanded),ranks);
     }
 
+    @Test void allSelectableUnscopedSearchIncludesRealUncategorizedGoodsWithoutWideningEligibilityOrOwnerScope() throws Exception {
+        String admin=adminToken();Employee actor=newEmployee(admin,"DEPT_ENG");
+        UUID owner=UUID.fromString(actor.employeeId()),other=UUID.fromString(newEmployee(admin,"DEPT_ENG").employeeId());
+        UUID root=category(null,"全部可选范围"),selected=category(root,"螺丝类"),unit=activeUnit();
+        Map<String,JsonNode> before=new HashMap<>();
+        for(String query:List.of("螺丝","螺丝 4*50"))for(boolean related:List.of(false,true)) {
+            before.put(query+related,search(actor.accessToken(),null,null,query,related,1,100));
+        }
+        List<UUID> fixture=new ArrayList<>();
+        try {
+            UUID uncategorized=goods(null,"ALL-A-"+UUID.randomUUID(),"螺丝",null,null);fixture.add(uncategorized);
+            UUID categorized=goods(selected,"ALL-B-"+UUID.randomUUID(),"螺丝",null,null);fixture.add(categorized);
+            UUID hidden=goods(null,"ALL-C-"+UUID.randomUUID(),"螺丝",null,null);fixture.add(hidden);
+            UUID disabled=goods(null,"ALL-D-"+UUID.randomUUID(),"螺丝",null,null);fixture.add(disabled);
+            UUID stub=goods(null,"ALL-E-"+UUID.randomUUID(),"螺丝",null,null);fixture.add(stub);
+            UUID deleted=goods(null,"ALL-F-"+UUID.randomUUID(),"螺丝",null,null);fixture.add(deleted);
+            for(UUID id:fixture)jdbc.update("UPDATE goods SET unit_id=?,spec='4*50',issue_method='ORDER' WHERE id=?",unit,id);
+            jdbc.update("UPDATE goods SET owner_employee_id=? WHERE id=?",owner,uncategorized);
+            jdbc.update("UPDATE goods SET owner_employee_id=? WHERE id=?",other,hidden);
+            jdbc.update("UPDATE goods SET status='禁用' WHERE id=?",disabled);
+            jdbc.update("UPDATE goods SET auto_created=true WHERE id=?",stub);
+            jdbc.update("UPDATE goods SET is_deleted=true,deleted_at=NOW() WHERE id=?",deleted);
+            for(String query:List.of("螺丝","螺丝 4*50"))for(boolean related:List.of(false,true)) {
+                JsonNode baseline=before.get(query+related);
+                // Matches the explicit all-selectable picker: no category or root parameter,
+                // while disabled and migration-placeholder exclusions remain enabled.
+                JsonNode result=search(actor.accessToken(),null,null,query,related,1,100);
+                Set<String> expected=new java.util.HashSet<>(ids(baseline));
+                expected.add(uncategorized.toString());expected.add(categorized.toString());
+                assertEquals(expected,Set.copyOf(ids(result)),result.toString());
+                assertEquals(baseline.path("total").asLong()+2,result.path("total").asLong());
+                JsonNode found=null;
+                for(JsonNode row:result.path("items"))if(row.path("id").asText().equals(uncategorized.toString()))found=row;
+                assertNotNull(found);
+                assertFalse(found.hasNonNull("categoryId"));
+                assertEquals(unit.toString(),found.path("unitId").asText());
+                assertEquals("个",found.path("unitName").asText());
+                assertEquals("使用",found.path("status").asText());
+                assertFalse(found.path("autoCreated").asBoolean());
+                assertEquals("PRIMARY",found.path("searchMatchKind").asText());
+                assertEquals(query.equals("螺丝")?0:2,found.path("searchRank").asInt());
+                List<JsonNode> paged=new ArrayList<>();
+                for(int page=1;page<=(result.path("total").asInt()+1)/2;page++) {
+                    JsonNode part=search(actor.accessToken(),null,null,query,related,page,2);
+                    assertEquals(result.path("total"),part.path("total"));
+                    part.path("items").forEach(paged::add);
+                }
+                List<JsonNode> all=new ArrayList<>();result.path("items").forEach(all::add);
+                assertEquals(all,paged,"Pagination must preserve the same null-category row, rank and metadata");
+                assertEquals(List.of(categorized.toString()),ids(search(actor.accessToken(),root,null,query,related,1,100)));
+                assertEquals(List.of(categorized.toString()),ids(search(actor.accessToken(),null,selected,query,related,1,100)));
+            }
+            JsonNode administrative=search(admin,null,null,"螺丝 4*50",false,1,100);
+            assertTrue(ids(administrative).contains(hidden.toString()),"The owner-hidden row is a real primary match for an authorized administrator");
+            JsonNode withoutEligibilityFilters=request(admin,get("/api/master/goods").param("keyword","螺丝 4*50")
+                    .param("excludeDisabled","false").param("excludeStub","false").param("size","100"));
+            assertTrue(ids(withoutEligibilityFilters).containsAll(List.of(disabled.toString(),stub.toString())));
+            assertFalse(ids(withoutEligibilityFilters).contains(deleted.toString()));
+        } finally {
+            for(UUID id:fixture)jdbc.update("UPDATE goods SET is_deleted=true,deleted_at=COALESCE(deleted_at,NOW()) WHERE id=?",id);
+        }
+    }
+
+    @Test void realUncategorizedComponentKeepsBomQuantityUniquenessSelfAndCycleGuards() throws Exception {
+        String token=adminToken();UUID unit=activeUnit();
+        UUID parent=goods(null,"BOM-P-"+UUID.randomUUID(),"无分类父件",null,null);
+        UUID component=goods(null,"BOM-C-"+UUID.randomUUID(),"无分类真实组件",null,null);
+        UUID extra=goods(null,"BOM-Q-"+UUID.randomUUID(),"无分类用量校验组件",null,null);
+        for(UUID id:List.of(parent,component,extra))jdbc.update("UPDATE goods SET unit_id=?,issue_method='ORDER' WHERE id=?",unit,id);
+        JsonNode created=request(token,json(post("/api/master/goods/{id}/bom",parent),
+                Map.of("componentGoodsId",component,"qty",new java.math.BigDecimal("2.5")),token));
+        assertEquals(component.toString(),created.path("componentGoodsId").asText());
+        assertEquals("个",created.path("componentUnitName").asText());
+        assertEquals(0,new java.math.BigDecimal("2.5").compareTo(created.path("qty").decimalValue()));
+        assertBomRejected(token,parent,component,java.math.BigDecimal.ONE,409,"CONFLICT");
+        assertBomRejected(token,component,parent,java.math.BigDecimal.ONE,409,"CONFLICT");
+        assertBomRejected(token,component,component,java.math.BigDecimal.ONE,422,"VALIDATION_FAILED");
+        assertBomRejected(token,parent,extra,java.math.BigDecimal.ZERO,422,"VALIDATION_FAILED");
+        JsonNode current=request(token,get("/api/master/goods/{id}/bom",parent));
+        assertEquals(1,current.size());
+        assertEquals(created.path("id"),current.get(0).path("id"));
+        assertEquals(created.path("qty"),current.get(0).path("qty"));
+        assertEquals(0,request(token,get("/api/master/goods/{id}/bom",component)).size());
+    }
+
+    private void assertBomRejected(String token,UUID parent,UUID component,java.math.BigDecimal qty,int status,String code) throws Exception {
+        MvcResult result=mvc.perform(json(post("/api/master/goods/{id}/bom",parent),Map.of("componentGoodsId",component,"qty",qty),token)).andReturn();
+        assertEquals(status,result.getResponse().getStatus(),body(result));
+        assertEquals(code,json(result).path("code").asText());
+    }
+
+    private UUID activeUnit() {
+        UUID id=UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name,status) VALUES(?,?,'个','使用')",id,"GP-UNIT-"+id);
+        return id;
+    }
+
     private void assertNativeParity(UUID root,String keyword,boolean related,List<String> expected,Map<String,Integer> expectedRanks) {
         assertNativeParity(root,keyword,related,expected,expectedRanks,GoodsSearchPolicy.SubjectMode.STRICT);
     }
@@ -287,8 +384,9 @@ class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
         for(var row:rows)assertEquals(expectedRanks.get(row.get("id").toString()),((Number)row.get("search_rank")).intValue());
     }
     private JsonNode search(String token,UUID root,UUID selected,String keyword,boolean related,int page,int size) throws Exception {
-        var request=get("/api/master/goods").param("categoryRootIds",root.toString()).param("keyword",keyword).param("includeRelated",Boolean.toString(related))
+        var request=get("/api/master/goods").param("keyword",keyword).param("includeRelated",Boolean.toString(related))
                 .param("excludeDisabled","true").param("excludeStub","true").param("page",Integer.toString(page)).param("size",Integer.toString(size));
+        if(root!=null)request.param("categoryRootIds",root.toString());
         if(selected!=null)request.param("categoryId",selected.toString());
         return request(token,request);
     }

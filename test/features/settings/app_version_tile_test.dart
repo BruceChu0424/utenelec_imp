@@ -108,7 +108,7 @@ void main() {
     },
   );
 
-  for (final release in ['2.5.17', '2.5.18']) {
+  for (final release in ['2.5.17', '2.5.18', '2.5.19']) {
     for (final language in ['zh', 'en', 'ko']) {
       testWidgets(
         '$release $language notes remain localized and usable on a narrow screen',
@@ -144,6 +144,15 @@ void main() {
                       ]) {
               expect(find.textContaining(note), findsOneWidget);
             }
+            final launcherFix = switch (language) {
+              'en' => 'Fixed database migration startup',
+              'ko' => '마이그레이션이 시작되지',
+              _ => '迁移程序无法启动',
+            };
+            expect(
+              find.textContaining(launcherFix),
+              release == '2.5.19' ? findsOneWidget : findsNothing,
+            );
             if (language != 'zh') {
               expect(find.textContaining('选择滑窗的清空'), findsNothing);
             }

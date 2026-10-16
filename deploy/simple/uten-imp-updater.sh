@@ -414,7 +414,7 @@ do_activate() {
       . "$UTEN_MIGRATOR_ENV"
       export UTEN_MIGRATOR_DB_PASSWORD
       cd "$RELEASES_DIR/$version"
-      timeout 900 runuser -u uten-imp -- /usr/bin/java \
+      timeout 900 /usr/sbin/runuser -u uten-imp -- /usr/bin/java \
         -Dlogging.file.name=/var/log/uten-imp/migrator.log \
         -jar "$RELEASES_DIR/$version/server/uten-imp-migrator.jar"
     ) || die "migrator 失败：库已备份在 $backup_file，应用保持停止，请人工排查"

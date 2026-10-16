@@ -110,6 +110,21 @@ class _ReleaseNotesDialog extends StatelessWidget {
         l10n.release2518CompanyConnections,
         l10n.release2518LayoutAndTrace,
       ],
+      '2.5.19' => [
+        switch (Localizations.localeOf(context).languageCode) {
+          'en' =>
+            'Fixed database migration startup during server upgrades, while '
+                'keeping backups, permission isolation, and health checks.',
+          'ko' =>
+            '서버 업데이트 중 데이터베이스 마이그레이션이 시작되지 않던 문제를 수정했습니다. '
+                '백업, 권한 분리 및 상태 점검 절차는 유지됩니다.',
+          _ => '修复服务器升级时迁移程序无法启动的问题，保留备份、权限隔离和健康检查流程。',
+        },
+        l10n.release2518ServerUpdates,
+        l10n.release2518Storage,
+        l10n.release2518CompanyConnections,
+        l10n.release2518LayoutAndTrace,
+      ],
       _ => <String>[],
     };
     final theme = Theme.of(context);

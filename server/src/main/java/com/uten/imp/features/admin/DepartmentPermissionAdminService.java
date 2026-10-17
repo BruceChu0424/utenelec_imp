@@ -303,9 +303,9 @@ public class DepartmentPermissionAdminService {
                 b.revokes().stream().sorted().toList(),
                 b.effective().stream().sorted().toList(),
                 target.isSuperAdmin(),
-                PermissionDependencyGrantPlanner.requirements(permissionRepo.findAll(), PermissionDependencyGrantPlanner.configured(b)),
+                PermissionDependencyGrantPlanner.requirements(permissionRepo.findAll(), b.configuredPermissions()),
                 target.isSuperAdmin() ? Map.of() : PermissionDependencyGrantPlanner.missing(permissionRepo.findAll(),
-                        PermissionDependencyGrantPlanner.configured(b)));
+                        b.configuredPermissions()));
     }
 
     private Set<String> departmentInheritedPermissions(UUID departmentId) {

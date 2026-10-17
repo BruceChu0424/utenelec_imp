@@ -2,7 +2,6 @@ package com.uten.imp.features.rbac;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.auth.PermissionResolver;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -16,15 +15,6 @@ import java.util.stream.Collectors;
 /** Enforces hard reads and assists navigation without widening explicit revokes or grant ceilings. */
 public final class PermissionDependencyGrantPlanner {
     private PermissionDependencyGrantPlanner() {}
-
-    public static Set<String> configured(PermissionResolver.PermBreakdown state) {
-        Set<String> configured = new LinkedHashSet<>(state.baselinePermissions());
-        configured.addAll(state.departmentPermissions());
-        configured.addAll(state.grants());
-        configured.addAll(state.managerGrants());
-        configured.removeAll(state.revokes());
-        return configured;
-    }
 
     public static Set<String> additions(Collection<Permission> permissions, Collection<String> enabled,
             Collection<String> available, Collection<String> blocked, Predicate<Permission> grantable,

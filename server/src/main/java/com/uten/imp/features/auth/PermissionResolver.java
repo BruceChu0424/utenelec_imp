@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -145,7 +146,17 @@ public class PermissionResolver {
                                 List<String> legacyUnknownRevokes,
                                 List<String> managerGrants,
                                 boolean contextualDelegationPresent,
-                                List<String> revokes, Set<String> effective) {}
+                                List<String> revokes, Set<String> effective) {
+        /** Source grants before operation-dependency normalization; explicit revokes still win. */
+        public Set<String> configuredPermissions() {
+            Set<String> configured = new LinkedHashSet<>(baselinePermissions);
+            configured.addAll(departmentPermissions);
+            configured.addAll(grants);
+            configured.addAll(managerGrants);
+            configured.removeAll(revokes);
+            return Set.copyOf(configured);
+        }
+    }
 
     /**
      * Base and full permission views produced from one base-source query pass.

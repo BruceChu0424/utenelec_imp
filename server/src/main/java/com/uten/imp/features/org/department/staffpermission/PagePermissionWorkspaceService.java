@@ -444,8 +444,8 @@ public class PagePermissionWorkspaceService {
         List<Permission> dependencyCatalog = permissionRepo.findAll();
         Map<String, Permission> allPermissions = dependencyCatalog.stream().collect(Collectors.toMap(
                 Permission::getCode, Function.identity()));
-        Set<String> configured = PermissionDependencyGrantPlanner.configured(targetBreakdowns.full());
-        Set<String> baseConfigured = PermissionDependencyGrantPlanner.configured(targetBase);
+        Set<String> configured = new LinkedHashSet<>(targetBreakdowns.full().configuredPermissions());
+        Set<String> baseConfigured = targetBase.configuredPermissions();
         Set<String> blocked = new LinkedHashSet<>(targetBase.revokes());
         for (var change : changes) {
             if (change.enabled()) {
@@ -1074,7 +1074,7 @@ public class PagePermissionWorkspaceService {
                 targetBreakdowns,
                 delegation);
         Set<String> configured = targetBreakdowns == null ? Set.of()
-                : PermissionDependencyGrantPlanner.configured(targetBreakdowns.full());
+                : targetBreakdowns.full().configuredPermissions();
         boolean configuredEnabled = configured.contains(code) || (!centralMode && delegation != null && delegation.isEnabled());
         Set<String> blockedReads = targetBreakdowns == null ? Set.of()
                 : Set.copyOf(targetBreakdowns.base().revokes());
@@ -1178,7 +1178,7 @@ public class PagePermissionWorkspaceService {
             return new Editability(false, "不在你可转授的权限范围内");
         }
         if (targetBreakdowns != null
-                && PermissionDependencyGrantPlanner.configured(targetBreakdowns.base()).contains(code)
+                && targetBreakdowns.base().configuredPermissions().contains(code)
                 && !enabledHistorical) {
             return new Editability(false, "已由基础、部门或中央个人授权配置，请在原授权入口处理");
         }

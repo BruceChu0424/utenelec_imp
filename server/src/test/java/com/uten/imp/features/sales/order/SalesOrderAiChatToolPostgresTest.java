@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * sales_order_progress 的对象范围与销售订货单详情接口相同(P1-3): 归属人看得到事实, 同部门没有全量查看的同事与
- * 不存在的单号得到同一句中性回答, 其它部门根本用不了这个工具; 存下的回答在范围或数据变化后不再展示;
+ * 不存在的单号得到同一句中性回答; 跨部门按相同查看权限和对象范围读取, 存下的回答在范围或数据变化后不再展示;
  * 查到一次写一条与详情页相同的查看审计, 查不到不写。
  */
 class SalesOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSupport {
@@ -37,6 +37,8 @@ class SalesOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSuppo
         outsider = newEmployee(adminToken(), "DEPT_HR");
         revoke(owner, "sales:view:all");
         revoke(colleague, "sales:view:all");
+        revoke(outsider, "sales_order:view");
+        revoke(outsider, "sales:view:all");
 
         UUID unit = unit("个");
         UUID goods = goods("AIT-SO-" + UUID.randomUUID().toString().substring(0, 8), "测试水杯", unit);
@@ -102,10 +104,27 @@ class SalesOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSuppo
     }
 
     @Test
-    void anotherDepartmentCannotUseTheTool() {
+    void aReaderWithoutOrderViewCannotUseTheTool() {
         actAs(outsider);
         assertThat(tool.available()).isFalse();
         assertForbidden(() -> tool.execute(Map.of("orderNo", orderNo)));
+    }
+
+    @Test
+    void anotherDepartmentWithOrderViewUsesTheToolWithinTheSameOwnerScope() {
+        grant(outsider, "sales_order:view");
+        actAs(outsider);
+        assertThat(tool.available()).isTrue();
+        Map<String, Object> hidden = tool.execute(Map.of("orderNo", orderNo));
+        assertThat(hidden.get("reply")).isEqualTo(SalesOrderAiChatTool.NOT_FOUND);
+        assertThat(tool.modelFacts(hidden)).isEmpty();
+        assertThat(viewRecords(outsider)).isEmpty();
+
+        grantOwnerReadScope(outsider, "sales", owner);
+        actAs(outsider);
+        Map<String, Object> visible = tool.execute(Map.of("orderNo", orderNo));
+        assertThat((String) visible.get("reply")).contains("销售订货单 " + orderNo, "订 10 个");
+        assertThat(viewRecords(outsider)).hasSize(1);
     }
 
     /**

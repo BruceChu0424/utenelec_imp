@@ -86,8 +86,13 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
     }
 
     @Test
-    void productionStaffCannotForgeSalesPageEvenWithPageHintAndStraySalesAuthority() throws Exception {
+    void pageHintCannotGrantASalesGuideToStaffWithoutItsViewPermission() throws Exception {
         Staff production = newEmployee(adminToken(), "WS_ZHUSU");
+        jdbc.update("""
+                INSERT INTO user_permission_overrides(user_id,permission_id,effect)
+                SELECT ?::uuid,id,'revoke' FROM permissions WHERE code='sales_quote:view'
+                ON CONFLICT(user_id,permission_id) DO UPDATE SET effect='revoke',active=TRUE
+                """, production.userId());
         String staffToken = login(production.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
         assertThat(getJson("/api/ai/chat/capabilities", staffToken).path("canChat").asBoolean()).isTrue();
         FAKE.defaultResponse(FakeAiProviderServer.openAiContent(PAGE_HELP));
@@ -97,6 +102,20 @@ class AiChatProviderRoutingPostgresTest extends AiPlatformPostgresTestSupport {
         assertThat(FAKE.chatRequestCount()).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ai_jobs WHERE submitted_by_user=?::uuid AND kind='ERP_CHAT'",
                 Long.class, production.userId())).isZero();
+    }
+
+    @Test
+    void productionStaffWithSalesViewCanReadTheGuideWithoutAProviderCallOrBusinessWrite() throws Exception {
+        Staff production = newEmployee(adminToken(), "WS_ZHUSU");
+        String staffToken = login(production.loginAccount(), EMPLOYEE_PASSWORD).path("accessToken").asText();
+        long quotes = jdbc.queryForObject("SELECT count(*) FROM sales_quotes", Long.class);
+        long orders = jdbc.queryForObject("SELECT count(*) FROM sales_orders", Long.class);
+        String id = submit(staffToken, Map.of("message", QUESTION, "pageContext", QUOTE_PAGE, "intentHint", "PAGE_HELP"));
+
+        assertQuoteExplanation(awaitSucceeded(staffToken, id));
+        assertThat(FAKE.chatRequestCount()).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_quotes", Long.class)).isEqualTo(quotes);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders", Long.class)).isEqualTo(orders);
     }
 
     @Test

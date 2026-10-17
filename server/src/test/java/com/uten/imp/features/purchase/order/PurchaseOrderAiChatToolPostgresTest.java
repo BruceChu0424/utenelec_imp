@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * purchase_order_status 的对象范围与采购订货单详情接口相同(P1-3): 制单人看得到状态和到货、质检数量, 同部门
- * 没有全量查看的同事与不存在的单号得到同一句中性回答, 其它部门用不了这个工具; 查到一次写一条与详情页相同的
+ * 没有全量查看的同事与不存在的单号得到同一句中性回答; 跨部门按相同查看权限和对象范围读取。查到一次写一条与详情页相同的
  * 查看审计, 查不到不写。
  */
 class PurchaseOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSupport {
@@ -43,6 +43,9 @@ class PurchaseOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSu
         outsider = newEmployee(adminToken(), "DEPT_HR");
         revoke(owner, "purchase:view:all");
         revoke(colleague, "purchase:view:all");
+        revoke(outsider, "purchase_order:view");
+        revoke(outsider, "finance_order_approval:view");
+        revoke(outsider, "purchase:view:all");
 
         unit = unit("箱");
         String goodsCode = "AIT-PO-" + UUID.randomUUID().toString().substring(0, 8);
@@ -105,10 +108,27 @@ class PurchaseOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSu
     }
 
     @Test
-    void anotherDepartmentCannotUseTheTool() {
+    void aReaderWithoutOrderViewCannotUseTheTool() {
         actAs(outsider);
         assertThat(tool.available()).isFalse();
         assertForbidden(() -> tool.execute(Map.of("orderNo", orderNo)));
+    }
+
+    @Test
+    void anotherDepartmentWithOrderViewUsesTheToolWithinTheSameOwnerScope() {
+        grant(outsider, "purchase_order:view");
+        actAs(outsider);
+        assertThat(tool.available()).isTrue();
+        Map<String, Object> hidden = tool.execute(Map.of("orderNo", orderNo));
+        assertThat(hidden.get("reply")).isEqualTo(PurchaseOrderAiChatTool.NOT_FOUND);
+        assertThat(tool.modelFacts(hidden)).isEmpty();
+        assertThat(viewRecords(outsider)).isEmpty();
+
+        grantOwnerReadScope(outsider, "purchase", owner);
+        actAs(outsider);
+        Map<String, Object> visible = tool.execute(Map.of("orderNo", orderNo));
+        assertThat((String) visible.get("reply")).contains("采购订货单 " + orderNo, "订 10 箱");
+        assertThat(viewRecords(outsider)).hasSize(1);
     }
 
     /**

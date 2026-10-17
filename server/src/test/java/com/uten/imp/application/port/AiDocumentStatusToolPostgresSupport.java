@@ -54,13 +54,37 @@ public abstract class AiDocumentStatusToolPostgresSupport extends AiPlatformPost
         }
     }
 
+    /** Explicit central grant, including re-enabling a permission revoked by a negative fixture. */
+    protected void grant(Staff staff, String... permissions) {
+        for (String permission : permissions) {
+            jdbc.update("""
+                    INSERT INTO user_permission_overrides(user_id, permission_id, effect, authority_source)
+                    SELECT ?::uuid, id, 'grant', 'SUPER_ADMIN_CONFIRMED' FROM permissions WHERE code = ?
+                    ON CONFLICT (user_id, permission_id) DO UPDATE
+                    SET effect = 'grant', authority_source = 'SUPER_ADMIN_CONFIRMED', active = TRUE
+                    """, staff.userId(), permission);
+        }
+    }
+
     /** 个人覆盖撤掉一个权限点(如全量查看), 让归属范围生效。 */
     protected void revoke(Staff staff, String permission) {
         jdbc.update("""
                 INSERT INTO user_permission_overrides(user_id, permission_id, effect)
                 SELECT ?::uuid, id, 'revoke' FROM permissions WHERE code = ?
-                ON CONFLICT (user_id, permission_id) DO UPDATE SET effect = 'revoke'
+                ON CONFLICT (user_id, permission_id) DO UPDATE SET effect = 'revoke', active = TRUE
                 """, staff.userId(), permission);
+    }
+
+    /** A real owner-scope grant preserves the source document and its responsible employee. */
+    protected void grantOwnerReadScope(Staff reader, String scope, Staff owner) {
+        int changed = jdbc.update("""
+                INSERT INTO user_data_scopes(user_id, scope, owner_employee_id, owner_employment_generation)
+                SELECT ?::uuid, ?, employee.id,
+                       (SELECT count(*) FROM employment_history history
+                        WHERE history.employee_id=employee.id AND history.event_type='rehire')
+                FROM employees employee WHERE employee.id=?::uuid
+                """, reader.userId(), scope, owner.employeeId());
+        assertThat(changed).isEqualTo(1);
     }
 
     /** 以该员工当前的服务端账号状态作为调用主体(权限、部门归属都按库里现值)。 */

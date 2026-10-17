@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
@@ -54,7 +55,8 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
         MvcResult granted = change(admin, target, true, 0, proof);
         assertEquals(200, granted.getResponse().getStatus(), body(granted));
         assertEquals("grant", effect(target));
-        assertEquals(1, overrides(target));
+        assertEquals(List.of("finance_asset:delete=grant", "finance_asset:view=grant"),
+                activeOverrideEffects(target));
         assertEquals(0, jdbc.queryForObject(
                 "SELECT count(*) FROM auth_sessions WHERE step_up_token_hash=?", Integer.class,
                 com.uten.imp.common.util.HashUtil.sha256(proof)));
@@ -65,6 +67,8 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
         MvcResult revoked = change(refreshedAdmin, target, false, 1, stepUp(refreshedAdmin, ADMIN_PASSWORD));
         assertEquals(200, revoked.getResponse().getStatus(), body(revoked));
         assertEquals("revoke", effect(target));
+        assertEquals(List.of("finance_asset:delete=revoke", "finance_asset:view=grant"),
+                activeOverrideEffects(target));
         assertEquals(2, auditChanges(target));
     }
 
@@ -95,12 +99,47 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
         Employee target = newEmployee(admin, "DEPT_ENG");
         assertEquals(Boolean.FALSE, jdbc.queryForObject(
                 "SELECT high_risk FROM permissions WHERE code='goods:cost:edit'", Boolean.class));
+        // Establish the sensitive read through a separate, explicitly authenticated grant.
+        // The following request then isolates cost:edit's policy from the read's own policy.
+        MvcResult readGranted = mvc.perform(json(put(endpoint(target)), Map.of("changes", List.of(
+                Map.of("code", "goods:cost:view", "enabled", true, "expectedVersion", 0))), admin)
+                .param("surfaceKey", "basic.goods").param("departmentId", department(target))
+                .header("X-Uten-Step-Up", stepUp(admin, ADMIN_PASSWORD))).andReturn();
+        assertEquals(200, readGranted.getResponse().getStatus(), body(readGranted));
+        assertEquals(List.of("goods:cost:view=grant"), activeOverrideEffects(target));
+        int existingOverrides = overrides(target), existingAudits = auditChanges(target);
+        admin = adminToken();
+        MvcResult currentAdmin = me(admin);
+        assertEquals(200, currentAdmin.getResponse().getStatus(), body(currentAdmin));
+
         MvcResult result = mvc.perform(json(put(endpoint(target)), Map.of("changes", List.of(
                 Map.of("code", "goods:view", "enabled", true, "expectedVersion", 0),
                 Map.of("code", "goods:cost:edit", "enabled", true, "expectedVersion", 0))), admin)
                 .param("surfaceKey", "basic.goods").param("departmentId", department(target))).andReturn();
         requireReauthentication(result);
-        assertEquals(0, overrides(target), "a mixed request cannot partially apply the ordinary row");
+        assertEquals(List.of("goods:cost:view=grant"), activeOverrideEffects(target));
+        assertEquals(existingOverrides, overrides(target), "a mixed request cannot partially apply the ordinary row");
+        assertEquals(existingAudits, auditChanges(target), "the refused mixed request must add no authorization audit");
+    }
+
+    @Test
+    void aMissingSensitiveCostReadCannotBeSilentlyGrantedWithoutStepUp() throws Exception {
+        String admin = adminToken();
+        Employee target = newEmployee(admin, "DEPT_ENG");
+        MvcResult before = me(target.accessToken());
+        assertEquals(200, before.getResponse().getStatus(), body(before));
+        assertFalse(json(before).path("permissions").toString().contains("\"goods:cost:view\""));
+
+        MvcResult rejected = mvc.perform(json(put(endpoint(target)), Map.of("changes", List.of(
+                Map.of("code", "goods:view", "enabled", true, "expectedVersion", 0),
+                Map.of("code", "goods:cost:edit", "enabled", true, "expectedVersion", 0))), admin)
+                .param("surfaceKey", "basic.goods").param("departmentId", department(target))).andReturn();
+
+        assertEquals(400, rejected.getResponse().getStatus(), body(rejected));
+        assertEquals("BUSINESS", json(rejected).path("code").asText());
+        assertTrue(json(rejected).path("message").asText().contains("查看货品成本"));
+        assertEquals(0, overrides(target), "neither the ordinary row nor the sensitive read may be partially granted");
+        assertEquals(0, auditChanges(target));
     }
 
     @Test
@@ -153,6 +192,16 @@ class PagePermissionStepUpPostgresTest extends AuthSessionPostgresTestSupport {
     private int overrides(Employee target) {
         return jdbc.queryForObject("SELECT count(*) FROM user_permission_overrides WHERE user_id=?::uuid",
                 Integer.class, target.userId());
+    }
+
+    private List<String> activeOverrideEffects(Employee target) {
+        return jdbc.queryForList("""
+                SELECT permission.code || '=' || overrides.effect
+                FROM user_permission_overrides overrides
+                JOIN permissions permission ON permission.id=overrides.permission_id
+                WHERE overrides.user_id=?::uuid AND overrides.active
+                ORDER BY permission.code
+                """, String.class, target.userId());
     }
 
     private String effect(Employee target) {

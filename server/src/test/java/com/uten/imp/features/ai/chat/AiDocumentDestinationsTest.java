@@ -3,6 +3,7 @@ package com.uten.imp.features.ai.chat;
 import com.uten.imp.features.ai.chat.AiDocumentIntent.Intent;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.SecurityContextCurrentUser;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -11,6 +12,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -23,14 +25,14 @@ class AiDocumentDestinationsTest {
     /** The same shape the client contract test parses (test/shared/ai/ai_document_destinations_contract_test.dart). */
     private static final Pattern LINE = Pattern.compile(
             "^\\s*new Destination\\(\"([a-z_]+)\", \"([^\"]+)\", \"([^\"]+)\", List\\.of\\((\"[a-z_:]+\"(?:, \"[a-z_:]+\")*)\\), \"([^\"]+)\"\\),$");
-    private final AiChatAccessPolicy access = mock(AiChatAccessPolicy.class);
+    private final SecurityContextCurrentUser current = mock(SecurityContextCurrentUser.class);
+    private final AiChatAccessPolicy access = new AiChatAccessPolicy(current, mock(org.springframework.jdbc.core.JdbcTemplate.class));
     private final AiDocumentWorkflows workflows = new AiDocumentWorkflows(access);
     private final AiDocumentDestinations destinations = new AiDocumentDestinations(access, workflows);
 
     private void actor(boolean superAdmin, String... permissions) {
         var actor = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "staff", Set.of(permissions), false, true, superAdmin);
-        when(access.requireChat()).thenReturn(actor);
-        when(access.domains()).thenReturn(superAdmin ? Set.of("SELF", "SALES", "HR") : Set.of("SELF", "HR"));
+        when(current.get()).thenReturn(Optional.of(actor));
     }
 
     @Test void catalogIsDeclaredOnePagePerLiteralLineWithFixedSafeRoutes() throws Exception {
@@ -100,9 +102,14 @@ class AiDocumentDestinationsTest {
         assertThat(reason(invoice, "填写报销申请")).isEqualTo("需要「报销申请」权限，请联系管理员开通。");
         var unknown = destinations.advise("UNKNOWN", Intent.NONE, List.of("SALES_ORDER", "SALES_QUOTE", "EXPENSE_CLAIM"));
         assertThat(unknown.blocked()).isEmpty();
+        var unavailableQuote = destinations.advise("SALES_QUOTATION", Intent.NONE, List.of("SALES_ORDER"));
+        assertThat(reason(unavailableQuote, "填写销售订货单"))
+                .isEqualTo("需要「销售订货单查看和新建」权限，请联系管理员开通。");
         actor(false, "ai:use", "sales_order:view", "sales_order:create");
         var quote = destinations.advise("SALES_QUOTATION", Intent.NONE, List.of("SALES_ORDER"));
-        assertThat(reason(quote, "填写销售订货单")).as("permission held, but not in a sales department").contains("销售部门");
+        assertThat(access.domains()).contains("SALES");
+        assertThat(reason(quote, "填写销售订货单")).as("effective permissions authorize the form without department membership").isNull();
+        assertThat(workflows.available()).extracting(item -> item.get("workflow")).containsExactly("SALES_ORDER");
     }
 
     private static String reason(AiDocumentDestinations.Advice advice, String title) {

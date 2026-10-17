@@ -26,6 +26,7 @@ class PermissionResolverDependencyTest {
                 List.<Object[]>of(new Object[]{"sales_shipment_finance:approve", "grant", "SUPER_ADMIN_CONFIRMED"}));
         var missing = fixture.resolver.breakdownOf(fixture.actor);
         assertThat(missing.grants()).contains("sales_shipment_finance:approve");
+        assertThat(missing.configuredPermissions()).containsExactly("sales_shipment_finance:approve");
         assertThat(missing.effective()).doesNotContain("sales_shipment_finance:approve");
         when(fixture.permissions.findBaselineCodes()).thenReturn(List.of("sales_shipment_finance:view"));
         assertThat(fixture.resolver.permsOf(fixture.actor)).containsExactlyInAnyOrder(
@@ -43,7 +44,19 @@ class PermissionResolverDependencyTest {
         var result = fixture.resolver.breakdownOf(fixture.actor);
         assertThat(result.revokes()).containsExactly("sales_shipment_finance:view");
         assertThat(result.grants()).containsExactly("sales_shipment_finance:approve");
+        assertThat(result.configuredPermissions()).containsExactly("sales_shipment_finance:approve");
         assertThat(result.effective()).isEmpty();
+    }
+
+    @Test
+    void configuredSourcesAreCombinedBeforeNormalizationWithoutRestoringAnExplicitRevoke() {
+        var state = new PermissionResolver.PermBreakdown(null, null,
+                Set.of("department", "revoked"), Set.of("baseline", "revoked"),
+                List.of("personal", "revoked"), List.of(), List.of(), List.of(),
+                List.of("delegated", "revoked"), true, List.of("revoked"), Set.of("normalized"));
+        assertThat(state.configuredPermissions()).containsExactlyInAnyOrder(
+                "baseline", "department", "personal", "delegated");
+        assertThat(state.effective()).containsExactly("normalized");
     }
 
     @Test

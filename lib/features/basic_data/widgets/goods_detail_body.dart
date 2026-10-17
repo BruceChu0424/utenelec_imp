@@ -505,6 +505,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           readBoundary: widget.readBoundary,
           initialValue: ctx.initialValue,
           initialDisplay: _mouldDisplay(),
+          initialDisplayId: _detail?.mouldId,
           onChanged: ctx.onChanged,
         ),
       ),

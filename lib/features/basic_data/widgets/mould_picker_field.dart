@@ -3,6 +3,8 @@
 //
 // 字段 State 分开保留已绑定记录的显示与尚未提交的查找文字；MasterEditForm 的当前值 /
 // 恢复快照负责正式 UUID，普通输入仅查找候选，选中真实记录后才回写，取消恢复绑定显示。
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +14,7 @@ import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/auth/permissions.dart';
 import '../models/product_category_node.dart';
 import '../repositories/mould_category_repository.dart';
 import 'master_data_table_view.dart';
@@ -26,6 +29,7 @@ class MouldPickerField extends ConsumerStatefulWidget {
     required this.initialDisplay,
     required this.onChanged,
     this.readBoundary,
+    this.initialDisplayId,
   });
 
   /// 表单提交值（模具 UUID 或空串/null）。
@@ -33,6 +37,10 @@ class MouldPickerField extends ConsumerStatefulWidget {
 
   /// 只读展示文案（如「19-05-43-A Z9 146 45A插面」；详情 mouldCode/mouldName 拼接）。
   final String? initialDisplay;
+
+  /// UUID belonging to [initialDisplay]. A goods-detail summary is usable
+  /// without another mould read only when it describes the current value.
+  final String? initialDisplayId;
 
   /// 回写提交值（mouldId 字段，UUID 字符串或 null）。
   final void Function(dynamic value) onChanged;
@@ -48,6 +56,10 @@ class MouldPickerField extends ConsumerStatefulWidget {
 class _MouldPickerFieldState extends ConsumerState<MouldPickerField> {
   late final TextEditingController _ctl;
   late String _selectedDisplay;
+  String? _selectedId;
+  bool _snapshotDisplay = false;
+  bool _writingDisplay = false;
+  int _displayVersion = 0;
   bool _queryDirty = false;
   int _readGeneration = 0;
   ProviderSubscription<SensitiveReadBoundary>? _readSubscription;
@@ -55,9 +67,89 @@ class _MouldPickerFieldState extends ConsumerState<MouldPickerField> {
   @override
   void initState() {
     super.initState();
-    _selectedDisplay = widget.initialDisplay ?? '';
-    _ctl = TextEditingController(text: _selectedDisplay);
+    _ctl = TextEditingController();
+    _adoptValue(widget.initialValue);
     _bindBoundary();
+    if (!_snapshotDisplay) unawaited(_resolveBoundDisplay());
+  }
+
+  static String? _id(String? value) =>
+      value == null || value.trim().isEmpty ? null : value.trim();
+
+  String _unresolvedDisplay() => '已关联模具（名称待加载）';
+
+  void _writeDisplay(String display) {
+    _writingDisplay = true;
+    _ctl.text = display;
+    _writingDisplay = false;
+  }
+
+  void _adoptValue(String? value) {
+    _displayVersion++;
+    _selectedId = _id(value);
+    _snapshotDisplay =
+        _selectedId != null &&
+        _id(widget.initialDisplayId) == _selectedId &&
+        (widget.initialDisplay?.trim().isNotEmpty ?? false);
+    _selectedDisplay = _selectedId == null
+        ? ''
+        : _snapshotDisplay
+        ? widget.initialDisplay!.trim()
+        : _unresolvedDisplay();
+    _queryDirty = false;
+    _writeDisplay(_selectedDisplay);
+  }
+
+  Future<void> _resolveBoundDisplay() async {
+    final id = _selectedId;
+    final version = _displayVersion;
+    final boundary = widget.readBoundary;
+    final generation = _readGeneration;
+    if (id == null || !_isCurrent(boundary, generation)) return;
+    if (boundary != null &&
+        !boundary.superAdmin &&
+        !boundary.permissions.contains(Perm.mouldView)) {
+      _unavailableDisplay();
+      return;
+    }
+    try {
+      final detail = await ref.read(mouldRepositoryProvider).detail(id);
+      if (!_isCurrent(boundary, generation) ||
+          version != _displayVersion ||
+          _selectedId != id) {
+        return;
+      }
+      if (detail.id != id) {
+        _unavailableDisplay();
+        return;
+      }
+      final display = _mouldLabel(
+        MouldListItem(id: detail.id, code: detail.code, name: detail.name),
+      );
+      if (display.isEmpty) {
+        _unavailableDisplay();
+        return;
+      }
+      setState(() {
+        _selectedDisplay = display;
+        if (!_queryDirty) _writeDisplay(display);
+      });
+    } catch (_) {
+      // A missing/restricted reference remains a truthful unresolved UUID.
+      // Resolving presentation must never clear or replace the form's value.
+      if (_isCurrent(boundary, generation) &&
+          version == _displayVersion &&
+          _selectedId == id) {
+        _unavailableDisplay();
+      }
+    }
+  }
+
+  void _unavailableDisplay() {
+    setState(() {
+      _selectedDisplay = '已关联模具（名称暂不可用）';
+      if (!_queryDirty) _writeDisplay(_selectedDisplay);
+    });
   }
 
   void _bindBoundary() {
@@ -66,12 +158,29 @@ class _MouldPickerFieldState extends ConsumerState<MouldPickerField> {
         ? null
         : ref.listenManual(sensitiveReadBoundaryProvider, (previous, next) {
             if (!mounted || previous == next) return;
-            setState(() => _readGeneration++);
+            setState(() {
+              _readGeneration++;
+              _displayVersion++;
+              if (!_snapshotDisplay && _selectedId != null) {
+                _selectedDisplay = _unresolvedDisplay();
+                _queryDirty = false;
+                _writeDisplay(_selectedDisplay);
+              }
+            });
+            final generation = _readGeneration;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted &&
+                  generation == _readGeneration &&
+                  !_snapshotDisplay) {
+                unawaited(_resolveBoundDisplay());
+              }
+            });
           });
   }
 
   bool _isCurrent(SensitiveReadBoundary? boundary, int generation) =>
       mounted &&
+      !_writingDisplay &&
       generation == _readGeneration &&
       widget.readBoundary == boundary &&
       (boundary == null || boundary == ref.read(sensitiveReadBoundaryProvider));
@@ -79,10 +188,30 @@ class _MouldPickerFieldState extends ConsumerState<MouldPickerField> {
   @override
   void didUpdateWidget(covariant MouldPickerField oldWidget) {
     super.didUpdateWidget(oldWidget);
+    var resolve = false;
     if (oldWidget.readBoundary != widget.readBoundary) {
       _readGeneration++;
+      _displayVersion++;
       _bindBoundary();
+      resolve = !_snapshotDisplay;
     }
+    if (_id(oldWidget.initialValue) != _id(widget.initialValue)) {
+      _readGeneration++;
+      if (_id(widget.initialValue) != _selectedId) {
+        _adoptValue(widget.initialValue);
+        resolve = !_snapshotDisplay;
+      }
+    } else if (_selectedId != null &&
+        _id(widget.initialDisplayId) == _selectedId &&
+        (oldWidget.initialDisplay != widget.initialDisplay ||
+            oldWidget.initialDisplayId != widget.initialDisplayId) &&
+        (widget.initialDisplay?.trim().isNotEmpty ?? false)) {
+      _displayVersion++;
+      _snapshotDisplay = true;
+      _selectedDisplay = widget.initialDisplay!.trim();
+      if (!_queryDirty) _writeDisplay(_selectedDisplay);
+    }
+    if (resolve) unawaited(_resolveBoundDisplay());
   }
 
   @override
@@ -94,9 +223,13 @@ class _MouldPickerFieldState extends ConsumerState<MouldPickerField> {
 
   void _set(dynamic uuid, String display) {
     setState(() {
+      _displayVersion++;
+      _readGeneration++;
+      _selectedId = _id(uuid as String?);
+      _snapshotDisplay = false;
       _selectedDisplay = display;
       _queryDirty = false;
-      _ctl.text = display;
+      _writeDisplay(display);
     });
     widget.onChanged(uuid);
   }

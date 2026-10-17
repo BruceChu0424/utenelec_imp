@@ -11,11 +11,16 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/models/color_node.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
+import 'package:uten_imp/features/basic_data/models/mould_node.dart';
 import 'package:uten_imp/features/basic_data/models/unit_node.dart';
 import 'package:uten_imp/features/basic_data/pages/goods_detail_page.dart';
 import 'package:uten_imp/features/basic_data/providers/color_unit_dict.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/mould_repository.dart';
+import 'package:uten_imp/features/basic_data/widgets/goods_detail_body.dart';
+import 'package:uten_imp/features/basic_data/widgets/mould_picker_field.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
@@ -70,6 +75,15 @@ class _Bom extends Fake implements GoodsBomRepository {
   Future<List<GoodsBomItem>> list(String goodsId) async => const [];
 }
 
+class _Moulds extends Fake implements MouldRepository {
+  final requests = <String>[];
+  @override
+  Future<MouldDetail> detail(String id) async {
+    requests.add(id);
+    return MouldDetail(id: id, code: 'RESTORED', name: '草稿关联模具');
+  }
+}
+
 Finder _field(WidgetTester tester, String key) {
   final form = tester.state<MasterEditFormState>(find.byType(MasterEditForm));
   return find.byWidgetPredicate(
@@ -84,6 +98,7 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
   _Goods goods, {
   bool create = false,
   bool deepLink = false,
+  _Moulds? moulds,
 }) async {
   tester.view.physicalSize = const Size(1400, 1000);
   tester.view.devicePixelRatio = 1;
@@ -108,12 +123,14 @@ Future<({ProviderContainer container, GoRouter router})> _pump(
         Perm.goodsView,
         Perm.materialCategoryView,
         Perm.goodsCreate,
+        if (moulds != null) Perm.mouldView,
         Perm.goodsEdit,
         Perm.goodsStatus,
         Perm.goodsBomCreate,
       }),
       isSuperAdminProvider.overrideWithValue(false),
       goodsRepositoryProvider.overrideWithValue(goods),
+      if (moulds != null) mouldRepositoryProvider.overrideWithValue(moulds),
       goodsBomRepositoryProvider.overrideWithValue(_Bom()),
       colorDictProvider.overrideWith(
         (ref) async => const [
@@ -222,6 +239,45 @@ Future<void> _edit(WidgetTester tester, {bool create = false}) async {
 }
 
 void main() {
+  testWidgets(
+    'new-goods draft restores the mould name for its exact UUID and submits that unchanged reference',
+    (tester) async {
+      final goods = _Goods();
+      final moulds = _Moulds();
+      await _pump(tester, goods, create: true, moulds: moulds);
+      await _edit(tester, create: true);
+      final draftHost =
+          tester.state(find.byType(GoodsDetailBody))
+              as FormDraftMixin<GoodsDetailBody>;
+      final snapshot = draftHost.captureFormDraft();
+      final form = Map<String, dynamic>.from(snapshot['form'] as Map);
+      final customs = Map<String, dynamic>.from(form['custom'] as Map);
+      customs['mouldId'] = 'restored-mould';
+      form['custom'] = customs;
+      snapshot['form'] = form;
+      await draftHost.restoreFormDraft(snapshot);
+      await tester.pumpAndSettle();
+      final input = find.descendant(
+        of: find.byType(MouldPickerField),
+        matching: find.byType(TextField),
+      );
+      expect(
+        tester.widget<TextField>(input).controller!.text,
+        'RESTORED 草稿关联模具',
+      );
+      expect(moulds.requests, ['restored-mould']);
+      final recovered = draftHost.captureFormDraft()['form'] as Map;
+      expect((recovered['custom'] as Map)['mouldId'], 'restored-mould');
+      await tester.tap(find.text('保存').hitTestable());
+      await tester.pumpAndSettle();
+      expect(goods.body?['mouldId'], 'restored-mould');
+      expect(goods.body?['cNumber'], 'CUSTOMER-NEW');
+      expect(goods.body?['colorId'], 'grey');
+      expect(find.text('来源列表'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'create submits customer model/color UUID then clears local draft and returns to source',
     (tester) async {

@@ -190,6 +190,7 @@ Future<void> _open(
           body: MouldPickerField(
             initialValue: initialValue,
             initialDisplay: initialDisplay,
+            initialDisplayId: initialValue,
             onChanged: onChanged ?? (_) {},
           ),
         ),

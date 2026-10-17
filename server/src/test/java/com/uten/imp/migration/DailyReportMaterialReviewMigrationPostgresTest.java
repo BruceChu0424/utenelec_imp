@@ -24,6 +24,16 @@ class DailyReportMaterialReviewMigrationPostgresTest {
     private static Map<String,Object> afterV840;
     private static Object oldMaterialSnapshotAfterV840;
     private static List<String> tablesAfterV840,indexesAfterV840,resetPolicyAfterV840;
+    private static final List<String> V871_HISTORY_TABLES=List.of(
+            "goods_operation_history","goods_operation_history_rows","goods_operation_history_events");
+    private static final Map<String,String> V871_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("goods_operation_history_pkey","CREATE UNIQUE INDEX goods_operation_history_pkey ON public.goods_operation_history USING btree (id)"),
+            Map.entry("goods_operation_history_actor_id_request_id_transaction_id_key","CREATE UNIQUE INDEX goods_operation_history_actor_id_request_id_transaction_id_key ON public.goods_operation_history USING btree (actor_id, request_id, transaction_id)"),
+            Map.entry("idx_goods_operation_history_actor","CREATE INDEX idx_goods_operation_history_actor ON public.goods_operation_history USING btree (actor_id, created_at DESC, id DESC)"),
+            Map.entry("goods_operation_history_rows_pkey","CREATE UNIQUE INDEX goods_operation_history_rows_pkey ON public.goods_operation_history_rows USING btree (operation_id, table_name, row_id)"),
+            Map.entry("idx_goods_history_row_lineage","CREATE INDEX idx_goods_history_row_lineage ON public.goods_operation_history_rows USING btree (table_name, row_id)"),
+            Map.entry("goods_operation_history_events_pkey","CREATE UNIQUE INDEX goods_operation_history_events_pkey ON public.goods_operation_history_events USING btree (id)"),
+            Map.entry("idx_goods_operation_history_events_actor","CREATE INDEX idx_goods_operation_history_events_actor ON public.goods_operation_history_events USING btree (actor_id, id DESC)"));
     private static final Map<String,String> V852_INDEX_ADDITIONS=Map.ofEntries(
             Map.entry("document_unapprovals_draft_unique","CREATE UNIQUE INDEX document_unapprovals_draft_unique ON public.document_unapprovals USING btree (family, draft_id)"),
             Map.entry("document_unapprovals_original_unique","CREATE UNIQUE INDEX document_unapprovals_original_unique ON public.document_unapprovals USING btree (family, original_id)"),
@@ -73,6 +83,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertTrue(expectedTables.add("document_unapprovals"));
         assertTrue(expectedTables.add("purchase_request_qty_revisions"));
         assertTrue(expectedTables.add("sms_gateway_settings"));
+        V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         assertEquals(expectedTables.stream().toList(),tables());
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
         assertEquals("CREATE UNIQUE INDEX procurement_inspection_items_item_uk ON public.procurement_inspection_items USING btree (receipt_type, receipt_item_id)",
@@ -85,11 +96,14 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         // employment events; its one new partial index is an explicit delta.
         assertNull(expectedIndexes.put("idx_employment_history_correction_source",
                 "CREATE INDEX idx_employment_history_correction_source ON public.employment_history USING btree (corrects_history_id) WHERE (corrects_history_id IS NOT NULL)"));
+        V871_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A history index must not replace an existing index: "+name));
         assertEquals(expectedIndexes,catalogMap(indexes()));
         TreeMap<String,String> expectedPolicy=catalogMap(resetPolicyAfterV840);
         assertNull(expectedPolicy.put("document_unapprovals","CLEAR"));
         assertNull(expectedPolicy.put("purchase_request_qty_revisions","CLEAR"));
         assertNull(expectedPolicy.put("sms_gateway_settings","PRESERVE"));
+        V871_HISTORY_TABLES.forEach(table->assertNull(expectedPolicy.put(table,"PRESERVE")));
         assertEquals(expectedPolicy,catalogMap(resetPolicy()));
         assertEquals(MigrationRehearsalSupport.CURRENT_HEAD_VERSION,
                 db.queryForObject("SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",String.class));

@@ -100,6 +100,30 @@ abstract class AppLocalizations {
     Locale('ko'),
   ];
 
+  /// No description provided for @tableFacetLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'候选加载失败，点击重试'**
+  String get tableFacetLoadFailed;
+
+  /// No description provided for @tableFacetLoadMore.
+  ///
+  /// In zh, this message translates to:
+  /// **'加载更多候选'**
+  String get tableFacetLoadMore;
+
+  /// No description provided for @masterSearchUpdating.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在更新搜索结果'**
+  String get masterSearchUpdating;
+
+  /// No description provided for @tableCopySelectedText.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制所选文字'**
+  String get tableCopySelectedText;
+
   /// No description provided for @release2518ServerUpdates.
   ///
   /// In zh, this message translates to:

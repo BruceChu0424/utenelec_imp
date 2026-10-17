@@ -603,10 +603,8 @@ class _MaterialAnalysisBucketPageState
     List<_BucketRow> rows,
   ) {
     return SafeArea(
-      // 宽度收敛用外壳容器；selectable:false 退出文字框选——表格页框选
-      // 低价值，且 SelectionArea × 可滚动表格（含横向同步/行手势）为
-      // 全站未测组合，转场期间有选择区重算开销（准则：外壳容器遇
-      // 重交互表格一律退出）。
+      // 外壳只负责宽度约束；表体由共享表格自己的稳定局部选择区负责复制，
+      // 不把页面动作和状态区一起注册到表体的选择区。
       child: UtenContentContainer.wide(
         selectable: false,
         child: Padding(
@@ -870,7 +868,6 @@ class _MaterialAnalysisBucketPageState
       rowMenuBuilder: _rowMenu,
       // 单击选中、双击打开：能办的行双击直接进下单页办它这一行。
       onRowTap: _onRowTap,
-      enableTextSelection: false,
       showFullscreenToggle: false,
       canOpenRow: (row) =>
           _canSelectTask(row) ||

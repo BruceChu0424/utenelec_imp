@@ -809,7 +809,6 @@ class _RequestState
                         'features.production.pages.production_material_discovery_request_page.RequestState.build.1',
                     key: const Key('discovery-request-table'),
                     primary: true,
-                    enableTextSelection: false,
                     columns: _columns,
                     items: List.unmodifiable(_rows),
                     rowKeyOf: (row) => row.id,

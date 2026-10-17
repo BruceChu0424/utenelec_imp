@@ -25,6 +25,26 @@ class MasterFacetBucket {
       );
 }
 
+/// A bounded page of distinct candidates queried over the full authorized row
+/// scope. Selecting an item still applies the existing exact-value filter.
+class MasterFacetPage {
+  const MasterFacetPage({required this.items, required this.hasMore});
+  final List<MasterFacetBucket> items;
+  final bool hasMore;
+
+  factory MasterFacetPage.fromJson(Map<String, dynamic> json) =>
+      MasterFacetPage(
+        items: [
+          for (final item in (json['items'] as List? ?? const []))
+            MasterFacetBucket.fromJson(Map<String, dynamic>.from(item as Map)),
+        ],
+        hasMore: json['hasMore'] == true,
+      );
+}
+
+typedef MasterFacetPageLoader =
+    Future<MasterFacetPage> Function(String column, String keyword, int page);
+
 /// 空值筛选哨兵：filters 中某字段值等于它表示"筛该字段为空的记录"。
 /// repository 据此把字段名收集进 nullFields 请求参数。
 const String kMasterFilterNullValue = '__null__';

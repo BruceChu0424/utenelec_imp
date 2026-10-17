@@ -9,6 +9,18 @@ class AppLocalizationsZh extends AppLocalizations {
   AppLocalizationsZh([String locale = 'zh']) : super(locale);
 
   @override
+  String get tableFacetLoadFailed => '候选加载失败，点击重试';
+
+  @override
+  String get tableFacetLoadMore => '加载更多候选';
+
+  @override
+  String get masterSearchUpdating => '正在更新搜索结果';
+
+  @override
+  String get tableCopySelectedText => '复制所选文字';
+
+  @override
   String get release2518ServerUpdates =>
       '有权限人员可手动检查服务器新版本，选择立即更新或按服务器当地时间预约；发现更新后显示提醒和徽章，平时不自动检查更新源。';
 

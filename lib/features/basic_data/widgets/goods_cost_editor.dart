@@ -1150,7 +1150,6 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           ..clear()
           ..addAll(paths);
       }),
-      enableTextSelection: !_editable,
       emptyMessage: _l.costEmpty,
       toolbarLeadingActions: _tableActions(),
       summaryBar: _costSummary(),

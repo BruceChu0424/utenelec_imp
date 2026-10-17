@@ -83,8 +83,8 @@ void main() {
         );
         expect(
           registrar,
-          current.multi || !current.text ? isNull : isNotNull,
-          reason: '多选时只禁用行内文字复制，普通浏览恢复文字选择',
+          current.text ? isNotNull : isNull,
+          reason: '文字选择只由文字开关控制，业务多选不禁用复制',
         );
         if (current.multi) {
           await tester.tap(find.text('row-a'));

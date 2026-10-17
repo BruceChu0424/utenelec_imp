@@ -9,6 +9,18 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
+  String get tableFacetLoadFailed => 'Could not load values. Retry';
+
+  @override
+  String get tableFacetLoadMore => 'Load more values';
+
+  @override
+  String get masterSearchUpdating => 'Updating search results';
+
+  @override
+  String get tableCopySelectedText => 'Copy selected text';
+
+  @override
   String get release2518ServerUpdates =>
       'Authorized staff can check for server updates manually, then update now or schedule an update in the server\'s local time. Available updates show a reminder and badge; there are no periodic update checks.';
 

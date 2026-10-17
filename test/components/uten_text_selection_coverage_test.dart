@@ -3,9 +3,8 @@
 //   selectable:false 退出（轮询页口径，准则 §3.4）；
 // - 页面 region 嵌套 MasterDataTableView：行双击仍打开（最深 region 竞技场不抢）、
 //   表体文字可选、表头文字被 SelectionContainer.disabled 隔离（保护列手势）；
-// - selectable:true 多选表（任务中心）行内容隔离，页面 region 不渗入；
-// - UtenEditableGrid 整体隔离（单元格是 TextField 自带原生选择），行长按菜单不受
-//   外层 region 影响；
+// - selectable:true 多选表（任务中心）文字仍可选，行勾选与文字复制独立；
+// - UtenEditableGrid 只隔离表头/操作条，表体 Text 可选，TextField 保留原生选择；
 // - UtenDialog 弹窗内容可选。
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -179,7 +178,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('多选表（任务中心）隔离行文字且仍能勾选，退出多选恢复复制', (tester) async {
+  testWidgets('多选表（任务中心）文字可选且仍能勾选，切换不撤掉选择区', (tester) async {
     await tester.pumpWidget(_page());
     await tester.pumpAndSettle();
     expect(_selectableOf(tester, find.text('a1')), isTrue);
@@ -192,8 +191,8 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(_selectableOf(tester, find.text('a1')), isFalse);
-    expect(_selectableOf(tester, find.text('a2')), isFalse);
+    expect(_selectableOf(tester, find.text('a1')), isTrue);
+    expect(_selectableOf(tester, find.text('a2')), isTrue);
     expect(_selectableOf(tester, find.text('ID')), isFalse);
     expect(_selectableOf(tester, find.text('页面说明文字')), isTrue);
     await tester.tap(find.byType(Checkbox).at(1));
@@ -208,7 +207,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('UtenEditableGrid 整体隔离：外层 region 不渗入，长按行菜单照常', (tester) async {
+  testWidgets('UtenEditableGrid 表头隔离、普通文字可选，长按行菜单照常', (tester) async {
     final c = UtenEditableGridController<_GridRow>(
       initial: [_GridRow('行1'), _GridRow('行2')],
     );
@@ -239,9 +238,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 表头标签与单元格文字都被隔离（单元格是 TextField，自带原生长按选词复制）。
+    // 表头保护拖拽，普通文字格在网格自己的选择区内。
     expect(_selectableOf(tester, find.text('名称')), isFalse);
-    expect(_selectableOf(tester, find.text('行1')), isFalse);
+    expect(_selectableOf(tester, find.text('行1')), isTrue);
 
     // 长按行仍弹操作菜单（外层 region 不抢长按竞技场）。
     await tester.longPress(find.text('行2'));

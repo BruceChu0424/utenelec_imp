@@ -17,6 +17,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import '../../../shared/search/keyword_search.dart';
+import '../../../shared/search/column_keyword_policy.dart';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
@@ -189,19 +190,12 @@ class MasterColumnDef<T> {
   /// range, choice and sort controls instead of a keyword field.
   final bool? columnSearchEnabled;
 
-  bool get supportsKeywordSearch {
-    if (columnSearchEnabled != null) return columnSearchEnabled!;
-    if (type != 'text') return false;
-    if (RegExp(
-      r'日期|时间|交期|交货期|到期|有效期|数量|金额|余额|单价|价格|税率|汇率|折扣|重量|单重|密度|件数|人数|天数|合计|比率|比例|损耗率|完成率|进度|状态|异常|是否|操作|序号|排序|币种|货币|单位|类型|阶段|性别|版本|次数|优先级',
-    ).hasMatch(label)) {
-      return false;
-    }
-    return !RegExp(
-      r'(?:date|time|timestamp|qty|quantity|amount|price|weight|rate|percent|status|state|stage|type|origin|gender|approval|action|sequence|sortorder|currency|unitid|unitlegacyid|boolean|count|enabled|closed)$',
-      caseSensitive: false,
-    ).hasMatch(key);
-  }
+  bool get supportsKeywordSearch => supportsColumnKeywordSearch(
+    key: key,
+    label: label,
+    type: type,
+    override: columnSearchEnabled,
+  );
 
   /// 单元格语义底色（如待处理步骤用浅警示色）；null = 跟随所在行底色。
   /// 选中行仍由表格统一使用深绿高亮，避免颜色叠加后文字对比不足。
@@ -5897,6 +5891,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
                           InputDecoration(
                             constraints: BoxConstraints(minHeight: hitExtent),
                             isDense: true,
+                            hintText: '页码',
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 4,
                               vertical: 8,

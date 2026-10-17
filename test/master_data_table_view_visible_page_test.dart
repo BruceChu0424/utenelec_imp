@@ -233,6 +233,22 @@ void main() {
     await _lookAtPage(tester, 2, forward: true);
     _expectPage(tester, 2);
 
+    await tester.enterText(find.byType(TextFormField), '');
+    await tester.pump();
+    final pageInput = tester.widget<TextField>(
+      find.descendant(
+        of: find.byType(TextFormField),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(pageInput.controller!.text, isEmpty);
+    expect(pageInput.decoration!.hintText, '页码');
+    expect(find.text('页码'), findsOneWidget);
+    expect(host.requests, [
+      2,
+      3,
+    ], reason: 'clearing a page field does not navigate');
+
     await tester.enterText(find.byType(TextFormField), '4');
     await _lookAtPage(tester, 1, forward: false);
     _expectPage(tester, 4);

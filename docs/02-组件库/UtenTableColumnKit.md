@@ -1,5 +1,31 @@
 # UtenTableColumnKit（表格表头列管理共用套件）
 
+## 2026-10-17 编辑网格列关键词
+
+`UtenEditableGrid` 与 `MasterDataTableView` 共用
+`shared/search/column_keyword_policy.dart` 的列语义判定。名称、编号、颜色、型号、
+系列、供应商等文本列可检索；日期、数量、金额、状态、单位、类型与操作仍使用业务
+原有的精确选项、排序或日期/数量控件。`EditableGridColumn.columnSearchEnabled`
+可按真实业务覆盖；编辑网格始终要求可读文本源且 `numeric == false`，不从 Widget
+树猜取文字。读取顺序为 `textOf` → `frozenTextOf` → `filterValueOf`。
+
+下拉框内输入会缩小候选桶；按回车或输入框右侧同一行的“搜索”按钮后，才把关键词
+应用到真实表格行并关闭菜单。多词均须包含；关键词与同列及其他列精确桶取交集，
+不影响已有排序。候选桶及未填数量取其他列精确条件和关键词的交集，排除本列已提交
+条件，输入中的草稿关键词再缩小候选；合法的零结果不会清掉其他列已选条件。
+菜单“所有”清除当前列的精确条件和关键词；清空文本再搜索只移除
+当前列关键词。零命中与全空文本列仍可打开搜索和清除。
+
+这是完整本地行集的视图筛选：控制器原行、数量、勾选身份和提交数据不变，行详情
+跟随其所属可见行。`onRowsHiddenByFilter` 继续让宿主决定隐藏行的业务选择策略。
+编辑可搜索字段应提供原控制器的 `listenableOf`，使值变化后重新判断匹配；未启用
+筛选时不增加逐字整表重建。条件以 `search.<columnKey>` 与既有精确条件共同保存，
+保留列别名及账号/服务器偏好隔离。新控制器不会继承旧控制器的实时条件；不同表格
+按各自偏好恢复，旧表/旧数据源/旧账号菜单回调不可应用到新范围。
+
+回归：`test/components/uten_editable_grid_column_search_test.dart`，并保留既有
+header filter、row details、row menu、column preferences 与性能契约测试。
+
 > 源码：[`lib/components/layout/uten_table_column_kit.dart`](../../lib/components/layout/uten_table_column_kit.dart)
 > 接入方：[`MasterDataTableView`](../../lib/features/basic_data/widgets/master_data_table_view.dart)（货品资料等主数据表）、
 > [`UtenEditableGrid`](../../lib/components/layout/uten_editable_grid.dart)（单据编辑明细表）

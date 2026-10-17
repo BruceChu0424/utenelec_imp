@@ -6,6 +6,8 @@ import '../../shared/platform_tables/platform_table_picker.dart';
 import '../../shared/platform_tables/platform_table_widgets.dart';
 import '../../shared/platform_tables/table_column_projection.dart';
 import '../../shared/platform_tables/platform_row_draft.dart';
+import '../../shared/search/column_keyword_policy.dart';
+import '../../shared/search/keyword_search.dart';
 import '../../shared/widgets/column_editor_dialog.dart';
 // UtenEditableGrid - 编辑页明细可编辑 Excel 表（采购/销售/委外/仓库/钱流 共用）
 //
@@ -140,6 +142,7 @@ class EditableGridColumn<T extends EditableGridRow> {
     this.textOf,
     this.listenableOf,
     this.filterValueOf,
+    this.columnSearchEnabled,
     this.frozenTextOf,
     this.chromeWidth = 0,
     this.chromeWidthOf,
@@ -219,8 +222,24 @@ class EditableGridColumn<T extends EditableGridRow> {
   /// 负责人名、状态文案）。提供后表头变为可点的筛选单元格（与 MasterDataTableView
   /// 同款锚定下拉）：点开显示去重值清单（含计数），单选后网格只显示匹配行。
   /// 纯视图级过滤——行数据与勾选（按行身份持有）都不动，清除筛选即全部恢复。
-  /// null（默认）= 普通表头。
+  /// 未声明专用取值时，合理文本列采用真实文本（textOf/frozenTextOf）生成精确桶。
   final String? Function(T row)? filterValueOf;
+
+  /// Optional business override for text-column keyword search. A real text
+  /// source is always required; numeric columns never get a keyword input.
+  final bool? columnSearchEnabled;
+
+  bool get supportsKeywordSearch =>
+      !numeric &&
+      (textOf != null || frozenTextOf != null || filterValueOf != null) &&
+      supportsColumnKeywordSearch(
+        key: key,
+        label: label,
+        override: columnSearchEnabled,
+      );
+
+  String? searchText(T row) =>
+      textOf?.call(row) ?? frozenTextOf?.call(row) ?? filterValueOf?.call(row);
 
   /// 「固定到左侧」列在横滚冻结副本里的只读快照文本（2026-09-25）。
   ///
@@ -1084,21 +1103,43 @@ class _UtenEditableGridState<T extends EditableGridRow>
       saved.filters,
       saved.hasQueryPreferences,
       columns
-          .where((column) => column.filterValueOf != null)
-          .map((column) => column.key)
+          .where(
+            (column) =>
+                column.filterValueOf != null || column.supportsKeywordSearch,
+          )
+          .map(
+            (column) => [
+              column.key,
+              column.filterValueOf != null,
+              column.supportsKeywordSearch,
+            ],
+          )
           .toList(),
     ]);
     if (querySignature != _queryPreferenceSignature) {
       _queryPreferenceSignature = querySignature;
+      _headerQueryScope++;
       _columnFilters
         ..clear()
         ..addAll({
           for (final column in columns)
             if (saved.hasQueryPreferences &&
-                column.filterValueOf != null &&
+                (column.filterValueOf != null ||
+                    column.supportsKeywordSearch) &&
                 saved.filters[column.key] != null)
               column.key: saved.filters[column.key],
         });
+      _columnSearches
+        ..clear()
+        ..addAll({
+          for (final column in columns)
+            if (saved.hasQueryPreferences &&
+                column.supportsKeywordSearch &&
+                (saved.filters['search.${column.key}']?.trim().isNotEmpty ??
+                    false))
+              column.key: saved.filters['search.${column.key}']!.trim(),
+        });
+      _visibleRowsFilterKey = null;
     }
     if (_platform.layout.order.isNotEmpty ||
         _platform.binding?.defaultColumnOrder != null ||
@@ -1594,9 +1635,14 @@ class _UtenEditableGridState<T extends EditableGridRow>
   @override
   void didUpdateWidget(covariant UtenEditableGrid<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final previousTableKey = _platform.tableKey;
     if (!identical(oldWidget.controller, widget.controller) ||
         oldWidget.tableKey != widget.tableKey) {
       _textSelection.clear();
+      _headerQueryScope++;
+      _columnFilters.clear();
+      _columnSearches.clear();
+      _visibleRowsFilterKey = null;
     }
     final previousColumns = _platformColumnCache ?? oldWidget.columns;
     if (_sameColumnKeys(oldWidget.columns, widget.columns)) {
@@ -1677,6 +1723,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         _pinOriginIndex.removeWhere((key, _) => !newKeys.contains(key));
         _manualResized.retainAll(newKeys);
         _columnFilters.removeWhere((key, _) => !newKeys.contains(key));
+        _columnSearches.removeWhere((key, _) => !newKeys.contains(key));
       } else {
         _manualResized.clear();
         _columnOrder = _columns.map((column) => column.key).toList();
@@ -1685,6 +1732,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
         _pinOriginIndex.clear();
         _applyInitialColumnSettings();
         _columnFilters.clear();
+        _columnSearches.clear();
       }
       columnHeaderDragReset(); // 拖拽态/跟手浮层可能指向失效下标，重置。
       _colLinks.clear(); // 旧下标的 LayerLink 作废，按新列集合下标重建。
@@ -1710,6 +1758,16 @@ class _UtenEditableGridState<T extends EditableGridRow>
       _visibleRowsAll = null; // 可见行缓存按旧控制器修订号记的，作废。
       _autoGrowDirty = true;
       _rewireAutoGrowListeners(force: true);
+      // A new document/data source must not inherit the previous controller's
+      // live query merely because both use the same table preference key.
+      if (previousTableKey == _platform.tableKey) {
+        _columnFilters.clear();
+        _columnSearches.clear();
+        final scope = _columnQueryScope;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && scope == _columnQueryScope) _saveColumnQuery();
+        });
+      }
     }
   }
 
@@ -2090,6 +2148,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void _onControllerChanged() {
     if (!mounted) return;
     _textSelection.clear();
+    _headerQueryScope++;
     _configurePlatform();
     // 行集变化（增删/替换/粘贴）→ 拆线重挂自动加宽监听 + 标记整体重算列宽 +
     // 撤掉已失效的表头筛选值(本监听只挂在 rowsListenable 上，勾选不会进来)。
@@ -2153,8 +2212,8 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _persistPlatformLayout();
   }
 
-  /// 拆/挂各行的自动加宽监听：列同时提供 [EditableGridColumn.textOf] 与
-  /// [EditableGridColumn.listenableOf] 才订阅（只量不挂的只读列除外）。
+  /// 拆/挂真实文本源的监听：自动加宽和活跃列筛选共用行已有的通知器，
+  /// 冻结快照/精确桶列也可透过 listenableOf 更新关键词结果。
   /// 返回行集是否变化。[force]=true 强制重挂（列集合或 controller 实例变化，
   /// 行集不变也要换绑，否则闭包里的列下标已失效）。
   bool _rewireAutoGrowListeners({bool force = false}) {
@@ -2166,19 +2225,49 @@ class _UtenEditableGridState<T extends EditableGridRow>
     _wiredRows = List.of(rows);
     final unsubs = <VoidCallback>[];
     for (var i = 0; i < _columns.length; i++) {
-      final textOf = _columns[i].textOf;
+      final column = _columns[i];
       final listenableOf = _columns[i].listenableOf;
-      if (textOf == null || listenableOf == null) continue;
+      if ((column.textOf == null &&
+              column.frozenTextOf == null &&
+              column.filterValueOf == null) ||
+          listenableOf == null) {
+        continue;
+      }
       for (final row in rows) {
         final listenable = listenableOf(row);
         if (listenable == null) continue;
-        void onChanged() => _onAutoGrowCellChanged(i, row);
+        void onChanged() {
+          _onFilterCellChanged(column.key);
+          _onAutoGrowCellChanged(i, row);
+        }
+
         listenable.addListener(onChanged);
         unsubs.add(() => listenable.removeListener(onChanged));
       }
     }
     _autoGrowUnsubs = unsubs;
     return true;
+  }
+
+  bool _filterRefreshScheduled = false;
+
+  void _onFilterCellChanged(String key) {
+    if (_columnFilters[key] == null && !_columnSearches.containsKey(key)) {
+      return;
+    }
+    _visibleRowsFilterKey = null;
+    if (!mounted || !_hasColumnFilters || _filterRefreshScheduled) return;
+    _filterRefreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _filterRefreshScheduled = false;
+      if (!mounted) return;
+      final previous = Map<String, String?>.of(_columnFilters);
+      _pruneColumnFilters();
+      if (!mapEquals(previous, _columnFilters)) _saveColumnQuery();
+      _textSelection.clear();
+      setState(() {});
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   bool _sameRowIdentities(List<T> a, List<T> b) {
@@ -2279,7 +2368,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
     final label = col.required ? '${col.label} *' : col.label;
     return _measureText(label, headerStyle, scaler) +
         _headerPadX * 2 +
-        (col.filterValueOf != null ? _headerArrowWidth : 0) +
+        (col.filterValueOf != null || col.supportsKeywordSearch
+            ? _headerArrowWidth
+            : 0) +
         (col.headerInfo != null ? _headerInfoIconWidth : 0) +
         _headerBuffer;
   }
@@ -2423,10 +2514,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// 表头筛选后的可见行(按行集修订号 + 列集合 + 筛选值缓存)。
   List<T> _visibleRows() {
     final all = _allRows();
-    final filterKey = _columnFilters.entries
-        .where((entry) => entry.value != null)
-        .map((entry) => '${entry.key}\u0000${entry.value}')
-        .join('\u0001');
+    final filterKey = jsonEncode([_columnFilters, _columnSearches]);
     if (_visibleRowsFilterKey == filterKey &&
         identical(_visibleRowsColumns, _columns)) {
       return _visibleRowsCache;
@@ -2441,13 +2529,36 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// key=列 key，value=选中筛选值；null（或不在 map）=「所有」。纯视图级过滤：
   /// 行数据与选中集（按行身份持有）都不动，清除即全部恢复。
   final Map<String, String?> _columnFilters = {};
+  final Map<String, String> _columnSearches = {};
+  int _headerQueryScope = 0;
   String _queryPreferenceSignature = '';
 
-  bool get _hasColumnFilters => _columnFilters.values.any((v) => v != null);
+  Object get _columnQueryScope => (
+    widget.controller,
+    _platform.tableKey,
+    _platform.queryLifecycle,
+    _headerQueryScope,
+  );
+
+  bool get _hasColumnFilters =>
+      _columnFilters.values.any((v) => v != null) || _columnSearches.isNotEmpty;
+
+  void _saveColumnQuery() {
+    _platform.saveQuery(
+      filters: {
+        for (final entry in _columnFilters.entries)
+          if (entry.value != null) entry.key: entry.value,
+        for (final entry in _columnSearches.entries)
+          'search.${entry.key}': entry.value,
+      },
+      // Filtering does not reset an independently saved sort preference.
+      sortColumn: _platform.layout.sortColumn,
+      sortAscending: _platform.layout.sortAscending,
+    );
+  }
 
   /// 行集变化（换段/重载/批量动作后重建行）后，把「已不在任何行上出现」的筛选值
-  /// 撤回「所有」。不撤的话表头单元会 sanitize 回列名（看起来没筛选），表体却仍
-  /// 按旧值过滤 → 用户面对一张空表却找不到筛选入口（2026-09-11 表头快速筛选补齐）。
+  /// 撤回「所有」。只检查完整源行，不能把其他列交集暂时排除的合法选择误判为失效。
   void _pruneColumnFilters() {
     if (!_hasColumnFilters) return;
     final rows = widget.controller.rows;
@@ -2456,10 +2567,17 @@ class _UtenEditableGridState<T extends EditableGridRow>
     };
     _columnFilters.removeWhere((key, value) {
       if (value == null) return true;
-      final filterValueOf = columnsByKey[key]?.filterValueOf;
-      if (filterValueOf == null) return true;
-      return !rows.any((row) => filterValueOf(row) == value);
+      final column = columnsByKey[key];
+      if (column == null ||
+          (column.filterValueOf == null && !column.supportsKeywordSearch)) {
+        return true;
+      }
+      final read = column.filterValueOf ?? column.searchText;
+      return !rows.any((row) => read(row) == value);
     });
+    _columnSearches.removeWhere(
+      (key, _) => !(columnsByKey[key]?.supportsKeywordSearch ?? false),
+    );
   }
 
   /// 上一次上报给宿主的「被表头筛选藏起来的行」，用于去重不必要的回调。
@@ -2480,24 +2598,42 @@ class _UtenEditableGridState<T extends EditableGridRow>
     if (setEquals(hidden.cast<T>(), _lastHiddenByFilter)) return;
     _lastHiddenByFilter = hidden.cast<T>().toSet();
     final snapshot = _lastHiddenByFilter;
+    final scope = _columnQueryScope;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) onHidden(snapshot);
+      if (mounted && scope == _columnQueryScope) onHidden(snapshot);
     });
   }
 
-  /// 应用全部列筛选后的行集（无筛选 = 原样返回）。
-  List<T> _filterRows(List<T> rows) {
+  /// 应用列筛选；候选桶排除本列已提交条件，但保留其他列的全部条件。
+  List<T> _filterRows(List<T> rows, {String? exceptColumn}) {
     if (!_hasColumnFilters || _columns.isEmpty) return rows;
     final active = <(EditableGridColumn<T>, String)>[
       for (final column in _columns)
-        if (column.filterValueOf != null && _columnFilters[column.key] != null)
+        if ((column.filterValueOf != null || column.supportsKeywordSearch) &&
+            column.key != exceptColumn &&
+            _columnFilters[column.key] != null)
           (column, _columnFilters[column.key]!),
     ];
-    if (active.isEmpty) return rows;
+    final searches = <(EditableGridColumn<T>, String)>[
+      for (final column in _columns)
+        if (column.supportsKeywordSearch &&
+            column.key != exceptColumn &&
+            _columnSearches.containsKey(column.key))
+          (column, _columnSearches[column.key]!),
+    ];
+    if (active.isEmpty && searches.isEmpty) return rows;
     return rows
         .where(
           (row) =>
-              active.every((entry) => entry.$1.filterValueOf!(row) == entry.$2),
+              active.every(
+                (entry) =>
+                    (entry.$1.filterValueOf ?? entry.$1.searchText)(row) ==
+                    entry.$2,
+              ) &&
+              searches.every(
+                (entry) =>
+                    matchesKeywordSearch([entry.$1.searchText(row)], entry.$2),
+              ),
         )
         .toList(growable: false);
   }
@@ -2507,8 +2643,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
     EditableGridColumn<T> column,
   ) {
     final counts = <String, int>{};
-    for (final row in widget.controller.rows) {
-      final value = column.filterValueOf!(row);
+    final read = column.filterValueOf ?? column.searchText;
+    for (final row in _filterRows(
+      widget.controller.rows,
+      exceptColumn: column.key,
+    )) {
+      final value = read(row);
       if (value == null || value.trim().isEmpty) continue;
       counts[value] = (counts[value] ?? 0) + 1;
     }
@@ -2521,8 +2661,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   int _filterNullCount(EditableGridColumn<T> column) {
     var nullCount = 0;
-    for (final row in widget.controller.rows) {
-      final value = column.filterValueOf!(row);
+    final read = column.filterValueOf ?? column.searchText;
+    for (final row in _filterRows(
+      widget.controller.rows,
+      exceptColumn: column.key,
+    )) {
+      final value = read(row);
       if (value == null || value.trim().isEmpty) nullCount++;
     }
     return nullCount;
@@ -2871,6 +3015,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
     BorderSide divider,
     List<int> visibleColumnIndices,
   ) {
+    final rowScope = _columnQueryScope;
     // 行内「移出本次操作」：走与批量移出同一条确认+回调，行不可选时只占位。
     final inlineRemove =
         widget._inlineRemoveColumn &&
@@ -2914,9 +3059,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
               widget.showRowDelete &&
                   !inlineRemove &&
                   (widget.canDeleteRow?.call(row) ?? true)
-              ? () => widget.onDeleteRow == null
-                    ? widget.controller.removeAt(i)
-                    : widget.onDeleteRow!(row, i)
+              ? () => _deleteSourceRow(row, rowScope)
               : (inlineRemove
                     ? () => _confirmBatchDelete(context, victims: [row])
                     : null),
@@ -2958,7 +3101,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
             widget.rowMenuExtraBuilder?.call(context, _selectedRows()) ??
             const <UtenContextMenuEntry>[];
         if (widget.showAddRow) {
-          final base = _rowMenuEntries(row, i);
+          final base = _rowMenuEntries(row);
           if (extra.isEmpty) return [...textEntries, ...base];
           return [...textEntries, ...base, const UtenMenuDivider(), ...extra];
         }
@@ -2982,6 +3125,23 @@ class _UtenEditableGridState<T extends EditableGridRow>
       onActionCompleted: () => _clearSelection(),
       child: rowBody,
     );
+  }
+
+  void _deleteSourceRow(T row, Object scope) {
+    if (!mounted ||
+        scope != _columnQueryScope ||
+        !(widget.canDeleteRow?.call(row) ?? true))
+      return;
+    final sourceIndex = widget.controller.rows.indexWhere(
+      (item) => identical(item, row),
+    );
+    if (sourceIndex < 0) return;
+    final onDelete = widget.onDeleteRow;
+    if (onDelete == null) {
+      widget.controller.removeAt(sourceIndex);
+    } else {
+      onDelete(row, sourceIndex);
+    }
   }
 
   List<T> _selectedRows() =>
@@ -3040,8 +3200,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
   /// cloneRow 未提供（页面无行克隆）时不显复制粘贴组；缓冲为空时粘贴置灰不隐藏
   /// （与 UtenContextMenu「看得见功能边界」约定一致）。所有操作与操作条同一套
   /// controller 逻辑 + 确认弹窗，粘贴统一追加表尾。
-  List<UtenContextMenuEntry> _rowMenuEntries(T row, int i) {
+  List<UtenContextMenuEntry> _rowMenuEntries(T row) {
     final c = widget.controller;
+    final scope = _columnQueryScope;
     final clone = widget.cloneRow;
     final victims = _selectedRows();
     final n = victims.length;
@@ -3058,7 +3219,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
       UtenMenuItem(
         label: '在上方插入空行',
         icon: Icons.add_circle_outline_rounded,
-        onTap: () => c.insertAt(i, widget.createBlankRow!()),
+        onTap: () {
+          if (!mounted || scope != _columnQueryScope) return;
+          final sourceIndex = c.rows.indexWhere((item) => identical(item, row));
+          if (sourceIndex >= 0)
+            c.insertAt(sourceIndex, widget.createBlankRow!());
+        },
       ),
       const UtenMenuDivider(),
       UtenMenuItem(
@@ -3463,6 +3629,7 @@ class _UtenEditableGridState<T extends EditableGridRow>
 
   Widget _headerLabel(ThemeData theme, int index) {
     final column = _columns[index];
+    final scope = _columnQueryScope;
     // 固定列标签前缀：图钉（18px、与标签行垂直居中，2026-09-25 用户口径）。
     final Widget? pinLeading = _pinnedColumnKeys.contains(column.key)
         ? Icon(
@@ -3471,10 +3638,12 @@ class _UtenEditableGridState<T extends EditableGridRow>
             color: theme.colorScheme.primary,
           )
         : null;
-    if (column.filterValueOf != null) {
+    if (column.filterValueOf != null || column.supportsKeywordSearch) {
       return GridHeaderFilterCell(
+        key: ValueKey(('editable-column-filter', column.key)),
         label: column.label,
         requiredStar: column.required,
+        headerInfo: column.headerInfo,
         leading: pinLeading,
         buckets: [
           for (final bucket in _filterBuckets(column))
@@ -3486,14 +3655,32 @@ class _UtenEditableGridState<T extends EditableGridRow>
         ],
         nullCount: _filterNullCount(column),
         selected: _columnFilters[column.key],
+        search: _columnSearches[column.key] ?? '',
+        scope: scope,
+        isCurrent: () => scope == _columnQueryScope,
+        onSearch: column.supportsKeywordSearch
+            ? (value) => setState(() {
+                _headerQueryScope++;
+                final query = value.trim();
+                if (query.isEmpty) {
+                  _columnSearches.remove(column.key);
+                } else {
+                  _columnSearches[column.key] = query;
+                }
+                _textSelection.clear();
+                _saveColumnQuery();
+              })
+            : null,
         onChanged: (value) => setState(() {
-          _columnFilters[column.key] = value;
-          _platform.saveQuery(
-            filters: {
-              for (final entry in _columnFilters.entries)
-                if (entry.value != null) entry.key: entry.value,
-            },
-          );
+          _headerQueryScope++;
+          if (value == null) {
+            _columnFilters.remove(column.key);
+            _columnSearches.remove(column.key);
+          } else {
+            _columnFilters[column.key] = value;
+          }
+          _textSelection.clear();
+          _saveColumnQuery();
         }),
       );
     }

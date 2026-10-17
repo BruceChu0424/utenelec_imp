@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/l10n/gen/app_localizations.dart';
 import '../concurrency/task_claim_session.dart';
 import '../providers/session_provider.dart';
 import '../repositories/task_claim_repository.dart';
 
-TaskClaimSession financeReviewClaim(ProviderContainer container) {
+TaskClaimSession financeReviewClaim(
+  ProviderContainer container, {
+  AppLocalizations? localizations,
+}) {
   final identity = container.read(sessionProvider);
   return TaskClaimSession(
     container.read(taskClaimRepositoryProvider),
     strict: true,
+    localizations: localizations,
     // 语义身份（ADR-014：refresh 保持 lineage/intent，服务端租约按人走）：
     // token 静默刷新 / 权限滑动更新 / 档案字段变化不失效认领；换号、登出、
     // 模拟切换才失效。此前用对象同一性，token 每 ~15 分钟刷新一次就误杀
@@ -37,8 +42,16 @@ class FinanceReviewClaimNotice extends StatelessWidget {
         children: [
           const Icon(Icons.lock_outline),
           const SizedBox(width: 12),
-          Expanded(child: Text(claim?.failureMessage ?? '尚未取得有效审核占用，当前仅可查看')),
-          TextButton(onPressed: onRetry, child: const Text('重新认领并刷新')),
+          Expanded(
+            child: Text(
+              claim?.failureMessage ??
+                  AppLocalizations.of(context).taskClaimReadOnly,
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            child: Text(AppLocalizations.of(context).taskClaimRetry),
+          ),
         ],
       ),
     ),

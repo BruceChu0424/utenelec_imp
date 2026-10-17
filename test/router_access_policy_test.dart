@@ -398,6 +398,61 @@ void main() {
       ]);
     });
 
+    test(
+      'master-data readers and price analysis do not require category module access',
+      () {
+        for (final (location, permission) in [
+          (RouteName.basicinfoGoods, Perm.goodsView),
+          ('${RouteName.basicinfoGoods}/goods-1', Perm.goodsView),
+          (RouteName.basicinfoClient, Perm.clientView),
+          ('${RouteName.basicinfoClient}/client-1', Perm.clientView),
+          ('/finance/customers', Perm.clientView),
+          (RouteName.basicinfoSupplier, Perm.supplierView),
+          ('${RouteName.basicinfoSupplier}/supplier-1', Perm.supplierView),
+          ('/finance/suppliers', Perm.supplierView),
+          (RouteName.basicinfoMould, Perm.mouldView),
+        ]) {
+          expect(requiredAllPermsFor(location), isEmpty);
+          expect(
+            locationAllowedFor({permission}, false, location),
+            isTrue,
+            reason: location,
+          );
+        }
+        const analysis = '/basicinfo/goods/goods-1/price-analysis';
+        expect(requiredAllPermsFor(analysis), [Perm.goodsView]);
+        expect(
+          locationAllowedFor(
+            {Perm.goodsView, Perm.goodsPriceAnalysisView},
+            false,
+            analysis,
+          ),
+          isTrue,
+        );
+        expect(
+          locationAllowedFor({Perm.goodsPriceAnalysisView}, false, analysis),
+          isFalse,
+        );
+        expect(locationAllowedFor({Perm.goodsView}, false, analysis), isFalse);
+        expect(
+          locationAllowedFor(
+            {Perm.goodsView, Perm.goodsCreate},
+            false,
+            '${RouteName.basicinfoGoods}/new',
+          ),
+          isFalse,
+        );
+        expect(
+          locationAllowedFor(
+            {Perm.goodsView, Perm.goodsCreate, Perm.materialCategoryView},
+            false,
+            '${RouteName.basicinfoGoods}/new',
+          ),
+          isTrue,
+        );
+      },
+    );
+
     test('payroll and expense routes protect sensitive data and actions', () {
       expect(requiredAnyPermFor('/payroll/slip'), const [
         Perm.payrollViewSelf,
@@ -438,6 +493,28 @@ void main() {
       expect(requiredAllPermsFor('/employee/1/edit'), const [
         Perm.employeeView,
       ]);
+    });
+
+    test('department tree access does not require employee roster access', () {
+      const departmentReader = AppUser(
+        id: 'department-reader',
+        code: 'D-READ',
+        name: '部门查看员',
+        permissions: [Perm.departmentView],
+      );
+      expect(requiredAllPermsFor(RouteName.department), isEmpty);
+      expect(
+        employeePermissionRedirect(departmentReader, RouteName.department),
+        isNull,
+      );
+      expect(
+        locationAllowedFor({Perm.departmentView}, false, RouteName.department),
+        isTrue,
+      );
+      expect(
+        locationAllowedFor({Perm.employeeView}, false, RouteName.department),
+        isFalse,
+      );
     });
 
     test('hr task center sub-pages cannot be bypassed via deep links', () {

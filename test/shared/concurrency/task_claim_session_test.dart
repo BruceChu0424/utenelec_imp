@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/shared/concurrency/task_claim_session.dart';
 import 'package:uten_imp/shared/models/task_claim_view.dart';
 import '../../helpers/finance_claim_fixture.dart';
@@ -30,6 +33,103 @@ void main() {
     expect(repo.renewed, isEmpty);
     await session.releaseAll();
   });
+
+  test(
+    'server rejection retains its reason through a blocked decision check',
+    () async {
+      for (final error in [
+        ApiException(
+          'FORBIDDEN',
+          '没有销售订单财务确认权限',
+          httpStatus: 403,
+          hasResponseCode: true,
+        ),
+        ApiException(
+          'CONFLICT',
+          '李四正在审核此单据，请稍后重试',
+          httpStatus: 409,
+          hasResponseCode: true,
+        ),
+        ApiException('BUSINESS', '订单已撤回，请刷新待办列表', hasResponseCode: true),
+      ]) {
+        final repo = FinanceClaimFixture()..claimError = error;
+        final session = TaskClaimSession(repo, strict: true);
+        await session.claimAll('SALES_ORDER_FINANCE_CONFIRM', ['a']);
+        expect(session.isReady, isFalse);
+        expect(session.failureMessage, error.message);
+        expect(await session.validateForDecision(), isFalse);
+        expect(session.failureMessage, error.message);
+        expect(repo.renewed, isEmpty);
+        await session.releaseAll();
+      }
+    },
+  );
+
+  test(
+    'heartbeat rejection pauses decisions and retains the server reason',
+    () async {
+      final repo = FinanceClaimFixture();
+      final session = TaskClaimSession(repo, strict: true);
+      await session.claimAll('SALES_ORDER_FINANCE_CONFIRM', ['a']);
+      repo.heartbeatError = ApiException('FORBIDDEN', '审核权限已被收回，请联系权限管理员');
+      expect(await session.validateForDecision(), isFalse);
+      expect(session.failureMessage, '审核权限已被收回，请联系权限管理员');
+      expect(await session.validateForDecision(), isFalse);
+      expect(session.failureMessage, '审核权限已被收回，请联系权限管理员');
+      expect(repo.renewed, ['a']);
+      await session.releaseAll();
+    },
+  );
+
+  test(
+    'local network and unknown failures use the selected language without guessing a permission cause',
+    () async {
+      for (final language in ['en', 'ko']) {
+        final l10n = lookupAppLocalizations(Locale(language));
+        for (final (error, expected) in <(Object, String)>[
+          (NetworkException(), l10n.taskClaimNetworkUnavailable),
+          (NetworkTimeoutException(), l10n.taskClaimNetworkTimeout),
+          (
+            StateError('internal detail must not be shown'),
+            l10n.taskClaimAcquireFailed,
+          ),
+          (StateError('当前单据正在恢复，请稍后重试'), '当前单据正在恢复，请稍后重试'),
+          (ApiException('FORBIDDEN', ''), l10n.taskClaimPermissionDenied),
+          (ApiException('CONFLICT', ''), l10n.taskClaimConflict),
+        ]) {
+          final repo = FinanceClaimFixture()..claimError = error;
+          final session = TaskClaimSession(
+            repo,
+            strict: true,
+            localizations: l10n,
+          );
+          await session.claimAll('SALES_ORDER_FINANCE_CONFIRM', ['a']);
+          expect(session.isReady, isFalse);
+          expect(session.failureMessage, expected);
+          await session.releaseAll();
+        }
+      }
+    },
+  );
+
+  test(
+    'identity changes replace a previous error with the current identity instruction',
+    () async {
+      var current = true;
+      final repo = FinanceClaimFixture()
+        ..claimError = ApiException('BUSINESS', '原单据状态已变化');
+      final session = TaskClaimSession(
+        repo,
+        strict: true,
+        isCurrentSession: () => current,
+      );
+      await session.claimAll('SALES_ORDER_FINANCE_CONFIRM', ['a']);
+      current = false;
+      expect(await session.validateForDecision(), isFalse);
+      expect(session.failureMessage, '登录身份已变化，请重新打开审核。');
+      await session.releaseAll();
+    },
+  );
 
   test('empty and mismatched ownership responses are rejected', () async {
     for (final wrongTarget in [false, true]) {

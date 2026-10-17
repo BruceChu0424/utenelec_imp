@@ -328,9 +328,7 @@
       "anyOf": [
         "client:view"
       ],
-      "allOf": [
-        "client_category:view"
-      ],
+      "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/基础资料页.md"
     },
@@ -399,9 +397,7 @@
       "anyOf": [
         "goods:view"
       ],
-      "allOf": [
-        "material_category:view"
-      ],
+      "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/基础资料页.md"
     },
@@ -424,9 +420,7 @@
       "anyOf": [
         "mould:view"
       ],
-      "allOf": [
-        "mould_category:view"
-      ],
+      "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/基础资料页.md"
     },
@@ -495,9 +489,7 @@
       "anyOf": [
         "supplier:view"
       ],
-      "allOf": [
-        "supplier_category:view"
-      ],
+      "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/基础资料页.md"
     },
@@ -588,9 +580,7 @@
       "anyOf": [
         "department:view"
       ],
-      "allOf": [
-        "employee:view"
-      ],
+      "allOf": [],
       "hubOf": [],
       "doc": "docs/03-页面/部门管理页.md"
     },

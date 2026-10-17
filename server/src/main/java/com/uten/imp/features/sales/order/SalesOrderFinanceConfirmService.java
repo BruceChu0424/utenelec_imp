@@ -37,8 +37,8 @@ import java.util.UUID;
  *
  * <p>流程：销售审核（库存检查+软预留照旧）→ <b>财务确认</b> → 计划部接收
  * （物料分析/待排产/MRP/计划关联全部以 {@code finance_confirmed = TRUE} 为准入）。
- * 确认人资格镜像 ADR-027 审核组模型：财务部门（DEPT_FIN）子树在职员工、账号启用，
- * 且持有 {@code sales_order_finance:confirm}（含个人加授）；权限可在权限设置中调整。
+ * 确认人须为在职、账号启用的员工，且有效权限包含销售订单财务查看与确认。
+ * 授权统一由权限设置管理，不再按部门或授权来源额外限制。
  *
  * <p>确认只放行计划可见性，不动库存、不立账；确认后订单红冲/取消规则不变。
  *
@@ -922,12 +922,12 @@ public class SalesOrderFinanceConfirmService {
         }
     }
 
-    /** 确认人资格：财务部门树在职 + 账号启用 + 持有 sales_order_finance:confirm（ADR-027 同型）。 */
+    /** 实时复核员工账号状态及统一权限，覆盖认领后撤权的情况。 */
     private void requireEligibleConfirmer() {
         if (!confirmerEligibility.isEligible(currentUser.requireId())) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
-                    "仅财务部门在职且持有 sales_order_finance:confirm 的人员可确认");
+                    "无法确认销售订单：请核对账号是否启用、员工是否在职，以及销售订单财务查看和确认权限");
         }
     }
 

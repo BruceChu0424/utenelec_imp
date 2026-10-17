@@ -103,10 +103,7 @@ const _expectedExemptCount = 17;
 
 /// 2026-09-26 实际新增路径逐条核对，不能用总数 +5 代替路由身份/组合权限验证。
 const _reviewedNewGuardedRoutes = <String, List<String>>{
-  '/basicinfo/goods/:id/price-analysis': [
-    Perm.goodsView,
-    Perm.materialCategoryView,
-  ],
+  '/basicinfo/goods/:id/price-analysis': [Perm.goodsView],
   '/warehouse/material-discovery/:requestId': [
     Perm.stockDocIssue,
     Perm.stockDocApprove,

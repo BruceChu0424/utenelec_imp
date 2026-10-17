@@ -66,7 +66,7 @@ class _DashboardOverviewBody extends ConsumerWidget {
 // DashboardMetricStrip / DashboardTodoLane / UtenConsoleHeader 也随之退役，
 // 现行形态在 dashboard_console_sections.dart（DashboardOverviewPanel）。
 // 骨架屏与错误态仍留在本文件，与真实形态共用；空态由面板各区各自承担
-//（指标区/待办区的空态要说清「本部门」，与旧的通用空卡文案不同）。
+//(指标区/待办区的空态与当前授权范围一致，不以部门名称代替数据范围)。
 
 /// 概览骨架占位：与 DashboardOverviewPanel 同构——标题栏 + 「横向指标带 │
 /// 竖线 │ 待办区」(宽屏并排 / 窄屏堆叠)。

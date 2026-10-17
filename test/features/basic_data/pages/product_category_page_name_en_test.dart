@@ -206,7 +206,10 @@ Future<void> _pumpPage(
           await SharedPreferences.getInstance(),
         ),
         apiClientProvider.overrideWithValue(ApiClient(Dio())),
-        currentPermissionsProvider.overrideWithValue({Perm.goodsView}),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.goodsView,
+          Perm.materialCategoryView,
+        }),
         isSuperAdminProvider.overrideWithValue(false),
         productCategoryRepositoryProvider.overrideWithValue(
           _FakeCategoryRepository(

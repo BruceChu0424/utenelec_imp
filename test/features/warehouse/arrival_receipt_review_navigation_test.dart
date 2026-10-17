@@ -1363,9 +1363,6 @@ class _FakeApi extends ApiClient {
         'receiptBillNo': 'SC-SR-009',
       };
     }
-    if (path == '/warehouse/inbound/goods-profile-hints') {
-      return const {'updated': 0};
-    }
     if (path == '/warehouse/place-suggestions') {
       // 共用库位建议：本夹具不预设任何记忆库位。
       placeSuggestionBodies.add(Map<String, dynamic>.from(body! as Map));

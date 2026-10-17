@@ -6118,7 +6118,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get quoteFinanceReopenedDone => '已撤销确认, 可以继续修改价格';
 
   @override
-  String get quoteFinanceLoadDetailFailed => '报价详情加载失败, 请检查网络或权限后重试';
+  String get quoteFinanceLoadDetailFailed => '报价详情暂时无法加载，请重试。';
 
   @override
   String get quoteFinanceActionFailed => '操作没有成功, 请稍后再试';
@@ -10311,4 +10311,161 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get serverUpdateReceiptStatus => '原请求的最新状态';
+
+  @override
+  String get taskClaimChecking => '正在确认审核占用，请稍候。';
+
+  @override
+  String get taskClaimIdentityChanged => '登录身份已变化，请重新打开审核。';
+
+  @override
+  String get taskClaimAcquireFailed => '暂时无法取得审核占用，请重试。';
+
+  @override
+  String get taskClaimNetworkUnavailable => '无法连接服务器，请检查网络后重新认领。';
+
+  @override
+  String get taskClaimNetworkTimeout => '服务器响应超时，请稍后重新认领。';
+
+  @override
+  String get taskClaimLoginExpired => '登录已过期，请重新登录后再试。';
+
+  @override
+  String get taskClaimPermissionDenied => '当前没有此任务的审核权限，请刷新权限后重试。';
+
+  @override
+  String get taskClaimConflict => '任务占用或内容已变化，请刷新后重新认领。';
+
+  @override
+  String get taskClaimNotFound => '审核任务不存在或已不再待审核，请刷新列表。';
+
+  @override
+  String get taskClaimRateLimited => '操作过于频繁，请稍后重新认领。';
+
+  @override
+  String get taskClaimServerUnavailable => '服务器暂时无法处理审核占用，请稍后重试。';
+
+  @override
+  String get taskClaimInvalidResponse => '未取得有效审核占用，请重新认领。';
+
+  @override
+  String get taskClaimExpired => '审核占用已失效，请重新认领。';
+
+  @override
+  String taskClaimTakenBy(String name) {
+    return '$name 正在审核，请稍后重试。';
+  }
+
+  @override
+  String get taskClaimDecisionNotReady => '审核占用已失效，请重新认领并核对最新内容。';
+
+  @override
+  String get taskClaimReplaced => '审核占用已失效或被接管，已暂停审核；请重新认领。';
+
+  @override
+  String get taskClaimRenewFailed => '无法确认审核占用，已暂停审核；请重新认领并核对最新内容。';
+
+  @override
+  String get taskClaimReadOnly => '尚未取得有效审核占用，当前仅可查看。';
+
+  @override
+  String get taskClaimRetry => '重新认领并刷新';
+
+  @override
+  String get financeSalesReviewAccessHint => '需要销售订单财务确认的查看权限，请联系权限管理员授权。';
+
+  @override
+  String get financeProcurementReviewAccessHint => '需要订货审批的查看权限，请联系权限管理员授权。';
+
+  @override
+  String get financeArrivalReviewAccessHint =>
+      '具有相应查看和审批权限的员工可处理超量到货，无需额外的部门或个人点名资格。';
+
+  @override
+  String get dashboardAuthorizedScope => '按已授权功能和数据范围展示';
+
+  @override
+  String get dashboardNoAuthorizedMetrics => '当前可见范围内暂无概览指标';
+
+  @override
+  String get dashboardNoAuthorizedTodos => '当前可见范围内没有待办';
+
+  @override
+  String get financeBatchReviewCheckFailed => '无法核对整批审核内容，请刷新后重试。';
+
+  @override
+  String get financeBatchReviewResultUnknown => '批量审批结果尚未确认，请刷新核对单据状态后再操作。';
+
+  @override
+  String get financeReviewLoadFailed => '审核详情暂时无法加载，请重试。';
+
+  @override
+  String get financeReportLoadFailed => '报表暂时无法加载，请刷新后重试。';
+
+  @override
+  String get financeBatchReviewRefreshFailed => '批量审批已完成，但页面刷新未完成，请刷新核对最新单据状态。';
+
+  @override
+  String get financeReviewAuthorityChanged =>
+      '审核内容或版本已变化，原填写内容已保留。请重新加载并核对后再审核。';
+
+  @override
+  String get permissionMissingReads =>
+      '授权配置已保留，但当前未生效，且缺少对应页面所需的查看权限。请核对授权状态；需要进入该页面时再补齐查看权限。';
+
+  @override
+  String get permissionCompleteReads => '补齐所需查看权限';
+
+  @override
+  String get permissionInactiveGrant => '原授权已失效，当前未授权。';
+
+  @override
+  String get permissionRenewGrant => '重新授权';
+
+  @override
+  String get permissionRemoveInactiveGrant => '移除未生效授权';
+
+  @override
+  String get permissionPendingReads =>
+      '保存时只补齐允许自动授予的普通查看权限；需要恢复已收回的权限或授予敏感权限时，请在相应授权项中单独确认。';
+
+  @override
+  String get permissionBatchNormalOnly => '本组授权(不含敏感及锁定项)';
+
+  @override
+  String get permissionSavedRefreshPending => '权限已保存，但当前会话未能刷新。请刷新页面后核对最新权限。';
+
+  @override
+  String get permissionSaved => '页面权限已保存';
+
+  @override
+  String get permissionSavedDetailPending => '权限已保存，但未能读取最新配置。请重新加载当前员工后再操作。';
+
+  @override
+  String get permissionSaveResultUnknown => '权限保存结果尚未确认，请先重新读取当前员工的权限，核对后再操作。';
+
+  @override
+  String get masterEntitySearchHint => '搜索名称或编号';
+
+  @override
+  String get permissionRevokeOnly => '当前只能移除原有授权，不能重新授权。';
+
+  @override
+  String get release2521Permissions =>
+      '财务审核、出厂质检等操作按有效权限开放，取消额外的部门归属和个人点名授权门槛，继续保留业务数据范围与单据状态校验。';
+
+  @override
+  String get release2521Session => '授权变化后，会话和页面操作随最新权限同步；未保存的开关调整单独标为待保存。';
+
+  @override
+  String get release2521PermissionSettings =>
+      '普通授权开关只调整所选项目，保存时按规则补齐可自动授予的普通查看权限；敏感授权和恢复已收回权限仍需单独确认。';
+
+  @override
+  String get release2521ReviewFeedback =>
+      '审核占用失败显示实际原因；批量审核结果未确认时，明确提示刷新核对单据状态。';
+
+  @override
+  String get release2521ServerUpdates =>
+      '服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。';
 }

@@ -21,6 +21,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
@@ -246,7 +247,9 @@ class _FinanceArrivalExceptionTasksPageState
                 message: _status == 'PENDING_FINANCE'
                     ? '目前没有待审批的超量到货'
                     : '目前没有已处理的超量到货',
-                description: '财务部门持权人员及被点名授权的员工均可在此处理到货超量审批。',
+                description: AppLocalizations.of(
+                  context,
+                ).financeArrivalReviewAccessHint,
               ),
             )
           else

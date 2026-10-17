@@ -7,6 +7,7 @@ import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.features.master.client.dto.ClientDetail;
 import com.uten.imp.features.master.client.dto.ClientListItem;
+import com.uten.imp.features.ai.chat.AiChatToolRegistry;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.ClientCreditReadAccess;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,7 +38,7 @@ class AiClientCreditToolTest {
 
     @BeforeEach void setUp() {
         when(access.hasDomain("SALES")).thenReturn(true);
-        login(Set.of("ai:use", "client:view", "sales_order:view"));
+        login(Set.of("ai:use", "client:view"));
         var candidate = mock(ClientListItem.class);
         when(candidate.getId()).thenReturn(clientId); when(candidate.getCode()).thenReturn("C001"); when(candidate.getName()).thenReturn("示例客户");
         when(clients.list(any(), eq(1), eq(11), eq("code"), eq("asc"))).thenReturn(new PageResponse<>(List.of(candidate), 1, 11, 1, 1));
@@ -53,7 +55,7 @@ class AiClientCreditToolTest {
         when(current.get()).thenReturn(Optional.of(actor));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, actor.getAuthorities()));
     }
-    private void creditPermission() { login(Set.of("ai:use", "client:view", "sales_order:view", ClientCreditReadAccess.VIEW)); }
+    private void creditPermission() { login(Set.of("ai:use", "client:view", ClientCreditReadAccess.VIEW)); }
     private ClientCreditFactsPort.Snapshot snapshot(long overdue) {
         var amounts = new PartyOpenBalances.CurrencyAmounts(currency, new BigDecimal("150"), new BigDecimal("80"), new BigDecimal("80"));
         var balances = new PartyOpenBalances(Map.of(currency, new PartyOpenBalances.Currency(currency, "人民币", true)),
@@ -93,8 +95,8 @@ class AiClientCreditToolTest {
         assertThat(tool.execute(Map.of("clientKeyword", "同名")).get("reply").toString()).contains("明确客户编号", "C001", "C002");
         verifyNoInteractions(facts);
     }
-    @Test void financialRightsDoNotReplaceCustomerViewOrSalesDepartment() {
-        login(Set.of("ai:use", "sales_order:view", ClientCreditReadAccess.VIEW));
+    @Test void financialRightsDoNotReplaceCustomerView() {
+        login(Set.of("ai:use", ClientCreditReadAccess.VIEW));
         assertThatThrownBy(() -> tool.execute(Map.of("clientKeyword", "C001"))).isInstanceOf(ApiException.class);
         verify(clients, never()).list(any(), anyInt(), anyInt(), anyString(), anyString()); verifyNoInteractions(facts);
     }
@@ -112,7 +114,7 @@ class AiClientCreditToolTest {
         Map<String, Object> response = tool.execute(Map.of("clientKeyword", "C001"));
         when(facts.read(clientId)).thenReturn(snapshot(0));
         assertThatThrownBy(() -> tool.authorizeResultRead(evidence(response))).isInstanceOf(ApiException.class);
-        login(Set.of("ai:use", "client:view", "sales_order:view")); clearInvocations(facts);
+        login(Set.of("ai:use", "client:view")); clearInvocations(facts);
         assertThatThrownBy(() -> tool.authorizeResultRead(evidence(response))).isInstanceOf(ApiException.class);
         verifyNoInteractions(facts);
     }
@@ -121,6 +123,42 @@ class AiClientCreditToolTest {
         var response = tool.execute(Map.of("clientKeyword", "C001"));
         assertThatCode(() -> tool.authorizeResultRead(evidence(response))).doesNotThrowAnyException();
         verify(facts, times(2)).read(clientId);
+    }
+    @Test void theFormalNarrowCreditGrantOpensTheRegisteredAiToolWithoutSalesDocumentPermissions() {
+        creditPermission();
+        var jdbc = mock(JdbcTemplate.class);
+        var policy = new AiChatAccessPolicy(current, jdbc);
+        var registeredTool = new AiClientCreditTool(policy, current, clients, facts);
+        var registry = new AiChatToolRegistry(List.of(registeredTool), policy);
+        assertThat(ClientCreditReadAccess.canRead(current.get().orElseThrow())).isTrue();
+        assertThat(registeredTool.available()).isTrue();
+        assertThat(registry.available(registeredTool.name())).contains(registeredTool);
+        when(facts.read(clientId)).thenReturn(snapshot(1));
+
+        var response = registeredTool.execute(Map.of("clientKeyword", "C001"));
+
+        assertThat(response.get("reply").toString()).contains("欠款 150 人民币", "逾期 50 人民币");
+        assertThat(current.get().orElseThrow().getPermissions())
+                .doesNotContain("sales_order:view", "sales_quote:view", "finance:view:all");
+        verify(clients).list(any(), eq(1), eq(11), eq("code"), eq("asc"));
+        when(clients.detail(clientId)).thenThrow(new ApiException(ErrorCode.NOT_FOUND));
+        assertThatThrownBy(() -> registeredTool.authorizeResultRead(evidence(response))).isInstanceOf(ApiException.class);
+        verify(facts, times(1)).read(clientId);
+        verifyNoInteractions(jdbc);
+    }
+    @Test void customerViewAloneDoesNotOpenFinancialFactsAndRevocationRemovesTheTool() {
+        var policy = new AiChatAccessPolicy(current, mock(JdbcTemplate.class));
+        var registeredTool = new AiClientCreditTool(policy, current, clients, facts);
+        var registry = new AiChatToolRegistry(List.of(registeredTool), policy);
+        assertThat(ClientCreditReadAccess.canRead(current.get().orElseThrow())).isFalse();
+        assertThat(registry.available(registeredTool.name())).contains(registeredTool);
+        assertThat(registeredTool.execute(Map.of("clientKeyword", "C001")).get("reply").toString())
+                .contains("这项暂时不能查看");
+        verifyNoInteractions(facts);
+        login(Set.of("ai:use", ClientCreditReadAccess.VIEW));
+        assertThat(registry.available()).isEmpty();
+        assertThatThrownBy(() -> registeredTool.execute(Map.of("clientKeyword", "C001"))).isInstanceOf(ApiException.class);
+        verifyNoInteractions(facts);
     }
     @SuppressWarnings("unchecked") private static Map<String, Object> evidence(Map<String, Object> result) {
         return (Map<String, Object>) result.get("_toolEvidence");

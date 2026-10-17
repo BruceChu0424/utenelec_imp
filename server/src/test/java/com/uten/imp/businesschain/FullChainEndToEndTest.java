@@ -6,6 +6,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.sales.order.SalesOrderService;
+import com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService;
 import com.uten.imp.features.sales.order.dto.OrderDetail;
 import com.uten.imp.features.sales.order.dto.OrderChangeQtyRequest;
 import com.uten.imp.features.sales.order.dto.OrderItemLine;
@@ -561,8 +562,8 @@ class FullChainEndToEndTest {
     // ---------------------------------------------------------------------------------------------
     // #19b V294 finance-confirmation gate: an approved order stays INVISIBLE to planning
     // (pending list + material-analysis candidates) until an eligible finance confirmer
-    // confirms; an account granted the permission through a NON-finance department matrix
-    // passes @PreAuthorize but must still fail the eligibility layer (department-tree check).
+    // confirms; a NON-finance employee granted the required permissions through the
+    // department matrix can claim and confirm without another personal override.
     // ---------------------------------------------------------------------------------------------
     @Test
     void financeConfirmGate_planningInvisibleUntilConfirmedAndEligibilityEnforced() {
@@ -582,7 +583,7 @@ class FullChainEndToEndTest {
         assertTrue(analysisService.salesCandidates(orderNo, 1, 20).items().isEmpty(),
                 "unconfirmed order must not appear in material-analysis candidates");
 
-        // 非财务部门的账号经部门矩阵拿到 confirm 权限：权限层通过，资格层（财务部门树）仍拒绝。
+        // 非财务部门矩阵授予确认权后可认领并确认，不再要求财务部门或个人重复加授。
         UUID outsider = createUserWithPerms(w, "fin-outsider-s19b",
                 "sales_order_finance:view");
         jdbc.update("""
@@ -591,14 +592,15 @@ class FullChainEndToEndTest {
                 where p.code = 'sales_order_finance:confirm'
                 """, w.departmentId());
         loginAs(outsider);
-        ApiException denied = assertThrows(ApiException.class,
-                () -> financeConfirmService.confirm(orderId, null));
-        assertEquals(ErrorCode.FORBIDDEN, denied.getCode(),
-                "non-finance-department account must fail the confirmer eligibility layer");
-
-        // 合格确认人（个人加授）确认后，计划部立即可见。
+        var claim = reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM", orderId.toString());
+        financeConfirmService.confirm(orderId,
+                new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null, 0L, claim.claimId()));
+        assertEquals(0, jdbc.queryForObject("""
+                SELECT count(*) FROM user_permission_overrides po
+                JOIN permissions p ON p.id = po.permission_id
+                WHERE po.user_id = ? AND p.code = 'sales_order_finance:confirm' AND po.active
+                """, Integer.class, outsider));
         loginAs(w.superAdminUserId());
-        confirmInitialSalesFinance(orderId);
         assertFalse(scheduleService.pending(1, 20, orderNo, null, null, "deliverDate", "asc", null, null)
                         .getItems().isEmpty(),
                 "confirmed order appears in the planning pending list");
@@ -10870,9 +10872,16 @@ class FullChainEndToEndTest {
 
         // super-admin CAN modify another (non-super) user's overrides
         permissionOverrideAdmin.setPermissionOverrides(other, List.of("sales_order:edit"), List.of());
-        assertEquals(1, count(
-                "select count(*) from user_permission_overrides where user_id = ? and effect = 'grant'",
-                other), "超管可改他人授权");
+        assertEquals(List.of("sales_order:edit", "sales_order:view"), jdbc.queryForList("""
+                select permission.code
+                from user_permission_overrides overrides
+                join permissions permission on permission.id=overrides.permission_id
+                where overrides.user_id=? and overrides.effect='grant' and overrides.active
+                order by permission.code
+                """, String.class, other), "超管可改他人授权，并补齐普通页面读取而不扩授其他权限");
+        assertTrue(permissionResolver.authorizationSnapshot(other, employeeIdOf(other), false).permissions()
+                        .containsAll(List.of("sales_order:edit", "sales_order:view")),
+                "已保存的编辑授权及普通页面读取必须实际生效");
 
         // non-super admin CANNOT assign permissions at all
         UUID adminNonSuper = createUserWithPerms(w, "admin-s33", "account:support");
@@ -13991,8 +14000,7 @@ class FullChainEndToEndTest {
                                   must_change_password, is_super_admin, status)
                 values (?, ?, ?, 'argon2-stub-not-used-in-direct-calls', false, true, 'active')
                 """, superAdminUserId, employeeId, "SU-" + tag);
-        // V294 财务确认闸门：超管不属 DEPT_FIN 子树，按资格 SQL 的「个人加授」分支授予确认权，
-        // 让链路夹具能以超管身份完成「审核 → 财务确认」两步（真实岗位由财务部确认人操作）。
+        // 链路夹具显式订阅销售确认待办；个人授予用于任务接收，不再作为超管操作资格。
         jdbc.update("""
                 insert into user_permission_overrides(user_id, permission_id, effect)
                 select ?, p.id, 'grant' from permissions p

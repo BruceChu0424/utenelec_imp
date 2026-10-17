@@ -93,7 +93,13 @@ class PagePermissionWorkspaceServiceTest {
                 permissionResolver,
                 new PermissionDelegationPolicy(PermissionGrantPolicyCatalog.fixed(Map.of(
                         "goods:edit", Set.of(GrantPolicy.NORMAL),
+                        "goods:view", Set.of(GrantPolicy.NORMAL),
                         "goods:export", Set.of(GrantPolicy.NORMAL),
+                        "finance_order_approval:approve", Set.of(GrantPolicy.NORMAL),
+                        "finance_order_approval:view", Set.of(GrantPolicy.NORMAL),
+                        "procurement_iqc_rejection:record_return", Set.of(GrantPolicy.NORMAL),
+                        "warehouse_iqc_return:view", Set.of(GrantPolicy.NORMAL),
+                        "procurement_iqc_rejection:view", Set.of(GrantPolicy.NORMAL),
                         "stock:view", Set.of(GrantPolicy.NORMAL),
                         "stock:balance:adjust", Set.of(GrantPolicy.INDIVIDUAL_ONLY)))),
                 registry,
@@ -275,6 +281,227 @@ class PagePermissionWorkspaceServiceTest {
     }
 
     @Test
+    void historicalDelegationSeparatesCleanupFromRegrantAfterCentralRevocation() {
+        UUID actorUserId = UUID.randomUUID(), actorEmployeeId = UUID.randomUUID();
+        UUID targetEmployeeId = UUID.randomUUID(), departmentId = UUID.randomUUID();
+        AuthUser actor = actor(actorUserId, actorEmployeeId, false);
+        Department department = department(departmentId);
+        Employee target = employee(targetEmployeeId, department);
+        UserAccount actorAccount = account(actorUserId, actorEmployeeId, false);
+        UserAccount targetAccount = account(UUID.randomUUID(), targetEmployeeId, false);
+        Permission edit = permission("goods:edit", "编辑货品", 1);
+        ManagerPermissionDelegation historical = new ManagerPermissionDelegation();
+        historical.setId(new com.uten.imp.features.rbac.ManagerPermissionDelegationId(
+                targetAccount.getId(), edit.getId(), departmentId));
+        historical.setEnabled(true);
+        historical.setRowVersion(7L);
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        when(departmentRepo.findById(departmentId)).thenReturn(Optional.of(department));
+        when(managementScope.resolveAuthority(actor, departmentId))
+                .thenReturn(Optional.of(managerAuthority(department)));
+        when(employeeRepo.findById(targetEmployeeId)).thenReturn(Optional.of(target));
+        when(userAccountRepo.findById(actorUserId)).thenReturn(Optional.of(actorAccount));
+        when(userAccountRepo.findByEmployeeId(targetEmployeeId)).thenReturn(Optional.of(targetAccount));
+        when(delegationRepo.findForEmployeePanel(targetAccount.getId(), departmentId))
+                .thenReturn(List.of(historical));
+        when(overrideRepo.findAllByIdUserId(targetAccount.getId())).thenReturn(List.of());
+        when(permissionResolver.breakdownOf(actorAccount)).thenReturn(breakdown(Set.of(edit.getCode())));
+        when(permissionResolver.delegableCeilingOf(actorAccount)).thenReturn(Set.of(edit.getCode()));
+        when(permissionRepo.findByCodeIn(any())).thenReturn(List.of(edit));
+        var revoked = new PermissionResolver.PermBreakdown(null, null, Set.of(), Set.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), false,
+                List.of(edit.getCode()), Set.of());
+        when(permissionResolver.breakdownsOf(targetAccount)).thenReturn(
+                new PermissionResolver.PermissionBreakdowns(revoked, revoked));
+
+        var blocked = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(blocked.editable()).isTrue();
+        assertThat(blocked.canEnable()).isFalse();
+        assertThat(blocked.canDisable()).isTrue();
+        assertThat(blocked.configuredEnabled()).isTrue();
+        assertThat(blocked.effective()).isFalse();
+        assertThat(blocked.rowVersion()).isEqualTo(7L);
+
+        when(permissionResolver.breakdownsOf(targetAccount)).thenReturn(
+                new PermissionResolver.PermissionBreakdowns(breakdown(Set.of()), breakdown(Set.of())));
+        var renewable = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(renewable.canEnable()).isTrue();
+        assertThat(renewable.canDisable()).isTrue();
+
+        when(permissionResolver.delegableCeilingOf(actorAccount)).thenReturn(Set.of());
+        var outsideCeiling = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(outsideCeiling.canEnable()).isFalse();
+        assertThat(outsideCeiling.canDisable()).isTrue();
+    }
+
+    @Test
+    void missingHardReadCapabilitiesPreserveRevokesAndTheOriginalGrantSource() {
+        UUID actorUserId = UUID.randomUUID(), actorEmployeeId = UUID.randomUUID();
+        UUID targetEmployeeId = UUID.randomUUID(), departmentId = UUID.randomUUID();
+        AuthUser actor = actor(actorUserId, actorEmployeeId, false);
+        Department department = department(departmentId);
+        Employee target = employee(targetEmployeeId, department);
+        UserAccount actorAccount = account(actorUserId, actorEmployeeId, false);
+        UserAccount targetAccount = account(UUID.randomUUID(), targetEmployeeId, false);
+        Permission edit = permission("finance_order_approval:approve", "审批订货", 1);
+        edit.setActionType("APPROVE");
+        Permission view = permission("finance_order_approval:view", "查看订货审批", 2);
+        view.setActionType("VIEW");
+        service = service(PermissionSurfaceRegistryTestFixture.registry(Map.of(
+                "basic.goods", Set.of(edit.getCode(), view.getCode()))));
+        ManagerPermissionDelegation historical = new ManagerPermissionDelegation();
+        historical.setId(new com.uten.imp.features.rbac.ManagerPermissionDelegationId(
+                targetAccount.getId(), edit.getId(), departmentId));
+        historical.setEnabled(true);
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        when(departmentRepo.findById(departmentId)).thenReturn(Optional.of(department));
+        when(managementScope.resolveAuthority(actor, departmentId))
+                .thenReturn(Optional.of(managerAuthority(department)));
+        when(employeeRepo.findById(targetEmployeeId)).thenReturn(Optional.of(target));
+        when(userAccountRepo.findById(actorUserId)).thenReturn(Optional.of(actorAccount));
+        when(userAccountRepo.findByEmployeeId(targetEmployeeId)).thenReturn(Optional.of(targetAccount));
+        when(delegationRepo.findForEmployeePanel(targetAccount.getId(), departmentId))
+                .thenReturn(List.of(historical));
+        when(overrideRepo.findAllByIdUserId(targetAccount.getId())).thenReturn(List.of());
+        when(permissionResolver.breakdownOf(actorAccount)).thenReturn(breakdown(Set.of(edit.getCode(), view.getCode())));
+        when(permissionResolver.delegableCeilingOf(actorAccount)).thenReturn(Set.of(edit.getCode(), view.getCode()));
+        when(permissionRepo.findByCodeIn(any())).thenReturn(List.of(edit, view));
+        when(permissionRepo.findAll()).thenReturn(List.of(edit, view));
+        var managerConfigured = new PermissionResolver.PermBreakdown(null, null, Set.of(), Set.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(edit.getCode()), true, List.of(), Set.of());
+        when(permissionResolver.breakdownsOf(targetAccount)).thenReturn(
+                new PermissionResolver.PermissionBreakdowns(breakdown(Set.of()), managerConfigured));
+        var renewable = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(renewable.canEnable()).isTrue();
+        assertThat(renewable.missingDependencies()).containsExactly(view.getCode());
+
+        var revokedView = new PermissionResolver.PermBreakdown(null, null, Set.of(), Set.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), false, List.of(view.getCode()), Set.of());
+        when(permissionResolver.breakdownsOf(targetAccount)).thenReturn(
+                new PermissionResolver.PermissionBreakdowns(revokedView, managerConfigured));
+        var blocked = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(blocked.canEnable()).isFalse();
+        assertThat(blocked.canDisable()).isTrue();
+        assertThat(blocked.reason()).contains("查看订货审批", "明确收回").doesNotContain(view.getCode());
+
+        when(permissionResolver.breakdownsOf(targetAccount)).thenReturn(
+                new PermissionResolver.PermissionBreakdowns(breakdown(Set.of()), managerConfigured));
+        when(permissionResolver.delegableCeilingOf(actorAccount)).thenReturn(Set.of(edit.getCode()));
+        var outsideCeiling = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(outsideCeiling.canEnable()).isFalse();
+        assertThat(outsideCeiling.canDisable()).isTrue();
+        assertThat(outsideCeiling.reason()).contains("查看订货审批", "不能从本页自动补齐");
+
+        when(permissionResolver.delegableCeilingOf(actorAccount)).thenReturn(Set.of(edit.getCode(), view.getCode()));
+        view.setGrantPolicy(new String[]{GrantPolicy.BULK_EXCLUDED.name()});
+        var sensitiveRead = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(sensitiveRead.canEnable()).isFalse();
+        assertThat(sensitiveRead.canDisable()).isTrue();
+        view.setGrantPolicy(new String[]{GrantPolicy.NORMAL.name()});
+
+        when(delegationRepo.findForEmployeePanel(targetAccount.getId(), departmentId)).thenReturn(List.of());
+        var inheritedConfigured = new PermissionResolver.PermBreakdown(null, null, Set.of(edit.getCode()), Set.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), false, List.of(), Set.of());
+        when(permissionResolver.breakdownsOf(targetAccount)).thenReturn(
+                new PermissionResolver.PermissionBreakdowns(inheritedConfigured, inheritedConfigured));
+        var inherited = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(inherited.configuredEnabled()).isTrue();
+        assertThat(inherited.effective()).isFalse();
+        assertThat(inherited.canEnable()).isFalse();
+        assertThat(inherited.canDisable()).isFalse();
+        assertThat(inherited.reason()).contains("原授权入口");
+        verify(delegationRepo, org.mockito.Mockito.never()).saveAllAndFlush(any());
+        verify(overrideRepo, org.mockito.Mockito.never()).saveAllAndFlush(any());
+    }
+
+    @Test
+    void navigationRevokeDoesNotBlockIndependentGrantAndHardOrSelectsALegalRead() {
+        UUID actorUserId = UUID.randomUUID(), actorEmployeeId = UUID.randomUUID();
+        UUID targetEmployeeId = UUID.randomUUID(), departmentId = UUID.randomUUID();
+        AuthUser actor = actor(actorUserId, actorEmployeeId, false);
+        Department department = department(departmentId);
+        Employee target = employee(targetEmployeeId, department);
+        UserAccount actorAccount = account(actorUserId, actorEmployeeId, false);
+        UserAccount targetAccount = account(UUID.randomUUID(), targetEmployeeId, false);
+        Permission edit = permission("goods:edit", "编辑货品", 1);
+        edit.setActionType("EDIT");
+        Permission view = permission("goods:view", "查看货品", 2);
+        view.setActionType("VIEW");
+        service = service(PermissionSurfaceRegistryTestFixture.registry(Map.of(
+                "basic.goods", Set.of(edit.getCode(), view.getCode()))));
+        ManagerPermissionDelegation historical = new ManagerPermissionDelegation();
+        historical.setId(new com.uten.imp.features.rbac.ManagerPermissionDelegationId(
+                targetAccount.getId(), edit.getId(), departmentId));
+        historical.setEnabled(true);
+        when(currentUser.get()).thenReturn(Optional.of(actor));
+        when(departmentRepo.findById(departmentId)).thenReturn(Optional.of(department));
+        when(managementScope.resolveAuthority(actor, departmentId))
+                .thenReturn(Optional.of(managerAuthority(department)));
+        when(employeeRepo.findById(targetEmployeeId)).thenReturn(Optional.of(target));
+        when(userAccountRepo.findById(actorUserId)).thenReturn(Optional.of(actorAccount));
+        when(userAccountRepo.findByEmployeeId(targetEmployeeId)).thenReturn(Optional.of(targetAccount));
+        when(delegationRepo.findForEmployeePanel(targetAccount.getId(), departmentId))
+                .thenReturn(List.of(historical));
+        when(overrideRepo.findAllByIdUserId(targetAccount.getId())).thenReturn(List.of());
+        when(permissionResolver.breakdownOf(actorAccount)).thenReturn(breakdown(Set.of(edit.getCode())));
+        when(permissionResolver.delegableCeilingOf(actorAccount)).thenReturn(Set.of(edit.getCode()));
+        when(permissionRepo.findByCodeIn(any())).thenReturn(List.of(edit, view));
+        when(permissionRepo.findAll()).thenReturn(List.of(edit, view));
+        var revokedNavigation = new PermissionResolver.PermBreakdown(null, null, Set.of(), Set.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), false, List.of(view.getCode()), Set.of());
+        var independentlyUsable = new PermissionResolver.PermBreakdown(null, null, Set.of(), Set.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(edit.getCode()), true,
+                List.of(view.getCode()), Set.of(edit.getCode()));
+        when(permissionResolver.breakdownsOf(targetAccount)).thenReturn(
+                new PermissionResolver.PermissionBreakdowns(revokedNavigation, independentlyUsable));
+        var independent = service.employeePermissions(targetEmployeeId, departmentId, "basic.goods")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(independent.effective()).isTrue();
+        assertThat(independent.canEnable()).isTrue();
+        assertThat(independent.canDisable()).isTrue();
+        assertThat(independent.missingDependencies()).containsExactly(view.getCode());
+        assertThat(independent.reason()).contains("对应页面", "查看货品");
+
+        Permission record = permission("procurement_iqc_rejection:record_return", "登记退回", 1);
+        record.setActionType("EXECUTE");
+        Permission warehouseRead = permission("warehouse_iqc_return:view", "查看仓库退回任务", 2);
+        warehouseRead.setActionType("VIEW");
+        Permission financeRead = permission("procurement_iqc_rejection:view", "查看财务退回记录", 3);
+        financeRead.setActionType("VIEW");
+        service = service(PermissionSurfaceRegistryTestFixture.registry(Map.of(
+                "procurement.iqc-rejections", Set.of(record.getCode(), warehouseRead.getCode(), financeRead.getCode()))));
+        historical.setId(new com.uten.imp.features.rbac.ManagerPermissionDelegationId(
+                targetAccount.getId(), record.getId(), departmentId));
+        when(permissionResolver.breakdownOf(actorAccount)).thenReturn(breakdown(Set.of(record.getCode(), financeRead.getCode())));
+        when(permissionResolver.delegableCeilingOf(actorAccount)).thenReturn(Set.of(record.getCode(), financeRead.getCode()));
+        when(permissionRepo.findByCodeIn(any())).thenReturn(List.of(record, warehouseRead, financeRead));
+        when(permissionRepo.findAll()).thenReturn(List.of(record, warehouseRead, financeRead));
+        var revokedCanonical = new PermissionResolver.PermBreakdown(null, null, Set.of(), Set.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(), false, List.of(warehouseRead.getCode()), Set.of());
+        var pendingHardRead = new PermissionResolver.PermBreakdown(null, null, Set.of(), Set.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(record.getCode()), true,
+                List.of(warehouseRead.getCode()), Set.of());
+        when(permissionResolver.breakdownsOf(targetAccount)).thenReturn(
+                new PermissionResolver.PermissionBreakdowns(revokedCanonical, pendingHardRead));
+        var legalAlternative = service.employeePermissions(targetEmployeeId, departmentId, "procurement.iqc-rejections")
+                .groups().getFirst().permissions().getFirst();
+        assertThat(legalAlternative.canEnable()).isTrue();
+        assertThat(legalAlternative.requiredPermissions()).containsExactly(financeRead.getCode());
+        assertThat(legalAlternative.missingDependencies()).containsExactly(financeRead.getCode());
+        assertThat(legalAlternative.reason()).doesNotContain("明确收回", warehouseRead.getCode());
+        verify(delegationRepo, org.mockito.Mockito.never()).saveAllAndFlush(any());
+        verify(overrideRepo, org.mockito.Mockito.never()).saveAllAndFlush(any());
+    }
+
+    @Test
     void hubDrawerSplitsRootAndChildGroupsAndAttributesCodesToChildren() {
         UUID actorUserId = UUID.randomUUID();
         UUID targetEmployeeId = UUID.randomUUID();
@@ -403,7 +630,7 @@ class PagePermissionWorkspaceServiceTest {
             assertTrue(row.isActive());
         }
         assertEquals(8L, inactiveEdit.getRowVersion());
-        verify(refreshTokenRepo).revokeAllByUserId(targetUserId);
+        org.mockito.Mockito.verifyNoInteractions(refreshTokenRepo);
         // 一次保存一条语义化业务事件(中央覆盖：grant:码)。
         // 条目顺序不是契约(事件里会排序落库)，按集合比对。
         verify(changeAudit).record(eq("user_permission_override_change"), eq("users"),
@@ -427,6 +654,9 @@ class PagePermissionWorkspaceServiceTest {
         UserAccount actorAccount = account(actorUserId, actorEmployeeId, false);
         UserAccount targetAccount = account(targetUserId, targetEmployeeId, false);
         Permission edit = permission("goods:edit", "编辑货品", 1);
+        edit.setActionType("EDIT");
+        Permission view = permission("goods:view", "查看货品", 2);
+        view.setActionType("VIEW");
         // hub 树：从 basic.hub 抽屉授权 goods:edit，归属面应是子面 basic.goods。
         service = service(PermissionSurfaceRegistryTestFixture.registry(
                 Map.of(
@@ -447,13 +677,17 @@ class PagePermissionWorkspaceServiceTest {
         when(delegationRepo.lockAuthorizationEpoch()).thenReturn(7L);
         when(permissionRepo.findByCodeIn(Set.of("goods:edit")))
                 .thenReturn(List.of(edit));
+        when(permissionRepo.findAll()).thenReturn(List.of(edit, view));
         when(permissionResolver.delegableCeilingOf(actorAccount))
                 .thenReturn(Set.of("goods:edit"));
         when(permissionResolver.breakdownOf(targetAccount))
                 .thenReturn(breakdown(Set.of("goods:edit")));
         when(permissionResolver.breakdownsOf(targetAccount))
                 .thenReturn(new PermissionResolver.PermissionBreakdowns(
-                        breakdown(Set.of()), breakdown(Set.of())));
+                        new PermissionResolver.PermBreakdown(null, null, Set.of(), Set.of(),
+                                List.of(), List.of(), List.of(), List.of(), List.of(), false,
+                                List.of(view.getCode()), Set.of()),
+                        breakdown(Set.of())));
         when(delegationRepo.findAllByIdForUpdate(anyCollection()))
                 .thenReturn(List.of());
 
@@ -468,6 +702,7 @@ class PagePermissionWorkspaceServiceTest {
         assertEquals("MANAGER_DELEGATION", result.settingMode());
         assertTrue(result.changes().getFirst().effective());
         verify(delegationRepo).saveAllAndFlush(savedDelegations.capture());
+        assertThat(savedDelegations.getValue()).hasSize(1);
         ManagerPermissionDelegation row = savedDelegations.getValue().getFirst();
         assertEquals("basic.goods", row.getSurfaceKey());
         assertTrue(row.isEnabled());

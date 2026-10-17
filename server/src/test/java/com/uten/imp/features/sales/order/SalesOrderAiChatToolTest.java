@@ -69,8 +69,8 @@ class SalesOrderAiChatToolTest {
         assertThat(runningWithReason.state()).isEqualTo("进行中");
 
         var waiting = SalesOrderAiChatTool.step(new OrderProgressTimelineEvent(30, "FINANCE_CONFIRMED", "财务审核",
-                null, null, null, OrderProgressTimelineEvent.CURRENT, "等待财务审核组确认", null, null, null));
-        assertThat(waiting.detail()).isEqualTo("等待财务审核组确认");
+                null, null, null, OrderProgressTimelineEvent.CURRENT, "等待销售订单财务确认", null, null, null));
+        assertThat(waiting.detail()).isEqualTo("等待销售订单财务确认");
     }
 
     @Test

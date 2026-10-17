@@ -4,7 +4,7 @@
 // 本页只声明文案/图标/权限/仓储钩子 + 模具领域差异：
 // - 右侧明细区复用 MasterEntityDetailPane(ADR-111)，本页给 mouldRepository 分类下分页闭包；
 // - 删除分类带级联预览（后代分类数/模具数红框确认），覆盖 shellDeleteNode；
-// - 编辑类按钮（新增/编辑/删除）按 mould_category:edit 权限显隐；查看全员可见（路由不设守卫）；
+// - 主档按 mould:view 查看；分类按 mould_category:view 独立显示，无权时使用主档全局列表。
 // - 右侧用通用 MasterDataTableView（Excel 风格：搜索 + 横排 autofilter + 列对齐 + 分页）。
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
@@ -68,6 +68,8 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
   @override
   FormDraftDescriptor get shellCategoryDraftDescriptor =>
       FormDraftCatalog.mouldCategory;
+  @override
+  String get shellCategoryViewPermission => Perm.mouldCategoryView;
 
   @override
   bool get shellCanCreate =>

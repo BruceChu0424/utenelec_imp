@@ -5,7 +5,7 @@
 // - 右侧明细区复用 MasterEntityDetailPane(ADR-111)，本页给 supplierRepository 分类下分页闭包；
 // - 表格走通用 MasterDataTableView（搜索 + 横排 autofilter 筛选 + 列对齐 + 分页）；
 // - 字段 facet 走 /facets（19 个有数据列，主结账方式/损耗率无对应列不参与 facet）；
-// - 编辑类按钮按 supplier_category:edit / supplier:edit 权限显隐；查看全员可见；
+// - 主档按 supplier:view 查看；分类按 supplier_category:view 独立显示，无权时使用主档全局列表。
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
 // 文档：见 docs/数据迁移/09-供应商资料-新库与迁移.md。
@@ -59,6 +59,8 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
   @override
   FormDraftDescriptor get shellCategoryDraftDescriptor =>
       FormDraftCatalog.supplierCategory;
+  @override
+  String get shellCategoryViewPermission => Perm.supplierCategoryView;
 
   @override
   bool get shellCanCreate => ref

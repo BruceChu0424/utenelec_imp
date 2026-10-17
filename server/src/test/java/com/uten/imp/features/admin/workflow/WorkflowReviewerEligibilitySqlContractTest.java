@@ -15,7 +15,7 @@ import static org.mockito.Mockito.mock;
 class WorkflowReviewerEligibilitySqlContractTest {
 
     @Test
-    void crossDepartmentGrantRequiresActiveOverride() {
+    void candidateAccountsDoNotRequireAFinanceDepartmentOrPersonalOverride() {
         CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
         WorkflowReviewerEligibility eligibility = new WorkflowReviewerEligibility(
                 jdbc,
@@ -24,10 +24,8 @@ class WorkflowReviewerEligibilitySqlContractTest {
 
         assertThat(eligibility.findEligible(UUID.randomUUID())).isEmpty();
         assertThat(jdbc.capturedSql)
-                .contains("po.effect = 'grant'")
-                .contains("po.active = TRUE")
-                // ADR-109：目录里只剩活码(停用即删除)，不再有权限停用列可过滤。
-                .doesNotContain("perm.active");
+                .contains("u.status = 'active'", "e.status <> 'resigned'", "u.id = ?")
+                .doesNotContain("finance_departments", "user_permission_overrides", "DEPT_FIN");
     }
 
     private static final class CapturingJdbcTemplate extends JdbcTemplate {

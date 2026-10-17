@@ -6,6 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/finance/pages/finance_sales_shipment_audit_page.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
@@ -19,6 +22,7 @@ import '../../../support/filter_segment_tap.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 
 late SharedPreferences _preferences;
+final _permissionStateProvider = StateProvider<Set<String>>((ref) => {});
 
 void main() {
   setUp(() async {
@@ -51,7 +55,105 @@ void main() {
     expect(find.text('仓库作业'), findsOneWidget);
     // ADR-128：出货金额按本单币种写成「币种 金额」。
     expect(find.text('100.00 美金'), findsOneWidget);
+    final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
+      find.byKey(const Key('finance-shipment-audit-table')),
+    );
+    expect(table.items.single.shipmentWorkflow.financeReviewPending, isTrue);
+    expect(table.selectable, isFalse);
+    expect(table.batchActionsBuilder, isNull);
+    expect(
+      find.byKey(const Key('finance-shipment-batch-approve')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('finance-shipment-batch-reject')),
+      findsNothing,
+    );
   });
+
+  for (final size in [const Size(1440, 900), const Size(375, 812)]) {
+    for (final (label, actionPermissions, approve, reject) in [
+      ('approve only', {Perm.salesShipmentFinanceApprove}, true, false),
+      ('reject only', {Perm.salesShipmentFinanceReject}, false, true),
+      (
+        'both decisions',
+        {Perm.salesShipmentFinanceApprove, Perm.salesShipmentFinanceReject},
+        true,
+        true,
+      ),
+    ]) {
+      testWidgets('finance batch actions match $label at $size', (
+        tester,
+      ) async {
+        await _pump(
+          tester,
+          page: const FinanceSalesShipmentAuditPage(),
+          permission: Perm.salesShipmentFinanceView,
+          extraPermissions: actionPermissions,
+          api: _ShipmentTaskApi(),
+          size: size,
+        );
+        final table = tester.widget<MasterDataTableView<SalesDocListItem>>(
+          find.byKey(const Key('finance-shipment-audit-table')),
+        );
+        expect(table.selectable, isTrue);
+        table.onSelectedIdsChanged?.call({'shipment-1'});
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('finance-shipment-batch-approve')),
+          approve ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const Key('finance-shipment-batch-reject')),
+          reject ? findsOneWidget : findsNothing,
+        );
+      });
+    }
+  }
+
+  testWidgets(
+    'revoked action authority hides selection and blocks a retained approval callback',
+    (tester) async {
+      final api = _ShipmentTaskApi();
+      await _pump(
+        tester,
+        page: const FinanceSalesShipmentAuditPage(),
+        permission: Perm.salesShipmentFinanceView,
+        extraPermissions: {Perm.salesShipmentFinanceApprove},
+        api: api,
+        size: const Size(1440, 900),
+      );
+      final tableFinder = find.byKey(const Key('finance-shipment-audit-table'));
+      tester
+          .widget<MasterDataTableView<SalesDocListItem>>(tableFinder)
+          .onSelectedIdsChanged
+          ?.call({'shipment-1'});
+      await tester.pumpAndSettle();
+      final previousApproval = tester
+          .widget<UtenButton>(
+            find.byKey(const Key('finance-shipment-batch-approve')),
+          )
+          .onPressed!;
+      final container = ProviderScope.containerOf(tester.element(tableFinder));
+      container.read(_permissionStateProvider.notifier).state = {
+        Perm.salesShipmentFinanceView,
+      };
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<MasterDataTableView<SalesDocListItem>>(tableFinder)
+            .selectable,
+        isFalse,
+      );
+      expect(
+        find.byKey(const Key('finance-shipment-batch-approve')),
+        findsNothing,
+      );
+      previousApproval();
+      await tester.pumpAndSettle();
+      expect(api.writes, isEmpty);
+    },
+  );
 
   testWidgets(
     'warehouse task page stays usable at 375px and filters work status',
@@ -151,6 +253,7 @@ Future<void> _pump(
   WidgetTester tester, {
   required Widget page,
   required String permission,
+  Set<String> extraPermissions = const {},
   required _ShipmentTaskApi api,
   required Size size,
 }) async {
@@ -164,10 +267,20 @@ Future<void> _pump(
         ),
         sharedPreferencesProvider.overrideWithValue(_preferences),
         apiClientProvider.overrideWithValue(api),
-        currentPermissionsProvider.overrideWithValue({permission}),
+        _permissionStateProvider.overrideWith(
+          (ref) => {permission, ...extraPermissions},
+        ),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_permissionStateProvider),
+        ),
         isSuperAdminProvider.overrideWithValue(false),
       ],
-      child: MaterialApp(home: page),
+      child: MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: page,
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -238,6 +351,18 @@ class _ShipmentTaskApi extends ApiClient {
   final bool fail;
   final bool empty;
   final List<Map<String, dynamic>> shipmentQueries = [];
+  final List<String> writes = [];
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    writes.add(path);
+    throw StateError('Unexpected write');
+  }
 
   @override
   Future<Map<String, dynamic>> get(
@@ -261,6 +386,7 @@ class _ShipmentTaskApi extends ApiClient {
                 'totalOriginal': 100,
                 'status': 0,
                 'financeAudit': 0,
+                'financeReviewPending': true,
                 'warehouseWorkStatus': 'PENDING_PICK',
               },
             ],

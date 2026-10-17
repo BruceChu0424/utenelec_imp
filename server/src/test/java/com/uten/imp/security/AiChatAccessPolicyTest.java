@@ -24,11 +24,12 @@ class AiChatAccessPolicyTest {
     private void actor(Set<String> permissions, boolean admin) {
         when(current.get()).thenReturn(Optional.of(new AuthUser(actor, employee, "worker", permissions, false, true, admin)));
     }
-    @Test void productionMembershipCannotUseStrayFinanceOrGrantPermission() {
+    @Test void effectiveFinancePermissionWorksAcrossDepartmentsWithoutGrantingAdministration() {
         actor(Set.of("ai:use", "production_execution:view", "goods:cost:view", "finance:view:all", "admin:permission:edit"), false);
-        assertThat(policy.domains()).containsExactlyInAnyOrder("SELF", "PRODUCTION");
-        assertThatThrownBy(() -> policy.requireDomain("FINANCE")).isInstanceOf(ApiException.class);
+        assertThat(policy.domains()).containsExactlyInAnyOrder("SELF", "PRODUCTION", "FINANCE");
+        assertThatCode(() -> policy.requireDomain("FINANCE")).doesNotThrowAnyException();
         assertThat(policy.hasDomain("ADMIN")).isFalse();
+        verifyNoInteractions(jdbc);
     }
     @Test void departmentAloneNeverConfersBusinessAccess() {
         actor(Set.of("ai:use"), false);
@@ -48,9 +49,9 @@ class AiChatAccessPolicyTest {
         when(current.get()).thenReturn(Optional.of(new AuthUser(actor, employee, "worker", Set.of("ai:use"), false, true, false, false, UUID.randomUUID())));
         assertThatThrownBy(policy::requireChat).isInstanceOf(ApiException.class);
     }
-    @Test void researchDomainRequiresEngineeringMembershipAndExactTaskReadPermission() {
+    @Test void researchDomainRequiresExactTaskReadPermissionWithoutEngineeringMembership() {
         actor(Set.of("ai:use","rd_task:view"),false);
-        assertThat(policy.domains()).doesNotContain("RD");
+        assertThat(policy.domains()).contains("RD");
         when(jdbc.queryForList(anyString(),eq(String.class),any(),any())).thenReturn(List.of("eng:DEPT_ENG"));
         assertThat(policy.domains()).contains("RD");
         actor(Set.of("ai:use","rd_task:resolve"),false);
@@ -93,10 +94,32 @@ class AiChatAccessPolicyTest {
                 "goods:cost:view", "procurement_inspection:view", "subcontract_order:view", "employee:view", "rd_task:view"), false);
         assertThat(policy.domains()).containsExactlyInAnyOrder("SELF", "SALES", "PRODUCTION", "PURCHASE", "WAREHOUSE", "FINANCE", "QUALITY", "SUBCONTRACT", "HR", "RD");
     }
-    @Test void claimsAndStrayPermissionsDoNotCreateAContextualMembership() {
+    @Test void permissionsAuthorizeDomainsWithoutInventingContextualMembership() {
         actor(Set.of("ai:use", "sales_quote:view", "goods:cost:view", "finance:view:all"), false);
         assertThat(policy.contextualDomains()).containsExactly("PRODUCTION");
+        assertThat(policy.domains()).containsExactlyInAnyOrder("SELF", "SALES", "FINANCE");
+    }
+    @Test void permissionChangesTakeEffectWithoutADepartmentMove() {
+        when(jdbc.queryForList(anyString(), eq(String.class), any(), any())).thenReturn(List.of());
+        actor(Set.of("ai:use", "sales_order:view", "sales_order:create", "rd_task:view"), false);
+        assertThat(policy.domains()).contains("SALES", "RD");
+        actor(Set.of("ai:use"), false);
         assertThat(policy.domains()).containsExactly("SELF");
+        assertThat(policy.hasDomain("SALES")).isFalse();
+        verifyNoInteractions(jdbc);
+    }
+    @Test void financeAndHrWorkflowGrantsExposeTheirDomainsOutsideTheirUsualDepartments() {
+        actor(Set.of("ai:use", "sales_order_finance:view", "sales_order_finance:confirm",
+                "profile:review", "visitor:approve"), false);
+        assertThat(policy.domains()).containsExactlyInAnyOrder("SELF", "FINANCE", "HR");
+        verifyNoInteractions(jdbc);
+    }
+    @Test void exactCustomerAndPriceAnalysisReadGrantsExposeTheirToolDomains() {
+        actor(Set.of("ai:use", "client:view", "goods:price_analysis:view"), false);
+        assertThat(policy.domains()).containsExactlyInAnyOrder("SELF", "SALES", "FINANCE");
+        actor(Set.of("ai:use", "client:create", "goods:view"), false);
+        assertThat(policy.domains()).containsExactly("SELF");
+        verifyNoInteractions(jdbc);
     }
     @Test void invalidOrImpersonatedActorsCannotReadDepartmentContext() {
         for (AuthUser rejected : List.of(

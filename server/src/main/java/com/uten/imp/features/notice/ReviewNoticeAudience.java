@@ -11,7 +11,7 @@ import java.util.UUID;
 import java.util.LinkedHashSet;
 import java.util.stream.Collectors;
 
-/** Current department membership and action authority govern actionable reminders. */
+/** Current action authority governs reminders; physical responsibility scopes remain bounded. */
 @Component
 @RequiredArgsConstructor
 public class ReviewNoticeAudience {
@@ -144,29 +144,29 @@ public class ReviewNoticeAudience {
         if (!permissions.contains("notice:read")) return false;
         boolean warehouseSide = departments.contains("SUB_WH") || warehouseParticipant;
         return switch (event) {
-            case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> departments.contains("DEPT_FIN") && permissions.contains("sales_shipment_finance:approve");
+            case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> permissions.contains("sales_shipment_finance:view")
+                    && any(permissions, "sales_shipment_finance:approve", "sales_shipment_finance:reject");
             case "SALES_SHIPMENT_PENDING_PICK" -> warehouseSide && permissions.contains("warehouse_sales_outbound:execute");
-            case "SALES_SHIPMENT_FINANCE_REJECTED" -> any(departments,"DEPT_SALES","DEPT_RAIL") && permissions.containsAll(Set.of("sales_shipment:view","sales_shipment:edit"));
-            case "DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED" -> any(departments,"DEPT_SALES","DEPT_RAIL") && permissions.containsAll(Set.of("sales_other_shipment:view","sales_other_shipment:edit"));
-            case "SALES_ORDER_PENDING_FINANCE_CONFIRM" -> departments.contains("DEPT_FIN")
-                    && permissions.containsAll(Set.of("sales_order_finance:view", "sales_order_finance:confirm"));
-            // ADR-134 报价核价: 与核价人资格同口径(财务部门子树 + 查看 + 确认)。
-            case "SALES_QUOTE_PENDING_FINANCE_REVIEW" -> departments.contains("DEPT_FIN")
-                    && permissions.containsAll(Set.of("sales_quote_finance:view", "sales_quote_finance:confirm"));
+            case "SALES_SHIPMENT_FINANCE_REJECTED" -> permissions.containsAll(Set.of("sales_shipment:view","sales_shipment:edit"));
+            case "DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED" -> permissions.containsAll(Set.of("sales_other_shipment:view","sales_other_shipment:edit"));
+            case "SALES_ORDER_PENDING_FINANCE_CONFIRM" ->
+                    permissions.containsAll(Set.of("sales_order_finance:view", "sales_order_finance:confirm"));
+            case "SALES_QUOTE_PENDING_FINANCE_REVIEW" ->
+                    permissions.containsAll(Set.of("sales_quote_finance:view", "sales_quote_finance:confirm"));
             case "PROCUREMENT_FINANCE_SUBMITTED", "PROCUREMENT_FINANCE_CHANGE_SUBMITTED" ->
-                    departments.contains("DEPT_FIN") && permissions.contains("finance_order_approval:view")
+                    permissions.contains("finance_order_approval:view")
                     && any(permissions, "finance_order_approval:approve", "finance_order_approval:reject");
-            case "PROCUREMENT_IQC_PENDING" -> departments.contains("DEPT_QA")
-                    && permissions.containsAll(Set.of("procurement_inspection:view", "procurement_inspection:handle"));
-            case "SALES_ORDER_APPROVED" -> departments.contains("SUB_PLAN")
-                    && permissions.containsAll(Set.of("production_material_analysis:view", "production_material_analysis:create"));
+            case "PROCUREMENT_IQC_PENDING" ->
+                    permissions.containsAll(Set.of("procurement_inspection:view", "procurement_inspection:handle"));
+            case "SALES_ORDER_APPROVED" ->
+                    permissions.containsAll(Set.of("production_material_analysis:view", "production_material_analysis:create"));
             case "PRODUCTION_OVER_LIMIT_PENDING", "PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "PRODUCTION_MATERIAL_INCREMENT_SUBMITTED" ->
-                    departments.contains("SUB_PLAN") && permissions.contains("production_plan:approve");
+                    permissions.contains("production_plan:approve");
             // ADR-143 委外可领料：收件人在发卡时已按订货单归属可见范围精确算好(不限部门)，这里复核
             // 「现在还能不能领料」。
             case "SUBCONTRACT_DRAW_AVAILABLE" ->
                     permissions.containsAll(Set.of("subcontract_order:view", "subcontract_order:draw"));
-            // ADR-156 委外申请可下单：收件人在发卡时已按采购委外部门算好，这里复核「现在还能不能生成委外订货单」。
+            // 委外申请可下单：复核当前是否仍能查看申请并生成委外订货单。
             case "SUBCONTRACT_ORDER_KIT_READY" ->
                     permissions.containsAll(Set.of("subcontract_application:view", "subcontract_order:decompose"));
             // 委外领料草稿待发料：草稿所在仓库的仓管(发卡时已按仓分发; ADR-149 部门外登记的负责人同等弹卡)。
@@ -174,7 +174,7 @@ public class ReviewNoticeAudience {
                     && permissions.containsAll(Set.of("subcontract_outbound:view", "subcontract_outbound:execute"));
             case WORKSHOP_EVENT -> canHandleWorkshop(permissions);
             // ADR-117 车间催计划：能在物料分析页下单的人(下达采购委外或下达车间)。收件人在发卡时已按
-            // 计划 / 生产部门池 + 制单计划员 + 分析可见范围精确算好，这里不再卡部门(制单人不在池里也要弹)。
+            // 当前动作权限 + 制单计划员 + 分析可见范围精确算好，这里只复核当前动作权限。
             case "PRODUCTION_PLANNING_URGED" -> permissions.contains("production_material_analysis:view")
                     && any(permissions, "production_material_analysis:notify", "production_material_analysis:generate");
             case "PROCUREMENT_IQC_STOCK_IN_PENDING" -> warehouseSide
@@ -183,12 +183,11 @@ public class ReviewNoticeAudience {
                     && permissions.containsAll(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"));
             case "PROCUREMENT_FINANCE_APPROVED" -> warehouseSide
                     && permissions.containsAll(Set.of("warehouse_inbound:view", "warehouse_inbound:stock_in"));
-            case "SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP" -> any(departments, "DEPT_SALES", "DEPT_RAIL")
-                    && permissions.containsAll(Set.of("sales_order:view", "sales_shipment:create"));
-            case "PROCUREMENT_IQC_REJECTION_OPENED" -> any(departments, "SUB_WH", "SUB_PURCHASE", "DEPT_SALES")
-                    && permissions.containsAll(Set.of("procurement_iqc_rejection:view", "procurement_iqc_rejection:record_return"));
-            case "PROCUREMENT_IQC_REJECTION_RETURNED" -> departments.contains("DEPT_FIN")
-                    && permissions.contains("procurement_iqc_rejection:view")
+            case "SALES_ORDER_FULLY_PRODUCED_READY_TO_SHIP" ->
+                    permissions.containsAll(Set.of("sales_order:view", "sales_shipment:create"));
+            case "PROCUREMENT_IQC_REJECTION_OPENED" ->
+                    permissions.containsAll(Set.of("procurement_iqc_rejection:view", "procurement_iqc_rejection:record_return"));
+            case "PROCUREMENT_IQC_REJECTION_RETURNED" -> permissions.contains("procurement_iqc_rejection:view")
                     && any(permissions, "procurement_iqc_rejection:confirm_credit", "procurement_iqc_rejection:close_no_credit");
             // ===== 2026-09-09 人事域（HrNoticeService）：职能权限判定，不限定部门子树
             // （ADR-063 2026-09-10 修订明示的例外：HR/财务/回复职能可跨部门）=====
@@ -206,7 +205,7 @@ public class ReviewNoticeAudience {
             // ===== ADR-131 车间内料仓 (WorkshopMaterialNoticeService): 收件人在发卡时已按对象范围精确算好
             // (领料单预填叶仓的仓管 / 该车间的报工审核人与这些草稿的制单人 / BOM 维护人 / 内料仓所在主仓的仓管
             // 与本车间的认料人 / 设置负责人), 这里在弹卡时复核「现在还能不能动手」: 发卡时凭的那件事的动手权限
-            // 要还在 (与发卡同一口径, 只看动手权限); 车间认料人另要求仍在生产部子树 (调离生产部的人不再弹车间的活)。=====
+            // 要还在 (与发卡同一口径, 只看动手权限); 具体车间、仓库及制单人范围由发卡侧约束。=====
             case "WORKSHOP_MATERIAL_REQUISITION_PENDING", "WORKSHOP_MATERIAL_RETURN_PENDING" ->
                     permissions.contains("workshop_material:issue");
             // 审核人审; 制单人删掉或改好自己的草稿 (审核人删不了别人的草稿)。
@@ -214,7 +213,7 @@ public class ReviewNoticeAudience {
                     "production_daily_report:create", "production_daily_report:edit", "production_daily_report:delete");
             case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_WEIGHT" -> permissions.contains("goods:bom:edit");
             case "WORKSHOP_MATERIAL_CLOSE_BLOCKED_STOCK" -> permissions.contains("workshop_material:issue")
-                    || (permissions.contains("workshop_material:choose") && departments.contains("DEPT_PROD"));
+                    || permissions.contains("workshop_material:choose");
             case "WORKSHOP_MATERIAL_CLOSE_FAILING" -> permissions.contains("workshop_material:setup");
             default -> false;
         };

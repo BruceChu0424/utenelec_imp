@@ -946,7 +946,8 @@ public class FinanceReceiptService {
     private void requirePrepaymentView(String receiptKind) {
         if (receiptKind != null && "CUSTOMER_PREPAYMENT".equalsIgnoreCase(receiptKind.trim())
                 && !canViewCustomerPrepayment()) {
-            throw new ApiException(ErrorCode.FORBIDDEN, "客户预收资金要求 customer_prepayment:view 与 finance:view:all 权限");
+            throw new ApiException(ErrorCode.FORBIDDEN,
+                    "办理客户预收资金业务需要同时具备「查看客户预收款」和「查看全部财务单据」权限，请联系权限管理员开通");
         }
     }
 

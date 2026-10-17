@@ -81,19 +81,17 @@ class ChainNoticeOutboxEventTest {
                         "external_document_no", "SQ-001",
                         "goods_code", "WL-001",
                         "goods_name", "\u6d4b\u8bd5\u7269\u6599")));
-        when(jdbc.queryForList(
-                contains("WITH RECURSIVE subtree"),
-                eq(UUID.class),
-                eq("SUB_PURCHASE")))
+        when(users.findAll()).thenReturn(List.of(roleBuyer, departmentBuyer));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
                 .thenReturn(List.of(roleBuyerId, departmentBuyerId));
         when(users.findById(roleBuyerId))
                 .thenReturn(Optional.of(roleBuyer));
         when(users.findById(departmentBuyerId))
                 .thenReturn(Optional.of(departmentBuyer));
         when(permissions.grantedPermsOf(roleBuyer)).thenReturn(Set.of(
-                "notice:read", "purchase_request:view"));
+                "notice:read", "purchase_request:view", "purchase_order:decompose"));
         when(permissions.grantedPermsOf(departmentBuyer)).thenReturn(Set.of(
-                "notice:read", "purchase_request:view"));
+                "notice:read", "purchase_request:view", "purchase_order:decompose"));
         ChainNoticeService service = service(
                 notice, users, permissions, jdbc, outbox);
 
@@ -156,14 +154,13 @@ class ChainNoticeOutboxEventTest {
         when(jdbc.queryForList(
                 contains("FROM preplan_supply_actions supply"),
                 eq(cancelledActionId))).thenReturn(List.of());
-        when(jdbc.queryForList(
-                contains("WITH RECURSIVE subtree"),
-                eq(UUID.class),
-                eq("SUB_PURCHASE"))).thenReturn(List.of(buyerId));
+        when(users.findAll()).thenReturn(List.of(buyer));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
+                .thenReturn(List.of(buyerId));
         when(users.findById(buyerId))
                 .thenReturn(Optional.of(buyer));
         when(permissions.grantedPermsOf(buyer)).thenReturn(Set.of(
-                "notice:read", "subcontract_application:view"));
+                "notice:read", "subcontract_application:view", "subcontract_order:decompose"));
         ChainNoticeService service = service(
                 notice,
                 users,
@@ -221,11 +218,7 @@ class ChainNoticeOutboxEventTest {
                         "external_document_no", "SQ-REVOKE",
                         "goods_code", "WL-003",
                         "goods_name", "权限测试物料")));
-        when(jdbc.queryForList(
-                contains("WITH RECURSIVE subtree"),
-                eq(UUID.class),
-                eq("SUB_PURCHASE")))
-                .thenReturn(List.of(noticeOnlyId, requestOnlyId));
+        when(users.findAll()).thenReturn(List.of(noticeOnly, requestOnly));
         when(users.findById(noticeOnlyId)).thenReturn(Optional.of(noticeOnly));
         when(users.findById(requestOnlyId)).thenReturn(Optional.of(requestOnly));
         when(permissions.grantedPermsOf(noticeOnly)).thenReturn(Set.of("notice:read"));
@@ -692,10 +685,9 @@ class ChainNoticeOutboxEventTest {
                 eq(receiptId))).thenReturn(List.of(Map.of(
                         "pending_lines", 2L,
                         "pending_base_qty", new BigDecimal("8.0000"))));
-        when(jdbc.queryForList(
-                contains("WHERE code = 'DEPT_QA'"),
-                eq(UUID.class))).thenReturn(List.of(
-                        qualityViewerId, revokedViewerId, inactiveViewerId));
+        when(users.findAll()).thenReturn(List.of(qualityViewer, revokedViewer, inactiveViewer));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
+                .thenReturn(List.of(qualityViewerId));
         when(users.findById(qualityViewerId)).thenReturn(Optional.of(qualityViewer));
         when(users.findById(revokedViewerId)).thenReturn(Optional.of(revokedViewer));
         when(users.findById(inactiveViewerId)).thenReturn(Optional.of(inactiveViewer));
@@ -719,9 +711,7 @@ class ChainNoticeOutboxEventTest {
                 receiptId,
                 new ObjectMapper().createObjectNode().put("receiptType", "PURCHASE"));
 
-        verify(jdbc).queryForList(
-                contains("WHERE code = 'DEPT_QA'"),
-                eq(UUID.class));
+        verify(jdbc, never()).queryForList(contains("WHERE code = 'DEPT_QA'"), eq(UUID.class));
         // V459：待检通知携带聚合 (IQC_INSPECTION, receiptId)，整单检验结案时批量撤回。
         verify(notice).publishForUser(
                 eq(qualityViewerId),
@@ -760,9 +750,7 @@ class ChainNoticeOutboxEventTest {
                         "lines", 2L,
                         "deliver", "2026-08-20",
                         "goods", "FG-001 / FG-002")));
-        // 2026-09-05 修弹窗串台：接收池从「planner 角色 ∪ SUB_PLAN 主部门」收敛为
-        // 「(主/兼职部门 ∈ SUB_PLAN 子树) AND notice:read AND view AND create」
-        // ——夹具改为部门树命中 + 权限解析放行（角色查询不再参与）。
+        // 行动卡按当前查看和创建权限分发；只读用户不收到，无额外部门门槛。
         com.uten.imp.features.auth.PermissionResolver permissions =
                 mock(com.uten.imp.features.auth.PermissionResolver.class);
         UserAccount planner = activeUser(plannerUserId);
@@ -772,10 +760,9 @@ class ChainNoticeOutboxEventTest {
                 "production_material_analysis:create"));
         when(permissions.grantedPermsOf(viewer)).thenReturn(Set.of(
                 "notice:read", "production_material_analysis:view"));
-        when(jdbc.queryForList(
-                contains("WITH RECURSIVE subtree(id)"),
-                eq(UUID.class),
-                eq("SUB_PLAN"))).thenReturn(List.of(plannerUserId, viewerUserId));
+        when(users.findAll()).thenReturn(List.of(planner, viewer));
+        when(jdbc.queryForList(contains("active_action_recipients"), eq(UUID.class), anyString()))
+                .thenReturn(List.of(plannerUserId));
         when(users.findById(plannerUserId))
                 .thenReturn(Optional.of(planner));
         when(users.findById(viewerUserId)).thenReturn(Optional.of(viewer));

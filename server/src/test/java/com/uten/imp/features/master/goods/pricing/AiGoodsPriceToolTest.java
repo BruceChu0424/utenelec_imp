@@ -7,6 +7,9 @@ import com.uten.imp.features.master.goods.dto.GoodsListItem;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.SecurityContextCurrentUser;
+import com.uten.imp.security.OwnerVisibility;
+import com.uten.imp.features.ai.chat.AiChatToolRegistry;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -29,7 +32,39 @@ class AiGoodsPriceToolTest {
     @AfterEach void clear() { SecurityContextHolder.clearContext(); }
     private void actor(Set<String> permissions) {
         var actor = new AuthUser(UUID.randomUUID(), UUID.randomUUID(), "finance", permissions, false, true, false);
+        when(current.get()).thenReturn(java.util.Optional.of(actor));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(actor, null, actor.getAuthorities()));
+    }
+    @Test void theSameSourcePermissionsOpenTheFormalAnalysisAndRegisteredAiToolWithoutFinanceMembership() {
+        var jdbc = mock(JdbcTemplate.class);
+        var policy = new AiChatAccessPolicy(current, jdbc);
+        var realTool = new AiGoodsPriceTool(policy, current, goods, prices);
+        var registry = new AiChatToolRegistry(List.of(realTool), policy);
+        var sourceAccess = new GoodsPriceAccess(current, mock(OwnerVisibility.class));
+        for (Kind kind : List.of(Kind.PURCHASE, Kind.SUBCONTRACT, Kind.SALES)) {
+            String source = kind.name().toLowerCase(java.util.Locale.ROOT) + "_order";
+            actor(Set.of("ai:use", "goods:view", "goods:price_analysis:view", source + ":view", source + ":price:view"));
+            assertThatCode(() -> sourceAccess.require(kind)).doesNotThrowAnyException();
+            assertThat(sourceAccess.available(kind)).isTrue();
+            assertThat(realTool.available()).isTrue();
+            assertThat(registry.available(realTool.name())).contains(realTool);
+        }
+        verifyNoInteractions(jdbc, goods, prices);
+    }
+    @Test void openingThePriceAnalysisDomainDoesNotGrantSourcePricesOrBroaderFinancePermissions() {
+        var policy = new AiChatAccessPolicy(current, mock(JdbcTemplate.class));
+        var realTool = new AiGoodsPriceTool(policy, current, goods, prices);
+        var sourceAccess = new GoodsPriceAccess(current, mock(OwnerVisibility.class));
+        actor(Set.of("ai:use", "goods:view", "goods:price_analysis:view", "purchase_order:view"));
+        assertThat(realTool.available()).isTrue();
+        assertThat(sourceAccess.available(Kind.PURCHASE)).isFalse();
+        assertThatThrownBy(() -> sourceAccess.require(Kind.PURCHASE)).isInstanceOf(ApiException.class);
+        assertThat(current.get().orElseThrow().getPermissions())
+                .doesNotContain("purchase_order:price:view", "finance:view:all", "goods:cost:view");
+        actor(Set.of("ai:use", "goods:view", "purchase_order:view", "purchase_order:price:view"));
+        assertThat(realTool.available()).isFalse();
+        assertThat(new AiChatToolRegistry(List.of(realTool), policy).available()).isEmpty();
+        verifyNoInteractions(goods, prices);
     }
     @Test void priceAnalysisPermissionIsRequiredBeforeLookingUpAnyGoods() {
         actor(Set.of("goods:view", "goods:cost:view"));

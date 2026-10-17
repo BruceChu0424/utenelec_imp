@@ -150,9 +150,6 @@ abstract final class ApiEndpoints {
       '/warehouse/inbound/arrival-exceptions/$id/stock-in';
   // 入库登记库位建议(采购/委外到货与产成品登记共用)：所选仓 × 货品 × 颜色记忆 → 货品资料通用库位。
   static const warehousePlaceSuggestions = '/warehouse/place-suggestions';
-  // 货品资料「学习」回写：登记到货保存后回写库位号/系列/编码（对仓库端开放）。
-  static const warehouseInboundGoodsProfileHints =
-      '/warehouse/inbound/goods-profile-hints';
   // 到货登记一步完成（登记 + 送检审核）：仓库只登记数量/库位，币族服务端权威回填。
   static const warehouseInboundArrivals = '/warehouse/inbound/arrivals';
   // ADR-151 §5：登记实际到货的唯一页面命令(单张 = 1 组，多选 = N 组，一个事务)。

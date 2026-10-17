@@ -5,6 +5,29 @@ import 'package:uten_imp/shared/auth/permission_action_type.dart';
 
 void main() {
   test(
+    'page direction capabilities retain explicit denial and legacy editable payloads',
+    () {
+      final legacy = PageStaffPermissionState.fromJson({
+        'code': 'goods:edit',
+        'name': '编辑货品',
+        'editable': true,
+      });
+      expect(legacy.editable, isTrue);
+      expect(legacy.canEnable, isNull);
+      expect(legacy.canDisable, isNull);
+      final cleanupOnly = PageStaffPermissionState.fromJson({
+        'code': 'goods:edit',
+        'name': '编辑货品',
+        'editable': true,
+        'canEnable': false,
+        'canDisable': true,
+      });
+      expect(cleanupOnly.canEnable, isFalse);
+      expect(cleanupOnly.canDisable, isTrue);
+    },
+  );
+
+  test(
     'parses the authoritative action taxonomy and fails safe for unknowns',
     () {
       expect(PermissionActionType.fromJson('VIEW'), PermissionActionType.view);

@@ -108,7 +108,7 @@ void main() {
     },
   );
 
-  for (final release in ['2.5.17', '2.5.18', '2.5.19', '2.5.20']) {
+  for (final release in ['2.5.17', '2.5.18', '2.5.19', '2.5.20', '2.5.21']) {
     for (final language in ['zh', 'en', 'ko']) {
       testWidgets(
         '$release $language notes remain localized and usable on a narrow screen',
@@ -122,7 +122,7 @@ void main() {
               tester,
               version: release,
               locale: Locale(language),
-              scale: release == '2.5.20' ? 2 : 1.6,
+              scale: {'2.5.20', '2.5.21'}.contains(release) ? 2 : 1.6,
               brightness: brightness,
             );
             final l10n = AppLocalizations.of(
@@ -140,6 +140,13 @@ void main() {
                 l10n.release2518Storage,
                 l10n.release2518CompanyConnections,
                 l10n.release2518LayoutAndTrace,
+              ],
+              '2.5.21' => [
+                l10n.release2521Permissions,
+                l10n.release2521Session,
+                l10n.release2521PermissionSettings,
+                l10n.release2521ReviewFeedback,
+                l10n.release2521ServerUpdates,
               ],
               _ => <String>[],
             };
@@ -287,6 +294,16 @@ void main() {
     expect(find.text('此版本暂未附带更新说明。'), findsOneWidget);
     expect(find.textContaining('搜索结果在右侧跨分类统一显示'), findsNothing);
     expect(find.textContaining('模具制造年月可正常选择和修改'), findsNothing);
+  });
+
+  testWidgets('a similar version never borrows 2.5.21 notes', (tester) async {
+    await pump(tester, version: 'v2.5.210');
+    final l10n = AppLocalizations.of(
+      tester.element(find.byType(AppVersionTile)),
+    );
+    expect(find.text(l10n.releaseNotesUnavailable), findsOneWidget);
+    expect(find.text(l10n.release2521Permissions), findsNothing);
+    expect(find.text(l10n.release2521ServerUpdates), findsNothing);
   });
 
   testWidgets('large text on a narrow screen scrolls in both themes', (

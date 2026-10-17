@@ -8,46 +8,62 @@ import 'package:uten_imp/shared/models/user.dart';
 
 void main() {
   group('page route permission dependencies', () {
-    test('master-data pages require their category read dependency', () {
-      const cases = <(String, String, String)>[
-        (RouteName.basicinfoGoods, Perm.goodsView, Perm.materialCategoryView),
-        ('/basicinfo/goods/goods-1', Perm.goodsView, Perm.materialCategoryView),
-        (RouteName.basicinfoMould, Perm.mouldView, Perm.mouldCategoryView),
-        (RouteName.basicinfoClient, Perm.clientView, Perm.clientCategoryView),
-        (
-          RouteName.basicinfoSupplier,
-          Perm.supplierView,
-          Perm.supplierCategoryView,
-        ),
-        (RouteName.financeCustomers, Perm.clientView, Perm.clientCategoryView),
-        (
-          RouteName.financeSuppliers,
-          Perm.supplierView,
-          Perm.supplierCategoryView,
-        ),
-      ];
-
-      for (final (location, primaryView, categoryView) in cases) {
-        expect(
-          requiredAllPermsFor(location),
-          contains(categoryView),
-          reason: location,
-        );
-        expect(
-          employeePermissionRedirect(_userWith([primaryView]), location),
-          RouteName.accessDenied,
-          reason: location,
-        );
-        expect(
-          employeePermissionRedirect(
-            _userWith([primaryView, categoryView]),
-            location,
+    test(
+      'master-data reads do not require optional category module access',
+      () {
+        const cases = <(String, String, String)>[
+          (RouteName.basicinfoGoods, Perm.goodsView, Perm.materialCategoryView),
+          (
+            '/basicinfo/goods/goods-1',
+            Perm.goodsView,
+            Perm.materialCategoryView,
           ),
-          isNull,
-          reason: location,
-        );
-      }
-    });
+          (RouteName.basicinfoMould, Perm.mouldView, Perm.mouldCategoryView),
+          (RouteName.basicinfoClient, Perm.clientView, Perm.clientCategoryView),
+          (
+            RouteName.basicinfoSupplier,
+            Perm.supplierView,
+            Perm.supplierCategoryView,
+          ),
+          (
+            RouteName.financeCustomers,
+            Perm.clientView,
+            Perm.clientCategoryView,
+          ),
+          (
+            RouteName.financeSuppliers,
+            Perm.supplierView,
+            Perm.supplierCategoryView,
+          ),
+        ];
+
+        for (final (location, primaryView, categoryView) in cases) {
+          expect(
+            requiredAllPermsFor(location),
+            isNot(contains(categoryView)),
+            reason: location,
+          );
+          expect(
+            employeePermissionRedirect(_userWith([primaryView]), location),
+            isNull,
+            reason: location,
+          );
+          expect(
+            employeePermissionRedirect(
+              _userWith([primaryView, categoryView]),
+              location,
+            ),
+            isNull,
+            reason: location,
+          );
+          expect(
+            employeePermissionRedirect(_userWith([categoryView]), location),
+            RouteName.accessDenied,
+            reason: location,
+          );
+        }
+      },
+    );
 
     test(
       'goods create deep link requires create and both read dependencies',
@@ -134,15 +150,13 @@ void main() {
         isNull,
       );
 
-      expect(requiredAllPermsFor(RouteName.department), const [
-        Perm.employeeView,
-      ]);
+      expect(requiredAllPermsFor(RouteName.department), isEmpty);
       expect(
         employeePermissionRedirect(
           _userWith([Perm.departmentView]),
           RouteName.department,
         ),
-        RouteName.accessDenied,
+        isNull,
       );
     });
 

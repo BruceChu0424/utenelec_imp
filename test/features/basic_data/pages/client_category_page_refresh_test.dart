@@ -242,6 +242,7 @@ Future<void> _pumpPage(
         sharedPreferencesProvider.overrideWithValue(preferences),
         apiClientProvider.overrideWithValue(_ReferenceApi()),
         currentPermissionsProvider.overrideWithValue({
+          Perm.clientCategoryView,
           Perm.clientCategoryEdit,
           Perm.clientView,
           Perm.clientEdit,

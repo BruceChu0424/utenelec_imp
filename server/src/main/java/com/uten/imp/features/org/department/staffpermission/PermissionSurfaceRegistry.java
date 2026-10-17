@@ -68,7 +68,7 @@ public class PermissionSurfaceRegistry {
         if (!contains(surfaceKey, permissionCode)) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
-                    "该权限不属于当前页面: " + permissionCode);
+                    "所选权限不属于当前页面，请刷新权限列表后重试");
         }
     }
 
@@ -139,7 +139,7 @@ public class PermissionSurfaceRegistry {
         if (surface == null) {
             throw new ApiException(
                     ErrorCode.VALIDATION_FAILED,
-                    "未知页面权限范围: " + surfaceKey);
+                    "页面权限范围已变化，请刷新页面后重试");
         }
         return surface;
     }

@@ -33,7 +33,7 @@ import java.util.UUID;
  * <p>为什么走 JdbcTemplate 原生 SQL 而不是 goods 的 JPA 仓储：本类在 production
  * 包里写 master 表，直接 import master 的仓储会踩 ArchitectureBoundaryTest 的跨
  * feature 边界 (production-&gt;master 不在白名单)。仓库侧「货品资料学习回写」
- * (ProcurementArrivalControlService#applyGoodsProfileHints) 就是这个先例，本类
+ * (WarehouseArrivalRegistrationService 的同事务来源绑定学习) 就是这个先例，本类
  * 逐条对齐它的防御性写法：单次上限、按货品去重、先读后写、无变化不落盘。
  *
  * <p>审计：goods 带行级审计触发器，按整行 to_jsonb 记快照，新列自动进快照；写前

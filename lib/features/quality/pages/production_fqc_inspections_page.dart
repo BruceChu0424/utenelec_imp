@@ -21,12 +21,12 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/search/keyword_search.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_fqc_inspection.dart';
+import '../providers/production_fqc_capability_provider.dart';
 import '../models/quality_task_form_drafts.dart';
 import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/task_form_drafts.dart';
@@ -53,7 +53,6 @@ class _ProductionFqcInspectionsPageState
   String _status = 'ACTIVE';
   String _keyword = '';
   int _requestVersion = 0;
-  bool _canDecideByScope = false;
   final _tableRows = MasterDataTableRowsController<ProductionFqcInspection>();
   final Set<String> _selectedIds = <String>{};
 
@@ -64,6 +63,9 @@ class _ProductionFqcInspectionsPageState
   }
 
   Future<void> _load({int? page}) async {
+    if (_result != null) {
+      ref.invalidate(productionFqcDecisionCapabilityProvider);
+    }
     final requestVersion = ++_requestVersion;
     final requestedPage = page ?? _result?.page ?? 1;
     final requestedStatus = _status;
@@ -74,18 +76,6 @@ class _ProductionFqcInspectionsPageState
     });
     try {
       final repository = ref.read(productionFqcRepositoryProvider);
-      final permissions = ref.read(currentPermissionsProvider);
-      final mayApprove =
-          ref.read(isSuperAdminProvider) ||
-          permissions.contains(Perm.productionQualityInspectionApprove);
-      var canDecideByScope = false;
-      if (mayApprove) {
-        try {
-          canDecideByScope = await repository.canDecide();
-        } catch (_) {
-          // Fail closed for the write button; task reading remains available.
-        }
-      }
       final result = await repository.list(
         status: requestedStatus,
         keyword: requestedKeyword,
@@ -94,7 +84,6 @@ class _ProductionFqcInspectionsPageState
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
-        _canDecideByScope = canDecideByScope;
         _loading = false;
       });
       // Reconcile after the table has combined any appended pages.
@@ -276,11 +265,9 @@ class _ProductionFqcInspectionsPageState
   Widget build(BuildContext context) {
     ref.watch(formDraftsProvider);
     ref.onPageResume(RouteName.productionFqcInspections, _load);
-    final permissions = ref.watch(currentPermissionsProvider);
-    final canApprove =
-        (ref.watch(isSuperAdminProvider) ||
-            permissions.contains(Perm.productionQualityInspectionApprove)) &&
-        _canDecideByScope;
+    final canApprove = productionFqcDecisionAllowed(
+      ref.watch(productionFqcDecisionCapabilityProvider),
+    );
     final result = _result;
     return Scaffold(
       appBar: UtenAppBar(

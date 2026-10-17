@@ -199,36 +199,35 @@ void main() {
     expect(subcontractPriceCheckBinding(copy).payload()!['unitRate'], '2.0');
   });
 
-  test('deep route requires analysis, goods and category permissions', () {
-    const path = '/basicinfo/goods/id/price-analysis';
-    expect(requiredAnyPermFor(path), [Perm.goodsPriceAnalysisView]);
-    expect(
-      locationAllowedFor(
-        {Perm.goodsView, Perm.materialCategoryView},
-        false,
-        path,
-      ),
-      isFalse,
-    );
-    expect(
-      locationAllowedFor(
-        {Perm.goodsPriceAnalysisView, Perm.materialCategoryView},
-        false,
-        path,
-      ),
-      isFalse,
-    );
-    expect(
-      locationAllowedFor(
-        {
-          Perm.goodsView,
-          Perm.goodsPriceAnalysisView,
-          Perm.materialCategoryView,
-        },
-        false,
-        '$path?kind=SALES',
-      ),
-      isTrue,
-    );
-  });
+  test(
+    'deep route requires analysis and goods permissions without category access',
+    () {
+      const path = '/basicinfo/goods/id/price-analysis';
+      expect(requiredAnyPermFor(path), [Perm.goodsPriceAnalysisView]);
+      expect(
+        locationAllowedFor(
+          {Perm.goodsView, Perm.materialCategoryView},
+          false,
+          path,
+        ),
+        isFalse,
+      );
+      expect(
+        locationAllowedFor(
+          {Perm.goodsPriceAnalysisView, Perm.materialCategoryView},
+          false,
+          path,
+        ),
+        isFalse,
+      );
+      expect(
+        locationAllowedFor(
+          {Perm.goodsView, Perm.goodsPriceAnalysisView},
+          false,
+          '$path?kind=SALES',
+        ),
+        isTrue,
+      );
+    },
+  );
 }

@@ -60,6 +60,7 @@ void main() {
             supplierRepositoryProvider.overrideWithValue(suppliers),
             currentPermissionsProvider.overrideWithValue(<String>{
               Perm.supplierView,
+              Perm.supplierCategoryView,
             }),
           ],
           child: const SupplierCategoryPage(),

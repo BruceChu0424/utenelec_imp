@@ -38,6 +38,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/document_permission_set.dart';
@@ -249,8 +250,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
       });
     } catch (e) {
       if (mounted) {
-        context.appError('加载详情失败');
-        setState(() => _error = e.toString());
+        final message =
+            humanErrorMessage(e) ?? _detailL10n.productionDailyReportLoadFailed;
+        context.appError(message);
+        setState(() => _error = message);
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -1150,9 +1153,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                         child: Padding(
                           padding: const EdgeInsets.all(UtenSpacing.s12),
                           child: Text(
-                            _error == null
-                                ? '单据不存在'
-                                : '加载失败：$_error(可能是无权限或单据已被删除)',
+                            _error ??
+                                _detailL10n.productionDailyReportLoadFailed,
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),

@@ -752,7 +752,7 @@ List<String> hubUnionRequiredAny(String hub) {
 List<String> requiredAllPermsFor(String rawLocation) {
   final location = hubCardPath(rawLocation);
   if (RegExp(r'^/basicinfo/goods/[^/]+/price-analysis$').hasMatch(location)) {
-    return const [Perm.goodsView, Perm.materialCategoryView];
+    return const [Perm.goodsView];
   }
   if (location == '/finance/assets/new') {
     return const [Perm.financeAssetView, Perm.financeAssetEdit];
@@ -794,10 +794,6 @@ List<String> requiredAllPermsFor(String rawLocation) {
       (location.endsWith('/edit') || location.endsWith('/offboarding'))) {
     return const [Perm.employeeView];
   }
-  if (location == RouteName.department) {
-    // 部门页首屏会加载直属员工花名册，不能只有 department:view。
-    return const [Perm.employeeView];
-  }
   // HR 任务中心「证件核对」：只有能修改证件的人看得到(服务端同口径过滤)；
   // 通用的 /hr/tasks 规则 employee:view 照旧在 requiredAnyPermFor 里。
   if (location == RouteName.hrTaskList('identity')) {
@@ -830,30 +826,9 @@ List<String> requiredAllPermsFor(String rawLocation) {
     return const [Perm.arApLedgerView, Perm.financeViewAll];
   }
 
-  // 分类树与右侧主档是一个页面：两侧读取权限必须同时成立。
-  if (location.startsWith('/finance/customers')) {
-    return const [Perm.clientCategoryView];
-  }
-  if (location.startsWith('/finance/suppliers')) {
-    return const [Perm.supplierCategoryView];
-  }
+  // 新建货品需要真实分类选择；只读主档可在没有分类权限时使用全局列表。
   if (location == '${RouteName.basicinfoGoods}/new') {
     return const [Perm.goodsView, Perm.materialCategoryView];
-  }
-  if (location == RouteName.basicinfoGoods ||
-      location.startsWith('${RouteName.basicinfoGoods}/')) {
-    return const [Perm.materialCategoryView];
-  }
-  if (location == RouteName.basicinfoMould) {
-    return const [Perm.mouldCategoryView];
-  }
-  if (location == RouteName.basicinfoClient ||
-      location.startsWith('${RouteName.basicinfoClient}/')) {
-    return const [Perm.clientCategoryView];
-  }
-  if (location == RouteName.basicinfoSupplier ||
-      location.startsWith('${RouteName.basicinfoSupplier}/')) {
-    return const [Perm.supplierCategoryView];
   }
 
   // 物料分析所有首屏查询都要求 view；manage/route 等只是附加动作。

@@ -47,11 +47,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 final _grants = StateProvider<Set<String>>(
-  (_) => {
-    Perm.goodsView,
-    Perm.goodsPriceAnalysisView,
-    Perm.materialCategoryView,
-  },
+  (_) => {Perm.goodsView, Perm.goodsPriceAnalysisView},
 );
 
 class _PriceNonlinearScaler extends TextScaler {
@@ -1075,7 +1071,6 @@ void main() {
         permissions: {
           Perm.goodsView,
           Perm.goodsPriceAnalysisView,
-          Perm.materialCategoryView,
           Perm.salesQuoteFinanceView,
         },
       );

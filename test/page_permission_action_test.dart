@@ -267,12 +267,12 @@ void main() {
       expect(find.text('销售管理 · 本页'), findsNothing);
       // 族折叠态：只看到族行（查看/编辑合并/执行·办理），明细行不可见。
       expect(find.text('查看'), findsOneWidget);
-      expect(find.text('编辑（含新增与修改）'), findsOneWidget);
+      expect(find.text('编辑(含新增与修改)'), findsOneWidget);
       expect(find.text('执行·办理'), findsOneWidget);
       expect(find.text('销售订货编辑'), findsNothing);
 
       // 展开编辑族：新增与修改两颗明细开关都在里面。
-      await tester.tap(find.text('编辑（含新增与修改）'));
+      await tester.tap(find.text('编辑(含新增与修改)'));
       await tester.pumpAndSettle();
       expect(find.text('销售订货编辑'), findsOneWidget);
       expect(find.text('销售订贷新增'), findsOneWidget);
@@ -285,7 +285,14 @@ void main() {
           const ValueKey('page-permission-employee-1-sales_order:priority'),
         ),
       );
-      expect(historical.value, isTrue);
+      expect(historical.value, isFalse);
+      expect(historical.onChanged, isNull);
+      expect(
+        find.byKey(
+          const ValueKey('permission-clear-inactive-sales_order:priority'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(
         find.byKey(
@@ -348,7 +355,7 @@ void main() {
 
     // 编辑族三态开关：一键全开 = 新增+修改两颗都进待提交集合。
     final familyRow = find.ancestor(
-      of: find.text('编辑（含新增与修改）'),
+      of: find.text('编辑(含新增与修改)'),
       matching: find.byType(InkWell),
     );
     final checkbox = find.descendant(
@@ -417,7 +424,7 @@ void main() {
     await tester.tap(find.widgetWithText(UtenButton, '确定'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('编辑（含新增与修改）'));
+    await tester.tap(find.text('编辑(含新增与修改)'));
     await tester.pumpAndSettle();
     final editSwitch = find.byKey(
       const ValueKey('page-permission-employee-1-sales_order:edit'),
@@ -905,6 +912,8 @@ PagePermissionEmployeeDetail _detail(
       rowVersion: 3,
       effective: false,
       editable: true,
+      canEnable: false,
+      canDisable: true,
       reason: '历史委派已失效，仅允许关闭',
     ),
   ];

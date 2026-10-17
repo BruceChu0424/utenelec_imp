@@ -37,7 +37,7 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
     @Override public String title() { return "查询各业务待办和在办"; }
     @Override public String domain() { return "SELF"; }
     @Override public boolean rememberQueryArguments() { return true; }
-    @Override public String description() { return "读取本人当前部门和功能权限允许的工作台任务计数，覆盖销售、采购、委外、生产、品质、仓库、财务、人事、研发。module不填查所有当前允许模块；仅返回当前各入口待办/进行中数量，不能列出具体任务或单号、供应商、货品、数量等单据明细，也没有历史日期筛选。不查工资、报销、通知正文，不认领或处理任务。"; }
+    @Override public String description() { return "读取本人当前功能权限和数据范围允许的工作台任务计数，覆盖销售、采购、委外、生产、品质、仓库、财务、人事、研发。module不填查所有当前允许模块；仅返回当前各入口待办/进行中数量，不能列出具体任务或单号、供应商、货品、数量等单据明细，也没有历史日期筛选。不查工资、报销、通知正文，不认领或处理任务。"; }
     @Override public Map<String,Object> parameters() {
         Set<String> domains;
         try { domains=access.domains(); } catch(ApiException denied) { domains=Set.of(); }
@@ -86,7 +86,7 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
     }
     private Snapshot read(String module) {
         Set<String> domains=access.domains();
-        if(!"ALL".equals(module)&&!domains.contains(module)) throw new ApiException(ErrorCode.FORBIDDEN,"这个业务模块不在你的当前部门和权限范围内");
+        if(!"ALL".equals(module)&&!domains.contains(module)) throw new ApiException(ErrorCode.FORBIDDEN,"当前账号没有这个业务模块的功能权限");
         Set<String> wanted=Arrays.stream(WorkbenchBadgeCatalog.values())
                 .filter(entry->!entry.name().startsWith("expense"))
                 .filter(entry->domains.contains(entryDomain(entry)))

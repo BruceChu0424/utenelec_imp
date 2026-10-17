@@ -11288,7 +11288,7 @@ abstract class AppLocalizations {
   /// No description provided for @quoteFinanceLoadDetailFailed.
   ///
   /// In zh, this message translates to:
-  /// **'报价详情加载失败, 请检查网络或权限后重试'**
+  /// **'报价详情暂时无法加载，请重试。'**
   String get quoteFinanceLoadDetailFailed;
 
   /// No description provided for @quoteFinanceActionFailed.
@@ -18933,6 +18933,300 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'原请求的最新状态'**
   String get serverUpdateReceiptStatus;
+
+  /// No description provided for @taskClaimChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在确认审核占用，请稍候。'**
+  String get taskClaimChecking;
+
+  /// No description provided for @taskClaimIdentityChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录身份已变化，请重新打开审核。'**
+  String get taskClaimIdentityChanged;
+
+  /// No description provided for @taskClaimAcquireFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时无法取得审核占用，请重试。'**
+  String get taskClaimAcquireFailed;
+
+  /// No description provided for @taskClaimNetworkUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法连接服务器，请检查网络后重新认领。'**
+  String get taskClaimNetworkUnavailable;
+
+  /// No description provided for @taskClaimNetworkTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器响应超时，请稍后重新认领。'**
+  String get taskClaimNetworkTimeout;
+
+  /// No description provided for @taskClaimLoginExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录已过期，请重新登录后再试。'**
+  String get taskClaimLoginExpired;
+
+  /// No description provided for @taskClaimPermissionDenied.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前没有此任务的审核权限，请刷新权限后重试。'**
+  String get taskClaimPermissionDenied;
+
+  /// No description provided for @taskClaimConflict.
+  ///
+  /// In zh, this message translates to:
+  /// **'任务占用或内容已变化，请刷新后重新认领。'**
+  String get taskClaimConflict;
+
+  /// No description provided for @taskClaimNotFound.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核任务不存在或已不再待审核，请刷新列表。'**
+  String get taskClaimNotFound;
+
+  /// No description provided for @taskClaimRateLimited.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作过于频繁，请稍后重新认领。'**
+  String get taskClaimRateLimited;
+
+  /// No description provided for @taskClaimServerUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器暂时无法处理审核占用，请稍后重试。'**
+  String get taskClaimServerUnavailable;
+
+  /// No description provided for @taskClaimInvalidResponse.
+  ///
+  /// In zh, this message translates to:
+  /// **'未取得有效审核占用，请重新认领。'**
+  String get taskClaimInvalidResponse;
+
+  /// No description provided for @taskClaimExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核占用已失效，请重新认领。'**
+  String get taskClaimExpired;
+
+  /// No description provided for @taskClaimTakenBy.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} 正在审核，请稍后重试。'**
+  String taskClaimTakenBy(String name);
+
+  /// No description provided for @taskClaimDecisionNotReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核占用已失效，请重新认领并核对最新内容。'**
+  String get taskClaimDecisionNotReady;
+
+  /// No description provided for @taskClaimReplaced.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核占用已失效或被接管，已暂停审核；请重新认领。'**
+  String get taskClaimReplaced;
+
+  /// No description provided for @taskClaimRenewFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法确认审核占用，已暂停审核；请重新认领并核对最新内容。'**
+  String get taskClaimRenewFailed;
+
+  /// No description provided for @taskClaimReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未取得有效审核占用，当前仅可查看。'**
+  String get taskClaimReadOnly;
+
+  /// No description provided for @taskClaimRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新认领并刷新'**
+  String get taskClaimRetry;
+
+  /// No description provided for @financeSalesReviewAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要销售订单财务确认的查看权限，请联系权限管理员授权。'**
+  String get financeSalesReviewAccessHint;
+
+  /// No description provided for @financeProcurementReviewAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要订货审批的查看权限，请联系权限管理员授权。'**
+  String get financeProcurementReviewAccessHint;
+
+  /// No description provided for @financeArrivalReviewAccessHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'具有相应查看和审批权限的员工可处理超量到货，无需额外的部门或个人点名资格。'**
+  String get financeArrivalReviewAccessHint;
+
+  /// No description provided for @dashboardAuthorizedScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'按已授权功能和数据范围展示'**
+  String get dashboardAuthorizedScope;
+
+  /// No description provided for @dashboardNoAuthorizedMetrics.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前可见范围内暂无概览指标'**
+  String get dashboardNoAuthorizedMetrics;
+
+  /// No description provided for @dashboardNoAuthorizedTodos.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前可见范围内没有待办'**
+  String get dashboardNoAuthorizedTodos;
+
+  /// No description provided for @financeBatchReviewCheckFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'无法核对整批审核内容，请刷新后重试。'**
+  String get financeBatchReviewCheckFailed;
+
+  /// No description provided for @financeBatchReviewResultUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量审批结果尚未确认，请刷新核对单据状态后再操作。'**
+  String get financeBatchReviewResultUnknown;
+
+  /// No description provided for @financeReviewLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核详情暂时无法加载，请重试。'**
+  String get financeReviewLoadFailed;
+
+  /// No description provided for @financeReportLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'报表暂时无法加载，请刷新后重试。'**
+  String get financeReportLoadFailed;
+
+  /// No description provided for @financeBatchReviewRefreshFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'批量审批已完成，但页面刷新未完成，请刷新核对最新单据状态。'**
+  String get financeBatchReviewRefreshFailed;
+
+  /// No description provided for @financeReviewAuthorityChanged.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核内容或版本已变化，原填写内容已保留。请重新加载并核对后再审核。'**
+  String get financeReviewAuthorityChanged;
+
+  /// No description provided for @permissionMissingReads.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权配置已保留，但当前未生效，且缺少对应页面所需的查看权限。请核对授权状态；需要进入该页面时再补齐查看权限。'**
+  String get permissionMissingReads;
+
+  /// No description provided for @permissionCompleteReads.
+  ///
+  /// In zh, this message translates to:
+  /// **'补齐所需查看权限'**
+  String get permissionCompleteReads;
+
+  /// No description provided for @permissionInactiveGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'原授权已失效，当前未授权。'**
+  String get permissionInactiveGrant;
+
+  /// No description provided for @permissionRenewGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'重新授权'**
+  String get permissionRenewGrant;
+
+  /// No description provided for @permissionRemoveInactiveGrant.
+  ///
+  /// In zh, this message translates to:
+  /// **'移除未生效授权'**
+  String get permissionRemoveInactiveGrant;
+
+  /// No description provided for @permissionPendingReads.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存时只补齐允许自动授予的普通查看权限；需要恢复已收回的权限或授予敏感权限时，请在相应授权项中单独确认。'**
+  String get permissionPendingReads;
+
+  /// No description provided for @permissionBatchNormalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'本组授权(不含敏感及锁定项)'**
+  String get permissionBatchNormalOnly;
+
+  /// No description provided for @permissionSavedRefreshPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限已保存，但当前会话未能刷新。请刷新页面后核对最新权限。'**
+  String get permissionSavedRefreshPending;
+
+  /// No description provided for @permissionSaved.
+  ///
+  /// In zh, this message translates to:
+  /// **'页面权限已保存'**
+  String get permissionSaved;
+
+  /// No description provided for @permissionSavedDetailPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限已保存，但未能读取最新配置。请重新加载当前员工后再操作。'**
+  String get permissionSavedDetailPending;
+
+  /// No description provided for @permissionSaveResultUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'权限保存结果尚未确认，请先重新读取当前员工的权限，核对后再操作。'**
+  String get permissionSaveResultUnknown;
+
+  /// No description provided for @masterEntitySearchHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'搜索名称或编号'**
+  String get masterEntitySearchHint;
+
+  /// No description provided for @permissionRevokeOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前只能移除原有授权，不能重新授权。'**
+  String get permissionRevokeOnly;
+
+  /// No description provided for @release2521Permissions.
+  ///
+  /// In zh, this message translates to:
+  /// **'财务审核、出厂质检等操作按有效权限开放，取消额外的部门归属和个人点名授权门槛，继续保留业务数据范围与单据状态校验。'**
+  String get release2521Permissions;
+
+  /// No description provided for @release2521Session.
+  ///
+  /// In zh, this message translates to:
+  /// **'授权变化后，会话和页面操作随最新权限同步；未保存的开关调整单独标为待保存。'**
+  String get release2521Session;
+
+  /// No description provided for @release2521PermissionSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'普通授权开关只调整所选项目，保存时按规则补齐可自动授予的普通查看权限；敏感授权和恢复已收回权限仍需单独确认。'**
+  String get release2521PermissionSettings;
+
+  /// No description provided for @release2521ReviewFeedback.
+  ///
+  /// In zh, this message translates to:
+  /// **'审核占用失败显示实际原因；批量审核结果未确认时，明确提示刷新核对单据状态。'**
+  String get release2521ReviewFeedback;
+
+  /// No description provided for @release2521ServerUpdates.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。'**
+  String get release2521ServerUpdates;
 }
 
 class _AppLocalizationsDelegate

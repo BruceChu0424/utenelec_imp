@@ -2,8 +2,6 @@ package com.uten.imp.features.admin.workflow;
 
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort;
 import com.uten.imp.application.port.FinanceReviewerEligibilityPort.EligibleFinanceReviewer;
-import com.uten.imp.common.web.ApiException;
-import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.PermissionResolver;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
@@ -18,10 +16,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 财务审批负责人资格查询（实现 {@link FinanceReviewerEligibilityPort}）。
+ * 财务审批权限查询(实现 {@link FinanceReviewerEligibilityPort})。
  *
- * <p>合格人选 = 财务部门（DEPT_FIN）子树在职员工 且 账号启用，叠加个人加授
- * {@code finance_order_approval:approve} 或 {@code finance_order_approval:reject}。资格只约束审核组范围，具体动作仍要求对应权限。
+ * <p>账号启用、员工在职且拥有查看和相应动作的有效权限即可处理。
+ * 部门和授权来源不再限制审批资格；批准与驳回仍分别校验对应权限。
  */
 @Service
 @RequiredArgsConstructor
@@ -39,6 +37,7 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
     @Override
     @Transactional(readOnly = true)
     public Optional<EligibleFinanceReviewer> findEligible(UUID userId) {
+        if (userId == null) return Optional.empty();
         return eligibleRows(userId).stream()
                 .filter(row -> userRepo.findById(row.userId())
                         .map(this::hasAnyReviewAction).orElse(false))
@@ -105,16 +104,6 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
     private List<EligibleReviewer> eligibleRows(UUID userId) {
         String userPredicate = userId == null ? "" : " AND u.id = ?";
         String sql = """
-                WITH RECURSIVE finance_departments(id) AS (
-                    SELECT id
-                    FROM departments
-                    WHERE code = 'DEPT_FIN' AND is_deleted = FALSE
-                    UNION ALL
-                    SELECT child.id
-                    FROM departments child
-                    JOIN finance_departments parent ON child.parent_id = parent.id
-                    WHERE child.is_deleted = FALSE
-                )
                 SELECT u.id AS user_id,
                        e.id AS employee_id,
                        e.full_name,
@@ -122,24 +111,8 @@ public class WorkflowReviewerEligibility implements FinanceReviewerEligibilityPo
                        d.name AS department_name
                 FROM users u
                 JOIN employees e ON e.id = u.employee_id
-                JOIN departments d ON d.id = e.department_id
-                WHERE (
-                        e.department_id IN (SELECT id FROM finance_departments)
-                        OR EXISTS (
-                            SELECT 1 FROM employee_secondary_departments secondary
-                            WHERE secondary.employee_id = e.id
-                              AND secondary.department_id IN (SELECT id FROM finance_departments)
-                        )
-                        OR u.id IN (
-                            SELECT po.user_id
-                            FROM user_permission_overrides po
-                            JOIN permissions perm ON perm.id = po.permission_id
-                            WHERE perm.code IN ('finance_order_approval:approve', 'finance_order_approval:reject')
-                              AND po.effect = 'grant'
-                              AND po.active = TRUE
-                        )
-                    )
-                  AND u.is_deleted = FALSE
+                LEFT JOIN departments d ON d.id = e.department_id AND d.is_deleted = FALSE
+                WHERE u.is_deleted = FALSE
                   AND u.status = 'active'
                   AND e.is_deleted = FALSE
                   AND e.status <> 'resigned'

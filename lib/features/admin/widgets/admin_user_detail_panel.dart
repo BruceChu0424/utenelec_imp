@@ -25,6 +25,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/permission_action_type.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/admin_models.dart';
@@ -672,6 +673,23 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
             ),
           ],
           const SizedBox(height: UtenSpacing.s12),
+          if (data != null &&
+              data.missingDependencies.isNotEmpty &&
+              !data.superAdmin) ...[
+            Text(
+              '有 ${data.missingDependencies.length} 项授权尚缺对应页面所需的查看权限，请补齐后再从该页面操作。',
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed:
+                    _savingOverrides || !widget.user.authorizationGrantAllowed
+                    ? null
+                    : () => _repairMissingDependencies(data),
+                child: const Text('补齐所需查看权限'),
+              ),
+            ),
+          ],
           _permMatrix(effectiveAsync, catalogAsync),
         ],
       ),
@@ -774,7 +792,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final canEdit = !data.superAdmin && widget.user.authorizationGrantAllowed;
     return PermissionCatalogBrowser(
       groups: groups,
-      isEnabled: (permission) => _isEffective(data, permission.code),
+      isEnabled: (permission) => _switchValue(data, permission.code),
       isChanged: (permission) =>
           grants.contains(permission.code) || revokes.contains(permission.code),
       changedFilterLabel: '个人覆盖',
@@ -788,14 +806,68 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     );
   }
 
-  bool _isEffective(EffectivePermissions data, String code) {
+  bool _isPermissionChanged(EffectivePermissions data, String code) =>
+      _pendingGrants(data).contains(code) != data.grants.contains(code) ||
+      _pendingRevokes(data).contains(code) != data.revokes.contains(code);
+
+  bool _switchValue(EffectivePermissions data, String code) {
     if (data.superAdmin) return true;
+    if (!_isPermissionChanged(data, code)) {
+      return data.effective.contains(code);
+    }
     final inherited =
         data.departmentPermissions.contains(code) ||
         data.baselinePermissions.contains(code) ||
         data.managerGrants.contains(code);
-    return inherited && !_pendingRevokes(data).contains(code) ||
-        _pendingGrants(data).contains(code);
+    // A local switch previews only the requested configuration. The server
+    // computes effective authority and required reads after saving.
+    return !_pendingRevokes(data).contains(code) &&
+        (inherited || _pendingGrants(data).contains(code));
+  }
+
+  Set<String> _repairableReads(EffectivePermissions data) {
+    final catalog = ref.read(permissionCatalogProvider).valueOrNull;
+    if (catalog == null) return const {};
+    final byCode = {
+      for (final group in catalog)
+        for (final permission in group.permissions) permission.code: permission,
+    };
+    final held = <String>{
+      ...data.departmentPermissions,
+      ...data.baselinePermissions,
+      ...data.managerGrants,
+      ..._pendingGrants(data),
+    }..removeAll(_pendingRevokes(data));
+    final codes = <String>{};
+    for (final entry in data.missingDependencies.entries) {
+      if (_isPermissionChanged(data, entry.key) &&
+          !_switchValue(data, entry.key)) {
+        continue;
+      }
+      for (final code in entry.value) {
+        if (held.contains(code)) continue;
+        final dependency = byCode[code];
+        if (_pendingRevokes(data).contains(code) ||
+            dependency == null ||
+            dependency.actionType != PermissionActionType.view ||
+            dependency.sensitivity != 'NORMAL' ||
+            !dependency.grantPolicy.individuallyGrantable ||
+            !dependency.grantPolicy.bulkEligible) {
+          continue;
+        }
+        codes.add(code);
+      }
+    }
+    return codes;
+  }
+
+  void _repairMissingDependencies(EffectivePermissions data) {
+    final codes = _repairableReads(data);
+    if (codes.isEmpty) {
+      context.appInfo('没有可自动补齐的普通查看权限；已收回或敏感的权限请在允许的授权入口逐项处理。');
+      return;
+    }
+    _setPermissionCodes(data, codes, true);
   }
 
   /// 「全部授权 / 本模块 / 本组」：服务端按授权策略补齐个人加授并立即生效。
@@ -853,7 +925,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   ) async {
     if (value &&
         !permission.grantPolicy.bulkEligible &&
-        !_isEffective(data, permission.code)) {
+        !_switchValue(data, permission.code)) {
       final confirmed = await UtenDialog.show(
         context,
         title: '确认单项授权',
@@ -873,7 +945,7 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       );
       if (!mounted || confirmed != true) return;
     }
-    _setPermissionCodes(data, [permission.code], value);
+    _setPermissionCodes(data, {permission.code}, value);
   }
 
   void _setPermissions(
@@ -927,7 +999,12 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
     final viaBaseline = data.baselinePermissions.contains(permission.code);
     final viaManager = data.managerGrants.contains(permission.code);
     final revoked = !data.superAdmin && revokes.contains(permission.code);
-    final effective = _isEffective(data, permission.code);
+    final pending = _isPermissionChanged(data, permission.code);
+    final enabled = _switchValue(data, permission.code);
+    final effective =
+        data.superAdmin || data.effective.contains(permission.code);
+    final incomplete =
+        data.missingDependencies.containsKey(permission.code) && !pending;
     // 只随超级管理员身份生效的码不能逐人加授(授权策略由服务端下发)；已生效的仍可收回。
     final policyAllows =
         permission.grantPolicy.individuallyGrantable || effective;
@@ -958,6 +1035,11 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           ),
         ),
         const SizedBox(height: UtenSpacing.s4),
+        if (incomplete)
+          Text(
+            '尚缺对应页面所需的查看权限',
+            style: theme.textTheme.bodySmall?.copyWith(color: UtenColors.error),
+          ),
         Wrap(
           spacing: UtenSpacing.s4,
           runSpacing: UtenSpacing.s4,
@@ -979,7 +1061,13 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       mainAxisSize: MainAxisSize.min,
       children: [
         UtenStatusBadge(
-          label: effective ? '已授权' : '未授权',
+          label: pending
+              ? '待保存'
+              : effective
+              ? '已授权'
+              : incomplete
+              ? '未完整生效'
+              : '未授权',
           type: effective
               ? UtenStatusBadgeType.success
               : UtenStatusBadgeType.neutral,
@@ -987,11 +1075,16 @@ class _AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         ),
         const SizedBox(width: UtenSpacing.s4),
         Semantics(
-          label: '${permission.name}${effective ? '已授权' : '未授权'}',
+          label:
+              '${permission.name}${pending
+                  ? '待保存'
+                  : enabled
+                  ? '已授权'
+                  : '未授权'}',
           enabled: canEdit,
           hint: canEdit ? null : editRestriction,
           child: Switch(
-            value: effective,
+            value: enabled,
             onChanged: canEdit
                 ? (value) => _togglePerm(data, permission, value)
                 : null,

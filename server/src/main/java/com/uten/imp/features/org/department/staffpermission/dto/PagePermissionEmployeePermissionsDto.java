@@ -1,5 +1,7 @@
 package com.uten.imp.features.org.department.staffpermission.dto;
 
+import com.uten.imp.features.rbac.PermissionBusinessDescriptions;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -39,6 +41,24 @@ public record PagePermissionEmployeePermissionsDto(
             String configuredEffect,
             long rowVersion,
             boolean editable,
-            String reason) {
+            boolean canEnable,
+            boolean canDisable,
+            String reason,
+            List<String> requiredPermissions,
+            List<String> missingDependencies,
+            boolean configuredEnabled) {
+        public PermissionState {
+            description = PermissionBusinessDescriptions.descriptionFor(code, description);
+        }
+
+        public PermissionState(String code, String name, String actionType, String description,
+                List<String> grantPolicy, String sensitivity, boolean actorEffective,
+                boolean targetBaseEffective, boolean effective, String configuredEffect,
+                long rowVersion, boolean editable, String reason, List<String> requiredPermissions,
+                List<String> missingDependencies, boolean configuredEnabled) {
+            this(code, name, actionType, description, grantPolicy, sensitivity, actorEffective,
+                    targetBaseEffective, effective, configuredEffect, rowVersion, editable,
+                    editable, editable, reason, requiredPermissions, missingDependencies, configuredEnabled);
+        }
     }
 }

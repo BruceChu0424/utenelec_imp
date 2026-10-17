@@ -126,7 +126,10 @@ void main() {
           .onPressed;
       expect(create, isNotNull);
 
-      container.read(_permissionsProvider.notifier).state = {Perm.goodsView};
+      container.read(_permissionsProvider.notifier).state = {
+        Perm.goodsView,
+        Perm.materialCategoryView,
+      };
       await tester.pumpAndSettle();
 
       expect(find.text('显示列'), findsOneWidget);
@@ -172,7 +175,9 @@ Future<ProviderContainer> _pumpPage(
           await SharedPreferences.getInstance(),
         ),
         apiClientProvider.overrideWithValue(ApiClient(dio)),
-        _permissionsProvider.overrideWith((ref) => permissions),
+        _permissionsProvider.overrideWith(
+          (ref) => {...permissions, Perm.materialCategoryView},
+        ),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_permissionsProvider),
         ),

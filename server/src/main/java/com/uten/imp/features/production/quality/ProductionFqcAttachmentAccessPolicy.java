@@ -58,7 +58,7 @@ public class ProductionFqcAttachmentAccessPolicy implements AttachmentOwnerAcces
         if (!has(user, ProductionFqcInspectionService.APPROVE_AUTHORITY)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少生产质检审批权限");
         }
-        tasks.requireQualityPool("当前账号不在品质任务组织范围");
+        tasks.requireQualityPool("当前账号缺少生产质检审核权限或有效在职资格");
         if (!"PENDING".equals(value.status()) || value.passedQty().signum() != 0
                 || value.failedQty().signum() != 0 || value.remainingQty().signum() <= 0) {
             throw new ApiException(ErrorCode.CONFLICT, "已经登记检验结果，证据文件只读，不能替换或删除");

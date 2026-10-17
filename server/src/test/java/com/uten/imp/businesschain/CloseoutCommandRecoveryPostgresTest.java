@@ -149,23 +149,52 @@ class CloseoutCommandRecoveryPostgresTest {
         write("/api/production/quality-inspections/"+inspection+"/decisions",otherWriter,request,409);
         assertEquals("UNKNOWN",read("/api/production/quality-inspections/"+inspection+"/decision-receipt",otherWriter,key,200).path("state").asText());
         Authentication reader=principal(qa,qaEmployee,Set.of("production_quality_inspection:view"));
+        // View-only recovery is independent of approval, but still requires today's report-owner read scope.
+        UUID reportMaker=fqcReportMaker(inspection);
+        read("/api/production/quality-inspections/"+inspection+"/decision-receipt",reader,key,404);
+        allowFqcReceiptRead(qa,reportMaker);
         JsonNode receipt=read("/api/production/quality-inspections/"+inspection+"/decision-receipt",reader,key,200);
         assertEquals("COMMITTED",receipt.path("state").asText());assertEquals(first.path("decisionEventId"),receipt.path("result").path("decisionEventId"));
         assertEquals(0,receipt.path("decision").path("passQty").decimalValue().compareTo(new BigDecimal("0.5")));
+        allowFqcReceiptRead(other,reportMaker);
+        Authentication otherReader=principal(other,otherEmployee,Set.of("production_quality_inspection:view"));
+        assertEquals("UNKNOWN",read("/api/production/quality-inspections/"+inspection+"/decision-receipt",otherReader,key,200).path("state").asText());
         write("/api/production/quality-inspections/"+inspection+"/decisions",reader,request,403);
+        removeFqcReceiptRead(qa,reportMaker);
+        read("/api/production/quality-inspections/"+inspection+"/decision-receipt",reader,key,404);
+        read("/api/production/quality-inspections/"+inspection+"/decision-receipt",principal(qa,qaEmployee,Set.of()),key,403);
         assertEquals(1,db.queryForObject("SELECT count(*) FROM production_fqc_decision_events WHERE inspection_id=?",Integer.class,inspection));
     }
     @Test void passAllHasItsOwnReadOnlyReceiptAndWholeBatchVisibility()throws Exception {
-        Object source=fqc(2,"mixed");List<UUID> inspections=ReflectionTestUtils.invokeMethod(source,"inspections");
+        // Separate real reports make the all-or-nothing read check cover two distinct responsible employees.
+        Object source=fqc(1,"mixed"),secondSource=fqc(1,"plain");
+        List<UUID> inspections=new ArrayList<>(ReflectionTestUtils.<List<UUID>>invokeMethod(source,"inspections"));
+        inspections.addAll(ReflectionTestUtils.<List<UUID>>invokeMethod(secondSource,"inspections"));
+        UUID firstMaker=fqcReportMaker(inspections.getFirst()),secondMaker=fqcReportMaker(inspections.getLast());
+        assertNotEquals(firstMaker,secondMaker);
         var world=(FullChainEndToEndTest.World)ReflectionTestUtils.invokeMethod(source,"world");UUID qa=qualityActor(world);
         UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,qa);
         Authentication writer=principal(qa,employee,Set.of("production_quality_inspection:view","production_quality_inspection:approve"));
         String key="closeout-pass-all-"+UUID.randomUUID();JsonNode result=write("/api/production/quality-inspections/decisions/pass-all",writer,new PassAllBatchRequest(inspections,key),200);
         Authentication reader=principal(qa,employee,Set.of("production_quality_inspection:view"));
+        read("/api/production/quality-inspections/decisions/pass-all/receipt",reader,key,404);
+        allowFqcReceiptRead(qa,firstMaker);
+        read("/api/production/quality-inspections/decisions/pass-all/receipt",reader,key,404);
+        allowFqcReceiptRead(qa,secondMaker);
         JsonNode receipt=read("/api/production/quality-inspections/decisions/pass-all/receipt",reader,key,200);
         assertEquals("COMMITTED",receipt.path("state").asText());assertEquals(result.path("batchId"),receipt.path("result").path("batchId"));
         assertEquals(2,receipt.path("result").path("items").size());
         assertEquals("UNKNOWN",read("/api/production/quality-inspections/decisions/pass-all/receipt",reader,"absent-pass-all-key",200).path("state").asText());
+        removeFqcReceiptRead(qa,firstMaker);
+        read("/api/production/quality-inspections/decisions/pass-all/receipt",reader,key,404);
+        allowFqcReceiptRead(qa,firstMaker);
+        assertEquals("COMMITTED",read("/api/production/quality-inspections/decisions/pass-all/receipt",reader,key,200).path("state").asText());
+        write("/api/production/quality-inspections/decisions/pass-all",reader,new PassAllBatchRequest(inspections,key),403);
+        UUID other=qualityActor(world),otherEmployee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,other);
+        assertEquals("UNKNOWN",read("/api/production/quality-inspections/decisions/pass-all/receipt",
+                principal(other,otherEmployee,Set.of("production_quality_inspection:view")),key,200).path("state").asText());
+        assertEquals(2,inspections.stream().mapToInt(id->db.queryForObject("SELECT count(*) FROM production_fqc_decision_events WHERE inspection_id=?",Integer.class,id)).sum());
+        assertEquals(1,db.queryForObject("SELECT count(*) FROM production_fqc_pass_all_batches WHERE created_by=? AND idempotency_key=?",Integer.class,qa,key));
     }
     @Test void discoveryReceiptCannotResolveAnOrdinaryKeyOrCreateAConfiguration()throws Exception {
         Setup setup=draws(1,true);var request=reviewed(setup.documents());Authentication writer=actor();
@@ -189,6 +218,19 @@ class CloseoutCommandRecoveryPostgresTest {
         return ReflectionTestUtils.invokeMethod(fixture,"prepare",size,mode);}
     private UUID qualityActor(FullChainEndToEndTest.World world){var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);UUID user=fixture.createUserWithPerms(world,"closeout-qa-"+UUID.randomUUID(),"production_quality_inspection:view","production_quality_inspection:approve");
         UUID department=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_QA' AND NOT is_deleted",UUID.class);db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",department,user);return user;}
+    private UUID fqcReportMaker(UUID inspection){return db.queryForObject("SELECT report_maker_id FROM production_fqc_inspections WHERE id=?",UUID.class,inspection);}
+    private void allowFqcReceiptRead(UUID reader,UUID reportMaker){assertEquals(1,db.update("""
+            INSERT INTO user_data_scopes(user_id,scope,owner_employee_id,owner_employment_generation)
+            SELECT ?,'production_plan',employee.id,
+                   (SELECT count(*) FROM employment_history history
+                    WHERE history.employee_id=employee.id AND history.event_type='rehire')
+            FROM employees employee
+            WHERE employee.id=? AND NOT employee.is_deleted AND employee.status IN ('active','probation','onLeave')
+            ON CONFLICT(user_id,scope,owner_employee_id) DO UPDATE
+            SET owner_employment_generation=EXCLUDED.owner_employment_generation
+            """,reader,reportMaker));}
+    private void removeFqcReceiptRead(UUID reader,UUID reportMaker){assertEquals(1,db.update(
+            "DELETE FROM user_data_scopes WHERE user_id=? AND scope='production_plan' AND owner_employee_id=?",reader,reportMaker));}
     private Authentication actor(){return SecurityContextHolder.getContext().getAuthentication();}
     private Authentication principal(UUID user,UUID employee,Set<String> permissions){return new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(new AuthUser(user,employee,"closeout-test",permissions,false,true,false),null,new AuthUser(user,employee,"closeout-test",permissions,false,true,false).getAuthorities());}
     private JsonNode write(String path,Authentication actor,Object body,int status)throws Exception{var response=http.perform(post(path).with(authentication(actor)).contentType("application/json").content(json.writeValueAsBytes(body))).andReturn().getResponse();assertEquals(status,response.getStatus(),response.getContentAsString());return json.readTree(response.getContentAsByteArray());}

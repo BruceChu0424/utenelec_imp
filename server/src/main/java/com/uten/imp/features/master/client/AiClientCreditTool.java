@@ -45,8 +45,7 @@ public class AiClientCreditTool implements AiChatToolPort {
     }
     @Override public boolean available() {
         return access.hasDomain(domain()) && current.get().filter(actor -> actor.isSuperAdmin()
-                || actor.getPermissions().contains("client:view") && (actor.getPermissions().contains("sales_order:view")
-                || actor.getPermissions().contains("sales_quote:view"))).isPresent();
+                || actor.getPermissions().contains("client:view")).isPresent();
     }
     private void require() {
         access.requireDomain(domain());

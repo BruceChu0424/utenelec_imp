@@ -11,6 +11,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/quality/pages/production_fqc_handling_page.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -18,8 +19,53 @@ const _sheetId = '20000000-0000-0000-0000-000000000001';
 const _lotId = '30000000-0000-0000-0000-000000000001';
 const _demand = '40000000-0000-0000-0000-000000000001';
 const _surplus = '40000000-0000-0000-0000-000000000002';
+final _lotPermissions = StateProvider<Set<String>>((ref) => {});
 
 void main() {
+  testWidgets('FQC检查单实时授权与撤权只改变办理能力，原输入与幂等键保留', (tester) async {
+    final api = _LotApi();
+    await _pump(
+      tester,
+      api,
+      RouteName.productionFqcSheetHandling(_sheetId),
+      permissions: {Perm.productionQualityInspectionView},
+    );
+    final tableFinder = find.byKey(const Key('fqc-sheet-report-table'));
+    MasterDataTableView<FqcReportRow> table() => tester.widget(tableFinder);
+    final container = ProviderScope.containerOf(tester.element(tableFinder));
+    expect(table().selectable, isFalse);
+    container.read(_lotPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+      Perm.productionQualityInspectionApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(table().selectable, isTrue);
+    final row = table().items.single;
+    row.pass.text = '1090.';
+    row.fail.text = '10';
+    final key = row.idempotencyKey;
+    container.read(_lotPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+    };
+    await tester.pumpAndSettle();
+    expect(table().selectable, isFalse);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('fqc-sheet-pass-$_lotId')))
+          .enabled,
+      isFalse,
+    );
+    container.read(_lotPermissions.notifier).state = {
+      Perm.productionQualityInspectionView,
+      Perm.productionQualityInspectionApprove,
+    };
+    await tester.pumpAndSettle();
+    expect(table().selectable, isTrue);
+    expect(table().items.single.pass.text, '1090.');
+    expect(table().items.single.fail.text, '10');
+    expect(table().items.single.idempotencyKey, key);
+    expect(api.lotDecisionBodies, isEmpty);
+  });
   testWidgets('检查单一批一行：显示拆分，整批判定一次提交', (tester) async {
     final api = _LotApi();
     await _pump(tester, api, RouteName.productionFqcSheetHandling(_sheetId));
@@ -86,7 +132,12 @@ void main() {
   });
 }
 
-Future<void> _pump(WidgetTester tester, _LotApi api, String location) async {
+Future<void> _pump(
+  WidgetTester tester,
+  _LotApi api,
+  String location, {
+  Set<String> permissions = const {Perm.productionQualityInspectionApprove},
+}) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({});
@@ -113,9 +164,10 @@ Future<void> _pump(WidgetTester tester, _LotApi api, String location) async {
     ProviderScope(
       overrides: [
         apiClientProvider.overrideWithValue(api),
-        currentPermissionsProvider.overrideWithValue(const {
-          Perm.productionQualityInspectionApprove,
-        }),
+        _lotPermissions.overrideWith((ref) => permissions),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_lotPermissions),
+        ),
         isSuperAdminProvider.overrideWithValue(false),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],

@@ -1719,7 +1719,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             if(view.isProductionLinked()||view.isProductionMaterialReturn()||"CHECK".equals(view.getDocType())||!"NORMAL".equals(view.getTransferKind()))
                 throw new ApiException(ErrorCode.CONFLICT,"生产领退料、成品点收、盘点及不良品专用单据需通过对应工作台处理");
             if(Set.of("TRANSFER","OTHER_OUT").contains(document.getDocType()))rejectWorkshopMaterialDocumentReverse(id);
-            if(approvedCountDocument(id))throw new ApiException(ErrorCode.CONFLICT,"该库存变化来自已批准盘点，请重新盘点并提交对应部门审核");
+            if(approvedCountDocument(id))throw new ApiException(ErrorCode.CONFLICT,"该库存变化来自已批准盘点，请重新盘点并提交有盘点审核权限的人员处理");
             requireOperationWritable(document,"stock_doc:reverse","无权反审此仓库单据");requireBalanceAdjustmentPermission(document);
             if(document.getStatus()==null||document.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
             var items=itemRepo.findByDocIdOrderByLineNoAsc(id);
@@ -1813,7 +1813,7 @@ public class StockDocService implements ProductionPreStockedInboundPort {
             rejectWorkshopMaterialDocumentReverse(id);
         }
         if (approvedCountDocument(id)) {
-            throw new ApiException(ErrorCode.CONFLICT,"该库存变化来自已批准的盘点，不能直接红冲；请重新盘点并提交对应部门审核");
+            throw new ApiException(ErrorCode.CONFLICT,"该库存变化来自已批准的盘点，不能直接红冲；请重新盘点并提交有盘点审核权限的人员处理");
         }
         requireOperationWritable(
                 d, "stock_doc:reverse", "无权红冲此仓库单据");

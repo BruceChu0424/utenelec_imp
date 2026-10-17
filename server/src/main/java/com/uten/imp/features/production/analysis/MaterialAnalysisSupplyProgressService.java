@@ -393,7 +393,7 @@ public class MaterialAnalysisSupplyProgressService {
                 qualityDetail = "待检记录生成中";
             } else if (open > 0) {
                 qualityState = CURRENT;
-                qualityDetail = "待品质部检验 " + open + " 行";
+                qualityDetail = "待品质检验 " + open + " 行";
             } else if (passed.signum() > 0) {
                 qualityState = DONE;
                 qualityDetail = failed.signum() > 0

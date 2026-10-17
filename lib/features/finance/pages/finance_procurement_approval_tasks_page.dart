@@ -109,6 +109,7 @@ class _FinanceProcurementApprovalTasksPageState
   ) async {
     final claim = financeReviewClaim(
       ProviderScope.containerOf(context, listen: false),
+      localizations: AppLocalizations.of(context),
     );
     _batchClaim = claim;
     setState(() => _busyDecision = true);
@@ -140,8 +141,13 @@ class _FinanceProcurementApprovalTasksPageState
       }
       if (mounted) setState(() => _busyDecision = false);
       return claim;
-    } on Object {
-      if (mounted) context.appError('无法核对整批审核内容，请检查网络或权限后重试');
+    } on Object catch (error) {
+      if (mounted) {
+        context.appApiError(
+          error,
+          fallback: AppLocalizations.of(context).financeBatchReviewCheckFailed,
+        );
+      }
       await _releaseBatchClaim(claim);
       return null;
     }
@@ -614,10 +620,15 @@ class _FinanceProcurementApprovalTasksPageState
       setState(_clearSelectionState);
       refreshBadges(ref);
       await _load(_result?.page ?? 1);
-    } on ApiException catch (e) {
-      if (mounted) context.appError('整批未提交：${e.message}');
-    } catch (_) {
-      if (mounted) context.appError('整批未提交，请检查网络后重试');
+    } on Object catch (error) {
+      if (mounted) {
+        context.appApiError(
+          error,
+          fallback: AppLocalizations.of(
+            context,
+          ).financeBatchReviewResultUnknown,
+        );
+      }
     }
   }
 
@@ -633,7 +644,9 @@ class _FinanceProcurementApprovalTasksPageState
       main = _pinHostHeader(
         UtenEmpty.error(
           message: '无权查看订货审批任务',
-          description: '只有被授权的财务审核人员可以进入。',
+          description: AppLocalizations.of(
+            context,
+          ).financeProcurementReviewAccessHint,
         ),
       );
     } else if (_loading && _result == null) {

@@ -14,13 +14,72 @@ import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_baseline_perm_view.dart';
 import 'package:uten_imp/features/admin/widgets/admin_department_perm_view.dart';
+import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/shared/auth/permission_grant_policy.dart';
+import 'package:uten_imp/shared/auth/permission_action_type.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 const _normal = 'stock:view';
 const _bulkExcluded = 'finance:view:all';
 const _individualOnly = 'audit_log:view';
+const _action = 'goods:edit';
+const _pageRead = 'goods:view';
+const _revokedRead = 'client:view';
+const _sensitiveRead = 'goods:sensitive:view';
+const _otherAction = 'client:edit';
+
+const _dependencyCatalog = [
+  PermissionCatalogGroup(
+    module: '仓库管理',
+    category: '库存',
+    permissions: [
+      AdminPermission(
+        id: _action,
+        code: _action,
+        name: '编辑货品',
+        module: '仓库管理',
+        category: '库存',
+        actionType: PermissionActionType.edit,
+      ),
+      AdminPermission(
+        id: _otherAction,
+        code: _otherAction,
+        name: '编辑其他资料',
+        module: '仓库管理',
+        category: '库存',
+        actionType: PermissionActionType.edit,
+      ),
+      AdminPermission(
+        id: _pageRead,
+        code: _pageRead,
+        name: '查看货品页面',
+        module: '仓库管理',
+        category: '库存',
+        actionType: PermissionActionType.view,
+      ),
+      AdminPermission(
+        id: _revokedRead,
+        code: _revokedRead,
+        name: '查看客户页面',
+        module: '仓库管理',
+        category: '库存',
+        actionType: PermissionActionType.view,
+      ),
+      AdminPermission(
+        id: _sensitiveRead,
+        code: _sensitiveRead,
+        name: '敏感页面查看',
+        module: '仓库管理',
+        category: '库存',
+        actionType: PermissionActionType.view,
+        grantPolicy: PermissionGrantPolicy({
+          PermissionGrantPolicy.bulkExcluded,
+        }),
+      ),
+    ],
+  ),
+];
 
 const _catalog = [
   PermissionCatalogGroup(
@@ -64,8 +123,33 @@ class _Repo implements AdminRepository {
   final List<PermissionCatalogGroup> catalog;
   Set<String> department = {};
   Set<String> baseline = {};
+  Map<String, List<String>> dependencies = {};
+  List<String>? completedDepartmentResponse;
+  final departmentUpdates = <List<String>>[];
   final grantAllScopes = <PermissionBulkScope>[];
   final baselineUpdates = <List<String>>[];
+  final overrideUpdates = <(List<String>, List<String>)>[];
+  EffectivePermissions userPermissions = const EffectivePermissions(
+    departmentPermissions: [],
+    baselinePermissions: [],
+    grants: [],
+    revokes: [],
+    effective: [],
+  );
+
+  @override
+  Future<EffectivePermissions> effectivePermissions(String userId) async =>
+      userPermissions;
+
+  @override
+  Future<PermissionChange> updateUserPermOverrides(
+    String userId, {
+    required List<String> grants,
+    required List<String> revokes,
+  }) async {
+    overrideUpdates.add((List.of(grants), List.of(revokes)));
+    return PermissionChange.none;
+  }
 
   @override
   Future<List<DepartmentNode>> departmentTree() async => [
@@ -83,7 +167,19 @@ class _Repo implements AdminRepository {
 
   @override
   Future<List<String>> departmentPermissions(String departmentId) async =>
-      department.toList();
+      DepartmentPermissionCodes(
+        department.toList(),
+        requiredPermissions: dependencies,
+        missingDependencies: {
+          for (final code in department)
+            if ((dependencies[code] ?? const <String>[]).any(
+              (required) => !department.contains(required),
+            ))
+              code: dependencies[code]!
+                  .where((required) => !department.contains(required))
+                  .toList(),
+        },
+      );
 
   @override
   Future<PermissionChange> updateDepartmentPermissions(
@@ -91,7 +187,8 @@ class _Repo implements AdminRepository {
     List<String> permissionCodes,
   ) async {
     final before = department;
-    department = permissionCodes.toSet();
+    departmentUpdates.add(List.of(permissionCodes));
+    department = (completedDepartmentResponse ?? permissionCodes).toSet();
     return PermissionChange(
       added: department.difference(before).toList(),
       removed: before.difference(department).toList(),
@@ -171,6 +268,53 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets(
+    'existing incomplete department grant offers a repair using the current configuration',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo =
+          _Repo([
+              ..._catalog,
+              const PermissionCatalogGroup(
+                module: '业务页面',
+                category: '所需页面',
+                permissions: [
+                  AdminPermission(
+                    id: 'required-page:view',
+                    code: 'required-page:view',
+                    name: '查看业务页面',
+                    module: '业务页面',
+                    category: '所需页面',
+                    actionType: PermissionActionType.view,
+                  ),
+                ],
+              ),
+            ])
+            ..department = {_normal}
+            ..dependencies = {
+              _normal: ['required-page:view'],
+            }
+            ..completedDepartmentResponse = [_normal, 'required-page:view'];
+      await tester.pumpWidget(
+        subject(
+          repo,
+          const AdminDepartmentPermView(initialDepartmentId: 'dept-wh'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('有 1 项动作缺少所需查看权限'), findsOneWidget);
+      await tester.tap(find.text('补齐所需查看权限'));
+      await tester.pumpAndSettle();
+      expect(repo.departmentUpdates.single.toSet(), {
+        _normal,
+        'required-page:view',
+      });
+      expect(repo.department, {_normal, 'required-page:view'});
+      expect(find.text('补齐所需查看权限'), findsNothing);
+    },
+  );
+
   testWidgets('department page hides individual-only codes and hands '
       'grant-all to the server in one request', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1200, 1400));
@@ -198,6 +342,166 @@ void main() {
     expect(repo.grantAllScopes, [PermissionBulkScope.everything]);
     expect(repo.department, {_normal});
   });
+
+  Finder permissionSwitch(String code) => find.descendant(
+    of: find.byKey(ValueKey('permission-$code')),
+    matching: find.byType(Switch),
+  );
+
+  Widget userPanel() => AdminUserDetailPanel(
+    user: const AdminUserSummary(
+      id: 'user',
+      employeeId: 'employee',
+      employeeName: '在职员工',
+      employeeStatus: 'active',
+      currentEmployee: true,
+      loginAccount: 'UT001',
+      status: 'active',
+      mustChangePassword: false,
+      remoteAccess: false,
+    ),
+    canManageAuthorization: true,
+    onAccountChanged: () {},
+  );
+
+  testWidgets(
+    'personal action toggle preserves a revoked navigation read and submits only its explicit code',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = _Repo(_dependencyCatalog)
+        ..userPermissions = const EffectivePermissions(
+          departmentPermissions: [],
+          baselinePermissions: [],
+          grants: [],
+          revokes: [_pageRead],
+          effective: [],
+          requiredPermissions: {
+            _action: [_pageRead],
+          },
+        );
+      await tester.pumpWidget(subject(repo, userPanel()));
+      await tester.pumpAndSettle();
+      await expandCatalog(tester);
+      tester.widget<Switch>(permissionSwitch(_action)).onChanged!(true);
+      await tester.pump();
+      expect(tester.widget<Switch>(permissionSwitch(_action)).value, isTrue);
+      expect(find.text('待保存'), findsWidgets);
+      await tester.tap(find.text('保存更改'));
+      await tester.pumpAndSettle();
+      expect(repo.overrideUpdates.single.$1, [_action]);
+      expect(repo.overrideUpdates.single.$2, [_pageRead]);
+    },
+  );
+
+  testWidgets(
+    'unrelated pending edit does not remove a server-confirmed action missing navigation reads',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = _Repo(_dependencyCatalog)
+        ..userPermissions = const EffectivePermissions(
+          departmentPermissions: [],
+          baselinePermissions: [],
+          grants: [_action],
+          revokes: [_pageRead],
+          effective: [_action],
+          requiredPermissions: {
+            _action: [_pageRead],
+          },
+          missingDependencies: {
+            _action: [_pageRead],
+          },
+        );
+      await tester.pumpWidget(subject(repo, userPanel()));
+      await tester.pumpAndSettle();
+      await expandCatalog(tester);
+      expect(tester.widget<Switch>(permissionSwitch(_action)).value, isTrue);
+      tester.widget<Switch>(permissionSwitch(_otherAction)).onChanged!(true);
+      await tester.pump();
+      expect(tester.widget<Switch>(permissionSwitch(_action)).value, isTrue);
+      expect(find.text('尚缺对应页面所需的查看权限'), findsOneWidget);
+      expect(find.text('未完整生效'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'explicit personal repair adds ordinary reads without regranting revoked or sensitive reads',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = _Repo(_dependencyCatalog)
+        ..userPermissions = const EffectivePermissions(
+          departmentPermissions: [],
+          baselinePermissions: [],
+          grants: [_action],
+          revokes: [_revokedRead],
+          effective: [_action],
+          missingDependencies: {
+            _action: [_pageRead, _revokedRead, _sensitiveRead, 'unknown:view'],
+          },
+        );
+      await tester.pumpWidget(subject(repo, userPanel()));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('补齐所需查看权限'));
+      await tester.pump();
+      await tester.tap(find.text('保存更改'));
+      await tester.pumpAndSettle();
+      expect(repo.overrideUpdates.single.$1.toSet(), {_action, _pageRead});
+      expect(repo.overrideUpdates.single.$2, [_revokedRead]);
+    },
+  );
+
+  testWidgets(
+    'department toggle never adds navigation reads or undoes an explicit read removal',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = _Repo(_dependencyCatalog)
+        ..department = {_pageRead}
+        ..dependencies = {
+          _action: [_pageRead, _sensitiveRead],
+        };
+      await tester.pumpWidget(
+        subject(
+          repo,
+          const AdminDepartmentPermView(initialDepartmentId: 'dept-wh'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await expandCatalog(tester);
+      tester.widget<Switch>(permissionSwitch(_pageRead)).onChanged!(false);
+      await tester.pump();
+      tester.widget<Switch>(permissionSwitch(_action)).onChanged!(true);
+      await tester.pump();
+      await tester.tap(find.text('保存更改'));
+      await tester.pumpAndSettle();
+      expect(repo.departmentUpdates.single, [_action]);
+    },
+  );
+
+  testWidgets(
+    'explicit department repair adds only ordinary known view permissions',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final repo = _Repo(_dependencyCatalog)
+        ..department = {_action}
+        ..dependencies = {
+          _action: [_pageRead, _sensitiveRead, 'unknown:view'],
+        };
+      await tester.pumpWidget(
+        subject(
+          repo,
+          const AdminDepartmentPermView(initialDepartmentId: 'dept-wh'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('补齐所需查看权限'));
+      await tester.pumpAndSettle();
+      expect(repo.departmentUpdates.single.toSet(), {_action, _pageRead});
+    },
+  );
 
   testWidgets('grant-all waits until pending single edits are saved', (
     tester,

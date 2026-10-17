@@ -7,6 +7,7 @@
 //  - 财务超量到货任务卡与详情按新口径展示。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -275,6 +276,8 @@ void main() {
           procurementInboundRepositoryProvider.overrideWithValue(repository),
         ],
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: FinanceArrivalExceptionTasksPage(embedded: true),
           ),
@@ -313,6 +316,8 @@ void main() {
           ),
         ],
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: Scaffold(
             body: FinanceArrivalExceptionTasksPage(embedded: true),
           ),

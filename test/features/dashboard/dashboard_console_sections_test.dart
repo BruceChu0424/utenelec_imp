@@ -6,7 +6,7 @@
 // 1. 合并结构成立：一段面板同时承载「今日概览」标题栏、指标区与「待办任务」
 //    小节头，总数徽章 = 各待办 count 之和；
 // 2. 数值与标题真的渲染出来了（不是只剩装饰）；非数字指标值不被当成 0；
-// 3. 空态说的是「本部门」而不是旧的「当前权限下」——这是此前改口径的用户可见面；
+// 3. 空态与授权功能及数据范围一致，不把部门名称当作功能准入或数据范围；
 // 4. reduced-motion 下不崩、内容照常完整（动效不承载信息）；
 // 5. 375px 窄屏不溢出(指标横排换行，待办在下方)；
 //    待办最多一行，末尾剩余任务数按 count 求和，点击独立面板查看；
@@ -158,12 +158,14 @@ void main() {
     expect(find.text('0'), findsNothing);
   });
 
-  testWidgets('指标为空时说的是「本部门」，不是旧的「当前权限下」', (tester) async {
+  testWidgets('指标空态说明授权范围，不将部门当成功能准入条件', (tester) async {
     await tester.pumpWidget(host(panel()));
     await tester.pumpAndSettle();
 
-    expect(find.text('财税部暂无概览指标'), findsOneWidget);
-    expect(find.textContaining('当前权限下'), findsNothing);
+    expect(find.text('当前可见范围内暂无概览指标'), findsOneWidget);
+    expect(find.text('按已授权功能和数据范围展示'), findsOneWidget);
+    expect(find.textContaining('按本部门范围'), findsNothing);
+    expect(find.text('财税部暂无概览指标'), findsNothing);
   });
 
   testWidgets('待办区渲染标题与计数徽章', (tester) async {
@@ -187,11 +189,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('待办为空时同样说「本部门」', (tester) async {
+  testWidgets('待办空态不将部门名称当作待办的授权范围', (tester) async {
     await tester.pumpWidget(host(panel()));
     await tester.pumpAndSettle();
 
-    expect(find.text('财税部当前没有待办'), findsOneWidget);
+    expect(find.text('当前可见范围内没有待办'), findsOneWidget);
+    expect(find.text('财税部当前没有待办'), findsNothing);
   });
 
   // 服务端一直在下发 dueAt，改版前模型解析完就扔了——倒计时芯片是它的第一个

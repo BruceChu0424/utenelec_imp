@@ -6448,7 +6448,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quoteFinanceLoadDetailFailed =>
-      'Could not load the quote. Check the network or your access and try again.';
+      'The quote details could not be loaded. Try again.';
 
   @override
   String get quoteFinanceActionFailed =>
@@ -10944,4 +10944,192 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get serverUpdateReceiptStatus => 'Original request status';
+
+  @override
+  String get taskClaimChecking => 'Checking the review lease. Please wait.';
+
+  @override
+  String get taskClaimIdentityChanged =>
+      'Your signed-in identity changed. Reopen the review.';
+
+  @override
+  String get taskClaimAcquireFailed =>
+      'The review lease could not be acquired. Try again.';
+
+  @override
+  String get taskClaimNetworkUnavailable =>
+      'Cannot reach the server. Check your connection and claim again.';
+
+  @override
+  String get taskClaimNetworkTimeout =>
+      'The server response timed out. Claim again later.';
+
+  @override
+  String get taskClaimLoginExpired =>
+      'Your session expired. Sign in again and retry.';
+
+  @override
+  String get taskClaimPermissionDenied =>
+      'You do not have permission to review this task. Refresh your permissions and retry.';
+
+  @override
+  String get taskClaimConflict =>
+      'The task lease or content changed. Refresh and claim again.';
+
+  @override
+  String get taskClaimNotFound =>
+      'The review task is unavailable or no longer pending. Refresh the list.';
+
+  @override
+  String get taskClaimRateLimited => 'Too many requests. Claim again later.';
+
+  @override
+  String get taskClaimServerUnavailable =>
+      'The server cannot process the review lease right now. Try again later.';
+
+  @override
+  String get taskClaimInvalidResponse =>
+      'No valid review lease was returned. Claim again.';
+
+  @override
+  String get taskClaimExpired => 'The review lease expired. Claim again.';
+
+  @override
+  String taskClaimTakenBy(String name) {
+    return '$name is reviewing this task. Try again later.';
+  }
+
+  @override
+  String get taskClaimDecisionNotReady =>
+      'The review lease is no longer valid. Claim again and check the latest content.';
+
+  @override
+  String get taskClaimReplaced =>
+      'The review lease expired or was replaced. Review is paused. Claim again.';
+
+  @override
+  String get taskClaimRenewFailed =>
+      'The review lease could not be verified. Review is paused. Claim again and check the latest content.';
+
+  @override
+  String get taskClaimReadOnly =>
+      'No valid review lease is held. This page is view only.';
+
+  @override
+  String get taskClaimRetry => 'Claim again and refresh';
+
+  @override
+  String get financeSalesReviewAccessHint =>
+      'Sales order finance review access is required. Ask a permissions administrator for access.';
+
+  @override
+  String get financeProcurementReviewAccessHint =>
+      'Purchase order approval access is required. Ask a permissions administrator for access.';
+
+  @override
+  String get financeArrivalReviewAccessHint =>
+      'Employees with the relevant view and approval permissions can handle excess arrivals. No additional department membership or named grant is required.';
+
+  @override
+  String get dashboardAuthorizedScope =>
+      'Shown by granted features and data scope';
+
+  @override
+  String get dashboardNoAuthorizedMetrics =>
+      'No overview metrics in your visible scope';
+
+  @override
+  String get dashboardNoAuthorizedTodos =>
+      'No pending tasks in your visible scope';
+
+  @override
+  String get financeBatchReviewCheckFailed =>
+      'The batch review content could not be verified. Refresh and try again.';
+
+  @override
+  String get financeBatchReviewResultUnknown =>
+      'The batch review outcome is unconfirmed. Refresh and check the document states before acting again.';
+
+  @override
+  String get financeReviewLoadFailed =>
+      'The review details could not be loaded. Try again.';
+
+  @override
+  String get financeReportLoadFailed =>
+      'The report could not be loaded. Refresh and try again.';
+
+  @override
+  String get financeBatchReviewRefreshFailed =>
+      'The batch review completed, but the page could not refresh. Refresh to check the latest document states.';
+
+  @override
+  String get financeReviewAuthorityChanged =>
+      'The review content or version changed. Your input is retained. Reload and check the latest content before reviewing.';
+
+  @override
+  String get permissionMissingReads =>
+      'The grant configuration is retained, but it is not currently effective and the corresponding page\'s viewing permissions are missing. Check the grant status; add viewing permissions when access to that page is needed.';
+
+  @override
+  String get permissionCompleteReads => 'Add required viewing permissions';
+
+  @override
+  String get permissionInactiveGrant =>
+      'The previous grant is no longer effective. This action is currently unauthorized.';
+
+  @override
+  String get permissionRenewGrant => 'Grant again';
+
+  @override
+  String get permissionRemoveInactiveGrant => 'Remove inactive grant';
+
+  @override
+  String get permissionPendingReads =>
+      'Saving adds only ordinary viewing permissions that may be granted automatically. To restore revoked permissions or grant sensitive permissions, confirm each in its own permission setting.';
+
+  @override
+  String get permissionBatchNormalOnly =>
+      'Grant group (exclude sensitive and locked items)';
+
+  @override
+  String get permissionSavedRefreshPending =>
+      'Permissions were saved, but the current session could not refresh. Reload the page to check the latest permissions.';
+
+  @override
+  String get permissionSaved => 'Page permissions saved';
+
+  @override
+  String get permissionSavedDetailPending =>
+      'Permissions were saved, but the latest settings could not be read. Reload this employee before making further changes.';
+
+  @override
+  String get permissionSaveResultUnknown =>
+      'The permission save outcome is unconfirmed. Reload this employee\'s permissions and check them before acting again.';
+
+  @override
+  String get masterEntitySearchHint => 'Search by name or code';
+
+  @override
+  String get permissionRevokeOnly =>
+      'You can only remove the existing grant. Granting it again is not allowed.';
+
+  @override
+  String get release2521Permissions =>
+      'Finance reviews, final quality inspections and similar operations follow effective permissions without extra department or named-grant requirements. Business data scopes and document-state checks remain in place.';
+
+  @override
+  String get release2521Session =>
+      'Sessions and page actions follow refreshed permissions after authorization changes. Unsaved switch changes are marked as pending save.';
+
+  @override
+  String get release2521PermissionSettings =>
+      'Ordinary switches change only the selected permission. Saving adds eligible ordinary viewing permissions under the authorization rules; sensitive grants and restoration of revoked permissions still require individual confirmation.';
+
+  @override
+  String get release2521ReviewFeedback =>
+      'Review-claim failures show the actual reason. Unconfirmed batch-review outcomes clearly ask you to refresh and check document states.';
+
+  @override
+  String get release2521ServerUpdates =>
+      'Server update tasks show their current stage and result. Reopen the page to continue checking progress; failures show confirmed reasons and suggested next steps.';
 }

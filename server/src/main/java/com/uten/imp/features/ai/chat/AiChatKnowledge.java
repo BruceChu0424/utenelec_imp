@@ -76,7 +76,7 @@ final class AiChatKnowledge {
                     "subcontract_material_return:view", "subcontract_waste:view"),
             "HR_FLOW", Set.of("employee:view", "department:view"));
 
-    /** The real department scope and this topic's read permission are independent requirements. */
+    /** Effective functional domains and each topic's exact read permission are both required. */
     static List<Entry> visible(Set<String> domains, AuthUser actor) {
         if (domains == null || !chatActor(actor)) return List.of();
         return ALL.stream().filter(entry -> domains.contains(entry.domain()) && allowed(entry, actor)).toList();

@@ -74,7 +74,7 @@ dev_dependencies:
   integration_test:
     sdk: flutter
 
-  analyzer: ^7.6.0
+  analyzer: ^14.5.0
   flutter_lints: ^6.0.0
 
   # 图片格式支持；附件上传保留原始字节，不再用此库进行有损转码。

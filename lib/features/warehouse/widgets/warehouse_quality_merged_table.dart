@@ -180,6 +180,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
         key: 'verdict',
         label: '判定结果',
         width: 108,
+        columnSearchEnabled: false,
         // 2026-09-11 全站表头快速筛选补齐：合格/不合格混排的长明细里，判定结果
         // 与货品名是最常用的收敛口径（视图级过滤，不动数据与勾选）。
         filterValueOf: (row) => row.line.verdict.label,

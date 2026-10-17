@@ -9,6 +9,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
+import 'package:uten_imp/components/layout/uten_grid_header_filter_cell.dart';
 
 class _Row extends EditableGridRow {
   _Row(this.name, String qty) : qty = TextEditingController(text: qty);
@@ -309,7 +310,13 @@ void main() {
     );
 
     // 隐藏生效：表头与表体同时消失，并上报隐藏集。
-    await _rightClick(tester, find.text('补列2'));
+    final lastHeader = find.byWidgetPredicate(
+      (widget) => widget is GridHeaderFilterCell && widget.label == '补列2',
+    );
+    await Scrollable.ensureVisible(tester.element(lastHeader), alignment: 1);
+    await tester.pumpAndSettle();
+    expect(lastHeader.hitTestable(), findsOneWidget);
+    await _rightClick(tester, lastHeader.hitTestable());
     await tester.tap(find.text('隐藏此列'));
     await tester.pumpAndSettle();
     expect(find.text('补列2'), findsNothing);

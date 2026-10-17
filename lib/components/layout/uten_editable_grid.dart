@@ -3130,8 +3130,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
   void _deleteSourceRow(T row, Object scope) {
     if (!mounted ||
         scope != _columnQueryScope ||
-        !(widget.canDeleteRow?.call(row) ?? true))
+        !(widget.canDeleteRow?.call(row) ?? true)) {
       return;
+    }
     final sourceIndex = widget.controller.rows.indexWhere(
       (item) => identical(item, row),
     );
@@ -3222,8 +3223,9 @@ class _UtenEditableGridState<T extends EditableGridRow>
         onTap: () {
           if (!mounted || scope != _columnQueryScope) return;
           final sourceIndex = c.rows.indexWhere((item) => identical(item, row));
-          if (sourceIndex >= 0)
+          if (sourceIndex >= 0) {
             c.insertAt(sourceIndex, widget.createBlankRow!());
+          }
         },
       ),
       const UtenMenuDivider(),

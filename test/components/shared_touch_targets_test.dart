@@ -100,6 +100,35 @@ Future<Rect> _touchTarget(WidgetTester tester, Finder finder) async {
 }
 
 void main() {
+  test(
+    'reviewed grid cloning preserves explicit text-search policy and exact facets',
+    () {
+      for (final enabled in [false, true]) {
+        final original = EditableGridColumn<_Row>(
+          key: enabled ? 'result' : 'name',
+          label: enabled ? '判定类型' : '货品名称',
+          width: 160,
+          textOf: (row) => row.text.text,
+          filterValueOf: (row) => row.text.text,
+          columnSearchEnabled: enabled,
+          cellBuilder: (_, _) => const SizedBox.shrink(),
+        );
+        final reviewed = reviewedGridColumns<_Row>(
+          columns: [original],
+          baseline: const {},
+          valuesOf: (_) => const {},
+          listenableOf: (row) => row.text,
+          editableKeys: const {},
+          keyPrefix: 'search-policy-review',
+        ).single;
+        expect(reviewed.columnSearchEnabled, enabled);
+        expect(reviewed.supportsKeywordSearch, enabled);
+        expect(reviewed.filterValueOf, same(original.filterValueOf));
+        expect(reviewed.textOf, same(original.textOf));
+      }
+    },
+  );
+
   for (final factor in [0.85, 2.0]) {
     testWidgets(
       '$factor: outbound weight column survives real resize and action edge tap',

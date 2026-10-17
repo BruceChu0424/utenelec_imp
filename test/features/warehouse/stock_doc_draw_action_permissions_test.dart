@@ -268,7 +268,7 @@ void main() {
         (widget) =>
             widget is TextField &&
             widget.decoration != null &&
-            utenDecorationFieldName(widget.decoration!) == '取消原因',
+            utenDecorationFieldName(widget.decoration!) == '取消原因(必填)',
       );
       expect(reason, findsOneWidget);
       expect(

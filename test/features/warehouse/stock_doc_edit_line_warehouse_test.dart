@@ -239,9 +239,21 @@ Future<void> _selectRowWarehouse(
 ) async {
   final dropdowns = find.byType(WarehouseHierarchyDropdown);
   expect(dropdowns, findsNWidgets(2));
-  await tester.tap(dropdowns.at(index));
+  final field = find.descendant(
+    of: dropdowns.at(index),
+    matching: find.byType(UtenDropdownField),
+  );
+  expect(field, findsOneWidget);
+  final dropdown = tester.widget<UtenDropdownField>(field);
+  expect(
+    dropdown.items.singleWhere((item) => item.value == warehouseId).enabled,
+    isTrue,
+  );
+  await tester.tap(field);
   await tester.pumpAndSettle();
-  final option = find.byKey(Key('warehouse-picker-entry-$warehouseId'));
+  final option = find.byKey(
+    ValueKey(('uten-dropdown-option', dropdown.key, warehouseId)),
+  );
   expect(option, findsOneWidget);
   await tester.tap(option);
   await tester.pumpAndSettle();

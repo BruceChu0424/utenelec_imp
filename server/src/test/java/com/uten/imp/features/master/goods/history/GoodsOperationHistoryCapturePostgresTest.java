@@ -293,7 +293,9 @@ class GoodsOperationHistoryCapturePostgresTest {
                 statement.setObject(i + 1, args[i]);
             }
             try (var result = statement.executeQuery()) {
-                return result.next() ? result.getObject(1, Long.class) : null;
+                if (!result.next()) return null;
+                long value = result.getLong(1);
+                return result.wasNull() ? null : value;
             }
         }
     }

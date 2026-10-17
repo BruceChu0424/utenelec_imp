@@ -551,8 +551,8 @@ class GoodsOperationHistoryConcurrencyPostgresTest {
             }
             try (var result = statement.executeQuery()) {
                 assertTrue(result.next(), "Expected an integer scalar row");
-                Long value = result.getObject(1, Long.class);
-                assertNotNull(value, "Expected a non-null integer scalar");
+                long value = result.getLong(1);
+                assertFalse(result.wasNull(), "Expected a non-null integer scalar");
                 return Math.toIntExact(value);
             }
         }

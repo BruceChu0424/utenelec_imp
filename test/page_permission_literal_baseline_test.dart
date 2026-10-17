@@ -407,6 +407,9 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
     final historyTokens = Map<String, int>.from(
       _reviewedSourceGuards[history]!.tokens,
     )..remove('Perm.goodsBomAudit');
-    expect(() => _reviewedIncrementFor(history, historyTokens), throwsStateError);
+    expect(
+      () => _reviewedIncrementFor(history, historyTokens),
+      throwsStateError,
+    );
   });
 }

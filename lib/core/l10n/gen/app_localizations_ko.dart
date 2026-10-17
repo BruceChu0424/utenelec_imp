@@ -10322,4 +10322,239 @@ class AppLocalizationsKo extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get serverUpdateCurrentVersion => '현재 버전';
+
+  @override
+  String get serverUpdateAvailableVersion => '사용 가능한 새 버전';
+
+  @override
+  String get serverUpdateKnownVersion => '마지막 확인 버전';
+
+  @override
+  String get serverUpdateNotChecked => '확인되지 않음';
+
+  @override
+  String get serverUpdateNoNewVersion => '마지막 확인 시 최신 버전';
+
+  @override
+  String get serverUpdateNoCheckResult => '배포 소스를 확인해 새 버전을 찾으세요.';
+
+  @override
+  String get serverUpdateCheck => '업데이트 확인';
+
+  @override
+  String get serverUpdateView => '업데이트 보기';
+
+  @override
+  String get serverUpdateReadOnly => '현재 세션은 읽기 전용입니다. 업데이트할 수 없습니다.';
+
+  @override
+  String get serverUpdateManual => '수동 확인';
+
+  @override
+  String get serverUpdateLocalOnly =>
+      '페이지 열기, 새로고침, 진행 상황 보기는 이 서버 상태만 읽으며 배포 소스를 자동 확인하지 않습니다.';
+
+  @override
+  String get serverUpdateUnconfigured => '배포 소스 미설정';
+
+  @override
+  String get serverUpdateUnconfiguredHint => '최고 관리자에게 배포 소스 설정을 요청한 후 확인하세요.';
+
+  @override
+  String get serverUpdateUnavailable => '서버 업데이트 기능 사용 불가';
+
+  @override
+  String get serverUpdateChecking => '버전 확인 중';
+
+  @override
+  String get serverUpdateRunning => '서버 업데이트 중';
+
+  @override
+  String get serverUpdateQueued => '업데이트 대기 중';
+
+  @override
+  String get serverUpdateScheduled => '업데이트 예약됨';
+
+  @override
+  String get serverUpdateCancelled => '예약 취소됨';
+
+  @override
+  String get serverUpdateCheckDone => '버전 확인 완료';
+
+  @override
+  String get serverUpdateDone => '서버 업데이트 완료';
+
+  @override
+  String get serverUpdateFailed => '업데이트 실패';
+
+  @override
+  String get serverUpdateRecovery => '복구 필요';
+
+  @override
+  String get serverUpdateUnknownState => '작업 상태 미확인';
+
+  @override
+  String get serverUpdateRecentJob => '최근 작업';
+
+  @override
+  String get serverUpdateProgress => '진행 상황';
+
+  @override
+  String get serverUpdateDetails => '작업 상세';
+
+  @override
+  String get serverUpdateFailureDetails => '실패 상세';
+
+  @override
+  String get serverUpdateCopyDiagnostics => '진단 정보 복사';
+
+  @override
+  String get serverUpdateDiagnosticsCopied => '안전한 진단 정보 복사됨';
+
+  @override
+  String get serverUpdateLegacyFailure =>
+      '이 서버는 표시 가능한 실패 상세를 기록하지 않았습니다. 요청 ID로 관리자에게 확인을 요청하세요.';
+
+  @override
+  String get serverUpdateServicePreserved => '이 작업에서 기존 서비스 보존';
+
+  @override
+  String get serverUpdateServiceUnknown => '서비스 상태 확인 필요';
+
+  @override
+  String get serverUpdateRecoveryHint =>
+      '최고 관리자가 복구 지점과 서비스 상태를 확인하기 전에는 다시 업데이트하지 마세요.';
+
+  @override
+  String get serverUpdateNextStep => '다음 단계';
+
+  @override
+  String get serverUpdateRequestId => '요청 ID';
+
+  @override
+  String get serverUpdateJobId => '작업 ID';
+
+  @override
+  String get serverUpdateErrorCode => '오류 코드';
+
+  @override
+  String get serverUpdateFailedStage => '실패 단계';
+
+  @override
+  String get serverUpdateStartedAt => '시작 시간';
+
+  @override
+  String get serverUpdateFinishedAt => '완료 시간';
+
+  @override
+  String get serverUpdateScheduledAt => '예약 시간';
+
+  @override
+  String get serverUpdateLastChecked => '마지막 확인';
+
+  @override
+  String get serverUpdateTimeZone => '서버 시간대';
+
+  @override
+  String get serverUpdateRetryCheckHint =>
+      '원인을 해결한 후 수동으로 다시 확인하세요. 이번 업데이트를 재실행하지 않습니다.';
+
+  @override
+  String get serverUpdatePending => '원래 작업 확인 중';
+
+  @override
+  String get serverUpdatePendingHint =>
+      '요청 결과가 불확실합니다. 원래 작업 상태만 조회하며 중복 시작하지 마세요.';
+
+  @override
+  String get serverUpdateManagement => '관리';
+
+  @override
+  String get serverUpdateSource => '배포 소스 및 자격 증명';
+
+  @override
+  String get serverUpdateSourceHint => '최고 관리자만 설정 가능 · 비밀 키 읽기 불가';
+
+  @override
+  String get serverUpdateSourcePending => '저장 결과 미확인 · 설정 다시 읽기 필요';
+
+  @override
+  String get serverUpdateStorage => '스토리지 관리';
+
+  @override
+  String get serverUpdateMigrationRequired => '데이터베이스 마이그레이션 포함';
+
+  @override
+  String get serverUpdateMigrationNotRequired => '데이터베이스 마이그레이션 불필요';
+
+  @override
+  String get serverUpdateHealthPass => '상태 검사 통과';
+
+  @override
+  String get serverUpdateHealthUnknown => '상태 검사 결과 미확인';
+
+  @override
+  String get serverUpdateHealthFailed => '상태 검사 실패';
+
+  @override
+  String get serverUpdatePhaseChecking => '버전 확인';
+
+  @override
+  String get serverUpdatePhaseDownload => '다운로드 및 서명 검증';
+
+  @override
+  String get serverUpdatePhaseBackup => '백업';
+
+  @override
+  String get serverUpdatePhaseMigrate => '데이터베이스 마이그레이션';
+
+  @override
+  String get serverUpdatePhaseActivate => '버전 활성화';
+
+  @override
+  String get serverUpdatePhaseHealth => '상태 검사';
+
+  @override
+  String get serverUpdatePhaseDone => '완료';
+
+  @override
+  String get serverUpdatePhaseUnknown => '미확인';
+
+  @override
+  String get serverUpdateScheduleWait =>
+      '예약 시각에 서버가 권한, 소스 및 대상 버전을 다시 확인합니다. 페이지를 닫아도 예약은 유지됩니다.';
+
+  @override
+  String get serverUpdateRefresh => '로컬 상태 새로고침';
+
+  @override
+  String get serverUpdateNoJob => '업데이트 작업 없음';
+
+  @override
+  String get serverUpdateNoJobHint => '수동 확인 후 진행 상황과 결과가 여기에 표시됩니다.';
+
+  @override
+  String get serverUpdateCheckBeforeRetry => '다시 버전을 확인한 후 업데이트를 결정하세요.';
+
+  @override
+  String get serverUpdateCloseTemporarily => '잠시 닫기';
+
+  @override
+  String get serverUpdateReadbackRequired =>
+      '저장 결과가 불확실합니다. 다시 저장하기 전에 서버 설정을 읽으세요. 원래 요청은 재실행하지 않습니다.';
+
+  @override
+  String get serverUpdateExitCode => '종료 코드';
+
+  @override
+  String get serverUpdateCompanyVersion => '회사 서버 버전';
+
+  @override
+  String get serverUpdateReadyHint => '새 버전이 있습니다. 지금 업데이트하거나 여유 시간에 예약하세요.';
+
+  @override
+  String get serverUpdateReceiptStatus => '원래 요청의 최신 상태';
 }

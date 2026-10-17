@@ -10082,4 +10082,233 @@ class AppLocalizationsZh extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get serverUpdateCurrentVersion => '当前版本';
+
+  @override
+  String get serverUpdateAvailableVersion => '可用新版本';
+
+  @override
+  String get serverUpdateKnownVersion => '上次检查结果';
+
+  @override
+  String get serverUpdateNotChecked => '尚未确认';
+
+  @override
+  String get serverUpdateNoNewVersion => '已是本次检查的最新版本';
+
+  @override
+  String get serverUpdateNoCheckResult => '检查发布源，确认是否有可用新版本。';
+
+  @override
+  String get serverUpdateCheck => '检查版本更新';
+
+  @override
+  String get serverUpdateView => '查看更新';
+
+  @override
+  String get serverUpdateReadOnly => '当前为只读访问，更新操作不可用。';
+
+  @override
+  String get serverUpdateManual => '手动检查';
+
+  @override
+  String get serverUpdateLocalOnly => '进入页面、刷新和查看进度仅读取此服务器状态，不会自动连接发布源。';
+
+  @override
+  String get serverUpdateUnconfigured => '发布源尚未配置';
+
+  @override
+  String get serverUpdateUnconfiguredHint => '请由超级管理员配置发布源后再检查更新。';
+
+  @override
+  String get serverUpdateUnavailable => '服务器更新能力暂不可用';
+
+  @override
+  String get serverUpdateChecking => '正在检查版本';
+
+  @override
+  String get serverUpdateRunning => '正在更新';
+
+  @override
+  String get serverUpdateQueued => '更新作业已排队';
+
+  @override
+  String get serverUpdateScheduled => '更新已预约';
+
+  @override
+  String get serverUpdateCancelled => '预约已取消';
+
+  @override
+  String get serverUpdateCheckDone => '版本检查完成';
+
+  @override
+  String get serverUpdateDone => '服务器更新完成';
+
+  @override
+  String get serverUpdateFailed => '更新作业失败';
+
+  @override
+  String get serverUpdateRecovery => '需要恢复处理';
+
+  @override
+  String get serverUpdateUnknownState => '作业状态尚未确认';
+
+  @override
+  String get serverUpdateRecentJob => '最近作业';
+
+  @override
+  String get serverUpdateProgress => '执行进度';
+
+  @override
+  String get serverUpdateDetails => '作业详情';
+
+  @override
+  String get serverUpdateFailureDetails => '失败详情';
+
+  @override
+  String get serverUpdateCopyDiagnostics => '复制诊断信息';
+
+  @override
+  String get serverUpdateDiagnosticsCopied => '安全诊断信息已复制';
+
+  @override
+  String get serverUpdateLegacyFailure => '旧版本未记录可展示的失败详情。请凭请求编号联系管理员核对。';
+
+  @override
+  String get serverUpdateServicePreserved => '本次任务保留原服务';
+
+  @override
+  String get serverUpdateServiceUnknown => '服务状态需要核对';
+
+  @override
+  String get serverUpdateRecoveryHint => '请联系超级管理员核查恢复点和服务健康，完成恢复前不要再次更新。';
+
+  @override
+  String get serverUpdateNextStep => '下一步';
+
+  @override
+  String get serverUpdateRequestId => '请求编号';
+
+  @override
+  String get serverUpdateJobId => '作业编号';
+
+  @override
+  String get serverUpdateErrorCode => '错误码';
+
+  @override
+  String get serverUpdateFailedStage => '失败阶段';
+
+  @override
+  String get serverUpdateStartedAt => '开始时间';
+
+  @override
+  String get serverUpdateFinishedAt => '完成时间';
+
+  @override
+  String get serverUpdateScheduledAt => '预约时间';
+
+  @override
+  String get serverUpdateLastChecked => '上次检查';
+
+  @override
+  String get serverUpdateTimeZone => '服务器时区';
+
+  @override
+  String get serverUpdateRetryCheckHint => '处理原因后可手动重新检查版本；不会重放此次更新。';
+
+  @override
+  String get serverUpdatePending => '正在核对原作业';
+
+  @override
+  String get serverUpdatePendingHint => '请求结果尚未确认。仅查询原作业状态，请勿重复启动。';
+
+  @override
+  String get serverUpdateManagement => '管理';
+
+  @override
+  String get serverUpdateSource => '发布源与凭据';
+
+  @override
+  String get serverUpdateSourceHint => '仅超级管理员可配置；密钥只写不读';
+
+  @override
+  String get serverUpdateSourcePending => '保存结果待确认，请重新读取配置';
+
+  @override
+  String get serverUpdateStorage => '存储管理';
+
+  @override
+  String get serverUpdateMigrationRequired => '此版本包含数据库迁移';
+
+  @override
+  String get serverUpdateMigrationNotRequired => '此版本无需数据库迁移';
+
+  @override
+  String get serverUpdateHealthPass => '健康验收通过';
+
+  @override
+  String get serverUpdateHealthUnknown => '健康验收结果待确认';
+
+  @override
+  String get serverUpdateHealthFailed => '健康验收未通过';
+
+  @override
+  String get serverUpdatePhaseChecking => '检查版本';
+
+  @override
+  String get serverUpdatePhaseDownload => '下载并验签';
+
+  @override
+  String get serverUpdatePhaseBackup => '备份';
+
+  @override
+  String get serverUpdatePhaseMigrate => '数据库迁移';
+
+  @override
+  String get serverUpdatePhaseActivate => '激活版本';
+
+  @override
+  String get serverUpdatePhaseHealth => '健康检查';
+
+  @override
+  String get serverUpdatePhaseDone => '完成';
+
+  @override
+  String get serverUpdatePhaseUnknown => '待确认';
+
+  @override
+  String get serverUpdateScheduleWait => '到点后服务器会重新核对权限、发布源和目标版本。关闭页面不影响预约。';
+
+  @override
+  String get serverUpdateRefresh => '刷新本机状态';
+
+  @override
+  String get serverUpdateNoJob => '尚无更新作业';
+
+  @override
+  String get serverUpdateNoJobHint => '手动检查后会在这里显示进度和结果。';
+
+  @override
+  String get serverUpdateCheckBeforeRetry => '先重新检查版本，再决定是否更新。';
+
+  @override
+  String get serverUpdateCloseTemporarily => '暂时关闭';
+
+  @override
+  String get serverUpdateReadbackRequired =>
+      '保存结果尚未确认。重新读取服务器配置后才可再次保存；不会重放原请求。';
+
+  @override
+  String get serverUpdateExitCode => '退出码';
+
+  @override
+  String get serverUpdateCompanyVersion => '公司服务器版本';
+
+  @override
+  String get serverUpdateReadyHint => '检查到新版本，可立即更新或安排在空闲时段执行。';
+
+  @override
+  String get serverUpdateReceiptStatus => '原请求的最新状态';
 }

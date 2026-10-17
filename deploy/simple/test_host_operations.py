@@ -2,6 +2,7 @@
 import base64
 import ast
 import datetime as dt
+import errno
 import importlib.util
 import io
 import json
@@ -239,7 +240,56 @@ class HostOperationsTest(unittest.TestCase):
         self.calls.clear()
         self.assertEqual(1, self.operations().worker())
         self.assertEqual('RECOVERY_REQUIRED', ops.job()['state'])
+        self.assertEqual('WORKER_INTERRUPTED', ops.job()['failure']['code'])
+        self.assertTrue(ops.job()['failure']['recoveryRequired'])
+        self.assertFalse(ops.job()['failure']['retrySafe'])
         self.assertEqual([], self.calls)
+
+    def test_new_check_update_and_schedule_cannot_replace_recovery_receipt(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        original_request = self.request('UPDATE_START', self.start_payload())
+        job = ops.dispatch(original_request)
+        job.update(state='RECOVERY_REQUIRED', phase='MIGRATING', finishedAt=host.now())
+        # Also covers a durable legacy recovery record with no failure field.
+        ops.store_job(job)
+        before = {p.name: p.read_bytes() for p in self.state.glob('*.json')}
+        scheduled = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2)).replace(hour=2, minute=0, second=0, microsecond=0)
+        check = {k: v for k, v in original_request['payload'].items() if k != 'runtimeBinding'}
+        check['mode'] = 'CHECK_ONLY'
+        update = dict(original_request['payload'])
+        schedule = {**update, 'mode': 'SCHEDULE_UPDATE', 'targetVersion': 'v2.5.18', 'scheduledAt': scheduled.isoformat()}
+        self.calls.clear()
+        for payload in (check, update, schedule):
+            request = self.request('UPDATE_START', payload)
+            with self.subTest(mode=payload['mode']), self.assertRaises(host.OperationError) as caught:
+                ops.dispatch(request)
+            self.assertEqual('RECOVERY_REQUIRED', caught.exception.code)
+            self.assertEqual(before, {p.name: p.read_bytes() for p in self.state.glob('*.json')})
+            self.assertEqual([], self.calls)
+        self.assertEqual(job, ops.dispatch(original_request))
+        self.assertEqual(job, ops.dispatch(self.request('UPDATE_JOB', {'jobId': job['id']})))
+        self.assertEqual([], self.calls)
+        self.assertEqual(job, ops.status()['latestJob'])
+        self.assertFalse(any(args[0] == host.UPDATER or 'start' in args for args in self.calls))
+
+    def test_new_request_also_blocks_after_local_dead_worker_observation_discovers_recovery(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        job = ops.dispatch(self.request('UPDATE_START', self.start_payload()))
+        new_request = self.request('UPDATE_START', self.start_payload())
+        job.update(state='RUNNING', phase='MIGRATING', startedAt='2026-01-01T00:00:00+00:00')
+        ops.store_job(job)
+        self.calls.clear()
+        with self.assertRaises(host.OperationError) as caught:
+            ops.dispatch(new_request)
+        self.assertEqual('RECOVERY_REQUIRED', caught.exception.code)
+        self.assertEqual('RECOVERY_REQUIRED', ops.job()['state'])
+        self.assertEqual(job['id'], ops.job()['id'])
+        self.assertFalse((self.state / ('job-' + new_request['requestId'] + '.json')).exists())
+        self.assertEqual(1, len(self.calls))
+        self.assertEqual('/usr/bin/systemctl', self.calls[0][0])
+        self.assertNotIn('start', self.calls[0])
 
     def test_dead_worker_is_reported_without_restarting_it(self):
         self.source.save(self.payload())
@@ -250,6 +300,7 @@ class HostOperationsTest(unittest.TestCase):
         self.calls.clear()
         observed = ops.dispatch(self.request('UPDATE_JOB'))
         self.assertEqual('RECOVERY_REQUIRED', observed['state'])
+        self.assertEqual('VERIFY_RECOVERY', observed['failure']['nextAction'])
         self.assertFalse(any('start' in c for c in self.calls))
 
     def test_matching_latest_has_no_backup_download_or_activation(self):
@@ -465,6 +516,24 @@ class HostOperationsTest(unittest.TestCase):
                 failed = call(self.request('SHELL', {'secret': 'fixture-value-must-not-echo'}))
                 self.assertFalse(failed['ok'])
                 self.assertNotIn('fixture-value', json.dumps(failed))
+                with patch.object(server.operations, 'dispatch', side_effect=host.OperationError(
+                        'SOURCE_NOT_CONFIGURED', 'PRIVATE_SOURCE_SECRET https://user:pass@host/ <XML>')):
+                    failed = call(self.request('UPDATE_START'))
+                self.assertEqual('SOURCE_NOT_CONFIGURED', failed['failure']['code'])
+                self.assertTrue(failed['failure']['originalServicePreserved'])
+                self.assertNotIn('PRIVATE_SOURCE_SECRET', json.dumps(failed))
+                self.assertNotIn('user:pass', json.dumps(failed))
+                with patch.object(server.operations, 'dispatch', side_effect=RuntimeError('PRIVATE_UNKNOWN_SECRET')):
+                    failed = call(self.request('UPDATE_START'))
+                self.assertEqual('OUTCOME_UNCERTAIN', failed['failure']['code'])
+                self.assertFalse(failed['failure']['retrySafe'])
+                self.assertFalse(failed['failure']['originalServicePreserved'])
+                self.assertNotIn('PRIVATE_UNKNOWN_SECRET', json.dumps(failed))
+                with patch.object(server.operations, 'dispatch', side_effect=host.OperationError('PRIVATE_CODE_SECRET', 'private')):
+                    failed = call(self.request('STATUS'))
+                self.assertEqual('HOST_OPERATION_FAILED', failed['code'])
+                self.assertEqual('UNKNOWN', failed['failure']['code'])
+                self.assertNotIn('PRIVATE_CODE_SECRET', json.dumps(failed))
                 server.app_uid += 1
                 self.assertIsNone(call(self.request('STATUS')))
             finally:
@@ -698,6 +767,216 @@ class HostOperationsTest(unittest.TestCase):
             self.operations().dispatch(self.request('SHELL', {'command': 'whoami'}))
         with self.assertRaises(host.OperationError):
             self.operations().dispatch(self.request('STATUS', actor='root'))
+
+    def test_real_identity_failure_is_durable_specific_and_does_not_reach_network(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        ops.dispatch(self.request('UPDATE_START', self.start_payload()))
+        self.calls.clear()
+        private = 'runuser: cannot set user id: Operation not permitted\nAuthorization: OSS PRIVATE_TOKEN <AccessKeyId>PRIVATE_KEY</AccessKeyId>'
+        def denied(args, timeout=15):
+            self.calls.append(args)
+            raise subprocess.CalledProcessError(1, args, stderr=private)
+        ops.runner = denied
+        self.assertEqual(1, ops.worker())
+        result = ops.job()
+        self.assertEqual(('FAILED', 'CHECKING'), (result['state'], result['phase']))
+        failure = result['failure']
+        self.assertEqual('HOST_IDENTITY_PERMISSION', failure['code'])
+        self.assertEqual('CONTACT_ADMIN', failure['nextAction'])
+        self.assertTrue(failure['originalServicePreserved'])
+        self.assertFalse(failure['recoveryRequired'])
+        self.assertFalse(failure['retrySafe'])
+        self.assertEqual(1, failure['exitCode'])
+        self.assertEqual(1, len(self.calls))
+        self.assertEqual('/usr/sbin/runuser', self.calls[0][0])
+        self.assertNotIn('PRIVATE_', json.dumps(result))
+        self.assertNotIn('Authorization:', json.dumps(result))
+        self.assertNotIn('cannot set user id', json.dumps(result))
+
+    def test_failure_matrix_uses_fixed_codes_and_never_returns_private_diagnostics(self):
+        samples = [
+            ('CHECKING', 'LATEST', 1, 'curl: (6) Could not resolve host', 'SOURCE_DNS_FAILED'),
+            ('CHECKING', 'LATEST', 1, 'curl: (7) Failed to connect', 'SOURCE_NETWORK_FAILED'),
+            ('CHECKING', 'LATEST', 1, 'curl: (60) SSL certificate problem', 'SOURCE_TLS_FAILED'),
+            ('CHECKING', 'LATEST', 1, 'curl: (22) The requested URL returned error: 403', 'SOURCE_FORBIDDEN'),
+            ('CHECKING', 'LATEST', 1, '<Code>SignatureDoesNotMatch</Code>', 'SOURCE_FORBIDDEN'),
+            ('CHECKING', 'LATEST', 1, 'curl: (22) The requested URL returned error: 404', 'SOURCE_NOT_FOUND'),
+            ('CHECKING', 'LATEST', 1, 'curl: (28) Timeout was reached', 'OPERATION_TIMEOUT'),
+            ('CHECKING', 'LATEST', 1, '[uten-imp-updater][ERROR] 版本号非法', 'SOURCE_METADATA_INVALID'),
+            ('DOWNLOADING', 'STAGE', 1, '[uten-imp-updater][ERROR] 签名验证失败：v2.5.20', 'RELEASE_SIGNATURE_INVALID'),
+            ('DOWNLOADING', 'STAGE', 1, '[uten-imp-updater][ERROR] SHA256SUMS 校验失败：private/path', 'RELEASE_CHECKSUM_INVALID'),
+            ('DOWNLOADING', 'STAGE', 1, 'SHA256SUMS 含越界/可疑路径：private/file', 'RELEASE_CONTENT_INVALID'),
+            ('DOWNLOADING', 'STAGE', 1, 'No space left on device', 'HOST_DISK_SPACE'),
+            ('DOWNLOADING', 'STAGE', 126, 'Permission denied', 'HOST_COMPONENT_PERMISSION'),
+            ('DOWNLOADING', 'STAGE', 127, 'command not found', 'HOST_COMPONENT_MISSING'),
+            ('BACKING_UP', 'BACKUP', 1, 'Backup destination has insufficient reserved free space', 'BACKUP_SPACE'),
+            ('BACKING_UP', 'BACKUP', 1, 'Private reference inventory is not completely covered', 'BACKUP_REFERENCE_INVALID'),
+            ('BACKING_UP', 'BACKUP_VERIFY', 1, 'Stored backup digest changed', 'BACKUP_INTEGRITY_FAILED'),
+            ('BACKING_UP', 'BACKUP_TOC', 1, 'pg_restore: error: invalid archive', 'BACKUP_INTEGRITY_FAILED'),
+            ('BACKING_UP', 'BACKUP', 1, 'pg_dump failed; inspect private incomplete-set log', 'BACKUP_FAILED'),
+        ]
+        for phase, step, status, diagnostic, expected in samples:
+            with self.subTest(code=expected, diagnostic=diagnostic):
+                error = subprocess.CalledProcessError(status, ['PRIVATE_ARG'],
+                    output='PRIVATE_BODY business data', stderr=diagnostic + '\nPRIVATE_SECRET https://user:pass@host/path <Signature>PRIVATE</Signature>')
+                failure = host.job_failure({'state': 'FAILED', 'phase': phase}, error, step=step)
+                self.assertEqual(expected, failure['code'])
+                self.assertEqual(phase, failure['phase'])
+                self.assertTrue(failure['title'] and failure['reason'] and failure['suggestion'])
+                public = json.dumps(failure, ensure_ascii=False)
+                for secret in ('PRIVATE', 'user:pass', 'private/path', 'private/file', '<Signature>', 'business data'):
+                    self.assertNotIn(secret, public)
+        self.assertEqual('BACKUP_SPACE', host.classify_failure(OSError(errno.ENOSPC, 'PRIVATE'), 'BACKING_UP'))
+        self.assertEqual('BACKUP_REFERENCE_INVALID', host.classify_failure(ValueError('PRIVATE'), 'BACKING_UP', 'BACKUP_REFERENCE'))
+        self.assertEqual('RELEASE_CONTENT_INVALID', host.classify_failure(host.OperationError('INVALID_RELEASE', 'PRIVATE'),
+                                                                         'DOWNLOADING', 'MIGRATION_CATALOG'))
+
+    def test_recovery_flags_override_even_a_normally_retryable_network_failure(self):
+        for phase in ('ACTIVATING', 'MIGRATING', 'HEALTH_CHECK'):
+            failure = host.job_failure({'state': 'RECOVERY_REQUIRED', 'phase': phase},
+                                       host.OperationError('SOURCE_NETWORK_FAILED', 'PRIVATE'))
+            self.assertFalse(failure['retrySafe'])
+            self.assertTrue(failure['recoveryRequired'])
+            self.assertFalse(failure['originalServicePreserved'])
+            self.assertEqual('VERIFY_RECOVERY', failure['nextAction'])
+            self.assertIn('不要再次更新、激活或回滚数据库', failure['suggestion'])
+            self.assertNotIn('恢复后重新检查', failure['suggestion'])
+        for code in ('CURRENT_VERSION_CHANGED', 'CUTOVER_BACKUP_FAILED_RECOVERED'):
+            failure = host.failure_view(code, 'MIGRATING', recovery_required=True)
+            self.assertEqual('更新需要恢复核对', failure['title'])
+            self.assertNotIn('未停服', failure['reason'])
+            self.assertNotIn('原服务已恢复', failure['reason'])
+            self.assertFalse(failure['originalServicePreserved'])
+            unconfirmed = host.failure_view(code, 'ACTIVATING', original_service_preserved=False)
+            self.assertEqual('更新状态需要核对', unconfirmed['title'])
+            self.assertNotIn('原服务已恢复', unconfirmed['reason'])
+            self.assertFalse(unconfirmed['recoveryRequired'])
+        blocked = host.failure_view('RECOVERY_REQUIRED')
+        self.assertTrue(blocked['recoveryRequired'])
+        self.assertFalse(blocked['retrySafe'])
+        self.assertFalse(blocked['originalServicePreserved'])
+
+    def test_unknown_failure_is_honest_and_bounds_the_optional_exit_status(self):
+        unknown = host.job_failure({'state': 'FAILED', 'phase': 'CHECKING'}, RuntimeError('PRIVATE_UNKNOWN'))
+        self.assertEqual('UNKNOWN', unknown['code'])
+        self.assertIn('尚未确认', unknown['title'])
+        self.assertFalse(unknown['retrySafe'])
+        self.assertIsNone(unknown['exitCode'])
+        self.assertEqual('UNKNOWN', host.classify_failure(host.OperationError([], 'PRIVATE'), 'CHECKING'))
+        self.assertEqual('UNKNOWN', host.failure_view([])['code'])
+        malformed = subprocess.CalledProcessError([], ['PRIVATE'], stderr='curl: (' + '9' * 5000 + ') PRIVATE')
+        self.assertEqual('UNKNOWN', host.classify_failure(malformed, 'CHECKING', 'LATEST'))
+        for value in (True, '1', 256, -256, 0):
+            self.assertIsNone(host.failure_view('HOST_COMPONENT_MISSING', exit_code=value)['exitCode'])
+        self.assertEqual(-9, host.failure_view('HOST_COMPONENT_MISSING', exit_code=-9)['exitCode'])
+
+    def test_unknown_worker_failure_has_safe_request_correlated_private_log(self):
+        self.source.save(self.payload())
+        ops = self.operations()
+        job = ops.dispatch(self.request('UPDATE_START', self.start_payload()))
+        ops.runner = Mock(side_effect=RuntimeError('PRIVATE_UNRECOGNIZED_DETAIL https://user:password@host/'))
+        with patch('sys.stderr', new_callable=io.StringIO) as diagnostic:
+            self.assertEqual(1, ops.worker())
+        failure = ops.job()['failure']
+        self.assertEqual('UNKNOWN', failure['code'])
+        self.assertIn('jobId=' + job['id'], diagnostic.getvalue())
+        self.assertIn('code=UNKNOWN phase=CHECKING step=BINDING', diagnostic.getvalue())
+        self.assertNotIn('PRIVATE_UNRECOGNIZED_DETAIL', diagnostic.getvalue())
+        self.assertNotIn('user:password', diagnostic.getvalue())
+        self.assertNotIn('PRIVATE_UNRECOGNIZED_DETAIL', json.dumps(ops.job()))
+
+    def _prepared_failure_worker(self):
+        self.source.save(self.payload())
+        base = self.root / ('installation-' + uuid.uuid4().hex)
+        for version, migrations in (('v2.5.16', (1,)), ('v2.5.18', (1, 2))):
+            directory = base / 'releases' / version / 'server'
+            directory.mkdir(parents=True)
+            with zipfile.ZipFile(directory / 'uten-imp-server.jar', 'w') as jar:
+                for migration in migrations:
+                    jar.writestr(f'BOOT-INF/classes/db/migration/V{migration}__fixture.sql', f'SELECT {migration}')
+        (base / 'current').symlink_to('releases/v2.5.16')
+        (base / 'active-version.txt').write_text('v2.5.16')
+        env = host.parse_env(host.read_private(self.env))
+        env['UTEN_BASE'] = str(base)
+        host.atomic(self.env, ''.join(f'{k}={v}\n' for k, v in env.items()).encode())
+        published = self.paired / ('20261015T010000Z-' + uuid.uuid4().hex[:12])
+        published.mkdir()
+        (published / 'database.dump').write_bytes(b'fixture')
+        ops = self.operations()
+        ops.dispatch(self.request('UPDATE_START', self.start_payload()))
+        def runner(args, timeout=15):
+            self.calls.append(args)
+            if args[0] == '/usr/sbin/runuser':
+                value = '{"postmasterStartedAt":"2026-10-15T00:00:00Z"}'
+            elif args[:2] == [host.UPDATER, 'latest']:
+                value = 'v2.5.18'
+            elif '--config' in args:
+                value = json.dumps({'published': str(published)})
+            else:
+                value = '{}'
+            return subprocess.CompletedProcess(args, 0, value, '')
+        ops.runner = runner
+        return ops, base
+
+    def test_migration_failure_is_durable_recovery_and_is_never_replayed(self):
+        ops, _ = self._prepared_failure_worker()
+        def failed(job, target):
+            ops.phase(job, 'MIGRATING')
+            raise host.OperationError('MIGRATION_FAILED', 'PRIVATE_SQL', exit_code=3)
+        with patch.object(ops, 'activate', side_effect=failed) as activate:
+            self.assertEqual(1, ops.worker())
+            receipt = ops.job()
+            self.assertEqual(('RECOVERY_REQUIRED', 'MIGRATING'), (receipt['state'], receipt['phase']))
+            self.assertEqual('MIGRATION_FAILED', receipt['failure']['code'])
+            self.assertFalse(receipt['failure']['retrySafe'])
+            self.assertFalse(receipt['failure']['originalServicePreserved'])
+            self.assertEqual(3, receipt['failure']['exitCode'])
+            self.assertEqual(0, ops.worker())
+            activate.assert_called_once()
+        self.assertNotIn('PRIVATE_SQL', json.dumps(receipt))
+
+    def test_known_cutover_preconditions_remain_failed_without_false_recovery(self):
+        for code in ('CURRENT_VERSION_CHANGED', 'CUTOVER_BACKUP_FAILED_RECOVERED'):
+            with self.subTest(code=code):
+                ops, _ = self._prepared_failure_worker()
+                with patch.object(ops, 'activate', side_effect=host.OperationError(code, 'PRIVATE')):
+                    self.assertEqual(1, ops.worker())
+                receipt = ops.job()
+                self.assertEqual('FAILED', receipt['state'])
+                self.assertEqual(code, receipt['failure']['code'])
+                self.assertFalse(receipt['failure']['recoveryRequired'])
+                self.assertTrue(receipt['failure']['originalServicePreserved'])
+                self.assertNotEqual('VERIFY_RECOVERY', receipt['failure']['nextAction'])
+
+    def test_failed_backup_verification_has_no_activation_and_preserves_original(self):
+        ops, _ = self._prepared_failure_worker()
+        original = ops.runner
+        def bad_verify(args, timeout=15):
+            if '--verify' in args:
+                raise subprocess.CalledProcessError(1, args, stderr='PRIVATE_BACKUP_TOKEN invalid digest')
+            return original(args, timeout)
+        ops.runner = bad_verify
+        with patch.object(ops, 'activate') as activate:
+            self.assertEqual(1, ops.worker())
+            activate.assert_not_called()
+        receipt = ops.job()
+        self.assertEqual('BACKUP_INTEGRITY_FAILED', receipt['failure']['code'])
+        self.assertTrue(receipt['failure']['originalServicePreserved'])
+        self.assertNotIn('PRIVATE_BACKUP_TOKEN', json.dumps(receipt))
+
+    def test_real_activation_child_failure_keeps_private_output_out_of_public_error(self):
+        executable = self.root / 'fixture-failed-updater'
+        for phase, code in (('MIGRATING', 'MIGRATION_FAILED'), ('HEALTH_CHECK', 'HEALTH_CHECK_FAILED')):
+            with self.subTest(phase=phase):
+                executable.write_text(f'#!/bin/sh\nprintf "UTEN_PHASE:{phase}\\nPRIVATE_SQL_TOKEN\\n"\nexit 3\n')
+                executable.chmod(0o700)
+                job = {'id': str(uuid.uuid4()), 'currentVersion': 'v2.5.16', 'phase': 'ACTIVATING'}
+                with patch.object(host, 'UPDATER', str(executable)), self.assertRaises(host.OperationError) as caught:
+                    self.operations().activate(job, 'v2.5.18')
+                self.assertEqual(code, caught.exception.code)
+                self.assertEqual(3, caught.exception.exit_code)
+                self.assertNotIn('PRIVATE_SQL_TOKEN', str(caught.exception))
 
 
 if __name__ == '__main__':

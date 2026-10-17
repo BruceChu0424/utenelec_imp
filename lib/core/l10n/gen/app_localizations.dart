@@ -18477,6 +18477,462 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'{count, plural, other{本模块进行中合计 {count} 项(尚未结束)}}'**
   String badgeModuleProgressTooltip(int count);
+
+  /// No description provided for @serverUpdateCurrentVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前版本'**
+  String get serverUpdateCurrentVersion;
+
+  /// No description provided for @serverUpdateAvailableVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'可用新版本'**
+  String get serverUpdateAvailableVersion;
+
+  /// No description provided for @serverUpdateKnownVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次检查结果'**
+  String get serverUpdateKnownVersion;
+
+  /// No description provided for @serverUpdateNotChecked.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未确认'**
+  String get serverUpdateNotChecked;
+
+  /// No description provided for @serverUpdateNoNewVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'已是本次检查的最新版本'**
+  String get serverUpdateNoNewVersion;
+
+  /// No description provided for @serverUpdateNoCheckResult.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查发布源，确认是否有可用新版本。'**
+  String get serverUpdateNoCheckResult;
+
+  /// No description provided for @serverUpdateCheck.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查版本更新'**
+  String get serverUpdateCheck;
+
+  /// No description provided for @serverUpdateView.
+  ///
+  /// In zh, this message translates to:
+  /// **'查看更新'**
+  String get serverUpdateView;
+
+  /// No description provided for @serverUpdateReadOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前为只读访问，更新操作不可用。'**
+  String get serverUpdateReadOnly;
+
+  /// No description provided for @serverUpdateManual.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动检查'**
+  String get serverUpdateManual;
+
+  /// No description provided for @serverUpdateLocalOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'进入页面、刷新和查看进度仅读取此服务器状态，不会自动连接发布源。'**
+  String get serverUpdateLocalOnly;
+
+  /// No description provided for @serverUpdateUnconfigured.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布源尚未配置'**
+  String get serverUpdateUnconfigured;
+
+  /// No description provided for @serverUpdateUnconfiguredHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请由超级管理员配置发布源后再检查更新。'**
+  String get serverUpdateUnconfiguredHint;
+
+  /// No description provided for @serverUpdateUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器更新能力暂不可用'**
+  String get serverUpdateUnavailable;
+
+  /// No description provided for @serverUpdateChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检查版本'**
+  String get serverUpdateChecking;
+
+  /// No description provided for @serverUpdateRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在更新'**
+  String get serverUpdateRunning;
+
+  /// No description provided for @serverUpdateQueued.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新作业已排队'**
+  String get serverUpdateQueued;
+
+  /// No description provided for @serverUpdateScheduled.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新已预约'**
+  String get serverUpdateScheduled;
+
+  /// No description provided for @serverUpdateCancelled.
+  ///
+  /// In zh, this message translates to:
+  /// **'预约已取消'**
+  String get serverUpdateCancelled;
+
+  /// No description provided for @serverUpdateCheckDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'版本检查完成'**
+  String get serverUpdateCheckDone;
+
+  /// No description provided for @serverUpdateDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器更新完成'**
+  String get serverUpdateDone;
+
+  /// No description provided for @serverUpdateFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'更新作业失败'**
+  String get serverUpdateFailed;
+
+  /// No description provided for @serverUpdateRecovery.
+  ///
+  /// In zh, this message translates to:
+  /// **'需要恢复处理'**
+  String get serverUpdateRecovery;
+
+  /// No description provided for @serverUpdateUnknownState.
+  ///
+  /// In zh, this message translates to:
+  /// **'作业状态尚未确认'**
+  String get serverUpdateUnknownState;
+
+  /// No description provided for @serverUpdateRecentJob.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近作业'**
+  String get serverUpdateRecentJob;
+
+  /// No description provided for @serverUpdateProgress.
+  ///
+  /// In zh, this message translates to:
+  /// **'执行进度'**
+  String get serverUpdateProgress;
+
+  /// No description provided for @serverUpdateDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'作业详情'**
+  String get serverUpdateDetails;
+
+  /// No description provided for @serverUpdateFailureDetails.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败详情'**
+  String get serverUpdateFailureDetails;
+
+  /// No description provided for @serverUpdateCopyDiagnostics.
+  ///
+  /// In zh, this message translates to:
+  /// **'复制诊断信息'**
+  String get serverUpdateCopyDiagnostics;
+
+  /// No description provided for @serverUpdateDiagnosticsCopied.
+  ///
+  /// In zh, this message translates to:
+  /// **'安全诊断信息已复制'**
+  String get serverUpdateDiagnosticsCopied;
+
+  /// No description provided for @serverUpdateLegacyFailure.
+  ///
+  /// In zh, this message translates to:
+  /// **'旧版本未记录可展示的失败详情。请凭请求编号联系管理员核对。'**
+  String get serverUpdateLegacyFailure;
+
+  /// No description provided for @serverUpdateServicePreserved.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次任务保留原服务'**
+  String get serverUpdateServicePreserved;
+
+  /// No description provided for @serverUpdateServiceUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务状态需要核对'**
+  String get serverUpdateServiceUnknown;
+
+  /// No description provided for @serverUpdateRecoveryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请联系超级管理员核查恢复点和服务健康，完成恢复前不要再次更新。'**
+  String get serverUpdateRecoveryHint;
+
+  /// No description provided for @serverUpdateNextStep.
+  ///
+  /// In zh, this message translates to:
+  /// **'下一步'**
+  String get serverUpdateNextStep;
+
+  /// No description provided for @serverUpdateRequestId.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求编号'**
+  String get serverUpdateRequestId;
+
+  /// No description provided for @serverUpdateJobId.
+  ///
+  /// In zh, this message translates to:
+  /// **'作业编号'**
+  String get serverUpdateJobId;
+
+  /// No description provided for @serverUpdateErrorCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'错误码'**
+  String get serverUpdateErrorCode;
+
+  /// No description provided for @serverUpdateFailedStage.
+  ///
+  /// In zh, this message translates to:
+  /// **'失败阶段'**
+  String get serverUpdateFailedStage;
+
+  /// No description provided for @serverUpdateStartedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'开始时间'**
+  String get serverUpdateStartedAt;
+
+  /// No description provided for @serverUpdateFinishedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成时间'**
+  String get serverUpdateFinishedAt;
+
+  /// No description provided for @serverUpdateScheduledAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'预约时间'**
+  String get serverUpdateScheduledAt;
+
+  /// No description provided for @serverUpdateLastChecked.
+  ///
+  /// In zh, this message translates to:
+  /// **'上次检查'**
+  String get serverUpdateLastChecked;
+
+  /// No description provided for @serverUpdateTimeZone.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务器时区'**
+  String get serverUpdateTimeZone;
+
+  /// No description provided for @serverUpdateRetryCheckHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'处理原因后可手动重新检查版本；不会重放此次更新。'**
+  String get serverUpdateRetryCheckHint;
+
+  /// No description provided for @serverUpdatePending.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在核对原作业'**
+  String get serverUpdatePending;
+
+  /// No description provided for @serverUpdatePendingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求结果尚未确认。仅查询原作业状态，请勿重复启动。'**
+  String get serverUpdatePendingHint;
+
+  /// No description provided for @serverUpdateManagement.
+  ///
+  /// In zh, this message translates to:
+  /// **'管理'**
+  String get serverUpdateManagement;
+
+  /// No description provided for @serverUpdateSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'发布源与凭据'**
+  String get serverUpdateSource;
+
+  /// No description provided for @serverUpdateSourceHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅超级管理员可配置；密钥只写不读'**
+  String get serverUpdateSourceHint;
+
+  /// No description provided for @serverUpdateSourcePending.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存结果待确认，请重新读取配置'**
+  String get serverUpdateSourcePending;
+
+  /// No description provided for @serverUpdateStorage.
+  ///
+  /// In zh, this message translates to:
+  /// **'存储管理'**
+  String get serverUpdateStorage;
+
+  /// No description provided for @serverUpdateMigrationRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'此版本包含数据库迁移'**
+  String get serverUpdateMigrationRequired;
+
+  /// No description provided for @serverUpdateMigrationNotRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'此版本无需数据库迁移'**
+  String get serverUpdateMigrationNotRequired;
+
+  /// No description provided for @serverUpdateHealthPass.
+  ///
+  /// In zh, this message translates to:
+  /// **'健康验收通过'**
+  String get serverUpdateHealthPass;
+
+  /// No description provided for @serverUpdateHealthUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'健康验收结果待确认'**
+  String get serverUpdateHealthUnknown;
+
+  /// No description provided for @serverUpdateHealthFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'健康验收未通过'**
+  String get serverUpdateHealthFailed;
+
+  /// No description provided for @serverUpdatePhaseChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查版本'**
+  String get serverUpdatePhaseChecking;
+
+  /// No description provided for @serverUpdatePhaseDownload.
+  ///
+  /// In zh, this message translates to:
+  /// **'下载并验签'**
+  String get serverUpdatePhaseDownload;
+
+  /// No description provided for @serverUpdatePhaseBackup.
+  ///
+  /// In zh, this message translates to:
+  /// **'备份'**
+  String get serverUpdatePhaseBackup;
+
+  /// No description provided for @serverUpdatePhaseMigrate.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据库迁移'**
+  String get serverUpdatePhaseMigrate;
+
+  /// No description provided for @serverUpdatePhaseActivate.
+  ///
+  /// In zh, this message translates to:
+  /// **'激活版本'**
+  String get serverUpdatePhaseActivate;
+
+  /// No description provided for @serverUpdatePhaseHealth.
+  ///
+  /// In zh, this message translates to:
+  /// **'健康检查'**
+  String get serverUpdatePhaseHealth;
+
+  /// No description provided for @serverUpdatePhaseDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'完成'**
+  String get serverUpdatePhaseDone;
+
+  /// No description provided for @serverUpdatePhaseUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'待确认'**
+  String get serverUpdatePhaseUnknown;
+
+  /// No description provided for @serverUpdateScheduleWait.
+  ///
+  /// In zh, this message translates to:
+  /// **'到点后服务器会重新核对权限、发布源和目标版本。关闭页面不影响预约。'**
+  String get serverUpdateScheduleWait;
+
+  /// No description provided for @serverUpdateRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新本机状态'**
+  String get serverUpdateRefresh;
+
+  /// No description provided for @serverUpdateNoJob.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚无更新作业'**
+  String get serverUpdateNoJob;
+
+  /// No description provided for @serverUpdateNoJobHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'手动检查后会在这里显示进度和结果。'**
+  String get serverUpdateNoJobHint;
+
+  /// No description provided for @serverUpdateCheckBeforeRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'先重新检查版本，再决定是否更新。'**
+  String get serverUpdateCheckBeforeRetry;
+
+  /// No description provided for @serverUpdateCloseTemporarily.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂时关闭'**
+  String get serverUpdateCloseTemporarily;
+
+  /// No description provided for @serverUpdateReadbackRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存结果尚未确认。重新读取服务器配置后才可再次保存；不会重放原请求。'**
+  String get serverUpdateReadbackRequired;
+
+  /// No description provided for @serverUpdateExitCode.
+  ///
+  /// In zh, this message translates to:
+  /// **'退出码'**
+  String get serverUpdateExitCode;
+
+  /// No description provided for @serverUpdateCompanyVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司服务器版本'**
+  String get serverUpdateCompanyVersion;
+
+  /// No description provided for @serverUpdateReadyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'检查到新版本，可立即更新或安排在空闲时段执行。'**
+  String get serverUpdateReadyHint;
+
+  /// No description provided for @serverUpdateReceiptStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'原请求的最新状态'**
+  String get serverUpdateReceiptStatus;
 }
 
 class _AppLocalizationsDelegate

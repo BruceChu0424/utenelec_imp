@@ -10698,4 +10698,250 @@ class AppLocalizationsEn extends AppLocalizations {
     );
     return '$_temp0';
   }
+
+  @override
+  String get serverUpdateCurrentVersion => 'Current version';
+
+  @override
+  String get serverUpdateAvailableVersion => 'Available update';
+
+  @override
+  String get serverUpdateKnownVersion => 'Last checked version';
+
+  @override
+  String get serverUpdateNotChecked => 'Not confirmed';
+
+  @override
+  String get serverUpdateNoNewVersion => 'Up to date at last check';
+
+  @override
+  String get serverUpdateNoCheckResult =>
+      'Check the release source for an available update.';
+
+  @override
+  String get serverUpdateCheck => 'Check for updates';
+
+  @override
+  String get serverUpdateView => 'Review update';
+
+  @override
+  String get serverUpdateReadOnly =>
+      'This session is read-only. Update actions are unavailable.';
+
+  @override
+  String get serverUpdateManual => 'Manual checks';
+
+  @override
+  String get serverUpdateLocalOnly =>
+      'Opening this page, refreshing and viewing progress only read this server\'s state; they never check the release source automatically.';
+
+  @override
+  String get serverUpdateUnconfigured => 'Release source not configured';
+
+  @override
+  String get serverUpdateUnconfiguredHint =>
+      'Ask a super administrator to configure the release source before checking.';
+
+  @override
+  String get serverUpdateUnavailable => 'Server update service unavailable';
+
+  @override
+  String get serverUpdateChecking => 'Checking for updates';
+
+  @override
+  String get serverUpdateRunning => 'Updating server';
+
+  @override
+  String get serverUpdateQueued => 'Update queued';
+
+  @override
+  String get serverUpdateScheduled => 'Update scheduled';
+
+  @override
+  String get serverUpdateCancelled => 'Schedule cancelled';
+
+  @override
+  String get serverUpdateCheckDone => 'Version check complete';
+
+  @override
+  String get serverUpdateDone => 'Server update complete';
+
+  @override
+  String get serverUpdateFailed => 'Update failed';
+
+  @override
+  String get serverUpdateRecovery => 'Recovery required';
+
+  @override
+  String get serverUpdateUnknownState => 'Job state not confirmed';
+
+  @override
+  String get serverUpdateRecentJob => 'Latest job';
+
+  @override
+  String get serverUpdateProgress => 'Progress';
+
+  @override
+  String get serverUpdateDetails => 'Job details';
+
+  @override
+  String get serverUpdateFailureDetails => 'Failure details';
+
+  @override
+  String get serverUpdateCopyDiagnostics => 'Copy diagnostics';
+
+  @override
+  String get serverUpdateDiagnosticsCopied => 'Safe diagnostics copied';
+
+  @override
+  String get serverUpdateLegacyFailure =>
+      'This host did not record safe failure details. Ask an administrator to investigate using the request ID.';
+
+  @override
+  String get serverUpdateServicePreserved =>
+      'Original service preserved by this job';
+
+  @override
+  String get serverUpdateServiceUnknown => 'Service status needs verification';
+
+  @override
+  String get serverUpdateRecoveryHint =>
+      'Ask a super administrator to verify the recovery point and service health before any further update.';
+
+  @override
+  String get serverUpdateNextStep => 'Next step';
+
+  @override
+  String get serverUpdateRequestId => 'Request ID';
+
+  @override
+  String get serverUpdateJobId => 'Job ID';
+
+  @override
+  String get serverUpdateErrorCode => 'Error code';
+
+  @override
+  String get serverUpdateFailedStage => 'Failed stage';
+
+  @override
+  String get serverUpdateStartedAt => 'Started';
+
+  @override
+  String get serverUpdateFinishedAt => 'Finished';
+
+  @override
+  String get serverUpdateScheduledAt => 'Scheduled for';
+
+  @override
+  String get serverUpdateLastChecked => 'Last checked';
+
+  @override
+  String get serverUpdateTimeZone => 'Server time zone';
+
+  @override
+  String get serverUpdateRetryCheckHint =>
+      'After addressing the cause, check again explicitly. This update will not be replayed.';
+
+  @override
+  String get serverUpdatePending => 'Verifying the original job';
+
+  @override
+  String get serverUpdatePendingHint =>
+      'The request outcome is unknown. Only the original job is queried; do not submit again.';
+
+  @override
+  String get serverUpdateManagement => 'Management';
+
+  @override
+  String get serverUpdateSource => 'Release source and credentials';
+
+  @override
+  String get serverUpdateSourceHint =>
+      'Super administrators only; secrets are write-only';
+
+  @override
+  String get serverUpdateSourcePending =>
+      'Save outcome pending; read the configuration again';
+
+  @override
+  String get serverUpdateStorage => 'Storage management';
+
+  @override
+  String get serverUpdateMigrationRequired =>
+      'This release includes database migrations';
+
+  @override
+  String get serverUpdateMigrationNotRequired =>
+      'No database migration required';
+
+  @override
+  String get serverUpdateHealthPass => 'Health check passed';
+
+  @override
+  String get serverUpdateHealthUnknown => 'Health result unconfirmed';
+
+  @override
+  String get serverUpdateHealthFailed => 'Health check failed';
+
+  @override
+  String get serverUpdatePhaseChecking => 'Check version';
+
+  @override
+  String get serverUpdatePhaseDownload => 'Download and verify';
+
+  @override
+  String get serverUpdatePhaseBackup => 'Backup';
+
+  @override
+  String get serverUpdatePhaseMigrate => 'Migrate database';
+
+  @override
+  String get serverUpdatePhaseActivate => 'Activate release';
+
+  @override
+  String get serverUpdatePhaseHealth => 'Health check';
+
+  @override
+  String get serverUpdatePhaseDone => 'Complete';
+
+  @override
+  String get serverUpdatePhaseUnknown => 'Unconfirmed';
+
+  @override
+  String get serverUpdateScheduleWait =>
+      'At the scheduled time, the server rechecks permission, source and target version. Closing this page does not cancel it.';
+
+  @override
+  String get serverUpdateRefresh => 'Refresh local state';
+
+  @override
+  String get serverUpdateNoJob => 'No update job yet';
+
+  @override
+  String get serverUpdateNoJobHint =>
+      'Progress and results appear here after an explicit check.';
+
+  @override
+  String get serverUpdateCheckBeforeRetry =>
+      'Check the version again before deciding to update.';
+
+  @override
+  String get serverUpdateCloseTemporarily => 'Close for now';
+
+  @override
+  String get serverUpdateReadbackRequired =>
+      'The save outcome is unknown. Read the server configuration before saving again. The original request will not be replayed.';
+
+  @override
+  String get serverUpdateExitCode => 'Exit code';
+
+  @override
+  String get serverUpdateCompanyVersion => 'Company server version';
+
+  @override
+  String get serverUpdateReadyHint =>
+      'An update is available. Install now or schedule it for a quiet period.';
+
+  @override
+  String get serverUpdateReceiptStatus => 'Original request status';
 }

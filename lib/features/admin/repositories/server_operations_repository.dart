@@ -65,9 +65,16 @@ class DioServerOperationsRepository implements ServerOperationsRepository {
   }
 
   @override
-  Future<ServerUpdateJob> job(String id) async => ServerUpdateJob.fromJson(
-    await api.get('$path/updates/${Uri.encodeComponent(id)}'),
-  );
+  Future<ServerUpdateJob> job(String id) async {
+    final result = ServerUpdateJob.fromJson(
+      await api.get('$path/updates/${Uri.encodeComponent(id)}'),
+    );
+    if (result.id != id) {
+      throw const FormatException('Invalid original job receipt');
+    }
+    return result;
+  }
+
   @override
   Future<ServerUpdateJob?> latestJob() async {
     final response = await api.get('$path/updates/latest');

@@ -156,7 +156,7 @@ void main() {
         repository.starts.single['requestId'],
         matches(RegExp(r'^[0-9a-f-]{36}$')),
       );
-      expect(find.text('正在更新'), findsOneWidget);
+      expect(find.text('正在检查版本'), findsOneWidget);
       final button = tester.widget<UtenButton>(
         find.byKey(const ValueKey('server-update-start')),
       );
@@ -214,7 +214,12 @@ void main() {
           job: _job('existing', state: 'RECOVERY_REQUIRED'),
         );
       await _pump(tester, repository);
-      expect(find.text('需要恢复处理'), findsOneWidget);
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('server-update-job-state')))
+            .data,
+        '需要恢复处理',
+      );
       expect(
         tester
             .widget<UtenButton>(
@@ -267,11 +272,11 @@ void main() {
       container.read(owner.notifier).state = 'company-b/operator';
       await tester.pump();
       await tester.pumpAndSettle();
-      expect(find.text('当前版本：v9.1.0'), findsOneWidget);
+      expect(find.text('v9.1.0'), findsOneWidget);
       first.complete(_status(version: 'v1.0.0'));
       await tester.pumpAndSettle();
-      expect(find.text('当前版本：v1.0.0'), findsNothing);
-      expect(find.text('当前版本：v9.1.0'), findsOneWidget);
+      expect(find.text('v1.0.0'), findsNothing);
+      expect(find.text('v9.1.0'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -407,6 +412,431 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets(
+    'lost ACK resolves the exact request while a newer host job keeps writes locked',
+    (tester) async {
+      final repository = _Repository()
+        ..startError = NetworkException()
+        ..statusValue = _status(configure: true);
+      await _pump(tester, repository, source: true);
+      await _tap(tester, 'server-update-start');
+      final original = repository.starts.single['requestId']!;
+      repository.statusValue = _status(
+        configure: true,
+        job: _job('newer-host-job'),
+      );
+      repository.jobHandler = (id) async =>
+          ServerUpdateJob.fromJson(_job(id, state: 'SUCCEEDED', phase: 'DONE'));
+      await _tap(tester, 'server-operations-refresh');
+      expect(repository.jobReads, [original]);
+      expect(repository.latestCalls, 0);
+      expect(
+        find.byKey(const ValueKey('server-update-original-receipt')),
+        findsOneWidget,
+      );
+      expect(_checkButton(tester).onPressed, isNull);
+      expect(
+        tester
+            .widget<ListTile>(
+              find.byKey(const ValueKey('server-source-editor')),
+            )
+            .onTap,
+        isNull,
+      );
+      final reads = repository.statusCalls;
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      expect(repository.statusCalls, greaterThan(reads));
+      expect(repository.starts, hasLength(1));
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  for (final state in [
+    'RUNNING',
+    'NOT_FOUND',
+    'RECOVERY_REQUIRED',
+    'SUCCEEDED',
+  ]) {
+    testWidgets(
+      'exact original receipt $state cannot be replaced by a later terminal job',
+      (tester) async {
+        final repository = _Repository()
+          ..startError = NetworkTimeoutException()
+          ..statusValue = _status(configure: true);
+        await _pump(tester, repository, source: true);
+        await _tap(tester, 'server-update-start');
+        final original = repository.starts.single['requestId']!;
+        repository.statusValue = _status(
+          configure: true,
+          job: _job('later-terminal', state: 'SUCCEEDED', phase: 'DONE'),
+        );
+        repository.jobHandler = (id) async {
+          if (state == 'NOT_FOUND') {
+            throw ApiException(
+              'NOT_FOUND',
+              '原作业暂未查到',
+              httpStatus: 404,
+              hasResponseCode: true,
+            );
+          }
+          return ServerUpdateJob.fromJson(_job(id, state: state));
+        };
+        await _tap(tester, 'server-operations-refresh');
+        expect(repository.jobReads, [original]);
+        expect(repository.latestCalls, 0);
+        expect(_checkButton(tester).onPressed == null, state != 'SUCCEEDED');
+        expect(
+          tester
+                  .widget<ListTile>(
+                    find.byKey(const ValueKey('server-source-editor')),
+                  )
+                  .onTap ==
+              null,
+          state != 'SUCCEEDED',
+        );
+        if (state == 'NOT_FOUND') {
+          expect(find.textContaining('暂未确认原作业结果'), findsOneWidget);
+        }
+        if (state == 'RECOVERY_REQUIRED') {
+          expect(find.textContaining('需要恢复处理'), findsWidgets);
+        }
+        expect(repository.starts, hasLength(1));
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  testWidgets(
+    'definitive cancel rejection refreshes host state without inventing an unknown acknowledgement',
+    (tester) async {
+      final repository = _Repository()
+        ..statusValue = _status(
+          job: _job('appointment', state: 'SCHEDULED', mode: 'SCHEDULE_UPDATE'),
+        )
+        ..cancelHandler = (id) async => throw ApiException(
+          'FORBIDDEN',
+          '当前操作人不能取消此预约，请刷新状态。',
+          httpStatus: 403,
+          hasResponseCode: true,
+        );
+      await _pump(tester, repository, actorId: 'operator');
+      await _tap(tester, 'server-update-cancel');
+      repository.statusValue = _status(
+        job: _job('appointment', mode: 'SCHEDULE_UPDATE'),
+      );
+      await _tap(tester, 'server-update-cancel-confirm');
+      expect(repository.statusCalls, 2);
+      expect(find.textContaining('当前操作人不能取消'), findsOneWidget);
+      expect(find.textContaining('取消结果尚未确认'), findsNothing);
+      expect(repository.jobReads, isEmpty);
+      expect(repository.cancels, hasLength(1));
+      expect(find.byKey(const ValueKey('server-update-cancel')), findsNothing);
+      expect(_checkButton(tester).onPressed, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'unknown cancel queries its original appointment when latest points to another job',
+    (tester) async {
+      final repository = _Repository()
+        ..statusValue = _status(
+          job: _job('appointment', state: 'SCHEDULED', mode: 'SCHEDULE_UPDATE'),
+        )
+        ..cancelHandler = (id) async => throw NetworkTimeoutException();
+      await _pump(tester, repository, actorId: 'operator');
+      await _tap(tester, 'server-update-cancel');
+      await _tap(tester, 'server-update-cancel-confirm');
+      repository.statusValue = _status(
+        job: _job('newer', state: 'SUCCEEDED', phase: 'DONE'),
+      );
+      repository.jobHandler = (id) async => ServerUpdateJob.fromJson(
+        _job(id, state: 'CANCELLED', mode: 'SCHEDULE_UPDATE'),
+      );
+      await _tap(tester, 'server-operations-refresh');
+      expect(repository.jobReads, ['appointment']);
+      expect(repository.latestCalls, 0);
+      expect(find.textContaining('取消结果尚未确认'), findsNothing);
+      expect(repository.cancels, hasLength(1));
+      expect(_checkButton(tester).onPressed, isNotNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'source unknown save can close safely and a resized reopened editor requires fresh readback',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 1100);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _Repository()
+        ..statusValue = _status(configure: true)
+        ..saveError = NetworkTimeoutException();
+      await _pump(tester, repository, source: true);
+      await _tap(tester, 'server-source-editor');
+      await tester.enterText(
+        find.byKey(const ValueKey('server-source-key-id')),
+        'temporary-id',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('server-source-secret')),
+        'private-test-secret',
+      );
+      tester.view.physicalSize = const Size(375, 1000);
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('server-source-secret')),
+            )
+            .controller!
+            .text,
+        'private-test-secret',
+      );
+      await _tap(tester, 'server-source-save');
+      expect(repository.saves, hasLength(1));
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('server-source-secret')),
+            )
+            .controller!
+            .text,
+        isEmpty,
+      );
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('server-source-save')),
+            )
+            .onPressed,
+        isNull,
+      );
+      await _tap(tester, 'server-source-close');
+      expect(find.byKey(const ValueKey('server-source-dialog')), findsNothing);
+      expect(find.textContaining('保存结果待确认'), findsOneWidget);
+      final readback = Completer<ServerUpdateSource>();
+      repository.sourceHandler = () => readback.future;
+      tester.view.physicalSize = const Size(1440, 1100);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('server-source-editor')),
+      );
+      await tester.tap(find.byKey(const ValueKey('server-source-editor')));
+      await tester.pump();
+      expect(repository.sourceCalls, 2);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('server-source-save')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(find.text('private-test-secret'), findsNothing);
+      expect(repository.saves, hasLength(1));
+      readback.complete(_source());
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('server-source-save')),
+            )
+            .onPressed,
+        isNotNull,
+      );
+      expect(
+        repository.saves,
+        hasLength(1),
+        reason: 'a fresh read must never replay the previous secret write',
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'schedule DST rejection cannot confirm and changing hour invalidates the old preview',
+    (tester) async {
+      final repository = _Repository()
+        ..statusValue = _status(updateAvailable: true)
+        ..previewError = ApiException(
+          'VALIDATION',
+          '服务器当地时间不存在，请重新选择。',
+          httpStatus: 400,
+          hasResponseCode: true,
+        );
+      await _pump(tester, repository);
+      await _tap(tester, 'server-update-available');
+      await _tap(tester, 'server-update-schedule');
+      await _tap(tester, 'server-schedule-confirm');
+      expect(find.textContaining('当地时间不存在'), findsOneWidget);
+      expect(find.text('确认预约更新'), findsNothing);
+      expect(repository.starts, isEmpty);
+      repository.previewError = null;
+      await _tap(tester, 'server-schedule-confirm');
+      expect(find.text('确认预约更新'), findsOneWidget);
+      await _tap(tester, 'server-schedule-hour');
+      await tester.tap(find.text('凌晨 03:00').last);
+      await tester.pumpAndSettle();
+      expect(find.text('确认预约更新'), findsNothing);
+      expect(repository.starts, isEmpty);
+      await _tap(tester, 'server-schedule-confirm');
+      expect(repository.scheduleChecks.last['hour'], 3);
+      expect(repository.starts, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'company ABA during an open pending schedule retires that dialog and ignores its late preview',
+    (tester) async {
+      final owner = StateProvider<Object?>((ref) => 'a/operator');
+      final preview = Completer<ServerUpdateSchedulePreview>();
+      final repository = _Repository()
+        ..statusValue = _status(updateAvailable: true)
+        ..previewHandler = () => preview.future;
+      final container = await _pump(tester, repository, owner: owner);
+      await _tap(tester, 'server-update-available');
+      await _tap(tester, 'server-update-schedule');
+      await tester.tap(find.byKey(const ValueKey('server-schedule-confirm')));
+      await tester.pump();
+      container.read(owner.notifier).state = 'b/operator';
+      await tester.pump();
+      container.read(owner.notifier).state = 'a/operator';
+      await tester.pumpAndSettle();
+      preview.complete(
+        ServerUpdateSchedulePreview.fromJson({
+          'scheduledAt': '2026-10-15T18:00:00Z',
+          'serverTimeZone': 'Asia/Shanghai',
+          'displayLocalTime': '2026-10-16 02:00',
+        }),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('server-schedule-confirm')),
+        findsNothing,
+      );
+      expect(repository.starts, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'initial loading and unconfigured host never enable a write or start a network check',
+    (tester) async {
+      final load = Completer<ServerOperationsStatus>();
+      final repository = _Repository()..statusHandler = () => load.future;
+      await _pump(tester, repository, settle: false);
+      expect(_checkButton(tester).onPressed, isNull);
+      expect(repository.starts, isEmpty);
+      load.complete(_status(configured: false));
+      await tester.pumpAndSettle();
+      expect(find.text('发布源尚未配置'), findsOneWidget);
+      expect(_checkButton(tester).onPressed, isNull);
+      expect(repository.sourceCalls, 0);
+      expect(repository.starts, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  for (final code in ['BUSY', 'CONFLICT']) {
+    testWidgets(
+      'trusted $code rejection shows a safe reason and only explicit refresh unlocks another check',
+      (tester) async {
+        final repository = _Repository()
+          ..startError = ApiException(
+            code,
+            '当前服务器状态已变化，请刷新核对。',
+            httpStatus: 409,
+            hasResponseCode: true,
+          );
+        await _pump(tester, repository);
+        await _tap(tester, 'server-update-start');
+        expect(find.textContaining('当前服务器状态已变化'), findsOneWidget);
+        expect(find.text('正在核对原作业'), findsNothing);
+        expect(_checkButton(tester).onPressed, isNull);
+        await _tap(tester, 'server-operations-refresh');
+        expect(repository.jobReads, isEmpty);
+        expect(repository.starts, hasLength(1));
+        expect(_checkButton(tester).onPressed, isNotNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  testWidgets(
+    'failed local status read displays a safe fallback and never infers an uninstalled helper',
+    (tester) async {
+      final repository = _Repository()
+        ..statusHandler = () async => throw NetworkException(
+          '<Error>Authorization: Bearer raw-secret</Error>',
+        );
+      await _pump(tester, repository);
+      expect(find.textContaining('无法读取服务器更新状态'), findsOneWidget);
+      expect(find.textContaining('raw-secret'), findsNothing);
+      expect(find.textContaining('未安装'), findsNothing);
+      expect(_checkButton(tester).onPressed, isNull);
+      expect(repository.starts, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'source permission revocation closes only that editor and retires its saved callback',
+    (tester) async {
+      final writable = StateProvider<bool>((ref) => true);
+      final repository = _Repository()..statusValue = _status(configure: true);
+      final container = await _pump(
+        tester,
+        repository,
+        source: true,
+        writableState: writable,
+      );
+      await _tap(tester, 'server-source-editor');
+      final staleSave = tester
+          .widget<UtenButton>(find.byKey(const ValueKey('server-source-save')))
+          .onPressed!;
+      final context = tester.element(
+        find.byKey(const ValueKey('server-source-dialog')),
+      );
+      unawaited(
+        showDialog<void>(
+          context: context,
+          builder: (_) => const AlertDialog(title: Text('独立安全提示')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      container.read(writable.notifier).state = false;
+      await tester.pumpAndSettle();
+      expect(find.text('独立安全提示'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('server-source-dialog'), skipOffstage: false),
+        findsNothing,
+      );
+      staleSave();
+      await tester.pumpAndSettle();
+      expect(repository.saves, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+}
+
+UtenButton _checkButton(WidgetTester tester) => tester.widget<UtenButton>(
+  find.byKey(const ValueKey('server-update-start')),
+);
+Future<void> _tap(WidgetTester tester, String key) async {
+  final finder = find.byKey(ValueKey(key));
+  await tester.ensureVisible(finder);
+  await tester.tap(finder);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  await tester.pump();
 }
 
 Future<ProviderContainer> _pump(
@@ -417,6 +847,7 @@ Future<ProviderContainer> _pump(
   bool source = false,
   String? actorId,
   StateProvider<Object?>? owner,
+  StateProvider<bool>? writableState,
   bool settle = true,
   double textScale = 1,
 }) async {
@@ -434,7 +865,9 @@ Future<ProviderContainer> _pump(
           (ref) => owner == null ? 'company/operator' : ref.watch(owner),
         ),
         serverOperationsVisibleProvider.overrideWithValue(visible),
-        serverOperationsWritableProvider.overrideWithValue(writable),
+        serverOperationsWritableProvider.overrideWith(
+          (ref) => writableState == null ? writable : ref.watch(writableState),
+        ),
         serverSourceVisibleProvider.overrideWithValue(source),
         serverOperationsRepositoryProvider.overrideWithValue(repository),
       ],
@@ -470,7 +903,7 @@ Map<String, dynamic> _job(
   String phase = 'CHECKING',
   String mode = 'CHECK_ONLY',
 }) => {
-  'id': 'job-1',
+  'id': requestId,
   'actorId': 'operator',
   'requestId': requestId,
   'state': state,
@@ -485,12 +918,13 @@ ServerOperationsStatus _status({
   Map<String, dynamic>? job,
   bool configure = false,
   bool updateAvailable = false,
+  bool configured = true,
 }) => ServerOperationsStatus.fromJson({
   'available': true,
   'manualOnly': true,
   'currentVersion': version,
   'sourceRevision': 'source-r1',
-  'sourceConfigured': true,
+  'sourceConfigured': configured,
   'canUpdate': true,
   'canCleanup': true,
   'canConfigureSource': configure,
@@ -514,8 +948,12 @@ ServerUpdateSource _source() => ServerUpdateSource.fromJson({
 class _Repository implements ServerOperationsRepository {
   ServerOperationsStatus statusValue = _status();
   Future<ServerOperationsStatus> Function()? statusHandler;
-  Object? startError;
-  int statusCalls = 0, sourceCalls = 0;
+  Future<ServerUpdateSource> Function()? sourceHandler;
+  Future<ServerUpdateJob> Function(String)? jobHandler, cancelHandler;
+  Future<ServerUpdateSchedulePreview> Function()? previewHandler;
+  Object? startError, saveError, previewError;
+  int statusCalls = 0, sourceCalls = 0, latestCalls = 0;
+  final jobReads = <String>[];
   final starts = <Map<String, String>>[], saves = <Map<String, dynamic>>[];
   @override
   Future<ServerOperationsStatus> status() async {
@@ -551,19 +989,29 @@ class _Repository implements ServerOperationsRepository {
   }
 
   @override
-  Future<ServerUpdateJob> job(String id) async =>
-      ServerUpdateJob.fromJson(_job('existing'));
+  Future<ServerUpdateJob> job(String id) async {
+    jobReads.add(id);
+    return jobHandler == null
+        ? ServerUpdateJob.fromJson(_job(id))
+        : jobHandler!(id);
+  }
+
   @override
-  Future<ServerUpdateJob?> latestJob() async => statusValue.latestJob;
+  Future<ServerUpdateJob?> latestJob() async {
+    latestCalls++;
+    return statusValue.latestJob;
+  }
+
   @override
   Future<ServerUpdateSource> source() async {
     sourceCalls++;
-    return _source();
+    return sourceHandler == null ? _source() : sourceHandler!();
   }
 
   @override
   Future<ServerUpdateSource> saveSource(Map<String, dynamic> command) async {
     saves.add(Map.of(command));
+    if (saveError != null) throw saveError!;
     return _source();
   }
 
@@ -575,8 +1023,9 @@ class _Repository implements ServerOperationsRepository {
     required String requestId,
   }) async {
     cancels.add(requestId);
+    if (cancelHandler != null) return cancelHandler!(jobId);
     return ServerUpdateJob.fromJson(
-      _job('scheduled-request', state: 'CANCELLED', mode: 'SCHEDULE_UPDATE'),
+      _job(jobId, state: 'CANCELLED', mode: 'SCHEDULE_UPDATE'),
     );
   }
 
@@ -586,6 +1035,8 @@ class _Repository implements ServerOperationsRepository {
     required int hour,
   }) async {
     scheduleChecks.add({'localDate': localDate, 'hour': hour});
+    if (previewError != null) throw previewError!;
+    if (previewHandler != null) return previewHandler!();
     return ServerUpdateSchedulePreview.fromJson({
       'scheduledAt': '2026-10-15T18:00:00Z',
       'serverTimeZone': 'Asia/Shanghai',

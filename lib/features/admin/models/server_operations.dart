@@ -20,6 +20,7 @@ class ServerOperationsStatus {
       latestJob = json['latestJob'] is Map<String, dynamic>
           ? ServerUpdateJob.fromJson(json['latestJob'] as Map<String, dynamic>)
           : null,
+      failure = ServerUpdateFailure.fromValue(json['failure']),
       message = _text(json['message']),
       canUpdate = json['canUpdate'] == true,
       canCleanup = json['canCleanup'] == true,
@@ -32,6 +33,7 @@ class ServerOperationsStatus {
   final String? latestVersion, serverTimeZone, serverTime;
   final DateTime? lastCheckedAt;
   final ServerUpdateJob? latestJob;
+  final ServerUpdateFailure? failure;
 }
 
 class ServerUpdateJob {
@@ -49,6 +51,7 @@ class ServerUpdateJob {
       currentVersion = _text(json['currentVersion']),
       targetVersion = _text(json['targetVersion']),
       message = _text(json['message']),
+      failure = ServerUpdateFailure.fromValue(json['failure']),
       migrationRequired = json['migrationRequired'] is bool
           ? json['migrationRequired'] as bool
           : null,
@@ -62,15 +65,74 @@ class ServerUpdateJob {
   final String? currentVersion, targetVersion, message;
   final bool? migrationRequired;
   final Object? health;
+  final ServerUpdateFailure? failure;
   bool get running => const {'QUEUED', 'RUNNING', 'SCHEDULED'}.contains(state);
   bool get succeeded => state == 'SUCCEEDED';
-  bool get recoveryRequired => state == 'RECOVERY_REQUIRED';
+  bool get recoveryRequired =>
+      state == 'RECOVERY_REQUIRED' || failure?.recoveryRequired == true;
   bool get terminal => const {
     'SUCCEEDED',
     'FAILED',
     'RECOVERY_REQUIRED',
     'CANCELLED',
   }.contains(state);
+}
+
+/// Optional, curated diagnosis from the host. Never contains raw logs, URLs,
+/// provider responses or credentials. Older hosts simply omit this object.
+class ServerUpdateFailure {
+  ServerUpdateFailure._(Map<dynamic, dynamic> json)
+    : code = safeServerOperationCode(json['code']) ?? 'UPDATE_FAILED',
+      phase = safeServerOperationCode(json['phase']),
+      title = safeServerOperationText(json['title']),
+      reason = safeServerOperationText(json['reason']),
+      suggestion = safeServerOperationText(json['suggestion']),
+      recoveryRequired = json['recoveryRequired'] == true,
+      retrySafe = json['retrySafe'] == true && json['recoveryRequired'] != true,
+      originalServicePreserved = json['originalServicePreserved'] is bool
+          ? json['originalServicePreserved'] as bool
+          : null,
+      nextAction =
+          const {
+            'CHECK_SOURCE',
+            'RETRY_CHECK',
+            'REFRESH_STATUS',
+            'WAIT_FOR_JOB',
+            'CONTACT_ADMIN',
+            'VERIFY_RECOVERY',
+          }.contains(json['nextAction'])
+          ? json['nextAction'] as String
+          : 'CONTACT_ADMIN',
+      exitCode = json['exitCode'] is int ? json['exitCode'] as int : null;
+
+  static ServerUpdateFailure? fromValue(Object? value) =>
+      value is Map ? ServerUpdateFailure._(value) : null;
+
+  final String code, nextAction;
+  final String? phase, title, reason, suggestion;
+  final bool retrySafe, recoveryRequired;
+  final bool? originalServicePreserved;
+  final int? exitCode;
+}
+
+String? safeServerOperationCode(Object? value) =>
+    value is String && RegExp(r'^[A-Z][A-Z0-9_]{1,79}$').hasMatch(value)
+    ? value
+    : null;
+
+/// Defense for legacy/RPC text. New failure text is rebuilt by a server catalog;
+/// malformed or old raw provider diagnostics must still never reach the page.
+String? safeServerOperationText(Object? value) {
+  if (value is! String) return null;
+  final text = value.trim();
+  if (text.isEmpty || text.length > 600) return null;
+  if (RegExp(
+    r'<[^>]+>|https?://|AccessKeySecret|Authorization|Bearer\s|LTAI[A-Za-z0-9]+|AKIA[A-Z0-9]+|stack\s*trace|\bat\s+[\w.$]+\([^)]*:\d+\)|[?&](?:signature|token|accesskey)[^\s]*=',
+    caseSensitive: false,
+  ).hasMatch(text)) {
+    return null;
+  }
+  return text;
 }
 
 class ServerUpdateSchedulePreview {

@@ -28,7 +28,7 @@ dependencies:
   clock: ^1.1.2
 
   # 存储（偏好持久化）
-  shared_preferences: ^2.3.3
+  shared_preferences: ^2.5.6
 
   # 敏感存储（令牌：iOS Keychain / Android Keystore）
   flutter_secure_storage: ^9.2.2

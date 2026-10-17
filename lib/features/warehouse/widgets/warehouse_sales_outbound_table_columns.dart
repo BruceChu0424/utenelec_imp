@@ -347,7 +347,7 @@ warehouseSalesOutboundTableColumns({
               InputDecoration(
                 isDense: true,
                 // 浮动标签「实际库位号」与列头重复，已删（2026-09-27 表格小字清理）。
-                hintText: '按本次实际填写',
+                hintText: '实际库位号',
                 counterText: '',
               ),
               info: '已按主档建议库位预填；请按本次实际位置修改，无固定库位可清空。',

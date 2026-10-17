@@ -932,6 +932,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('finance-order-review-reject')));
     await tester.pumpAndSettle();
+    final reason = tester.widget<TextField>(
+      find.byKey(const Key('finance-order-review-reject-reason')),
+    );
+    expect(reason.controller!.text, isEmpty);
+    expect(reason.decoration?.hintText, '驳回原因');
     // 空原因：内联校验拦截，不提交。
     await tester.tap(
       find.byKey(const Key('finance-order-review-reject-submit')),
@@ -1480,6 +1485,8 @@ void main() {
     final repository = _ExactWorkflowRepo(_pendingReview());
     await _pumpReviewPage(tester, repository);
     final field = find.byKey(const Key('finance-order-review-tax-field'));
+    expect(tester.widget<TextField>(field).decoration?.hintText, '财务核定税率');
+    expect(tester.widget<TextField>(field).decoration?.suffixText, '%');
     await tester.enterText(field, '100.0001');
     await tester.pump();
     await tester.tap(find.byKey(const Key('finance-order-review-approve')));

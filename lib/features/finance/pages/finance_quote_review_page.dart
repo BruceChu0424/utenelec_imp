@@ -1668,6 +1668,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             decoration: UtenInputDecoration(
               InputDecoration(
                 isDense: true,
+                labelText: l10n.quoteFinanceColDealPrice,
                 hintText: draft.unpriced ? l10n.quoteFinanceNoListPrice : null,
                 suffixText: '元',
                 error: utenFieldError(
@@ -1743,6 +1744,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       decoration: UtenInputDecoration(
         InputDecoration(
           isDense: true,
+          hintText: l10n.quoteFinanceColDiscount,
           error: utenFieldError(
             draft.error == QuoteFinanceLineError.discount
                 ? l10n.quoteFinanceErrorDiscount

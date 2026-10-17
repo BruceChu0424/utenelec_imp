@@ -17,6 +17,7 @@ import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/warehouse/pages/inbound_arrival_registration_page.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_autofill_text_field.dart';
 import 'package:uten_imp/features/warehouse/repositories/procurement_inbound_repository.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_place_suggestion_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -174,6 +175,24 @@ void main() {
       prefill: _prefill(),
       failFirstArrival: true,
     );
+    final series = find.byWidgetPredicate(
+      (widget) =>
+          widget is WarehouseAutofillTextField && widget.hintText == '物料系列',
+    );
+    expect(series, findsOneWidget);
+    final seriesController = tester
+        .widget<WarehouseAutofillTextField>(series)
+        .controller;
+    expect(seriesController.text, isEmpty);
+    final seriesInput = find.descendant(
+      of: series,
+      matching: find.byType(TextField),
+    );
+    expect(
+      tester.widget<TextField>(seriesInput).controller,
+      same(seriesController),
+    );
+    expect(tester.widget<TextField>(seriesInput).decoration?.hintText, '物料系列');
     final editor =
         tester.state(find.byType(InboundArrivalRegistrationPage))
             as FormDraftMixin<InboundArrivalRegistrationPage>;

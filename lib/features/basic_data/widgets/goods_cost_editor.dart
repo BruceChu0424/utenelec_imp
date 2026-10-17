@@ -874,7 +874,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
               (key == 'unitPrice' || _adjustingPaths.contains(r['path'])) &&
               (key != 'unitPrice' ||
                   (r['included'] == true && r['route'] != 'CUSTOMER_SUPPLIED'))
-          ? _lineEditor(cellContext, r, key)
+          ? _lineEditor(cellContext, r, key, label)
           : Tooltip(
               message:
                   key == 'unitPrice' &&
@@ -946,6 +946,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         value: (r) => costText(r['route']),
         cellBuilder: (_, row) => _editable
             ? UtenDropdownField(
+                hintText: _l.costRoute,
                 dense: true,
                 allowClear: false,
                 value: costText(row['route']),
@@ -1160,6 +1161,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
     BuildContext cellContext,
     Map<String, dynamic> row,
     String field,
+    String label,
   ) {
     final path = row['path'].toString();
     final override = costMaps(
@@ -1188,6 +1190,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
         UtenInputDecoration(
           InputDecoration(
             isDense: true,
+            labelText: label,
             hintText: field == 'unitPrice' ? _l.costMissingPriceInput : null,
           ),
           info: field != 'unitPrice'
@@ -1236,6 +1239,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       decoration: UtenInputDecoration(
         InputDecoration(
           isDense: true,
+          labelText: costText(column['name']) ?? _l.costValue,
           hintText: cell == null ? _l.costNotApplicable : _l.costPending,
           suffixIcon: cell == null
               ? null
@@ -1286,7 +1290,9 @@ extension _GoodsCostEditor on _GoodsCostTabState {
       controller: _controller('feeQty:$key:$path', costText(cell?['quantity'])),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       errorBuilder: utenTextFieldErrorBuilder,
-      decoration: const UtenInputDecoration(InputDecoration(isDense: true)),
+      decoration: UtenInputDecoration(
+        InputDecoration(isDense: true, hintText: _l.costFeeQuantity),
+      ),
       onChanged: (value) => _change(
         () => _input = updateCostPriceCell(
           _currentInput(),
@@ -1601,7 +1607,18 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           ? const TextInputType.numberWithOptions(decimal: true)
           : TextInputType.text,
       errorBuilder: utenTextFieldErrorBuilder,
-      decoration: const UtenInputDecoration(InputDecoration(isDense: true)),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          isDense: true,
+          hintText: switch (key) {
+            'name' => _l.costFeeName,
+            'value' => _l.costValue,
+            'quantity' => _l.costFeeQuantity,
+            'reason' => _l.costNotes,
+            _ => null,
+          },
+        ),
+      ),
       onChanged: (_) => _change(() {
         if (row.generated) {
           final path = row.json['targetPath'].toString(),
@@ -1707,6 +1724,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           cellBuilder: (_, r) => r.generated
               ? _oneLine(_method(costText(r.json['type'])))
               : UtenDropdownField(
+                  hintText: _l.costFeeMethod,
                   value: costText(r.json['type']),
                   items: _methods,
                   enabled: _editable,
@@ -1725,6 +1743,7 @@ extension _GoodsCostEditor on _GoodsCostTabState {
           cellBuilder: (_, r) => r.generated
               ? _oneLine(_category(costText(r.json['category'])))
               : UtenDropdownField(
+                  hintText: _l.costFeeCategory,
                   value: costText(r.json['category']),
                   items: _categories,
                   enabled: _editable,

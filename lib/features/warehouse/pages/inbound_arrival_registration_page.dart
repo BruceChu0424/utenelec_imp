@@ -1570,6 +1570,7 @@ class _InboundArrivalRegistrationPageState
           label: '${line.goodsName} 物料系列',
           child: WarehouseAutofillTextField(
             controller: line.series,
+            hintText: '物料系列',
             source: '系列来自货品资料，请核对本次到货',
             enabled: editable(line),
           ),

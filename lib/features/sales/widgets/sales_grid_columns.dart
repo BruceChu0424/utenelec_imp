@@ -752,7 +752,12 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
           'clientModel',
           (decorate) => TextField(
             controller: row.clientModel,
-            decoration: decorate(const InputDecoration(isDense: true)),
+            decoration: decorate(
+              InputDecoration(
+                isDense: true,
+                hintText: intakeText.salesIntakeColClientModel,
+              ),
+            ),
           ),
         ),
       ),
@@ -769,7 +774,12 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
           'clientGoodsName',
           (decorate) => TextField(
             controller: row.clientGoodsName,
-            decoration: decorate(const InputDecoration(isDense: true)),
+            decoration: decorate(
+              InputDecoration(
+                isDense: true,
+                hintText: intakeText.salesIntakeColClientGoodsName,
+              ),
+            ),
           ),
         ),
       ),
@@ -953,11 +963,14 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                   ),
                   decoration: decorate(
                     applyAutofillHint(
-                      InputDecoration(
-                        isDense: true,
-                        hintText: isQuote
-                            ? intakeText.salesIntakeQuoteDiscountPending
-                            : null,
+                      UtenInputDecoration(
+                        InputDecoration(
+                          isDense: true,
+                          labelText: '折扣',
+                          hintText: isQuote
+                              ? intakeText.salesIntakeQuoteDiscountPending
+                              : null,
+                        ),
                       ),
                       Theme.of(context),
                       autofilled:
@@ -1130,7 +1143,9 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         'remark',
         (decorate) => TextField(
           controller: row.remark,
-          decoration: decorate(const InputDecoration(isDense: true)),
+          decoration: decorate(
+            const InputDecoration(isDense: true, hintText: '备注'),
+          ),
         ),
       ),
     ),

@@ -193,6 +193,7 @@ void main() {
         permissions: _issuer,
       );
       final input = find.byKey(const ValueKey('draw-issue-qty-i1'));
+      expect(tester.widget<TextField>(input).decoration?.hintText, '本次出库');
       expect(tester.widget<TextField>(input).controller!.text, '0.0001');
       await tester.tap(find.widgetWithText(UtenButton, '出库'));
       await tester.pumpAndSettle();

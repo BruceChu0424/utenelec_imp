@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
@@ -30,6 +31,120 @@ Future<List<EditableGridColumn<SalesGridRow>>> _columnsFor(
 }
 
 void main() {
+  testWidgets(
+    'blank quote discount names the field and keeps the finance guidance',
+    (tester) async {
+      final row = SalesGridRow()..discount.clear();
+      addTearDown(row.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) =>
+                  salesGridColumns(
+                        context: context,
+                        onPickGoods: (_) async {},
+                        docType: SalesDocType.quote,
+                        colorEntries: const {},
+                        unitEntries: const {},
+                      )
+                      .singleWhere((column) => column.key == 'discount')
+                      .cellBuilder(context, row),
+            ),
+          ),
+        ),
+      );
+      final field = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && identical(widget.controller, row.discount),
+      );
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).decoration?.hintText, '折扣');
+      expect(row.discount.text, isEmpty);
+      expect(
+        tester.widget<UtenFieldHintIcon>(find.byType(UtenFieldHintIcon)).info,
+        contains('财务核价时填写'),
+      );
+      await tester.enterText(field, '0.8765');
+      await tester.pump();
+      expect(row.discount.text, '0.8765');
+      expect(tester.widget<TextField>(field).controller, same(row.discount));
+    },
+  );
+
+  testWidgets(
+    'client file text and remark keep field placeholders and controllers across AI review styling',
+    (tester) async {
+      final row = SalesGridRow();
+      addTearDown(row.dispose);
+      late List<EditableGridColumn<SalesGridRow>> columns;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                columns = salesGridColumns(
+                  context: context,
+                  onPickGoods: (_) async {},
+                  docType: SalesDocType.order,
+                  colorEntries: const {},
+                  unitEntries: const {},
+                );
+                return Column(
+                  children: [
+                    for (final key in [
+                      'clientModel',
+                      'clientGoodsName',
+                      'remark',
+                    ])
+                      columns
+                          .singleWhere((column) => column.key == key)
+                          .cellBuilder(context, row),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      final fields = {
+        'clientModel': row.clientModel,
+        'clientGoodsName': row.clientGoodsName,
+        'remark': row.remark,
+      };
+      Finder field(TextEditingController controller) => find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && identical(widget.controller, controller),
+      );
+      for (final entry in fields.entries) {
+        expect(field(entry.value), findsOneWidget);
+        expect(entry.value.text, isEmpty);
+        expect(
+          tester.widget<TextField>(field(entry.value)).decoration?.hintText,
+          columns.singleWhere((column) => column.key == entry.key).label,
+        );
+        await tester.enterText(field(entry.value), '客户原文 ${entry.key}');
+      }
+      row.aiFilledNotifier.value = {for (final key in fields.keys) key: '识别原文'};
+      await tester.pump();
+      for (final entry in fields.entries) {
+        expect(
+          tester.widget<TextField>(field(entry.value)).controller,
+          same(entry.value),
+        );
+        expect(entry.value.text, '客户原文 ${entry.key}');
+        await tester.enterText(field(entry.value), '');
+        await tester.pump();
+        expect(entry.value.text, isEmpty);
+        expect(
+          tester.widget<TextField>(field(entry.value)).decoration?.hintText,
+          columns.singleWhere((column) => column.key == entry.key).label,
+        );
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'editable empty sales quantity and price identify their fields without inventing zero',
     (tester) async {
@@ -184,6 +299,7 @@ void main() {
     );
     expect(tester.widget<TextField>(priceField).readOnly, isTrue);
     expect(tester.widget<TextField>(discountField).readOnly, isFalse);
+    expect(tester.widget<TextField>(discountField).decoration?.hintText, '折扣');
     // 列说明已上移表头（2026-09-09 口径）：格内不再渲染 ⓘ，断言列头 headerInfo。
     final discountColumn = builtColumns.firstWhere((c) => c.key == 'discount');
     final priceColumn = builtColumns.firstWhere((c) => c.key == 'price');

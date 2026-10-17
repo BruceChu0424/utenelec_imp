@@ -296,7 +296,7 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                 allowClear: false,
                 enabled: _busyTitle == null,
                 value: value,
-                hintText: '选颗粒',
+                hintText: '颗粒',
                 items: _materialItems(r),
                 onChanged: (key) {
                   for (final target in _targets(r)) {
@@ -342,7 +342,11 @@ class _WmPrepTabState extends ConsumerState<WmPrepTab> {
                     decimal: true,
                   ),
                   decoration: applyAutofillHint(
-                    const InputDecoration(isDense: true, hintText: '克'),
+                    InputDecoration(
+                      isDense: true,
+                      hintText: l10n.wmUnitWeightGrams,
+                      suffixText: 'g',
+                    ),
                     theme,
                     autofilled: flagged,
                   ),

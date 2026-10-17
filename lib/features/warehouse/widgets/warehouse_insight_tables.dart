@@ -650,7 +650,8 @@ List<MasterColumnDef<InsightLearningRow>> insightLearningColumns({
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
-              hintText: sampleUnit.symbol,
+              hintText: '抽样重量',
+              suffixText: sampleUnit.symbol,
               error: utenFieldError(draft.error),
             ),
           ),

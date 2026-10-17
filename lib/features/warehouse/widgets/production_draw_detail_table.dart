@@ -596,6 +596,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
                   key: ValueKey('draw-issue-qty-${row.item?.id}'),
                   controller: controller,
                   weight: _weightOf(row),
+                  hintText: '本次出库',
                   enabled:
                       !issueSaving &&
                       (financeExactDecimalUnits(row.item?.remainingQtyText) ??

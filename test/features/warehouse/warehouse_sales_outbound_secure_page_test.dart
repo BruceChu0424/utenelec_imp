@@ -372,16 +372,20 @@ void main() {
       );
       expect(picker.value, 'leaf-1', reason: '预填服务端建议仓');
       expect(find.textContaining('成品一仓 · 可发 10'), findsOneWidget);
-      expect(
-        tester
-            .widget<TextField>(
-              find.byKey(const ValueKey('sales-picking-place-line-1')),
-            )
-            .controller
-            ?.text,
-        'A01-01',
-        reason: '实际库位先按主档建议库位预填',
+      final placeField = find.byKey(
+        const ValueKey('sales-picking-place-line-1'),
       );
+      expect(placeField, findsOneWidget);
+      final place = tester.widget<TextField>(placeField);
+      final placeController = place.controller!;
+      expect(place.decoration!.hintText, '实际库位号');
+      expect(placeController.text, 'A01-01', reason: '实际库位先按主档建议库位预填');
+      await tester.enterText(placeField, '');
+      await tester.pump();
+      final emptyPlace = tester.widget<TextField>(placeField);
+      expect(identical(emptyPlace.controller, placeController), isTrue);
+      expect(emptyPlace.controller!.text, isEmpty);
+      expect(emptyPlace.decoration!.hintText, '实际库位号');
       await tester.enterText(
         find.byKey(const ValueKey('sales-picking-place-line-1')),
         'B02-08',

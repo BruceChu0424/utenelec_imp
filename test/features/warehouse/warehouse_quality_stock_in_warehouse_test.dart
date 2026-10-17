@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -184,7 +185,26 @@ void main() {
             )
             .decoration!
             .hintText,
-        '请重新填写实际库位',
+        '实际库位',
+      );
+      final placeHint = tester.widget<UtenFieldHintIcon>(
+        find.descendant(
+          of: find.byKey(const Key('quality-slice-place-pass-a')),
+          matching: find.byType(UtenFieldHintIcon),
+        ),
+      );
+      expect(placeHint.info, contains('请重新填写实际库位'));
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(
+                of: find.byKey(const Key('quality-slice-qty-pass-a')),
+                matching: find.byType(TextField),
+              ),
+            )
+            .decoration
+            ?.hintText,
+        '本次实收',
       );
       await tester.tap(
         find.byKey(const Key('warehouse-quality-batch-confirm')),

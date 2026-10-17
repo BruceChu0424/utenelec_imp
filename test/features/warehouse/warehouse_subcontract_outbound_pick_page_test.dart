@@ -88,6 +88,22 @@ void main() {
     expect(table.bottomContentPadding, greaterThan(0));
     expect(table.rows.single.draft.maxEditableQty, 100);
     expect(table.rows.single.draft.qty.text, '100');
+    final quantity = tester.widget<TextField>(
+      find.byKey(const ValueKey('subcontract-outbound-issue-item-1-quantity')),
+    );
+    expect(quantity.controller, same(table.rows.single.draft.qty));
+    expect(quantity.decoration?.hintText, '本次出库');
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(
+              const ValueKey('subcontract-outbound-issue-item-1-remark'),
+            ),
+          )
+          .decoration
+          ?.hintText,
+      '明细备注',
+    );
     final grid = tester.widget<UtenEditableGrid<SubcontractOutboundTableRow>>(
       find.byType(UtenEditableGrid<SubcontractOutboundTableRow>),
     );

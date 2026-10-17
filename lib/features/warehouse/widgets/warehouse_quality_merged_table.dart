@@ -504,6 +504,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             InputDecoration(
               isDense: true,
               counterText: '',
+              labelText: '实际库位',
               hintText: draft.placeInputHint,
               error: utenFieldError(draft.selected ? draft.placeError : null),
             ),
@@ -561,6 +562,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             InputDecoration(
               isDense: true,
               counterText: '',
+              hintText: '本次实收',
               error: utenFieldError(
                 draft.selected ? draft.quantityError : null,
               ),

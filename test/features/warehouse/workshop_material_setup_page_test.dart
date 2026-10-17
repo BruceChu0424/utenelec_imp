@@ -441,6 +441,12 @@ void main() {
     );
     await _openTab(tester, '上线准备');
 
+    final emptyWeight = tester.widget<TextField>(
+      find.byKey(const Key('wm-prep-grams-P3')),
+    );
+    expect(emptyWeight.controller!.text, isEmpty);
+    expect(emptyWeight.decoration?.hintText, '单个重量 (克)');
+    expect(emptyWeight.decoration?.suffixText, 'g');
     expect(find.text('常做的 3 个产品, 已选料 1 个, 已填单重 1 个'), findsOneWidget);
     // P2 单重 5 克, 货品资料 8 克, 差 37.5% → 标黄。
     expect(find.byKey(const Key('wm-prep-flag-P2')), findsOneWidget);

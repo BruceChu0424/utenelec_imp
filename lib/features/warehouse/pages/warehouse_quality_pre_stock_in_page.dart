@@ -665,6 +665,7 @@ class _WarehouseQualityPreStockInPageState
           InputDecoration(
             isDense: true,
             counterText: '',
+            hintText: '上架库位',
             error: utenFieldError(row.selected ? row.placeError : null),
           ),
         ),

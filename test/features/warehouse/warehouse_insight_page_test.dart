@@ -643,6 +643,12 @@ void main() {
     // 按过往领料推算的依据次数来自服务端 nDraw。
     expect(find.text('按过往领料推算 (领料12次)'), findsOneWidget);
 
+    final weightField = tester.widget<TextField>(
+      find.byKey(const ValueKey('insight-sample-weight-g-l1')),
+    );
+    expect(weightField.controller!.text, isEmpty);
+    expect(weightField.decoration?.hintText, '抽样重量');
+    expect(weightField.decoration?.suffixText, 'g');
     await tester.enterText(
       find.byKey(const ValueKey('insight-sample-qty-g-l1')),
       '20',

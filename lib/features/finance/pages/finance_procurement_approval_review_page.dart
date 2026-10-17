@@ -690,6 +690,7 @@ class _FinanceProcurementApprovalReviewPageState
                   onChanged: (_) => setDialogState(() => errorText = null),
                   decoration: UtenInputDecoration(
                     InputDecoration(
+                      labelText: '驳回原因',
                       hintText: '驳回原因(必填，如：单价待复核 / 供应商资料待更新)',
                       border: const OutlineInputBorder(),
                       error: utenFieldError(errorText),
@@ -1370,6 +1371,7 @@ class _FinanceProcurementApprovalReviewPageState
                       decoration: UtenInputDecoration(
                         InputDecoration(
                           isDense: true,
+                          hintText: '财务核定税率',
                           suffixText: '%',
                           error: utenFieldError(_taxInputError()),
                         ),

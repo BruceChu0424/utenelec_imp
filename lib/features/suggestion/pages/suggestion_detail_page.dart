@@ -12,6 +12,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -274,10 +275,12 @@ class _ReplyComposerState extends ConsumerState<_ReplyComposer> {
             maxLines: 8,
             maxLength: 5000,
             textInputAction: TextInputAction.newline,
-            decoration: const InputDecoration(
-              labelText: '回复内容 *',
-              hintText: '说明处理结论、后续安排或未采纳原因',
-              alignLabelWithHint: true,
+            decoration: const UtenInputDecoration(
+              InputDecoration(
+                labelText: '回复内容 *',
+                hintText: '说明处理结论、后续安排或未采纳原因',
+                alignLabelWithHint: true,
+              ),
             ),
           ),
           const SizedBox(height: UtenSpacing.s12),

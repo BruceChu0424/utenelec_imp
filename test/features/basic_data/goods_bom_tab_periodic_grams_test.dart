@@ -9,17 +9,23 @@
 //  5. 页面没问到、服务端回 422 要人确认时，弹框确认后带上确认字段原样重发；
 //  6. 组件单位不能按克换算时按基本单位填，只提交 qty。
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_error.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 
 const _pcRow = GoodsBomItem(
   id: 'row-pc',
@@ -118,15 +124,27 @@ Future<void> _pumpTab(
   _FakeBomRepo repo, {
   double? productWeightGrams,
   List<GoodsListItem> picked = const [],
+  List<GoodsListItem> suggestions = const [],
+  StateProvider<SensitiveReadBoundary>? boundarySource,
+  Future<List<GoodsListItem>> Function(String)? suggestionLoader,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sensitiveReadBoundaryProvider.overrideWith(
+          (ref) => boundarySource == null
+              ? _bomBoundary()
+              : ref.watch(boundarySource),
+        ),
         goodsBomRepositoryProvider.overrideWithValue(repo),
         bomComponentPickerProvider.overrideWithValue(
           (context, ref) async => picked,
+        ),
+        bomComponentSuggestionsProvider.overrideWithValue(
+          (ref, query) =>
+              suggestionLoader?.call(query) ?? Future.value(suggestions),
         ),
         currentPermissionsProvider.overrideWithValue({
           Perm.goodsView,
@@ -154,6 +172,15 @@ Future<void> _pumpTab(
   await tester.pumpAndSettle();
 }
 
+SensitiveReadBoundary _bomBoundary({
+  Set<String> permissions = const {Perm.goodsView, Perm.goodsBomCreate},
+}) => SensitiveReadBoundary(
+  identity: null,
+  api: ApiClient(Dio()),
+  permissions: permissions,
+  superAdmin: false,
+);
+
 Future<void> _openEditForPc(WidgetTester tester) async {
   await tester.tap(find.text('PC E-15'));
   await tester.pump();
@@ -162,6 +189,173 @@ Future<void> _openEditForPc(WidgetTester tester) async {
 }
 
 void main() {
+  const staleCandidate = GoodsListItem(
+    id: 'stale-component',
+    name: '旧边界组件',
+    unitName: '个',
+  );
+  for (final aba in [false, true]) {
+    testWidgets('已显示BOM候选在撤权后不能追加（ABA=$aba）', (tester) async {
+      final repo = _FakeBomRepo();
+      final initial = _bomBoundary();
+      final boundary = StateProvider<SensitiveReadBoundary>((ref) => initial);
+      await _pumpTab(
+        tester,
+        repo,
+        suggestions: [staleCandidate],
+        boundarySource: boundary,
+      );
+      await tester.tap(find.byKey(const Key('goods-bom-add-component')));
+      await tester.pumpAndSettle();
+      final lookup = find.byKey(const Key('bom-component-lookup'));
+      await tester.enterText(
+        find.descendant(of: lookup, matching: find.byType(TextField)),
+        '旧',
+      );
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      final old = tester.widget<UtenReferencePickerField<GoodsListItem>>(
+        lookup,
+      );
+      final container = ProviderScope.containerOf(tester.element(lookup));
+      container.read(boundary.notifier).state = _bomBoundary(
+        permissions: const {},
+      );
+      container.read(sensitiveReadBoundaryProvider);
+      if (aba) {
+        container.read(boundary.notifier).state = initial;
+        container.read(sensitiveReadBoundaryProvider);
+      }
+      expect(old.isCurrent!(), isFalse);
+      old.onSelected(staleCandidate);
+      await tester.pumpAndSettle();
+      expect(find.text('已选组件 0'), findsOneWidget);
+      expect(find.text('旧边界组件'), findsNothing);
+      expect(repo.pastes, isEmpty);
+    });
+  }
+
+  testWidgets('BOM父级A-B-A不复活旧候选回调', (tester) async {
+    final repo = _FakeBomRepo();
+    await _pumpTab(tester, repo, suggestions: [staleCandidate]);
+    await tester.tap(find.byKey(const Key('goods-bom-add-component')));
+    await tester.pumpAndSettle();
+    final lookup = find.byKey(const Key('bom-component-lookup'));
+    final old = tester.widget<UtenReferencePickerField<GoodsListItem>>(lookup);
+    final parent = tester
+        .widgetList<UtenDropdownField>(find.byType(UtenDropdownField))
+        .firstWhere((field) => field.value == 'goods-a');
+    parent.onChanged('pc');
+    parent.onChanged('goods-a');
+    expect(old.isCurrent!(), isFalse);
+    old.onSelected(staleCandidate);
+    await tester.pumpAndSettle();
+    expect(find.text('已选组件 0'), findsOneWidget);
+    expect(repo.pastes, isEmpty);
+  });
+
+  testWidgets('BOM边界变化后迟到候选不显示且不能追加', (tester) async {
+    final repo = _FakeBomRepo();
+    final held = Completer<List<GoodsListItem>>();
+    final boundary = StateProvider<SensitiveReadBoundary>(
+      (ref) => _bomBoundary(),
+    );
+    await _pumpTab(
+      tester,
+      repo,
+      boundarySource: boundary,
+      suggestionLoader: (_) => held.future,
+    );
+    await tester.tap(find.byKey(const Key('goods-bom-add-component')));
+    await tester.pumpAndSettle();
+    final lookup = find.byKey(const Key('bom-component-lookup'));
+    await tester.enterText(
+      find.descendant(of: lookup, matching: find.byType(TextField)),
+      '旧',
+    );
+    await tester.pump(const Duration(milliseconds: 301));
+    final container = ProviderScope.containerOf(tester.element(lookup));
+    container.read(boundary.notifier).state = _bomBoundary();
+    container.read(sensitiveReadBoundaryProvider);
+    held.complete([staleCandidate]);
+    await tester.pumpAndSettle();
+    expect(find.text('旧边界组件'), findsNothing);
+    expect(find.text('已选组件 0'), findsOneWidget);
+    expect(repo.pastes, isEmpty);
+  });
+
+  testWidgets(
+    'component suggestions stage additions without saving or resetting existing quantities',
+    (tester) async {
+      final repo = _FakeBomRepo();
+      const first = GoodsListItem(id: 'picked', name: '已有暂选组件', unitName: '个');
+      const candidate = GoodsListItem(
+        id: 'suggested',
+        code: '5M001',
+        name: '5M开关',
+        colorId: 'white',
+        colorName: '白色',
+        unitId: 'piece',
+        unitName: '个',
+      );
+      await _pumpTab(tester, repo, picked: [first], suggestions: [candidate]);
+      await tester.tap(find.byKey(const Key('goods-bom-add-component')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('选择组件'));
+      await tester.pumpAndSettle();
+      final quantity = find.byKey(const ValueKey('goods-bom-add-qty-picked'));
+      await tester.enterText(quantity, '5');
+      final lookup = find.byKey(const Key('bom-component-lookup'));
+      final input = find.descendant(
+        of: lookup,
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(input, '5m');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('5M开关'));
+      await tester.pumpAndSettle();
+      expect(find.text('已选组件 2'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(of: quantity, matching: find.byType(TextField)),
+            )
+            .controller!
+            .text,
+        '5',
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(
+                of: find.byKey(const ValueKey('goods-bom-add-qty-suggested')),
+                matching: find.byType(TextField),
+              ),
+            )
+            .controller!
+            .text,
+        '1',
+      );
+      expect(
+        tester
+            .widget<UtenReferencePickerField<GoodsListItem>>(lookup)
+            .controller
+            .text,
+        isEmpty,
+      );
+      expect(repo.pastes, isEmpty);
+      tester
+          .widget<UtenReferencePickerField<GoodsListItem>>(lookup)
+          .onSelected(candidate);
+      await tester.pumpAndSettle();
+      expect(find.text('已选组件 2'), findsOneWidget);
+      await tester.tap(find.text('取消').last);
+      await tester.pumpAndSettle();
+      expect(repo.pastes, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
   test('千克单位的期间边换算成克，认不出的单位不换算', () {
     expect(_pcRow.isPeriodicEdge, isTrue);
     expect(_pcRow.periodicUnitWeightGrams, closeTo(12.5, 1e-9));

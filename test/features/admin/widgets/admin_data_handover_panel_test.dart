@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
 import 'package:uten_imp/features/admin/widgets/admin_data_handover_panel.dart';
 import 'package:uten_imp/shared/handover/data_handover_models.dart';
 import 'package:uten_imp/shared/handover/data_handover_repository.dart';
@@ -45,7 +46,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('第 1/4 步'), findsOneWidget);
 
-    await tester.tap(find.text('请选择员工'));
+    await tester.tap(find.byType(UtenEmployeePicker));
     await tester.pumpAndSettle();
     await tester.tap(find.text('交出人甲(E001)'));
     await tester.pump();

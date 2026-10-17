@@ -988,6 +988,7 @@ class _QualityBatchApprovalPageState
           decoration: UtenInputDecoration(
             InputDecoration(
               isDense: true,
+              labelText: passed ? '合格数量' : '不合格数量',
               // 2026-10-10 T9「数量+单位」口径：独立单位列撤除，单位内联为输入后缀。
               suffixText: unit,
               error: row.validate() == null

@@ -341,7 +341,12 @@ class _ServerUpdateSourceEditorState
                         ),
                         _field('bucket', 'Bucket', _bucket, required: true),
                       ),
-                      _field('prefix', '发布目录前缀（可留空）', _prefix),
+                      _field(
+                        'prefix',
+                        '发布目录前缀',
+                        _prefix,
+                        helper: '发布目录前缀可留空。',
+                      ),
                       const SizedBox(height: UtenSpacing.s8),
                       Text('访问凭据', style: theme.textTheme.titleMedium),
                       const SizedBox(height: UtenSpacing.s8),
@@ -351,7 +356,12 @@ class _ServerUpdateSourceEditorState
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                       _pair(
-                        _field('key-id', '新访问密钥 ID（留空保留）', _keyId),
+                        _field(
+                          'key-id',
+                          '新访问密钥 ID',
+                          _keyId,
+                          helper: '留空保留已保存的访问密钥 ID。',
+                        ),
                         Padding(
                           padding: const EdgeInsets.only(
                             bottom: UtenSpacing.s12,
@@ -367,9 +377,10 @@ class _ServerUpdateSourceEditorState
                             autofillHints: const [],
                             decoration: const UtenInputDecoration(
                               InputDecoration(
-                                labelText: '新访问密钥（留空保留）',
+                                labelText: '新访问密钥',
                                 border: OutlineInputBorder(),
                               ),
+                              info: '留空保留已保存的访问密钥。',
                             ),
                           ),
                         ),

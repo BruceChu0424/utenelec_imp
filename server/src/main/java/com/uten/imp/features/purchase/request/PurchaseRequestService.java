@@ -1,5 +1,7 @@
 package com.uten.imp.features.purchase.request;
 
+import com.uten.imp.common.web.HeaderColumnFilter;
+
 import com.uten.imp.application.port.WarehouseUse;
 import com.uten.imp.common.finance.MoneyPolicy;
 import com.uten.imp.application.port.OrganizationReferencePort;
@@ -136,6 +138,9 @@ public class PurchaseRequestService {
                 ps.add(cb.equal(root.get("billNo"), f.billNo().trim()));
             }
             f.headerFilters().apply(root, cb, ps, null, false, null, false, null, false);
+            f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "warehouse", HeaderColumnFilter.SearchField.reference("warehouseId", com.uten.imp.features.master.warehouse.Warehouse.class).withParent("parentId")));
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

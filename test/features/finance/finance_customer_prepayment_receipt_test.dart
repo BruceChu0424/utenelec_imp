@@ -89,6 +89,45 @@ void main() {
     expect(financeReceiptKindLabel(detail.receiptKind), '客户订单预收');
   });
 
+  testWidgets('空预收订单字段在框内显示业务名称，金额和汇率仍保留空值', (tester) async {
+    final rate = TextEditingController();
+    final amount = TextEditingController();
+    addTearDown(rate.dispose);
+    addTearDown(amount.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          theme: buildLightTheme(),
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: CustomerPrepaymentReceiptFields(
+              salesOrderId: null,
+              salesOrderBillNo: null,
+              clientLabel: '',
+              currencyLabel: '',
+              exchangeRateController: rate,
+              amountController: amount,
+              enabled: false,
+              onOrderSelected: (_) => fail('disabled order cannot change'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final order = tester.widget<InputDecorator>(
+      find.byKey(const ValueKey('customer-prepayment-receipt-order')),
+    );
+    expect(order.isEmpty, isTrue);
+    expect(order.decoration.hintText, '销售订单');
+    expect(find.text('尚未选择'), findsNothing);
+    expect(rate.text, isEmpty);
+    expect(amount.text, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('375px order prepayment locks identity and submits no lines', (
     tester,
   ) async {
@@ -126,9 +165,9 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('登记订单预收'), findsWidgets);
-    final orderField = tester
-        .widgetList<InputDecorator>(find.byType(InputDecorator))
-        .singleWhere((field) => field.decoration.labelText == '销售订单(必选)');
+    final orderField = tester.widget<InputDecorator>(
+      find.byKey(const ValueKey('customer-prepayment-receipt-order')),
+    );
     expect((orderField.decoration as UtenInputDecoration).info, contains('预收'));
     expect(find.text('XD-001'), findsWidgets);
     expect(find.textContaining('客户：甲客户'), findsOneWidget);

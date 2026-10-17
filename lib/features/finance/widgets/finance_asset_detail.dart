@@ -1103,7 +1103,6 @@ class _FinanceAssetActionInputState
                         label: '目标使用状态',
                         required: true,
                         value: _operatingStatus,
-                        hintText: '请选择目标使用状态',
                         items: const [
                           UtenDropdownItem(
                             value: 'PENDING_ACCEPTANCE',

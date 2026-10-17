@@ -733,7 +733,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
 
   void _onFilterChanged(String column, String? value) {
     _queryVersion++;
-    final param = _c.filterParamOfColumn[column] ?? column;
+    final searching = column.startsWith('search.');
+    final field = searching ? column.substring(7) : column;
+    final mapped = _c.filterParamOfColumn[field] ?? field;
+    final param = searching ? 'search.$mapped' : mapped;
     setState(() {
       final next = Map<String, String?>.from(_filters);
       if (value == null) {
@@ -777,7 +780,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     };
     return {
       for (final e in _filters.entries)
-        (columnOfParam[e.key] ?? e.key): e.value,
+        (e.key.startsWith('search.')
+            ? 'search.${columnOfParam[e.key.substring(7)] ?? e.key.substring(7)}'
+            : (columnOfParam[e.key] ?? e.key)): e
+            .value,
     };
   }
 
@@ -1124,6 +1130,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 facets: _columnFacets,
                 nullCounts: _columnNullCounts,
                 filters: _columnFilters,
+                serverColumnSearch: true,
                 onFilterChanged: _onFilterChanged,
                 // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸 Colors.lightBlue
                 // 收编进语义档）/ 禁用=灰档淡底（停用归中性终态，原浅红把「停用」

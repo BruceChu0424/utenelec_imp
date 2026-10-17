@@ -710,13 +710,21 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     MasterColumnDef(
       key: 'cavities',
       label: '模数',
+      columnSearchEnabled: false,
       width: 80,
       value: (_) => null,
     ),
-    MasterColumnDef(key: 'sets', label: '套数', width: 80, value: (_) => null),
+    MasterColumnDef(
+      key: 'sets',
+      label: '套数',
+      width: 80,
+      columnSearchEnabled: false,
+      value: (_) => null,
+    ),
     MasterColumnDef(
       key: 'mouldType',
       label: '模具类型',
+      columnSearchEnabled: false,
       width: 120,
       value: (_) => null,
     ),

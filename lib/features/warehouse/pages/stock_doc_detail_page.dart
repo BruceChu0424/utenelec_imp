@@ -1263,11 +1263,13 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage> {
                                   controller: _issueRemark,
                                   enabled: !_busy,
                                   maxLength: 200,
-                                  decoration: const InputDecoration(
-                                    labelText: '出库备注(选填)',
-                                    hintText: '随本次出库追加到单据备注留痕',
-                                    counterText: '',
-                                    isDense: true,
+                                  decoration: const UtenInputDecoration(
+                                    InputDecoration(
+                                      labelText: '出库备注(选填)',
+                                      hintText: '随本次出库追加到单据备注留痕',
+                                      counterText: '',
+                                      isDense: true,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: UtenSpacing.s8),
@@ -1964,9 +1966,12 @@ class _CancelIssueDialogState extends State<_CancelIssueDialog> {
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            decoration: const InputDecoration(
-                              border: OutlineInputBorder(),
-                              isDense: true,
+                            decoration: const UtenInputDecoration(
+                              InputDecoration(
+                                labelText: '取消数量',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
                             ),
                           ),
                           _ReturnedWeightHint(
@@ -1985,9 +1990,11 @@ class _CancelIssueDialogState extends State<_CancelIssueDialog> {
               maxLength: 1000,
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: '取消原因(必填)',
-                border: OutlineInputBorder(),
+              decoration: const UtenInputDecoration(
+                InputDecoration(
+                  labelText: '取消原因(必填)',
+                  border: OutlineInputBorder(),
+                ),
               ),
             ),
           ],

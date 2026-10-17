@@ -7,7 +7,7 @@
 
 import 'master_facet.dart';
 
-/// 模具列表项（表格中"有数据"的 7 列 + legacyId）。
+/// 模具列表项；历史模具系列以真实模具分类名称回显，不另造 series。
 ///
 /// 表格里另有 3 列（模数/套数/模具类型）表无对应字段，由前端以 null
 /// 取值显示"—"，不参与后端筛选/facet，故无对应模型字段。
@@ -23,6 +23,7 @@ class MouldListItem {
     this.remark,
     this.legacyId,
     this.categoryId,
+    this.categoryName,
   });
 
   final String id;
@@ -35,6 +36,7 @@ class MouldListItem {
   final String? remark; // 备注
   final int? legacyId;
   final String? categoryId; // 所属分类 id（模具资料页"搜模具定位分类"用）
+  final String? categoryName; // 真实模具系列/分类显示名，关系仍由 categoryId 决定
 
   factory MouldListItem.fromJson(Map<String, dynamic> json) => MouldListItem(
     id: json['id'] as String,
@@ -47,6 +49,7 @@ class MouldListItem {
     remark: json['remark'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     categoryId: json['categoryId'] as String?,
+    categoryName: json['categoryName'] as String?,
   );
 }
 

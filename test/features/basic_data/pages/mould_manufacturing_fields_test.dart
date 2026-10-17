@@ -76,9 +76,8 @@ void main() {
       matching: find.byType(TextField),
     );
     expect(tester.widget<TextField>(monthInput).controller!.text, '2008-09');
-    final manufacturer = find.ancestor(
-      of: find.text('模具制造商'),
-      matching: find.byType(TextField),
+    final manufacturer = find.byWidgetPredicate(
+      (widget) => widget is TextField && widget.decoration?.hintText == '模具制造商',
     );
     await tester.enterText(manufacturer, '测试制造商');
     await tester.tap(find.text('保存'));

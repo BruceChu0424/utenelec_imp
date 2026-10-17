@@ -2,6 +2,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -545,9 +546,11 @@ class _FinanceProcurementApprovalTasksPageState
                       maxLines: 5,
                       maxLength: 1000,
                       onChanged: (v) => setDialogState(() => value = v.trim()),
-                      decoration: const InputDecoration(
-                        labelText: '退回原因(必填)',
-                        hintText: '请写清需要制单人修改的内容',
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(
+                          labelText: '退回原因(必填)',
+                          hintText: '请写清需要制单人修改的内容',
+                        ),
                       ),
                     ),
                   ],

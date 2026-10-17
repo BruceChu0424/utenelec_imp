@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_purchase_receipt_policy_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_purchase_receipt_policy_field.dart';
@@ -131,8 +132,14 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(host.repo.calls, isEmpty);
-    // 字段错误收进输入框内的提示图标(UtenInputDecoration)，按提示文案找。
-    expect(find.byTooltip('请填写 0 到 100 之间的数，最多两位小数；留空表示不预填'), findsOneWidget);
+    final hint = tester.widget<UtenFieldHintIcon>(
+      find.descendant(
+        of: find.byKey(const ValueKey('goods-purchase-over-receipt-input')),
+        matching: find.byType(UtenFieldHintIcon),
+      ),
+    );
+    expect(hint.errorMessage, '请填写 0 到 100 之间的数，最多两位小数；留空表示不预填');
+    expect(hint.info?.split('\n\n'), contains('0 到 100，最多两位小数'));
     expect(host.results, isEmpty, reason: '弹窗仍开着');
   });
 }

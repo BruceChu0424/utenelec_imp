@@ -5,6 +5,7 @@
 // 静态 ctx.initialValue 重新构建（详见 NumberUnitField 同类注释），必须靠自身 state 记账，
 // 否则选中后一 setState 就被冲回旧值。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 
 class PackagingPickerField extends StatefulWidget {
   const PackagingPickerField({
@@ -52,16 +53,18 @@ class _PackagingPickerFieldState extends State<PackagingPickerField> {
     return TextField(
       controller: _ctl,
       readOnly: true,
-      decoration: InputDecoration(
-        labelText: '包装',
-        hintText: '点击从原材料中选择',
-        suffixIcon: hasValue
-            ? IconButton(
-                icon: const Icon(Icons.close_rounded, size: 18),
-                tooltip: '清除',
-                onPressed: () => _set(null),
-              )
-            : const Icon(Icons.chevron_right_rounded),
+      decoration: UtenInputDecoration(
+        InputDecoration(
+          labelText: '包装',
+          hintText: '点击从原材料中选择',
+          suffixIcon: hasValue
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18),
+                  tooltip: '清除',
+                  onPressed: () => _set(null),
+                )
+              : const Icon(Icons.chevron_right_rounded),
+        ),
       ),
       onTap: () async {
         final name = await widget.onPick();

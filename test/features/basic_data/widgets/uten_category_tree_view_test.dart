@@ -1,9 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/payment_style_node.dart';
+import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 
 void main() {
+  testWidgets('主档分类名称旁显示备注且保持分类选择身份', (tester) async {
+    final node = ProductCategoryNode(
+      id: 'goods-category',
+      code: 'FL001',
+      name: '亚美尼',
+      level: 0,
+      children: const [],
+      remark: ' 80N灰色 ',
+    );
+    ProductCategoryNode? selected;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 420,
+            height: 560,
+            child: UtenCategoryTreeView<ProductCategoryNode>(
+              nodes: [node],
+              onNodeTap: (value) => selected = value,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('亚美尼（80N灰色）'), findsOneWidget);
+    expect(find.textContaining('FL001'), findsNothing);
+    await tester.tap(find.text('亚美尼（80N灰色）'));
+    expect(selected, same(node));
+    expect(node.name, '亚美尼');
+    expect(
+      categoryNodeLabel(
+        ProductCategoryNode(
+          id: 'empty',
+          code: 'FL002',
+          name: '无备注',
+          level: 0,
+          children: const [],
+          remark: ' ',
+        ),
+      ),
+      '无备注',
+    );
+  });
+
   testWidgets('搜索同时匹配类别名称和编号', (tester) async {
     await tester.pumpWidget(
       _treeApp([

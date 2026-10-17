@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -124,14 +125,19 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: InputDecoration(
-                    hintText: '让单数量(要大于 0，不超过 $reserved)',
+                  decoration: UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '让单数量',
+                      hintText: '要大于 0，不超过 $reserved',
+                    ),
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s8),
                 TextField(
                   controller: reasonCtrl,
-                  decoration: const InputDecoration(hintText: '让单原因(必填)'),
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(labelText: '让单原因(必填)'),
+                  ),
                 ),
               ],
             ),

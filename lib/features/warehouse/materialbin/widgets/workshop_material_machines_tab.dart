@@ -7,6 +7,7 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -181,6 +182,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
     WmMachineRow row,
     TextEditingController Function(WmMachineRow r) controllerOf, {
     required Key key,
+    required String label,
     bool numeric = false,
   }) => TextField(
     key: key,
@@ -189,7 +191,9 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
     keyboardType: numeric
         ? const TextInputType.numberWithOptions(decimal: true)
         : TextInputType.text,
-    decoration: const InputDecoration(isDense: true),
+    decoration: UtenInputDecoration(
+      InputDecoration(isDense: true, labelText: label),
+    ),
     onChanged: (text) {
       for (final target in _targets(row)) {
         if (target == row) continue;
@@ -219,7 +223,9 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
           key: Key('wm-machine-name-${r.machine.id}'),
           controller: r.name,
           enabled: _busyTitle == null,
-          decoration: const InputDecoration(isDense: true),
+          decoration: const UtenInputDecoration(
+            InputDecoration(isDense: true, labelText: '名称'),
+          ),
         ),
       ),
     ),
@@ -232,6 +238,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
         r,
         (x) => x.model,
         key: Key('wm-machine-model-${r.machine.id}'),
+        label: '型号',
       ),
     ),
     EditableGridColumn<WmMachineRow>(
@@ -246,6 +253,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
         r,
         (x) => x.tonnage,
         key: Key('wm-machine-tonnage-${r.machine.id}'),
+        label: '吨位',
         numeric: true,
       ),
     ),
@@ -260,6 +268,7 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
           r,
           (x) => x.capacityFor(containerName),
           key: Key('wm-machine-cap-${r.machine.id}-$containerName'),
+          label: '$containerName (${l10n.wmKg})',
           numeric: true,
         ),
       ),
@@ -295,7 +304,9 @@ class _WmMachinesTabState extends ConsumerState<WmMachinesTab> {
         controller: r.sortOrder,
         enabled: _busyTitle == null,
         keyboardType: TextInputType.number,
-        decoration: const InputDecoration(isDense: true),
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '排序'),
+        ),
       ),
     ),
   ];
@@ -653,7 +664,9 @@ class _BatchCreateDialogState extends State<_BatchCreateDialog> {
                       key: const Key('wm-batch-count'),
                       controller: _count,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '台数'),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '台数'),
+                      ),
                     ),
                   ),
                   SizedBox(
@@ -661,7 +674,9 @@ class _BatchCreateDialogState extends State<_BatchCreateDialog> {
                     child: TextField(
                       key: const Key('wm-batch-prefix'),
                       controller: _prefix,
-                      decoration: const InputDecoration(labelText: '编号前缀 (选填)'),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '编号前缀 (选填)'),
+                      ),
                     ),
                   ),
                   SizedBox(
@@ -670,7 +685,9 @@ class _BatchCreateDialogState extends State<_BatchCreateDialog> {
                       key: const Key('wm-batch-start'),
                       controller: _startNo,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '起始号'),
+                      decoration: const UtenInputDecoration(
+                        InputDecoration(labelText: '起始号'),
+                      ),
                     ),
                   ),
                 ],
@@ -686,7 +703,9 @@ class _BatchCreateDialogState extends State<_BatchCreateDialog> {
                         child: TextField(
                           key: Key('wm-batch-container-name-$i'),
                           controller: _containers[i].name,
-                          decoration: const InputDecoration(labelText: '容器名称'),
+                          decoration: const UtenInputDecoration(
+                            InputDecoration(labelText: '容器名称'),
+                          ),
                         ),
                       ),
                       const SizedBox(width: UtenSpacing.s8),
@@ -698,8 +717,8 @@ class _BatchCreateDialogState extends State<_BatchCreateDialog> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: const InputDecoration(
-                            labelText: '容量 (公斤)',
+                          decoration: const UtenInputDecoration(
+                            InputDecoration(labelText: '容量 (公斤)'),
                           ),
                         ),
                       ),

@@ -21,6 +21,7 @@ import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../models/goods_node.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/master_status_repository.dart';
@@ -187,6 +188,7 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
       // 局部 SelectionArea：货品详情文字可框选复制（准则 §3.4）。
       body: SelectionArea(
         child: GoodsDetailBody(
+          readBoundary: ref.watch(sensitiveReadBoundaryProvider),
           // 详情拉到后再挂主体；新增态直接进 create。
           key: ValueKey(
             'goods-detail-${_detail?.id ?? 'new-${widget.categoryId}'}',
@@ -205,6 +207,8 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
           // 整页语义下来源页刷新由「返回时重载」统一承担（各入口 push 后
           // await 恢复即刷新），此处无需回调。
           onDataChanged: null,
+          onSaved: () =>
+              popOrBackTo(context, defaultPath: RouteName.basicinfoGoods),
         ),
       ),
     );

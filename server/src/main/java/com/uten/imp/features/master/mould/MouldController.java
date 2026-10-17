@@ -50,6 +50,8 @@ import java.util.UUID;
 @RequestMapping("/api/master/moulds")
 @RequiredArgsConstructor
 public class MouldController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final MouldService service;
     private final AuditDetailViewRecorder detailViewAudit;
@@ -75,7 +77,8 @@ public class MouldController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
         return service.list(new MouldQueryFilter(categoryId, keyword, nullFields,
-                code, name, place, mstatus, remark, status, manufacturer), page, size);
+                code, name, place, mstatus, remark, status, manufacturer).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), page, size);
     }
 
     // ---------- 加密 Excel 导出（POST，密码走 body；过滤参数与 GET /list 一致） ----------
@@ -95,7 +98,8 @@ public class MouldController {
             @RequestParam(required = false) String manufacturer,
             @Valid @RequestBody ExportPasswordRequest body) {
         ExportPayload payload = service.export(new MouldQueryFilter(categoryId, keyword,
-                nullFields, code, name, place, mstatus, remark, status, manufacturer),
+                nullFields, code, name, place, mstatus, remark, status, manufacturer).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)),
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_mould");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

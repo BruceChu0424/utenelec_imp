@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/pages/goods_detail_page.dart';
@@ -48,6 +51,14 @@ void main() {
     });
     final container = ProviderContainer(
       overrides: [
+        sensitiveReadBoundaryProvider.overrideWith(
+          (ref) => SensitiveReadBoundary(
+            identity: null,
+            api: ApiClient(Dio()),
+            permissions: ref.watch(currentPermissionsProvider),
+            superAdmin: false,
+          ),
+        ),
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_testPermissionsProvider),
         ),

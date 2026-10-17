@@ -18,7 +18,13 @@ void main() {
       onChanged: (_) {},
     );
 
-    expect(find.text('请先选择部门'), findsOneWidget);
+    final decoration = tester.widget<InputDecorator>(
+      find.byType(InputDecorator),
+    );
+    expect(decoration.isEmpty, isTrue);
+    expect(decoration.decoration.enabled, isFalse);
+    expect(decoration.decoration.hintText, '岗位');
+    expect(find.text('请先选择部门'), findsNothing);
     await tester.tap(find.byKey(const Key('uten-position-entry-field')));
     await tester.pumpAndSettle();
 

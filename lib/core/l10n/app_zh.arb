@@ -367,7 +367,7 @@
   "securityTitle": "访客核验",
   "securityScanHint": "将访客二维码对准扫码框",
   "securityScanManual": "手动输入凭证",
-  "securityPasscodeHint": "输入6位通行码",
+  "securityPasscodeHint": "通行码",
   "securityPasscodeInvalid": "请输入6位数字通行码",
   "visitorPasscodeLabel": "通行码",
   "securityPass": "允许通行",
@@ -806,7 +806,7 @@
     }
   },
   "noticeBlessingWallEmpty": "还没有祝福，送上第一份祝福吧",
-  "noticeBlessingPlaceholder": "写下你的祝福…",
+  "noticeBlessingPlaceholder": "祝福内容",
   "noticeBlessingSendButton": "发送祝福",
   "noticeBlessingSending": "发送中…",
   "noticeBlessingViewAll": "查看全部 {count} 条",

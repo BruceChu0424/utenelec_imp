@@ -178,6 +178,19 @@ class _FormDraftCategoryTableState<T>
           widget.table.externalFilterKeys.contains(filter.key)) {
         continue;
       }
+      if (filter.key.startsWith('search.')) {
+        final key = filter.key.substring('search.'.length);
+        final column = widget.table.columns
+            .where((column) => column.key == key)
+            .firstOrNull;
+        if (column == null ||
+            !column.supportsKeywordSearch ||
+            widget.table.externalFilterKeys.contains(key)) {
+          continue;
+        }
+        if (!matchesKeywordSearch([_value(draft, key)], expected)) return false;
+        continue;
+      }
       if (filter.key == 'status' || filter.key == 'stage') {
         continue; // category owns draft state
       }
@@ -321,6 +334,7 @@ class _FormDraftCategoryTableState<T>
             type: column.type,
             sortable: column.sortable,
             filterFromRows: column.filterFromRows,
+            columnSearchEnabled: column.columnSearchEnabled,
             info: column.info,
             defaultVisible: column.defaultVisible,
             exportDefinition: column.exportDefinition,
@@ -368,6 +382,7 @@ class _FormDraftCategoryTableState<T>
       facets: table.facets,
       nullCounts: table.nullCounts,
       filters: table.filters,
+      serverColumnSearch: table.serverColumnSearch,
       externalFilterKeys: table.externalFilterKeys,
       onFilterChanged: table.onFilterChanged,
       onRowTap: (row) {

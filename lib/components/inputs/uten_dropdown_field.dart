@@ -23,6 +23,7 @@ import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
+import 'uten_field_placeholder.dart';
 import 'uten_input_decoration.dart';
 import 'uten_table_cell_spec.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
@@ -313,6 +314,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
   String get _selectedDisplay =>
       widget.value == null ? '' : widget.selectedLabel ?? _display;
 
+  String get _menuSearchHint {
+    final label = utenFieldPlaceholder(label: widget.label);
+    return label == null ? '搜索选项' : '搜索$label';
+  }
+
   void _open() {
     if (_overlay != null || !widget.enabled) return;
     final search = _searchCtl = TextEditingController();
@@ -556,12 +562,14 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     }
     return _withAnchor(
       child: InkWell(
-        onTap: _open,
+        onTap: widget.enabled ? _open : null,
         child: InputDecorator(
+          isEmpty: !hasValue,
           decoration: applyRequiredEmpty(
             applyAutofillHint(
               UtenInputDecoration(
                 InputDecoration(
+                  enabled: widget.enabled,
                   isDense: true,
                   contentPadding: compact
                       ? UtenEditableGridCellSpec.contentPaddingOf(context)
@@ -589,7 +597,12 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                           info: widget.info,
                           base: theme.inputDecorationTheme.labelStyle,
                         ),
-                  hintText: widget.hintText,
+                  hintText: widget.label == null
+                      ? utenFieldPlaceholder(
+                          hint: widget.hintText,
+                          fallback: '选项',
+                        )
+                      : widget.hintText ?? widget.label,
                   // 同格内值单行口径：内部 hint 超宽折行同样会撑高字段。
                   hintMaxLines: 1,
                   helper: autofillHint
@@ -617,25 +630,27 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
             theme,
             requiredEmpty: requiredEmpty,
           ),
-          child: Text(
-            hasValue ? _selectedDisplay : (widget.hintText ?? '请选择'),
-            // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
-            // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
-            // 由网格列 textOf 自动加宽兜底，表单里就省略号。
-            maxLines: compact ? 1 : widget.selectedMaxLines,
-            overflow: compact || widget.selectedMaxLines != null
-                ? TextOverflow.ellipsis
-                : TextOverflow.clip,
-            style:
-                (compact
-                        ? theme.textTheme.bodyMedium
-                        : theme.textTheme.bodyLarge)
-                    ?.copyWith(
-                      color: hasValue
-                          ? theme.colorScheme.onSurface
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-          ),
+          child: hasValue
+              ? Text(
+                  _selectedDisplay,
+                  // 单行 + 省略号（2026-09-16 用户口径）：选中值超宽时折成两行会把
+                  // 表格整行撑高（采购付款/结账方式「选完变两行」根因），超宽内容
+                  // 由网格列 textOf 自动加宽兜底，表单里就省略号。
+                  maxLines: compact ? 1 : widget.selectedMaxLines,
+                  overflow: compact || widget.selectedMaxLines != null
+                      ? TextOverflow.ellipsis
+                      : TextOverflow.clip,
+                  style:
+                      (compact
+                              ? theme.textTheme.bodyMedium
+                              : theme.textTheme.bodyLarge)
+                          ?.copyWith(
+                            color: hasValue
+                                ? theme.colorScheme.onSurface
+                                : theme.colorScheme.onSurfaceVariant,
+                          ),
+                )
+              : null,
         ),
       ),
     );
@@ -651,13 +666,19 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     bool requiredEmpty,
     bool autofillHint,
   ) {
-    final display = hasValue ? _selectedDisplay : (widget.hintText ?? '请选择');
+    final display = hasValue
+        ? _selectedDisplay
+        : utenFieldPlaceholder(
+            label: widget.label,
+            hint: widget.hintText,
+            fallback: '选项',
+          )!;
     final message = widget.errorMessage ?? widget.warningMessage;
     return _withAnchor(
       child: Tooltip(
         message: message ?? (hasValue ? _display : display),
         child: InkWell(
-          onTap: _open,
+          onTap: widget.enabled ? _open : null,
           borderRadius: BorderRadius.circular(UtenRadius.xs),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -843,13 +864,14 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                             UtenSpacing.s4,
                           ),
                           child: TextField(
+                            key: const Key('uten-dropdown-search-input'),
                             controller: search,
                             focusNode: focus,
                             autofocus: true,
                             style: theme.textTheme.bodyMedium,
                             decoration: InputDecoration(
                               isDense: true,
-                              hintText: '输入关键字搜索',
+                              hintText: _menuSearchHint,
                               prefixIcon: const Icon(
                                 Icons.search_rounded,
                                 size: 18,
@@ -1120,6 +1142,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
       direction,
       scrollbar,
       searchable,
+      _menuSearchHint,
       widget.allowClear,
       addLabel,
     );
@@ -1163,7 +1186,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
       // typing a narrow search never resizes the original full-choice menu.
       width = math.max(
         width,
-        textWidth('输入关键字搜索', style) + 32 * 2 + UtenSpacing.s8 * 4,
+        textWidth(_menuSearchHint, style) + 32 * 2 + UtenSpacing.s8 * 4,
       );
     }
     if (addLabel != null) {

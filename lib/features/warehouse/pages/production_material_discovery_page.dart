@@ -466,7 +466,8 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
             UtenInputDecoration(
               InputDecoration(
                 isDense: true,
-                hintText: '需要填写',
+                hintText: l10n.materialDiscoveryQuantity,
+                hintMaxLines: 1,
                 suffixText: (row.values['unitName'] as String?)?.trim(),
                 error: _validationShown && row.quantityError != null
                     ? UtenFieldMessage.error(row.quantityError!)
@@ -483,11 +484,15 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       key: 'warehouse',
       label: '${l10n.materialDiscoveryWarehouse} *',
       width: 200,
-      value: (row) => row.values['warehouseName'] as String? ?? '需要填写',
+      value: (row) =>
+          row.values['warehouseName'] as String? ??
+          l10n.materialDiscoveryWarehouse,
       cellBuilderHandlesSemantics: true,
       cellBuilder: (_, row) => UtenTableCellAction(
         key: ValueKey('discovery-warehouse-${row.id}'),
-        label: row.values['warehouseName'] as String? ?? '需要填写',
+        label:
+            row.values['warehouseName'] as String? ??
+            l10n.materialDiscoveryWarehouse,
         error: row.values['warehouseId'] == null,
         onPressed: _editable ? () => _pickWarehouse(row) : null,
       ),

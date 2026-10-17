@@ -904,11 +904,13 @@ class _FinanceDecisionPanel extends StatelessWidget {
                 minLines: 3,
                 maxLines: 5,
                 maxLength: 1000,
-                decoration: InputDecoration(
-                  labelText: value == FinanceArrivalDecision.rejectExcess
-                      ? '财务理由(可选)'
-                      : '财务理由(必填)',
-                  hintText: '说明批准超量的业务依据',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: value == FinanceArrivalDecision.rejectExcess
+                        ? '财务理由(可选)'
+                        : '财务理由(必填)',
+                    hintText: '说明批准超量的业务依据',
+                  ),
                 ),
               ),
             ],

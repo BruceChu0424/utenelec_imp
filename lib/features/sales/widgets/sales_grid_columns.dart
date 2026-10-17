@@ -13,6 +13,7 @@
 // 识别客户文件导入或手填; 文件单价只读、仅有值时出现); 报价单价可议价，订货锁定、
 // 折扣可编辑(可留空交财务核价); 识别结果里需要核对的行货品格黄框提醒。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import '../../../shared/widgets/sales_document_layout.dart';
 import '../../../shared/business_columns/business_columns_row.dart';
 import '../intake/sales_intake_l10n.dart';
@@ -688,7 +689,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                     valueListenable: row.goodsNotifier,
                     builder: (context, g, _) => g == null
                         ? Text(
-                            '点击选择',
+                            utenFieldPlaceholder(label: '货品名称')!,
                             style: TextStyle(
                               color: Theme.of(
                                 context,
@@ -826,7 +827,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                 UtenInputDecoration(
                   InputDecoration(
                     isDense: true,
-                    hintText: '0',
+                    labelText: '数量',
                     suffixText: unitEntries[unitId ?? ''],
                   ),
                 ),
@@ -889,7 +890,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
                           ),
                           decoration: decorate(
                             const UtenInputDecoration(
-                              InputDecoration(isDense: true, hintText: '0'),
+                              InputDecoration(isDense: true, labelText: '单价'),
                             ),
                           ),
                         ),
@@ -1098,6 +1099,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         listenableOf: (r) => r.solutionNotifier,
         chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
         cellBuilder: (context, row) => _returnDropdown(
+          '处理方案',
           row.solutionNotifier,
           const ['退款', '换货', '补发', '维修后返还', '其他'],
         ),
@@ -1110,6 +1112,7 @@ List<EditableGridColumn<SalesGridRow>> salesGridColumns({
         listenableOf: (r) => r.responsibleNotifier,
         chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
         cellBuilder: (context, row) => _returnDropdown(
+          '责任单位',
           row.responsibleNotifier,
           const ['本公司', '客户', '物流', '供应商', '其他'],
         ),
@@ -1248,7 +1251,9 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
         : TextField(
             controller: controller(row),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(isDense: true, hintText: '0'),
+            decoration: UtenInputDecoration(
+              InputDecoration(isDense: true, labelText: label),
+            ),
           ),
   );
 }
@@ -1256,13 +1261,17 @@ EditableGridColumn<SalesGridRow> _extraNumericColumn(
 /// 退货「处理方案 / 责任单位」下拉单元格：订阅 [notifier]，预置业务选项。
 /// 2026-09-16 起本文件内统一用自家 UtenDropdownField（单行省略号 + 列宽自适应 +
 /// 统一弹层），不再出现原生 DropdownButtonFormField（全站其余处的替换由下拉
-/// 组件批次负责）。空格占位用组件默认「请选择」——格内提示字已按 2026-09-27
-/// 口径清掉（列头已表意）。
-Widget _returnDropdown(ValueNotifier<String?> notifier, List<String> options) {
+/// 组件批次负责）。空格按当前列显示「处理方案」或「责任单位」，选中值仍用业务原文。
+Widget _returnDropdown(
+  String label,
+  ValueNotifier<String?> notifier,
+  List<String> options,
+) {
   return ValueListenableBuilder<String?>(
     valueListenable: notifier,
     builder: (context, value, _) => UtenDropdownField(
       dense: true,
+      label: label,
       value: value,
       items: [for (final o in options) UtenDropdownItem(value: o, label: o)],
       onChanged: (v) => notifier.value = v,

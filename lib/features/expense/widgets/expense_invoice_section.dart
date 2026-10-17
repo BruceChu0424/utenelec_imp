@@ -939,17 +939,19 @@ class _ExpenseInvoiceFormDialogState
                                 UtenRadius.md,
                               ),
                               child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: '开票日期',
-                                  border: OutlineInputBorder(),
-                                  suffixIcon: Icon(
-                                    Icons.calendar_today_outlined,
-                                    size: 18,
+                                decoration: const UtenInputDecoration(
+                                  InputDecoration(
+                                    labelText: '开票日期',
+                                    border: OutlineInputBorder(),
+                                    suffixIcon: Icon(
+                                      Icons.calendar_today_outlined,
+                                      size: 18,
+                                    ),
                                   ),
                                 ),
                                 child: Text(
                                   _issueDate == null
-                                      ? '—'
+                                      ? '开票日期'
                                       : '${_issueDate!.year}-${_issueDate!.month.toString().padLeft(2, '0')}-${_issueDate!.day.toString().padLeft(2, '0')}',
                                 ),
                               ),
@@ -989,9 +991,11 @@ class _ExpenseInvoiceFormDialogState
                             child: TextField(
                               controller: _sellerController,
                               onChanged: (_) => _scheduleDuplicateCheck(),
-                              decoration: const InputDecoration(
-                                labelText: '销售方名称',
-                                border: OutlineInputBorder(),
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(
+                                  labelText: '销售方名称',
+                                  border: OutlineInputBorder(),
+                                ),
                               ),
                             ),
                           ),
@@ -999,9 +1003,11 @@ class _ExpenseInvoiceFormDialogState
                           Expanded(
                             child: TextField(
                               controller: _sellerTaxController,
-                              decoration: const InputDecoration(
-                                labelText: '销售方税号',
-                                border: OutlineInputBorder(),
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(
+                                  labelText: '销售方税号',
+                                  border: OutlineInputBorder(),
+                                ),
                               ),
                             ),
                           ),
@@ -1033,9 +1039,11 @@ class _ExpenseInvoiceFormDialogState
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: const InputDecoration(
-                                labelText: '合计税额',
-                                border: OutlineInputBorder(),
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(
+                                  labelText: '合计税额',
+                                  border: OutlineInputBorder(),
+                                ),
                               ),
                             ),
                           ),
@@ -1048,10 +1056,12 @@ class _ExpenseInvoiceFormDialogState
                                   const TextInputType.numberWithOptions(
                                     decimal: true,
                                   ),
-                              decoration: const InputDecoration(
-                                labelText: '价税合计 *',
-                                suffixText: '元',
-                                border: OutlineInputBorder(),
+                              decoration: const UtenInputDecoration(
+                                InputDecoration(
+                                  labelText: '价税合计 *',
+                                  suffixText: '元',
+                                  border: OutlineInputBorder(),
+                                ),
                               ),
                             ),
                           ),
@@ -1095,9 +1105,11 @@ class _ExpenseInvoiceFormDialogState
                       TextField(
                         controller: _remarkController,
                         maxLines: 2,
-                        decoration: const InputDecoration(
-                          labelText: '备注（选填）',
-                          border: OutlineInputBorder(),
+                        decoration: const UtenInputDecoration(
+                          InputDecoration(
+                            labelText: '备注（选填）',
+                            border: OutlineInputBorder(),
+                          ),
                         ),
                       ),
                     ],

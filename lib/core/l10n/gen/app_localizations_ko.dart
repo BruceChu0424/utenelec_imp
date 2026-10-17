@@ -922,7 +922,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityScanManual => '코드 직접 입력';
 
   @override
-  String get securityPasscodeHint => '6자리 출입 코드 입력';
+  String get securityPasscodeHint => '출입 코드';
 
   @override
   String get securityPasscodeInvalid => '6자리 숫자 출입 코드를 입력해 주세요';
@@ -1990,7 +1990,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get noticeBlessingWallEmpty => '아직 축복이 없어요 — 첫 축복을 보내보세요';
 
   @override
-  String get noticeBlessingPlaceholder => '축복 메시지를 입력하세요…';
+  String get noticeBlessingPlaceholder => '축복 메시지';
 
   @override
   String get noticeBlessingSendButton => '축복 보내기';

@@ -1,5 +1,7 @@
 package com.uten.imp.features.sales.quote;
 
+import com.uten.imp.common.web.HeaderColumnFilter;
+
 import com.uten.imp.application.port.SalesMasterLearningPort.LearnedLine;
 import com.uten.imp.application.port.SalesQuoteNoticePort;
 import com.uten.imp.application.port.TaskClaimMutationGuardPort;
@@ -225,6 +227,9 @@ public class SalesQuoteService {
             }
             if (f.currencyId() != null) ps.add(cb.equal(root.get("currencyId"), f.currencyId()));
             f.headerFilters().apply(root, cb, ps, "totalLocal", priceMasker != null && priceMasker.canView(), "deliverDate", false, null, false);
+            f.headerFilters().applySearch(root, q, cb, ps, java.util.Map.of(
+                    "billNo", HeaderColumnFilter.SearchField.text("billNo"),
+                    "client", HeaderColumnFilter.SearchField.reference("clientId", com.uten.imp.features.master.client.Client.class)));
             return cb.and(ps.toArray(new Predicate[0]));
         };
     }

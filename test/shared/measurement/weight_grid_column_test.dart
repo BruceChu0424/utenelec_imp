@@ -495,14 +495,14 @@ void main() {
     await _pump(tester, [
       _Row(params: _learned, qty: '10000'),
     ], mode: WeightCaptureMode.outbound);
-    expect(_input(tester).decoration!.hintText, '应称 19.993');
+    expect(_input(tester).decoration!.hintText, '重量');
 
     await _pump(tester, [_Row(params: _red, qty: '10000')]);
-    expect(_input(tester).decoration!.hintText, '可选');
+    expect(_input(tester).decoration!.hintText, '重量');
     expect(_input(tester).controller!.text, isEmpty);
 
     await _pump(tester, [_Row(qty: '10000')]);
-    expect(_input(tester).decoration!.hintText, '可选');
+    expect(_input(tester).decoration!.hintText, '重量');
   });
 
   testWidgets('所有统计偏差均黄框文字提醒，正常只有悬停说明，无单元格提示图标', (tester) async {

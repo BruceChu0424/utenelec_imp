@@ -12,6 +12,7 @@ import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_bottom_action_bar.dart';
 import '../../../core/network/api_exception.dart';
@@ -539,7 +540,9 @@ class _AdminDataHandoverPanelState
             },
             borderRadius: UtenRadius.mdAll,
             child: InputDecorator(
-              decoration: const InputDecoration(labelText: '生效日期'),
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '生效日期'),
+              ),
               child: Text(
                 DateFormat('yyyy-MM-dd').format(_effectiveDate),
                 style: Theme.of(context).textTheme.bodyLarge,

@@ -884,7 +884,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get securityScanManual => '手动输入凭证';
 
   @override
-  String get securityPasscodeHint => '输入6位通行码';
+  String get securityPasscodeHint => '通行码';
 
   @override
   String get securityPasscodeInvalid => '请输入6位数字通行码';
@@ -1936,7 +1936,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get noticeBlessingWallEmpty => '还没有祝福，送上第一份祝福吧';
 
   @override
-  String get noticeBlessingPlaceholder => '写下你的祝福…';
+  String get noticeBlessingPlaceholder => '祝福内容';
 
   @override
   String get noticeBlessingSendButton => '发送祝福';

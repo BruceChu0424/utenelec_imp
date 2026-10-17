@@ -532,6 +532,7 @@ class _SubcontractBusinessListPageState
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
             billNo: _columnFilters['billNo'],
+            columnSearch: _columnFilters.values,
           ),
           sort: _controller.sortKey,
           order: _controller.sortOrder,
@@ -550,6 +551,7 @@ class _SubcontractBusinessListPageState
             .read(subcontractRepositoryProvider(_p.type))
             .billNoFacets(
               filter: SubcontractDocFilter(
+                columnSearch: _columnFilters.values,
                 keyword: _controller.keyword.trim(),
                 supplierId: _supplierIdFilter,
                 warehouseId: _warehouseIdFilter,
@@ -656,7 +658,7 @@ class _SubcontractBusinessListPageState
       _selectSeg(next);
       return;
     }
-    if (key == 'billNo') {
+    if (key == 'billNo' || key.startsWith('search.')) {
       _columnFilters.handleFilterChanged(
         key,
         value,
@@ -946,6 +948,7 @@ class _SubcontractBusinessListPageState
                               'features.subcontract.pages.subcontract_business_list_pages.SubcontractBusinessListPageState.build.1',
                           // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                           primary: true,
+                          serverColumnSearch: true,
                           columns: _p.columns(
                             names,
                             _canViewCommercial &&
@@ -995,6 +998,7 @@ class _SubcontractBusinessListPageState
                           },
                           nullCounts: const {},
                           filters: {
+                            ..._columnFilters.values,
                             'status': _statusFilterValue,
                             if (_p.type == SubcontractDocType.returnDoc)
                               'apReverse': _apPostedFilter?.toString(),

@@ -42,6 +42,7 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final orderText = salesOrderBillNo ?? salesOrderId ?? '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -49,9 +50,10 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
           children: [
             InputDecorator(
               key: const ValueKey('customer-prepayment-receipt-order'),
+              isEmpty: orderText.trim().isEmpty,
               decoration: UtenInputDecoration(
                 InputDecoration(
-                  labelText: '销售订单(必选)',
+                  label: requiredLabel('销售订单', theme, required: true),
                   suffixIcon: Padding(
                     padding: const EdgeInsets.only(right: UtenSpacing.s4),
                     child: UtenButton(
@@ -68,7 +70,7 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
                 info: workflowFieldText(context).workflowPrepaymentOrderHint,
               ),
               child: Text(
-                salesOrderBillNo ?? salesOrderId ?? '尚未选择',
+                orderText,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodyLarge,

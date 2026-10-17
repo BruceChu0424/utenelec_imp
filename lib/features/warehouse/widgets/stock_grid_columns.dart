@@ -15,6 +15,7 @@
 // (账面/盘盈亏) 用 formatQtyWithUnit 内联单位，输入格 (数量/实盘) 单位放
 // decoration suffixText——控制器文本保持纯数字，解析口径不变。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
@@ -300,7 +301,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
                   child: ValueListenableBuilder<GoodsOption?>(
                     valueListenable: row.goodsNotifier,
                     builder: (context, g, _) => Text(
-                      g?.name ?? '点击选择',
+                      g?.name ?? utenFieldPlaceholder(label: '货品名称')!,
                       style: TextStyle(
                         color: g == null
                             ? Theme.of(context).colorScheme.onSurfaceVariant
@@ -428,12 +429,15 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           readOnly: true,
           controller: row.bookQty,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: InputDecoration(
-            isDense: true,
-            filled: true,
-            hintText: '选择货品后读取',
-            suffixText: row.unitName,
-            suffixIcon: const Icon(Icons.lock_outline, size: 16),
+          decoration: UtenInputDecoration(
+            InputDecoration(
+              isDense: true,
+              filled: true,
+              labelText: '账面数量',
+              hintText: '选择货品后读取',
+              suffixText: row.unitName,
+              suffixIcon: const Icon(Icons.lock_outline, size: 16),
+            ),
           ),
         ),
       ),
@@ -451,7 +455,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           child: WarehouseQtyInputField(
             fieldKey: const ValueKey('stock-grid-check-qty'),
             controller: row.checkQty,
-            hintText: '0',
+            hintText: '实盘数量',
             suffixText: row.unitName,
             sourceOf: () => row.countWeight.qtyEstimateNote ?? '按称重推算的实盘数量，请核对',
           ),
@@ -520,7 +524,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           child: WarehouseQtyInputField(
             fieldKey: const ValueKey('stock-grid-qty'),
             controller: row.qty,
-            hintText: '0',
+            hintText: '数量',
             suffixText: row.unitName,
             sourceOf: () => row.weight.qtyEstimateNote ?? '按称重推算的数量，请核对',
           ),

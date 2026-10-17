@@ -336,14 +336,30 @@ void main() {
       await tester.tap(find.text('下载表格'));
       await tester.pumpAndSettle();
 
-      expect(find.text('打开密码(可选，1–128 位)'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is TextField && w.decoration?.labelText == '打开密码(可选，1–128 位)',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('直接下载'), findsOneWidget);
-      expect(find.text('确认密码'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == '确认密码',
+        ),
+        findsNothing,
+      );
 
       await tester.enterText(find.byType(TextField), '1');
       await tester.pump();
 
-      expect(find.text('确认密码'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == '确认密码',
+        ),
+        findsOneWidget,
+      );
       expect(find.text('加密下载'), findsOneWidget);
     },
   );

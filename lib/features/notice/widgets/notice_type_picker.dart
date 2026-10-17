@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_picker_confirm_bar.dart';
+import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/notice.dart';
@@ -60,9 +61,12 @@ class NoticeTypePicker extends StatelessWidget {
       onTap: enabled ? () => _open(context) : null,
       borderRadius: UtenRadius.smAll,
       child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: l10n.noticePublishTypeLabel,
-          prefixIcon: Icon(current.icon, color: current.color),
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            enabled: enabled,
+            labelText: l10n.noticePublishTypeLabel,
+            prefixIcon: Icon(current.icon, color: current.color),
+          ),
         ),
         child: Row(
           children: [

@@ -12,6 +12,7 @@
 // 库存不足、版本冲突整笔不成功, 页面保留输入; 原样再点确认是同一个请求号, 不会重复发。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -555,9 +556,8 @@ class _WorkshopMaterialIssuePageState
             controller: controller,
             autofocus: true,
             maxLength: 500,
-            decoration: const InputDecoration(
-              labelText: '取消原因',
-              counterText: '',
+            decoration: const UtenInputDecoration(
+              InputDecoration(labelText: '取消原因', counterText: ''),
             ),
           ),
           actionsAlignment: MainAxisAlignment.center,

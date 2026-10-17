@@ -337,7 +337,7 @@
   "securityTitle": "방문자 확인",
   "securityScanHint": "방문자 QR을 스캔 영역에 맞춰 주세요",
   "securityScanManual": "코드 직접 입력",
-  "securityPasscodeHint": "6자리 출입 코드 입력",
+  "securityPasscodeHint": "출입 코드",
   "securityPasscodeInvalid": "6자리 숫자 출입 코드를 입력해 주세요",
   "visitorPasscodeLabel": "출입 코드",
   "securityPass": "입장 허용",
@@ -709,7 +709,7 @@
     }
   },
   "noticeBlessingWallEmpty": "아직 축복이 없어요 — 첫 축복을 보내보세요",
-  "noticeBlessingPlaceholder": "축복 메시지를 입력하세요…",
+  "noticeBlessingPlaceholder": "축복 메시지",
   "noticeBlessingSendButton": "축복 보내기",
   "noticeBlessingSending": "전송 중…",
   "noticeBlessingViewAll": "전체 {count}건 보기",

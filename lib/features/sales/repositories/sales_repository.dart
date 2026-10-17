@@ -37,6 +37,7 @@ class SalesDocFilter {
     this.stage,
     this.bucket,
     this.billNo,
+    this.columnSearch = const {},
   });
   final String? keyword;
   final String? clientId;
@@ -60,6 +61,14 @@ class SalesDocFilter {
 
   /// 单据号表头值筛选（2026-09-25 单号列统一）：服务端精确匹配。
   final String? billNo;
+  final Map<String, String?> columnSearch;
+  Map<String, dynamic> get columnSearchQuery => {
+    for (final entry in columnSearch.entries)
+      if (entry.key.startsWith('search.') &&
+          entry.value != null &&
+          entry.value!.trim().isNotEmpty)
+        entry.key: entry.value!.trim(),
+  };
 }
 
 class SalesRepository {
@@ -79,6 +88,7 @@ class SalesRepository {
     String? order,
   }) async {
     final query = <String, dynamic>{
+      ...filter.columnSearchQuery,
       'page': page,
       'size': size,
       if (type == SalesDocType.customerShipment)
@@ -121,6 +131,7 @@ class SalesRepository {
     SalesDocFilter filter = const SalesDocFilter(),
   }) async {
     final query = <String, dynamic>{
+      ...filter.columnSearchQuery,
       if (type == SalesDocType.customerShipment)
         'shipmentKind': 'DIRECT_CUSTOMER',
       if (filter.keyword != null && filter.keyword!.trim().isNotEmpty)

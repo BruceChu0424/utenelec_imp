@@ -13,6 +13,7 @@ import 'package:uten_imp/components/data_display/uten_revision_table.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -326,6 +327,15 @@ void main() {
     });
     final repository = _ExactWorkflowRepo(pending);
     await _pumpReviewPage(tester, repository);
+    final rateField = find.byKey(const Key('finance-order-review-rate-field'));
+    expect(tester.widget<TextField>(rateField).decoration?.hintText, '财务核定汇率');
+    final rateHint = tester.widget<UtenFieldHintIcon>(
+      find.descendant(of: rateField, matching: find.byType(UtenFieldHintIcon)),
+    );
+    expect(
+      rateHint.info?.split('\n\n'),
+      containsAll(['汇率必须大于 0。', '已带入前次财务核定汇率作为本次参考，请核对后通过。']),
+    );
     expect(
       tester
           .widget<TextField>(
@@ -1323,14 +1333,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.approved, isEmpty);
     // 2026-10-10 字段消息契约：错误文案收进格内 ⓘ（Tooltip），不再有裸 errorText。
-    expect(find.byTooltip('汇率须大于 0，整数最多 12 位，小数最多 6 位'), findsOneWidget);
+    expect(
+      find.byTooltip(RegExp('汇率须大于 0，整数最多 12 位，小数最多 6 位')),
+      findsOneWidget,
+    );
 
     await tester.enterText(field, '');
     await tester.pump();
     await tester.tap(find.byKey(const Key('finance-order-review-approve')));
     await tester.pumpAndSettle();
     expect(repository.approved, isEmpty);
-    expect(find.byTooltip('请填写大于 0 的汇率'), findsOneWidget);
+    expect(find.byTooltip(RegExp('请填写大于 0 的汇率')), findsOneWidget);
   });
 
   testWidgets('通过提交带编辑后的汇率', (tester) async {

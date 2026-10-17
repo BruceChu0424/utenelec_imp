@@ -4,6 +4,7 @@
 // "仓库还有 X 公斤 / 内料仓估计还剩 Y 公斤"。提交只生成申请, 服务端通知该仓仓管。
 // 提交失败保留输入; 原样再点提交用同一个请求号, 服务端不会重复登记。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -322,9 +323,11 @@ class _WorkshopMaterialRequestPanelState
                           controller: _remark,
                           enabled: !_saving,
                           maxLength: 500,
-                          decoration: const InputDecoration(
-                            labelText: '备注 (选填)',
-                            counterText: '',
+                          decoration: const UtenInputDecoration(
+                            InputDecoration(
+                              labelText: '备注 (选填)',
+                              counterText: '',
+                            ),
                           ),
                         ),
                         if (_submitError != null)

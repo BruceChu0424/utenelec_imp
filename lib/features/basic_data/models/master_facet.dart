@@ -95,7 +95,7 @@ const Set<String> kContactSensitiveFilterKeys = {
 
 /// 取出要放进请求体的敏感检索值：搜索框关键字 + 敏感列筛选值。
 /// 「筛为空」哨兵只暴露字段名，仍随 nullFields 走查询串。
-Map<String, String> contactSensitiveFilterBody(
+Map<String, dynamic> contactSensitiveFilterBody(
   Map<String, String?> filters, {
   String? keyword,
 }) => {
@@ -106,6 +106,21 @@ Map<String, String> contactSensitiveFilterBody(
         entry.value != kMasterFilterNullValue &&
         entry.value!.trim().isNotEmpty)
       entry.key: entry.value!,
+  if (filters.entries.any(
+    (entry) =>
+        entry.key.startsWith('search.') &&
+        kContactSensitiveFilterKeys.contains(entry.key.substring(7)) &&
+        entry.value != null &&
+        entry.value!.trim().isNotEmpty,
+  ))
+    'columnSearch': {
+      for (final entry in filters.entries)
+        if (entry.key.startsWith('search.') &&
+            kContactSensitiveFilterKeys.contains(entry.key.substring(7)) &&
+            entry.value != null &&
+            entry.value!.trim().isNotEmpty)
+          entry.key.substring(7): entry.value!,
+    },
 };
 
 /// 去掉敏感筛选值后的筛选表 (敏感字段的「筛为空」哨兵保留)。
@@ -113,7 +128,11 @@ Map<String, String?> withoutContactSensitiveValues(
   Map<String, String?> filters,
 ) => {
   for (final entry in filters.entries)
-    if (!kContactSensitiveFilterKeys.contains(entry.key) ||
+    if ((!kContactSensitiveFilterKeys.contains(entry.key) &&
+            !(entry.key.startsWith('search.') &&
+                kContactSensitiveFilterKeys.contains(
+                  entry.key.substring(7),
+                ))) ||
         entry.value == kMasterFilterNullValue)
       entry.key: entry.value,
 };

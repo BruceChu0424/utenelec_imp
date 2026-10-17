@@ -55,6 +55,8 @@ import java.util.UUID;
 @RequestMapping("/api/master/goods")
 @RequiredArgsConstructor
 public class GoodsController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final GoodsService service;
     private final XlsxExportService xlsxExport;
@@ -102,7 +104,8 @@ public class GoodsController {
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
                 excludeStub, disabledOnly, stubOnly,
-                owningWarehouse, owningWorkshop, includeRelated), page, size, sort, order);
+                owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), page, size, sort, order);
     }
 
     /** 统一选择器搜索定位：只返回受 scope/权限约束的命中货品分类 id，不下载全部货品页。 */
@@ -110,13 +113,15 @@ public class GoodsController {
     @PreAuthorize("hasAuthority('goods:view')")
     public java.util.List<UUID> searchCategoryIds(
             @org.springframework.web.bind.annotation.ModelAttribute GoodsQueryFilter filter) {
-        return service.matchingCategoryIds(filter);
+        return service.matchingCategoryIds(filter.withColumnSearch(
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)));
     }
 
     @GetMapping("/facets")
     @PreAuthorize("hasAuthority('goods:view')")
     public GoodsFacets facets(@org.springframework.web.bind.annotation.ModelAttribute GoodsQueryFilter filter) {
-        return service.queryFacets(filter);
+        return service.queryFacets(filter.withColumnSearch(
+                com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)));
     }
 
     /** 按 id 批量解析货品名（采购单据明细展示用；goods:view 全员有）。 */
@@ -182,9 +187,11 @@ public class GoodsController {
                 series, model, material, code, name, spec, cNumber, requireRemark,
                 mouldCode, rearInsertCode, paper,
                 colorLegacyId, unitLegacyId, sourceType, excludeDisabled,
-                excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated), sort, order,
+                excludeStub, disabledOnly, stubOnly, owningWarehouse, owningWorkshop, includeRelated).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), sort, order,
                 exportLimits.exportMaxRows());
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_goods");
+        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(),
+                GoodsExportProjection.forImportTemplate(body.columnProjection()), "master_goods");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),
                 "export_goods", "master_data", String.valueOf(payload.total()), "success"));

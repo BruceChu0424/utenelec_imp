@@ -672,9 +672,23 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     final repo = ref.read(goodsRepositoryProvider);
     final isOrphan = category.systemManaged;
     final results = await Future.wait<PagedResult<GoodsListItem>?>([
-      repo.list(query.categoryId, disabledOnly: true, size: 500),
+      repo.list(
+        query.categoryId,
+        disabledOnly: true,
+        size: 500,
+        filters: query.filters,
+        sort: query.sort,
+        order: query.order,
+      ),
       isOrphan
-          ? repo.list(null, stubOnly: true, size: 500)
+          ? repo.list(
+              null,
+              stubOnly: true,
+              size: 500,
+              filters: query.filters,
+              sort: query.sort,
+              order: query.order,
+            )
           : Future<PagedResult<GoodsListItem>?>.value(),
     ]);
     final disabled = results[0];
@@ -761,6 +775,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       'shortName': d.shortName,
       'sourceType': d.sourceType,
       'model': d.model,
+      'cNumber': d.cNumber,
       'spec': d.spec,
       'material': d.material,
       'series': d.series,
@@ -1600,6 +1615,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     MasterColumnDef(
       key: 'sourceType',
       label: '来源',
+      columnSearchEnabled: false,
       width: 70,
       value: (g) => g.sourceType,
     ),

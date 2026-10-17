@@ -297,11 +297,19 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 
   String canonicalKey(String key) => binding?.columnAliases[key] ?? key;
+  String _canonicalFilterKey(String key) => key.startsWith('search.')
+      ? 'search.${canonicalKey(key.substring(7))}'
+      : canonicalKey(key);
   PlatformTableLayout localLayout(
     List<String> keys, {
     required Set<String> defaultHidden,
   }) {
     final byCanonical = {for (final key in keys) canonicalKey(key): key};
+    final byCanonicalFilter = {
+      ...byCanonical,
+      for (final entry in byCanonical.entries)
+        'search.${entry.key}': 'search.${entry.value}',
+    };
     final savedOrder = layout.order.map(canonicalKey).toList();
     final requestedOrder = savedOrder.isNotEmpty
         ? savedOrder
@@ -334,8 +342,8 @@ class PlatformTableController<T> extends ChangeNotifier {
     return layout.copyWith(
       filters: {
         for (final entry in layout.filters.entries)
-          if (byCanonical.containsKey(canonicalKey(entry.key)))
-            byCanonical[canonicalKey(entry.key)]!: entry.value,
+          if (byCanonicalFilter.containsKey(_canonicalFilterKey(entry.key)))
+            byCanonicalFilter[_canonicalFilterKey(entry.key)]!: entry.value,
       },
       sortColumn: layout.sortColumn == null
           ? null
@@ -405,7 +413,7 @@ class PlatformTableController<T> extends ChangeNotifier {
       layout.copyWith(
         filters: {
           for (final entry in filters.entries)
-            canonicalKey(entry.key): entry.value,
+            _canonicalFilterKey(entry.key): entry.value,
         },
         sortColumn: sortColumn == null ? null : canonicalKey(sortColumn),
         clearSort: sortColumn == null,

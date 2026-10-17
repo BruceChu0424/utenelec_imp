@@ -14,7 +14,12 @@ public record ContactSensitiveFilter(
         @Size(max = 200) String mobile,
         @Size(max = 200) String phone,
         @Size(max = 200) String phone2,
-        @Size(max = 200) String bankAccount) {
+        @Size(max = 200) String bankAccount,
+        @Size(max = 160) java.util.Map<@Size(max = 100) String, @Size(max = 200) String> columnSearch) {
+
+    public ContactSensitiveFilter(String keyword, String mobile, String phone, String phone2, String bankAccount) {
+        this(keyword, mobile, phone, phone2, bankAccount, java.util.Map.of());
+    }
 
     public static final ContactSensitiveFilter NONE =
             new ContactSensitiveFilter(null, null, null, null, null);

@@ -199,9 +199,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                         false));
         FulfillmentWorkbenchQueryService service =
                 new FulfillmentWorkbenchQueryService(entityManager, accessPolicy);
-        // ADR-065 修订（2026-09-03）：任务行按单据归组——task_id 即申请单 id
-        // （明细行 id 收敛进 actionItemIds）；受限行单据元数据被脱敏，只能按
-        // task_id 定位该行。
+        // Purchase tasks retain the real request item; document metadata remains fenced.
         UUID requestId = transactions.execute(status ->
                 (UUID) entityManager.createNativeQuery("""
                                 SELECT request_id FROM purchase_request_items WHERE id = :itemId
@@ -212,7 +210,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
                 service.query("PURCHASE", "", "", "", null, null, 1, 100));
         assertNotNull(page);
         FulfillmentTaskRow task = page.items().stream()
-                .filter(row -> row.taskId().equals(requestId))
+                .filter(row -> row.taskId().equals(purchaseTaskId))
                 .findFirst()
                 .orElseThrow();
 
@@ -250,7 +248,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
         FulfillmentWorkbenchPage openPage = transactions.execute(status ->
                 service.query("PURCHASE", "", "", "", null, null, 1, 100));
         FulfillmentTaskRow openTask = openPage.items().stream()
-                .filter(row -> row.taskId().equals(requestId))
+                .filter(row -> row.taskId().equals(purchaseTaskId))
                 .findFirst()
                 .orElseThrow();
         assertEquals(
@@ -260,7 +258,7 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
     }
 
     @Test
-    void groupedGoodsSearchFindsEveryRealLineAndRanksNamesBeforeCodesBeforePaging() throws Exception {
+    void itemGoodsSearchFindsEveryRealLineAndRanksNamesBeforeCodesBeforePaging() throws Exception {
         String word = "KW" + UUID.randomUUID().toString().replace("-", "");
         UUID[] requests = new UUID[3];
         try (Connection connection = connection()) {
@@ -296,16 +294,137 @@ class FulfillmentWorkbenchProvisionalStockPostgresTest {
             assertNotNull(result);
             assertEquals(3L, result.total());
             assertEquals(3L, result.summary().totalTasks());
-            ranked.add(result.items().getFirst().taskId());
+            ranked.add(result.items().getFirst().actionDocId());
         }
         assertEquals(List.of(requests[0], requests[2], requests[1]), ranked);
         var literal = transactions.execute(status -> service.query("PURCHASE", "", word + " M3_20%", "", null, null, 1, 1));
         assertNotNull(literal);
         assertEquals(1L, literal.total());
-        assertEquals(requests[2], literal.items().getFirst().taskId());
-        assertEquals(2L, literal.items().getFirst().goodsCount());
+        assertEquals(requests[2], literal.items().getFirst().actionDocId());
+        assertEquals(1L, literal.items().getFirst().goodsCount());
         assertEquals(1L, literal.summary().pendingTasks());
         assertTrue(transactions.execute(status -> service.query("PURCHASE", "", word + " M3X20A", "", null, null, 1, 20)).items().isEmpty());
+    }
+
+    @Test
+    void purchaseOrderHistoryKeepsEveryItemQuantitySupplierAndIndependentColumnSearch() throws Exception {
+        UUID order = UUID.randomUUID();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID supplier = UUID.randomUUID();
+        String supplierName = "供应商" + supplier;
+        String number = businessIdentifier("CD", LocalDate.now());
+        try (Connection connection = connection()) {
+            Fixture data = fixture(connection);
+            // Deliberately put A in B's code: name-column words must never match the separate code column.
+            insert(connection, "UPDATE goods SET code=? WHERE id=?", "MATERIALB-" + data.materialB(), data.materialB());
+            insert(connection, """
+                    INSERT INTO suppliers(id,code,name,status,category_id,code_sequence,code_managed,code_prefix_category_id)
+                    SELECT ?,?,?,'使用',category.id,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM suppliers),FALSE,NULL
+                    FROM supplier_categories category WHERE NOT category.is_deleted ORDER BY category.id LIMIT 1
+                    """, supplier, "S-" + supplier, supplierName);
+            insert(connection, """
+                    INSERT INTO purchase_orders(id,bill_no,bill_date,supplier_id,warehouse_id,status)
+                    VALUES(?,?,CURRENT_DATE,?,?,1)
+                    """, order, number, supplier, data.warehouse());
+            UUID materialA;
+            try (PreparedStatement statement = connection.prepareStatement("SELECT goods_id FROM stock_balances WHERE id=?")) {
+                statement.setObject(1, data.balanceA());
+                try (ResultSet result = statement.executeQuery()) { result.next(); materialA = result.getObject(1, UUID.class); }
+            }
+            insert(connection, """
+                    INSERT INTO purchase_order_items(id,bill_no,bill_date,order_id,line_no,goods_id,unit_id,
+                        unit_rate,qty,received_qty,returned_qty,goods_snapshot_source)
+                    VALUES(?,?,CURRENT_DATE,?,1,?,?,1,10,4,1,'MASTER_AT_SAVE'),
+                          (?,?,CURRENT_DATE,?,2,?,?,1,20,20,0,'MASTER_AT_SAVE')
+                    """, first, number, order, materialA, data.unit(),
+                    second, number, order, data.materialB(), data.unit());
+        }
+        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.documentAccess("PURCHASE", "PURCHASE_ORDER"))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, false));
+        var service = new FulfillmentWorkbenchQueryService(entityManager, access);
+        var table = FulfillmentWorkbenchTableQuery.from("docNo", "asc", java.util.Map.of("f.docNo", number),
+                null, null, null, null);
+        var page = transactions.execute(status -> service.query("PURCHASE", "", "", "", null, null, 1, 1, table));
+        assertNotNull(page);
+        assertEquals(2, page.total());
+        assertEquals(2, page.totalPages());
+        assertEquals(1L, page.summary().statusCounts().get("FINANCE_APPROVED"));
+        var exceeded = org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> transactions.execute(status -> service.exportPurchase("", "", "", null, null, table, 1)));
+        assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, exceeded.getCode());
+        assertTrue(exceeded.getMessage().contains("1 行上限"));
+        var export = transactions.execute(status -> service.exportPurchase("", "", "", null, null, table, 2));
+        assertNotNull(export);
+        assertEquals(2, export.rows().size());
+        assertEquals(java.util.Set.of(first, second), transactions.execute(status -> service
+                .query("PURCHASE", "", "", "", null, null, 1, 100, table)).items().stream()
+                .map(FulfillmentTaskRow::taskId).collect(java.util.stream.Collectors.toSet()));
+        var rows = export.rows().stream().collect(java.util.stream.Collectors.toMap(row -> row.get("goodsName"), row -> row));
+        assertEquals(0, new BigDecimal("10").compareTo((BigDecimal) rows.get("物料 A").get("requiredQty")));
+        assertEquals(0, new BigDecimal("3").compareTo((BigDecimal) rows.get("物料 A").get("fulfilledQty")));
+        assertEquals(0, new BigDecimal("7").compareTo((BigDecimal) rows.get("物料 A").get("openQty")));
+        assertEquals(0, new BigDecimal("20").compareTo((BigDecimal) rows.get("物料 B").get("requiredQty")));
+        assertEquals(0, BigDecimal.ZERO.compareTo((BigDecimal) rows.get("物料 B").get("openQty")));
+        assertTrue(export.rows().stream().allMatch(row -> number.equals(row.get("actionDocNo"))
+                && supplierName.equals(row.get("supplierName"))));
+        var searched = FulfillmentWorkbenchTableQuery.from("docNo", "asc", java.util.Map.of(
+                "f.docNo", number, "search.goods", "物料 A", "search.supplierName", supplierName),
+                null, null, null, null);
+        assertEquals(1, transactions.execute(status -> service.exportPurchase("", "", "", null, null, searched, 1)).total());
+        var nameCannotMatchCode = FulfillmentWorkbenchTableQuery.from("docNo", "asc", java.util.Map.of(
+                "f.docNo", number, "search.goods", "MATERIALB"), null, null, null, null);
+        assertEquals(0, transactions.execute(status -> service.exportPurchase("", "", "", null, null, nameCannotMatchCode, 1)).total());
+        var codeSearch = FulfillmentWorkbenchTableQuery.from("docNo", "asc", java.util.Map.of(
+                "f.docNo", number, "search.goodsCode", "MATERIALB"), null, null, null, null);
+        var byCode = transactions.execute(status -> service.exportPurchase("", "", "", null, null, codeSearch, 1));
+        assertNotNull(byCode);
+        assertEquals(1, byCode.total());
+        assertEquals("物料 B", byCode.rows().getFirst().get("goodsName"));
+        when(access.documentAccess("PURCHASE", "PURCHASE_ORDER"))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(false, false));
+        var restricted = transactions.execute(status -> service.query("PURCHASE", "", number, "", null, null, 1, 100));
+        assertNotNull(restricted);
+        assertTrue(restricted.items().stream().allMatch(row -> row.actionDocNo() == null && row.supplierName() == null));
+        assertEquals(0, transactions.execute(status -> service.exportPurchase("", "", "", null, null, searched, 1)).total());
+    }
+
+    @Test
+    void pendingExportIncludesRowsBeyondTheCurrentPageAndRetainsExactQuantityUnits() throws Exception {
+        String unique = "EXPORT" + UUID.randomUUID();
+        try (Connection connection = connection()) {
+            Fixture data = fixture(connection);
+            UUID item = insertPurchaseDecompositionTask(connection, data);
+            insert(connection, "UPDATE goods SET name=? WHERE id=?", unique, data.materialB());
+            insert(connection, """
+                    INSERT INTO purchase_request_items(id,bill_no,bill_date,request_id,line_no,goods_id,unit_id,
+                        unit_rate,qty,ordered_qty,deliver_date,production_plan_no,source_doc_no,goods_snapshot_source)
+                    SELECT gen_random_uuid(),first.bill_no,first.bill_date,first.request_id,number,
+                           first.goods_id,first.unit_id,1,0.05,0,first.deliver_date,
+                           first.production_plan_no,first.source_doc_no,'MASTER_AT_SAVE'
+                    FROM purchase_request_items first CROSS JOIN generate_series(2,105) AS number WHERE first.id=?
+                    """, item);
+        }
+        FulfillmentWorkbenchAccessPolicy access = mock(FulfillmentWorkbenchAccessPolicy.class);
+        when(access.documentAccess("PURCHASE", "PURCHASE_REQUEST"))
+                .thenReturn(new FulfillmentWorkbenchAccessPolicy.DocumentAccess(true, false));
+        var service = new FulfillmentWorkbenchQueryService(entityManager, access);
+        var table = new FulfillmentWorkbenchTableQuery("goods", "asc", java.util.Map.of("search.goods", unique),
+                null, null, null, null);
+        var firstPage = transactions.execute(status -> service.query("PURCHASE", "WAITING_ORDER", "", "", null, null, 1, 50, table));
+        assertNotNull(firstPage);
+        assertEquals(50, firstPage.items().size());
+        assertEquals(105, firstPage.total());
+        var exceeded = org.junit.jupiter.api.Assertions.assertThrows(com.uten.imp.common.web.ApiException.class,
+                () -> transactions.execute(status -> service.exportPurchase("WAITING_ORDER", "", "", null, null, table, 104)));
+        assertEquals(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED, exceeded.getCode());
+        assertTrue(exceeded.getMessage().contains("104 行上限"));
+        var export = transactions.execute(status -> service.exportPurchase("WAITING_ORDER", "", "", null, null, table, 105));
+        assertNotNull(export);
+        assertEquals(105, export.total());
+        assertEquals(104, export.rows().stream().filter(row -> new BigDecimal("0.05").compareTo((BigDecimal) row.get("requiredQty")) == 0).count());
+        assertTrue(export.rows().stream().allMatch(row -> "件".equals(row.get("unitName"))));
     }
 
     private static Fixture fixture(Connection connection) throws Exception {

@@ -30,6 +30,69 @@ Future<List<EditableGridColumn<SalesGridRow>>> _columnsFor(
 }
 
 void main() {
+  testWidgets(
+    'editable empty sales quantity and price identify their fields without inventing zero',
+    (tester) async {
+      final row = SalesGridRow()..unitId = 'piece';
+      row.qty.clear();
+      row.price.clear();
+      addTearDown(row.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                final columns = salesGridColumns(
+                  context: context,
+                  onPickGoods: (_) async {},
+                  docType: SalesDocType.otherShipment,
+                  colorEntries: const {},
+                  unitEntries: const {'piece': '个'},
+                );
+                expect(
+                  columns.singleWhere((column) => column.key == 'qty').required,
+                  isTrue,
+                );
+                return Column(
+                  children: [
+                    for (final key in ['qty', 'price'])
+                      columns
+                          .singleWhere((column) => column.key == key)
+                          .cellBuilder(context, row),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      Finder field(TextEditingController controller) => find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && identical(widget.controller, controller),
+      );
+      expect(
+        tester.widget<TextField>(field(row.qty)).decoration?.hintText,
+        '数量',
+      );
+      expect(
+        tester.widget<TextField>(field(row.qty)).decoration?.suffixText,
+        '个',
+      );
+      expect(
+        tester.widget<TextField>(field(row.price)).decoration?.hintText,
+        '单价',
+      );
+      expect(row.qty.text, isEmpty);
+      expect(row.price.text, isEmpty);
+      await tester.enterText(field(row.qty), '3.1256');
+      await tester.enterText(field(row.price), '0.2501');
+      await tester.pump();
+      expect(row.qty.text, '3.1256');
+      expect(row.price.text, '0.2501');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('销售订单折扣只接受 0 到 1 之间且最多四位小数的普通倍率', () {
     expect(isValidSalesOrderDiscountText('1'), isTrue);
     expect(isValidSalesOrderDiscountText('1.0000'), isTrue);

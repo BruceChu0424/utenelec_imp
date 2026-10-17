@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../components/buttons/uten_button.dart';
@@ -262,7 +263,9 @@ class _SupplierCreditApplyPanelState
                     controller: _reason,
                     maxLength: 2000,
                     maxLines: 2,
-                    decoration: const InputDecoration(labelText: '应用原因(必填)'),
+                    decoration: const UtenInputDecoration(
+                      InputDecoration(labelText: '应用原因(必填)'),
+                    ),
                   ),
                 ],
               ),
@@ -365,9 +368,8 @@ class _SupplierCreditApplyPanelState
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  isDense: true,
-                  labelText: '应用原币金额',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(isDense: true, labelText: '应用原币金额'),
                 ),
               ),
             ),

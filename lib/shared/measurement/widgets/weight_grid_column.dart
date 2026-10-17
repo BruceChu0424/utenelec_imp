@@ -676,7 +676,7 @@ class _WeightCellState<T extends EditableGridRow>
         UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            hintText: _placeholder(params, qtyBase),
+            hintText: '重量',
             enabledBorder: border(focused: false),
             focusedBorder: border(focused: true),
             suffixIconConstraints: BoxConstraints(
@@ -695,7 +695,7 @@ class _WeightCellState<T extends EditableGridRow>
         autofilled: c.isSuggested && error == null && !deviation,
       ),
     );
-    final message = error ?? info;
+    final message = error ?? info ?? _referenceWeightHint(params, qtyBase);
     final content = Column(
       key: const ValueKey('weight-cell-content'),
       mainAxisSize: MainAxisSize.min,
@@ -725,14 +725,14 @@ class _WeightCellState<T extends EditableGridRow>
     return Tooltip(message: message ?? weightCellIdleTooltip, child: content);
   }
 
-  String _placeholder(WeightParams? params, double? qtyBase) {
+  String? _referenceWeightHint(WeightParams? params, double? qtyBase) {
     if (params == null ||
         !params.predictable ||
         params.effectiveTier == WeightTier.red) {
-      return '可选';
+      return null;
     }
     final expected = params.expectedKgFor(qtyBase);
-    if (expected == null) return '可选';
+    if (expected == null) return null;
     final number = widget.entryUnit.format(expected, withSymbol: false);
     return widget.mode == WeightCaptureMode.outbound
         ? '应称 $number'

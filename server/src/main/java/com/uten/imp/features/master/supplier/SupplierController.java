@@ -51,6 +51,8 @@ import java.util.UUID;
 @RequestMapping("/api/master/suppliers")
 @RequiredArgsConstructor
 public class SupplierController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final SupplierService service;
     private final XlsxExportService xlsxExport;
@@ -90,7 +92,8 @@ public class SupplierController {
         return service.list(new SupplierQueryFilter(categoryId, null, nullFields,
                 name, description, tday, place, empId, ownerEmployeeId, legalPerson, linkman,
                 null, null, null, fax, postcode, address, bank, null, taxId,
-                website, shipVia, shipAddress, selectableOnly), page, size, sort, order);
+                website, shipVia, shipAddress, selectableOnly).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, null)), page, size, sort, order);
     }
 
     /**
@@ -129,7 +132,8 @@ public class SupplierController {
                 name, description, tday, place, empId, ownerEmployeeId, legalPerson, linkman,
                 sensitive.mobile(), sensitive.phone(), sensitive.phone2(), fax, postcode, address, bank,
                 sensitive.bankAccount(), taxId,
-                website, shipVia, shipAddress, selectableOnly), page, size, sort, order);
+                website, shipVia, shipAddress, selectableOnly).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, sensitive.columnSearch())), page, size, sort, order);
     }
 
     @GetMapping("/facets")
@@ -185,7 +189,8 @@ public class SupplierController {
                 name, description, tday, place, empId, ownerEmployeeId, legalPerson, linkman,
                 body.sensitive().mobile(), body.sensitive().phone(), body.sensitive().phone2(),
                 fax, postcode, address, bank, body.sensitive().bankAccount(), taxId,
-                website, shipVia, shipAddress), sort, order,
+                website, shipVia, shipAddress).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, body.sensitive().columnSearch())), sort, order,
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_supplier");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

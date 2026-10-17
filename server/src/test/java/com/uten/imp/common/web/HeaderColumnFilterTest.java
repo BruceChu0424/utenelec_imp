@@ -24,6 +24,18 @@ class HeaderColumnFilterTest {
         assertThrows(ApiException.class,()->HeaderColumnFilter.from(Map.of("hf.makerId", "someone")));
         assertThrows(ApiException.class,()->HeaderColumnFilter.from(Map.of("hf.amountMin;DELETE", "1")));
         assertEquals(HeaderColumnFilter.EMPTY,HeaderColumnFilter.from(Map.of("keyword","normal legacy search")));
+        for (String column : java.util.List.of("total", "amount", "billDate", "status", "makerId", "billNo);DELETE"))
+            assertThrows(ApiException.class, () -> HeaderColumnFilter.from(Map.of("search." + column, "x")));
+    }
+    @Test void columnSearchHasItsOwnWhitelistedNamespaceAndCannotBecomeAnExactIdFilter() {
+        var filters = HeaderColumnFilter.from(Map.of("search.billNo", " CD2026 ", "search.supplier", "华东",
+                "supplierId", "exact-uuid", "hf.amountMin", "5"));
+        assertEquals(Map.of("search.billNo", "CD2026", "search.supplier", "华东", "amountMin", "5"), filters.values());
+        assertTrue(filters.hasAmount());
+        assertThrows(ApiException.class, () -> filters.requireAmountVisible(false));
+        var root = mock(Root.class); var builder = mock(CriteriaBuilder.class);
+        assertThrows(ApiException.class, () -> filters.applySearch(root, null, builder, new ArrayList<>(),
+                Map.of("billNo", HeaderColumnFilter.SearchField.text("billNo"))));
     }
     @Test @SuppressWarnings("unchecked") void finiteDecimalBoundsPreserveLargeFractionalValueExactly() {
         Root<?> root=mock(Root.class);CriteriaBuilder builder=mock(CriteriaBuilder.class);

@@ -118,6 +118,8 @@ public class SupplierService {
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            ps.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
+                    com.uten.imp.features.master.search.MasterColumnSearch.Domain.SUPPLIER, f.columnSearch()));
             // 单据选商口径：仅「使用」状态（老库 status 为空的按启用处理）可被选择。
             if (f.selectableOnly()) {
                 ps.add(cb.or(

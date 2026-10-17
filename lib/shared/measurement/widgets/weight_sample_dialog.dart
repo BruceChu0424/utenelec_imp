@@ -352,10 +352,12 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
                 autofocus: true,
                 enabled: !_busy,
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: '数量 *',
-                  hintText: '建议至少 $suggested $_unitName',
-                  suffixText: _unitName,
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: '数量 *',
+                    hintText: '建议至少 $suggested $_unitName',
+                    suffixText: _unitName,
+                  ),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s12),
@@ -417,9 +419,8 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog> {
                 controller: _remark,
                 enabled: !_busy,
                 maxLength: 200,
-                decoration: const InputDecoration(
-                  labelText: '备注',
-                  counterText: '',
+                decoration: const UtenInputDecoration(
+                  InputDecoration(labelText: '备注', counterText: ''),
                 ),
               ),
               const SizedBox(height: UtenSpacing.s8),

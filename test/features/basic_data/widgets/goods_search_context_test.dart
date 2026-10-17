@@ -123,10 +123,7 @@ void main() {
     expect(find.byKey(const Key('goods-picker-sheet')), findsOneWidget);
     expect(find.byKey(const ValueKey('goods-picker-item-r')), findsOneWidget);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('goods-picker-item-r')),
-        matching: find.textContaining('相关结果'),
-      ),
+      find.text('相关结果'),
       findsOneWidget,
     );
     await tester.tap(find.text('成品'));

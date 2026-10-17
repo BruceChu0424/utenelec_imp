@@ -46,6 +46,8 @@ class MouldManufacturingFieldsTest {
     @Test
     void saveReadListAndExportKeepMonthAndManufacturer() {
         authenticate();
+        category.setName("Q7系列");
+        category.setRemark("旧模具分类备注");
         when(categories.findById(category.getId())).thenReturn(Optional.of(category));
         when(codes.allocate(any(), any(), any())).thenReturn(new CategoryCodeAllocation("MJ001", 1, null, true));
         when(codes.allocateForUpdate(any(), any(), any(), any(), any()))
@@ -69,10 +71,13 @@ class MouldManufacturingFieldsTest {
                 .thenReturn(new PageImpl<>(List.of(mould)));
         var filter = new MouldQueryFilter(null, null, Set.of(), null, null, null, null, null, null, null);
         assertThat(service.list(filter, 1, 20).getItems().getFirst().getManufacturer()).isEqualTo("模具制造商");
+        assertThat(service.list(filter, 1, 20).getItems().getFirst().getCategoryName()).isEqualTo("Q7系列");
         var export = service.export(filter, 100);
         assertThat(export.columns()).anyMatch(column -> "manufacturer".equals(column.key()));
         assertThat(export.rows().getFirst()).containsEntry("manufacturer", "模具制造商")
-                .containsEntry("mstatus", "2009-03");
+                .containsEntry("mstatus", "2009-03")
+                .containsEntry("categoryName", "Q7系列");
+        assertThat(export.columns()).anyMatch(column -> "categoryName".equals(column.key()) && "系列 / 分类".equals(column.label()));
     }
 
     @Test

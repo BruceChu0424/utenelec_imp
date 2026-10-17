@@ -267,14 +267,18 @@ class _PickerRow extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(UtenRadius.sm),
       child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: '不改',
-          suffixIcon: Icon(
-            hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
-            size: 18,
-            color: theme.colorScheme.onSurfaceVariant,
+        isEmpty: !hasValue,
+        decoration: UtenInputDecoration(
+          InputDecoration(
+            labelText: label,
+            hintText: '不改',
+            suffixIcon: Icon(
+              hasValue ? Icons.unfold_more_rounded : Icons.search_rounded,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
+          info: '未选择时保持原值',
         ),
         child: Text(
           hasValue ? value! : '',

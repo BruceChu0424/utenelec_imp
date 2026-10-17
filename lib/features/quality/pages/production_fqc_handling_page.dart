@@ -1555,6 +1555,7 @@ class _ProductionFqcSheetHandlingPageState
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
+            labelText: label,
             // 「数量+单位」内联口径（2026-10-10）：可编辑数量输入框单位放后缀。
             suffixText: row.inspection.unitName,
             error: row.validate() == null

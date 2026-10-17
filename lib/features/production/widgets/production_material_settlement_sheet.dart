@@ -1076,7 +1076,8 @@ class _MaterialSettlementSheetState
         UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            hintText: '0',
+            hintText: label,
+            hintMaxLines: 1,
             suffixText: row.source.unitName,
           ),
         ),

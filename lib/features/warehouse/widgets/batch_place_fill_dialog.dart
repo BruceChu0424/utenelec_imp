@@ -4,6 +4,7 @@
 // 关闭动画期间 TextField 仍会重建）。返回 trim 后的库位号；取消返回 null。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter/services.dart';
 
 Future<String?> showBatchPlaceFillDialog(
@@ -56,10 +57,12 @@ class _BatchPlaceFillDialogState extends State<_BatchPlaceFillDialog> {
         autofocus: true,
         maxLength: 100,
         inputFormatters: [LengthLimitingTextInputFormatter(100)],
-        decoration: const InputDecoration(
-          labelText: '库位号',
-          hintText: '应用到全部选中行',
-          counterText: '',
+        decoration: const UtenInputDecoration(
+          InputDecoration(
+            labelText: '库位号',
+            hintText: '应用到全部选中行',
+            counterText: '',
+          ),
         ),
         onSubmitted: (_) => Navigator.of(context).pop(_controller.text.trim()),
       ),

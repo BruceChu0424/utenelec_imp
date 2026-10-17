@@ -5,7 +5,7 @@
 // 现有复用方：货品/模具/客户/供应商（ProductCategoryNode）、收付款类别（PaymentStyleNode）。
 //
 // 实现在 shared 的 UtenHierarchyTreeView(与组织架构树共用一份，ADR-111)；本组件只把
-// 分类的口径传进去：行文字只显示分类名称、同级默认按编码排序、全部节点可点、
+// 分类的口径传进去：行文字显示分类名称与括号备注、同级默认按编码排序、全部节点可点、
 // 「未分类(历史孤儿)」这类大杂烩节点可默认收起。
 import 'package:flutter/material.dart';
 
@@ -28,8 +28,13 @@ List<T> hoistSingleRootTree<T extends UtenTreeNode<T>>(List<T> nodes) {
   return current;
 }
 
-/// 分类编号仍作为稳定数据和搜索字段，列表正文统一只显示业务分类名称。
-String categoryNodeLabel<T extends UtenTreeNode<T>>(T node) => node.name;
+/// 编号仍作为稳定数据和搜索字段；备注仅补充树标签，不改分类名称与关系。
+String categoryNodeLabel<T extends UtenTreeNode<T>>(T node) {
+  final remark = node is ProductCategoryNode
+      ? (node as ProductCategoryNode).remark?.trim()
+      : null;
+  return remark == null || remark.isEmpty ? node.name : '${node.name}（$remark）';
+}
 
 /// 量测分类树最长一行名称的自然文字宽（TextPainter 实测），
 /// 加行内装具余量（8 左缘 + 3 选中强调条 + 24 展开位 + 4 间隙 + 8 右缘 + 12 滚动

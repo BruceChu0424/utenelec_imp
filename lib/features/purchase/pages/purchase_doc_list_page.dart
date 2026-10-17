@@ -322,6 +322,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                 : ChinaDateTime.formatDate(range.start),
             dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
             billNo: _columnFilters['billNo'],
+            columnSearch: _columnFilters.values,
           ),
           sort: _list.sortKey,
           order: _list.sortOrder,
@@ -339,6 +340,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
             .read(purchaseRepositoryProvider(widget.docType))
             .billNoFacets(
               filter: PurchaseDocFilter(
+                columnSearch: _columnFilters.values,
                 keyword: _list.normalizedKeyword,
                 supplierId: _cfg.hasSupplier ? _supplierIdFilter : null,
                 warehouseId: _cfg.hasWarehouse ? _warehouseIdFilter : null,
@@ -420,7 +422,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
 
   void _onColumnFilterChanged(String key, String? value) {
     clearDraftSelection();
-    if (key == 'billNo') {
+    if (key == 'billNo' || key.startsWith('search.')) {
       _columnFilters.handleFilterChanged(
         key,
         value,
@@ -780,6 +782,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                             tableKey: 'purchase.${widget.docType.name}.list',
                             // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
                             primary: true,
+                            serverColumnSearch: true,
                             columns: _columns(
                               names,
                               canViewCommercialAmounts:
@@ -812,6 +815,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
                             },
                             nullCounts: const {},
                             filters: {
+                              ..._columnFilters.values,
                               'billNo': _columnFilters['billNo'],
                               if (_cfg.hasSupplier)
                                 'supplier': _supplierIdFilter,

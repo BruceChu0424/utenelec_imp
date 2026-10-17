@@ -19,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -501,9 +502,35 @@ class _OperationsWorkbenchPageState
     'spec': 'spec',
     'status': 'status',
     'needDate': 'needDate',
+    'supplierName': 'supplierName',
+  };
+
+  static const Map<String, String> _searchKeyByColumn = {
+    'planNo': 'planNo',
+    'actionDocNo': 'docNo',
+    'goodsName': 'goods',
+    'spec': 'spec',
+    'supplierName': 'supplierName',
+    'goodsCode': 'goodsCode',
+    'colorName': 'colorName',
+    'warehouseName': 'warehouseName',
   };
 
   void _onColumnFilterChanged(String column, String? value) {
+    if (column.startsWith('search.')) {
+      final serverKey = _searchKeyByColumn[column.substring(7)];
+      if (serverKey == null) return;
+      setState(() {
+        if (value == null || value.trim().isEmpty) {
+          _columnFilters.remove('search.$serverKey');
+        } else {
+          _columnFilters['search.$serverKey'] = value.trim();
+        }
+        _selectedIds.clear();
+      });
+      _load(page: 1);
+      return;
+    }
     if (column == 'exception') {
       // 异常是服务端专用参数，不能放进普通 f.{key} 列筛选。
       _selectException(value);
@@ -577,7 +604,31 @@ class _OperationsWorkbenchPageState
     for (final entry in _serverKeyByColumn.entries)
       if (_columnFilters.containsKey(entry.value))
         entry.key: _columnFilters[entry.value],
+    for (final entry in _searchKeyByColumn.entries)
+      if (_columnFilters.containsKey('search.${entry.value}'))
+        'search.${entry.key}': _columnFilters['search.${entry.value}'],
   };
+
+  Map<String, dynamic> get _exportQuery {
+    final range = _seg?.history == true ? _historyTime.range : null;
+    return {
+      if (_keyword.isNotEmpty) 'keyword': _keyword,
+      if (_seg?.history != true && _seg?.code != null) 'status': _seg!.code,
+      if (_seg?.history != true && _exception != null) 'exception': _exception,
+      if (range != null) ...{
+        'dateFrom': ChinaDateTime.formatDate(range.start),
+        'dateTo': ChinaDateTime.formatDate(range.end),
+      },
+      if (_sortColumn != null) ...{
+        'sort': _serverKeyByColumn[_sortColumn],
+        'order': _sortAscending ? 'asc' : 'desc',
+      },
+      for (final entry in _columnFilters.entries)
+        if (entry.value != null)
+          (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
+              entry.value,
+    };
+  }
 
   /// 桌面表多选集合回写（组件勾选/表头三态都走这里；就地同步进 final 集合）。
   void _setSelectedIds(Set<String> next) {
@@ -909,6 +960,7 @@ class _OperationsWorkbenchPageState
                       stageLabelOf: _stageLabelOf,
                       statusBadgeTypeOf: _statusBadgeTypeOf,
                       warehouseLabelOf: _warehouseLabelOf,
+                      exportQuery: _exportQuery,
                       sortColumn: _sortColumn,
                       sortAscending: _sortAscending,
                       onSortChange: (column, ascending) {
@@ -988,6 +1040,7 @@ class _DesktopTaskTable extends StatelessWidget {
     this.onSortChange,
     this.batchActions,
     required this.warehouseLabelOf,
+    required this.exportQuery,
   });
 
   final OperationsWorkbenchData data;
@@ -1018,6 +1071,7 @@ class _DesktopTaskTable extends StatelessWidget {
   /// 仓库列文案（2026-10-10）：主档字典的「主仓 - 子仓」组合名，未命中回退
   /// 行内叶仓名。由页面侧闭包提供（要读 masterNameServiceProvider）。
   final String Function(OperationsWorkbenchTask task) warehouseLabelOf;
+  final Map<String, dynamic> exportQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -1074,6 +1128,14 @@ class _DesktopTaskTable extends StatelessWidget {
               ? '无权查看关联单据'
               : (item.actionDocument?.number ?? '—'),
         ),
+        if (data.department == OperationsWorkbenchDepartment.purchase)
+          MasterColumnDef(
+            key: 'supplierName',
+            label: '供应商',
+            width: 160,
+            sortable: true,
+            value: (item) => item.supplierName ?? '—',
+          ),
         // 2026-09-14 用户口径（全站表格统一）：名称 / 编号 / 颜色各占一列，
         // 规格再单独一列（原来「规格 / 颜色」挤在一格，两个属性都没法单独筛）。
         // 按单归组的行没有单一货品身份，编号/颜色/规格如实显示「—」。
@@ -1204,6 +1266,24 @@ class _DesktopTaskTable extends StatelessWidget {
         // 同源同值，纯重复；无权受限提示已并入「单据号」列。
       ],
       items: items,
+      serverColumnSearch: true,
+      toolbarActions: [
+        if (data.department == OperationsWorkbenchDepartment.purchase)
+          UtenExportButton(
+            key: const Key('purchase-workbench-export'),
+            endpoint: '/operations/workbench/purchase/export',
+            report: 'tasks',
+            requiredPermission: Perm.purchaseReportExport,
+            queryParams: exportQuery,
+            filename: '采购任务',
+            label: '导出表格',
+            type: UtenButtonType.primary,
+            size: UtenButtonSize.large,
+            enabled: !loading,
+            tableKey:
+                'features.operations_workbench.pages.operations_workbench_page.DesktopTaskTable.build.1',
+          ),
+      ],
       facets: facets,
       nullCounts: nullCounts,
       filters: filters,

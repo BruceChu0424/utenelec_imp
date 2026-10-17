@@ -9,6 +9,7 @@
 // 筛选口径（报表类型/账户/日期范围/排序）按账号服务端持久化
 // （report.finance.accountFlow，ReportFilterPrefs：docType=view、extra={accountId}）；关键字不持久化。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
@@ -329,9 +330,8 @@ class _FinanceAccountFlowPageState
                 child: DropdownButtonFormField<String?>(
                   initialValue: _accountId,
                   isExpanded: true,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: '选择账户',
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(isDense: true, labelText: '账户'),
                   ),
                   items: [
                     for (final e in names.accountEntries.entries)

@@ -3,7 +3,7 @@
 // 触发：函数式 showUtenGoodsPicker(context, ref) → 返回 GoodsListItem?。
 // 形态仿 UtenDepartmentPicker：compact 底部抽屉（85% 屏高）/ medium+ 右侧滑入面板。
 // 宽度跟屏幕自适应（2026-09-24 用户口径：滑窗再大点，约占屏宽 50%，下限 720）。
-// 内容：左分类树 + 右货品列表（搜索+分页），中间是可拖分割线（UtenSplitView，
+// 内容：左分类树 + 右货品明细表（名称/编号/系列/型号/规格/颜色/单位，列搜索+分页），中间是可拖分割线（UtenSplitView，
 // 与货品资料页同款；默认宽度 = 左侧最长一行内容的实测宽度，可拖可双击复位）。
 // 左树用无缩进层级色模式（flatLevelColors）：一级深绿白字、二级浅灰、三级更浅，
 // 整库只有「货品资料」一个根分类时自动提升，直接列原材料/半成品/成品等子类。
@@ -27,11 +27,11 @@ import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
 import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_paged_picker_list.dart';
+import '../../../components/layout/uten_table_column_kit.dart'
+    show utenTableSelectedRowColor;
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_segment_row.dart';
-import '../../../components/layout/uten_table_column_kit.dart'
-    show utenTableSelectedRowColor;
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
@@ -45,6 +45,7 @@ import '../repositories/product_category_repository.dart';
 import 'category_tree_search.dart';
 import 'goods_related_search_control.dart';
 import 'uten_category_tree_view.dart';
+import 'master_data_table_view.dart';
 
 /// 货品选择器排除的根分类 legacyId（来自后端 material_categories 种子）：
 /// 原材料=2113、辅料=2480、未分类=迁移虚拟孤儿根 -1。
@@ -102,6 +103,10 @@ List<ProductCategoryNode> _filterUncategorizedTree(
         parentId: n.parentId,
         sortOrder: n.sortOrder,
         legacyId: n.legacyId,
+        remark: n.remark,
+        codePrefix: n.codePrefix,
+        systemManaged: n.systemManaged,
+        goodsCount: n.goodsCount,
         children: _filterUncategorizedTree(n.children),
       ),
     );
@@ -144,6 +149,10 @@ List<ProductCategoryNode> _filterExcludedTree(List<ProductCategoryNode> nodes) {
         parentId: n.parentId,
         sortOrder: n.sortOrder,
         legacyId: n.legacyId,
+        remark: n.remark,
+        codePrefix: n.codePrefix,
+        systemManaged: n.systemManaged,
+        goodsCount: n.goodsCount,
         children: _filterExcludedTree(n.children),
       ),
     );
@@ -234,8 +243,67 @@ ProductCategoryNode _cloneSubtree(ProductCategoryNode n) {
     parentId: n.parentId,
     sortOrder: n.sortOrder,
     legacyId: n.legacyId,
+    remark: n.remark,
+    codePrefix: n.codePrefix,
+    systemManaged: n.systemManaged,
+    goodsCount: n.goodsCount,
     children: [for (final c in n.children) _cloneSubtree(c)],
   );
+}
+
+List<ProductCategoryNode> _treeForScope(
+  List<ProductCategoryNode> raw,
+  UtenGoodsPickerScope scope,
+) => switch (scope) {
+  UtenGoodsPickerScope.sellable => _filterExcludedTree(raw),
+  UtenGoodsPickerScope.material => _keepMaterialTree(raw),
+  UtenGoodsPickerScope.all => raw,
+  UtenGoodsPickerScope.component => _keepComponentTree(raw),
+  UtenGoodsPickerScope.rawMaterial => _keepRawMaterialTree(raw),
+  UtenGoodsPickerScope.allExceptUncategorized => _filterUncategorizedTree(raw),
+};
+
+/// Approximate candidates obey the same initial business scope as the full picker.
+Future<List<GoodsListItem>> loadUtenGoodsPickerSuggestions(
+  WidgetRef ref,
+  String query, {
+  UtenGoodsPickerScope scope = UtenGoodsPickerScope.component,
+}) async {
+  if (query.trim().isEmpty) return const [];
+  final boundary = ref.read(sensitiveReadBoundaryProvider);
+  final tree = _treeForScope(
+    await ref.read(productCategoryRepositoryProvider).tree(),
+    scope,
+  );
+  if (tree.isEmpty) return const [];
+  if (boundary != ref.read(sensitiveReadBoundaryProvider)) {
+    throw StateError('查找身份已变化，请重新输入');
+  }
+  final allowed = <String>{};
+  void collect(ProductCategoryNode node) {
+    allowed.add(node.id);
+    node.children.forEach(collect);
+  }
+
+  tree.forEach(collect);
+  final result = await ref
+      .read(goodsRepositoryProvider)
+      .search(
+        query,
+        size: 8,
+        categoryRootIds: {for (final root in tree) root.id},
+        excludeDisabled: true,
+        excludeStub: true,
+        sort: _goodsPickerSort,
+        order: _goodsPickerOrder,
+      );
+  if (boundary != ref.read(sensitiveReadBoundaryProvider)) {
+    throw StateError('查找身份已变化，请重新输入');
+  }
+  if (result.items.any((goods) => !allowed.contains(goods.categoryId))) {
+    throw StateError('goods suggestion returned an item outside picker scope');
+  }
+  return result.items;
 }
 
 /// 弹出货品选择器，返回所选货品（完整 GoodsListItem）；取消返回 null。
@@ -250,6 +318,7 @@ Future<GoodsListItem?> showUtenGoodsPicker(
   UtenGoodsPickerDataSource? dataSource,
   String title = '选择货品',
   SensitiveReadBoundary? readBoundary,
+  String initialKeyword = '',
 }) {
   return _presentSheet<GoodsListItem>(
     context,
@@ -260,6 +329,7 @@ Future<GoodsListItem?> showUtenGoodsPicker(
     dataSource: dataSource,
     title: title,
     readBoundary: readBoundary,
+    initialKeyword: initialKeyword,
   ).then((r) => r is GoodsListItem ? r : null);
 }
 
@@ -326,6 +396,7 @@ Future<List<GoodsListItem>> showUtenGoodsPickerMulti(
   String title = '选择货品',
   SensitiveReadBoundary? readBoundary,
   bool allowScopeExpansion = false,
+  String initialKeyword = '',
 }) async {
   final r = await _presentSheet<List<GoodsListItem>>(
     context,
@@ -336,6 +407,7 @@ Future<List<GoodsListItem>> showUtenGoodsPickerMulti(
     title: title,
     readBoundary: readBoundary,
     allowScopeExpansion: allowScopeExpansion,
+    initialKeyword: initialKeyword,
   );
   return r ?? const <GoodsListItem>[];
 }
@@ -350,6 +422,7 @@ Future<T?> _presentSheet<T>(
   String title = '选择货品',
   SensitiveReadBoundary? readBoundary,
   bool allowScopeExpansion = false,
+  String initialKeyword = '',
 }) async {
   // Capture invalidation before awaiting the tree as well as while the panel is
   // open. A revoke/regrant during that await must never reopen an old snapshot.
@@ -374,16 +447,7 @@ Future<T?> _presentSheet<T>(
           scope == UtenGoodsPickerScope.component) {
         allTree = raw;
       }
-      tree = switch (scope) {
-        UtenGoodsPickerScope.sellable => _filterExcludedTree(raw),
-        UtenGoodsPickerScope.material => _keepMaterialTree(raw),
-        UtenGoodsPickerScope.all => raw,
-        UtenGoodsPickerScope.component => _keepComponentTree(raw),
-        UtenGoodsPickerScope.rawMaterial => _keepRawMaterialTree(raw),
-        UtenGoodsPickerScope.allExceptUncategorized => _filterUncategorizedTree(
-          raw,
-        ),
-      };
+      tree = _treeForScope(raw, scope);
     } catch (error) {
       if (context.mounted && !boundaryChanged) {
         context.appError(_pickerErrorMessage(error, '货品分类加载失败，请稍后重试'));
@@ -408,6 +472,7 @@ Future<T?> _presentSheet<T>(
       title: title,
       readBoundary: readBoundary,
       allTree: allTree,
+      initialKeyword: initialKeyword,
     );
     final screenWidth = MediaQuery.sizeOf(context).width;
     final result = await showUtenAdaptivePanel<T>(
@@ -432,6 +497,7 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
     this.title = '选择货品',
     this.readBoundary,
     this.allTree,
+    this.initialKeyword = '',
   });
   final List<ProductCategoryNode> tree;
   final List<ProductCategoryNode> scopeTree;
@@ -441,6 +507,7 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
   final UtenGoodsPickerDataSource? dataSource;
   final String title;
   final SensitiveReadBoundary? readBoundary;
+  final String initialKeyword;
 
   /// 单选模式下是否需要底部「确定」二次确认（而非点行即关闭）。多选模式恒需确认，此项无效。
   final bool requireConfirm;
@@ -480,6 +547,8 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
 
   /// 多选模式：底部「已选 N 项」滑层是否展开。
   final _pickerRows = MasterDataTableRowsController<GoodsListItem>();
+  final Map<String, String?> _columnFilters = {};
+  bool get _supportsColumnSearch => widget.dataSource == null;
   bool _selectedPanelOpen = false;
 
   /// 左树自然宽度缓存（见 [_treeNaturalWidth]）。
@@ -540,6 +609,14 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     // 输关键词或点分类才加载（省资源）。
     if (widget.tree.isNotEmpty) {
       _selectedCategoryId = widget.tree.first.id;
+    }
+    if (widget.initialKeyword.trim().isNotEmpty) {
+      _keywordCtl.text = widget.initialKeyword.trim();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _onKeywordInputChanged(_keywordCtl.text);
+        _onKeywordChanged(_keywordCtl.text);
+      });
     }
   }
 
@@ -720,52 +797,89 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
             categoryId,
             page: page,
             keyword: keyword,
+            filters: _columnFilters,
             sort: _goodsPickerSort,
             order: _goodsPickerOrder,
             excludeDisabled: true,
             excludeStub: true,
           );
 
-  Future<PagedResult<GoodsListItem>> _searchPage(String query, int page) =>
-      widget.dataSource?.searchWithOptions(
+  Future<PagedResult<GoodsListItem>> _searchPage(String query, int page) {
+    final source = widget.dataSource;
+    if (source != null) {
+      return source.searchWithOptions(
         query,
         page: page,
         categoryId: _searchCategoryId,
         includeRelated: _includeRelated,
-      ) ??
-      ref
-          .read(goodsRepositoryProvider)
-          .search(
-            query,
-            page: page,
-            size: 100,
-            categoryRootIds: _searchesAllSelectableGoods
-                ? const {}
-                : _scopeRootIds,
-            categoryId: _searchCategoryId,
-            includeRelated: _includeRelated,
-            excludeDisabled: true,
-            excludeStub: true,
-            sort: _goodsPickerSort,
-            order: _goodsPickerOrder,
-          );
+      );
+    }
+    final repository = ref.read(goodsRepositoryProvider);
+    if (_columnFilters.isNotEmpty) {
+      if (repository is! GoodsColumnSearchGateway) {
+        throw StateError('货品数据源尚未支持列搜索，请刷新后重试');
+      }
+      return (repository as GoodsColumnSearchGateway).searchColumns(
+        query,
+        filters: Map.of(_columnFilters),
+        page: page,
+        size: 100,
+        categoryRootIds: _searchesAllSelectableGoods ? const {} : _scopeRootIds,
+        categoryId: _searchCategoryId,
+        includeRelated: _includeRelated,
+        excludeDisabled: true,
+        excludeStub: true,
+        sort: _goodsPickerSort,
+        order: _goodsPickerOrder,
+      );
+    }
+    return repository.search(
+      query,
+      page: page,
+      size: 100,
+      categoryRootIds: _searchesAllSelectableGoods ? const {} : _scopeRootIds,
+      categoryId: _searchCategoryId,
+      includeRelated: _includeRelated,
+      excludeDisabled: true,
+      excludeStub: true,
+      sort: _goodsPickerSort,
+      order: _goodsPickerOrder,
+    );
+  }
 
-  Future<Set<String>> _searchCategoryIds(String query) =>
-      widget.dataSource?.searchCategoryIdsWithOptions(
+  Future<Set<String>> _searchCategoryIds(String query) {
+    final source = widget.dataSource;
+    if (source != null) {
+      return source.searchCategoryIdsWithOptions(
         query,
         categoryId: _searchCategoryId,
         includeRelated: _includeRelated,
-      ) ??
-      ref
-          .read(goodsRepositoryProvider)
-          .searchCategoryIds(
-            query,
-            categoryRootIds: _scopeRootIds,
-            categoryId: _searchCategoryId,
-            includeRelated: _includeRelated,
-            excludeDisabled: true,
-            excludeStub: true,
-          );
+      );
+    }
+    final repository = ref.read(goodsRepositoryProvider);
+    if (_columnFilters.isNotEmpty) {
+      if (repository is! GoodsColumnSearchGateway) {
+        throw StateError('货品数据源尚未支持列搜索，请刷新后重试');
+      }
+      return (repository as GoodsColumnSearchGateway).searchColumnCategoryIds(
+        query,
+        filters: Map.of(_columnFilters),
+        categoryRootIds: _scopeRootIds,
+        categoryId: _searchCategoryId,
+        includeRelated: _includeRelated,
+        excludeDisabled: true,
+        excludeStub: true,
+      );
+    }
+    return repository.searchCategoryIds(
+      query,
+      categoryRootIds: _scopeRootIds,
+      categoryId: _searchCategoryId,
+      includeRelated: _includeRelated,
+      excludeDisabled: true,
+      excludeStub: true,
+    );
+  }
 
   Future<void> _reloadCategory({String? keyword}) async {
     if (!_canRead) return;
@@ -1235,7 +1349,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
   }
 
   /// 已选摘要栏的一行文案：名字(编号) · 颜色（底栏空间窄，保持单行摘要；
-  /// 列表选项本身已改主行名称+副行编号·颜色，见 _buildGoodsList）。
+  /// 明细表里的名称、编号、颜色各有独立表头）。
   String _goodsLabel(GoodsListItem g) =>
       '${g.name ?? '—'}'
       '${g.code != null && g.code!.isNotEmpty ? '(${g.code})' : ''}'
@@ -1311,7 +1425,160 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet> {
     );
   }
 
+  void _onColumnFilterChanged(String key, String? value) {
+    if (!_supportsColumnSearch || !_canRead) return;
+    ++_requestVersion;
+    _acceptPendingSearch = false;
+    setState(() {
+      if (value == null || value.trim().isEmpty) {
+        _columnFilters.remove(key);
+      } else {
+        _columnFilters[key] = value.trim();
+      }
+      _page = 1;
+      _showingGlobalResults = _query.isNotEmpty;
+      _paged = null;
+      _globalResolution = null;
+      _globalResolutionQuery = null;
+    });
+    _reloadCurrentPage();
+  }
+
   Widget _buildGoodsList(ThemeData theme) {
+    if (widget.dataSource != null) return _buildDedicatedGoodsList(theme);
+    final requestVersion = _requestVersion;
+    bool selectable(GoodsListItem goods) =>
+        _canRead &&
+        !_loading &&
+        !_searchLoading &&
+        (widget.dataSource?.isSelectable(goods) ?? true);
+    MasterColumnDef<GoodsListItem> column(
+      String key,
+      String label,
+      double width,
+      String? Function(GoodsListItem) value, {
+      bool search = true,
+    }) => MasterColumnDef(
+      key: key,
+      label: label,
+      width: width,
+      value: value,
+      columnSearchEnabled: _supportsColumnSearch && search,
+    );
+    return MasterDataTableView<GoodsListItem>(
+      key: const Key('goods-picker-paged-list'),
+      tableKey: 'goods.picker',
+      singleTapRows: true,
+      rowsController: _pickerRows,
+      showPaginationControls: !widget.multiSelect && !widget.requireConfirm,
+      columns: [
+        MasterColumnDef(
+          key: 'name',
+          label: '货品名称',
+          width: 190,
+          columnSearchEnabled: _supportsColumnSearch,
+          value: (goods) => goods.name,
+          cellBuilder: (_, goods) => Text(
+            goods.name ?? '—',
+            key: ValueKey('goods-picker-item-${goods.id}'),
+          ),
+        ),
+        column('code', '编号', 130, (g) => g.code),
+        column('series', '系列', 100, (g) => g.series),
+        column('model', '型号', 110, (g) => g.model),
+        column('spec', '规格', 140, (g) => g.spec),
+        column('colorLegacyId', '主颜色', 100, (g) => g.colorName),
+        column('unitLegacyId', '单位', 70, (g) => g.unitName, search: false),
+        if (_includeRelated)
+          MasterColumnDef(
+            key: 'searchMatchKind',
+            label: '匹配方式',
+            width: 110,
+            columnSearchEnabled: false,
+            value: (goods) => goods.isRelatedSearchMatch ? '相关结果' : '货品匹配',
+          ),
+      ],
+      items: _paged?.items ?? const [],
+      rowKeyOf: (goods) => goods.id,
+      idOf: (goods) => selectable(goods) ? goods.id : null,
+      selectable: widget.multiSelect,
+      showSelectionSummary: false,
+      selectedIds: _selected.keys.toSet(),
+      onSelectedIdsChanged: (ids) {
+        if (!_canRead ||
+            requestVersion != _requestVersion ||
+            _loading ||
+            _searchLoading) {
+          return;
+        }
+        final available = {
+          for (final goods in _pickerRows.items) goods.id: goods,
+        };
+        setState(() {
+          _selected.removeWhere((id, _) => !ids.contains(id));
+          for (final id in ids) {
+            final goods = available[id];
+            if (goods != null && selectable(goods)) {
+              _selected.putIfAbsent(id, () => goods);
+            }
+          }
+        });
+      },
+      isSelected: (goods) => _selected.containsKey(goods.id),
+      onRowTap: widget.multiSelect
+          ? null
+          : (goods) {
+              if (!selectable(goods) || requestVersion != _requestVersion) {
+                return;
+              }
+              if (widget.requireConfirm) {
+                setState(() {
+                  _selected
+                    ..clear()
+                    ..[goods.id] = goods;
+                });
+              } else {
+                _confirm(goods, requestVersion: requestVersion);
+              }
+            },
+      facets: const {},
+      nullCounts: const {},
+      filters: _columnFilters,
+      serverColumnSearch: true,
+      onFilterChanged: _onColumnFilterChanged,
+      currentPage: _paged?.page ?? 1,
+      totalPages: _paged?.totalPages ?? 1,
+      paginationScope: (
+        widget.scope,
+        _query,
+        _includeRelated,
+        _expandedScope,
+        _showingGlobalResults,
+        _showingGlobalResults ? _searchCategoryId : _selectedCategoryId,
+        _columnFilters.entries
+            .map((entry) => '${entry.key}=${entry.value}')
+            .join('&'),
+      ),
+      onPageChange: (page) {
+        setState(() => _page = page);
+        return _reloadCurrentPage();
+      },
+      isLoading:
+          (_loading || _searchLoading) && (_paged?.items.isEmpty ?? true),
+      loadingMore:
+          (_loading || _searchLoading) && (_paged?.items.isNotEmpty ?? false),
+      error: _error,
+      onRetry: _reloadCurrentPage,
+      emptyMessage: _paged == null
+          ? (_tree.isEmpty ? '没有可选择的货品分类' : '请选择左侧分类或搜索货品')
+          : '当前条件下没有可选货品',
+      showFullscreenToggle: false,
+      showColumnChooser: false,
+      enableTextSelection: false,
+    );
+  }
+
+  Widget _buildDedicatedGoodsList(ThemeData theme) {
     final requestVersion = _requestVersion;
     return UtenPagedPickerList<GoodsListItem>(
       key: const Key('goods-picker-paged-list'),

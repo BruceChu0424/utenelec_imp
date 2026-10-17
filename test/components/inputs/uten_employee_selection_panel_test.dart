@@ -44,7 +44,12 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('请选择员工'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenEmployeePicker),
+        matching: find.byType(InputDecorator),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byType(UtenSplitView), findsOneWidget);
     expect(tester.getSize(find.byType(UtenEmployeeSelectionPanel)).width, 960);

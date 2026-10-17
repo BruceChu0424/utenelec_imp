@@ -1,5 +1,6 @@
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -1233,8 +1234,10 @@ Future<String?> _confirmDecision(
                 key: const Key('stock-count-review-reason'),
                 controller: input,
                 maxLength: 500,
-                decoration: InputDecoration(
-                  labelText: action == 'reject' ? '驳回原因（必填）' : '说明（选填）',
+                decoration: UtenInputDecoration(
+                  InputDecoration(
+                    labelText: action == 'reject' ? '驳回原因（必填）' : '说明（选填）',
+                  ),
                 ),
                 onChanged: (_) => setState(() {}),
               ),

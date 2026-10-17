@@ -886,7 +886,8 @@ class _FinanceAssetPolicySurfaceState
       value: controller.text.isEmpty ? null : controller.text,
       enabled: widget.canApprove && !_styleLoading && _styleError == null,
       searchable: true,
-      hintText: _styleLoading ? '科目加载中…' : '请选择会计科目',
+      hintText: label,
+      info: _styleLoading ? '科目加载中，请稍候。' : null,
       items: [
         for (final style in styles)
           UtenDropdownItem(

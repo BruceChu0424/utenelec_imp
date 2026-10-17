@@ -225,9 +225,9 @@ public class GoodsImportService {
             if (r.categorySegments == null || r.categorySegments.isEmpty()) {
                 errors.add(new GoodsImportError(r.rowNum, "类别", "类别不能为空"));
             } else {
-                category = categoryIndex.plan(r.categorySegments, willCreateCat);
+                category = categoryIndex.plan(r.categoryPath, r.categorySegments, willCreateCat);
                 if (category == null) {
-                    errors.add(new GoodsImportError(r.rowNum, "类别", "分类路径存在歧义(同父同名节点)"));
+                    errors.add(new GoodsImportError(r.rowNum, "类别", "分类路径存在歧义（同父同名或名称含 - 导致路径重合），请先区分分类名称后重新导出"));
                 }
             }
             if (r.sourceType != null && !r.sourceType.isEmpty() && !VALID_SOURCE_TYPES.contains(r.sourceType)) {
@@ -578,7 +578,8 @@ public class GoodsImportService {
                         str(row, col.get("minOrderQty")), "最小起订量", pr.rowNum, headerErrors);
                 pr.orderMultipleQty = parseQty(
                         str(row, col.get("orderMultipleQty")), "订货倍数", pr.rowNum, headerErrors);
-                pr.categorySegments = splitCategory(str(row, col.get("categoryPath")));
+                pr.categoryPath = str(row, col.get("categoryPath"));
+                pr.categorySegments = splitCategory(pr.categoryPath);
                 rows.add(pr);
             }
             return new Parsed(rows, headerErrors, totalRows);
@@ -834,30 +835,64 @@ public class GoodsImportService {
     private static final class CategoryPlanIndex {
         final Map<String, List<UUID>> existingChildren = new HashMap<>();
         final Map<String, PlannedCategorySegment> plannedChildren = new HashMap<>();
+        final Map<String, List<CategoryPathPlan>> existingPaths = new HashMap<>();
 
         CategoryPlanIndex(List<MaterialCategory> all) {
+            Map<UUID, MaterialCategory> byId = new HashMap<>();
+            for (MaterialCategory category : all) byId.put(category.getId(), category);
             for (MaterialCategory c : all) {
                 UUID pid = c.getParent() == null ? null : c.getParent().getId();
                 existingChildren.computeIfAbsent(
                                 childKey(existingParent(pid), normKey(c.getName())),
                                 ignored -> new ArrayList<>())
                         .add(c.getId());
+                var chain = new java.util.ArrayDeque<PlannedCategorySegment>();
+                var visited = new HashSet<UUID>();
+                MaterialCategory current = c;
+                while (current != null && visited.add(current.getId())) {
+                    chain.addFirst(new PlannedCategorySegment(current.getId(), null, normKey(current.getName())));
+                    current = current.getParent() == null ? null : byId.get(current.getParent().getId());
+                }
+                if (current == null) {
+                    String path = chain.stream().map(PlannedCategorySegment::name)
+                            .collect(java.util.stream.Collectors.joining("-"));
+                    existingPaths.computeIfAbsent(path, ignored -> new ArrayList<>())
+                            .add(new CategoryPathPlan(List.copyOf(chain)));
+                }
             }
         }
 
-        CategoryPathPlan plan(List<String> segments, Set<String> willCreate) {
+        CategoryPathPlan plan(String rawPath, List<String> segments, Set<String> willCreate) {
+            // Exported paths use '-' but names may contain it. Resolve the whole
+            // path against authoritative UUID chains before interpreting separators.
+            var matches = existingPaths.getOrDefault(normKey(rawPath), List.of());
+            if (matches.size() > 1) return null;
+            if (matches.size() == 1) return matches.getFirst();
             String parentRef = "ROOT";
             List<PlannedCategorySegment> result = new ArrayList<>();
             List<String> path = new ArrayList<>();
+            String normalizedPath = normKey(rawPath);
+            String longestExisting = existingPaths.keySet().stream()
+                    .filter(existing -> normalizedPath.startsWith(existing + "-"))
+                    .max(Comparator.comparingInt(String::length)).orElse(null);
+            if (longestExisting != null) {
+                var parents = existingPaths.get(longestExisting);
+                if (parents.size() != 1) return null;
+                result.addAll(parents.getFirst().segments());
+                result.forEach(segment -> path.add(segment.name()));
+                parentRef = existingParent(result.getLast().existingId());
+                segments = java.util.Arrays.stream(normalizedPath.substring(longestExisting.length() + 1).split("-"))
+                        .filter(segment -> !segment.isEmpty()).toList();
+            }
             for (String name : segments) {
                 path.add(name);
                 String key = childKey(parentRef, name);
-                List<UUID> matches = existingChildren.getOrDefault(key, List.of());
-                if (matches.size() > 1) return null;
+                List<UUID> childMatches = existingChildren.getOrDefault(key, List.of());
+                if (childMatches.size() > 1) return null;
                 PlannedCategorySegment segment;
-                if (matches.size() == 1) {
-                    segment = new PlannedCategorySegment(matches.get(0), null, name);
-                    parentRef = existingParent(matches.get(0));
+                if (childMatches.size() == 1) {
+                    segment = new PlannedCategorySegment(childMatches.get(0), null, name);
+                    parentRef = existingParent(childMatches.get(0));
                 } else {
                     segment = plannedChildren.computeIfAbsent(
                             key,
@@ -942,6 +977,7 @@ public class GoodsImportService {
         BigDecimal minOrderQty;      // 最小起订量（V575）
         BigDecimal orderMultipleQty; // 订货倍数（V575）
         List<String> categorySegments;
+        String categoryPath;
     }
 
     private record ImportPlan(

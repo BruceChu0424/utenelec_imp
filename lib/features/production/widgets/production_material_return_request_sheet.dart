@@ -608,7 +608,8 @@ class _MaterialReturnRequestState
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            hintText: '0',
+            hintText: '本次退料',
+            hintMaxLines: 1,
             suffixText: row.source.unitName,
           ),
         ),

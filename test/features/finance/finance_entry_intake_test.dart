@@ -396,7 +396,11 @@ Future<void> _selectAccount(WidgetTester tester, FinanceDocType type) async {
     );
     tester.widget<UtenDropdownField>(field).onChanged('account-1');
   } else {
-    final field = find.text('点击选择收款账户');
+    final field = find.byKey(const Key('finance-receipt-account-picker'));
+    expect(
+      find.descendant(of: field, matching: find.text('收款账户')),
+      findsWidgets,
+    );
     await tester.scrollUntilVisible(
       field,
       200,

@@ -52,6 +52,8 @@ import java.util.UUID;
 @RequestMapping("/api/master/clients")
 @RequiredArgsConstructor
 public class ClientController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private jakarta.servlet.http.HttpServletRequest request;
 
     private final ClientService service;
     private final XlsxExportService xlsxExport;
@@ -96,7 +98,8 @@ public class ClientController {
                 code, name, fullName, clientXz, tday, region, placeId, empId,
                 ownerEmployeeId, legalPerson, linkman, null, null, null, fax, postcode,
                 address, bank, null, taxId, credit, creditFloor, website,
-                excludeLegacyFinanceStub, selectableOnly), page, size, sort, order);
+                excludeLegacyFinanceStub, selectableOnly).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, null)), page, size, sort, order);
     }
 
     /**
@@ -140,7 +143,8 @@ public class ClientController {
                 ownerEmployeeId, legalPerson, linkman,
                 sensitive.mobile(), sensitive.phone(), sensitive.phone2(), fax, postcode,
                 address, bank, sensitive.bankAccount(), taxId, credit, creditFloor, website,
-                excludeLegacyFinanceStub, selectableOnly), page, size, sort, order);
+                excludeLegacyFinanceStub, selectableOnly).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, sensitive.columnSearch())), page, size, sort, order);
     }
 
     @GetMapping("/facets")
@@ -204,7 +208,8 @@ public class ClientController {
                 ownerEmployeeId, legalPerson, linkman,
                 body.sensitive().mobile(), body.sensitive().phone(), body.sensitive().phone2(),
                 fax, postcode, address, bank, body.sensitive().bankAccount(), taxId, credit, creditFloor, website,
-                excludeLegacyFinanceStub, false), sort, order,
+                excludeLegacyFinanceStub, false).withColumnSearch(
+                        com.uten.imp.common.util.ColumnKeywordSearch.contactRequestValues(request, body.sensitive().columnSearch())), sort, order,
                 exportLimits.exportMaxRows());
         byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), body.columnProjection(), "master_client");
         byte[] downloadBytes = workbookDownload.protect(xlsx, body.password());

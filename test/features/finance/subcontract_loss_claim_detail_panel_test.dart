@@ -124,7 +124,14 @@ void main() {
 
       await tester.tap(find.text('登记履约').first);
       await tester.pumpAndSettle();
-      expect(find.text('整笔履约数量'), findsOneWidget);
+      final quantityField = tester.widget<TextField>(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField && widget.decoration?.labelText == '整笔履约数量',
+        ),
+      );
+      expect(quantityField.readOnly, isTrue);
+      expect(quantityField.decoration?.hintText, '整笔履约数量');
       expect(find.text('方案金额(本币)'), findsNothing);
     },
   );

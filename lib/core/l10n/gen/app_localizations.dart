@@ -1753,7 +1753,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityPasscodeHint.
   ///
   /// In zh, this message translates to:
-  /// **'输入6位通行码'**
+  /// **'通行码'**
   String get securityPasscodeHint;
 
   /// No description provided for @securityPasscodeInvalid.
@@ -3736,7 +3736,7 @@ abstract class AppLocalizations {
   /// No description provided for @noticeBlessingPlaceholder.
   ///
   /// In zh, this message translates to:
-  /// **'写下你的祝福…'**
+  /// **'祝福内容'**
   String get noticeBlessingPlaceholder;
 
   /// No description provided for @noticeBlessingSendButton.

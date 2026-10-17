@@ -2,6 +2,7 @@ package com.uten.imp.common.web;
 
 import com.uten.imp.common.util.FinancialExactAmount;
 import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -18,11 +19,13 @@ public record HeaderColumnFilter(Map<String, String> values) {
     public static final HeaderColumnFilter EMPTY = new HeaderColumnFilter(Map.of());
     private static final Set<String> KEYS = Set.of("amountMin", "amountMax", "amountNull", "deliverFrom", "deliverTo",
             "apPosted", "weightMin", "weightMax", "weightNull", "recordOrigin");
+    private static final Set<String> SEARCH_KEYS = Set.of("billNo", "supplier", "client", "warehouse");
 
     public HeaderColumnFilter {
         Map<String, String> safe = new LinkedHashMap<>();
         if (values != null) values.forEach((key, value) -> {
-            if (!KEYS.contains(key)) throw invalid("不支持的表头筛选字段: " + key);
+            if (!(key.startsWith("search.") ? SEARCH_KEYS.contains(key.substring(7)) : KEYS.contains(key)))
+                throw invalid("不支持的表头筛选字段: " + key);
             if (value != null && !value.isBlank()) {
                 if (value.length() > 100) throw invalid("表头筛选值过长");
                 safe.put(key, value.strip());
@@ -33,7 +36,10 @@ public record HeaderColumnFilter(Map<String, String> values) {
 
     public static HeaderColumnFilter from(Map<String, String> query) {
         Map<String, String> values = new LinkedHashMap<>();
-        if (query != null) query.forEach((key, value) -> { if (key.startsWith("hf.")) values.put(key.substring(3), value); });
+        if (query != null) query.forEach((key, value) -> {
+            if (key.startsWith("hf.")) values.put(key.substring(3), value);
+            else if (key.startsWith("search.")) values.put(key, value);
+        });
         return values.isEmpty() ? EMPTY : new HeaderColumnFilter(values);
     }
 
@@ -44,6 +50,42 @@ public record HeaderColumnFilter(Map<String, String> values) {
     /** Reject before parsing/probing values or constructing a protected predicate. */
     public void requireAmountVisible(boolean visible) {
         if (hasAmount() && !visible) throw new ApiException(ErrorCode.FORBIDDEN, "无权按隐藏的商业金额筛选或探测空值");
+    }
+
+    /** A feature supplies its own fixed property/reference contract, never a client property path. */
+    public record SearchField(String property, Class<?> referenceType, String referenceName, String parentProperty) {
+        public static SearchField text(String property) { return new SearchField(property, null, null, null); }
+        public static SearchField reference(String property, Class<?> type) { return new SearchField(property, type, "name", null); }
+        public SearchField withParent(String parentProperty) { return new SearchField(property, referenceType, referenceName, parentProperty); }
+
+        private Predicate matches(Root<?> root, CriteriaQuery<?> query, CriteriaBuilder cb, String pattern) {
+            if (referenceType == null) return com.uten.imp.common.util.NameRefKeyword.text(cb, root.get(property), pattern);
+            var reference = query.subquery(java.util.UUID.class);
+            Root<?> master = reference.from(referenceType);
+            Predicate match = com.uten.imp.common.util.NameRefKeyword.text(cb, master.get(referenceName), pattern);
+            if (parentProperty != null) {
+                var parent = query.subquery(java.util.UUID.class);
+                Root<?> parentRoot = parent.from(referenceType);
+                parent.select(parentRoot.get("id")).where(cb.isFalse(parentRoot.get("deleted")),
+                        com.uten.imp.common.util.NameRefKeyword.text(cb, parentRoot.get(referenceName), pattern));
+                match = cb.or(match, master.get(parentProperty).in(parent));
+            }
+            reference.select(master.get("id")).where(cb.isFalse(master.get("deleted")), match);
+            return root.get(property).in(reference);
+        }
+    }
+
+    /** Column searches AND together, as do words within each column, before count and pagination. */
+    public void applySearch(Root<?> root, CriteriaQuery<?> query, CriteriaBuilder cb, List<Predicate> predicates,
+                            Map<String, SearchField> supported) {
+        values.forEach((key, value) -> {
+            if (!key.startsWith("search.")) return;
+            SearchField field = supported.get(key.substring(7));
+            if (field == null) throw invalid("本单据没有可搜索的表头列: " + key.substring(7));
+            for (String term : com.uten.imp.common.util.KeywordSearch.terms(value)) {
+                predicates.add(field.matches(root, query, cb, com.uten.imp.common.util.NameRefKeyword.like(term)));
+            }
+        });
     }
 
     /** Field names are constants selected by each owning feature, never request values. */

@@ -948,7 +948,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityScanManual => 'Enter code manually';
 
   @override
-  String get securityPasscodeHint => 'Enter the 6-digit pass code';
+  String get securityPasscodeHint => 'Pass code';
 
   @override
   String get securityPasscodeInvalid =>
@@ -2043,7 +2043,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get noticeBlessingWallEmpty => 'No blessings yet — send the first one';
 
   @override
-  String get noticeBlessingPlaceholder => 'Write your blessing…';
+  String get noticeBlessingPlaceholder => 'Blessing';
 
   @override
   String get noticeBlessingSendButton => 'Send blessing';

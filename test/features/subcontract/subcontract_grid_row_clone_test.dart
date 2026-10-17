@@ -8,6 +8,84 @@ import 'package:uten_imp/features/subcontract/widgets/subcontract_grid_columns.d
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 
 void main() {
+  testWidgets(
+    'empty quantity loss and price cells show business names and retain unit and exact input',
+    (tester) async {
+      final row = SubcontractGridRow()..unitId = 'piece';
+      row.qty.clear();
+      row.price.clear();
+      row.allowedLossPct.clear();
+      addTearDown(row.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                final columns = subcontractGridColumns(
+                  (_) async {},
+                  SubcontractDocConfig.order,
+                  context: context,
+                  unitEntries: const {'piece': '个'},
+                );
+                expect(
+                  columns.singleWhere((column) => column.key == 'qty').required,
+                  isTrue,
+                );
+                expect(
+                  columns
+                      .singleWhere((column) => column.key == 'price')
+                      .required,
+                  isTrue,
+                );
+                return Column(
+                  children: [
+                    for (final key in ['qty', 'allowedLossPct', 'price'])
+                      columns
+                          .singleWhere((column) => column.key == key)
+                          .cellBuilder(context, row),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      Finder field(TextEditingController controller) => find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField && identical(widget.controller, controller),
+      );
+      expect(
+        tester.widget<TextField>(field(row.qty)).decoration?.hintText,
+        '数量',
+      );
+      expect(
+        tester.widget<TextField>(field(row.qty)).decoration?.suffixText,
+        '个',
+      );
+      expect(
+        tester
+            .widget<TextField>(field(row.allowedLossPct))
+            .decoration
+            ?.hintText,
+        '允许损耗%',
+      );
+      expect(
+        tester.widget<TextField>(field(row.price)).decoration?.hintText,
+        '单价',
+      );
+      expect(row.qty.text, isEmpty);
+      expect(row.price.text, isEmpty);
+      await tester.enterText(field(row.qty), '12.3456');
+      await tester.enterText(field(row.price), '2.0001');
+      await tester.enterText(field(row.allowedLossPct), '5');
+      await tester.pump();
+      expect(row.qty.text, '12.3456');
+      expect(row.price.text, '2.0001');
+      expect(row.allowedLossPct.text, '5');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('clone 拷贝全部录入列（含损耗单四列）与行委外商', () {
     final src = SubcontractGridRow(sourceLocked: true)
       ..goods = const GoodsOption(id: 'g1', name: '货品1')

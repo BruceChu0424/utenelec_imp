@@ -209,7 +209,7 @@ void main() {
 }
 
 Future<void> _fillDepartureAndContinue(WidgetTester tester) async {
-  await tester.tap(find.text('请选择日期'));
+  await tester.tap(find.widgetWithText(InputDecorator, '离职日期 *'));
   await tester.pumpAndSettle();
   await tester.tap(
     find

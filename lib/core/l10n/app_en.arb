@@ -347,7 +347,7 @@
   "securityTitle": "Visitor Check",
   "securityScanHint": "Point the visitor QR at the frame",
   "securityScanManual": "Enter code manually",
-  "securityPasscodeHint": "Enter the 6-digit pass code",
+  "securityPasscodeHint": "Pass code",
   "securityPasscodeInvalid": "Please enter the 6-digit numeric pass code",
   "visitorPasscodeLabel": "Pass code",
   "securityPass": "Allow entry",
@@ -808,7 +808,7 @@
     }
   },
   "noticeBlessingWallEmpty": "No blessings yet — send the first one",
-  "noticeBlessingPlaceholder": "Write your blessing…",
+  "noticeBlessingPlaceholder": "Blessing",
   "noticeBlessingSendButton": "Send blessing",
   "noticeBlessingSending": "Sending…",
   "noticeBlessingViewAll": "View all {count}",

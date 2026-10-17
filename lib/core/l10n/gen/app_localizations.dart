@@ -19227,6 +19227,240 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。'**
   String get release2521ServerUpdates;
+
+  /// No description provided for @goodsHistoryTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品操作记录'**
+  String get goodsHistoryTitle;
+
+  /// No description provided for @goodsHistoryHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'保留最近 10 次资料修改，可选择其中一次撤回。取消撤回会恢复上次撤回；后续修改或业务引用可能限制恢复。'**
+  String get goodsHistoryHint;
+
+  /// No description provided for @goodsHistoryUndo.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回'**
+  String get goodsHistoryUndo;
+
+  /// No description provided for @goodsHistoryRedo.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消撤回'**
+  String get goodsHistoryRedo;
+
+  /// No description provided for @goodsHistoryUndoSelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回所选操作'**
+  String get goodsHistoryUndoSelected;
+
+  /// No description provided for @goodsHistoryUndoConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回“{label}”，影响 {count} 条资料。确认撤回？'**
+  String goodsHistoryUndoConfirm(String label, int count);
+
+  /// No description provided for @goodsHistoryRedoConfirm.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消上次对“{label}”的撤回，恢复 {count} 条资料。确认取消撤回？'**
+  String goodsHistoryRedoConfirm(String label, int count);
+
+  /// No description provided for @goodsHistoryUndoDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'所选操作已撤回，已记录本次撤回。'**
+  String get goodsHistoryUndoDone;
+
+  /// No description provided for @goodsHistoryRedoDone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已取消上次撤回，已记录本次取消撤回。'**
+  String get goodsHistoryRedoDone;
+
+  /// No description provided for @goodsHistoryLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作记录加载失败，请刷新重试。'**
+  String get goodsHistoryLoadFailed;
+
+  /// No description provided for @goodsHistoryActionFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'操作结果未确认。'**
+  String get goodsHistoryActionFailed;
+
+  /// No description provided for @goodsHistoryRefreshBeforeRetry.
+  ///
+  /// In zh, this message translates to:
+  /// **'记录已保留。请先刷新，核对最新状态后再操作。'**
+  String get goodsHistoryRefreshBeforeRetry;
+
+  /// No description provided for @goodsHistoryNoPermission.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前没有可查看的货品操作权限。'**
+  String get goodsHistoryNoPermission;
+
+  /// No description provided for @goodsHistoryEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无可撤回的操作记录。完成资料修改后，可在这里查看。'**
+  String get goodsHistoryEmpty;
+
+  /// No description provided for @goodsHistoryEvents.
+  ///
+  /// In zh, this message translates to:
+  /// **'撤回与取消撤回记录'**
+  String get goodsHistoryEvents;
+
+  /// No description provided for @goodsHistoryEvent.
+  ///
+  /// In zh, this message translates to:
+  /// **'{action}：{label}'**
+  String goodsHistoryEvent(String action, String label);
+
+  /// No description provided for @goodsHistoryAffected.
+  ///
+  /// In zh, this message translates to:
+  /// **'影响 {count} 条'**
+  String goodsHistoryAffected(int count);
+
+  /// No description provided for @goodsHistoryUndone.
+  ///
+  /// In zh, this message translates to:
+  /// **'已撤回'**
+  String get goodsHistoryUndone;
+
+  /// No description provided for @goodsHistoryApplied.
+  ///
+  /// In zh, this message translates to:
+  /// **'已生效'**
+  String get goodsHistoryApplied;
+
+  /// No description provided for @goodsHistorySelected.
+  ///
+  /// In zh, this message translates to:
+  /// **'已选中'**
+  String get goodsHistorySelected;
+
+  /// No description provided for @goodsHistoryBlocked.
+  ///
+  /// In zh, this message translates to:
+  /// **'此操作当前无法撤回或取消撤回，请刷新查看最新状态。'**
+  String get goodsHistoryBlocked;
+
+  /// No description provided for @goodsHistoryOther.
+  ///
+  /// In zh, this message translates to:
+  /// **'资料修改'**
+  String get goodsHistoryOther;
+
+  /// No description provided for @goodsHistoryGoodsCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建货品'**
+  String get goodsHistoryGoodsCreate;
+
+  /// No description provided for @goodsHistoryGoodsEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品'**
+  String get goodsHistoryGoodsEdit;
+
+  /// No description provided for @goodsHistoryGoodsNameEn.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品英文名称'**
+  String get goodsHistoryGoodsNameEn;
+
+  /// No description provided for @goodsHistoryGoodsStatus.
+  ///
+  /// In zh, this message translates to:
+  /// **'货品启用或停用'**
+  String get goodsHistoryGoodsStatus;
+
+  /// No description provided for @goodsHistoryGoodsDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除货品'**
+  String get goodsHistoryGoodsDelete;
+
+  /// No description provided for @goodsHistoryGoodsImport.
+  ///
+  /// In zh, this message translates to:
+  /// **'文件导入货品'**
+  String get goodsHistoryGoodsImport;
+
+  /// No description provided for @goodsHistoryBomCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'新增组装组件'**
+  String get goodsHistoryBomCreate;
+
+  /// No description provided for @goodsHistoryBomEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改组装组件'**
+  String get goodsHistoryBomEdit;
+
+  /// No description provided for @goodsHistoryBomDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除组装组件'**
+  String get goodsHistoryBomDelete;
+
+  /// No description provided for @goodsHistoryBomPaste.
+  ///
+  /// In zh, this message translates to:
+  /// **'粘贴组装组件'**
+  String get goodsHistoryBomPaste;
+
+  /// No description provided for @goodsHistoryBomAudit.
+  ///
+  /// In zh, this message translates to:
+  /// **'组件审核变更'**
+  String get goodsHistoryBomAudit;
+
+  /// No description provided for @goodsHistoryCategoryCreate.
+  ///
+  /// In zh, this message translates to:
+  /// **'新建货品分类'**
+  String get goodsHistoryCategoryCreate;
+
+  /// No description provided for @goodsHistoryCategoryEdit.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品分类'**
+  String get goodsHistoryCategoryEdit;
+
+  /// No description provided for @goodsHistoryCategoryDelete.
+  ///
+  /// In zh, this message translates to:
+  /// **'删除货品分类'**
+  String get goodsHistoryCategoryDelete;
+
+  /// No description provided for @goodsHistoryClose.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭'**
+  String get goodsHistoryClose;
+
+  /// No description provided for @goodsHistoryGoodsPurchasePolicy.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品采购收货方式'**
+  String get goodsHistoryGoodsPurchasePolicy;
+
+  /// No description provided for @goodsHistoryGoodsSubcontractPolicy.
+  ///
+  /// In zh, this message translates to:
+  /// **'修改货品委外方式'**
+  String get goodsHistoryGoodsSubcontractPolicy;
 }
 
 class _AppLocalizationsDelegate

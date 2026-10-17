@@ -10468,4 +10468,130 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get release2521ServerUpdates =>
       '服务器更新按任务显示当前阶段与结果，重新打开页面可继续查看；失败时展示已确认原因和处理建议。';
+
+  @override
+  String get goodsHistoryTitle => '货品操作记录';
+
+  @override
+  String get goodsHistoryHint =>
+      '保留最近 10 次资料修改，可选择其中一次撤回。取消撤回会恢复上次撤回；后续修改或业务引用可能限制恢复。';
+
+  @override
+  String get goodsHistoryUndo => '撤回';
+
+  @override
+  String get goodsHistoryRedo => '取消撤回';
+
+  @override
+  String get goodsHistoryUndoSelected => '撤回所选操作';
+
+  @override
+  String goodsHistoryUndoConfirm(String label, int count) {
+    return '撤回“$label”，影响 $count 条资料。确认撤回？';
+  }
+
+  @override
+  String goodsHistoryRedoConfirm(String label, int count) {
+    return '取消上次对“$label”的撤回，恢复 $count 条资料。确认取消撤回？';
+  }
+
+  @override
+  String get goodsHistoryUndoDone => '所选操作已撤回，已记录本次撤回。';
+
+  @override
+  String get goodsHistoryRedoDone => '已取消上次撤回，已记录本次取消撤回。';
+
+  @override
+  String get goodsHistoryLoadFailed => '操作记录加载失败，请刷新重试。';
+
+  @override
+  String get goodsHistoryActionFailed => '操作结果未确认。';
+
+  @override
+  String get goodsHistoryRefreshBeforeRetry => '记录已保留。请先刷新，核对最新状态后再操作。';
+
+  @override
+  String get goodsHistoryNoPermission => '当前没有可查看的货品操作权限。';
+
+  @override
+  String get goodsHistoryEmpty => '暂无可撤回的操作记录。完成资料修改后，可在这里查看。';
+
+  @override
+  String get goodsHistoryEvents => '撤回与取消撤回记录';
+
+  @override
+  String goodsHistoryEvent(String action, String label) {
+    return '$action：$label';
+  }
+
+  @override
+  String goodsHistoryAffected(int count) {
+    return '影响 $count 条';
+  }
+
+  @override
+  String get goodsHistoryUndone => '已撤回';
+
+  @override
+  String get goodsHistoryApplied => '已生效';
+
+  @override
+  String get goodsHistorySelected => '已选中';
+
+  @override
+  String get goodsHistoryBlocked => '此操作当前无法撤回或取消撤回，请刷新查看最新状态。';
+
+  @override
+  String get goodsHistoryOther => '资料修改';
+
+  @override
+  String get goodsHistoryGoodsCreate => '新建货品';
+
+  @override
+  String get goodsHistoryGoodsEdit => '修改货品';
+
+  @override
+  String get goodsHistoryGoodsNameEn => '修改货品英文名称';
+
+  @override
+  String get goodsHistoryGoodsStatus => '货品启用或停用';
+
+  @override
+  String get goodsHistoryGoodsDelete => '删除货品';
+
+  @override
+  String get goodsHistoryGoodsImport => '文件导入货品';
+
+  @override
+  String get goodsHistoryBomCreate => '新增组装组件';
+
+  @override
+  String get goodsHistoryBomEdit => '修改组装组件';
+
+  @override
+  String get goodsHistoryBomDelete => '删除组装组件';
+
+  @override
+  String get goodsHistoryBomPaste => '粘贴组装组件';
+
+  @override
+  String get goodsHistoryBomAudit => '组件审核变更';
+
+  @override
+  String get goodsHistoryCategoryCreate => '新建货品分类';
+
+  @override
+  String get goodsHistoryCategoryEdit => '修改货品分类';
+
+  @override
+  String get goodsHistoryCategoryDelete => '删除货品分类';
+
+  @override
+  String get goodsHistoryClose => '关闭';
+
+  @override
+  String get goodsHistoryGoodsPurchasePolicy => '修改货品采购收货方式';
+
+  @override
+  String get goodsHistoryGoodsSubcontractPolicy => '修改货品委外方式';
 }

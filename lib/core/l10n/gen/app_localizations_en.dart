@@ -11132,4 +11132,139 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get release2521ServerUpdates =>
       'Server update tasks show their current stage and result. Reopen the page to continue checking progress; failures show confirmed reasons and suggested next steps.';
+
+  @override
+  String get goodsHistoryTitle => 'Goods operation history';
+
+  @override
+  String get goodsHistoryHint =>
+      'Select one of the last 10 data changes to undo. Redo restores the last undo. Later changes or business references may prevent restoration.';
+
+  @override
+  String get goodsHistoryUndo => 'Undo';
+
+  @override
+  String get goodsHistoryRedo => 'Redo last undo';
+
+  @override
+  String get goodsHistoryUndoSelected => 'Undo selected operation';
+
+  @override
+  String goodsHistoryUndoConfirm(String label, int count) {
+    return 'Undo \"$label\", affecting $count records?';
+  }
+
+  @override
+  String goodsHistoryRedoConfirm(String label, int count) {
+    return 'Redo the last undo of \"$label\", restoring $count records?';
+  }
+
+  @override
+  String get goodsHistoryUndoDone =>
+      'The selected operation was undone and recorded.';
+
+  @override
+  String get goodsHistoryRedoDone => 'The last undo was redone and recorded.';
+
+  @override
+  String get goodsHistoryLoadFailed =>
+      'Could not load operation history. Refresh to try again.';
+
+  @override
+  String get goodsHistoryActionFailed =>
+      'The operation result could not be confirmed.';
+
+  @override
+  String get goodsHistoryRefreshBeforeRetry =>
+      'History is retained. Refresh and check the latest state before trying again.';
+
+  @override
+  String get goodsHistoryNoPermission =>
+      'You do not have access to goods operation history.';
+
+  @override
+  String get goodsHistoryEmpty =>
+      'No operation history yet. Data changes will appear here.';
+
+  @override
+  String get goodsHistoryEvents => 'Undo and redo activity';
+
+  @override
+  String goodsHistoryEvent(String action, String label) {
+    return '$action: $label';
+  }
+
+  @override
+  String goodsHistoryAffected(int count) {
+    return '$count affected records';
+  }
+
+  @override
+  String get goodsHistoryUndone => 'Undone';
+
+  @override
+  String get goodsHistoryApplied => 'Applied';
+
+  @override
+  String get goodsHistorySelected => 'Selected';
+
+  @override
+  String get goodsHistoryBlocked =>
+      'This operation cannot currently be undone or redone. Refresh for the latest state.';
+
+  @override
+  String get goodsHistoryOther => 'Data change';
+
+  @override
+  String get goodsHistoryGoodsCreate => 'Create goods';
+
+  @override
+  String get goodsHistoryGoodsEdit => 'Edit goods';
+
+  @override
+  String get goodsHistoryGoodsNameEn => 'Edit English goods name';
+
+  @override
+  String get goodsHistoryGoodsStatus => 'Enable or disable goods';
+
+  @override
+  String get goodsHistoryGoodsDelete => 'Delete goods';
+
+  @override
+  String get goodsHistoryGoodsImport => 'Import goods from file';
+
+  @override
+  String get goodsHistoryBomCreate => 'Add assembly components';
+
+  @override
+  String get goodsHistoryBomEdit => 'Edit assembly components';
+
+  @override
+  String get goodsHistoryBomDelete => 'Delete assembly components';
+
+  @override
+  String get goodsHistoryBomPaste => 'Paste assembly components';
+
+  @override
+  String get goodsHistoryBomAudit => 'Change component approval';
+
+  @override
+  String get goodsHistoryCategoryCreate => 'Create goods category';
+
+  @override
+  String get goodsHistoryCategoryEdit => 'Edit goods category';
+
+  @override
+  String get goodsHistoryCategoryDelete => 'Delete goods category';
+
+  @override
+  String get goodsHistoryClose => 'Close';
+
+  @override
+  String get goodsHistoryGoodsPurchasePolicy =>
+      'Edit goods purchase receipt policy';
+
+  @override
+  String get goodsHistoryGoodsSubcontractPolicy =>
+      'Edit goods subcontract policy';
 }

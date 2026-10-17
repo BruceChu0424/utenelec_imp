@@ -10727,4 +10727,132 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get release2521ServerUpdates =>
       '서버 업데이트 작업의 현재 단계와 결과를 표시합니다. 페이지를 다시 열어 진행 상황을 계속 확인할 수 있으며, 실패 시 확인된 원인과 권장 조치를 안내합니다.';
+
+  @override
+  String get goodsHistoryTitle => '상품 작업 기록';
+
+  @override
+  String get goodsHistoryHint =>
+      '최근 자료 변경 10건 중 하나를 선택하여 실행 취소할 수 있습니다. 다시 실행은 마지막 실행 취소를 복원합니다. 이후 변경이나 업무 참조로 복원이 제한될 수 있습니다.';
+
+  @override
+  String get goodsHistoryUndo => '실행 취소';
+
+  @override
+  String get goodsHistoryRedo => '마지막 취소 다시 실행';
+
+  @override
+  String get goodsHistoryUndoSelected => '선택한 작업 실행 취소';
+
+  @override
+  String goodsHistoryUndoConfirm(String label, int count) {
+    return '자료 $count건에 영향을 주는 \"$label\" 작업을 실행 취소할까요?';
+  }
+
+  @override
+  String goodsHistoryRedoConfirm(String label, int count) {
+    return '\"$label\"의 마지막 실행 취소를 다시 실행하여 자료 $count건을 복원할까요?';
+  }
+
+  @override
+  String get goodsHistoryUndoDone => '선택한 작업이 실행 취소되었으며 기록되었습니다.';
+
+  @override
+  String get goodsHistoryRedoDone => '마지막 실행 취소가 다시 실행되었으며 기록되었습니다.';
+
+  @override
+  String get goodsHistoryLoadFailed => '작업 기록을 불러오지 못했습니다. 새로 고침 후 다시 시도하세요.';
+
+  @override
+  String get goodsHistoryActionFailed => '작업 결과를 확인하지 못했습니다.';
+
+  @override
+  String get goodsHistoryRefreshBeforeRetry =>
+      '기록은 유지됩니다. 새로 고침하여 최신 상태를 확인한 후 다시 작업하세요.';
+
+  @override
+  String get goodsHistoryNoPermission => '상품 작업 기록을 볼 권한이 없습니다.';
+
+  @override
+  String get goodsHistoryEmpty => '아직 작업 기록이 없습니다. 자료 변경이 여기에 표시됩니다.';
+
+  @override
+  String get goodsHistoryEvents => '실행 취소 및 다시 실행 기록';
+
+  @override
+  String goodsHistoryEvent(String action, String label) {
+    return '$action: $label';
+  }
+
+  @override
+  String goodsHistoryAffected(int count) {
+    return '영향을 받는 자료 $count건';
+  }
+
+  @override
+  String get goodsHistoryUndone => '실행 취소됨';
+
+  @override
+  String get goodsHistoryApplied => '적용됨';
+
+  @override
+  String get goodsHistorySelected => '선택됨';
+
+  @override
+  String get goodsHistoryBlocked =>
+      '현재 이 작업은 실행 취소 또는 다시 실행할 수 없습니다. 새로 고침하여 최신 상태를 확인하세요.';
+
+  @override
+  String get goodsHistoryOther => '자료 변경';
+
+  @override
+  String get goodsHistoryGoodsCreate => '상품 생성';
+
+  @override
+  String get goodsHistoryGoodsEdit => '상품 수정';
+
+  @override
+  String get goodsHistoryGoodsNameEn => '상품 영어 이름 수정';
+
+  @override
+  String get goodsHistoryGoodsStatus => '상품 사용 또는 중지';
+
+  @override
+  String get goodsHistoryGoodsDelete => '상품 삭제';
+
+  @override
+  String get goodsHistoryGoodsImport => '파일에서 상품 가져오기';
+
+  @override
+  String get goodsHistoryBomCreate => '조립 구성품 추가';
+
+  @override
+  String get goodsHistoryBomEdit => '조립 구성품 수정';
+
+  @override
+  String get goodsHistoryBomDelete => '조립 구성품 삭제';
+
+  @override
+  String get goodsHistoryBomPaste => '조립 구성품 붙여넣기';
+
+  @override
+  String get goodsHistoryBomAudit => '구성품 승인 변경';
+
+  @override
+  String get goodsHistoryCategoryCreate => '상품 분류 생성';
+
+  @override
+  String get goodsHistoryCategoryEdit => '상품 분류 수정';
+
+  @override
+  String get goodsHistoryCategoryDelete => '상품 분류 삭제';
+
+  @override
+  String get goodsHistoryClose => '닫기';
+
+  @override
+  String get goodsHistoryGoodsPurchasePolicy => '상품 구매 입고 방식 수정';
+
+  @override
+  String get goodsHistoryGoodsSubcontractPolicy => '상품 외주 방식 수정';
 }

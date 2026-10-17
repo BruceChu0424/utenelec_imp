@@ -194,6 +194,39 @@ class JwtAuthorizationVersionTest {
     }
 
     @Test
+    void invalidAccountSessionOrAuthorizationCannotReachEitherGoodsHistoryCommand() throws Exception {
+        var invalidStates = java.util.List.of(
+                state(UUID.randomUUID(), "history", "disabled", false, false, 5, 9),
+                state(UUID.randomUUID(), "history", "active", true, false, 5, 9),
+                state(UUID.randomUUID(), "history", "active", false, false, 5, 9,
+                        new AuthSessionService.SessionFacts(NOW.minusSeconds(120), NOW.plusSeconds(3600), NOW)),
+                state(UUID.randomUUID(), "history", "active", false, false, 6, 9),
+                state(UUID.randomUUID(), "history", "active", false, false, 5, 10));
+        int scenario = 0;
+        for (String action : java.util.List.of("undo", "redo")) {
+            for (var account : invalidStates) {
+                SecurityContextHolder.clearContext();
+                UUID user = UUID.randomUUID();
+                String token = "history-account-" + scenario++;
+                when(jwtService.parse(token)).thenReturn(claims(user, 5, 9));
+                when(sessions.loadStaff(user, SESSION, user)).thenReturn(Optional.of(account));
+                var request = bearerRequest(token);
+                request.setMethod("POST");
+                request.setRequestURI("/api/master/goods/history/" + UUID.randomUUID() + "/" + action);
+                var response = new MockHttpServletResponse();
+                FilterChain chain = mock(FilterChain.class);
+
+                filter.doFilter(request, response, chain);
+
+                assertEquals(401, response.getStatus(), "Invalid account/session must not reach " + action);
+                verify(chain, never()).doFilter(request, response);
+                assertNull(SecurityContextHolder.getContext().getAuthentication());
+            }
+        }
+        verifyNoInteractions(staffAuthorityResolver);
+    }
+
+    @Test
     void authorityResolverFailureReturnsStructured503WithoutInvalidatingSession() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID employeeId = UUID.randomUUID();

@@ -3,7 +3,7 @@
 // 顶层壳层(树加载/统一搜索/分类 CRUD)复用 CategoryPageShell；右侧明细区复用
 // MasterEntityDetailPane(ADR-111：分页/筛选/排序/打印导出/启停/删除/批量命令只有一份)。
 // 本页只保留货品特有的动作：复制/粘贴货品、组件信息的复制/粘贴/删除(粘贴与删除
-// 都是服务端整批原子命令)、禁用/不明货品前导分组、导入与撤回导入。
+// 都是服务端整批原子命令)、禁用/不明货品前导分组、导入与资料操作历史。
 // 主档按 goods:view 查看；分类按 material_category:view 独立显示，无权时使用主档全局列表。
 //
 // compact：分类树作为 endDrawer；medium/expanded：左树 + 右详情。
@@ -40,8 +40,7 @@ import '../widgets/basic_data_l10n.dart';
 import '../widgets/category_page_shell.dart';
 import '../widgets/goods_import_dialog.dart';
 import '../widgets/goods_related_search_control.dart';
-import '../models/goods_import.dart';
-import '../repositories/goods_import_repository.dart';
+import '../widgets/goods_operation_history_panel.dart';
 import '../widgets/master_data_table_view.dart';
 import '../widgets/master_entity_detail_pane.dart';
 import '../widgets/master_batch_feedback.dart';
@@ -79,61 +78,14 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     ),
   ];
 
-  /// 导入/撤回后：刷新分类树 + 重挂详情面板（强刷货品列表）。
+  /// 导入/撤回/取消撤回后：刷新分类树 + 重挂详情面板（强刷货品列表）。
   void _reloadAll() {
+    if (!mounted) return;
     shellReload();
     setState(() => _detailEpoch++);
   }
 
-  Future<void> _undoLatestImport() async {
-    GoodsImportBatchInfo? batch;
-    try {
-      batch = await ref.read(goodsImportRepositoryProvider).latest();
-    } catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-      return;
-    }
-    if (!mounted) return;
-    if (batch == null) {
-      context.appError('没有可撤回的导入');
-      return;
-    }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => UtenAlertDialog(
-        title: const Text('撤回最近一次导入'),
-        content: Text(
-          '将撤销最近一次导入的 ${batch!.rowCount} 条货品'
-          '${(batch.filename != null && batch.filename!.isNotEmpty) ? "(${batch.filename})" : ""}'
-          '，及本次新建的分类/颜色/单位。确认撤回？',
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认撤回'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await ref.read(goodsImportRepositoryProvider).undo(batch.id);
-      if (!mounted) return;
-      context.appSuccess('已撤回最近一次导入');
-      _reloadAll();
-    } catch (e) {
-      if (!mounted) return;
-      context.appApiError(e);
-    }
-  }
-
-  // ---- 壳层钩子（货品页差异：树常驻 / 未分类折叠 / 撤回导入 / 分批搜索 / 级联删除）----
+  // ---- 壳层钩子（树常驻 / 未分类折叠 / 撤回与取消撤回 / 分批搜索 / 级联删除）----
 
   @override
   String get shellTitle => '货品资料'; // TODO(l10n): 补 arb
@@ -192,14 +144,23 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     required bool compact,
     required bool treeNotEmpty,
   }) {
-    if (!ref.read(currentPermissionsProvider).contains(Perm.goodsImportUndo)) {
+    if (!canOpenGoodsOperationHistory(ref.watch(currentPermissionsProvider))) {
       return const [];
     }
+    final l10n = basicDataL10n(context);
     return [
-      IconButton(
-        icon: const Icon(Icons.undo_rounded),
-        tooltip: '撤回导入', // TODO(l10n): 补 arb
-        onPressed: _undoLatestImport,
+      TextButton(
+        onPressed: () =>
+            showGoodsOperationHistory(context, onChanged: _reloadAll),
+        child: Text(l10n.goodsHistoryUndo),
+      ),
+      TextButton(
+        onPressed: () => showGoodsOperationHistory(
+          context,
+          preferRedo: true,
+          onChanged: _reloadAll,
+        ),
+        child: Text(l10n.goodsHistoryRedo),
       ),
     ];
   }

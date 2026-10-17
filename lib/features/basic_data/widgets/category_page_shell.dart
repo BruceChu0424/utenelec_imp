@@ -9,7 +9,7 @@
 //
 // 页面差异经钩子保留：
 //  - product 页 keepTreeMounted=true（树常驻不卸载，保展开状态）+
-//    initiallyCollapseUncategorized + appBar 撤回导入 + 搜索改走
+//    initiallyCollapseUncategorized + appBar 操作历史 + 搜索改走
 //    repo.searchCategoryIds 分批 + 级联删除预览/显式错误弹窗；
 //  - mould/product 的级联删除确认（红框计数）覆盖 shellDeleteNode；
 //  - client/supplier 用默认的简版删除确认。
@@ -127,7 +127,7 @@ mixin CategoryPageShell<W extends ConsumerStatefulWidget> on ConsumerState<W> {
 
   void shellSearchQueryChanged(String query) {}
 
-  /// AppBar 额外动作（product：撤回导入）。
+  /// AppBar 额外动作（product：操作历史中的撤回与取消撤回）。
   List<Widget> shellExtraAppBarActions(
     BuildContext context, {
     required bool compact,

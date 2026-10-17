@@ -394,11 +394,7 @@ List<EditableGridColumn<StockGridRow>> stockGridColumns(
           controller: row.place,
           maxLength: 100,
           decoration: const UtenInputDecoration(
-            InputDecoration(
-              isDense: true,
-              counterText: '',
-              hintText: '按本次实际填写',
-            ),
+            InputDecoration(isDense: true, counterText: '', hintText: '库位号'),
           ),
         ),
       ),

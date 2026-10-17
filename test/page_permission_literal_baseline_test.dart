@@ -62,6 +62,9 @@ final _fullPermReference = RegExp(r'\bPerm\.[a-zA-Z]\w*');
 // 并继续与 allowedActions / claim / 对象范围相交；四主档的新增分类查看引用只控制
 // 分类树读取，不强迫实体列表取得分类权。出货列表分别预演批准、驳回权限。
 // 以下按文件和完整 Perm 标识登记已审引用，不提高 677 基线，也不放宽反绕过断言。
+// ADR-182: 货品操作历史替换原「撤回导入」入口，将该入口的一处引用移入
+// 历史面板。其余 15 处仅决定拥有对应操作权的人能否打开历史，实际撤回/重做
+// 继续由服务端按原动作权限、身份、版本和当前对象状态裁决；不授予写权限。
 const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> tokens})>{
   'lib/features/finance/pages/finance_procurement_approval_review_page.dart': (
     legacyCount: 4,
@@ -137,7 +140,7 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     },
   ),
   'lib/features/basic_data/pages/product_category_page.dart': (
-    legacyCount: 19,
+    legacyCount: 18,
     tokens: {
       'Perm.materialCategoryView': 1,
       'Perm.materialCategoryCreate': 1,
@@ -145,7 +148,6 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.materialCategoryDelete': 1,
       'Perm.materialCategoryMove': 1,
       'Perm.materialCategoryReorder': 1,
-      'Perm.goodsImportUndo': 1,
       'Perm.goodsCreate': 1,
       'Perm.goodsDelete': 1,
       'Perm.goodsStatus': 1,
@@ -158,6 +160,27 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsEdit': 1,
       'Perm.goodsExport': 1,
       'Perm.goodsImport': 1,
+    },
+  ),
+  'lib/features/basic_data/widgets/goods_operation_history_panel.dart': (
+    legacyCount: 1,
+    tokens: {
+      'Perm.goodsCreate': 1,
+      'Perm.goodsEdit': 1,
+      'Perm.goodsNameEnEdit': 1,
+      'Perm.goodsDelete': 1,
+      'Perm.goodsStatus': 1,
+      'Perm.goodsImport': 1,
+      'Perm.goodsImportUndo': 1,
+      'Perm.goodsBomCreate': 1,
+      'Perm.goodsBomEdit': 1,
+      'Perm.goodsBomDelete': 1,
+      'Perm.goodsBomAudit': 1,
+      'Perm.materialCategoryCreate': 1,
+      'Perm.materialCategoryEdit': 1,
+      'Perm.materialCategoryDelete': 1,
+      'Perm.materialCategoryMove': 1,
+      'Perm.materialCategoryReorder': 1,
     },
   ),
   'lib/features/basic_data/pages/supplier_category_page.dart': (
@@ -369,7 +392,21 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      65, // Previous 38 + 21 finance refresh/dispatch + 4 category reads + 2 shipment actions.
+      80, // Previous 65 + 15 exact history-entry guards; the original undo guard moved.
     );
+  });
+
+  test('history entry guards cannot restore the retired page undo check', () {
+    const page = 'lib/features/basic_data/pages/product_category_page.dart';
+    const history =
+        'lib/features/basic_data/widgets/goods_operation_history_panel.dart';
+    final pageTokens = Map<String, int>.from(
+      _reviewedSourceGuards[page]!.tokens,
+    )..['Perm.goodsImportUndo'] = 1;
+    expect(() => _reviewedIncrementFor(page, pageTokens), throwsStateError);
+    final historyTokens = Map<String, int>.from(
+      _reviewedSourceGuards[history]!.tokens,
+    )..remove('Perm.goodsBomAudit');
+    expect(() => _reviewedIncrementFor(history, historyTokens), throwsStateError);
   });
 }

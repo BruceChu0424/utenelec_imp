@@ -442,8 +442,20 @@ void main() {
       final keys = table.columns.map((column) => column.key).toList();
       expect(keys.indexOf('weight'), keys.indexOf('unitName') + 1);
       expect(keys.indexOf('weightCheck'), keys.indexOf('weight') + 1);
-      // 10 件 x 约 2 g: 占位「应称 0.02」(千克)。
-      expect(find.text('应称 0.02'), findsOneWidget);
+      // 空框提示业务名；10 件 x 约 2 g 的预计重量与原说明同时保留在悬停提示。
+      final weightInput = find.byKey(const ValueKey('weight-cell-input'));
+      expect(weightInput, findsOneWidget);
+      expect(tester.widget<TextField>(weightInput).decoration!.hintText, '重量');
+      final reference = find.ancestor(
+        of: weightInput,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Tooltip &&
+              (widget.message?.contains('应称 0.02') ?? false),
+        ),
+      );
+      expect(reference, findsOneWidget);
+      expect(tester.widget<Tooltip>(reference).message, contains('尚未实称'));
 
       await tester.enterText(
         find.byKey(const ValueKey('weight-cell-input')),

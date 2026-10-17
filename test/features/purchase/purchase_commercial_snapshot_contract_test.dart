@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_supplier_picker.dart';
@@ -48,8 +49,8 @@ void main() {
       // 币种 / 汇率 / 税率 = 金额口径三件套，缺一项本币金额就没法复算。
       final currency = _dropdownField(tester, '币种');
       expect(currency.required, isTrue, reason: '币种是本币换算的锚，不能可空');
-      expect(find.widgetWithText(TextField, '汇率'), findsOneWidget);
-      expect(find.widgetWithText(TextField, '税率(%)'), findsOneWidget);
+      expect(_inputFinder('汇率'), findsOneWidget);
+      expect(_inputFinder('税率(%)'), findsOneWidget);
 
       // 结账方式 = 账期口径；订货单必填(下单即定账期)，收货/退货沿用来源快照。
       final settlement = _dropdownField(tester, '结账方式');
@@ -66,13 +67,20 @@ void main() {
     // 计划下达的采购申请只讲需求，不讲钱：整套商业条款一个都不该出现。
     expect(_dropdownFinder('币种'), findsNothing);
     expect(_dropdownFinder('结账方式'), findsNothing);
-    expect(find.widgetWithText(TextField, '汇率'), findsNothing);
-    expect(find.widgetWithText(TextField, '税率(%)'), findsNothing);
+    expect(_inputFinder('汇率'), findsNothing);
+    expect(_inputFinder('税率(%)'), findsNothing);
   });
 }
 
 Finder _dropdownFinder(String label) => find.byWidgetPredicate(
   (widget) => widget is UtenDropdownField && widget.label == label,
+);
+
+Finder _inputFinder(String label) => find.byWidgetPredicate(
+  (widget) =>
+      widget is TextField &&
+      widget.decoration != null &&
+      utenDecorationFieldName(widget.decoration!) == label,
 );
 
 UtenDropdownField _dropdownField(WidgetTester tester, String label) {

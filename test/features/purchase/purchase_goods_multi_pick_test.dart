@@ -143,15 +143,19 @@ Future<_Api> _pump(
 
 UtenEditableGrid<PurchaseGridRow> _grid(WidgetTester tester) =>
     tester.widget(find.byType(UtenEditableGrid<PurchaseGridRow>));
+Finder _goodsCell(PurchaseGridRow row) => find.descendant(
+  of: find.byType(UtenEditableGrid<PurchaseGridRow>),
+  matching: find.byWidgetPredicate(
+    (widget) =>
+        widget is RequiredCellFrame &&
+        identical(widget.listenable, row.goodsNotifier),
+  ),
+);
+
 Future<void> _pick(WidgetTester tester) async {
-  await tester.tap(
-    find
-        .descendant(
-          of: find.byType(UtenEditableGrid<PurchaseGridRow>),
-          matching: find.text('点击选择'),
-        )
-        .first,
-  );
+  final cell = _goodsCell(_grid(tester).controller.rows.single);
+  expect(cell, findsOneWidget);
+  await tester.tap(cell);
   await tester.pumpAndSettle();
 }
 
@@ -261,14 +265,9 @@ void main() {
       (_, _) => selected.future,
     );
     final controller = _grid(tester).controller;
-    await tester.tap(
-      find
-          .descendant(
-            of: find.byType(UtenEditableGrid<PurchaseGridRow>),
-            matching: find.text('点击选择'),
-          )
-          .first,
-    );
+    final cell = _goodsCell(controller.rows.single);
+    expect(cell, findsOneWidget);
+    await tester.tap(cell);
     controller.removeAt(0);
     await tester.pump();
     selected.complete(_goods);

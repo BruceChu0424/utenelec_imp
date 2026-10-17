@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
@@ -14,6 +15,7 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_order_edit_page.
 import 'package:uten_imp/features/subcontract/repositories/subcontract_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart' as mn;
+import 'package:uten_imp/shared/widgets/procurement_commercial_grid.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
 
@@ -237,8 +239,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // 必填且为空：行内下拉格显示红字提示「点击选择」（requiredEmpty 口径）。
-    expect(find.text('点击选择'), findsAtLeastNWidgets(1));
+    // 必填空格保留校验，并在框内显示实际业务字段名。
+    final settlementCell = find.byWidgetPredicate(
+      (widget) =>
+          widget is ProcurementTermDropdownCell && widget.hint == '结算方式',
+    );
+    expect(settlementCell, findsOneWidget);
+    final dropdownFinder = find.descendant(
+      of: settlementCell,
+      matching: find.byType(UtenDropdownField),
+    );
+    expect(dropdownFinder, findsOneWidget);
+    final dropdown = tester.widget<UtenDropdownField>(dropdownFinder);
+    expect(dropdown.value, isNull);
+    expect(dropdown.required, isTrue);
+    expect(
+      find.descendant(of: settlementCell, matching: find.text('结算方式')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('保存订货单草稿'));
     await tester.pump();

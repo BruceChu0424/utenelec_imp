@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/warehouse/models/stock_doc.dart';
@@ -263,7 +264,17 @@ void main() {
       await tester.tap(_action('取消出库'));
       await tester.pumpAndSettle();
       expect(find.text('取消出库'), findsNWidgets(2));
-      expect(find.text('取消原因(必填)'), findsOneWidget);
+      final reason = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration != null &&
+            utenDecorationFieldName(widget.decoration!) == '取消原因',
+      );
+      expect(reason, findsOneWidget);
+      expect(
+        tester.widget<TextField>(reason).decoration!.labelText,
+        '取消原因(必填)',
+      );
       expect(find.text('确认取消出库'), findsOneWidget);
     },
   );

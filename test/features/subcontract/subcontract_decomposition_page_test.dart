@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../support/filter_segment_tap.dart';
@@ -1832,7 +1833,15 @@ void main() {
           find.byKey(const Key('subcontract-draw-close-confirm')),
         );
         await tester.pumpAndSettle();
-        expect(find.byTooltip('请填写结束领料的原因'), findsOneWidget);
+        final reasonHint = find.descendant(
+          of: find.byKey(const Key('subcontract-draw-close-reason')),
+          matching: find.byType(UtenFieldHintIcon),
+        );
+        expect(reasonHint, findsOneWidget);
+        final hint = tester.widget<UtenFieldHintIcon>(reasonHint);
+        expect(hint.errorMessage, '请填写结束领料的原因');
+        expect(hint.info, contains('委外商做不完'));
+        expect(hint.info, contains('剩余数量不再加工'));
         expect(draw.closed, isEmpty);
         await tester.enterText(
           find.byKey(const Key('subcontract-draw-close-reason')),

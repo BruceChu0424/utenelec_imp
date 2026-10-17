@@ -225,7 +225,12 @@ void main() {
         find.byKey(const Key('finance-arrival-custom-excess')),
         findsOneWidget,
       );
-      expect(find.text('财务理由(必填)'), findsOneWidget);
+      final reason = find.byKey(const Key('finance-arrival-reason'));
+      expect(reason, findsOneWidget);
+      expect(
+        tester.widget<TextField>(reason).decoration!.labelText,
+        '财务理由(必填)',
+      );
       expect(find.text('确认财务决定'), findsOneWidget);
 
       await tester.enterText(

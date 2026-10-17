@@ -695,7 +695,16 @@ class _WeightCellState<T extends EditableGridRow>
         autofilled: c.isSuggested && error == null && !deviation,
       ),
     );
-    final message = error ?? info ?? _referenceWeightHint(params, qtyBase);
+    final primaryMessage = error ?? info;
+    final reference = _referenceWeightHint(params, qtyBase);
+    // A suggestion, validation error or deviation has its own guidance. Keep
+    // the expected weight alongside it after moving that reference out of the
+    // ordinary input placeholder; neither source should hide the other.
+    final message = reference == null || reference == primaryMessage
+        ? primaryMessage
+        : primaryMessage == null
+        ? reference
+        : '$primaryMessage\n$reference';
     final content = Column(
       key: const ValueKey('weight-cell-content'),
       mainAxisSize: MainAxisSize.min,

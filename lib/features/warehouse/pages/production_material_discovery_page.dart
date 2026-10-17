@@ -408,12 +408,15 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       key: 'goods',
       label: '${l10n.materialDiscoveryPick} *',
       width: 220,
-      value: (row) => row.values['goodsName'] as String? ?? '需要填写',
+      value: (row) =>
+          row.values['goodsName'] as String? ?? l10n.warehouseOutboundGoodsName,
       cellBuilderHandlesSemantics: true,
       // 2026-10-06 行高统一口径：编辑表动作不再用 min40 的 TextButton 撑行。
       cellBuilder: (_, row) => UtenTableCellAction(
         key: ValueKey('discovery-goods-${row.id}'),
-        label: row.values['goodsName'] as String? ?? '需要填写',
+        label:
+            row.values['goodsName'] as String? ??
+            l10n.warehouseOutboundGoodsName,
         // 必填未填红字提示（原 TextButton 的 foregroundColor:error 语义）。
         error: row.values['goodsId'] == null,
         onPressed: _editable ? () => _pickGoods(row) : null,

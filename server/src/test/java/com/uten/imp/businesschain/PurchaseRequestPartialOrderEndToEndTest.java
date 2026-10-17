@@ -3,6 +3,7 @@ package com.uten.imp.businesschain;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.common.taskclaim.TaskClaimService;
+import com.uten.imp.features.operations.workbench.FulfillmentWorkbenchPage;
 import com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.BatchDecisionItem;
 import com.uten.imp.features.finance.procurement.ProcurementApprovalContracts.FinanceApproval;
@@ -26,7 +27,9 @@ import org.springframework.test.context.DynamicPropertySource;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -151,7 +154,7 @@ class PurchaseRequestPartialOrderEndToEndTest {
     }
 
     @Test
-    void returnedMultiMaterialBatchStaysOneCorrectionTaskAndEditingReleasesOnlyTheReducedShares() {
+    void returnedMultiMaterialBatchKeepsOneCorrectionDocumentWithSeparateMaterialRowsAndEditingReleasesOnlyTheReducedShares() {
         Fixture f=fixture("returned-multi");
         OrderDetail returned=createOrder(f,List.of(orderLine(f,f.first(),"5"),orderLine(f,f.second(),"4")));
         submit(f,returned.getId());
@@ -159,15 +162,12 @@ class PurchaseRequestPartialOrderEndToEndTest {
         assertBalances(f,f.first(),"2","8","0");
         assertBalances(f,f.second(),"0","4","0");
         assertRequestOpen(f,"0");
-        var running=workbench.query("PURCHASE","IN_PROGRESS",returned.getBillNo(),"",null,null,1,20);
-        assertThat(running.total()).isEqualTo(1);
-        assertThat(running.items()).hasSize(1);
-        assertThat(running.items().getFirst().taskStatus()).isEqualTo("FINANCE_REJECTED");
-        assertThat(running.items().getFirst().goodsCount()).isEqualTo(2);
-        assertThat(running.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(1);
+        assertReturnedOrderMaterialRows(returned);
         var allRunning=workbench.query("PURCHASE","IN_PROGRESS","","",null,null,1,100);
-        assertThat(workbench.countInProgress("PURCHASE")).isEqualTo(allRunning.total());
-        assertThat(allRunning.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(allRunning.total());
+        assertThat(allRunning.items()).hasSize(Math.toIntExact(allRunning.total()));
+        long runningDocuments=allRunning.items().stream().map(row->row.actionDocId()).distinct().count();
+        assertThat(workbench.countInProgress("PURCHASE")).isEqualTo(runningDocuments);
+        assertThat(allRunning.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(runningDocuments);
         assertThat(workbench.countPending("PURCHASE")).isEqualTo(db.queryForObject("""
                 SELECT COUNT(DISTINCT action_doc_id) FROM v_procurement_decomposition_tasks
                 WHERE department='PURCHASE' AND open_qty>0 AND task_status IN ('WAITING_ORDER','FINANCE_REJECTED')
@@ -186,7 +186,7 @@ class PurchaseRequestPartialOrderEndToEndTest {
         reject(f,returned.getId(),"再次核对");
         assertBalances(f,f.first(),"2","5","3");
         assertBalances(f,f.second(),"0","1","3"); // two rejected attempts never double count
-        assertThat(workbench.query("PURCHASE","IN_PROGRESS",returned.getBillNo(),"",null,null,1,20).total()).isEqualTo(1);
+        assertReturnedOrderMaterialRows(orders.detail(returned.getId()));
         orders.cancel(returned.getId());
         assertBalances(f,f.first(),"2","3","5");
         assertBalances(f,f.second(),"0","0","4");
@@ -523,10 +523,48 @@ class PurchaseRequestPartialOrderEndToEndTest {
         } else assertThatThrownBy(()->requests.decompositionPreview(List.of(source))).isInstanceOf(ApiException.class).hasMessageContaining("无可分解数量");
     }
     private long orderCount(Fixture f) {return db.queryForObject("SELECT count(*) FROM purchase_orders WHERE supplier_id=?",Long.class,f.world().supplierId());}
+    private void assertReturnedOrderMaterialRows(OrderDetail expected) {
+        var expectedItems=expected.getItems().stream().collect(Collectors.toMap(item->item.getId(),item->item));
+        FulfillmentWorkbenchPage page=workbench.query("PURCHASE","IN_PROGRESS",expected.getBillNo(),"",null,null,1,20);
+        assertThat(page.total()).isEqualTo(expectedItems.size());
+        assertThat(page.items()).hasSize(expectedItems.size());
+        assertThat(page.items().stream().map(row->row.actionDocItemId()).toList())
+                .containsExactlyInAnyOrderElementsOf(expectedItems.keySet());
+        for(var row:page.items()) {
+            var item=Objects.requireNonNull(expectedItems.get(row.actionDocItemId()));
+            BigDecimal physical=item.getQty().add(Objects.requireNonNullElse(item.getGiftQty(),BigDecimal.ZERO));
+            assertThat(row.actionDocType()).isEqualTo("PURCHASE_ORDER");
+            assertThat(row.actionDocId()).isEqualTo(expected.getId());
+            assertThat(row.actionDocNo()).isEqualTo(expected.getBillNo());
+            assertThat(row.goodsId()).isEqualTo(item.getGoodsId());
+            assertThat(row.taskStatus()).isEqualTo("FINANCE_REJECTED");
+            assertThat(row.goodsCount()).isEqualTo(1);
+            assertThat(row.actionItemIds()).containsExactly(item.getId().toString());
+            assertThat(row.requiredQty()).isEqualByComparingTo(physical);
+            assertThat(row.allocatedQty()).isEqualByComparingTo(physical);
+            assertThat(row.fulfilledQty()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(row.openQty()).isEqualByComparingTo(physical);
+        }
+        assertThat(page.summary().statusCounts().get("IN_PROGRESS")).isEqualTo(1L);
+    }
     private void assertRequestOpen(Fixture f,String remaining) {
         assertThat(db.queryForObject("SELECT COALESCE(SUM(open_qty),0) FROM v_procurement_decomposition_tasks WHERE action_doc_type='PURCHASE_REQUEST' AND action_doc_id=?",BigDecimal.class,f.request())).isEqualByComparingTo(remaining);
-        var page=workbench.query("PURCHASE","WAITING_ORDER",requests.detail(f.request()).getBillNo(),"",null,null,1,20);
-        assertThat(page.total()).isEqualTo(new BigDecimal(remaining).signum()>0?1:0);
+        var request=requests.detail(f.request());
+        var expectedItems=request.getItems().stream().filter(item->item.getPhysicalRemainingQty().signum()>0)
+                .collect(Collectors.toMap(item->item.getId(),item->item));
+        var page=workbench.query("PURCHASE","WAITING_ORDER",request.getBillNo(),"",null,null,1,20);
+        assertThat(page.total()).isEqualTo(expectedItems.size());
+        assertThat(page.items()).hasSize(expectedItems.size());
+        assertThat(page.items().stream().map(row->row.actionDocItemId()).toList())
+                .containsExactlyInAnyOrderElementsOf(expectedItems.keySet());
+        for(var row:page.items()) {
+            var item=Objects.requireNonNull(expectedItems.get(row.actionDocItemId()));
+            assertThat(row.actionDocType()).isEqualTo("PURCHASE_REQUEST");
+            assertThat(row.actionDocId()).isEqualTo(f.request());
+            assertThat(row.goodsId()).isEqualTo(item.getGoodsId());
+            assertThat(row.actionItemIds()).containsExactly(item.getId().toString());
+            assertThat(row.openQty()).isEqualByComparingTo(item.getPhysicalRemainingQty());
+        }
     }
     private record Fixture(FullChainEndToEndTest.World world,UUID applicant,UUID reviewer,UUID request,UUID first,UUID second,UUID approvedOrder,UUID pendingOrder) {}
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -540,9 +541,38 @@ void main() {
   testWidgets('empty rows cannot create material facts', (tester) async {
     final repo = _Repository();
     await _pump(tester, repo);
+    final row = _row(tester);
+    final goodsCell = find.byKey(ValueKey('discovery-goods-${row.id}'));
+    expect(goodsCell, findsOneWidget);
+    final label = AppLocalizations.of(
+      tester.element(goodsCell),
+    ).warehouseOutboundGoodsName;
+    final action = tester.widget<UtenTableCellAction>(goodsCell);
+    expect(action.label, label);
+    expect(action.error, isTrue);
+    expect(action.onPressed, isNotNull);
+    expect(
+      find.descendant(of: goodsCell, matching: find.text(label)),
+      findsOneWidget,
+    );
+    final table = tester.widget<MasterDataTableView<DiscoveryMaterialRow>>(
+      find.byKey(const Key('discovery-material-table')),
+    );
+    expect(
+      table.columns.singleWhere((column) => column.key == 'goods').value(row),
+      label,
+    );
+    expect(row.values['goodsId'], isNull);
+    expect(row.values['goodsName'], isNull);
+    expect(row.qty.text, isEmpty);
+    expect(row.validationErrors, containsAll(['需要填写材料', '需要填写领料数量']));
+    expect(row.toRequest(), isNull);
     await tester.tap(find.byKey(const Key('discovery-save')));
     await tester.pumpAndSettle();
     expect(repo.submissions, isEmpty);
+    expect(row.values['goodsId'], isNull);
+    expect(row.values['goodsName'], isNull);
+    expect(row.qty.text, isEmpty);
     expect(find.textContaining('请逐行选择材料'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

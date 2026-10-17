@@ -8055,11 +8055,10 @@ void main() {
       expect(find.text('可安排产品 101'), findsOneWidget);
       expect(_bucketShortageText(tester, '可安排产品 101'), '1');
 
+      // The sticky header lives in the overlay after scrolling to row 101;
+      // its live checkbox is outside the original bucket body subtree.
       final visibleSelectAll = find
-          .descendant(
-            of: find.byKey(const Key('material-analysis-bucket-entries')),
-            matching: find.byKey(const Key('master-data-table-select-all')),
-          )
+          .byKey(const Key('master-data-table-select-all'))
           .hitTestable()
           .last;
       expect(visibleSelectAll, findsOneWidget);

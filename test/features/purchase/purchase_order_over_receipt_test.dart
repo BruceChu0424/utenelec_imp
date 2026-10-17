@@ -269,8 +269,7 @@ Future<void> _pumpCreate(
   await tester.pumpAndSettle();
 }
 
-/// 点货品格(未选 = 「点击选择」，已选 = 货品名称)弹选择器。只在货品格里找：
-/// 供应商 / 结账方式等条款格空着时也显示「点击选择」。
+/// 只在货品格自己的监听器内定位空提示或已选名称，避免命中同名表头。
 Future<void> _pickOn(WidgetTester tester, String cellText) async {
   await tester.tap(
     find
@@ -525,15 +524,7 @@ void main() {
     current.exchangeRate.text = '1';
     current.taxRate.text = '0';
     current.price.text = '7';
-    await tester.tap(
-      find
-          .descendant(
-            of: find.byType(UtenEditableGrid<PurchaseGridRow>),
-            matching: find.text('点击选择'),
-          )
-          .first,
-    );
-    await tester.pumpAndSettle();
+    await _pickOn(tester, '货品名称');
     final rows = _grid(tester).controller.rows;
     expect(rows.map((r) => r.goods!.id), ['g1', 'g2']);
     expect(rows.first.allowedOverReceiptPct.text, '5');
@@ -546,7 +537,7 @@ void main() {
 
   testWidgets('新建：清空预填的比例(不允许超收)后再加行，不会被主档记忆填回去', (tester) async {
     await _pumpCreate(tester, picks: [_goods.first]);
-    await _pickOn(tester, '点击选择');
+    await _pickOn(tester, '货品名称');
     final first = _grid(tester).controller.rows.single;
     expect(first.allowedOverReceiptPct.text, '5');
     expect(first.termsAutofilled, contains('allowedOverReceipt'));
@@ -558,7 +549,7 @@ void main() {
     _picks
       ..clear()
       ..add(_goods.last);
-    await _pickOn(tester, '点击选择');
+    await _pickOn(tester, '货品名称');
     final rows = _grid(tester).controller.rows;
     expect(rows.map((r) => r.goods?.id), ['g1', 'g2']);
     expect(rows.first.allowedOverReceiptPct.text, isEmpty);
@@ -568,7 +559,7 @@ void main() {
 
   testWidgets('新建：换货品清掉旧货品带入的比例，换回去重新预填', (tester) async {
     await _pumpCreate(tester, picks: [_goods.first]);
-    await _pickOn(tester, '点击选择');
+    await _pickOn(tester, '货品名称');
     final row = _grid(tester).controller.rows.single;
     expect(row.allowedOverReceiptPct.text, '5');
     // 选错了货品：换成没有记忆的颗粒乙 → 比例清空、黄标去掉(按 0%)。
@@ -594,7 +585,7 @@ void main() {
     final api = await _pumpEdit(tester, null);
     _grid(tester).controller.addRow(PurchaseGridRow(supportsTotalInput: true));
     await tester.pumpAndSettle();
-    await _pickOn(tester, '点击选择');
+    await _pickOn(tester, '货品名称');
     final rows = _grid(tester).controller.rows;
     expect(rows.first.goods?.id, 'goods-1');
     expect(

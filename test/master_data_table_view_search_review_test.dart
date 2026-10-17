@@ -21,8 +21,7 @@ const _rows = <_Row>[
 
 class _Layout extends PlatformTableLayoutNotifier {
   _Layout([this.seed = const PlatformTableLayout()]) : super(_tableKey);
-  _Layout.forTable(String tableKey, [this.seed = const PlatformTableLayout()])
-    : super(tableKey);
+  _Layout.forTable(super.tableKey, [this.seed = const PlatformTableLayout()]);
   final PlatformTableLayout seed;
   @override
   PlatformTableLayout build() {

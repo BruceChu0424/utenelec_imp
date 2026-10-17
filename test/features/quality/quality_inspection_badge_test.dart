@@ -30,6 +30,10 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 import '../../helpers/badge_summary_fixture.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 
+Finder _reportReasonField(String label) => find.byWidgetPredicate(
+  (widget) => widget is TextField && widget.decoration?.labelText == label,
+);
+
 void main() {
   testWidgets('workbench quality badge shows a positive pending count', (
     tester,
@@ -417,7 +421,7 @@ void main() {
     );
     await _submitReport(tester);
     expect(find.textContaining('合格 24 个、不合格 24 个'), findsOneWidget);
-    await tester.enterText(find.widgetWithText(TextField, '结论原因(必填)'), '外观不良');
+    await tester.enterText(_reportReasonField('结论原因(必填)'), '外观不良');
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pumpAndSettle();
     final line = repository.decideBatchCalls.single.items.single;
@@ -448,7 +452,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('合格 5 个、不合格 0 个'), findsOneWidget);
-    expect(find.text('结论原因(选填)'), findsOneWidget);
+    final reason = _reportReasonField('结论原因(选填)');
+    expect(reason, findsOneWidget);
+    expect(tester.widget<TextField>(reason).decoration?.hintText, '结论原因(选填)');
+    expect(tester.widget<TextField>(reason).controller!.text, isEmpty);
 
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pumpAndSettle();
@@ -479,7 +486,10 @@ void main() {
     await tester.pump();
     await _submitReport(tester);
 
-    expect(find.text('结论原因(必填)'), findsOneWidget);
+    final reason = _reportReasonField('结论原因(必填)');
+    expect(reason, findsOneWidget);
+    expect(tester.widget<TextField>(reason).decoration?.hintText, '结论原因(必填)');
+    expect(tester.widget<TextField>(reason).controller!.text, isEmpty);
     expect(find.textContaining('合格 0 个、不合格 5 个'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
@@ -490,10 +500,7 @@ void main() {
     expect(find.text('确认提交检验报告'), findsOneWidget);
     expect(repository.decideBatchCalls, isEmpty);
 
-    await tester.enterText(
-      find.widgetWithText(TextField, '结论原因(必填)'),
-      '外观不良退供应商',
-    );
+    await tester.enterText(_reportReasonField('结论原因(必填)'), '外观不良退供应商');
     await tester.tap(find.byKey(const Key('inspection-report-confirm-submit')));
     await tester.pumpAndSettle();
 

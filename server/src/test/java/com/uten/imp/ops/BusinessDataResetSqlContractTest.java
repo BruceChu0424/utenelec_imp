@@ -201,6 +201,9 @@ public class BusinessDataResetSqlContractTest {
      * 同样走「读取已安装函数定义 + 锚点替换插入」补丁；与 CLEAR 扩展分开登记。
      */
     private static final Map<String, Integer> PRESERVE_RESET_EXTENSIONS = Map.ofEntries(
+            Map.entry("goods_operation_history", 871),
+            Map.entry("goods_operation_history_rows", 871),
+            Map.entry("goods_operation_history_events", 871),
             Map.entry("sms_gateway_settings", 867),
             Map.entry("platform_branding", 839),
             Map.entry("ai_user_limits", 815),
@@ -429,6 +432,19 @@ public class BusinessDataResetSqlContractTest {
                 .contains("(''subcontract_draw_notice_marks'', ''CLEAR''),")
                 .contains("DROP TABLE preplan_subcontract_make_tasks;")
                 .contains("DROP TABLE subcontract_outbound_preparation_commands;");
+    }
+
+    @Test
+    void goodsOperationHistoryRetainsItsRegisteredPreservePolicy() throws IOException {
+        String migration = extensionSql(871);
+        assertThat(migration)
+                .contains("pg_get_functiondef('public.business_data_reset()'::regprocedure)")
+                .contains("V871 cannot extend business-data reset policy safely");
+        for (String table : List.of("goods_operation_history", "goods_operation_history_rows", "goods_operation_history_events")) {
+            assertThat(PRESERVE_RESET_EXTENSIONS).containsEntry(table, 871);
+            assertThat(migration).contains("(''" + table + "'', ''PRESERVE'')");
+            assertThat(expectedCurrentPolicy()).containsEntry(table, "PRESERVE");
+        }
     }
 
     @Test

@@ -138,7 +138,7 @@ public class GoodsOperationHistoryService {
         if(blocked!=null) throw conflict(blocked);
         requireDeletionReferences(rows,undo);
         requireLiveReferences(rows,undo);
-        requireCategoryContext(op,rows);
+        requireCategoryContext(op);
         try {
             em.createNativeQuery("SELECT fn_replay_goods_operation(:id,:actor,:version,:undo)")
                     .setParameter("id",id).setParameter("actor",actor).setParameter("version",expectedVersion).setParameter("undo",undo).getSingleResult();
@@ -334,7 +334,7 @@ public class GoodsOperationHistoryService {
         }
     }
 
-    private void requireCategoryContext(Operation op,List<Row> rows) {
+    private void requireCategoryContext(Operation op) {
         if(!op.type().equals("CATEGORY_EDIT"))return;
         Boolean changed=(Boolean)em.createNativeQuery("SELECT category_context IS NOT NULL AND category_context IS DISTINCT FROM fn_goods_history_category_context(id) FROM goods_operation_history WHERE id=:id")
                 .setParameter("id",op.id()).getSingleResult();
@@ -444,7 +444,7 @@ public class GoodsOperationHistoryService {
         }
         Map<String,JsonNode> current=new HashMap<>();
         for(var table:ids.entrySet()) {
-            @SuppressWarnings("unchecked") List<Object[]> result=em.createNativeQuery("SELECT id,CAST(fn_goods_history_snapshot('"+table.getKey()+"'::regclass,t) AS text) FROM "+table.getKey()+" t WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[]))")
+            @SuppressWarnings("unchecked") List<Object[]> result=em.createNativeQuery(snapshotQuery(table.getKey()))
                     .setParameter("ids",joined(table.getValue())).getResultList();
             for(Object[] r:result)current.put(table.getKey()+":"+uuid(r[0]),json(r[1]));
         }
@@ -455,6 +455,32 @@ public class GoodsOperationHistoryService {
             result.forEach(id->periodic.add(uuid(id)));
         }
         return new Facts(current,periodic,goodsOwnerScopeEnabled?ownerVisibility.evaluate("goods","goods:view:all"):null);
+    }
+    /** Every SQL identifier is a complete server-owned statement; only UUID values are bound. */
+    private static String snapshotQuery(String table) {
+        return switch(table) {
+            case "goods" -> """
+                    SELECT id,CAST(fn_goods_history_snapshot('goods'::regclass,t) AS text)
+                    FROM goods t WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[]))
+                    """;
+            case "goods_bom_items" -> """
+                    SELECT id,CAST(fn_goods_history_snapshot('goods_bom_items'::regclass,t) AS text)
+                    FROM goods_bom_items t WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[]))
+                    """;
+            case "material_categories" -> """
+                    SELECT id,CAST(fn_goods_history_snapshot('material_categories'::regclass,t) AS text)
+                    FROM material_categories t WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[]))
+                    """;
+            case "colors" -> """
+                    SELECT id,CAST(fn_goods_history_snapshot('colors'::regclass,t) AS text)
+                    FROM colors t WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[]))
+                    """;
+            case "units" -> """
+                    SELECT id,CAST(fn_goods_history_snapshot('units'::regclass,t) AS text)
+                    FROM units t WHERE id=ANY(CAST(string_to_array(:ids,',') AS uuid[]))
+                    """;
+            default -> throw new IllegalArgumentException("Unsupported goods history snapshot table");
+        };
     }
     private String summary(List<Row> rows,Facts facts) {
         for(String table:List.of("material_categories","goods","goods_bom_items")) for(Row row:rows) if(row.table().equals(table)) {

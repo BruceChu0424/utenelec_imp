@@ -45,7 +45,14 @@ class GoodsOperationHistoryPostgresTest {
         bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));
         bean.afterPropertiesSet();factory=bean.getObject();
     }
-    @AfterAll static void stop() throws Exception {if(factory!=null)factory.close();if(database!=null)database.close();}
+    @AfterAll static void stop() throws Exception {
+        if (factory != null) {
+            factory.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @BeforeEach void prepare() {
         actor=UUID.randomUUID();em=factory.createEntityManager();current=mock(SecurityContextCurrentUser.class);
         when(current.requireId()).thenAnswer(invocation->actor);
@@ -56,7 +63,12 @@ class GoodsOperationHistoryPostgresTest {
         when(access.readableLabelOwner(anyString())).thenReturn(owner->true);
         service=new GoodsOperationHistoryService(em,new ObjectMapper(),current,tx,new MasterReferenceGuard(em,access),mock(OwnerVisibility.class),mock(BusinessEventPublisher.class));
     }
-    @AfterEach void close(){if(em.getTransaction().isActive())em.getTransaction().rollback();em.close();}
+    @AfterEach void close() {
+        if (em.getTransaction().isActive()) {
+            em.getTransaction().rollback();
+        }
+        em.close();
+    }
 
     @Test void selectedOlderIndependentOperationCanUndoWhileAnotherActorCannotSeeOrReplayIt() {
         UUID first=goods("first"),second=goods("second");
@@ -259,6 +271,21 @@ class GoodsOperationHistoryPostgresTest {
     private void set(String key,String value){em.createNativeQuery("SELECT set_config(:key,:value,true)").setParameter("key",key).setParameter("value",value).getSingleResult();}
     private void update(String sql,UUID id){em.createNativeQuery(sql).setParameter("id",id).executeUpdate();}
     private String scalar(String sql,UUID id){Object value=em.createNativeQuery(sql).setParameter("id",id).getSingleResult();return value==null?null:value.toString();}
-    private int count(String sql,UUID id){return Integer.parseInt(scalar(sql,id));}
-    private <T>T inTx(Supplier<T> action){em.getTransaction().begin();try{T result=action.get();em.getTransaction().commit();return result;}catch(RuntimeException|Error error){if(em.getTransaction().isActive())em.getTransaction().rollback();throw error;}}
+    private int count(String sql,UUID id){
+        Number value=assertInstanceOf(Number.class,em.createNativeQuery(sql).setParameter("id",id).getSingleResult());
+        return Math.toIntExact(value.longValue());
+    }
+    private <T>T inTx(Supplier<T> action) {
+        em.getTransaction().begin();
+        try {
+            T result=action.get();
+            em.getTransaction().commit();
+            return result;
+        } catch (RuntimeException|Error error) {
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            throw error;
+        }
+    }
 }

@@ -436,7 +436,12 @@ class GoodsOperationHistoryConcurrencyPostgresTest {
             em.createNativeQuery("SET LOCAL lock_timeout='4s'").executeUpdate();
             em.createNativeQuery("SET LOCAL statement_timeout='8s'").executeUpdate();
             try { service.undo(operation, 0); em.getTransaction().commit(); return null; }
-            catch (Throwable failure) { if (em.getTransaction().isActive()) em.getTransaction().rollback(); return failure; }
+            catch (Throwable failure) {
+                if (em.getTransaction().isActive()) {
+                    em.getTransaction().rollback();
+                }
+                return failure;
+            }
         }
         Throwable importUndo(UUID batch, CountDownLatch applied, CountDownLatch release) {
             em.getTransaction().begin();
@@ -445,9 +450,19 @@ class GoodsOperationHistoryConcurrencyPostgresTest {
             try {
                 service.undoImport(batch); applied.countDown(); assertTrue(release.await(5, TimeUnit.SECONDS));
                 em.getTransaction().commit(); return null;
-            } catch (Throwable failure) { if (em.getTransaction().isActive()) em.getTransaction().rollback(); return failure; }
+            } catch (Throwable failure) {
+                if (em.getTransaction().isActive()) {
+                    em.getTransaction().rollback();
+                }
+                return failure;
+            }
         }
-        @Override public void close() { if (em.getTransaction().isActive()) em.getTransaction().rollback(); em.close(); }
+        @Override public void close() {
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            em.close();
+        }
     }
 
     private static Operation edited(String name) throws SQLException {
@@ -529,11 +544,36 @@ class GoodsOperationHistoryConcurrencyPostgresTest {
     }
     private static void assertRejected(Outcome outcome, String state) { assertFalse(outcome.success(), outcome.toString()); assertEquals(state, outcome.state(), outcome.message()); }
     private static int pid(Connection db) throws SQLException { return count(db, "SELECT pg_backend_pid()"); }
-    private static int count(Connection db, String sql, Object... args) throws SQLException { return Integer.parseInt(scalar(db, sql, args)); }
+    private static int count(Connection db, String sql, Object... args) throws SQLException {
+        try (var statement = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                statement.setObject(i + 1, args[i]);
+            }
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next(), "Expected an integer scalar row");
+                Long value = result.getObject(1, Long.class);
+                assertNotNull(value, "Expected a non-null integer scalar");
+                return Math.toIntExact(value);
+            }
+        }
+    }
     private static int execute(Connection db, String sql, Object... args) throws SQLException {
-        try (var statement = db.prepareStatement(sql)) { for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]); statement.execute(); return statement.getUpdateCount(); }
+        try (var statement = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                statement.setObject(i + 1, args[i]);
+            }
+            statement.execute();
+            return statement.getUpdateCount();
+        }
     }
     private static String scalar(Connection db, String sql, Object... args) throws SQLException {
-        try (var statement = db.prepareStatement(sql)) { for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]); try (var result = statement.executeQuery()) { return result.next() ? result.getString(1) : null; } }
+        try (var statement = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                statement.setObject(i + 1, args[i]);
+            }
+            try (var result = statement.executeQuery()) {
+                return result.next() ? result.getString(1) : null;
+            }
+        }
     }
 }

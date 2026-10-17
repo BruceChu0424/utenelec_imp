@@ -105,12 +105,18 @@ class WarehouseArrivalProfileLearningEndToEndTest {
         F first = fixture(), second = fixture();
         String beforeFirst = profile(first.world().goodsD()), beforeSecond = profile(second.world().goodsD());
         var command = command(first, second, "ROLLBACK-PROFILE", "ROLLBACK-PROFILE");
-        String constraint = "test_profile_" + UUID.randomUUID().toString().replace("-", "");
         UUID lastGoods = java.util.stream.Stream.of(first.world().goodsD(), second.world().goodsD())
                 .max(com.uten.imp.common.util.PostgresUuidOrder.INSTANCE).orElseThrow();
-        db.execute("ALTER TABLE goods ADD CONSTRAINT " + constraint + " CHECK (id<>'" + lastGoods
-                + "'::uuid OR series IS DISTINCT FROM 'ROLLBACK-PROFILE')");
+        String originalShortName = db.queryForObject("SELECT short_name FROM goods WHERE id=?", String.class, lastGoods);
+        db.update("UPDATE goods SET short_name=? WHERE id=?", "PROFILE_LEARNING_ROLLBACK_FAILURE", lastGoods);
         try {
+            // Mark the same last UUID-sorted row without interpolating identifiers or
+            // values into DDL. registerBatch must still own the transaction under test.
+            db.execute("""
+                    ALTER TABLE goods ADD CONSTRAINT test_profile_learning_rollback_guard
+                    CHECK (short_name IS DISTINCT FROM 'PROFILE_LEARNING_ROLLBACK_FAILURE'
+                        OR series IS DISTINCT FROM 'ROLLBACK-PROFILE')
+                    """);
             assertThatThrownBy(() -> arrivals.registerBatch(command)).isInstanceOf(RuntimeException.class);
             assertThat(receiptCount(first, second)).isZero();
             assertThat(profile(first.world().goodsD())).isEqualTo(beforeFirst);
@@ -120,7 +126,13 @@ class WarehouseArrivalProfileLearningEndToEndTest {
             for (F source : List.of(first, second)) {
                 assertThat(db.queryForObject("SELECT received_qty FROM purchase_order_items WHERE id=?", BigDecimal.class, source.orderItem())).isZero();
             }
-        } finally { db.execute("ALTER TABLE goods DROP CONSTRAINT " + constraint); }
+        } finally {
+            try {
+                db.execute("ALTER TABLE goods DROP CONSTRAINT IF EXISTS test_profile_learning_rollback_guard");
+            } finally {
+                db.update("UPDATE goods SET short_name=? WHERE id=?", originalShortName, lastGoods);
+            }
+        }
     }
 
     private String profile(UUID goods) {

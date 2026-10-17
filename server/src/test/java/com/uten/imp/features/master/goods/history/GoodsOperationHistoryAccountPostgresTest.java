@@ -55,7 +55,14 @@ class GoodsOperationHistoryAccountPostgresTest {
         bean.setPackagesToScan("com.uten.imp.security");bean.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto","none"));
         bean.afterPropertiesSet();factory=bean.getObject();
     }
-    @AfterAll static void stop() throws Exception {if(factory!=null)factory.close();if(database!=null)database.close();}
+    @AfterAll static void stop() throws Exception {
+        if (factory != null) {
+            factory.close();
+        }
+        if (database != null) {
+            database.close();
+        }
+    }
     @BeforeEach void prepare() {
         em=factory.createEntityManager();a=person();b=person();c=person();
         current=mock(SecurityContextCurrentUser.class);
@@ -68,7 +75,13 @@ class GoodsOperationHistoryAccountPostgresTest {
                 new OwnerVisibility(current,em,new EmployeeHandoverVisibility(em)),mock(BusinessEventPublisher.class));
         login(a,Set.of(),true);
     }
-    @AfterEach void close() {if(em.getTransaction().isActive())em.getTransaction().rollback();em.close();org.springframework.security.core.context.SecurityContextHolder.clearContext();}
+    @AfterEach void close() {
+        if (em.getTransaction().isActive()) {
+            em.getTransaction().rollback();
+        }
+        em.close();
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
 
     @Test void eachAccountKeepsItsOwnUndoAndRedoBranchWhenTheOtherAccountWrites() {
         UUID ga=goods(null,"account A"),gb=goods(null,"account B");
@@ -249,7 +262,11 @@ class GoodsOperationHistoryAccountPostgresTest {
             execute("UPDATE goods_bom_items SET is_deleted=true,deleted_at=now() WHERE id=:id",oldEdge);
             em.createNativeQuery("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(:id,:parent,:component,1)").setParameter("id",newEdge).setParameter("parent",parent).setParameter("component",second).executeUpdate();
         });
-        Set<String> permissions=new HashSet<>(Set.of("goods:view","goods:bom:create"));if(hasDelete)permissions.add("goods:bom:delete");login(a,permissions,false);
+        Set<String> permissions=new HashSet<>(Set.of("goods:view","goods:bom:create"));
+        if (hasDelete) {
+            permissions.add("goods:bom:delete");
+        }
+        login(a,permissions,false);
         assertEquals(hasDelete,entry(operation).canUndo());
         if(hasDelete){inTx(()->service.undo(operation,0));assertEquals("false",text("SELECT is_deleted::text FROM goods_bom_items WHERE id=:id",oldEdge));}
         else assertThrows(ApiException.class,()->inTx(()->service.undo(operation,0)));
@@ -331,7 +348,22 @@ class GoodsOperationHistoryAccountPostgresTest {
     private void set(String key,String value){em.createNativeQuery("SELECT set_config(:key,:value,true)").setParameter("key",key).setParameter("value",value).getSingleResult();}
     private void execute(String sql,UUID id){em.createNativeQuery(sql).setParameter("id",id).executeUpdate();}
     private String text(String sql,UUID id){Object value=em.createNativeQuery(sql).setParameter("id",id).getSingleResult();return value==null?null:value.toString();}
-    private int count(String sql,UUID id){return Integer.parseInt(text(sql,id));}
+    private int count(String sql,UUID id){
+        Number value=assertInstanceOf(Number.class,em.createNativeQuery(sql).setParameter("id",id).getSingleResult());
+        return Math.toIntExact(value.longValue());
+    }
     private void assertEvents(int expected){assertEquals(expected,count("SELECT count(*) FROM goods_operation_history_events WHERE actor_id=:id",principal.getId()));}
-    private <T>T inTx(Supplier<T> body){em.getTransaction().begin();try{T value=body.get();em.getTransaction().commit();return value;}catch(RuntimeException|Error error){if(em.getTransaction().isActive())em.getTransaction().rollback();throw error;}}
+    private <T>T inTx(Supplier<T> body) {
+        em.getTransaction().begin();
+        try {
+            T value=body.get();
+            em.getTransaction().commit();
+            return value;
+        } catch (RuntimeException|Error error) {
+            if (em.getTransaction().isActive()) {
+                em.getTransaction().rollback();
+            }
+            throw error;
+        }
+    }
 }

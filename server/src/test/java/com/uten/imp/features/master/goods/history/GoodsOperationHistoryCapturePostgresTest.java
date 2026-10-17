@@ -257,7 +257,8 @@ class GoodsOperationHistoryCapturePostgresTest {
     }
 
     private static void replay(Connection db, UUID actor, UUID operation, boolean undo) throws SQLException {
-        long version = Long.parseLong(scalar(db, "SELECT version FROM goods_operation_history WHERE id=?", operation));
+        Long version = number(db, "SELECT version FROM goods_operation_history WHERE id=?", operation);
+        assertNotNull(version);
         execute(db, "SELECT fn_replay_goods_operation(?,?,?,?)", operation, actor, version, undo);
         db.commit();
     }
@@ -282,8 +283,19 @@ class GoodsOperationHistoryCapturePostgresTest {
     }
 
     private static int count(Connection db, String sql, Object... args) throws SQLException {
-        String result = scalar(db, sql, args);
-        return result == null ? 0 : Integer.parseInt(result);
+        Long result = number(db, sql, args);
+        return result == null ? 0 : Math.toIntExact(result);
+    }
+
+    private static Long number(Connection db, String sql, Object... args) throws SQLException {
+        try (var statement = db.prepareStatement(sql)) {
+            for (int i = 0; i < args.length; i++) {
+                statement.setObject(i + 1, args[i]);
+            }
+            try (var result = statement.executeQuery()) {
+                return result.next() ? result.getObject(1, Long.class) : null;
+            }
+        }
     }
 
     private static String scalar(Connection db, String sql, Object... args) throws SQLException {

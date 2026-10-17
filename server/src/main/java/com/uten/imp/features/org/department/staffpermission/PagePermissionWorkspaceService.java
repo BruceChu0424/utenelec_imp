@@ -812,7 +812,7 @@ public class PagePermissionWorkspaceService {
                     targetUserId,
                     permissionByCode.get(change.code()).getId()));
             long actual = row == null ? 0L : row.getRowVersion();
-            requireExpectedVersion(change.code(), change.expectedVersion(), actual);
+            requireExpectedVersion(change.expectedVersion(), actual);
         }
     }
 
@@ -829,12 +829,11 @@ public class PagePermissionWorkspaceService {
                             permissionByCode.get(change.code()).getId(),
                             departmentId));
             long actual = row == null ? 0L : row.getRowVersion();
-            requireExpectedVersion(change.code(), change.expectedVersion(), actual);
+            requireExpectedVersion(change.expectedVersion(), actual);
         }
     }
 
     private void requireExpectedVersion(
-            String code,
             long expected,
             long actual) {
         if (expected != actual) {

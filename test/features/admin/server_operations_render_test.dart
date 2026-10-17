@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/features/admin/models/server_operations.dart';
@@ -16,6 +17,7 @@ import 'package:uten_imp/features/admin/providers/server_operations_access.dart'
 import 'package:uten_imp/features/admin/providers/server_storage_request_store.dart';
 import 'package:uten_imp/features/admin/repositories/server_operations_repository.dart';
 import 'package:uten_imp/features/admin/repositories/server_storage_repository.dart';
+import 'package:uten_imp/features/admin/widgets/server_update_overview.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -202,6 +204,143 @@ void main() {
     },
   );
 
+  for (final compact in [false, true]) {
+    testWidgets(
+      'unsupported platform uses an informational notice without update actions, compact=$compact',
+      (tester) async {
+        await loadAuditScreenshotFonts(tester);
+        final key = GlobalKey();
+        await _pump(
+          tester,
+          key,
+          compact,
+          const ServerOperationsPage(),
+          scale: 2,
+          operations: _Operations(
+            available: false,
+            failure: {
+              'code': 'HOST_PLATFORM_UNSUPPORTED',
+              'title': '当前平台不支持服务器运维助手',
+              'reason': '服务器更新与存储清理助手仅支持 Linux，当前后端运行平台不支持此功能。',
+              'suggestion': '本地开发环境可继续使用其他功能；正式部署请在 Linux 服务器安装并核验配套运维助手。',
+            },
+          ),
+        );
+        final notice = find.byKey(
+          const ValueKey('server-update-platform-unsupported'),
+        );
+        expect(
+          tester.widget<UtenInlineNotice>(notice).level,
+          UtenInlineNoticeLevel.info,
+        );
+        expect(find.byKey(const ValueKey('server-update-start')), findsNothing);
+        expect(
+          find.byKey(const ValueKey('server-update-available')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('server-source-editor')),
+          findsNothing,
+        );
+        expect(find.text('失败详情'), findsNothing);
+        expect(find.textContaining('请安装'), findsNothing);
+        expect(find.text('存储管理'), findsOneWidget);
+        expect(find.text('查看数据库、附件登记与后端内存'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _capture(
+          tester,
+          key,
+          'platform-unsupported-${compact ? '375-dark' : '1440-light'}-2x',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  testWidgets(
+    'unsupported platform keeps the original unknown request and job diagnosis visible',
+    (tester) async {
+      final status = await _Operations(
+        available: false,
+        failure: {
+          'code': 'HOST_PLATFORM_UNSUPPORTED',
+          'title': '当前环境不支持服务器在线运维',
+          'reason': '当前环境不提供服务器在线更新与主机清理。',
+        },
+      ).status();
+      final job = ServerUpdateJob.fromJson({
+        'id': 'original-job-id',
+        'requestId': 'original-request-id',
+        'state': 'FAILED',
+        'phase': 'CHECKING',
+        'mode': 'CHECK_ONLY',
+        'failure': _failure(),
+      });
+      final receipt = ServerUpdateJob.fromJson({
+        'id': 'original-receipt-id',
+        'requestId': 'original-receipt-request',
+        'state': 'RUNNING',
+        'phase': 'CHECKING',
+      });
+      await _pump(
+        tester,
+        GlobalKey(),
+        true,
+        Scaffold(
+          body: SingleChildScrollView(
+            child: ServerUpdateOverview(
+              status: status,
+              job: job,
+              receipt: receipt,
+              uncertainRequestId: 'original-unknown-request',
+              loading: false,
+              starting: false,
+              writable: true,
+              onCheck: () {},
+              onReview: () {},
+              onRefresh: () {},
+              onCancel: null,
+            ),
+          ),
+        ),
+        scale: 2,
+      );
+      expect(find.textContaining('original-unknown-request'), findsOneWidget);
+      expect(find.textContaining('original-receipt-request'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('server-update-original-receipt')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('server-update-failure-summary')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('server-update-start')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('server-update-available')),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<UtenInlineNotice>(
+              find.byKey(const ValueKey('server-update-platform-unsupported')),
+            )
+            .level,
+        UtenInlineNoticeLevel.info,
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is UtenInlineNotice &&
+              widget.level == UtenInlineNoticeLevel.warning,
+        ),
+        findsWidgets,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets(
     'unavailable host shows curated diagnosis rather than guessing helper installation',
     (tester) async {
@@ -213,7 +352,7 @@ void main() {
         operations: _Operations(
           available: false,
           failure: {
-            'code': 'HOST_RESPONSE_INVALID',
+            'code': 'HOST_HELPER_UNAVAILABLE',
             'phase': 'CHECKING',
             'title': '更新助手响应需要核对',
             'reason': '暂未取得有效的本机更新状态。',
@@ -223,6 +362,15 @@ void main() {
         ),
       );
       expect(find.text('更新助手响应需要核对'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenInlineNotice>(
+              find.byKey(const ValueKey('server-update-unavailable')),
+            )
+            .level,
+        UtenInlineNoticeLevel.warning,
+      );
+      expect(find.text('失败详情'), findsOneWidget);
       expect(find.textContaining('未安装'), findsNothing);
       expect(
         tester

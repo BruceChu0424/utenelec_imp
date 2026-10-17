@@ -34,6 +34,9 @@ class ServerOperationsStatus {
   final DateTime? lastCheckedAt;
   final ServerUpdateJob? latestJob;
   final ServerUpdateFailure? failure;
+
+  bool get platformUnsupported =>
+      !available && failure?.code == 'HOST_PLATFORM_UNSUPPORTED';
 }
 
 class ServerUpdateJob {

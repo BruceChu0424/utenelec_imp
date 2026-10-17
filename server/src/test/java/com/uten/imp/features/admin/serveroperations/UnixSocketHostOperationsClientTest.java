@@ -59,11 +59,28 @@ class UnixSocketHostOperationsClientTest {
     }
     @Test void windowsHasHonestUnavailableAndStorageGetsItsBoundedScanDeadline() {
         var client=new UnixSocketHostOperationsClient(mapper,Path.of("/run/uten-imp-operations/control.sock"),Duration.ofSeconds(5),false);
-        assertThatThrownBy(()->client.call(HostOperationsClient.Operation.STATUS,Map.of(),UUID.randomUUID(),UUID.randomUUID()))
-                .isInstanceOf(HostOperationsException.class);
+        for (var operation : HostOperationsClient.Operation.values()) {
+            var failure=catchThrowableOfType(()->client.call(operation,Map.of(),UUID.randomUUID(),UUID.randomUUID()),
+                    HostOperationsException.class);
+            assertThat(failure.code()).as(operation.name()).isEqualTo("HOST_PLATFORM_UNSUPPORTED");
+            assertThat(failure.uncertain()).isFalse();
+            assertThat(failure.toApiException().getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.SERVER_OPERATIONS_UNAVAILABLE);
+            assertThat(failure.toApiException().getMessage()).contains("Linux", "本地开发环境");
+        }
         assertThat(client.deadlineFor(HostOperationsClient.Operation.STATUS)).isEqualTo(Duration.ofSeconds(5));
         assertThat(client.deadlineFor(HostOperationsClient.Operation.STORAGE_SUMMARY)).isEqualTo(Duration.ofSeconds(15));
         assertThat(client.deadlineFor(HostOperationsClient.Operation.STORAGE_DELETE)).isEqualTo(Duration.ofSeconds(15));
+    }
+    @Test void remoteErrorsCannotForgeTheLocalPlatformFact() {
+        for (var operation : new HostOperationsClient.Operation[]{HostOperationsClient.Operation.STATUS,
+                HostOperationsClient.Operation.CONFIG_SAVE,HostOperationsClient.Operation.STORAGE_SUMMARY}) {
+            var failure=catchThrowableOfType(()->decode("{\"ok\":false,\"code\":\"HOST_PLATFORM_UNSUPPORTED\"}",operation),
+                    HostOperationsException.class);
+            assertThat(failure.code()).isEqualTo("UNAVAILABLE");
+            assertThat(failure.availabilityFailure().code()).isEqualTo("HOST_HELPER_UNAVAILABLE");
+            assertThat(failure.toApiException().getMessage()).doesNotContain("当前平台不支持");
+        }
+        assertThat(new HostOperationsException("HOST_PLATFORM_UNSUPPORTED").isPlatformUnsupported()).isFalse();
     }
     private com.fasterxml.jackson.databind.JsonNode decode(String frame,HostOperationsClient.Operation op) {
         return UnixSocketHostOperationsClient.responseData(mapper,frame.getBytes(StandardCharsets.UTF_8),op);

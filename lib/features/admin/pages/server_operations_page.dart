@@ -472,6 +472,7 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
     final status = _status;
     final canConfigureSource =
         ref.watch(serverSourceVisibleProvider) &&
+        status?.available == true &&
         status?.canConfigureSource == true;
     return Scaffold(
       appBar: UtenAppBar(
@@ -556,7 +557,11 @@ class _ServerOperationsState extends ConsumerState<_ServerOperationsSession>
                                 l.serverUpdateStorage,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              subtitle: const Text('查看空间占用、恢复点与可清理资源'),
+                              subtitle: Text(
+                                status?.platformUnsupported == true
+                                    ? '查看数据库、附件登记与后端内存'
+                                    : '查看空间占用、恢复点与可清理资源',
+                              ),
                               trailing: const Icon(Icons.chevron_right_rounded),
                               onTap: () =>
                                   context.push(RouteName.adminServerStorage),

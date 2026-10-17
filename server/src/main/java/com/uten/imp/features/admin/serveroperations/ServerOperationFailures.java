@@ -10,6 +10,13 @@ final class ServerOperationFailures {
 
     record Definition(String title, String reason, String suggestion, String nextAction, boolean retrySafe) {}
 
+    static final String HOST_PLATFORM_UNSUPPORTED = "HOST_PLATFORM_UNSUPPORTED";
+    // Deliberately outside the helper catalog: only the local transport can establish this fact.
+    private static final Definition PLATFORM_UNSUPPORTED = new Definition("当前平台不支持服务器运维助手",
+            "服务器更新与存储清理助手仅支持 Linux，当前后端运行平台不支持此功能。",
+            "本地开发环境可继续使用其他功能；正式部署请在 Linux 服务器安装并核验配套运维助手。",
+            "CONTACT_ADMIN", false);
+
     private static final Map<String, Definition> CATALOG = Map.ofEntries(
             Map.entry("UNKNOWN", new Definition("原因尚未确认", "本次操作未完成，现有信息不足以确认具体原因。", "请保留任务标识联系管理员查看本机诊断；确认原因前不要重复更新。", "CONTACT_ADMIN", false)),
             Map.entry("HOST_IDENTITY_PERMISSION", new Definition("主机账号切换权限不足", "更新组件无法切换到数据库或应用系统账号，本阶段未通过。", "请管理员核对更新服务的受限身份切换能力；不要关闭安全沙箱或修改业务账号权限。", "CONTACT_ADMIN", false)),
@@ -99,6 +106,12 @@ final class ServerOperationFailures {
         Definition entry = definition(code);
         return new ServerOperationsDto.Failure(code, "CHECKING", entry.title(), entry.reason(), entry.suggestion(),
                 entry.nextAction(), false, false, false, null);
+    }
+
+    static ServerOperationsDto.Failure platformUnsupported() {
+        return new ServerOperationsDto.Failure(HOST_PLATFORM_UNSUPPORTED, "CHECKING", PLATFORM_UNSUPPORTED.title(),
+                PLATFORM_UNSUPPORTED.reason(), PLATFORM_UNSUPPORTED.suggestion(), PLATFORM_UNSUPPORTED.nextAction(),
+                false, false, false, null);
     }
 
     static String message(ServerOperationsDto.Failure failure) {

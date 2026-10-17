@@ -87,6 +87,28 @@ void main() {
   );
 
   testWidgets(
+    'unsupported platform never prompts despite retained permissions',
+    (tester) async {
+      final repository = _Repository()
+        ..handler = () async => ServerOperationsStatus.fromJson({
+          'available': false,
+          'canUpdate': true,
+          'updateAvailable': true,
+          'sourceRevision': 'saved-source',
+          'latestVersion': 'v2.5.18',
+          'failure': {'code': 'HOST_PLATFORM_UNSUPPORTED'},
+        });
+      await _pump(tester, repository);
+      await _settleReminder(tester);
+      expect(repository.statusCalls, 1);
+      expect(find.text('服务器有新版本 v2.5.18'), findsNothing);
+      expect(find.text('去更新'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
     'snooze does not clear badges and holds the same version for fifteen minutes',
     (tester) async {
       var now = DateTime.utc(2026, 10, 15);

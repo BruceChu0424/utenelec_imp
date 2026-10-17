@@ -46,6 +46,16 @@ class ServerOperationFailuresTest {
         assertThat(mapper.writeValueAsString(view)).doesNotContain("RAW_TITLE", "SECRET_TOKEN", "private.invalid", "REPLAY_UPDATE");
     }
 
+    @Test void localPlatformCodeIsExcludedFromEveryHelperControlledProjection() {
+        assertThat(ServerOperationFailures.known("HOST_PLATFORM_UNSUPPORTED")).isFalse();
+        assertThat(ServerOperationFailures.codes()).doesNotContain("HOST_PLATFORM_UNSUPPORTED");
+        assertThat(ServerOperationFailures.unavailable("HOST_PLATFORM_UNSUPPORTED").code()).isEqualTo("HOST_HELPER_UNAVAILABLE");
+        var receipt=ServerOperationFailures.project(failure("HOST_PLATFORM_UNSUPPORTED"),"FAILED","CHECKING");
+        assertThat(receipt.code()).isEqualTo("UNKNOWN");
+        assertThat(receipt.retrySafe()).isFalse();
+        assertThat(HostOperationsException.platformUnsupported().availabilityFailure().code()).isEqualTo("HOST_PLATFORM_UNSUPPORTED");
+    }
+
     @Test void latePhasesAndRecoveryStateAlwaysSuppressRetryAndPreservationClaims() {
         for (String phase : Set.of("MIGRATING", "ACTIVATING", "HEALTH_CHECK", "DONE")) {
             var view = ServerOperationFailures.project(failure("SOURCE_NETWORK_FAILED").put("recoveryRequired", false), "FAILED", phase);

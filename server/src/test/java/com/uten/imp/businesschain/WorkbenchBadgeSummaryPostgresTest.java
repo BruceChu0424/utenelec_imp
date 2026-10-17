@@ -274,6 +274,7 @@ class WorkbenchBadgeSummaryPostgresTest {
         fixture = new FullChainEndToEndTest();
         beans.autowireBean(fixture);
         snapshotSource.hostAvailable = true;
+        snapshotSource.hostPlatformUnsupported = false;
         snapshotSource.hostUpdateAvailable = false;
         snapshotSource.hostStatusCalls.set(0);
     }
@@ -425,6 +426,31 @@ class WorkbenchBadgeSummaryPostgresTest {
         assertThat(texts(unrelatedSummary.path("staleEntries"))).isEmpty();
         assertThat(texts(unrelatedSummary.path("staleSources"))).containsExactly(BrokenSourceConfiguration.KEY);
         assertThat(snapshotSource.hostStatusCalls.get()).as("An unauthorized reader cannot invoke the host boundary").isEqualTo(callsBeforeDenial);
+    }
+
+    @Test
+    void unsupportedPlatformKeepsPermissionsAndClearsOnlyTheInapplicableUpdateFact() throws Exception {
+        var world = fixture.seedWorld("BADGEPLATFORM" + tag());
+        Authentication updater = auth(fixture.createUserWithPerms(world, "updater-" + tag(), "server:update"));
+        Authentication monitor = auth(fixture.createUserWithPerms(world, "monitor-" + tag(), "server_status:view"));
+        snapshotSource.hostUpdateAvailable = true;
+        assertThat(facts(getJson("/api/workbench/badges", updater)))
+                .containsEntry("serverOperations.updates", 1L);
+
+        snapshotSource.hostPlatformUnsupported = true;
+        for (Authentication actor : List.of(updater, monitor)) {
+            JsonNode status = getJson("/api/admin/server-operations/status", actor);
+            assertThat(status.path("available").asBoolean()).isFalse();
+            assertThat(status.path("failure").path("code").asText()).isEqualTo("HOST_PLATFORM_UNSUPPORTED");
+            assertThat(status.path("currentVersion").isNull()).isTrue();
+            assertThat(status.path("canUpdate").asBoolean()).isEqualTo(actor == updater);
+            JsonNode summary = getJson("/api/workbench/badges", actor);
+            assertThat(facts(summary)).containsEntry("serverOperations.updates", 0L);
+            assertThat(summary.path("entries").path("serverUpdateAvailable").path("todo").asLong()).isZero();
+            assertThat(texts(summary.path("staleSources"))).containsExactly(BrokenSourceConfiguration.KEY);
+            assertThat(texts(summary.path("staleEntries"))).isEmpty();
+            assertRollups(summary);
+        }
     }
 
     @Test
@@ -696,6 +722,7 @@ class WorkbenchBadgeSummaryPostgresTest {
         static final String KEY = "aaBrokenForTest";
         volatile UUID snapshotUser;
         volatile boolean hostAvailable = true;
+        volatile boolean hostPlatformUnsupported;
         volatile boolean hostUpdateAvailable;
         final java.util.concurrent.atomic.AtomicInteger hostStatusCalls = new java.util.concurrent.atomic.AtomicInteger();
 
@@ -708,6 +735,11 @@ class WorkbenchBadgeSummaryPostgresTest {
                     throw new AssertionError("Badge aggregation must only read local host status");
                 }
                 hostStatusCalls.incrementAndGet();
+                if (hostPlatformUnsupported) {
+                    // Simulate the transport's local platform fact, never a helper-supplied error code.
+                    throw java.util.Objects.requireNonNull(org.springframework.test.util.ReflectionTestUtils
+                            .<HostOperationsException>invokeMethod(HostOperationsException.class, "platformUnsupported"));
+                }
                 if (!hostAvailable) throw new HostOperationsException("UNAVAILABLE");
                 return mapper.createObjectNode()
                         .put("available", true).put("manualOnly", true)

@@ -42,6 +42,7 @@ class ServerUpdateOverview extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final value = status;
+    final platformUnsupported = value?.platformUnsupported == true;
     final cards = <Widget>[
       _SummaryCard(
         icon: Icons.dns_outlined,
@@ -147,17 +148,18 @@ class ServerUpdateOverview extends StatelessWidget {
           ),
           const SizedBox(height: UtenSpacing.s16),
         ],
-        UtenResponsiveGrid(
-          itemCount: cards.length,
-          maxColumns: 3,
-          columns: const UtenResponsiveColumns(expanded: 3),
-          itemBuilder: (_, index, _) => cards[index],
-        ),
-        if (!writable) ...[
+        if (!platformUnsupported)
+          UtenResponsiveGrid(
+            itemCount: cards.length,
+            maxColumns: 3,
+            columns: const UtenResponsiveColumns(expanded: 3),
+            itemBuilder: (_, index, _) => cards[index],
+          ),
+        if (!platformUnsupported && !writable) ...[
           const SizedBox(height: UtenSpacing.s16),
           Text(l.serverUpdateReadOnly, style: theme.textTheme.bodySmall),
         ],
-        if (value?.sourceConfigured == false) ...[
+        if (!platformUnsupported && value?.sourceConfigured == false) ...[
           const SizedBox(height: UtenSpacing.s16),
           UtenInlineNotice(
             level: UtenInlineNoticeLevel.warning,
@@ -166,13 +168,25 @@ class ServerUpdateOverview extends StatelessWidget {
           ),
         ],
         if (value != null && !value.available) ...[
-          const SizedBox(height: UtenSpacing.s16),
+          if (!platformUnsupported) const SizedBox(height: UtenSpacing.s16),
           UtenInlineNotice(
-            level: UtenInlineNoticeLevel.warning,
+            key: ValueKey(
+              platformUnsupported
+                  ? 'server-update-platform-unsupported'
+                  : 'server-update-unavailable',
+            ),
+            level: platformUnsupported
+                ? UtenInlineNoticeLevel.info
+                : UtenInlineNoticeLevel.warning,
             title: value.failure?.title ?? l.serverUpdateUnavailable,
-            message: value.failure?.reason ?? l.serverUpdateServiceUnknown,
+            message: platformUnsupported
+                ? [
+                    value.failure?.reason,
+                    value.failure?.suggestion,
+                  ].whereType<String>().join('\n')
+                : value.failure?.reason ?? l.serverUpdateServiceUnknown,
           ),
-          if (value.failure != null)
+          if (!platformUnsupported && value.failure != null)
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
               title: Text(l.serverUpdateFailureDetails),
@@ -189,7 +203,8 @@ class ServerUpdateOverview extends StatelessWidget {
               ],
             ),
         ],
-        if (value?.manualOnly == false || value?.timerActive == true) ...[
+        if (!platformUnsupported &&
+            (value?.manualOnly == false || value?.timerActive == true)) ...[
           const SizedBox(height: UtenSpacing.s12),
           const Text('服务器仍报告旧自动检查计划，请联系管理员核对。'),
         ],

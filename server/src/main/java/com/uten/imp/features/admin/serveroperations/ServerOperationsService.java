@@ -58,7 +58,7 @@ public class ServerOperationsService {
                     text(data, "serverTimeZone", 128), instant(data, "serverTime"),
                     failure == null ? null : ServerOperationFailures.message(failure), update, cleanup, configure, failure);
         } catch (HostOperationsException unavailable) {
-            var failure = ServerOperationFailures.unavailable(unavailable.code());
+            var failure = unavailable.availabilityFailure();
             return new ServerOperationsDto.Status(false, null, null, null, null, null, null, null,
                     null, null, null, null, null,
                     ServerOperationFailures.message(failure), update, cleanup, configure, failure);

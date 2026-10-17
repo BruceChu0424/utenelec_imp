@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
 import 'package:uten_imp/features/admin/models/server_storage.dart';
 import 'package:uten_imp/features/admin/pages/server_storage_page.dart';
 import 'package:uten_imp/features/admin/providers/server_operations_access.dart';
@@ -107,6 +108,53 @@ void main() {
     expect(formatStorageBytes(0), '0 B');
     expect(formatStorageBytes(1048576), '1.0 MiB');
   });
+
+  test('storage platform availability is separate from cleanup permission', () {
+    final summary = _unsupportedSummary();
+    expect(summary.platformUnsupported, isTrue);
+    expect(summary.canCleanup, isTrue);
+    expect(summary.rssBytes, isNull);
+    expect(summary.heapUsedBytes, 10000);
+    expect(summary.databaseBytes, 1048576);
+    expect(
+      ServerStorageSummary.fromJson({
+        'capabilities': {
+          'available': false,
+          'unavailableCode': 'HOST_HELPER_UNAVAILABLE',
+        },
+      }).platformUnsupported,
+      isFalse,
+    );
+    expect(ServerStorageSummary.fromJson({}).unavailableCode, isNull);
+  });
+
+  testWidgets(
+    'unsupported host keeps known storage metrics and blocks host resource reads',
+    (tester) async {
+      final repository = _Repository()..summaryValue = _unsupportedSummary();
+      await _pump(tester, repository, scale: 2);
+      final notice = find.byKey(const ValueKey('storage-unavailable'));
+      expect(
+        tester.widget<UtenInlineNotice>(notice).level,
+        UtenInlineNoticeLevel.info,
+      );
+      expect(find.textContaining('10000'), findsNothing);
+      expect(find.textContaining('9.8 KiB'), findsOneWidget);
+      expect(find.textContaining('1.0 MiB'), findsOneWidget);
+      expect(find.textContaining('尚未确认'), findsWidgets);
+      final category = find.byKey(const ValueKey('storage-category-LOGS'));
+      expect(tester.widget<ListTile>(category).onTap, isNull);
+      expect(
+        find.byKey(const ValueKey('storage-cleanup-preview')),
+        findsNothing,
+      );
+      expect(repository.resourceCalls, 0);
+      expect(repository.previews, isEmpty);
+      expect(repository.cleanups, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets(
     'entry is read-only; protected rows explain why and cannot be selected',
@@ -328,6 +376,22 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+ServerStorageSummary _unsupportedSummary() => ServerStorageSummary.fromJson({
+  'status': 'UNKNOWN',
+  'capabilities': {
+    'available': false,
+    'canCleanup': true,
+    'unavailableCode': 'HOST_PLATFORM_UNSUPPORTED',
+    'unavailableReason': '当前环境不支持主机清理；可查看已采集的只读信息。',
+  },
+  'process': {'rssBytes': null, 'heapUsedBytes': 10000},
+  'database': {'sizeBytes': 1048576},
+  // Even a stale category must not expose host reads when unavailable.
+  'categories': [
+    {'kind': 'LOGS', 'label': '日志', 'canList': true},
+  ],
+});
+
 Map<String, dynamic> _resource(
   String id, {
   bool canDelete = true,
@@ -358,6 +422,7 @@ ServerStorageResources _resources(
 });
 
 class _Repository implements ServerStorageRepository {
+  ServerStorageSummary? summaryValue;
   bool includeLegacy = false;
   bool receiptMissing = false;
   bool canCleanup = true,
@@ -365,12 +430,13 @@ class _Repository implements ServerStorageRepository {
       failFirstCleanup = false,
       nextRevision = false;
   Future<ServerStorageResources>? firstResources;
-  int summaryCalls = 0;
+  int summaryCalls = 0, resourceCalls = 0;
   final previews = <List<String>>[], cleanups = <Map<String, String>>[];
   final receiptReads = <String>[];
   @override
   Future<ServerStorageSummary> summary() async {
     summaryCalls++;
+    if (summaryValue != null) return summaryValue!;
     return ServerStorageSummary.fromJson({
       'revision': 'r1',
       'status': 'NORMAL',
@@ -412,6 +478,7 @@ class _Repository implements ServerStorageRepository {
     String kind, {
     String? cursor,
   }) async {
+    resourceCalls++;
     if (kind == 'LEGACY_UPLOADS') {
       return ServerStorageResources.fromJson({
         'revision': 'r1',

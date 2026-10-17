@@ -15,7 +15,14 @@ class ServerOperationsWorkbenchBadgeSources implements WorkbenchBadgeSources {
     @Override public List<Source> sources() {
         return List.of(new Source("serverOperations", () -> {
             var status = controller.status();
-            if (!status.available()) throw new ApiException(ErrorCode.SERVER_OPERATIONS_UNAVAILABLE);
+            if (!status.available()) {
+                // A locally unsupported platform has no update task. A broken Linux helper remains stale.
+                if (status.failure() != null
+                        && ServerOperationFailures.HOST_PLATFORM_UNSUPPORTED.equals(status.failure().code())) {
+                    return Map.of("updates", 0L);
+                }
+                throw new ApiException(ErrorCode.SERVER_OPERATIONS_UNAVAILABLE);
+            }
             return Map.of("updates", status.canUpdate() && Boolean.TRUE.equals(status.updateAvailable()) ? 1L : 0L);
         }));
     }

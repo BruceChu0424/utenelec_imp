@@ -20,14 +20,32 @@ public final class HostOperationsException extends RuntimeException {
     public HostOperationsException(String code) { this(code, false); }
 
     public HostOperationsException(String code, boolean uncertain) {
+        this(code, uncertain, false);
+    }
+
+    private HostOperationsException(String code, boolean uncertain, boolean localPlatformUnsupported) {
         super("Server operations request could not be confirmed");
-        this.code = KNOWN_CODES.contains(code == null ? "" : code) || ServerOperationFailures.known(code)
+        this.code = localPlatformUnsupported ? ServerOperationFailures.HOST_PLATFORM_UNSUPPORTED
+                : KNOWN_CODES.contains(code == null ? "" : code) || ServerOperationFailures.known(code)
                 ? code : "UNAVAILABLE";
         this.uncertain = uncertain || "OUTCOME_UNCERTAIN".equals(this.code);
     }
 
+    /** Reserved local fact: helper frames and stored receipts cannot claim platform support. */
+    static HostOperationsException platformUnsupported() {
+        return new HostOperationsException(null, false, true);
+    }
+
+    boolean isPlatformUnsupported() { return ServerOperationFailures.HOST_PLATFORM_UNSUPPORTED.equals(code); }
+
     public String code() { return code; }
     public boolean uncertain() { return uncertain; }
+
+    /** Safe availability projection shared by update and storage status. */
+    public ServerOperationsDto.Failure availabilityFailure() {
+        return isPlatformUnsupported() ? ServerOperationFailures.platformUnsupported()
+                : ServerOperationFailures.unavailable(code);
+    }
 
     public ApiException toApiException() {
         if (uncertain) {
@@ -63,6 +81,7 @@ public final class HostOperationsException extends RuntimeException {
     }
 
     private String guidance() {
+        if (isPlatformUnsupported()) return ServerOperationFailures.message(ServerOperationFailures.platformUnsupported());
         return ServerOperationFailures.guidance(ServerOperationFailures.rpcCode(code));
     }
 }

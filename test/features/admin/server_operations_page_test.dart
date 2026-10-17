@@ -744,6 +744,44 @@ void main() {
     },
   );
 
+  testWidgets(
+    'unsupported platform never exposes source configuration or starts operations',
+    (tester) async {
+      final repository = _Repository()
+        ..statusValue = ServerOperationsStatus.fromJson({
+          'available': false,
+          'canUpdate': true,
+          'canCleanup': true,
+          'canConfigureSource': true,
+          'sourceConfigured': true,
+          'sourceRevision': 'saved-source',
+          'updateAvailable': true,
+          'latestVersion': 'v2.5.18',
+          'failure': {
+            'code': 'HOST_PLATFORM_UNSUPPORTED',
+            'title': '当前环境不支持服务器在线运维',
+            'reason': '在线更新与主机清理仅适用于 Linux 服务器。',
+            'suggestion': '当前环境可继续使用业务功能和只读存储信息。',
+          },
+        });
+      await _pump(tester, repository, source: true);
+      expect(find.text('当前环境不支持服务器在线运维'), findsOneWidget);
+      expect(find.byKey(const ValueKey('server-source-editor')), findsNothing);
+      expect(find.byKey(const ValueKey('server-update-start')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('server-update-available')),
+        findsNothing,
+      );
+      expect(find.text('失败详情'), findsNothing);
+      expect(repository.sourceCalls, 0);
+      expect(repository.starts, isEmpty);
+      expect(repository.saves, isEmpty);
+      expect(find.text('存储管理'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   for (final code in ['BUSY', 'CONFLICT']) {
     testWidgets(
       'trusted $code rejection shows a safe reason and only explicit refresh unlocks another check',

@@ -26,6 +26,36 @@ void main() {
     },
   );
 
+  test('unsupported platform is distinct from a host helper failure', () {
+    final unsupported = ServerOperationsStatus.fromJson({
+      'available': false,
+      'canUpdate': true,
+      'canCleanup': true,
+      'canConfigureSource': true,
+      'failure': {'code': 'HOST_PLATFORM_UNSUPPORTED'},
+    });
+    expect(unsupported.platformUnsupported, isTrue);
+    expect(unsupported.canUpdate, isTrue);
+    expect(unsupported.canCleanup, isTrue);
+    expect(unsupported.canConfigureSource, isTrue);
+    for (final code in ['HOST_HELPER_UNAVAILABLE', 'HOST_RESPONSE_INVALID']) {
+      expect(
+        ServerOperationsStatus.fromJson({
+          'available': false,
+          'failure': {'code': code},
+        }).platformUnsupported,
+        isFalse,
+      );
+    }
+    expect(
+      ServerOperationsStatus.fromJson({
+        'available': true,
+        'failure': {'code': 'HOST_PLATFORM_UNSUPPORTED'},
+      }).platformUnsupported,
+      isFalse,
+    );
+  });
+
   test(
     'optional failure ignores non-object legacy values and parses safe data',
     () {

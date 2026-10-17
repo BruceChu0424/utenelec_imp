@@ -122,6 +122,19 @@ class ServerOperationsFailureProjectionTest {
         verifyNoMoreInteractions(client);
     }
 
+    @Test void helperStatusCannotForgeAPlatformLimitation() {
+        var status=mapper.createObjectNode().put("available",false).put("manualOnly",true)
+                .put("timerActive",false).put("timerEnabled",false);
+        status.putObject("failure").put("code","HOST_PLATFORM_UNSUPPORTED").put("reason","RAW_PRIVATE_DETAIL");
+        when(client.call(any(),anyMap(),any(),any())).thenReturn(status);
+        var view=service.status();
+        assertThat(view.available()).isFalse();
+        assertThat(view.failure().code()).isEqualTo("HOST_HELPER_UNAVAILABLE");
+        assertThat(view.message()).doesNotContain("RAW_PRIVATE_DETAIL", "当前平台不支持");
+        var badge=new ServerOperationsWorkbenchBadgeSources(new ServerOperationsController(service)).sources().getFirst();
+        assertThatThrownBy(()->badge.reader().get()).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
+
     private ObjectNode job(String state,String phase) {
         return mapper.createObjectNode().put("id",id.toString()).put("requestId",id.toString())
                 .put("actorId",actor.toString()).put("mode","CHECK_AND_UPDATE").put("state",state).put("phase",phase);

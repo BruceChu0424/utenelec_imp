@@ -1,5 +1,6 @@
 package com.uten.imp.features.admin.serverstatus;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -11,7 +12,12 @@ import java.util.UUID;
 public final class ServerStorageView {
     private ServerStorageView() {}
     public enum Kind { SYSTEM, RELEASES, RELEASE_STAGING, PREACTIVATION_BACKUPS, PAIRED_BACKUPS, DATABASE, UPLOADS, LEGACY_UPLOADS, LOGS, CACHE }
-    public record Capabilities(boolean available, boolean canCleanup, String unavailableReason) {}
+    public record Capabilities(boolean available, boolean canCleanup, String unavailableReason,
+                               @JsonInclude(JsonInclude.Include.NON_NULL) String unavailableCode) {
+        public Capabilities(boolean available, boolean canCleanup, String unavailableReason) {
+            this(available, canCleanup, unavailableReason, null);
+        }
+    }
     public record Volume(String id, String label, Long totalBytes, Long usedBytes, Long freeBytes) {}
     public record Category(Kind kind, String label, String status, Long logicalBytes, Long allocatedBytes,
                            Long reclaimableBytes, Long count, String detail, boolean canList, String volumeId) {}

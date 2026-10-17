@@ -11,6 +11,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/department/models/department_node.dart';
 import 'package:uten_imp/features/department/repositories/department_repository.dart';
 import 'package:uten_imp/features/production/models/production_material_analysis.dart';
@@ -25,18 +27,28 @@ void main() {
     await _pump(tester);
     await _openWorkshopBucket(tester);
 
-    // 文本列有筛选箭头，数量列(需求量)没有。
+    // 文本列有筛选箭头；用当前本地化的真实数量列验证数量没有关键词/桶。
+    final quantityLabel = AppLocalizations.of(
+      tester.element(_bucketTable()),
+    ).materialRequired;
     expect(_filterArrowOf('物料名称'), findsOneWidget);
     expect(_filterArrowOf('编号'), findsOneWidget);
-    expect(_filterArrowOf('需求量'), findsNothing);
+    expect(_headerColumn(quantityLabel), findsOneWidget);
+    expect(_filterArrowOf(quantityLabel), findsNothing);
 
     // 三行：甲产品 / 乙子件 / 甲产品。
     expect(find.text('甲产品'), findsNWidgets(2));
     expect(find.text('乙子件'), findsOneWidget);
 
     // 编号筛选(逐行一桶)：选「P-beta」后只剩乙子件。
-    await tester.tap(_headerCell('编号'));
+    final table = tester.widget<MasterDataTableView<Object?>>(_bucketTable());
+    expect(
+      table.facets['goodsCode']!.map((bucket) => (bucket.value, bucket.count)),
+      unorderedEquals([('P-alpha', 1), ('P-beta', 1), ('P-gamma', 1)]),
+    );
+    await tester.tap(_headerText('编号').hitTestable());
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('uten-column-keyword-input')), findsOneWidget);
     expect(find.text('P-alpha (1)'), findsOneWidget);
     await tester.tap(find.text('P-beta (1)'));
     await tester.pumpAndSettle();
@@ -44,13 +56,13 @@ void main() {
     expect(find.text('乙子件'), findsOneWidget);
 
     // 撤回「所有」，换成货品筛选：同名货品合并一桶(不按行 id 各成一桶)。
-    await tester.tap(_headerCell('P-beta'));
+    await tester.tap(_headerText('编号').hitTestable());
     await tester.pumpAndSettle();
     await tester.tap(find.text('所有'));
     await tester.pumpAndSettle();
     expect(find.text('甲产品'), findsNWidgets(2));
 
-    await tester.tap(_headerCell('物料名称'));
+    await tester.tap(_headerText('物料名称').hitTestable());
     await tester.pumpAndSettle();
     expect(find.text('甲产品 (2)'), findsOneWidget);
     expect(find.text('乙子件 (1)'), findsOneWidget);
@@ -58,17 +70,55 @@ void main() {
     await tester.pumpAndSettle();
     // 两行数据 + 表头高亮显示的当前筛选值(激活筛选看得见)。
     expect(find.text('甲产品'), findsNWidgets(3));
-    expect(_headerCell('甲产品'), findsOneWidget);
+    expect(_headerCell('物料名称'), findsOneWidget);
+    expect(
+      find.descendant(of: _headerCell('物料名称'), matching: find.text('甲产品')),
+      findsOneWidget,
+    );
     expect(find.text('乙子件'), findsNothing);
   });
 }
 
-/// 表头格：MasterDataTableView 的列头是「标签 + 箭头」的 InkWell，按标签文本定位。
-Finder _headerCell(String label) =>
-    find.ancestor(of: find.text(label), matching: find.byType(InkWell)).first;
+/// Bind to this bucket's actual column chrome. Header search now also renders
+/// field labels, and row values may equal an active header's display value.
+Finder _bucketTable() => find.byWidgetPredicate(
+  (widget) =>
+      widget is MasterDataTableView<Object?> &&
+      widget.tableKey ==
+          'features.production.pages.material_analysis_bucket_detail.MaterialAnalysisBucketPageState._bucketTable.1',
+);
+
+Finder _headerColumn(String label) {
+  final grip = find.descendant(
+    of: _bucketTable(),
+    matching: find.byWidgetPredicate(
+      (widget) => widget is UtenColumnResizeHandle && widget.label == label,
+    ),
+  );
+  return find
+      .ancestor(
+        of: grip,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Container &&
+              widget.constraints?.hasBoundedWidth == true &&
+              widget.child is Stack,
+        ),
+      )
+      .first;
+}
+
+Finder _headerCell(String label) => find
+    .descendant(of: _headerColumn(label), matching: find.byType(InkWell))
+    .first;
+
+/// The header center can belong to its separate information button. Hit the
+/// actual visible label to open the filter, preserving the info action too.
+Finder _headerText(String label) =>
+    find.descendant(of: _headerCell(label), matching: find.byType(Text)).first;
 
 Finder _filterArrowOf(String label) => find.descendant(
-  of: find.ancestor(of: find.text(label), matching: find.byType(InkWell)),
+  of: _headerColumn(label),
   matching: find.byIcon(Icons.arrow_drop_down_rounded),
 );
 

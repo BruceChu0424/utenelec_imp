@@ -30,6 +30,7 @@ void main() {
           apiClientProvider.overrideWithValue(ApiClient(server.dio)),
           currentPermissionsProvider.overrideWithValue({
             Perm.goodsView,
+            Perm.materialCategoryView,
             Perm.materialCategoryEdit,
           }),
           isSuperAdminProvider.overrideWithValue(false),

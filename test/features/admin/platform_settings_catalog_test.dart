@@ -18,10 +18,16 @@ void main() {
     expect(ids, isNot(contains('ai')));
     expect(ids, isNot(contains('audit')));
     expect(ids, isNot(contains('workshop-material')));
-    // A goods row grant alone does not include the list's category-tree grant.
+    // Entity viewing opens the global list without granting category browsing.
     expect(
       platformSettingsEntriesFor(const {
         Perm.goodsView,
+      }, false).map((entry) => entry.id),
+      contains('basic-data'),
+    );
+    expect(
+      platformSettingsEntriesFor(const {
+        Perm.materialCategoryView,
       }, false).map((entry) => entry.id),
       isNot(contains('basic-data')),
     );

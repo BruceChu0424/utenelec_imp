@@ -10872,9 +10872,16 @@ class FullChainEndToEndTest {
 
         // super-admin CAN modify another (non-super) user's overrides
         permissionOverrideAdmin.setPermissionOverrides(other, List.of("sales_order:edit"), List.of());
-        assertEquals(1, count(
-                "select count(*) from user_permission_overrides where user_id = ? and effect = 'grant'",
-                other), "超管可改他人授权");
+        assertEquals(List.of("sales_order:edit", "sales_order:view"), jdbc.queryForList("""
+                select permission.code
+                from user_permission_overrides overrides
+                join permissions permission on permission.id=overrides.permission_id
+                where overrides.user_id=? and overrides.effect='grant' and overrides.active
+                order by permission.code
+                """, String.class, other), "超管可改他人授权，并补齐普通页面读取而不扩授其他权限");
+        assertTrue(permissionResolver.authorizationSnapshot(other, employeeIdOf(other), false).permissions()
+                        .containsAll(List.of("sales_order:edit", "sales_order:view")),
+                "已保存的编辑授权及普通页面读取必须实际生效");
 
         // non-super admin CANNOT assign permissions at all
         UUID adminNonSuper = createUserWithPerms(w, "admin-s33", "account:support");

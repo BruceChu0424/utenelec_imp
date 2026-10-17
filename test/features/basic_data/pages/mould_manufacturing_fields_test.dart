@@ -29,6 +29,7 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(preferences),
           currentPermissionsProvider.overrideWithValue({
             Perm.mouldView,
+            Perm.mouldCategoryView,
             Perm.mouldEdit,
             Perm.mouldCreate,
           }),

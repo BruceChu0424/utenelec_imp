@@ -104,7 +104,6 @@ public interface EmployeeRepository extends JpaRepository<Employee, UUID>, JpaSp
 
     /**
      * 取某部门子树（含自身 + 所有下级部门）下全部员工的 user id。
-     * 用途：部门权限配置变更后吊销这些用户的 refresh token，阻止旧权限继续续期。
      */
     @Query(value = """
             WITH RECURSIVE sub AS (

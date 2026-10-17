@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
  * 超级管理员维护个人权限点覆盖：查询、按期望集合保存(服务端差量落库)与「全部授权」。
  *
  * <p>ADR-109：只校验本次新增的加授能否授予(SUPERADMIN_ONLY 拒绝)；收回任何码都允许，
- * 历史上已存在的覆盖原样保留。真的有改动才写库、吊销续期令牌并记一条带 added/removed 的
+ * 历史上已存在的覆盖原样保留。真的有改动才写库、推进授权版本并记一条带 added/removed 的
  * 业务事件(条目形如 {@code grant:码} / {@code revoke:码})。
  */
 @Service

@@ -7,6 +7,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/permission_by_path.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
@@ -91,12 +92,34 @@ void main() {
     await tester.pumpWidget(_reportApp(api));
     await tester.pumpAndSettle();
 
-    expect(find.text('加载报表失败，请检查网络或权限后重试'), findsOneWidget);
+    final l10n = AppLocalizations.of(
+      tester.element(find.byType(FinanceReportTablePage)),
+    );
+    expect(find.text(l10n.financeReportLoadFailed), findsOneWidget);
     expect(find.text('重试'), findsOneWidget);
     api.fail = false;
     await tester.tap(find.text('重试'));
     await tester.pumpAndSettle();
     expect(find.text('YS-001'), findsOneWidget);
+  });
+
+  testWidgets('report preserves an explicit server rejection reason', (
+    tester,
+  ) async {
+    const message = '当前账号不可查看该客户的预收流水';
+    final api = _ReportApi(
+      fail: true,
+      failure: ApiException('FORBIDDEN', message, httpStatus: 403),
+    );
+    await tester.pumpWidget(_reportApp(api));
+    await tester.pumpAndSettle();
+    final l10n = AppLocalizations.of(
+      tester.element(find.byType(FinanceReportTablePage)),
+    );
+    expect(find.text(message), findsOneWidget);
+    expect(find.text(l10n.financeReportLoadFailed), findsNothing);
+    expect(find.text('重试'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('finance hub hides report until every permission is present', (
@@ -132,6 +155,9 @@ Widget _reportApp(_ReportApi api) => ProviderScope(
     }),
   ],
   child: const MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    locale: Locale('zh'),
     home: FinanceReportTablePage(cardId: 'customer-prepayment'),
   ),
 );
@@ -154,9 +180,10 @@ Widget _hubApp(Set<String> permissions) => ProviderScope(
 );
 
 class _ReportApi extends ApiClient {
-  _ReportApi({this.fail = false}) : super(Dio());
+  _ReportApi({this.fail = false, this.failure}) : super(Dio());
 
   bool fail;
+  final Object? failure;
   int reportCalls = 0;
   Map<String, dynamic>? lastQuery;
 
@@ -168,7 +195,7 @@ class _ReportApi extends ApiClient {
     if (path == '/finance/reports/customer-prepayment/events') {
       reportCalls++;
       lastQuery = Map<String, dynamic>.from(query ?? const {});
-      if (fail) throw StateError('offline');
+      if (fail) throw failure ?? StateError('offline');
       return _response;
     }
     return const <String, dynamic>{};
